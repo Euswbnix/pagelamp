@@ -35,8 +35,8 @@ First public beta.
 - Older `.ppt`/`.doc` files and scanned PDFs (no text layer) are listed but not searchable.
 - Windows and Linux builds are x86_64 only.
 - Text extraction runs in the sync process. PDFs are checked for decompression bombs and their image
-  data is never decoded, but streams compressed only with LZW aren't measured, so a deliberately
-  crafted file can still use more memory than it should (an isolated extraction worker is planned
-  for v0.2).
+  data is never decoded, but page content is still parsed in memory and LZW-only streams aren't
+  measured, so a very dense or deliberately crafted PDF can use a lot of memory (an isolated
+  extraction worker is planned for v0.2).
 - Installer file names and the OS-level app version show `0.1.0` for every 0.1.0 beta; the real
   version is in *Settings → About* or `pagelamp --version`.
