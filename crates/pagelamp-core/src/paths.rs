@@ -171,6 +171,7 @@ const OWN_ENTRIES: &[&str] = &[
     SYNC_LOCK_FILE,
     "logs",
     COURSE_ALIASES_FILE,
+    "course-aliases.json.tmp",
     ".DS_Store",
 ];
 

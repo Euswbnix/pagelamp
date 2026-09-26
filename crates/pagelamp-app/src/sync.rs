@@ -120,6 +120,8 @@ impl App {
         on_event: &(dyn Fn(SyncEvent) + Send + Sync),
     ) -> SourceSyncResult {
         let started_at = Utc::now();
+        // Before too: a course this sync removes or renames may already be in the logs.
+        self.remember_course_names();
         tracing::info!(target: "pagelamp::sync", "{} sync started", source.kind.as_str());
         on_event(SyncEvent::SourceStarted {
             source_id: source.id.clone(),

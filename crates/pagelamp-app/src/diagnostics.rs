@@ -272,46 +272,73 @@ pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String 
 
 // ----- course names: pseudonymisation --------------------------------------------------------
 
-/// `logs/course-aliases.json`: the names and codes of every course seen after a sync, kept
-/// `ALIAS_RETENTION_DAYS` (longer than the logs), so a report also hides courses that were
-/// renamed or removed after their names were logged. Local only; never part of a report
-/// (which reads `*.log` files only).
-const ALIAS_FILE: &str = "course-aliases.json";
+/// `<data_dir>/course-aliases.json` (`paths::course_aliases_path_in`, mode 0600): the names,
+/// codes and folder names of every course seen, by course id, kept `ALIAS_RETENTION_DAYS`
+/// after it was last seen (longer than the 7 days logs are kept). A report uses it to hide
+/// courses that were renamed or removed after their names were logged. Local only, never
+/// part of a report, and outside `logs/` (which students are invited to share).
 const ALIAS_RETENTION_DAYS: i64 = 30;
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, PartialEq, Serialize, Deserialize)]
 struct RememberedCourses {
     /// By course id.
     courses: BTreeMap<String, RememberedCourse>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize)]
 struct RememberedCourse {
     names: BTreeSet<String>,
     last_seen: NaiveDate,
 }
 
+/// The texts a course may appear as in logs: display name, name, code, and the folder name
+/// of a folder course (an id with letters in it; numeric LMS ids are left alone, they would
+/// match unrelated numbers).
 fn names_of(course: &Course) -> impl Iterator<Item = String> {
+    let folder_name =
+        Some(course.external_id.clone()).filter(|id| id.chars().any(char::is_alphabetic));
     [
         Some(course.display_name()),
         Some(course.name.clone()),
         course.code.clone(),
+        folder_name,
     ]
     .into_iter()
     .flatten()
 }
 
+/// The remembered courses still within `ALIAS_RETENTION_DAYS` (expired ones are dropped on
+/// read, too). Also reads the file where versions before 0.1.0-beta.1 kept it (`logs/`).
 fn read_remembered(data_dir: &Path) -> RememberedCourses {
-    std::fs::read_to_string(core_diag::logs_dir_in(data_dir).join(ALIAS_FILE))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    let read = |path: PathBuf| -> RememberedCourses {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    };
+    let mut remembered = read(paths::course_aliases_path_in(data_dir));
+    for (id, old) in read(legacy_alias_path(data_dir)).courses {
+        let entry = remembered.courses.entry(id).or_insert(RememberedCourse {
+            names: BTreeSet::new(),
+            last_seen: old.last_seen,
+        });
+        entry.names.extend(old.names);
+        entry.last_seen = entry.last_seen.max(old.last_seen);
+    }
+    let oldest = Local::now().date_naive() - TimeDelta::days(ALIAS_RETENTION_DAYS);
+    remembered.courses.retain(|_, c| c.last_seen >= oldest);
+    remembered
 }
 
-/// Add `courses` (all current courses) to the remembered names and drop entries not seen for
-/// `ALIAS_RETENTION_DAYS`. Called after every sync and before a source is removed.
+fn legacy_alias_path(data_dir: &Path) -> PathBuf {
+    core_diag::logs_dir_in(data_dir).join("course-aliases.json")
+}
+
+/// Add `courses` (all current courses) to the remembered names. Called at startup, and
+/// before and after every source sync or removal. Writes only when something changed.
 pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::Result<()> {
     let today = Local::now().date_naive();
+    let before = read_remembered(data_dir);
     let mut remembered = read_remembered(data_dir);
     for course in courses {
         let entry = remembered
@@ -324,23 +351,31 @@ pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::
         entry.names.extend(names_of(course));
         entry.last_seen = today;
     }
-    let oldest = today - TimeDelta::days(ALIAS_RETENTION_DAYS);
-    remembered.courses.retain(|_, c| c.last_seen >= oldest);
-    let dir = core_diag::logs_dir_in(data_dir);
-    paths::create_private_dir_all(&dir)?;
-    let temp = dir.join(format!("{ALIAS_FILE}.tmp"));
-    std::fs::write(&temp, serde_json::to_vec(&remembered)?)?;
-    std::fs::rename(&temp, dir.join(ALIAS_FILE))
+    let legacy = legacy_alias_path(data_dir);
+    let path = paths::course_aliases_path_in(data_dir);
+    if remembered != before || !path.exists() || legacy.exists() {
+        paths::create_private_dir_all(data_dir)?;
+        let temp = data_dir.join("course-aliases.json.tmp");
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).write(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        std::io::Write::write_all(&mut options.open(&temp)?, &serde_json::to_vec(&remembered)?)?;
+        std::fs::rename(&temp, &path)?;
+        let _ = std::fs::remove_file(legacy);
+    }
+    Ok(())
 }
 
-/// Course codes and names, ordered, for pseudonymisation ("Course 1", "Course 2", …): the
-/// current courses first, then remembered ones that no longer exist.
-fn course_names(data_dir: &Path) -> Vec<(String, String)> {
+/// Course names for pseudonymisation ("Course 1", "Course 2", …): the current courses first,
+/// then remembered ones that no longer exist. Each name matches case-insensitively, also in
+/// its Debug-escaped and JSON-escaped forms (how log lines quote it).
+fn course_names(data_dir: &Path) -> Vec<(Regex, String)> {
     let current = Store::open_read_only(&paths::db_path_in(data_dir))
         .and_then(|store| store.list_courses(true))
         .unwrap_or_default();
     let mut remembered = read_remembered(data_dir).courses;
-    let mut pairs = Vec::new();
+    let mut pairs: Vec<(String, String)> = Vec::new();
     let mut add = |names: &mut dyn Iterator<Item = String>, alias: &str| {
         pairs.extend(names.map(|name| (name, alias.to_string())));
     };
@@ -355,10 +390,25 @@ fn course_names(data_dir: &Path) -> Vec<(String, String)> {
         let alias = format!("Course {}", current.len() + index + 1);
         add(&mut old.names.into_iter(), &alias);
     }
+    let mut variants: Vec<(String, String)> = Vec::new();
+    for (name, alias) in pairs {
+        let json = serde_json::to_string(&name).unwrap_or_default();
+        let json = json.trim_matches('"').to_string();
+        for variant in [name.escape_debug().to_string(), json, name] {
+            if variant.trim().chars().count() >= 3 && !variants.iter().any(|(v, _)| *v == variant) {
+                variants.push((variant, alias.clone()));
+            }
+        }
+    }
     // Longest first, so "DEMO101 — Intro" is replaced before "DEMO101".
-    pairs.retain(|(name, _)| name.trim().len() >= 3);
-    pairs.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
-    pairs
+    variants.sort_by_key(|(variant, _)| std::cmp::Reverse(variant.len()));
+    variants
+        .into_iter()
+        .filter_map(|(variant, alias)| {
+            let pattern = format!("(?i){}", regex::escape(&variant));
+            Some((Regex::new(&pattern).ok()?, alias))
+        })
+        .collect()
 }
 
 /// Anything shaped like a course code ("DEMO101", "MAT 137Y1") that no known name covered,
@@ -372,11 +422,11 @@ const NOT_COURSE_PREFIXES: &[&str] = &[
     "SSL", "TB", "TLS", "URL", "UTC", "UTF",
 ];
 
-fn pseudonymise(text: &str, names: &[(String, String)]) -> String {
+fn pseudonymise(text: &str, names: &[(Regex, String)]) -> String {
     let mut text = text.to_string();
     for (name, alias) in names {
-        if text.contains(name.as_str()) {
-            text = text.replace(name.as_str(), alias);
+        if name.is_match(&text) {
+            text = name.replace_all(&text, regex::NoExpand(alias)).into_owned();
         }
     }
     COURSE_CODE
@@ -545,7 +595,7 @@ mod tests {
         let logs = core_diag::logs_dir_in(temp.path());
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(
-            logs.join("app-2026-09-26.log"),
+            logs.join(format!("app-{}.log", chrono::Local::now().format("%Y-%m-%d"))),
             "2026-09-26T10:00:00Z pid=1 INFO pagelamp: synced DEMO101 — Intro to Demo Studies\n\
              2026-09-26T10:00:01Z pid=1 DEBUG pagelamp_canvas::http: GET /files/1/download?verifier=S3CR3T → 302\n\
              2026-09-26T10:00:02Z pid=1 WARN pagelamp: Bearer 1234~AbCdEfGhIjKlMnOpQrStUvWx rejected\n\
@@ -569,6 +619,40 @@ mod tests {
     }
 
     #[test]
+    fn course_names_match_in_any_case_escaped_or_as_folder_names() {
+        let temp = tempfile::tempdir().unwrap();
+        seeded(temp.path());
+        let store = Store::open(&paths::db_path_in(temp.path())).unwrap();
+        store
+            .upsert_course(&CourseUpsert {
+                id: "folder:x/course/Café Seminar".into(),
+                source_id: "folder:x".into(),
+                external_id: "Café Seminar folder".into(),
+                code: None,
+                name: "Café \"Demo\" Seminar".into(),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+            })
+            .unwrap();
+        let names = course_names(temp.path());
+        for line in [
+            // How `{:?}` quotes it (printable Unicode stays, quotes are escaped).
+            &format!("warning: {:?}: file skipped", "Café \"Demo\" Seminar"),
+            r#"{"course":"Café \"Demo\" Seminar"}"#,
+            "could not read Café Seminar folder/Week 1",
+            "CAFÉ \"DEMO\" SEMINAR",
+        ] {
+            let out = pseudonymise(line, &names);
+            assert!(
+                !out.contains("Seminar") && !out.contains("SEMINAR"),
+                "{line} → {out}"
+            );
+        }
+    }
+
+    #[test]
     fn report_hides_courses_removed_after_they_were_logged() {
         let temp = tempfile::tempdir().unwrap();
         seeded(temp.path());
@@ -577,21 +661,34 @@ mod tests {
         // Removed with its source: the DB no longer knows the name.
         store.remove_source("folder:x").unwrap();
         let logs = core_diag::logs_dir_in(temp.path());
+        std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(
-            logs.join("mcp-2026-09-26.log"),
+            logs.join(format!(
+                "mcp-{}.log",
+                chrono::Local::now().format("%Y-%m-%d")
+            )),
             "2026-09-26T10:00:00Z pid=1 WARN rmcp: no course matches 'Intro to Demo Studies'\n\
+             2026-09-26T10:00:00Z pid=1 WARN rmcp: no course matches 'intro TO demo studies'\n\
              2026-09-26T10:00:01Z pid=1 WARN rmcp: no course matches 'XYZ 204H1'\n\
              2026-09-26T10:00:02Z pid=1 WARN pagelamp: Canvas answered HTTP 404 at 12:00 UTC\n",
         )
         .unwrap();
         let report = report_in(temp.path(), &MemorySecrets::new());
-        for name in ["Intro to Demo Studies", "XYZ 204H1", "XYZ"] {
+        for name in ["Intro to Demo Studies", "intro TO demo", "XYZ 204H1", "XYZ"] {
             assert!(!report.contains(name), "{name} leaked:\n{report}");
         }
         assert!(report.contains("matches 'Course 1'"), "{report}");
         assert!(report.contains("matches '[course code]'"), "{report}");
         assert!(report.contains("HTTP 404"), "{report}");
-        // Only *.log files are read: the remembered names never reach a report.
-        assert!(logs.join(ALIAS_FILE).is_file());
+        // Kept outside logs/ (which students may share), private, never in a report.
+        let aliases = paths::course_aliases_path_in(temp.path());
+        assert!(aliases.is_file());
+        assert!(!logs.join("course-aliases.json").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&aliases).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0);
+        }
     }
 }

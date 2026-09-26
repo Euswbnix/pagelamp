@@ -224,24 +224,40 @@ impl LogFiles {
         }
     }
 
-    /// Delete this kind's log files older than `RETENTION_DAYS`.
+    /// Delete log files of both kinds older than `RETENTION_DAYS` (a kind whose process no
+    /// longer runs, e.g. MCP after the AI app was removed, would otherwise keep its old files).
     fn prune(&self) {
-        let oldest = Local::now().date_naive() - TimeDelta::days(RETENTION_DAYS - 1);
-        let prefix = format!("{}-", self.kind.prefix());
-        let Ok(entries) = std::fs::read_dir(&self.dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            let date = name
-                .strip_prefix(&prefix)
-                .and_then(|rest| rest.strip_suffix(".log"))
-                .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
-            if date.is_some_and(|d| d < oldest) {
-                let _ = std::fs::remove_file(entry.path());
+        let oldest = oldest_kept_day();
+        for (path, day) in log_files(&self.dir) {
+            if day < oldest {
+                let _ = std::fs::remove_file(path);
             }
         }
     }
+}
+
+/// The first day whose log files are kept.
+fn oldest_kept_day() -> NaiveDate {
+    Local::now().date_naive() - TimeDelta::days(RETENTION_DAYS - 1)
+}
+
+/// `app-YYYY-MM-DD.log` / `mcp-YYYY-MM-DD.log` files in `dir`, with their day.
+fn log_files(dir: &Path) -> Vec<(PathBuf, NaiveDate)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let day = [ProcessKind::App, ProcessKind::Mcp]
+                .iter()
+                .find_map(|kind| name.strip_prefix(kind.prefix())?.strip_prefix('-'))
+                .and_then(|rest| rest.strip_suffix(".log"))
+                .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())?;
+            Some((entry.path(), day))
+        })
+        .collect()
 }
 
 /// Insert `pid=N` after the leading timestamp of the first line.
@@ -490,20 +506,21 @@ pub fn clear_last_crash(data_dir: &Path) -> Result<()> {
 /// ordered by their leading RFC 3339 timestamp; continuation lines (backtraces) stay with
 /// their event.
 pub fn recent_log_lines(data_dir: &Path, max: usize) -> Vec<String> {
-    let dir = logs_dir_in(data_dir);
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    let mut files: Vec<PathBuf> = entries
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "log"))
+    // The files of the last two days that have logs, both kinds (never older than the
+    // retention period, in case pruning has not run yet).
+    let oldest = oldest_kept_day();
+    let files: Vec<(PathBuf, NaiveDate)> = log_files(&logs_dir_in(data_dir))
+        .into_iter()
+        .filter(|(_, day)| *day >= oldest)
         .collect();
-    files.sort();
+    let mut days: Vec<NaiveDate> = files.iter().map(|(_, day)| *day).collect();
+    days.sort_unstable_by(|a, b| b.cmp(a));
+    days.dedup();
+    days.truncate(RECENT_LOG_DAYS);
     // Events: (timestamp, text); a line that doesn't start with a timestamp continues the
     // last event (e.g. a backtrace, or "1 | …" in a multi-line message).
     let mut events: Vec<(String, String)> = Vec::new();
-    for file in files.iter().rev().take(4) {
+    for (file, _) in files.iter().filter(|(_, day)| days.contains(day)) {
         let Ok(text) = std::fs::read_to_string(file) else {
             continue;
         };
@@ -522,6 +539,9 @@ pub fn recent_log_lines(data_dir: &Path, max: usize) -> Vec<String> {
     let skip = lines.len().saturating_sub(max);
     lines.into_iter().skip(skip).collect()
 }
+
+/// How many of the most recent days with logs `recent_log_lines` reads.
+const RECENT_LOG_DAYS: usize = 2;
 
 /// `YYYY-MM-DDT…`: the start of a log event.
 fn starts_with_timestamp(line: &str) -> bool {
@@ -652,13 +672,16 @@ mod tests {
         files.append("2026-09-26T10:00:01Z INFO pagelamp: more\n");
         assert_eq!(std::fs::metadata(&path).unwrap().len(), MAX_FILE_BYTES);
 
-        // Retention: old files go, recent ones and other kinds stay.
+        // Retention: old files of both kinds go, recent ones and other files stay.
         let old = temp.path().join("mcp-2000-01-01.log");
         let other_kind = temp.path().join("app-2000-01-01.log");
-        std::fs::write(&old, "old").unwrap();
-        std::fs::write(&other_kind, "old").unwrap();
+        let unrelated = temp.path().join("notes-2000-01-01.log");
+        for file in [&old, &other_kind, &unrelated] {
+            std::fs::write(file, "old").unwrap();
+        }
         files.prune();
-        assert!(!old.exists() && other_kind.exists() && path.exists());
+        assert!(!old.exists() && !other_kind.exists());
+        assert!(unrelated.exists() && path.exists());
     }
 
     #[test]
@@ -699,18 +722,45 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let logs = logs_dir_in(temp.path());
         std::fs::create_dir_all(&logs).unwrap();
+        let today = Local::now().date_naive();
+        let day = |back: i64| {
+            (today - TimeDelta::days(back))
+                .format("%Y-%m-%d")
+                .to_string()
+        };
         std::fs::write(
-            logs.join("app-2026-09-26.log"),
+            logs.join(format!("app-{}.log", day(0))),
             "2026-09-26T10:00:00Z pid=1 INFO a\n2026-09-26T10:00:02Z pid=1 ERROR crash\n  at frame 1\n1 | code = [\n",
         )
         .unwrap();
         std::fs::write(
-            logs.join("mcp-2026-09-26.log"),
+            logs.join(format!("mcp-{}.log", day(0))),
             "2026-09-26T10:00:01Z pid=2 INFO b\n",
         )
         .unwrap();
         let lines = recent_log_lines(temp.path(), 2);
         assert_eq!(lines.len(), 2);
+        // Many MCP files never crowd out the app log; files past retention are never read.
+        for back in 1..6 {
+            std::fs::write(
+                logs.join(format!("mcp-{}.log", day(back))),
+                format!("2026-09-2{back}T09:00:00Z pid=3 INFO older mcp\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(
+            logs.join(format!("app-{}.log", day(30))),
+            "2026-08-27T09:00:00Z pid=4 INFO expired\n",
+        )
+        .unwrap();
+        let all = recent_log_lines(temp.path(), 100);
+        assert!(all.iter().any(|l| l.contains("ERROR crash")), "{all:?}");
+        assert!(!all.iter().any(|l| l.contains("expired")), "{all:?}");
+        assert_eq!(
+            all.iter().filter(|l| l.contains("older mcp")).count(),
+            1,
+            "only the last two days with logs: {all:?}"
+        );
         assert!(lines[0].ends_with("INFO b"));
         assert!(lines[1].contains("ERROR crash\n  at frame 1\n1 | code = ["));
         assert!(starts_with_timestamp("2026-09-26T10:00:00Z pid=1 INFO a"));

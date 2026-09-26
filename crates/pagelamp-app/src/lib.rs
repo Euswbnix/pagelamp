@@ -393,6 +393,8 @@ impl App {
         })?;
         let app = App { data_dir, secrets };
         Store::open(&app.db_path())?; // create + migrate, then close
+        // Courses synced by an older version are in its logs but not remembered yet.
+        app.remember_course_names();
         Ok(app)
     }
 
