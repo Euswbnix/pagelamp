@@ -6,8 +6,11 @@
 //!    when set and non-empty.
 //! 2. Platform data dir via `directories::ProjectDirs::from("dev", "StudentOS", "StudentOS")`
 //!    (macOS: `~/Library/Application Support/dev.StudentOS.StudentOS`).
-//! 3. Only if the OS reports no home directory at all: `FALLBACK_DATA_DIR`, relative to the
-//!    current working directory.
+//!
+//! If neither is available (the OS reports no home directory) resolution FAILS with
+//! `Error::NoDataDir` instead of guessing: MCP servers are spawned by AI clients with an
+//! arbitrary working directory (often `/`), so a cwd-relative fallback would silently create
+//! a second, empty database.
 //!
 //! The `*_in(dir)` helpers compute the same layout for an explicit data directory (used by
 //! `App::open_at` and by tests); the plain versions apply them to `data_dir()`.
@@ -15,45 +18,49 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-pub const HOME_ENV: &str = "STUDENTOS_HOME";
+use crate::{Error, Result};
 
-/// Data directory used when neither `STUDENTOS_HOME` nor a platform data dir is available
-/// (no home directory). Relative to the current working directory.
-pub const FALLBACK_DATA_DIR: &str = ".studentos";
+pub const HOME_ENV: &str = "STUDENTOS_HOME";
 
 const DB_FILE: &str = "studentos.db";
 const FILES_DIR: &str = "files";
 const SYNC_LOCK_FILE: &str = "sync.lock";
 
-/// Root data directory (not created).
-pub fn data_dir() -> PathBuf {
-    data_dir_from(std::env::var_os(HOME_ENV))
+/// Root data directory (not created). Errors with `Error::NoDataDir` when neither
+/// `STUDENTOS_HOME` nor a platform data directory is available.
+pub fn data_dir() -> Result<PathBuf> {
+    data_dir_from(std::env::var_os(HOME_ENV), platform_data_dir())
 }
 
-/// The resolution rules of `data_dir`, with the value of `STUDENTOS_HOME` passed in
-/// (`None` = unset) so they can be tested without touching the process environment.
-fn data_dir_from(home_env: Option<OsString>) -> PathBuf {
+/// `~/Library/Application Support/dev.StudentOS.StudentOS` and equivalents; None without a
+/// home directory.
+fn platform_data_dir() -> Option<PathBuf> {
+    directories::ProjectDirs::from("dev", "StudentOS", "StudentOS")
+        .map(|dirs| dirs.data_dir().to_path_buf())
+}
+
+/// The resolution rules of `data_dir` with their inputs passed in (`STUDENTOS_HOME` value,
+/// platform dir) so they can be tested without touching the process environment.
+fn data_dir_from(home_env: Option<OsString>, platform: Option<PathBuf>) -> Result<PathBuf> {
     match home_env {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => directories::ProjectDirs::from("dev", "StudentOS", "StudentOS")
-            .map(|dirs| dirs.data_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from(FALLBACK_DATA_DIR)),
+        Some(dir) if !dir.is_empty() => Ok(PathBuf::from(dir)),
+        _ => platform.ok_or(Error::NoDataDir),
     }
 }
 
 /// `<data_dir>/studentos.db`
-pub fn db_path() -> PathBuf {
-    db_path_in(&data_dir())
+pub fn db_path() -> Result<PathBuf> {
+    Ok(db_path_in(&data_dir()?))
 }
 
 /// `<data_dir>/files` — cache of downloaded LMS files, laid out as `<course-dir>/<file>`.
-pub fn files_dir() -> PathBuf {
-    files_dir_in(&data_dir())
+pub fn files_dir() -> Result<PathBuf> {
+    Ok(files_dir_in(&data_dir()?))
 }
 
 /// `<data_dir>/sync.lock` — advisory lock held by the one process that syncs.
-pub fn sync_lock_path() -> PathBuf {
-    sync_lock_path_in(&data_dir())
+pub fn sync_lock_path() -> Result<PathBuf> {
+    Ok(sync_lock_path_in(&data_dir()?))
 }
 
 /// `<dir>/studentos.db`
@@ -72,8 +79,8 @@ pub fn sync_lock_path_in(dir: &Path) -> PathBuf {
 }
 
 /// Create the data directory (and `files/`) if missing. Returns the data dir.
-pub fn ensure_dirs() -> std::io::Result<PathBuf> {
-    let dir = data_dir();
+pub fn ensure_dirs() -> Result<PathBuf> {
+    let dir = data_dir()?;
     ensure_dirs_in(&dir)?;
     Ok(dir)
 }
@@ -87,29 +94,37 @@ pub fn ensure_dirs_in(dir: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
 
+    fn platform() -> Option<PathBuf> {
+        Some(PathBuf::from("/demo/platform-data"))
+    }
+
     #[test]
     fn env_value_wins_when_non_empty() {
-        let dir = data_dir_from(Some(OsString::from("/demo/studentos-home")));
+        let dir = data_dir_from(Some(OsString::from("/demo/studentos-home")), platform()).unwrap();
+        assert_eq!(dir, PathBuf::from("/demo/studentos-home"));
+        // Even without a home directory.
+        let dir = data_dir_from(Some(OsString::from("/demo/studentos-home")), None).unwrap();
         assert_eq!(dir, PathBuf::from("/demo/studentos-home"));
     }
 
     #[test]
     fn empty_env_value_is_ignored() {
-        assert_eq!(data_dir_from(Some(OsString::new())), data_dir_from(None));
+        let dir = data_dir_from(Some(OsString::new()), platform()).unwrap();
+        assert_eq!(dir, PathBuf::from("/demo/platform-data"));
     }
 
     #[test]
-    fn default_is_platform_dir_or_fallback() {
-        let expected = directories::ProjectDirs::from("dev", "StudentOS", "StudentOS")
-            .map(|dirs| dirs.data_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from(FALLBACK_DATA_DIR));
-        assert_eq!(data_dir_from(None), expected);
+    fn no_env_and_no_home_is_a_hard_error() {
+        let err = data_dir_from(None, None).unwrap_err();
+        assert!(matches!(err, Error::NoDataDir));
+        assert!(err.to_string().contains("set STUDENTOS_HOME"), "{err}");
+        assert!(data_dir_from(Some(OsString::new()), None).is_err());
     }
 
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_default_is_application_support() {
-        let dir = data_dir_from(None);
+        let dir = platform_data_dir().unwrap();
         assert!(dir.ends_with("Library/Application Support/dev.StudentOS.StudentOS"));
     }
 
@@ -127,10 +142,10 @@ mod tests {
     #[test]
     fn default_layout_uses_data_dir() {
         // Whatever `data_dir()` resolves to on this machine; nothing is created.
-        let dir = data_dir();
-        assert_eq!(db_path(), db_path_in(&dir));
-        assert_eq!(files_dir(), files_dir_in(&dir));
-        assert_eq!(sync_lock_path(), sync_lock_path_in(&dir));
+        let dir = data_dir().unwrap();
+        assert_eq!(db_path().unwrap(), db_path_in(&dir));
+        assert_eq!(files_dir().unwrap(), files_dir_in(&dir));
+        assert_eq!(sync_lock_path().unwrap(), sync_lock_path_in(&dir));
     }
 
     #[test]

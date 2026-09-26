@@ -23,6 +23,10 @@ pub enum Error {
     #[error("StudentOS has no data yet at {0}; run `studentos sync` first")]
     NotInitialised(String),
 
+    /// Neither `STUDENTOS_HOME` nor a platform data directory is available (no home dir).
+    #[error("Could not determine a data directory; set STUDENTOS_HOME")]
+    NoDataDir,
+
     #[error("not found: {0}")]
     NotFound(String),
 
