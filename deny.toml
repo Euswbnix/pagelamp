@@ -1,5 +1,5 @@
 # cargo-deny configuration. CI runs `cargo deny check licenses` (docs/ARCHITECTURE.md §7):
-# every dependency must be compatible with shipping Weekmark under Apache-2.0.
+# every dependency must be compatible with shipping PageLamp under Apache-2.0.
 # Copyleft licences (GPL, AGPL, LGPL, SSPL) and source-available ones (BUSL, FSL, Elastic) are
 # not allowed. MPL-2.0 is allowed: its copyleft is file-level and we don't modify those files.
 

@@ -1,12 +1,12 @@
-# Weekmark v0.1 — Architecture & team contract
+# PageLamp v0.1 — Architecture & team contract
 
 Status: agreed baseline (leader session, 2026-09-25). Changes to anything in §3–§5 go through the leader.
 
 ## 1. Product scope (v0.1 = "MCP-first")
 
-Weekmark syncs a student's **own** course data to a local SQLite knowledge base and serves it over
+PageLamp syncs a student's **own** course data to a local SQLite knowledge base and serves it over
 **MCP** to the AI app the student already pays for (Claude Desktop, Claude Code, Codex, …). The
-student's subscription supplies the model; Weekmark runs no model and no server.
+student's subscription supplies the model; PageLamp runs no model and no server.
 
 In scope: study plans, weekly content explanations, "where is each course this week", deadlines for
 planning, catching up. **Out of scope:** fetching assignment instructions to solve them, submitting
@@ -23,10 +23,10 @@ work for Brightspace/Moodle schools too). UI English-first, zh-CN second.
                         └──────┬──────────────────┬─────────────────┬───────────────────┘
                      spawns    │ stdio MCP        │                 │   (one process per client)
                                ▼                  ▼                 ▼
-                        weekmark mcp       weekmark mcp     weekmark mcp
+                        pagelamp mcp       pagelamp mcp     pagelamp mcp
                                │   read-only, per-request connection (WAL)
                                ▼
-   weekmark sync ───►  <data_dir>/weekmark.db  (+ <data_dir>/files/ cache)
+   pagelamp sync ───►  <data_dir>/pagelamp.db  (+ <data_dir>/files/ cache)
    (CLI or desktop app,        ▲   single writer, advisory sync.lock
     the only network user)     │
    Canvas API (GET only) ──────┤
@@ -38,20 +38,20 @@ Rust workspace:
 
 | Crate | Purpose | Owner |
 |---|---|---|
-| `crates/weekmark-core` | model, store (SQLite + FTS5), ingest, timeline, views, paths, secrets | backend |
-| `crates/weekmark-extract` | PDF/PPTX/DOCX/ipynb/HTML/text extraction + chunking | backend |
-| `crates/weekmark-canvas` | read-only Canvas sync (personal token) | backend |
-| `crates/weekmark-local` | folder source + iCal source | backend |
-| `crates/weekmark-mcp` | rmcp 3.4 stdio server: tools + prompts | backend |
-| `crates/weekmark-app` | **the facade** used by CLI and desktop app | backend |
-| `apps/weekmark-cli` | `weekmark` binary | backend |
+| `crates/pagelamp-core` | model, store (SQLite + FTS5), ingest, timeline, views, paths, secrets | backend |
+| `crates/pagelamp-extract` | PDF/PPTX/DOCX/ipynb/HTML/text extraction + chunking | backend |
+| `crates/pagelamp-canvas` | read-only Canvas sync (personal token) | backend |
+| `crates/pagelamp-local` | folder source + iCal source | backend |
+| `crates/pagelamp-mcp` | rmcp 3.4 stdio server: tools + prompts | backend |
+| `crates/pagelamp-app` | **the facade** used by CLI and desktop app | backend |
+| `apps/pagelamp-cli` | `pagelamp` binary | backend |
 | `apps/desktop` (+ `src-tauri`) | Tauri 2 + React desktop shell | frontend |
 | root `Cargo.toml`, `docs/` | workspace + contracts | leader |
 | root `package.json`, `pnpm-workspace.yaml` (if any) | JS tooling | frontend |
 
 ## 3. Hard rules (product/policy requirements)
 
-1. **Canvas access is GET-only**, from `weekmark-canvas` only, triggered by sync only. The MCP server
+1. **Canvas access is GET-only**, from `pagelamp-canvas` only, triggered by sync only. The MCP server
    never touches the network (Canvas API Policy §3(i) forbids accessing Canvas APIs via unapproved
    MCP servers).
 2. **Personal token = personal use.** Instructure: asking other users to manually generate a token
@@ -64,11 +64,11 @@ Rust workspace:
 5. **Untrusted content.** Course text returned over MCP is wrapped in `<course_material …>` tags and
    the server instructions say it is data, not instructions.
 6. **AI disclosure** (Canvas API Policy §2E): UI states that course text is sent to whatever AI app
-   the student connects, and that Weekmark itself stores nothing remotely.
+   the student connects, and that PageLamp itself stores nothing remotely.
 7. **Test data is synthetic.** No real course materials, names, or tokens anywhere in the repo.
 8. **AI access to course materials is the student's choice, on by default** (decided 2026-09-25).
-   - One-time disclosure at onboarding (and printed by `weekmark mcp-config`): when the student
-     asks their AI app about a course, the app reads that course's materials from Weekmark and
+   - One-time disclosure at onboarding (and printed by `pagelamp mcp-config`): when the student
+     asks their AI app about a course, the app reads that course's materials from PageLamp and
      sends them to the AI provider under the student's own account; the student is responsible
      for following each course's AI policy; sharing can be turned off per course.
    - Per-course switch `ai_access` ("Let my AI app read this course's materials"), default **on**.
@@ -83,25 +83,25 @@ Rust workspace:
 
 ## 4. Concurrency (why there is no connection pool)
 
-- stdio MCP is 1:1 — each AI client spawns its own `weekmark mcp` process; nothing is shared.
+- stdio MCP is 1:1 — each AI client spawns its own `pagelamp mcp` process; nothing is shared.
 - The DB is SQLite in WAL mode: many readers, one writer, readers never block each other.
 - MCP opens a fresh read-only connection per request inside `spawn_blocking` (sub-ms). No global
   mutex, never hold a connection across `.await`.
 - Heavy work (download, extract, chunk, index) happens at sync time only; MCP tools are indexed reads.
 - `save_study_plan` is the only MCP write: short read-write transaction + `busy_timeout=5000`.
-- `weekmark mcp` must stay lightweight at startup (no model loading, no network).
+- `pagelamp mcp` must stay lightweight at startup (no model loading, no network).
 
-## 5. App facade API (`weekmark-app`) — the backend ⇄ frontend contract
+## 5. App facade API (`pagelamp-app`) — the backend ⇄ frontend contract
 
 Backend implements; frontend's Tauri commands are thin 1:1 wrappers. Names below are agreed; field
 details may be refined by the backend, who then regenerates schemas and tells the frontend.
-All return types are `Serialize + JsonSchema`; `weekmark schema` prints them as JSON Schema →
+All return types are `Serialize + JsonSchema`; `pagelamp schema` prints them as JSON Schema →
 frontend generates TS with `json-schema-to-typescript` (no hand-written duplicate types).
 
 ```rust
 pub struct App { /* data_dir */ }
 impl App {
-    pub fn open() -> Result<App>;                          // default data dir (WEEKMARK_HOME respected)
+    pub fn open() -> Result<App>;                          // default data dir (PAGELAMP_HOME respected)
     pub fn open_at(data_dir: PathBuf) -> Result<App>;
 
     // status & sources
@@ -135,7 +135,7 @@ impl App {
     pub fn set_course_ai_access(&self, course: &str, allowed: bool) -> Result<()>;  // §3 rule 8
 
     // "connect your AI app"
-    pub fn mcp_client_configs(&self, weekmark_binary: &Path) -> Vec<McpClientConfig>;
+    pub fn mcp_client_configs(&self, pagelamp_binary: &Path) -> Vec<McpClientConfig>;
 }
 
 pub enum SyncEvent {            // serde tag = "type"
@@ -169,7 +169,7 @@ pub struct McpClientConfig {    // one per client: claude_desktop | claude_code 
 ```
 
 Read-view types (`CourseSummary`, `CourseOverview`, `WeekMaterials`, `MaterialView`) live in
-`weekmark_core::views` so the MCP server can use them over a read-only store.
+`pagelamp_core::views` so the MCP server can use them over a read-only store.
 
 Additions agreed 2026-09-25 (after the first draft of this section):
 - `Course.term_source: TermSource` = `user | synced | none`.
@@ -188,7 +188,7 @@ Additions agreed 2026-09-25 (after the first draft of this section):
 - `src/api/`: one typed interface with two implementations — `tauri` (invoke/Channel) and `mock`
   (synthetic "DEMO101 — Intro to Demo Studies" fixture), selected by `VITE_API=mock`, so the UI is
   built and tested in a plain browser before the Rust facade lands.
-- `src-tauri`: Tauri 2; commands = thin wrappers over `weekmark_app::App`; no business logic;
+- `src-tauri`: Tauri 2; commands = thin wrappers over `pagelamp_app::App`; no business logic;
   no `shell:*` permissions granted to the frontend. Once it compiles, add
   `"apps/desktop/src-tauri"` to root workspace `members` (the only root-file edit allowed).
 - Screens v0.1: Welcome/onboarding (pick source: Folder+Calendar feed [recommended, shareable] /
@@ -207,10 +207,10 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 | Version | Scope |
 |---|---|
 | **v0.1 MCP-first** (now) | core + sources + MCP server + CLI; desktop shell for onboarding/sources/courses/connect |
-| v0.2 | local deterministic reminders (deadlines ≤ 48h, Monday "this week"), Claude Desktop `.mcpb` one-click extension, CI + signed releases + Tauri updater (GitHub Releases), bilingual README/CONTRIBUTING, text extraction in a resource-limited child process (`weekmark extract-worker`: PDF decompression-bomb / parser-crash isolation), browser Connector decision (see spike), "Past courses" + explicit cleanup for Canvas courses no longer active, Canvas downloads via `files/:id/public_url` + signed URL if verified not to complete "must view" requirements |
-| **v0.3 "full" Weekmark (embedded model access)** | Weekmark generates study plans / weekly explanations itself, via a provider abstraction: ChatGPT subscription through the bundled **unmodified official Codex** (`codex exec` stable / app-server experimental, Codex-managed "Sign in with ChatGPT"); Claude subscription through the student's **unmodified Claude Code** in headless mode (paid plans only; requires accepting Anthropic Commercial Terms + written confirmation first); BYOK API keys; local models. Never proxy/resell usage, never handle subscription tokens. |
+| v0.2 | local deterministic reminders (deadlines ≤ 48h, Monday "this week"), Claude Desktop `.mcpb` one-click extension, CI + signed releases + Tauri updater (GitHub Releases), bilingual README/CONTRIBUTING, text extraction in a resource-limited child process (`pagelamp extract-worker`: PDF decompression-bomb / parser-crash isolation), browser Connector decision (see spike), "Past courses" + explicit cleanup for Canvas courses no longer active, Canvas downloads via `files/:id/public_url` + signed URL if verified not to complete "must view" requirements |
+| **v0.3 "full" PageLamp (embedded model access)** | PageLamp generates study plans / weekly explanations itself, via a provider abstraction: ChatGPT subscription through the bundled **unmodified official Codex** (`codex exec` stable / app-server experimental, Codex-managed "Sign in with ChatGPT"); Claude subscription through the student's **unmodified Claude Code** in headless mode (paid plans only; requires accepting Anthropic Commercial Terms + written confirmation first); BYOK API keys; local models. Never proxy/resell usage, never handle subscription tokens. |
 | after v0.3 | branded distributions (first: UTMCSSA Academic Dept) via brand config — no fork |
-| later (macOS) | native Swift companion (menu bar, WidgetKit "this week" widget, scheduled notifications, Shortcuts/App Intents) and possibly a full SwiftUI app — **over the same Rust core via UniFFI**, never a Swift re-implementation of core/sync/policy logic. Keep `weekmark-app` FFI-friendly (plain serialisable types, no Tauri types in its API). Prefer direct distribution + notarization over the Mac App Store (sandbox vs course folders and AI-app-launched MCP; review of third-party-service access). |
+| later (macOS) | native Swift companion (menu bar, WidgetKit "this week" widget, scheduled notifications, Shortcuts/App Intents) and possibly a full SwiftUI app — **over the same Rust core via UniFFI**, never a Swift re-implementation of core/sync/policy logic. Keep `pagelamp-app` FFI-friendly (plain serialisable types, no Tauri types in its API). Prefer direct distribution + notarization over the Mac App Store (sandbox vs course folders and AI-app-launched MCP; review of third-party-service access). |
 
 ## 8. Collaboration rules
 
@@ -227,7 +227,7 @@ All sessions share ONE working tree and ONE local `main`. The repo is public.
   the checks of your area must pass (DoD above, scoped to what you changed at minimum).
 - **Commit with a pathspec, never a bare `git commit`** (the index is shared; a bare commit takes
   whatever anyone staged — this happened once in 810e415). Owned paths: backend `crates/
-  apps/weekmark-cli/`; frontend `apps/desktop/`; leader: root files, `docs/`, `spikes/`.
+  apps/pagelamp-cli/`; frontend `apps/desktop/`; leader: root files, `docs/`, `spikes/`.
   Recipe: `git add -N <new files in your paths>` (intent-to-add, so pathspec commits see them),
   then `git commit -F msg -- <your paths>`. A pathspec commit records only those paths (their
   working-tree content) and leaves anything else in the index untouched. Don't leave files staged.

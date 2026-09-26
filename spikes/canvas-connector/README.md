@@ -1,6 +1,6 @@
 # Spike: StudentOS Connector (browser extension + native messaging)
 
-> 📜 **Historical note:** this prototype was written when the project was called **StudentOS** (renamed to **Weekmark** on 2026-09-26). Identifiers inside it (e.g. the native-host name `dev.studentos.connector_spike`) are kept as they were tested; the product itself is Weekmark.
+> 📜 **Historical note:** this prototype was written when the project was called **StudentOS** (renamed to **PageLamp** on 2026-09-26). Identifiers inside it (e.g. the native-host name `dev.studentos.connector_spike`) are kept as they were tested; the product itself is PageLamp.
 
 > **Status: throwaway prototype, not product code.** It exists to check, with real browser mechanics,
 > whether a GET-only MV3 extension that reuses the student's logged-in Canvas session can feed the

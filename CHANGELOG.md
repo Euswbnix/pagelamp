@@ -15,11 +15,11 @@ First public beta.
   calendar feed (iCal/webcal, e.g. Canvas Calendar Feed), and Canvas with a personal access token
   (read-only; personal use only; files downloaded only on request).
 - "Which week is this course in" inference with confidence and evidence.
-- MCP server (`weekmark mcp`) with 10 read-only tools plus `save_study_plan`, and the
+- MCP server (`pagelamp mcp`) with 10 read-only tools plus `save_study_plan`, and the
   `weekly_review`, `catch_up` and `study_plan` prompts, for Claude Desktop, ChatGPT desktop /
   Codex and Claude Code.
 - Per-course AI policy and AI-access switch; material text is withheld for "No AI" courses.
-- `weekmark` CLI and the desktop app (onboarding, sources & sync, courses, course detail,
+- `pagelamp` CLI and the desktop app (onboarding, sources & sync, courses, course detail,
   "Connect your AI app", settings), in English and 简体中文, light and dark.
 
 ### Known limitations

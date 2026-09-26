@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for testing Weekmark! **Never paste Canvas tokens, calendar-feed links, real course
+        Thanks for testing PageLamp! **Never paste Canvas tokens, calendar-feed links, real course
         materials or classmates' names** — describe them or use made-up examples.
   - type: textarea
     id: what
@@ -20,8 +20,8 @@ body:
       label: Where
       options:
         - Desktop app
-        - Command line (weekmark)
-        - My AI app with Weekmark (MCP)
+        - Command line (pagelamp)
+        - My AI app with PageLamp (MCP)
         - Sync (course folder / calendar feed)
         - Sync (Canvas)
         - Other
@@ -35,8 +35,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Weekmark version and OS
-      placeholder: e.g. weekmark 0.1.0-beta.1 on macOS 27 (Apple silicon)
+      label: PageLamp version and OS
+      placeholder: e.g. pagelamp 0.1.0-beta.1 on macOS 27 (Apple silicon)
     validations:
       required: true
   - type: textarea
@@ -45,7 +45,7 @@ body:
       label: Diagnostic report
       description: |
         Desktop app: Settings → Help & feedback → Copy diagnostic report.
-        Command line: `weekmark report --out weekmark-report.md` (attach the file).
+        Command line: `pagelamp report --out pagelamp-report.md` (attach the file).
         Read it before pasting — it's already redacted, but it's your data.
       render: markdown
   - type: textarea
