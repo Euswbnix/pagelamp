@@ -94,14 +94,17 @@ use crate::format::{
     OUTPUT_CAP, cap_list, error_result, json_result, text_result, wrap, wrap_plan,
 };
 
-/// Run the MCP server over stdio until the client disconnects.
-/// `db_path` is normally `pagelamp_core::paths::db_path()`. The server starts even when the
-/// database does not exist yet (tools then tell the student to sync); it never touches the
-/// network and never writes to stdout except protocol messages.
+/// Run the MCP server over stdio until the client disconnects (or the process is told to
+/// stop). `db_path` is normally `pagelamp_core::paths::db_path()`. The server starts even
+/// when the database does not exist yet (tools then tell the student to sync); it never
+/// creates one, but migrates an older existing database once (`upgrade_database`). It never
+/// touches the network and never writes to stdout except protocol messages.
 ///
 /// Log file (`logs/mcp-*.log`): start, the client's name/version and protocol version, and
 /// exit (reason, tool calls, uptime) at info; one line per tool call (name, time, ok/error,
-/// output size) at debug. Tool arguments, queries and output text are never logged.
+/// output size) at debug. Tool arguments, queries and output text are never logged, and
+/// errors returned from here are fixed texts (the caller prints them to stderr, which the
+/// AI app keeps in its own logs).
 pub async fn serve_stdio(db_path: PathBuf) -> anyhow::Result<()> {
     let started = Instant::now();
     tracing::info!(
@@ -110,6 +113,9 @@ pub async fn serve_stdio(db_path: PathBuf) -> anyhow::Result<()> {
         env!("CARGO_PKG_VERSION"),
         std::process::id()
     );
+    // Registered first, so a stop request during startup is not lost.
+    let mut stop = StopSignals::install();
+    upgrade_database(&db_path).await;
     let server = PageLampServer::new(db_path);
     let tool_calls = Arc::clone(&server.tool_calls);
     let exit = |reason: &str| {
@@ -120,43 +126,158 @@ pub async fn serve_stdio(db_path: PathBuf) -> anyhow::Result<()> {
             started.elapsed().as_secs()
         );
     };
-    let service = match server.serve(rmcp::transport::stdio()).await {
+    let serving = tokio::select! {
+        serving = server.serve(rmcp::transport::stdio()) => serving,
+        () = stop.recv() => {
+            exit("terminated");
+            return Ok(());
+        }
+    };
+    let service = match serving {
         Ok(service) => service,
         Err(err) => {
-            tracing::warn!(target: LOG_TARGET, "MCP handshake failed: {err}");
+            // rmcp's own message would include the whole first message, arguments too.
+            let what = handshake_failure(&err);
+            tracing::warn!(target: LOG_TARGET, "MCP handshake failed: {what}");
             exit("handshake failed");
-            return Err(err.into());
+            return Err(anyhow::anyhow!("MCP handshake failed: {what}"));
         }
     };
     match service.peer().peer_info() {
         Some(info) => tracing::info!(
             target: LOG_TARGET,
-            "client {:?} {:?}, protocol {:?}",
+            "client \"{}\" \"{}\", protocol \"{}\"",
             clip(&info.client_info.name),
             clip(&info.client_info.version),
             clip(&info.protocol_version.to_string())
         ),
         None => tracing::info!(target: LOG_TARGET, "client connected without client info"),
     }
-    match service.waiting().await {
+    let cancel = service.cancellation_token();
+    let mut waiting = std::pin::pin!(service.waiting());
+    let quit = tokio::select! {
+        quit = &mut waiting => quit,
+        () = stop.recv() => {
+            exit("terminated");
+            cancel.cancel();
+            return Ok(());
+        }
+    };
+    match quit {
         Ok(QuitReason::Closed) => exit("client disconnected"),
         Ok(QuitReason::Cancelled) => exit("cancelled"),
-        Ok(QuitReason::JoinError(err)) | Err(err) => {
+        Ok(QuitReason::JoinError(_)) | Err(_) => {
             exit("crashed");
-            return Err(err.into());
+            return Err(anyhow::anyhow!("the MCP server stopped unexpectedly"));
         }
         Ok(_) => exit("stopped"),
     }
     Ok(())
 }
 
+/// The requests to stop this process: SIGTERM (sent by AI apps when they quit) and SIGINT on
+/// Unix, Ctrl-C elsewhere. Handlers are registered by `install`, so nothing is missed between
+/// then and the first `recv`.
+struct StopSignals {
+    #[cfg(unix)]
+    terminate: Option<tokio::signal::unix::Signal>,
+    #[cfg(unix)]
+    interrupt: Option<tokio::signal::unix::Signal>,
+}
+
+impl StopSignals {
+    fn install() -> StopSignals {
+        #[cfg(unix)]
+        {
+            use tokio::signal::unix::{SignalKind, signal};
+            StopSignals {
+                terminate: signal(SignalKind::terminate()).ok(),
+                interrupt: signal(SignalKind::interrupt()).ok(),
+            }
+        }
+        #[cfg(not(unix))]
+        StopSignals {}
+    }
+
+    /// Resolves when one of the signals arrives (never, if none could be registered).
+    async fn recv(&mut self) {
+        #[cfg(unix)]
+        {
+            async fn next(signal: &mut Option<tokio::signal::unix::Signal>) {
+                match signal {
+                    Some(signal) => {
+                        signal.recv().await;
+                    }
+                    None => std::future::pending().await,
+                }
+            }
+            tokio::select! {
+                () = next(&mut self.terminate) => {}
+                () = next(&mut self.interrupt) => {}
+            }
+        }
+        #[cfg(not(unix))]
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    }
+}
+
+/// A database written by an older version (0 < `user_version` < `SCHEMA_VERSION`) is
+/// migrated once before serving: the read-only connections the tools use cannot, and would
+/// otherwise report "no course data yet" to a student who just updated. The migrations are
+/// additive and run in one `BEGIN IMMEDIATE` transaction, so a concurrent sync or another
+/// MCP process is safe. A missing database is never created here.
+async fn upgrade_database(db_path: &std::path::Path) {
+    let db = db_path.to_path_buf();
+    let upgraded = tokio::task::spawn_blocking(move || Store::upgrade_existing(&db)).await;
+    match upgraded {
+        Ok(Ok(Some(from))) => tracing::info!(
+            target: LOG_TARGET,
+            "migrated the database from schema {from} to {}",
+            pagelamp_core::store::SCHEMA_VERSION
+        ),
+        Ok(Ok(None)) => {}
+        Ok(Err(err)) => {
+            tracing::warn!(target: LOG_TARGET, "could not migrate the database: {err}");
+        }
+        Err(_) => tracing::warn!(target: LOG_TARGET, "could not migrate the database"),
+    }
+}
+
+/// A fixed description of a failed handshake: at most the method name of the unexpected
+/// first message, never its parameters.
+fn handshake_failure(err: &rmcp::service::ServerInitializeError) -> String {
+    use rmcp::service::ServerInitializeError as E;
+    match err {
+        E::ExpectedInitializeRequest(Some(message)) => serde_json::to_value(message)
+            .ok()
+            .and_then(|value| Some(clip(value.get("method")?.as_str()?)))
+            .map_or_else(
+                || "the first message was not an initialize request".to_string(),
+                |method| format!("the first message was \"{method}\", not initialize"),
+            ),
+        E::ExpectedInitializeRequest(None) => "the client closed the connection first".into(),
+        E::ConnectionClosed(_) => "the connection closed".into(),
+        E::UnexpectedInitializeResponse(_) => "unexpected initialize response".into(),
+        E::InitializeFailed(_) => "initialize failed".into(),
+        E::TransportError { .. } => "transport error".into(),
+        E::Cancelled => "cancelled".into(),
+        _ => "unknown error".into(),
+    }
+}
+
 /// Log target of this crate (`-v` / `PAGELAMP_LOG=debug` raise `pagelamp*` targets).
 const LOG_TARGET: &str = "pagelamp::mcp";
 
-/// Client-supplied text for the log: at most 64 characters (logged with `{:?}`, so line
-/// breaks and control characters stay escaped).
+/// Client-supplied text for the log: at most 64 characters, control characters (line
+/// breaks, tabs, escapes) replaced by '?' so it can't fake log lines or hide a secret from
+/// the redaction filter.
 fn clip(text: &str) -> String {
-    text.chars().take(64).collect()
+    text.chars()
+        .take(64)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
 }
 
 /// The MCP server. Cheap to clone; every request opens its own short-lived read-only
@@ -276,12 +397,14 @@ impl PageLampServer {
         let result = self
             .read(|store| {
                 let courses = views::list_courses(store, false, AsOf::now_local())?;
-                let stale = views::sync_status(store, AsOf::now_local())?.stale;
-                Ok((courses, stale))
+                let status = views::sync_status(store, AsOf::now_local())?;
+                Ok((courses, status.stale, status.sources.is_empty()))
             })
             .await;
         match result {
-            Ok((courses, stale)) => json_result(&CourseList {
+            // Nothing to sync yet: "press Sync" would not help.
+            Ok((_, _, true)) => error_result(text::not_initialised()),
+            Ok((courses, stale, false)) => json_result(&CourseList {
                 courses: courses.iter().map(CourseLine::from).collect(),
                 hint: stale.then(text::stale_hint),
             }),
@@ -628,6 +751,7 @@ impl PageLampServer {
             .read(|store| views::sync_status(store, AsOf::now_local()))
             .await
         {
+            Ok(status) if status.sources.is_empty() => error_result(text::not_initialised()),
             Ok(status) => json_result(&SyncInfo {
                 sources: status
                     .sources
@@ -682,10 +806,7 @@ impl PageLampServer {
             .filter(|s| !s.is_empty())
         {
             Some(text) => NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|_| {
-                ErrorData::invalid_params(
-                    format!("since must be a date like 2026-09-01, not '{text}'"),
-                    None,
-                )
+                ErrorData::invalid_params("since must be a date like 2026-09-01", None)
             })?,
             None => Local::now().date_naive() - TimeDelta::days(i64::from(views::RECENT_DAYS)),
         };
@@ -804,7 +925,20 @@ impl PageLampServer {
             Err(pagelamp_core::Error::NotInitialised(_)) => {
                 Ok((course.to_string(), AiMaterialsState::Readable))
             }
-            Err(err) => Err(ErrorData::invalid_params(err.to_string(), None)),
+            // Fixed texts: rmcp logs error responses, and neither the query nor the course
+            // list belongs in a log.
+            Err(pagelamp_core::Error::NotFound(_)) => Err(ErrorData::invalid_params(
+                "No course matches that name. Call list_courses for the course codes.",
+                None,
+            )),
+            Err(pagelamp_core::Error::Ambiguous { .. }) => Err(ErrorData::invalid_params(
+                "That name matches several courses. Use a course code from list_courses.",
+                None,
+            )),
+            Err(_) => Err(ErrorData::internal_error(
+                "Could not read the course list.",
+                None,
+            )),
         }
     }
 }
@@ -841,9 +975,10 @@ fn append_withheld(message: &mut String, label: &str, state: AiMaterialsState) {
 fn parse_number(value: Option<&str>, name: &str) -> Result<Option<u32>, ErrorData> {
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(None),
-        Some(text) => text.parse().map(Some).map_err(|_| {
-            ErrorData::invalid_params(format!("{name} must be a whole number, not '{text}'"), None)
-        }),
+        Some(text) => text
+            .parse()
+            .map(Some)
+            .map_err(|_| ErrorData::invalid_params(format!("{name} must be a whole number"), None)),
     }
 }
 

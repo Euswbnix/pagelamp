@@ -287,7 +287,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
     let json = cli.json;
     match cli.command {
         Command::Mcp => {
-            // Never create or migrate anything here: the server opens the DB read-only.
+            // Never creates anything; an older existing database is migrated once, then the
+            // server reads it read-only. Its errors are fixed texts (stderr reaches the AI
+            // app's own logs).
             let db = pagelamp_core::paths::db_path()?;
             pagelamp_mcp::serve_stdio(db).await
         }

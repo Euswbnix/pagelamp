@@ -109,13 +109,16 @@ fn a_version_1_database_is_migrated_by_open_and_keeps_its_events() {
         )
         .unwrap();
     drop(plain);
-    // Readers never migrate: an older schema needs a read-write open (app start or sync).
+    // Readers never migrate: an older schema needs a read-write open first — the app,
+    // a sync, or `upgrade_existing` (which the MCP server runs at startup).
     assert!(matches!(
         Store::open_read_only(&path),
         Err(Error::NotInitialised(_))
     ));
+    assert_eq!(Store::upgrade_existing(&path).unwrap(), Some(1));
+    assert_eq!(Store::upgrade_existing(&path).unwrap(), None, "only once");
 
-    let store = Store::open(&path).unwrap();
+    let store = Store::open_read_only(&path).unwrap();
     assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
     let events = store
         .list_events(
@@ -127,7 +130,23 @@ fn a_version_1_database_is_migrated_by_open_and_keeps_its_events() {
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].title, "Demo quiz");
     assert_eq!(events[0].course_hint, None);
-    assert!(Store::open_read_only(&path).is_ok());
+}
+
+#[test]
+fn upgrade_existing_never_creates_or_touches_new_databases() {
+    let (_dir, path) = temp_db();
+    assert_eq!(Store::upgrade_existing(&path).unwrap(), None);
+    assert!(!path.exists(), "no file created");
+    // Uninitialised (version 0): left for a real `open`.
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE unrelated (x INTEGER)")
+        .unwrap();
+    assert_eq!(Store::upgrade_existing(&path).unwrap(), None);
+    assert!(matches!(
+        Store::open_read_only(&path),
+        Err(Error::NotInitialised(_))
+    ));
 }
 
 #[test]

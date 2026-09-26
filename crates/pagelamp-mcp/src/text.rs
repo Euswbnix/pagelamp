@@ -134,8 +134,9 @@ pub fn withheld(turned_off: bool) -> String {
 
 pub fn not_initialised() -> String {
     format!(
-        "{PRODUCT_NAME} has no course data yet. Ask the student to add a source and press \
-         Sync in the {PRODUCT_NAME} app (or run `{CLI_NAME} sync`), then try again."
+        "{PRODUCT_NAME} has no course data yet. Ask the student to add a course folder or \
+         their Canvas account in the {PRODUCT_NAME} app and press Sync (or run \
+         `{CLI_NAME} sync` after adding one), then try again."
     )
 }
 

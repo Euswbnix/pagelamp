@@ -254,6 +254,25 @@ impl Store {
         Ok(store)
     }
 
+    /// Migrate an existing database written by an older version (0 < `user_version` <
+    /// `SCHEMA_VERSION`) with one read-write `open`; returns the version it had. A missing
+    /// file, an uninitialised (0) or current database is left alone (`None`); a newer one is
+    /// `SchemaTooNew`. Used by read-only processes (the MCP server) at startup.
+    pub fn upgrade_existing(path: &Path) -> Result<Option<i64>> {
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = Connection::open_with_flags(path, flags)?;
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        let version = Store { conn }.checked_user_version()?;
+        if version == 0 || version == SCHEMA_VERSION {
+            return Ok(None);
+        }
+        Store::open(path)?;
+        Ok(Some(version))
+    }
+
     /// Fresh in-memory DB with the schema applied (tests).
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;

@@ -12,14 +12,32 @@ fn pagelamp(home: &Path, args: &[&str]) -> Output {
     pagelamp_with_stdin(home, args, "")
 }
 
+/// `pagelamp` with every location it could fall back to pointed into the temp dir `home`:
+/// the data dir, the home directory and the AI apps' config locations (Codex, Claude
+/// Desktop on Windows/Linux). Developer log settings and AppImage variables are cleared.
+fn base_command(home: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pagelamp"));
+    command.env("PAGELAMP_HOME", home);
+    for var in [
+        "HOME",
+        "USERPROFILE",
+        "CODEX_HOME",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+    ] {
+        command.env(var, home);
+    }
+    for var in ["RUST_LOG", "PAGELAMP_LOG", "APPIMAGE", "APPDIR"] {
+        command.env_remove(var);
+    }
+    command
+}
+
 fn pagelamp_with_stdin(home: &Path, args: &[&str], stdin: &str) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_pagelamp"))
+    let mut child = base_command(home)
         .args(args)
-        .env("PAGELAMP_HOME", home)
-        // Nothing may fall back to the real home directory (e.g. MCP client config paths).
-        .env("HOME", home)
-        .env("USERPROFILE", home)
-        .env_remove("RUST_LOG")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -241,6 +259,77 @@ fn ical_add_rejects_bad_urls_before_touching_anything() {
     );
 }
 
+/// A running `pagelamp … mcp` with line-based JSON-RPC over its stdin/stdout.
+struct McpSession {
+    child: std::process::Child,
+    stdin: Option<std::process::ChildStdin>,
+    stdout: BufReader<std::process::ChildStdout>,
+    next_id: u64,
+}
+
+impl McpSession {
+    fn start(home: &Path, args: &[&str]) -> McpSession {
+        let mut child = base_command(home)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        McpSession {
+            child,
+            stdin,
+            stdout,
+            next_id: 1,
+        }
+    }
+
+    fn send(&mut self, message: Value) {
+        let stdin = self.stdin.as_mut().unwrap();
+        writeln!(stdin, "{message}").unwrap();
+        stdin.flush().unwrap();
+    }
+
+    fn receive(&mut self) -> Value {
+        let mut line = String::new();
+        self.stdout.read_line(&mut line).unwrap();
+        serde_json::from_str::<Value>(&line).expect("every stdout line is JSON-RPC")
+    }
+
+    /// Send a request and wait for its answer.
+    fn request(&mut self, method: &str, params: Value) -> Value {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}));
+        self.receive()
+    }
+
+    fn initialize(&mut self, client_name: &str) -> Value {
+        let init = self.request(
+            "initialize",
+            json!({"protocolVersion": "2025-06-18", "capabilities": {},
+                   "clientInfo": {"name": client_name, "version": "9.9"}}),
+        );
+        self.send(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
+        init
+    }
+
+    /// Close stdin (the server exits) and return its exit status and stderr.
+    fn finish(mut self) -> (std::process::ExitStatus, String) {
+        drop(self.stdin.take());
+        let status = self.child.wait().unwrap();
+        let mut stderr = String::new();
+        std::io::Read::read_to_string(&mut self.child.stderr.take().unwrap(), &mut stderr).unwrap();
+        (status, stderr)
+    }
+}
+
+fn tool_text(result: &Value) -> &str {
+    result["result"]["content"][0]["text"].as_str().unwrap()
+}
+
 #[test]
 fn mcp_speaks_json_rpc_on_stdout_only() {
     let temp = tempfile::tempdir().unwrap();
@@ -253,49 +342,20 @@ fn mcp_speaks_json_rpc_on_stdout_only() {
     ));
     ok(&pagelamp(&home, &["sync"]));
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_pagelamp"))
-        .arg("mcp")
-        .env("PAGELAMP_HOME", &home)
-        .env_remove("RUST_LOG")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut send = move |message: Value| {
-        writeln!(stdin, "{message}").unwrap();
-        stdin.flush().unwrap();
-    };
-    let mut receive = || {
-        let mut line = String::new();
-        stdout.read_line(&mut line).unwrap();
-        serde_json::from_str::<Value>(&line).expect("every stdout line is JSON-RPC")
-    };
-
-    send(
-        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-        "protocolVersion": "2025-06-18", "capabilities": {},
-        "clientInfo": {"name": "cli-test", "version": "0"}}}),
-    );
-    let init = receive();
+    let mut mcp = McpSession::start(&home, &["mcp"]);
+    let init = mcp.initialize("cli-test");
     assert_eq!(init["result"]["serverInfo"]["name"], "pagelamp");
-    send(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
-    send(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-        "params": {"name": "search_materials", "arguments": {"query": "calvin"}}}));
-    let result = receive();
-    let text = result["result"]["content"][0]["text"].as_str().unwrap();
+    let result = mcp.request(
+        "tools/call",
+        json!({"name": "search_materials", "arguments": {"query": "calvin"}}),
+    );
+    let text = tool_text(&result);
     assert!(
         text.contains("<course_material") && text.contains("«calvin»"),
         "{text}"
     );
-
-    drop(send); // closes the server's stdin → it exits
-    let status = child.wait().unwrap();
+    let (status, stderr) = mcp.finish();
     assert!(status.success());
-    let mut stderr = String::new();
-    std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
     assert!(stderr.is_empty(), "no log noise: {stderr}");
 }
 
@@ -416,16 +476,33 @@ fn mcp_sessions_are_logged_without_arguments_or_output() {
     ));
     ok(&pagelamp(&home, &["sync"]));
 
-    let session = [
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"demo-client","version":"9.9"}}}"#,
-        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"zebra-demo-query"}}}"#,
-        "",
-    ]
-    .join("\n");
-    let output = pagelamp_with_stdin(&home, &["-v", "mcp"], &session);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""id":1"#), "{stdout}");
+    let mut mcp = McpSession::start(&home, &["-v", "mcp"]);
+    // A client name with a line break right before a token: neither may reach the log.
+    mcp.initialize("demo-client\n1234~AbCdEfGhIjKlMnOp");
+    let found = mcp.request(
+        "tools/call",
+        json!({"name": "search_materials", "arguments": {"query": "calvin zebra-demo-query"}}),
+    );
+    let text = tool_text(&found);
+    let material_id = text
+        .split("id=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap()
+        .to_string();
+    let read = mcp.request(
+        "tools/call",
+        json!({"name": "read_material", "arguments": {"material_id": material_id}}),
+    );
+    assert!(tool_text(&read).contains("fixes carbon"));
+    // An unknown course in a prompt: rmcp logs error responses, with their arguments.
+    let prompt = mcp.request(
+        "prompts/get",
+        json!({"name": "weekly_review", "arguments": {"course": "ZEBRA-COURSE-QUERY"}}),
+    );
+    assert!(prompt.get("error").is_some(), "{prompt}");
+    let (status, _) = mcp.finish();
+    assert!(status.success());
 
     let log = log_text(&home, "mcp-");
     let version = env!("CARGO_PKG_VERSION");
@@ -434,14 +511,42 @@ fn mcp_sessions_are_logged_without_arguments_or_output() {
         "{log}"
     );
     assert!(
-        log.contains(r#"client "demo-client" "9.9", protocol "2025-06-18""#),
+        log.contains(r#"client "demo-client?<redacted-token>" "9.9", protocol "2025-06-18""#),
         "{log}"
     );
+    assert!(log.contains(r#"tool "search_materials": ok"#), "{log}");
+    assert!(log.contains(r#"tool "read_material": ok"#), "{log}");
     assert!(log.contains("MCP server stopped ("), "{log}");
-    assert!(
-        !log.contains("zebra-demo-query") && !log.contains("photosynthesis"),
-        "{log}"
-    );
+    // rmcp logs error responses (warn) and whole results (debug): none of it is kept.
+    assert!(!log.contains("rmcp"), "{log}");
+    for absent in [
+        "AbCdEfGh",
+        "zebra-demo-query",
+        "calvin",
+        "fixes carbon",
+        "ZEBRA-COURSE-QUERY",
+        "DEMO101",
+    ] {
+        assert!(!log.contains(absent), "{absent} in log:\n{log}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn mcp_logs_being_terminated() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let mut mcp = McpSession::start(&home, &["mcp"]);
+    mcp.initialize("demo-client");
+    let killed = Command::new("kill")
+        .args(["-TERM", &mcp.child.id().to_string()])
+        .status()
+        .unwrap();
+    assert!(killed.success());
+    let (status, _) = mcp.finish();
+    assert!(status.success(), "{status:?}");
+    let log = log_text(&home, "mcp-");
+    assert!(log.contains("MCP server stopped (terminated)"), "{log}");
 }
 
 #[test]

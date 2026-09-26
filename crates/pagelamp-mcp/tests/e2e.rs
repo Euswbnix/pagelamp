@@ -678,6 +678,41 @@ async fn missing_database_gives_a_helpful_tool_error() {
 }
 
 #[tokio::test]
+async fn a_database_without_sources_asks_for_one_not_for_a_sync() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("pagelamp.db");
+    Store::open(&db).unwrap();
+    let client = connect(db).await;
+    for tool in ["list_courses", "sync_status"] {
+        let result = call(&client, tool, json!({})).await;
+        assert!(is_error(&result), "{tool}");
+        assert_eq!(text_of(&result), text::not_initialised(), "{tool}");
+    }
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
+async fn prompt_errors_never_echo_the_arguments() {
+    let temp = tempfile::tempdir().unwrap();
+    let client = connect(fixture(temp.path())).await;
+    let err = client
+        .get_prompt(
+            GetPromptRequestParams::new("weekly_review").with_arguments(
+                json!({"course": "ZEBRA-QUERY-999"})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("No course matches that name"), "{err}");
+    assert!(!err.contains("ZEBRA") && !err.contains("DEMO101"), "{err}");
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn local_file_paths_never_reach_the_ai_app() {
     let temp = tempfile::tempdir().unwrap();
     let db = fixture(temp.path());
