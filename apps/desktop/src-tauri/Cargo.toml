@@ -23,3 +23,10 @@ serde_json.workspace = true
 tauri = { version = "2.11", features = [] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-opener = "2.5"
+
+[dev-dependencies]
+# `test` enables tauri::test (mock runtime) for the IPC contract test.
+tauri = { version = "2.11", features = ["test"] }
+studentos-core.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

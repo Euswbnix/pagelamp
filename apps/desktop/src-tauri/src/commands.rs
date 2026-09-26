@@ -262,9 +262,9 @@ pub async fn mcp_client_configs(backend: State<'_, Backend>) -> CmdResult<Vec<Mc
 /// Show the data directory in Finder / Explorer. Done here (not from JS) so the webview needs
 /// no filesystem-reveal permission at all.
 #[tauri::command]
-pub async fn reveal_data_dir(
+pub async fn reveal_data_dir<R: tauri::Runtime>(
     backend: State<'_, Backend>,
-    window: tauri::WebviewWindow,
+    window: tauri::WebviewWindow<R>,
 ) -> CmdResult<()> {
     let app = backend.app()?;
     window

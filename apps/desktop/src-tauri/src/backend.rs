@@ -23,6 +23,11 @@ impl Backend {
         Backend(opened)
     }
 
+    /// Wrap an already opened facade (tests use a temp data dir and in-memory secrets).
+    pub fn from_app(app: App) -> Self {
+        Backend(Ok(app))
+    }
+
     /// A handle to the facade (cheap: `App` only holds the data-dir path).
     pub fn app(&self) -> Result<App, AppError> {
         self.0.clone()

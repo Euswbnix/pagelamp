@@ -84,6 +84,15 @@ src-tauri/        Rust shell: commands.rs = thin wrappers over studentos_app::Ap
 - **Permissions** are in `src-tauri/capabilities/default.json`: the folder picker and opening
   http(s) links. There is no shell and no filesystem access.
 
+## The IPC contract test
+
+`src/api/tauri.contract.test.ts` calls every method of the real Tauri client with a mocked IPC
+and records what crosses the boundary in `src-tauri/tests/fixtures/ipc-calls.json`;
+`src-tauri/tests/ipc_contract.rs` (`cargo test -p studentos-desktop`) replays that file against
+the real commands. A renamed argument or a missing command fails one side. After changing
+`tauri.ts` on purpose, run `pnpm exec vitest run -u src/api/tauri.contract.test.ts` and commit
+the updated fixture.
+
 ## Regenerating the contract types
 
 When the backend changes a type:
