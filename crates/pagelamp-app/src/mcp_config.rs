@@ -180,7 +180,7 @@ fn claude_desktop(launch: &McpLaunch, hint: Option<&str>) -> McpClientConfig {
     notes.add(
         McpNoteCode::QuitBeforeEditing,
         format!(
-            "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing) and paste this in; if it already has \"mcpServers\", add only the \"{key}\" entry inside it. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
+            "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing). If it is empty, paste this in. If it already has \"mcpServers\", add only the \"{key}\" entry inside it. If it has other settings (such as \"preferences\") but no \"mcpServers\", add the \"mcpServers\": {{ … }} part as a new top-level key inside the outer {{ }}, separated by a comma from the neighbouring setting. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
             key = brand::MCP_SERVER_KEY,
             name = brand::PRODUCT_NAME
         ),
@@ -595,6 +595,11 @@ mod tests {
             "{steps}"
         );
         assert!(steps.contains("add only the \"pagelamp\" entry"), "{steps}");
+        // Claude Desktop writes "preferences" itself: the file often exists without servers.
+        assert!(
+            steps.contains("but no \"mcpServers\", add the \"mcpServers\": { … } part"),
+            "{steps}"
+        );
         let generic: Value =
             serde_json::from_str(&by_client(&configs, McpClient::Generic).content).unwrap();
         assert_eq!(&generic, server);
