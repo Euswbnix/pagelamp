@@ -142,6 +142,79 @@ fn describe_keyring_error(err: &keyring::Error) -> String {
     }
 }
 
+/// Where the App keeps source secrets. Production uses `KeychainSecrets`; tests and
+/// embedders can inject `MemorySecrets` so nothing touches the real OS keychain.
+pub trait SecretBackend: Send + Sync {
+    /// `Ok(None)` when absent.
+    fn get(&self, source_id: &str) -> Result<Option<String>>;
+    fn set(&self, source_id: &str, secret: &str) -> Result<()>;
+    /// Absent is not an error.
+    fn delete(&self, source_id: &str) -> Result<()>;
+}
+
+/// The OS keychain (plus the `STUDENTOS_SECRET_*` env override on reads) — see the module docs.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct KeychainSecrets;
+
+impl SecretBackend for KeychainSecrets {
+    fn get(&self, source_id: &str) -> Result<Option<String>> {
+        get_secret(source_id)
+    }
+    fn set(&self, source_id: &str, secret: &str) -> Result<()> {
+        set_secret(source_id, secret)
+    }
+    fn delete(&self, source_id: &str) -> Result<()> {
+        delete_secret(source_id)
+    }
+}
+
+/// In-memory secrets for tests and development. NOT persistent: everything is lost when the
+/// value is dropped. `Debug` never prints the secrets.
+#[derive(Default)]
+pub struct MemorySecrets {
+    secrets: std::sync::Mutex<std::collections::HashMap<String, String>>,
+}
+
+impl MemorySecrets {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn map(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, String>> {
+        // A panic while holding the lock cannot leave the map half-updated (single inserts
+        // and removes), so a poisoned lock is safe to reuse.
+        self.secrets
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl std::fmt::Debug for MemorySecrets {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ids: Vec<String> = self.map().keys().cloned().collect();
+        f.debug_struct("MemorySecrets")
+            .field("source_ids", &ids)
+            .finish()
+    }
+}
+
+impl SecretBackend for MemorySecrets {
+    fn get(&self, source_id: &str) -> Result<Option<String>> {
+        Ok(self.map().get(source_id).cloned())
+    }
+    fn set(&self, source_id: &str, secret: &str) -> Result<()> {
+        if secret.is_empty() {
+            return Err(Error::Invalid("secret must not be empty".into()));
+        }
+        self.map().insert(source_id.to_string(), secret.to_string());
+        Ok(())
+    }
+    fn delete(&self, source_id: &str) -> Result<()> {
+        self.map().remove(source_id);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! These tests never touch the real OS keychain or the process environment.
@@ -268,5 +341,27 @@ mod tests {
             "could not store the keychain entry for 'canvas:lms.example.edu': \
              keychain is not accessible (locked)"
         );
+    }
+
+    #[test]
+    fn memory_backend_round_trip_and_debug_hides_secrets() {
+        let secrets = MemorySecrets::new();
+        assert_eq!(secrets.get("ical:demo").unwrap(), None);
+        secrets
+            .set("ical:demo", "https://calendar.example.edu/feed-secret")
+            .unwrap();
+        assert_eq!(
+            secrets.get("ical:demo").unwrap().as_deref(),
+            Some("https://calendar.example.edu/feed-secret")
+        );
+        let debug = format!("{secrets:?}");
+        assert!(
+            debug.contains("ical:demo") && !debug.contains("feed-secret"),
+            "{debug}"
+        );
+        assert!(secrets.set("ical:demo", "").is_err());
+        secrets.delete("ical:demo").unwrap();
+        secrets.delete("ical:demo").unwrap();
+        assert_eq!(secrets.get("ical:demo").unwrap(), None);
     }
 }

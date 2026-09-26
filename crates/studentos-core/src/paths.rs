@@ -32,9 +32,11 @@ pub fn data_dir() -> Result<PathBuf> {
     data_dir_from(std::env::var_os(HOME_ENV), platform_data_dir())
 }
 
-/// `~/Library/Application Support/dev.StudentOS.StudentOS` and equivalents; None without a
-/// home directory.
-fn platform_data_dir() -> Option<PathBuf> {
+/// The platform default data directory, ignoring `STUDENTOS_HOME`
+/// (`~/Library/Application Support/dev.StudentOS.StudentOS` and equivalents); None without a
+/// home directory. MCP client configs only need `STUDENTOS_HOME` when the data dir differs
+/// from this.
+pub fn platform_data_dir() -> Option<PathBuf> {
     directories::ProjectDirs::from("dev", "StudentOS", "StudentOS")
         .map(|dirs| dirs.data_dir().to_path_buf())
 }
