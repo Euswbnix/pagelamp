@@ -77,8 +77,9 @@ fn claude_desktop(launch: &McpLaunch, hint: Option<&str>) -> McpClientConfig {
     notes.add(
         McpNoteCode::RestartClientAfterChange,
         format!(
-            "Merge this into the config file (keep any other servers), then quit and reopen Claude Desktop. {} appears under the tools (🔌) menu.",
-            brand::PRODUCT_NAME
+            "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing) and paste this in; if it already has \"mcpServers\", add only the \"{key}\" entry inside it. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
+            key = brand::MCP_SERVER_KEY,
+            name = brand::PRODUCT_NAME
         ),
     );
     notes.custom_data_dir(launch);
@@ -376,6 +377,14 @@ mod tests {
         assert_eq!(server["command"], "/demo/bin/pagelamp");
         assert_eq!(server["args"], json!(["mcp"]));
         assert_eq!(server["env"]["PAGELAMP_HOME"], "/demo/data \"x\"");
+        // Quit first: Claude Desktop rewrites its config file on exit.
+        let steps = &by_client(&configs, McpClient::ClaudeDesktop).notes;
+        let steps = steps.iter().find(|n| n.contains("Quit")).unwrap();
+        assert!(
+            steps.starts_with("1) Quit Claude Desktop completely."),
+            "{steps}"
+        );
+        assert!(steps.contains("add only the \"pagelamp\" entry"), "{steps}");
         let generic: Value =
             serde_json::from_str(&by_client(&configs, McpClient::Generic).content).unwrap();
         assert_eq!(&generic, server);

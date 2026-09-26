@@ -30,7 +30,8 @@
 //! - `get_announcements(course, days? = 14)` → wrapped announcement text.
 //! - `get_study_plan()` / `save_study_plan(plan)` — plan per `model::StudyPlan`.
 //! - `sync_status()` → sources with last_synced_at / last_error; warns if > 24h stale and
-//!   tells the model the student can run `pagelamp sync` (the server itself cannot sync).
+//!   tells the model the student can press Sync in the app or run `pagelamp sync` (the
+//!   server itself cannot sync).
 //!
 //! AI ACCESS (docs/ARCHITECTURE.md §3 rule 8): material TEXT (read_material, snippets,
 //! announcement bodies, anything a prompt would inline) is only returned for courses whose

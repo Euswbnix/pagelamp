@@ -34,7 +34,8 @@ pub fn instructions() -> String {
             them to paste the materials.\n\
          6. Answer in the student's language.\n\
          Start with list_courses or course_overview. The data is only as fresh as the last \
-         sync: if sync_status says it is stale, tell the student to run `{CLI_NAME} sync`."
+         sync: if sync_status says it is stale, tell the student to press Sync in the \
+         {PRODUCT_NAME} app (or run `{CLI_NAME} sync`)."
     )
 }
 
@@ -92,8 +93,8 @@ pub const SAVE_STUDY_PLAN: &str = "Save a study plan the student agreed to (repl
 pub fn sync_status_description() -> String {
     format!(
         "When each data source last synced and whether it failed. {PRODUCT_NAME} cannot sync \
-         by itself from here: if data is stale, ask the student to run `{CLI_NAME} sync` (or \
-         press Sync in the app)."
+         by itself from here: if data is stale, ask the student to press Sync in the \
+         {PRODUCT_NAME} app (or run `{CLI_NAME} sync`)."
     )
 }
 
@@ -133,15 +134,15 @@ pub fn withheld(turned_off: bool) -> String {
 
 pub fn not_initialised() -> String {
     format!(
-        "{PRODUCT_NAME} has no course data yet. Ask the student to add a source and run \
-         `{CLI_NAME} sync` (or use the {PRODUCT_NAME} app), then try again."
+        "{PRODUCT_NAME} has no course data yet. Ask the student to add a source and press \
+         Sync in the {PRODUCT_NAME} app (or run `{CLI_NAME} sync`), then try again."
     )
 }
 
 pub fn stale_hint() -> String {
     format!(
-        "Some data may be out of date. Ask the student to run `{CLI_NAME} sync` (or press Sync \
-         in the {PRODUCT_NAME} app); this server cannot sync by itself."
+        "Some data may be out of date. Ask the student to press Sync in the {PRODUCT_NAME} \
+         app (or run `{CLI_NAME} sync`); this server cannot sync by itself."
     )
 }
 
