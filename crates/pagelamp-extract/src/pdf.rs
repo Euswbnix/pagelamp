@@ -14,8 +14,8 @@
 //! - `output_doc_page` re-reads the whole page tree on every call, so the work grows with the
 //!   square of the page count. Files with more than `Limits::max_pdf_pages` page entries are
 //!   refused, and a page listed twice in the page tree (only in broken files) is read once.
-//! - Stream decompression inside `lopdf` has no size limit, so a small PDF can still inflate
-//!   to a lot of memory (see "Safety limits" in `lib.rs`).
+//! - Stream decompression inside `lopdf` has no size limit; `pdf_inflate` checks the file
+//!   first (see "Safety limits" in `lib.rs`).
 //! - It does not print to stdout itself: its debug macro is a no-op and its warnings go
 //!   through the `log` crate, so they appear only where the host's logger sends them (e.g. a
 //!   `tracing-subscriber` with the `log` bridge). `lopdf` only prints in its own tests and

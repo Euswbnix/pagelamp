@@ -24,16 +24,17 @@
 //!
 //! On top of that (see `Limits`): `.pptx`/`.docx` may list at most 10,000 zip entries; a
 //! PDF may list at most 5,000 pages, and PDF pages that would make `pdf-extract` recurse
-//! endlessly (which aborts the process) are skipped. Known gap: PDF streams are decompressed
-//! by `lopdf` (partly while the file is being loaded) without any size limit, so a small,
-//! hostile PDF can still expand to a lot of memory. Closing that needs either a
-//! size-capped inflater run over the streams first (not possible with the current
-//! dependencies) or running extraction in a child process.
+//! endlessly (which aborts the process) are skipped. `lopdf` inflates PDF streams without
+//! any size limit, so before it sees a PDF, `pdf_inflate` inflates every `FlateDecode`
+//! stream with a cap (64 MB per stream, 256 MB together) and refuses the file above that.
+//! That check is a heuristic with known gaps (image-labelled streams, other filters,
+//! encrypted streams; see `pdf_inflate`); closing them needs extraction in a child process.
 //!
 //! Where things live (for maintainers):
 //! - `format` — which extractor handles a file (MIME/extension rules);
 //! - `pdf`, `pptx`, `docx`, `notebook`, `html`, `text` — one module per format;
 //! - `pdf_check` — skips PDF pages that would make `pdf-extract` overflow its stack;
+//! - `pdf_inflate` — refuses PDFs whose streams would inflate past `Limits`;
 //! - `ooxml` — zip + XML plumbing shared by `.pptx` and `.docx` (zip-bomb limits live here);
 //! - `chunk` — `chunk_segments`;
 //! - `util` — text decoding, whitespace normalisation, panic isolation.
@@ -54,6 +55,7 @@ mod notebook;
 mod ooxml;
 mod pdf;
 mod pdf_check;
+mod pdf_inflate;
 mod pptx;
 #[cfg(test)]
 mod test_support;
@@ -147,6 +149,10 @@ pub(crate) struct Limits {
     /// 0.2 s, 5,000 pages 4 s, 10,000 pages 18 s. The 5 MB text cap is usually reached long
     /// before page 5,000 anyway.
     pub(crate) max_pdf_pages: usize,
+    /// PDF: most bytes one `FlateDecode` stream may inflate to (`pdf_inflate`).
+    pub(crate) max_pdf_stream_bytes: u64,
+    /// PDF: most bytes all `FlateDecode` streams (images excepted) may inflate to together.
+    pub(crate) max_pdf_inflated_bytes: u64,
 }
 
 impl Limits {
@@ -157,6 +163,8 @@ impl Limits {
         max_zip_entry_bytes: 100 * MB,
         max_zip_total_bytes: 100 * MB,
         max_pdf_pages: 5_000,
+        max_pdf_stream_bytes: 64 * MB,
+        max_pdf_inflated_bytes: 256 * MB,
     };
 }
 
@@ -176,7 +184,15 @@ fn extract_file_with_limits(
     }
 
     let segments = match format {
-        FileFormat::Pdf => pdf::extract(&read_file(path, limits)?, limits.max_pdf_pages)?,
+        FileFormat::Pdf => {
+            let bytes = read_file(path, limits)?;
+            pdf_inflate::check(
+                &bytes,
+                limits.max_pdf_stream_bytes,
+                limits.max_pdf_inflated_bytes,
+            )?;
+            pdf::extract(&bytes, limits.max_pdf_pages)?
+        }
         FileFormat::Pptx => pptx::extract(open_package(path, limits)?)?,
         FileFormat::Docx => docx::extract(open_package(path, limits)?)?,
         FileFormat::Notebook => notebook::extract(&read_text_file(path, limits)?)?,
@@ -259,8 +275,8 @@ fn truncation_note(max_text_bytes: usize) -> Segment {
 mod tests {
     use super::*;
     use crate::test_support::{
-        document_xml, notes_xml, para, pdf_bytes, presentation_xml, rels_xml, slide_xml,
-        styles_xml, write_file, zip_text,
+        document_xml, notes_xml, para, pdf_bytes, pdf_bytes_compressed, presentation_xml, rels_xml,
+        slide_xml, styles_xml, write_file, zip_text,
     };
 
     fn locators(segments: &[Segment]) -> Vec<Option<&str>> {
@@ -510,6 +526,27 @@ mod tests {
         };
         let result = extract_file_with_limits(&path, None, &limits);
         assert!(matches!(result, Err(ExtractError::Failed(m)) if m.contains("too large")));
+    }
+
+    #[test]
+    fn pdf_whose_streams_inflate_too_much_is_refused_before_it_is_parsed() {
+        let dir = tempfile::tempdir().unwrap();
+        let long_line = "Alpha ".repeat(50_000);
+        let bytes = pdf_bytes_compressed(&[Some(&long_line)]);
+        assert!(bytes.len() < 100_000, "{} bytes", bytes.len());
+        let path = write_file(&dir, "bomb.pdf", &bytes);
+        let limits = Limits {
+            max_pdf_stream_bytes: 100_000,
+            ..Limits::DEFAULT
+        };
+        let result = extract_file_with_limits(&path, None, &limits);
+        assert!(
+            matches!(&result, Err(ExtractError::Failed(m)) if m.contains("would expand")),
+            "{result:?}"
+        );
+        // Within the default limits the same file is read normally.
+        let segments = extract_file_with_limits(&path, None, &Limits::DEFAULT).unwrap();
+        assert!(segments[0].text.contains("Alpha Alpha"));
     }
 
     #[test]

@@ -41,6 +41,15 @@ pub(crate) fn pdf_bytes(pages: &[Option<&str>]) -> Vec<u8> {
     build_pdf(pages, None)
 }
 
+/// Like [`pdf_bytes`], with every stream FlateDecode-compressed (as most real PDFs are).
+pub(crate) fn pdf_bytes_compressed(pages: &[Option<&str>]) -> Vec<u8> {
+    let mut doc = Document::load_mem(&pdf_bytes(pages)).expect("reload pdf");
+    doc.compress();
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("save pdf");
+    bytes
+}
+
 /// Like [`pdf_bytes`], but page `broken_index` (0-based) has no MediaBox, which makes
 /// `pdf-extract` panic on that page.
 pub(crate) fn pdf_bytes_with_broken_page(pages: &[Option<&str>], broken_index: usize) -> Vec<u8> {
