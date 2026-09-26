@@ -243,7 +243,10 @@ describe("SourcesPage", () => {
     const { user } = renderRoute("/sources", { scenario: "empty" });
 
     expect(await screen.findByText("No sources yet")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync all" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     await user.click(screen.getByRole("button", { name: "Add your first source" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Add a source" });
@@ -295,7 +298,10 @@ describe("SourcesPage", () => {
     await user.click(syncAll);
 
     expect(await screen.findByRole("heading", { level: 2, name: "Syncing…" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync all" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     const bar = screen.getByRole("progressbar", { name: "Course folder progress" });
     expect(bar).toHaveAttribute("aria-valuenow", "25");
     expect(screen.getByText("Indexing materials (3/12)")).toBeInTheDocument();
@@ -350,12 +356,15 @@ describe("SourcesPage", () => {
       ),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Sync all" }));
+    // Syncing can't start while another process holds the lock: the button stays focusable
+    // (aria-disabled) and clicking it starts nothing.
+    const syncAll = screen.getByRole("button", { name: "Sync all" });
+    expect(syncAll).toHaveAttribute("aria-disabled", "true");
+    await user.click(syncAll);
+    expect(syncAll).toHaveFocus();
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Sync failed" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
-    // The banner makes way for the panel, so the message isn't shown twice.
-    expect(screen.queryByText("Another sync is running")).not.toBeInTheDocument();
+      screen.queryByRole("heading", { level: 2, name: "Sync failed" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Another sync is running")).toBeInTheDocument();
   });
 });

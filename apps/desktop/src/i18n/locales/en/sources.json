@@ -163,6 +163,7 @@
     "ok": "Done",
     "warnings": "Warnings ({{n}})",
     "expiredHint": "Access expired. Replace the token or feed address to sync this source again.",
-    "fixOnSources": "Fix on Sources & sync"
+    "fixOnSources": "Fix on Sources & sync",
+    "stopped": "Stopped"
   }
 }

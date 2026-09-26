@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/format";
-import { useStartSync, useSyncStore } from "@/stores/sync";
+import { useStartSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { RemoveSourceButton } from "./RemoveSourceButton";
 import { SourceStatusBadge } from "./SourceStatusBadge";
 import { configString, hasSecret, SOURCE_ICON } from "./sourceMeta";
@@ -32,7 +32,7 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
   const { t } = useTranslation("sources");
   const { t: tc } = useTranslation();
   const startSync = useStartSync();
-  const running = useSyncStore((s) => s.running);
+  const { running, busy } = useSyncActivity();
   const live = useSyncStore((s) => s.bySource[source.id]);
   const syncing = running && live !== undefined && live.result === null;
   const Icon = SOURCE_ICON[source.kind];
@@ -87,8 +87,11 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => void startSync(source.id)}
-          disabled={running}
+          onClick={() => {
+            if (!busy) void startSync(source.id);
+          }}
+          aria-disabled={busy || undefined}
+          className="aria-disabled:opacity-50"
           aria-label={t("actions.syncSource", { label: source.label })}
         >
           <RefreshCw className={syncing ? "animate-spin" : undefined} aria-hidden />

@@ -1,7 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { FolderSync, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSources, useStatus } from "@/api/queries";
+import { queryKeys, useSources, useStatus } from "@/api/queries";
 import type { SourceRecord } from "@/api/types";
 import { AiDisclosure } from "@/components/common/AiDisclosure";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -16,7 +17,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { useStartSync, useSyncStore } from "@/stores/sync";
+import { useStartSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { AddSourceDialog } from "./AddSourceDialog";
 import { BusyBanner } from "./BusyBanner";
 import { ReplaceSecretDialog } from "./ReplaceSecretDialog";
@@ -30,7 +31,8 @@ export function SourcesPage() {
   const sources = useSources();
   const status = useStatus();
   const startSync = useStartSync();
-  const running = useSyncStore((s) => s.running);
+  const queryClient = useQueryClient();
+  const { running, busy } = useSyncActivity();
   const runError = useSyncStore((s) => s.runError);
   const [addOpen, setAddOpen] = useState(false);
   // Only the id is kept, so the dialog always shows the latest record.
@@ -55,9 +57,12 @@ export function SourcesPage() {
               {t("actions.add")}
             </Button>
             <Button
-              onClick={() => void startSync()}
-              disabled={running || list.length === 0}
+              onClick={() => {
+                if (!busy && list.length > 0) void startSync();
+              }}
+              aria-disabled={busy || list.length === 0 || undefined}
               aria-busy={running}
+              className="aria-disabled:opacity-50"
             >
               {running ? <Spinner aria-hidden /> : <RefreshCw aria-hidden />}
               {t("actions.syncAll")}
@@ -68,7 +73,10 @@ export function SourcesPage() {
 
       <div className="space-y-6">
         {externalBusy ? (
-          <BusyBanner onCheckAgain={() => void status.refetch()} checking={status.isFetching} />
+          <BusyBanner
+            onCheckAgain={() => void queryClient.invalidateQueries({ queryKey: queryKeys.all })}
+            checking={status.isFetching}
+          />
         ) : null}
 
         <SyncProgressPanel

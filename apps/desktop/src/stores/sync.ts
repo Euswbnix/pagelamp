@@ -2,11 +2,11 @@
 // Holds only what SyncEvents carry (labels, progress messages, error kinds) — no secrets.
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { create } from "zustand";
 import { useApi } from "@/api/context";
 import { type ApiError, toApiError } from "@/api/errors";
-import { queryKeys } from "@/api/queries";
+import { queryKeys, useStatus } from "@/api/queries";
 import type { AppStatus, SourceErrorKind, SyncEvent, SyncSummary } from "@/api/types";
 
 export interface SourceProgress {
@@ -18,6 +18,8 @@ export interface SourceProgress {
   warnings: string[];
   /** Set when the source finished. */
   result: { ok: boolean; error: string | null; errorKind: SourceErrorKind | null } | null;
+  /** The run ended (e.g. failed as a whole) before this source finished. */
+  stopped: boolean;
 }
 
 interface SyncState {
@@ -33,6 +35,8 @@ interface SyncState {
   begin: (total: number | null) => void;
   apply: (event: SyncEvent) => void;
   finish: (summary: SyncSummary | null, error: ApiError | null) => void;
+  /** Hide the "sync failed" message (it stays hidden until the next run). */
+  dismissRunError: () => void;
   reset: () => void;
 }
 
@@ -59,6 +63,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
         total: null,
         warnings: [],
         result: null,
+        stopped: false,
       };
       let next: SourceProgress;
       switch (event.type) {
@@ -92,7 +97,21 @@ export const useSyncStore = create<SyncState>()((set) => ({
         bySource: { ...state.bySource, [event.source_id]: next },
       };
     }),
-  finish: (summary, error) => set({ running: false, lastSummary: summary, runError: error }),
+  finish: (summary, error) =>
+    set((state) => ({
+      running: false,
+      lastSummary: summary,
+      runError: error,
+      // Sources that never reported back didn't run to the end: mark them stopped so no
+      // spinner keeps going after the run is over.
+      bySource: Object.fromEntries(
+        Object.entries(state.bySource).map(([id, p]) => [
+          id,
+          p.result ? p : { ...p, stopped: true },
+        ]),
+      ),
+    })),
+  dismissRunError: () => set({ runError: null }),
   reset: () => set(idle),
 }));
 
@@ -140,17 +159,18 @@ export function useDownloadCourseFiles() {
 }
 
 /**
- * Start a sync of every source (or one source). Returns a promise that resolves when the run
- * ends; it never rejects — failures land in the store (`runError`, per-source `result`).
+ * Start a sync of every source (or one source). Resolves `true` when this call ran a sync (it
+ * never rejects — failures land in the store: `runError`, per-source `result`), or `false`
+ * when it did nothing because another run in this window was already active.
  */
 export function useStartSync() {
   const api = useApi();
   const queryClient = useQueryClient();
 
   return useCallback(
-    async (sourceId?: string) => {
+    async (sourceId?: string): Promise<boolean> => {
       const store = useSyncStore.getState();
-      if (store.running) return;
+      if (store.running) return false;
       const known = queryClient.getQueryData<AppStatus>(queryKeys.status())?.sources.length;
       store.begin(sourceId ? 1 : (known ?? null));
       const onEvent = (event: SyncEvent) => useSyncStore.getState().apply(event);
@@ -175,7 +195,36 @@ export function useStartSync() {
         await queryClient.invalidateQueries({ queryKey: queryKeys.all });
         useSyncStore.getState().finish(null, toApiError(error));
       }
+      return true;
     },
     [api, queryClient],
   );
+}
+
+/**
+ * Is a sync running? `running`: started from this window. `external`: another process (e.g.
+ * the CLI) holds the sync lock, as the status query reports. `busy`: either — a new sync would
+ * fail with "busy" right now.
+ */
+export function useSyncActivity() {
+  const status = useStatus();
+  const running = useSyncStore((s) => s.running);
+  const external = !running && status.data?.sync_in_progress === true;
+  return { running, external, busy: running || external, sources: status.data?.sources ?? [] };
+}
+
+/**
+ * When another process's sync ends, the courses, sources and deadlines it wrote are new: refresh
+ * everything, not just the status. Mount once, in the app shell.
+ */
+export function useRefreshAfterExternalSync() {
+  const queryClient = useQueryClient();
+  const { external } = useSyncActivity();
+  const wasExternal = useRef(false);
+  useEffect(() => {
+    if (wasExternal.current && !external && !useSyncStore.getState().running) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.all });
+    }
+    wasExternal.current = external;
+  }, [external, queryClient]);
 }

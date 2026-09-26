@@ -26,12 +26,22 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
   const summary = useSyncStore((s) => s.lastSummary);
   // True once *our* run has ended, so an older run's result is never shown as this one's.
   const [finished, setFinished] = useState(false);
+  // Another run in this window was active when we tried: start ours once it ends.
+  const [waiting, setWaiting] = useState(false);
+  const running = useSyncStore((s) => s.running);
   const started = useRef(false);
 
   const run = useCallback(() => {
     setFinished(false);
-    void startSync().then(() => setFinished(true));
+    void startSync().then((ran) => (ran ? setFinished(true) : setWaiting(true)));
   }, [startSync]);
+
+  useEffect(() => {
+    if (waiting && !running) {
+      setWaiting(false);
+      run();
+    }
+  }, [waiting, running, run]);
 
   // Start automatically, once per visit to this step (the ref also covers StrictMode).
   useEffect(() => {

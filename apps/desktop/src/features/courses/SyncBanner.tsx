@@ -1,13 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { ApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
 import { Button } from "@/components/ui/button";
-import { useSyncCounts, useSyncStore } from "@/stores/sync";
+import { useSyncActivity, useSyncCounts, useSyncStore } from "@/stores/sync";
 import { Notice } from "./parts/Notice";
-import { useSyncActivity } from "./parts/useSyncActivity";
 
 /**
  * Shows that a sync is running (here or in another process), or why the last run could not
@@ -22,7 +20,6 @@ export function SyncBanner() {
   const bySource = useSyncStore((s) => s.bySource);
   const runError = useSyncStore((s) => s.runError);
   const counts = useSyncCounts();
-  const [dismissed, setDismissed] = useState<ApiError | null>(null);
 
   let content: ReactNode = null;
   // Only the headline is announced (below); the box itself is ordinary content, so its hint
@@ -72,14 +69,18 @@ export function SyncBanner() {
         {t("banner.externalHint")}
       </Notice>
     );
-  } else if (runError && runError !== dismissed) {
+  } else if (runError) {
     announcement = tc("sync.failed");
     content = (
       <Notice
         icon={<CircleAlert className="size-4 text-warning" aria-hidden />}
         title={tc("sync.failed")}
         action={
-          <Button size="sm" variant="ghost" onClick={() => setDismissed(runError)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => useSyncStore.getState().dismissRunError()}
+          >
             {tc("actions.close")}
           </Button>
         }

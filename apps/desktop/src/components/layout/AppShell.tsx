@@ -1,12 +1,14 @@
 import { useEffect, useRef } from "react";
 import { Outlet, useLocation } from "react-router";
 import { brand } from "@/brand";
+import { useRefreshAfterExternalSync } from "@/stores/sync";
 import { Sidebar } from "./Sidebar";
 
 /** Sidebar + scrollable content area. Every screen except onboarding renders inside this. */
 export function AppShell() {
   const mainRef = useRef<HTMLElement>(null);
   useRouteAnnouncements(mainRef);
+  useRefreshAfterExternalSync();
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />

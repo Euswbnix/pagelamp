@@ -75,7 +75,13 @@ function ReplaceSecretForm({ source, onDone }: { source: SourceRecord; onDone: (
       const sourceId = source.id;
       toast.success(t(canvas ? "replace.doneToken" : "replace.doneFeed", { label: source.label }), {
         description: t("replace.syncHint"),
-        action: { label: tc("actions.syncNow"), onClick: () => void startSync(sourceId) },
+        action: {
+          label: tc("actions.syncNow"),
+          onClick: () =>
+            void startSync(sourceId).then((ran) => {
+              if (!ran) toast.info(tc("sync.busy"));
+            }),
+        },
       });
       onDone();
     } catch (err) {

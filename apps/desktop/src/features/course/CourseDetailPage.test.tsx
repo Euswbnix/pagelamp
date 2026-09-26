@@ -58,6 +58,7 @@ describe("CourseDetailPage", () => {
           total: null,
           warnings: [],
           result: null,
+          stopped: false,
         },
       },
     });

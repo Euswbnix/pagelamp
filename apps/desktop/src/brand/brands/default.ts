@@ -22,9 +22,8 @@ const brand: Brand = {
     issues: "https://github.com/Euswbnix/studentos/issues",
   },
   aiPolicyHint: {
-    en: "Many universities (including U of T) don't allow generative AI in a course unless the instructor permits it — check your syllabus.",
-    "zh-CN":
-      "很多大学（包括多伦多大学）规定：除非任课老师明确允许，否则课程中不得使用生成式 AI。请以课程大纲为准。",
+    en: "Many universities don't allow generative AI in a course unless the instructor permits it — check your syllabus.",
+    "zh-CN": "很多大学规定：除非任课老师明确允许，否则课程中不得使用生成式 AI。请以课程大纲为准。",
   },
 };
 

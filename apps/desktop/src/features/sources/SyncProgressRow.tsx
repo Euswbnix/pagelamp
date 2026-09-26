@@ -1,4 +1,11 @@
-import { ChevronDown, CircleAlert, CircleCheck, LoaderCircle, TriangleAlert } from "lucide-react";
+import {
+  ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  CircleMinus,
+  LoaderCircle,
+  TriangleAlert,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -18,7 +25,7 @@ export function SyncProgressRow({
 }) {
   const { t } = useTranslation("sources");
   const { t: tc } = useTranslation();
-  const { label, message, current, total, warnings, result } = progress;
+  const { label, message, current, total, warnings, result, stopped } = progress;
   const steps =
     current !== null && total !== null && total > 0
       ? t("progress.steps", { current, total })
@@ -36,7 +43,12 @@ export function SyncProgressRow({
   } else if (result) {
     icon = <CircleAlert className="size-4 text-destructive" aria-hidden />;
     status = tc(`sourceError.${result.errorKind ?? "other"}`);
+  } else if (stopped) {
+    // The run ended before this source finished (e.g. the whole sync failed).
+    icon = <CircleMinus className="size-4 text-muted-foreground" aria-hidden />;
+    status = t("progress.stopped");
   }
+  const inProgress = !result && !stopped;
 
   return (
     <li className="flex gap-3 py-3">
@@ -46,16 +58,16 @@ export function SyncProgressRow({
           <span className="font-medium">{label}</span>
           <span className="text-xs text-muted-foreground">
             {status}
-            {!result && steps ? ` · ${steps}` : null}
+            {inProgress && steps ? ` · ${steps}` : null}
           </span>
         </div>
 
-        {!result && message ? (
+        {inProgress && message ? (
           <p lang="en" className="text-xs text-muted-foreground">
             {message}
           </p>
         ) : null}
-        {!result && percent !== null ? (
+        {inProgress && percent !== null ? (
           // The shared Progress does not forward `value` to the progressbar role, so the
           // aria-value* attributes are passed explicitly.
           <Progress

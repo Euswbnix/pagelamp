@@ -329,11 +329,11 @@ describe("CoursesPage — sync", () => {
     await user.click(button);
 
     expect(syncAll).toHaveBeenCalledTimes(1);
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
     expect(await screen.findByText("Your courses update when it finishes.")).toBeInTheDocument();
 
     release();
-    await waitFor(() => expect(button).toBeEnabled());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     expect(screen.queryByText("Your courses update when it finishes.")).toBeNull();
   });
 
@@ -364,7 +364,10 @@ describe("CoursesPage — sync", () => {
     expect(
       await screen.findByText("Another sync is running", { ignore: VISIBLE_ONLY }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sync now" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
 
     const before = status.mock.calls.length;
     await user.click(screen.getByRole("button", { name: "Check again" }));
