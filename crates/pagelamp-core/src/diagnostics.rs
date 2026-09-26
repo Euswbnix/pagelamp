@@ -451,6 +451,11 @@ pub fn install_panic_hook(data_dir: Option<PathBuf>, kind: ProcessKind) {
             tracing::warn!(target: "pagelamp::panic", "handled panic at {at}: {message}");
             return;
         }
+        // Output piped into a command that stopped reading (`pagelamp courses | head`): not a
+        // crash, and nothing to record.
+        if is_broken_pipe(&message) {
+            return;
+        }
         let backtrace = std::backtrace::Backtrace::force_capture();
         tracing::error!(target: "pagelamp::panic", "crash at {at}: {message}\n{backtrace}");
         if let Some(dir) = &data_dir {
@@ -465,6 +470,11 @@ pub fn install_panic_hook(data_dir: Option<PathBuf>, kind: ProcessKind) {
         }
         previous(info);
     }));
+}
+
+/// `println!` panics this way when stdout is a closed pipe.
+fn is_broken_pipe(message: &str) -> bool {
+    message.starts_with("failed printing to std") && message.contains("Broken pipe")
 }
 
 fn panic_message(info: &std::panic::PanicHookInfo<'_>) -> String {

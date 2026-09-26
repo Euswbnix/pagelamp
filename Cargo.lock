@@ -3320,6 +3320,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "libc",
  "pagelamp-app",
  "pagelamp-core",
  "pagelamp-mcp",

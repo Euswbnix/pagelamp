@@ -23,7 +23,7 @@ use pagelamp_app::{
     SyncSummary,
 };
 use pagelamp_core::brand;
-use pagelamp_core::model::{AiMaterialsState, AiPolicy, SourceRecord};
+use pagelamp_core::model::{AiMaterialsState, AiPolicy, SourceKind, SourceRecord};
 use serde::Serialize;
 
 #[derive(Parser)]
@@ -113,7 +113,7 @@ enum Command {
 enum CanvasCommand {
     /// Add a Canvas account. The token is read without echo (or from stdin when piped).
     Add {
-        /// e.g. https://lms.example.edu
+        /// Your school's Canvas address, e.g. https://canvas.school.edu
         #[arg(long)]
         base_url: String,
     },
@@ -173,6 +173,7 @@ enum CourseCommand {
         note: Option<String>,
     },
     /// Override the term dates (or --clear to use the synced ones).
+    #[command(group = clap::ArgGroup::new("dates").required(true).multiple(true).args(["start", "end", "clear"]))]
     Term {
         /// The course's code, name or id.
         course: String,
@@ -264,6 +265,14 @@ fn main() -> ExitCode {
     let kind = if matches!(cli.command, Command::Mcp) {
         diagnostics::ProcessKind::Mcp
     } else {
+        // Rust ignores SIGPIPE, so `pagelamp courses | head` would make println! panic once
+        // head exits. Like other command-line tools, just stop instead. (The MCP server keeps
+        // ignoring it: a closed stdout there is the normal end of a session.)
+        #[cfg(unix)]
+        // SAFETY: restoring the default action of one signal before any other thread starts.
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        }
         diagnostics::ProcessKind::App
     };
     diagnostics::init(kind, cli.verbose);
@@ -314,11 +323,15 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             match out {
                 Some(path) => {
                     std::fs::write(&path, &report)?;
+                    if json {
+                        return print_json(&serde_json::json!({ "written": path }));
+                    }
                     eprintln!(
                         "Wrote {}. Read it before sharing; it contains no tokens, feed links or course names.",
                         path.display()
                     );
                 }
+                None if json => return print_json(&serde_json::json!({ "report": report })),
                 None => print!("{report}"),
             }
             Ok(())
@@ -526,17 +539,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     policy,
                     note,
                 } => app.set_course_policy(&course, policy.into(), note.as_deref())?,
+                // clap requires --start/--end or --clear (the "dates" group); --clear is
+                // the same as setting neither date.
                 CourseCommand::Term {
                     course,
                     start,
                     end,
-                    clear,
-                } => {
-                    if !clear && start.is_none() && end.is_none() {
-                        anyhow::bail!("give --start and/or --end, or --clear");
-                    }
-                    app.set_course_term(&course, start, end)?
-                }
+                    clear: _,
+                } => app.set_course_term(&course, start, end)?,
                 CourseCommand::Hide { course } => app.set_course_hidden(&course, true)?,
                 CourseCommand::Show { course } => app.set_course_hidden(&course, false)?,
                 CourseCommand::AiAccess { course, access } => {
@@ -627,6 +637,16 @@ fn print_event(event: SyncEvent) {
     }
 }
 
+/// `PAGELAMP_LOG=debug` (or trace) already shows what `-v` would.
+fn debug_logging() -> bool {
+    std::env::var(pagelamp_core::paths::LOG_ENV).is_ok_and(|level| {
+        matches!(
+            level.trim().to_ascii_lowercase().as_str(),
+            "debug" | "trace"
+        )
+    })
+}
+
 fn finish_sync(results: &[SourceSyncResult], json: bool, verbose: bool) -> anyhow::Result<()> {
     if json {
         print_json(&results)?;
@@ -672,12 +692,16 @@ fn finish_sync(results: &[SourceSyncResult], json: bool, verbose: bool) -> anyho
                 Some(requests) => println!("  {requests} requests · {seconds:.1} s"),
                 None => println!("  {seconds:.1} s"),
             }
-            // Only request-making sources (Canvas) have request details to show.
-            if !r.warnings.is_empty() && r.requests.is_some() && !verbose {
-                println!(
-                    "  {} warning(s) above; run with -v for request details",
-                    r.warnings.len()
-                );
+            // Only Canvas logs request details; not needed when they are already shown.
+            if r.kind == SourceKind::Canvas && !verbose && !debug_logging() {
+                if !r.ok {
+                    println!("  run with -v for request details");
+                } else if !r.warnings.is_empty() {
+                    println!(
+                        "  {} warning(s) above; run with -v for request details",
+                        r.warnings.len()
+                    );
+                }
             }
         }
     }

@@ -23,5 +23,9 @@ chrono.workspace = true
 serde.workspace = true
 rpassword = "7"
 
+[target.'cfg(unix)'.dependencies]
+# SIGPIPE back to its default for normal commands (`pagelamp courses | head`).
+libc = "0.2"
+
 [dev-dependencies]
 tempfile.workspace = true

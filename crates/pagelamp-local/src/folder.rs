@@ -219,10 +219,14 @@ impl CourseDir<'_> {
                 Ok(entry) => entry,
                 Err(err) => {
                     walk_complete = false;
+                    // Relative to the source folder: never the absolute path (user name).
                     let place = err
                         .path()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default();
+                        .and_then(|p| p.strip_prefix(self.dir).ok())
+                        .map_or_else(
+                            || self.dir_name.to_string(),
+                            |rest| Path::new(self.dir_name).join(rest).display().to_string(),
+                        );
                     warn(format!("could not read {place}"));
                     continue;
                 }
@@ -342,6 +346,22 @@ pub(crate) struct CourseMeta {
 /// The settings `course.toml` / `course.json` may contain.
 const COURSE_KEYS: [&str; 4] = ["code", "name", "term_start", "term_end"];
 
+/// Warnings for known settings whose value is not text (or a date), e.g. `code = 101`.
+fn wrong_types(file: &str, wrong: impl Fn(&str) -> bool) -> Vec<String> {
+    COURSE_KEYS
+        .iter()
+        .filter(|key| wrong(key))
+        .map(|key| {
+            let expected = if key.starts_with("term_") {
+                "a date like 2026-09-08"
+            } else {
+                "text in quotes"
+            };
+            format!("{file}: {key} must be {expected}; ignored")
+        })
+        .collect()
+}
+
 /// Warnings for the keys of a course file that aren't `COURSE_KEYS`.
 fn unknown_keys<'a>(file: &str, keys: impl Iterator<Item = &'a String>) -> Vec<String> {
     keys.filter(|key| !COURSE_KEYS.contains(&key.as_str()))
@@ -418,14 +438,21 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
                 .unwrap_or_default();
             format!("course.toml is not valid TOML{at}")
         })?;
-        let mut meta = meta_from(|key| match table.get(key)? {
+        let text_of = |key: &str| match table.get(key)? {
             toml::Value::String(s) => Some(s.clone()),
             // Bare TOML dates: term_start = 2026-09-08
             toml::Value::Datetime(dt) => dt.date.map(|d| d.to_string()),
             _ => None,
-        })
-        .map_err(|err| format!("course.toml: {err}"))?;
+        };
+        let mut meta = meta_from(text_of).map_err(|err| format!("course.toml: {err}"))?;
         meta.warnings = unknown_keys("course.toml", table.keys());
+        meta.warnings.extend(wrong_types("course.toml", |key| {
+            table.contains_key(key) && text_of(key).is_none()
+        }));
+        if std::fs::symlink_metadata(dir.join("course.json")).is_ok() {
+            meta.warnings
+                .push("course.json is ignored because there is a course.toml".to_string());
+        }
         return Ok(meta);
     }
     if let Some(text) = read_course_file(&dir.join("course.json"), "course.json")? {
@@ -436,10 +463,13 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
                 err.column()
             )
         })?;
-        let mut meta = meta_from(|key| value.get(key)?.as_str().map(str::to_string))
-            .map_err(|err| format!("course.json: {err}"))?;
+        let text_of = |key: &str| value.get(key)?.as_str().map(str::to_string);
+        let mut meta = meta_from(text_of).map_err(|err| format!("course.json: {err}"))?;
         if let Some(object) = value.as_object() {
             meta.warnings = unknown_keys("course.json", object.keys());
+            meta.warnings.extend(wrong_types("course.json", |key| {
+                object.contains_key(key) && text_of(key).is_none()
+            }));
         }
         return Ok(meta);
     }
@@ -527,9 +557,31 @@ mod tests {
         let meta = read_course_meta(dir.path()).unwrap();
         assert_eq!(meta.code.as_deref(), Some("DEMO303"));
         assert_eq!(meta.name, None);
-        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        // (course.json from above is still there.)
+        assert_eq!(
+            meta.warnings,
+            ["course.json is ignored because there is a course.toml"]
+        );
         assert_eq!(meta.term_start, NaiveDate::from_ymd_opt(2026, 9, 10));
         assert_eq!(meta.term_end, NaiveDate::from_ymd_opt(2026, 12, 20));
+
+        // Settings of the wrong type, and a course.json next to course.toml, are reported.
+        std::fs::write(
+            dir.path().join("course.toml"),
+            "code = 101\nterm_end = 7\nname = \"Demo\"\n",
+        )
+        .unwrap();
+        let meta = read_course_meta(dir.path()).unwrap();
+        assert_eq!(meta.name.as_deref(), Some("Demo"));
+        assert_eq!(meta.code, None);
+        let warnings = meta.warnings.join("\n");
+        assert!(
+            warnings.contains("code must be text in quotes"),
+            "{warnings}"
+        );
+        assert!(warnings.contains("term_end must be a date"), "{warnings}");
+        assert!(warnings.contains("course.json is ignored"), "{warnings}");
+        std::fs::remove_file(dir.path().join("course.json")).unwrap();
 
         // A misspelt setting is reported, not silently ignored.
         std::fs::write(

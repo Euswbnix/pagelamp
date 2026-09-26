@@ -549,6 +549,42 @@ fn mcp_logs_being_terminated() {
     assert!(log.contains("MCP server stopped (terminated)"), "{log}");
 }
 
+#[cfg(unix)]
+#[test]
+fn a_closed_pipe_ends_the_command_quietly_without_a_crash_record() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    // Like `pagelamp sources | head -c 0`: the reader is gone before anything is written
+    // (closed right after spawning, long before the process has started up).
+    let mut child = base_command(&home)
+        .arg("sources")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let output = child.wait_with_output().unwrap();
+    assert_ne!(output.status.code(), Some(101), "no panic");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert!(!home.join("logs").join("last-crash.json").exists());
+}
+
+#[test]
+fn course_term_needs_dates_or_clear_and_report_speaks_json() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let output = pagelamp(&home, &["course", "term", "DEMO101"]);
+    assert_eq!(output.status.code(), Some(2), "a usage error");
+    let report = json_out(&pagelamp(&home, &["--json", "report"]));
+    assert!(
+        report["report"]
+            .as_str()
+            .unwrap()
+            .starts_with("# PageLamp diagnostic report")
+    );
+}
+
 #[test]
 fn help_explains_arguments_and_removal_prints_json() {
     let temp = tempfile::tempdir().unwrap();
