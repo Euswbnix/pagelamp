@@ -11,12 +11,6 @@
     },
     "language": "Language"
   },
-  "reminders": {
-    "title": "Reminders",
-    "weekly": "Weekly reminders",
-    "description": "Deadline reminders and a Monday summary of your week, generated on this computer.",
-    "comingSoon": "Coming soon"
-  },
   "data": {
     "title": "Your data",
     "description": "Everything {{product}} syncs is stored in this folder on your computer.",

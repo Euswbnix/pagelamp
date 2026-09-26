@@ -24,14 +24,7 @@ describe("SettingsPage", () => {
     renderRoute("/settings");
     expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    for (const name of [
-      "Appearance",
-      "Reminders",
-      "Your data",
-      "Privacy",
-      "Help & feedback",
-      "About",
-    ]) {
+    for (const name of ["Appearance", "Your data", "Privacy", "Help & feedback", "About"]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
   });
@@ -89,17 +82,12 @@ describe("SettingsPage", () => {
     expect(i18n.language).toBe("zh-CN");
   });
 
-  it("shows weekly reminders as a disabled, coming-soon switch", async () => {
+  it("shows no unfinished features (reminders come in v0.2)", async () => {
     renderRoute("/settings");
-    const reminders = await section("Reminders");
-    const toggle = within(reminders).getByRole("switch", { name: "Weekly reminders" });
-    expect(toggle).toBeDisabled();
-    expect(toggle).toHaveAttribute("aria-disabled", "true");
-    expect(toggle).not.toBeChecked();
-    expect(within(reminders).getByText("Coming soon")).toBeInTheDocument();
-    expect(toggle).toHaveAccessibleDescription(
-      /Coming soon.*Deadline reminders and a Monday summary of your week/,
-    );
+    await section("Appearance");
+    expect(screen.queryByRole("region", { name: "Reminders" })).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByText("Coming soon")).toBeNull();
   });
 
   it("shows where the data lives and what is stored", async () => {

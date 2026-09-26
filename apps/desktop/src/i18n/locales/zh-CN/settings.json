@@ -11,12 +11,6 @@
     },
     "language": "语言"
   },
-  "reminders": {
-    "title": "提醒",
-    "weekly": "每周提醒",
-    "description": "截止日期提醒和每周一的本周概览，全部在这台电脑上生成。",
-    "comingSoon": "即将推出"
-  },
   "data": {
     "title": "你的数据",
     "description": "{{product}} 同步的所有内容都保存在你电脑上的这个文件夹里。",

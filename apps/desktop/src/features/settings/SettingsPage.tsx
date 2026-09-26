@@ -5,9 +5,8 @@ import { AppearanceSection } from "./AppearanceSection";
 import { DataSection } from "./DataSection";
 import { HelpSection } from "./HelpSection";
 import { PrivacySection } from "./PrivacySection";
-import { RemindersSection } from "./RemindersSection";
 
-/** Settings: appearance, (upcoming) reminders, data, privacy, help & feedback and about. */
+/** Settings: appearance, data, privacy, help & feedback and about. */
 export function SettingsPage() {
   const { t } = useTranslation("settings");
   return (
@@ -15,7 +14,6 @@ export function SettingsPage() {
       <PageHeader title={t("title")} />
       <div className="space-y-6">
         <AppearanceSection />
-        <RemindersSection />
         <DataSection />
         <PrivacySection />
         <HelpSection />
