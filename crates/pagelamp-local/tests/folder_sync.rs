@@ -326,3 +326,27 @@ fn unreadable_subfolders_warn_and_prevent_pruning() {
         assert_eq!(store.list_materials(course_id).unwrap().len(), 2);
     }
 }
+
+#[test]
+fn published_at_is_the_file_modification_time_not_the_sync_time() {
+    let temp = tempfile::tempdir().unwrap();
+    write(temp.path(), "DEMO101 Intro/Week 1/notes.txt", "demo notes");
+    let modified = chrono::DateTime::parse_from_rfc3339("2026-01-15T14:30:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    fs::File::options()
+        .write(true)
+        .open(temp.path().join("DEMO101 Intro/Week 1/notes.txt"))
+        .unwrap()
+        .set_modified(modified.into())
+        .unwrap();
+
+    let store = store();
+    for _ in 0..2 {
+        sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+        let materials = store
+            .list_materials(&format!("{SOURCE}/course/DEMO101 Intro"))
+            .unwrap();
+        assert_eq!(materials[0].published_at, Some(modified));
+    }
+}
