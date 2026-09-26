@@ -98,19 +98,23 @@ pub struct SyncReport {
     pub events: usize,
     /// Non-fatal problems (e.g. "DEMO101: Files tab hidden, used module items only").
     pub warnings: Vec<String>,
+    /// One line per course synced (for the summary).
+    pub course_summaries: Vec<weekmark_core::source::CourseSyncSummary>,
+    /// HTTP requests made to Canvas and file storage.
+    pub requests: u64,
 }
 
-/// Validate and normalise a user-entered Canvas URL to `scheme://host[:port]` (no path,
-/// no trailing slash). https only, except http for localhost/127.0.0.1 (tests). A missing
-/// scheme means https ("lms.example.edu" → "https://lms.example.edu").
+/// Validate and normalise a user-entered Canvas address to `scheme://host[:port]`. Only the
+/// address itself is accepted ("https://lms.example.edu", a trailing slash is fine, a missing
+/// scheme means https); a path or query ("…/courses/1", "…/?x=1") is rejected so a pasted
+/// course link isn't silently reinterpreted. https only, except http for localhost (tests).
 pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
+    let trimmed = input.trim();
     let invalid = || {
         SourceError::other(format!(
-            "'{}' is not a Canvas address (expected something like https://lms.example.edu)",
-            input.trim()
+            "'{trimmed}' is not a Canvas address. Enter just the address, like https://lms.example.edu"
         ))
     };
-    let trimmed = input.trim();
     let with_scheme = if trimmed.contains("://") {
         trimmed.to_string()
     } else {
@@ -121,7 +125,9 @@ pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
         .host_str()
         .filter(|h| !h.is_empty())
         .ok_or_else(invalid)?;
-    if !url.username().is_empty() || url.password().is_some() {
+    let only_address =
+        matches!(url.path(), "" | "/") && url.query().is_none() && url.fragment().is_none();
+    if !url.username().is_empty() || url.password().is_some() || !only_address {
         return Err(invalid());
     }
     let local = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
@@ -218,10 +224,7 @@ mod tests {
         let ok = |input: &str| normalize_base_url(input).unwrap();
         assert_eq!(ok("lms.example.edu"), "https://lms.example.edu");
         assert_eq!(ok(" https://lms.example.edu/ "), "https://lms.example.edu");
-        assert_eq!(
-            ok("https://LMS.Example.edu/courses/1?x=y"),
-            "https://lms.example.edu"
-        );
+        assert_eq!(ok("https://LMS.Example.edu"), "https://lms.example.edu");
         assert_eq!(
             ok("https://lms.example.edu:8443/"),
             "https://lms.example.edu:8443"
@@ -234,6 +237,10 @@ mod tests {
             "https://user:pass@lms.example.edu",
             "https://",
             "not a url at all",
+            "https://lms.example.edu/courses/1",
+            "https://lms.example.edu/?x=y",
+            "https://lms.example.edu/#top",
+            "lms.example.edu/login",
         ] {
             assert!(normalize_base_url(bad).is_err(), "{bad}");
         }

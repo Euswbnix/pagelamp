@@ -13,13 +13,18 @@
 //!   Plain http is refused except on the Canvas origin itself (http://localhost in tests).
 //! - The token is never logged and never appears in errors (`Debug` is not derived; the header
 //!   value is marked sensitive).
+//! - Diagnostics (`weekmark sync -v`, target `weekmark_canvas::http`, level debug) print per
+//!   request only: method, path + allow-listed query parameters, status, remaining rate-limit
+//!   quota and elapsed time, plus Canvas's `errors[].message` on failures. Never headers, the
+//!   token, signed download URLs (file storage hops show the host only), or response bodies.
 //! - At most 2 requests at a time; exponential backoff on throttling (429, or 403 "Rate Limit
 //!   Exceeded"): 1s, 2s, 4s, 8s → `RateLimited` after 5 tries; slowing down when
 //!   `X-Rate-Limit-Remaining` drops below 100.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use reqwest::StatusCode;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, LINK, LOCATION};
@@ -95,6 +100,11 @@ pub(crate) trait CanvasTransport: Send + Sync {
         dest: PathBuf,
         max_bytes: u64,
     ) -> impl Future<Output = Result<u64, CanvasError>> + Send;
+
+    /// Number of HTTP requests made so far (for the sync summary).
+    fn requests_made(&self) -> u64 {
+        0
+    }
 }
 
 /// Retry/backoff knobs (tests use millisecond delays).
@@ -128,6 +138,7 @@ pub(crate) struct TokenTransport {
     auth: HeaderValue,
     permits: Semaphore,
     retry: RetryPolicy,
+    requests: AtomicU64,
 }
 
 /// A response whose (API-sized) body has been read.
@@ -164,6 +175,7 @@ impl TokenTransport {
             auth,
             permits: Semaphore::new(2),
             retry,
+            requests: AtomicU64::new(0),
         })
     }
 
@@ -191,12 +203,16 @@ impl TokenTransport {
                     .acquire()
                     .await
                     .expect("semaphore is never closed");
-                let mut response = self
-                    .request(url)
-                    .timeout(API_TIMEOUT)
-                    .send()
-                    .await
-                    .map_err(network_error)?;
+                let started = Instant::now();
+                self.requests.fetch_add(1, Ordering::Relaxed);
+                let mut response = match self.request(url).timeout(API_TIMEOUT).send().await {
+                    Ok(response) => response,
+                    Err(err) => {
+                        let err = network_error(err);
+                        tracing::debug!(target: "weekmark_canvas::http", "GET {} → {err}", api_path(url));
+                        return Err(err);
+                    }
+                };
                 let mut body = Vec::new();
                 while let Some(chunk) = response.chunk().await.map_err(network_error)? {
                     if body.len() + chunk.len() > MAX_JSON_BYTES {
@@ -204,11 +220,13 @@ impl TokenTransport {
                     }
                     body.extend_from_slice(&chunk);
                 }
-                Fetched {
+                let fetched = Fetched {
                     status: response.status(),
                     headers: response.headers().clone(),
                     body,
-                }
+                };
+                log_api_response(url, &fetched, started.elapsed());
+                fetched
             };
             self.pace(&fetched.headers).await;
             if !is_throttled(&fetched) {
@@ -238,6 +256,10 @@ impl TokenTransport {
 }
 
 impl CanvasTransport for TokenTransport {
+    fn requests_made(&self) -> u64 {
+        self.requests.load(Ordering::Relaxed)
+    }
+
     async fn get_json(&self, url: Url) -> Result<JsonPage, CanvasError> {
         let fetched = self.fetch_api(&url).await?;
         let status = fetched.status;
@@ -334,7 +356,22 @@ impl TokenTransport {
                 } else {
                     request
                 };
-                request.send().await.map_err(network_error)?
+                let started = Instant::now();
+                self.requests.fetch_add(1, Ordering::Relaxed);
+                let result = request.send().await.map_err(network_error);
+                let hop = download_hop(url, &self.base);
+                match &result {
+                    Ok(response) => tracing::debug!(
+                        target: "weekmark_canvas::http",
+                        "GET {hop} → {} ({} ms)",
+                        response.status().as_u16(),
+                        started.elapsed().as_millis()
+                    ),
+                    Err(err) => {
+                        tracing::debug!(target: "weekmark_canvas::http", "GET {hop} → {err}")
+                    }
+                }
+                result?
             };
             let transient = matches!(
                 response.status(),
@@ -418,6 +455,98 @@ async fn save_body(
     tokio::fs::rename(&partial.path, dest).await.map_err(io)?;
     partial.done = true;
     Ok(written)
+}
+
+// ----- diagnostics (never headers, tokens, signed URLs or bodies) ----------------------------
+
+/// Query parameters that are safe to print (everything else is shown as `key=…`).
+const SAFE_QUERY_KEYS: [&str; 8] = [
+    "page",
+    "per_page",
+    "include[]",
+    "enrollment_state",
+    "start_date",
+    "end_date",
+    "context_codes[]",
+    "download_frd",
+];
+
+/// An API URL for logs: path plus allow-listed query parameters.
+pub(crate) fn api_path(url: &Url) -> String {
+    let query: Vec<String> = url
+        .query_pairs()
+        .map(|(key, value)| {
+            if SAFE_QUERY_KEYS.contains(&key.as_ref()) {
+                format!("{key}={value}")
+            } else {
+                format!("{key}=…")
+            }
+        })
+        .collect();
+    if query.is_empty() {
+        url.path().to_string()
+    } else {
+        format!("{}?{}", url.path(), query.join("&"))
+    }
+}
+
+/// A download hop for logs: Canvas paths without any query (verifiers), and only the host for
+/// file storage (signed URLs carry credentials in path and query).
+pub(crate) fn download_hop(url: &Url, base: &Url) -> String {
+    if same_origin(url, base) {
+        url.path().to_string()
+    } else {
+        format!("file storage ({})", url.host_str().unwrap_or("?"))
+    }
+}
+
+/// One debug line per API response; Canvas's error messages on failures.
+fn log_api_response(url: &Url, fetched: &Fetched, elapsed: Duration) {
+    let remaining = fetched
+        .headers
+        .get("X-Rate-Limit-Remaining")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("-");
+    tracing::debug!(
+        target: "weekmark_canvas::http",
+        "GET {} → {} ({} ms, rate limit remaining {remaining})",
+        api_path(url),
+        fetched.status.as_u16(),
+        elapsed.as_millis()
+    );
+    if !fetched.status.is_success() {
+        let messages = canvas_error_messages(&fetched.body);
+        if !messages.is_empty() {
+            tracing::debug!(target: "weekmark_canvas::http", "  Canvas says: {}", messages.join(" | "));
+        }
+    }
+}
+
+/// `errors[].message` (or `message`) from a Canvas error body — short, fixed texts such as
+/// "Invalid access token." — capped in length; never the rest of the body.
+pub(crate) fn canvas_error_messages(body: &[u8]) -> Vec<String> {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let mut messages: Vec<String> = json
+        .get("errors")
+        .and_then(|e| e.as_array())
+        .map(|errors| {
+            errors
+                .iter()
+                .filter_map(|e| e.get("message").and_then(|m| m.as_str()))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(message) = json.get("message").and_then(|m| m.as_str()) {
+        messages.push(message.to_string());
+    }
+    messages
+        .into_iter()
+        .take(3)
+        .map(|m| m.chars().take(200).collect())
+        .collect()
 }
 
 /// 429, or 403 whose body says "Rate Limit Exceeded" (Canvas's throttling response).

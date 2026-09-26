@@ -1111,3 +1111,411 @@ async fn n_old_announcements_outside_the_window_are_kept() {
     assert!(has_material(&f, "/announcement/42"));
     assert!(!has_material(&f, "/announcement/999"));
 }
+
+// ----- diagnostics never leak (weekmark sync -v) -------------------------------------------
+
+/// Everything every crate logs at TRACE, from all tests of this binary (one global
+/// subscriber: tracing caches per-callsite interest globally, so per-thread subscribers miss
+/// events when tests run in parallel). Absence checks therefore cover every test's output.
+fn global_logs() -> std::sync::Arc<std::sync::Mutex<Vec<u8>>> {
+    use std::sync::{Arc, Mutex, OnceLock};
+    static LOGS: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
+    LOGS.get_or_init(|| {
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let writer = Buf(buf.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).expect("only this test sets one");
+        buf
+    })
+    .clone()
+}
+
+/// Run `f` and return all log output produced meanwhile (by any test).
+async fn capture_logs<F: std::future::Future<Output = ()>>(f: F) -> String {
+    let logs = global_logs();
+    f.await;
+    String::from_utf8_lossy(&logs.lock().unwrap()).into_owned()
+}
+
+#[tokio::test]
+async fn debug_output_shows_requests_but_never_secrets() {
+    let f = Fixture::new().await;
+    f.standard().await;
+    // 403 with a Canvas error body, a 500, and downloads with verifier/signature parameters.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/202/modules"))
+        .respond_with(
+            ResponseTemplate::new(500)
+                .set_body_string("Internal Server Error <html>secret-body</html>"),
+        )
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/pages"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+            "status": "unauthorized",
+            "errors": [{"message": "user not authorized to perform that action"}]
+        })))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/files/501/download"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header(
+                "Location",
+                format!(
+                    "{}/blob/501?X-Amz-Signature=S1GNATURE&X-Amz-Credential=CR3D",
+                    f.storage.uri()
+                )
+                .as_str(),
+            ),
+        )
+        .mount(&f.canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/blob/501"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("SLIDE-TEXT-CONTENT"))
+        .mount(&f.storage)
+        .await;
+    let mut file = f.file(501, "slides.txt", 20);
+    file["url"] = json!(format!(
+        "{}/files/501/download?download_frd=1&verifier=V3R1F13R",
+        f.canvas.uri()
+    ));
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([file])))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    let options = f.options(true);
+    let api = f.api();
+    let logs = capture_logs(async {
+        let _ = sync_with(&api, &f.db, &f.source, &options, &no_progress).await;
+    })
+    .await;
+
+    // Useful: requests, statuses, Canvas's own error message.
+    assert!(logs.contains("GET /api/v1/users/self → 200"), "{logs}");
+    assert!(logs.contains("GET /api/v1/courses/202/modules?include[]=items&include[]=content_details&per_page=100 → 500"), "{logs}");
+    assert!(
+        logs.contains("Canvas says: user not authorized to perform that action"),
+        "{logs}"
+    );
+    assert!(logs.contains("GET /files/501/download → 302"), "{logs}");
+    assert!(
+        logs.contains("GET file storage (127.0.0.1) → 200"),
+        "{logs}"
+    );
+    assert!(logs.contains("rate limit remaining"), "{logs}");
+    // Never: the token, verifiers, signatures, response bodies, course content.
+    for secret in [
+        TOKEN,
+        "V3R1F13R",
+        "S1GNATURE",
+        "CR3D",
+        "secret-body",
+        "SLIDE-TEXT-CONTENT",
+        "Photosynthesis introduction",
+        "SECRET-INSTRUCTIONS",
+    ] {
+        assert!(
+            !logs.contains(secret),
+            "{secret} leaked into debug output:\n{logs}"
+        );
+    }
+
+    // A rejected token (401) says so without the token.
+    let g = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .set_body_json(json!({"errors": [{"message": "Invalid access token."}]})),
+        )
+        .mount(&g.canvas)
+        .await;
+    let api = g.api();
+    let options = g.options(false);
+    let logs = capture_logs(async {
+        let _ = sync_with(&api, &g.db, &g.source, &options, &no_progress).await;
+    })
+    .await;
+    assert!(
+        logs.contains("→ 401") && logs.contains("Canvas says: Invalid access token."),
+        "{logs}"
+    );
+    assert!(
+        !logs.contains(TOKEN) && !logs.to_lowercase().contains("bearer"),
+        "{logs}"
+    );
+}
+
+// ----- real-world shapes (modelled on the Canvas REST docs) ---------------------------------
+
+/// One course whose modules contain every item type Canvas has, locked content, a hidden
+/// Files tab (401 on /files) and HTML with iframes/LTI embeds.
+#[tokio::test]
+async fn every_module_item_type_locked_items_and_embeds() {
+    let f = Fixture::new().await;
+    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get(
+        "/courses",
+        json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"}]),
+    )
+    .await;
+    f.get(
+        "/courses/101/tabs",
+        json!([{"id": "home"}, {"id": "modules"}, {"id": "pages"}]),
+    )
+    .await;
+    let future = (Utc::now() + TimeDelta::days(30)).to_rfc3339();
+    f.get(
+        "/courses/101/modules",
+        json!([{"id": 1, "name": "Week 1", "position": 1, "items": [
+            {"id": 10, "type": "SubHeader", "title": "Readings"},
+            {"id": 11, "type": "File", "content_id": 501, "title": "Week 1 slides"},
+            {"id": 12, "type": "Page", "page_url": "welcome", "title": "Welcome"},
+            {"id": 13, "type": "ExternalUrl", "external_url": "https://video.example.edu/w1", "title": "Lecture video"},
+            {"id": 14, "type": "ExternalTool", "title": "Textbook (LTI)", "url": "https://lms.example.edu/api/v1/courses/101/external_tools/sessionless_launch"},
+            {"id": 15, "type": "Quiz", "content_id": 3, "title": "Quiz 1"},
+            {"id": 16, "type": "Discussion", "content_id": 4, "title": "Intro discussion"},
+            {"id": 17, "type": "Assignment", "content_id": 9, "title": "Problem Set 1"},
+            {"id": 18, "type": "Page", "page_url": "locked-notes", "title": "Locked notes"},
+            {"id": 19, "type": "SomethingNew", "title": "Future item type"}
+        ]},
+        {"id": 2, "name": "Week 5", "position": 2, "unlock_at": future, "items": []}]),
+    )
+    .await;
+    // Files tab hidden: the list 401s (resource, not token), module files still resolve.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/files"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"status": "unauthorized", "errors": [{"message": "user not authorized to perform that action"}]})))
+        .expect(0) // the tab is hidden, so it isn't even asked
+        .mount(&f.canvas)
+        .await;
+    let mut locked_file = f.file(501, "slides.pdf", 20);
+    locked_file["locked_for_user"] = json!(true);
+    f.get("/courses/101/files/501", locked_file).await;
+    f.get(
+        "/courses/101/pages",
+        json!([
+            {"page_id": 601, "url": "welcome", "title": "Welcome", "updated_at": "2026-09-08T10:00:00Z"},
+            {"page_id": 602, "url": "locked-notes", "title": "Locked notes", "locked_for_user": true, "lock_explanation": "This page is locked until Oct 1"}
+        ]),
+    )
+    .await;
+    f.get(
+        "/courses/101/pages/welcome",
+        json!({"page_id": 601, "url": "welcome", "title": "Welcome", "updated_at": "2026-09-08T10:00:00Z",
+               "body": "<h1>Welcome</h1><p>Chlorophyll absorbs light.</p><iframe src=\"https://video.example.edu/embed/1\"></iframe><form action=\"https://lti.example.com/launch\" method=\"post\"><input type=\"hidden\" name=\"oauth_signature\" value=\"LTI-SIGNATURE\"></form><script>launchLti()</script>"}),
+    )
+    .await;
+    // The locked page's body is never requested.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/pages/locked-notes"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&f.canvas)
+        .await;
+    f.get("/courses/101/assignments", json!([])).await;
+    f.get(
+        "/announcements",
+        json!([{"id": 701, "title": "Slides posted", "message": "<p>See attached.</p>", "posted_at": "2026-09-22T12:00:00Z",
+                "attachments": [{"id": 9001, "display_name": "extra.pdf", "url": "https://lms.example.edu/files/9001/download?verifier=X"}]}]),
+    )
+    .await;
+    f.get("/planner/items", json!([])).await;
+
+    let report = f.sync(&f.options(true)).await.unwrap();
+    let store = f.store();
+    let materials = store.list_materials(&course101(&f)).unwrap();
+    let kinds: Vec<(String, MaterialKind)> = materials
+        .iter()
+        .map(|m| (m.title.clone(), m.kind))
+        .collect();
+    // Only File/Page/ExternalUrl items become materials; the rest are structure we skip.
+    for skipped in [
+        "Readings",
+        "Textbook (LTI)",
+        "Quiz 1",
+        "Intro discussion",
+        "Problem Set 1",
+        "Future item type",
+    ] {
+        assert!(
+            !kinds.iter().any(|(t, _)| t == skipped),
+            "{skipped} should not be a material: {kinds:?}"
+        );
+    }
+    let slides = material(&materials, "/file/501");
+    assert_eq!(
+        slides.text_status,
+        TextStatus::NotDownloaded,
+        "locked files are not downloaded"
+    );
+    assert_eq!(
+        material(&materials, "/page/602").text_status,
+        TextStatus::Pending,
+        "locked page: title only"
+    );
+    assert_eq!(
+        material(&materials, "/link/13").kind,
+        MaterialKind::ExternalLink
+    );
+    // The embed-heavy page is indexed as text; scripts and LTI signatures are not.
+    assert_eq!(store.search("chlorophyll", None, 5).unwrap().len(), 1);
+    assert!(store.search("launchLti", None, 5).unwrap().is_empty());
+    assert!(store.search("SIGNATURE", None, 5).unwrap().is_empty());
+    // Announcement attachments are not followed.
+    assert!(
+        !f.canvas
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.url.path().contains("9001"))
+    );
+    // A future-unlocking module is stored with its date.
+    let modules = store.list_modules(&course101(&f)).unwrap();
+    assert!(
+        modules
+            .iter()
+            .any(|m| m.name == "Week 5" && m.unlock_at.is_some())
+    );
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("Files tab hidden"))
+    );
+}
+
+#[tokio::test]
+async fn two_hundred_pages_paginate_and_are_skipped_when_unchanged() {
+    let f = Fixture::new().await;
+    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get(
+        "/courses",
+        json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"}]),
+    )
+    .await;
+    f.get(
+        "/courses/101/tabs",
+        json!([{"id": "home"}, {"id": "pages"}]),
+    )
+    .await;
+    f.get("/courses/101/modules", json!([])).await;
+    f.get("/courses/101/assignments", json!([])).await;
+    f.get("/announcements", json!([])).await;
+    f.get("/planner/items", json!([])).await;
+    let pages: Vec<Value> = (1..=230)
+        .map(|n| json!({"page_id": 1000 + n, "url": format!("page-{n}"), "title": format!("Page {n}"), "updated_at": "2026-09-08T10:00:00Z"}))
+        .collect();
+    for (index, chunk) in pages.chunks(100).enumerate() {
+        let page = index + 1;
+        let mut response = ResponseTemplate::new(200).set_body_json(json!(chunk));
+        if page < 3 {
+            let next = format!(
+                "<{}/api/v1/courses/101/pages?page={}&per_page=100>; rel=\"next\"",
+                f.canvas.uri(),
+                page + 1
+            );
+            response = response.insert_header("Link", next.as_str());
+        }
+        let mut mock = Mock::given(method("GET")).and(path("/api/v1/courses/101/pages"));
+        mock = if page == 1 {
+            mock.and(wiremock::matchers::query_param_is_missing("page"))
+        } else {
+            mock.and(query_param("page", page.to_string().as_str()))
+        };
+        mock.respond_with(response).mount(&f.canvas).await;
+    }
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(
+            r"^/api/v1/courses/101/pages/page-\d+$",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"updated_at": "2026-09-08T10:00:00Z", "body": "<p>lecture notes</p>"}),
+        ))
+        .mount(&f.canvas)
+        .await;
+    f.sync(&f.options(false)).await.unwrap();
+    let count = |requests: &[Request]| {
+        requests
+            .iter()
+            .filter(|r| r.url.path().starts_with("/api/v1/courses/101/pages/page-"))
+            .count()
+    };
+    assert_eq!(count(&f.canvas.received_requests().await.unwrap()), 230);
+    let pages = f.store().list_materials(&course101(&f)).unwrap();
+    assert_eq!(
+        pages
+            .iter()
+            .filter(|m| m.kind == MaterialKind::Page)
+            .count(),
+        230
+    );
+
+    // Second sync: nothing changed → no page bodies fetched again.
+    let before = count(&f.canvas.received_requests().await.unwrap());
+    f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(count(&f.canvas.received_requests().await.unwrap()), before);
+}
+
+#[tokio::test]
+async fn a_5xx_in_one_course_does_not_stop_the_others() {
+    let f = Fixture::new().await;
+    f.standard().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/202/tabs"))
+        .respond_with(ResponseTemplate::new(502))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/202/assignments"))
+        .respond_with(ResponseTemplate::new(503))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    let report = f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(report.courses, 2);
+    assert!(
+        report.warnings.iter().any(|w| w.starts_with("DEMO202")),
+        "{:?}",
+        report.warnings
+    );
+    assert_eq!(
+        f.store().search("photosynthesis", None, 5).unwrap().len(),
+        1,
+        "DEMO101 fully synced"
+    );
+    let summary = report
+        .course_summaries
+        .iter()
+        .find(|c| c.course == "DEMO101")
+        .unwrap();
+    assert!(
+        summary.files >= 2 && summary.pages == 1 && summary.events == 1,
+        "{summary:?}"
+    );
+    assert!(report.requests > 10);
+}

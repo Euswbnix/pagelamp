@@ -28,7 +28,7 @@ use weekmark_core::ingest::{self, IndexOutcome};
 use weekmark_core::model::{
     CourseUpsert, Event, Material, MaterialKind, MaterialUpsert, Module, TextStatus,
 };
-use weekmark_core::source::{ProgressFn, SourceError, SyncProgress};
+use weekmark_core::source::{CourseSyncSummary, ProgressFn, SourceError, SyncProgress};
 use weekmark_core::store::Store;
 
 use crate::api::{Api, Listing};
@@ -105,6 +105,8 @@ pub(crate) struct Syncer<'a, T> {
 struct CourseResult {
     modules: usize,
     materials: usize,
+    pages: usize,
+    files: usize,
     files_downloaded: usize,
     /// Downloaded files plus pages/announcements whose text was (re)indexed.
     files_indexed: usize,
@@ -223,8 +225,17 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 Some(index + 1),
                 Some(selected.len()),
             );
+            let warnings_before = report.warnings.len();
             match self.sync_course(canvas, upsert, &label, &mut report).await {
                 Ok(result) => {
+                    report.course_summaries.push(CourseSyncSummary {
+                        course: label.clone(),
+                        modules: to_u32(result.modules),
+                        pages: to_u32(result.pages),
+                        files: to_u32(result.files),
+                        events: to_u32(result.events.as_ref().map_or(0, Vec::len)),
+                        warnings: to_u32(report.warnings.len() - warnings_before),
+                    });
                     report.courses += 1;
                     report.modules += result.modules;
                     report.materials += result.materials;
@@ -321,6 +332,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             Ok(())
         })
         .await?;
+        report.requests = self.api.transport.requests_made();
         Ok(report)
     }
 
@@ -804,6 +816,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         );
         let result_modules = modules.as_ref().map_or(0, Vec::len);
         let result_materials = materials.len();
+        let result_pages = materials
+            .values()
+            .filter(|m| m.kind == MaterialKind::Page)
+            .count();
+        let result_files = materials
+            .values()
+            .filter(|m| m.kind == MaterialKind::File)
+            .count();
         {
             let upsert = upsert.clone();
             let course_id = course_id.clone();
@@ -968,6 +988,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         Ok(CourseResult {
             modules: result_modules,
             materials: result_materials,
+            pages: result_pages,
+            files: result_files,
             files_downloaded,
             files_indexed: files_indexed + indexed_html,
             events,
