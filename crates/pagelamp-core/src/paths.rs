@@ -28,6 +28,8 @@ pub const LOG_ENV: &str = "PAGELAMP_LOG";
 const DB_FILE: &str = "pagelamp.db";
 const FILES_DIR: &str = "files";
 const SYNC_LOCK_FILE: &str = "sync.lock";
+/// Course names remembered for the report's pseudonymisation (see `course_aliases_path_in`).
+const COURSE_ALIASES_FILE: &str = "course-aliases.json";
 
 /// Root data directory (not created). Errors with `Error::NoDataDir` when neither
 /// `PAGELAMP_HOME` nor a platform data directory is available.
@@ -83,6 +85,13 @@ pub fn sync_lock_path_in(dir: &Path) -> PathBuf {
     dir.join(SYNC_LOCK_FILE)
 }
 
+/// `<dir>/course-aliases.json`: course names and codes seen recently, so diagnostic reports
+/// can pseudonymise courses that were renamed or removed. Outside `logs/` on purpose (that
+/// folder is what students are invited to share).
+pub fn course_aliases_path_in(dir: &Path) -> PathBuf {
+    dir.join(COURSE_ALIASES_FILE)
+}
+
 /// Create the data directory (and `files/`) if missing. Returns the data dir.
 pub fn ensure_dirs() -> Result<PathBuf> {
     let dir = data_dir()?;
@@ -91,58 +100,89 @@ pub fn ensure_dirs() -> Result<PathBuf> {
 }
 
 /// Create `dir` and `dir/files` (and any missing parents) if missing, private to the user on
-/// Unix (see `create_private_dir_all`). A data dir that others can read, made by an older
-/// version, is made private too when it holds nothing but PageLamp's own files.
+/// Unix (see `create_private_dir_all`). PageLamp's own `files/` and `logs/` are made private
+/// if an older version created them readable, and so is a data dir that holds nothing but
+/// PageLamp's own entries. Tightening is best effort: a file system without Unix permissions
+/// (a FAT/exFAT stick as `PAGELAMP_HOME`) refuses it, which is logged, not an error.
 pub fn ensure_dirs_in(dir: &Path) -> std::io::Result<()> {
+    create_private_dir_all(dir)?;
     create_private_dir_all(&files_dir_in(dir))?;
     #[cfg(unix)]
-    make_private_if_ours(dir)?;
+    {
+        for own in [files_dir_in(dir), crate::diagnostics::logs_dir_in(dir)] {
+            if own.is_dir() {
+                best_effort(&own, restrict(&own, 0o700));
+            }
+        }
+        best_effort(dir, make_private_if_ours(dir));
+    }
     Ok(())
 }
 
-/// `create_dir_all`, but directories it creates get mode 0700 on Unix: the data dir holds
-/// course materials, logs and the database, which other users of the computer must not
-/// read. (Elsewhere the platform's per-user folder already is private.)
+/// Create `path` (mode 0700 on Unix: the data dir holds course materials, logs and the
+/// database, which other users of the computer must not read) and its missing ancestors
+/// with the default mode (they may be shared, e.g. the root of a USB drive). Elsewhere the
+/// platform's per-user folder already is private.
 pub fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(path)
+    if path.is_dir() {
+        return Ok(());
     }
-    #[cfg(not(unix))]
-    {
-        std::fs::create_dir_all(path)
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    match builder.create(path) {
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => Ok(()),
+        other => other,
     }
 }
 
-/// Entries PageLamp itself creates in its data dir.
+/// Clear the group/other bits of `path` (keeps the owner's) when any are set. Unix only.
 #[cfg(unix)]
-const OWN_ENTRIES: [&str; 6] = [
+pub fn restrict(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let current = std::fs::metadata(path)?.permissions().mode();
+    if current & 0o077 == 0 {
+        return Ok(());
+    }
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(current & mode))
+}
+
+#[cfg(unix)]
+fn best_effort(path: &Path, result: std::io::Result<()>) {
+    if let Err(err) = result {
+        tracing::warn!(
+            "could not make {} private: {err}",
+            crate::diagnostics::shorten_home(&path.display().to_string())
+        );
+    }
+}
+
+/// Entries PageLamp itself creates in its data dir (plus Finder's `.DS_Store`).
+#[cfg(unix)]
+const OWN_ENTRIES: &[&str] = &[
     DB_FILE,
     "pagelamp.db-wal",
     "pagelamp.db-shm",
+    "pagelamp.db-journal",
     FILES_DIR,
     SYNC_LOCK_FILE,
     "logs",
+    COURSE_ALIASES_FILE,
+    ".DS_Store",
 ];
 
 #[cfg(unix)]
 fn make_private_if_ours(dir: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let mode = std::fs::metadata(dir)?.permissions().mode();
-    if mode & 0o077 == 0 {
-        return Ok(());
-    }
     for entry in std::fs::read_dir(dir)? {
         let name = entry?.file_name();
         if !OWN_ENTRIES.iter().any(|own| name == *own) {
             return Ok(()); // shared with other things: not ours to lock down
         }
     }
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode & 0o700))
+    restrict(dir, 0o700)
 }
 
 #[cfg(test)]
@@ -243,11 +283,33 @@ mod tests {
         ensure_dirs_in(&dir).unwrap();
         assert_eq!(mode(&dir), 0o700);
         assert_eq!(mode(&files_dir_in(&dir)), 0o700);
+        // Only the data dir itself is made private; missing ancestors get the default mode.
+        assert_ne!(mode(&temp.path().join("new")) & 0o055, 0);
+
+        // Shared data dir (other content): it stays as it is, but our own folders are
+        // locked down even if an older version made them readable.
+        let shared_home = temp.path().join("shared-home");
+        std::fs::create_dir_all(files_dir_in(&shared_home)).unwrap();
+        std::fs::create_dir_all(shared_home.join("logs")).unwrap();
+        std::fs::write(shared_home.join("notes.txt"), b"not ours").unwrap();
+        for p in [
+            shared_home.clone(),
+            files_dir_in(&shared_home),
+            shared_home.join("logs"),
+        ] {
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        ensure_dirs_in(&shared_home).unwrap();
+        assert_eq!(mode(&shared_home), 0o755);
+        assert_eq!(mode(&files_dir_in(&shared_home)), 0o700);
+        assert_eq!(mode(&shared_home.join("logs")), 0o700);
 
         // Made readable by an older version: locked down, but only when it is ours alone.
         let old = temp.path().join("old");
         std::fs::create_dir_all(files_dir_in(&old)).unwrap();
         std::fs::write(db_path_in(&old), b"").unwrap();
+        std::fs::write(old.join(".DS_Store"), b"").unwrap();
+        std::fs::write(old.join("pagelamp.db-journal"), b"").unwrap();
         std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).unwrap();
         ensure_dirs_in(&old).unwrap();
         assert_eq!(mode(&old), 0o700);

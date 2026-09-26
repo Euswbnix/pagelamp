@@ -49,22 +49,32 @@ pub(crate) fn busy() -> AppError {
 }
 
 fn open(path: &Path) -> Result<File, AppError> {
-    OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(path)
-        .map_err(|err| {
-            AppError::new(
-                AppErrorKind::Internal,
-                format!("could not open {}: {err}", path.display()),
-            )
-        })
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(false).write(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path).map_err(|err| {
+        AppError::new(
+            AppErrorKind::Internal,
+            format!("could not open {}: {err}", path.display()),
+        )
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_lock_file_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("sync.lock");
+        drop(SyncLock::acquire(&path).unwrap());
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o077, 0);
+    }
 
     #[test]
     fn second_holder_is_busy_until_the_first_drops() {

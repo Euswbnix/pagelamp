@@ -338,6 +338,7 @@ pub fn init(data_dir: Option<&Path>, kind: ProcessKind, verbose: bool) {
     let (file_level, stderr_level) = levels(verbose);
     let files = data_dir.and_then(|dir| {
         let logs = logs_dir_in(dir);
+        crate::paths::create_private_dir_all(dir).ok()?;
         crate::paths::create_private_dir_all(&logs).ok()?;
         Some(Arc::new(LogFiles {
             dir: logs,

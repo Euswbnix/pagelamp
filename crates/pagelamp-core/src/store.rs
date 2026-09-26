@@ -218,6 +218,19 @@ impl Store {
     /// Errors: `SchemaTooNew` if the file was written by a newer PageLamp.
     pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
+        // The database holds extracted course text: private to the user even in a shared
+        // folder (SQLite gives its -wal/-shm files the database's mode).
+        #[cfg(unix)]
+        for suffix in ["", "-wal", "-shm"] {
+            let mut file = path.as_os_str().to_owned();
+            file.push(suffix);
+            let file = std::path::PathBuf::from(file);
+            if file.exists()
+                && let Err(err) = crate::paths::restrict(&file, 0o600)
+            {
+                tracing::warn!("could not make the database private: {err}");
+            }
+        }
         conn.busy_timeout(BUSY_TIMEOUT)?;
         // `PRAGMA journal_mode` answers with the resulting mode, so it is read back as a row.
         // (On a file system without WAL support it stays e.g. "delete"; that still works.)

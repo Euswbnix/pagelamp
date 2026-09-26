@@ -149,6 +149,25 @@ fn upgrade_existing_never_creates_or_touches_new_databases() {
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn the_database_file_is_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_dir, path) = temp_db();
+    let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    drop(Store::open(&path).unwrap());
+    assert_eq!(mode(&path) & 0o077, 0);
+    // Made readable by an older version (or a shared folder's defaults): fixed on open.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let store = Store::open(&path).unwrap();
+    store.upsert_source(&demo_source("folder:demo")).unwrap();
+    assert_eq!(mode(&path), 0o600);
+    let wal = path.with_extension("db-wal");
+    if wal.exists() {
+        assert_eq!(mode(&wal) & 0o077, 0);
+    }
+}
+
 #[test]
 fn reopening_keeps_data() {
     let (_dir, path) = temp_db();
