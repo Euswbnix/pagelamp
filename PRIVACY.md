@@ -32,8 +32,11 @@ dates and links. It never reads your university password.
   policy as "No AI" — PageLamp then shares no material text for that course (deadlines, structure
   and your study plan remain available for planning). CLI: `pagelamp course ai-access <course> off`.
 - **Hide a course** to keep it out of your AI app entirely: `pagelamp course hide <course>`.
-- **Remove a source** (`pagelamp sources remove <id>` or *Sources & sync → Remove*) deletes its
-  courses from the database and its secret from the keychain.
+- **Remove a source** (`pagelamp sources remove <id>` or *Sources & sync → Remove*) deletes what
+  was synced from it — its courses with your AI-policy and term settings for them (course folder
+  and Canvas), its deadlines and events (calendar feed), and for Canvas the course files you
+  downloaded — plus its token or feed link in the keychain. Your own course folder and anything in
+  Canvas or your LMS calendar are never changed.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain), then quit PageLamp and delete the data folder above. The desktop app also keeps its
   display preferences (theme, language, onboarding done) in its own app storage under

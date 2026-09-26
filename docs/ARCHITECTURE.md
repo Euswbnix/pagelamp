@@ -110,7 +110,7 @@ impl App {
     pub async fn add_canvas_source(&self, base_url: &str, token: &str) -> Result<SourceRecord>; // validates token
     pub fn add_folder_source(&self, path: &Path, term_start: Option<NaiveDate>, label: Option<&str>) -> Result<SourceRecord>;
     pub async fn add_ical_source(&self, feed_url: &str, label: Option<&str>) -> Result<SourceRecord>; // validates by fetching
-    pub fn remove_source(&self, source_id: &str) -> Result<()>;  // also deletes its secret
+    pub fn remove_source(&self, source_id: &str) -> Result<()>;  // rows + its secret (none for folders) + Canvas downloads; Busy during a sync
     /// Replace an expired/revoked Canvas token or a changed feed URL WITHOUT removing the
     /// source (remove cascades to courses + user overrides). Validates exactly like add_*,
     /// then overwrites the keychain entry and clears last_error/last_error_kind.

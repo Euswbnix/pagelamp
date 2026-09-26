@@ -114,7 +114,7 @@ KWallet); course folders work without one.
 4. **Connect your AI app.** Open *Connect your AI app* in the desktop app, or, with the
    command-line tool, run `pagelamp mcp-config claude-desktop` (also `claude-code`, `codex`), and
    follow the steps. For Claude Desktop, **quit it completely before editing its config file** — it
-   rewrites the file while it runs.
+   saves over the file when it quits, so changes made while it's open are lost.
    Then restart your AI app and ask: *"Using PageLamp, where is each of my courses this week?"*
 
 | AI app | How it connects | Plans |
@@ -129,9 +129,10 @@ Canvas personal access tokens are for **your own use only** — Canvas's API pol
 to ask other people to create them. Tokens expire (Canvas shows the maximum when you create one).
 If you share PageLamp with classmates, point them to the course folder + calendar feed setup.
 Canvas sync never downloads files unless you ask, because downloads can count as "viewed" in
-module requirements. Sync does read course pages (only new or changed ones); that doesn't complete
-module requirements, but Canvas may list it in your course access report, just like opening a page
-in the Canvas mobile app.
+module requirements. Canvas records a sync like any other access: your course access report (which
+instructors can see) will show the Modules, Pages, Assignments and Files lists, plus each page
+PageLamp reads (only new or changed ones). Reading doesn't complete module requirements;
+downloading files can.
 
 ### Course AI policies
 
@@ -229,6 +230,7 @@ macOS 请先把 PageLamp **拖进「应用程序」文件夹**再打开（AI 应
 **遇到问题**：在「设置 → 帮助与反馈 → 复制诊断报告…」先查看再复制报告（课程名已替换为 Course 1、Course 2，令牌和日历链接已去除），贴到 [GitHub issue](https://github.com/Euswbnix/pagelamp/issues/new/choose)。不要贴令牌、日历订阅链接或课件。
 
 **关于 Canvas 令牌**：个人访问令牌仅供你本人使用，不要让同学生成令牌填进来；推荐给同学时请用「课程文件夹 + 日历订阅」方式。
+同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里会出现模块、页面、作业、文件列表，以及 PageLamp 读取的每个页面（只读新增或有变化的页面）。读取页面不会完成模块要求；下载文件可能会，所以默认不下载。
 
 **隐私**：数据只存在你的电脑上；只有你向 AI 提问时，AI 读取的课程内容才会发到你自己的 AI 账号。详见 [PRIVACY.md](PRIVACY.md)。
 
