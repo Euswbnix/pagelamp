@@ -9,6 +9,7 @@
 //! - `views`    — read views shared by the App facade and the MCP server.
 //! - `brand`    — product naming for user-facing text (edited by distributions).
 //! - `paths`    — where data lives on disk (`STUDENTOS_HOME` overrides everything).
+//! - `source`   — error type + progress callback shared by the sync sources.
 //! - `secrets`  — OS keychain access for Canvas tokens / calendar-feed URLs. Never used by MCP.
 
 pub mod brand;
@@ -17,6 +18,7 @@ pub mod ingest;
 pub mod model;
 pub mod paths;
 pub mod secrets;
+pub mod source;
 pub mod store;
 pub mod timeline;
 pub mod views;

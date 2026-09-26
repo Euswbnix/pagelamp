@@ -46,7 +46,7 @@ use studentos_core::Store;
 
 #[derive(Clone, Debug)]
 pub struct CanvasConfig {
-    /// e.g. "https://q.utoronto.ca" (no trailing slash, no /api/v1)
+    /// e.g. "https://lms.example.edu" (no trailing slash, no /api/v1)
     pub base_url: String,
     pub token: String,
 }

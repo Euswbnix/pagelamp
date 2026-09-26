@@ -1,9 +1,9 @@
 //! OS keychain storage for source secrets (Canvas access token, calendar-feed URL).
 //!
-//! Keychain service name: `dev.studentos`; account = source id (e.g. `canvas:q.utoronto.ca`).
+//! Keychain service name: `dev.studentos`; account = source id (e.g. `canvas:lms.example.edu`).
 //! For CI/tests an environment override is honoured: `STUDENTOS_SECRET_<SANITISED_ID>`
 //! where the id is upper-cased and every non-alphanumeric char becomes `_`
-//! (e.g. `STUDENTOS_SECRET_CANVAS_Q_UTORONTO_CA`).
+//! (e.g. `STUDENTOS_SECRET_CANVAS_LMS_EXAMPLE_EDU`).
 //!
 //! Secrets must never be written to the database, logs, or MCP output. Error messages from
 //! this module therefore never contain a secret (see `describe_keyring_error`).

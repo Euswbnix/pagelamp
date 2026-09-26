@@ -1,6 +1,6 @@
 //! `studentos` — planned commands (implemented by the backend session):
 //!
-//!   studentos canvas add --base-url https://q.utoronto.ca   (token read from stdin/prompt;
+//!   studentos canvas add --base-url https://lms.example.edu   (token read from stdin/prompt;
 //!                                                            prints the personal-use-only notice)
 //!   studentos folder add <path> [--term-start YYYY-MM-DD] [--label …]
 //!   studentos ical add [--label …]                          (feed URL read from stdin/prompt)
