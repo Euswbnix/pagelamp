@@ -115,6 +115,18 @@ pub(crate) fn read_capped(reader: impl Read, max_bytes: u64) -> std::io::Result<
 /// Longest panic message copied into an error (panic messages can contain whole PDF objects).
 const MAX_PANIC_MESSAGE_CHARS: usize = 200;
 
+thread_local! {
+    /// True while this thread runs parser code inside `catch_panic`.
+    static CATCHING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Whether a panic happening right now on this thread will be caught by `catch_panic` (a
+/// parser crash on a bad file, reported as `ExtractError::Failed`). A process-wide panic hook
+/// uses this to avoid reporting such expected panics as application crashes.
+pub fn panic_is_expected() -> bool {
+    CATCHING.with(|c| c.get())
+}
+
 /// Run third-party parsing code that may panic on malformed input, turning a panic into
 /// `ExtractError::Failed` so one bad file cannot abort a whole sync.
 ///
@@ -124,7 +136,10 @@ const MAX_PANIC_MESSAGE_CHARS: usize = 200;
 ///   runs at sync time (CLI / desktop), never inside the stdio MCP server, whose stdout must
 ///   stay clean — so this is harmless noise, not a protocol problem.
 pub(crate) fn catch_panic<T>(what: &str, f: impl FnOnce() -> T) -> Result<T, ExtractError> {
-    catch_unwind(AssertUnwindSafe(f)).map_err(|payload| {
+    let outer = CATCHING.with(|c| c.replace(true));
+    let result = catch_unwind(AssertUnwindSafe(f));
+    CATCHING.with(|c| c.set(outer));
+    result.map_err(|payload| {
         let message = payload
             .downcast_ref::<&str>()
             .map(|s| s.to_string())

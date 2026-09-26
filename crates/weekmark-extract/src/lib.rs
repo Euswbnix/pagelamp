@@ -60,6 +60,8 @@ mod test_support;
 mod text;
 mod util;
 
+pub use util::panic_is_expected;
+
 use format::{FileFormat, describe_file_type};
 use util::{decode_text, failed, normalize_whitespace, read_capped, truncate_to_bytes};
 
