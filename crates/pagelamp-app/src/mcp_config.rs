@@ -180,7 +180,7 @@ fn claude_desktop(launch: &McpLaunch, hint: Option<&str>) -> McpClientConfig {
     notes.add(
         McpNoteCode::QuitBeforeEditing,
         format!(
-            "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing). If it is empty, paste this in. If it already has \"mcpServers\", add only the \"{key}\" entry inside it. If it has other settings (such as \"preferences\") but no \"mcpServers\", add the \"mcpServers\": {{ … }} part as a new top-level key inside the outer {{ }}, separated by a comma from the neighbouring setting. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
+            "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing). If it's empty or only {{}}, replace its content with this. If it already has \"mcpServers\", add only the \"{key}\" entry inside it; if there's already a \"{key}\" entry, replace it. If it has other settings (such as \"preferences\") but no \"mcpServers\", add the \"mcpServers\": {{ … }} part as a new top-level entry: right after the opening {{, followed by a comma before the next setting. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
             key = brand::MCP_SERVER_KEY,
             name = brand::PRODUCT_NAME
         ),
@@ -223,7 +223,11 @@ fn claude_code(launch: &McpLaunch, shell: Shell) -> McpClientConfig {
     );
     notes.add(
         McpNoteCode::RestartClientAfterChange,
-        "Run this once in a terminal; new Claude Code sessions then have the server.",
+        format!(
+            "Run this once in a terminal; new Claude Code sessions then have the server. If {name} was added before, run `claude mcp remove --scope user {key}` first.",
+            name = brand::PRODUCT_NAME,
+            key = brand::MCP_SERVER_KEY
+        ),
     );
     notes.custom_data_dir(launch);
     config(
@@ -266,7 +270,10 @@ fn codex(launch: &McpLaunch) -> McpClientConfig {
     );
     notes.add(
         McpNoteCode::RestartClientAfterChange,
-        "Append this to the file, then restart the app or start a new Codex session.",
+        format!(
+            "Append this to the file, then restart the app or start a new Codex session. If the file already has a [mcp_servers.{key}] section (and [mcp_servers.{key}.env]), replace those lines instead of adding new ones: a second copy makes the file invalid.",
+            key = brand::MCP_SERVER_KEY
+        ),
     );
     notes.custom_data_dir(launch);
     config(
@@ -461,6 +468,16 @@ mod tests {
         );
         let code = by_client(&configs, McpClient::ClaudeCode);
         assert!(code.note_codes.contains(&McpNoteCode::NeedsPaidClaudePlan));
+        // Configuring again (after moving PageLamp) must not fail or duplicate the server.
+        assert!(
+            code.notes
+                .iter()
+                .any(|n| n.contains("run `claude mcp remove --scope user pagelamp` first"))
+        );
+        let codex = by_client(&configs, McpClient::Codex);
+        assert!(codex.notes.iter().any(|n| n.contains(
+            "already has a [mcp_servers.pagelamp] section (and [mcp_servers.pagelamp.env]), replace those lines"
+        )));
         let codex = by_client(&configs, McpClient::Codex);
         for expected in [
             McpNoteCode::CodexConfigSharedWithChatgptDesktop,
@@ -595,6 +612,18 @@ mod tests {
             "{steps}"
         );
         assert!(steps.contains("add only the \"pagelamp\" entry"), "{steps}");
+        assert!(
+            steps.contains("If it's empty or only {}, replace its content"),
+            "{steps}"
+        );
+        assert!(
+            steps.contains("already a \"pagelamp\" entry, replace it"),
+            "{steps}"
+        );
+        assert!(
+            steps.contains("right after the opening {, followed by a comma"),
+            "{steps}"
+        );
         // Claude Desktop writes "preferences" itself: the file often exists without servers.
         assert!(
             steps.contains("but no \"mcpServers\", add the \"mcpServers\": { … } part"),
