@@ -207,7 +207,7 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 | Version | Scope |
 |---|---|
 | **v0.1 MCP-first** (now) | core + sources + MCP server + CLI; desktop shell for onboarding/sources/courses/connect |
-| v0.2 | local deterministic reminders (deadlines ≤ 48h, Monday "this week"), Claude Desktop `.mcpb` one-click extension, CI + signed releases + Tauri updater (GitHub Releases), bilingual README/CONTRIBUTING |
+| v0.2 | local deterministic reminders (deadlines ≤ 48h, Monday "this week"), Claude Desktop `.mcpb` one-click extension, CI + signed releases + Tauri updater (GitHub Releases), bilingual README/CONTRIBUTING, text extraction in a resource-limited child process (`studentos extract-worker`: PDF decompression-bomb / parser-crash isolation), browser Connector decision (see spike) |
 | **v0.3 "full" StudentOS (embedded model access)** | StudentOS generates study plans / weekly explanations itself, via a provider abstraction: ChatGPT subscription through the bundled **unmodified official Codex** (`codex exec` stable / app-server experimental, Codex-managed "Sign in with ChatGPT"); Claude subscription through the student's **unmodified Claude Code** in headless mode (paid plans only; requires accepting Anthropic Commercial Terms + written confirmation first); BYOK API keys; local models. Never proxy/resell usage, never handle subscription tokens. |
 | after v0.3 | branded distributions (first: UTMCSSA Academic Dept) via brand config — no fork |
 
