@@ -93,6 +93,9 @@ describe("OnboardingPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Your courses are ready" }),
     ).toBeInTheDocument();
+    // Folder + feed: everything really is on this computer, so no Canvas download note.
+    expect(screen.getByText(/Everything is on this computer now/)).toBeInTheDocument();
+    expect(screen.queryByText(/Canvas files aren't downloaded/)).toBeNull();
     // One row per new source (the folder is named after its last path segment).
     const panel = screen.getByRole("region", { name: "Sync finished" });
     expect(within(panel).getByText("Courses")).toBeInTheDocument();
@@ -251,6 +254,11 @@ describe("OnboardingPage", () => {
       await screen.findByRole("heading", { level: 1, name: "Your courses are ready" }),
     ).toBeInTheDocument();
     expect(screen.getByText("canvas.demo.test")).toBeInTheDocument();
+    // Canvas files aren't downloaded by a sync: don't claim everything is on this computer.
+    expect(screen.queryByText(/Everything is on this computer now/)).toBeNull();
+    expect(screen.getByText(/Canvas files aren't downloaded automatically/)).toHaveTextContent(
+      "“Download files…” on its “This week” tab",
+    );
     await expectSecretNotKept(CANVAS_TOKEN, queryClient);
   });
 

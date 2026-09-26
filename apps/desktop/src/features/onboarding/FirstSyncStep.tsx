@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, Cable } from "lucide-react";
+import { ArrowLeft, BookOpenText, Cable, Download } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -52,15 +52,29 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
 
   const view = !finished || outcome === "running" || outcome === "idle" ? "running" : outcome;
   const copy = COPY[view];
+  // Canvas files aren't downloaded by a sync (a download can count as viewing them), so after
+  // a Canvas sync "everything is on this computer" would be wrong.
+  const canvasSynced =
+    (view === "done" || view === "doneWithErrors") &&
+    !!summary?.results.some((r) => r.kind === "canvas" && r.ok);
+  const description =
+    view === "done" && canvasSynced ? t("sync.doneDescriptionCanvas") : t(copy.description);
 
   return (
     <div>
-      <PageHeader title={t(copy.title)} description={t(copy.description)} />
+      <PageHeader title={t(copy.title)} description={description} />
       <div className="space-y-6">
         <SyncProgressPanel onRetry={run} showFixLink />
 
         {(view === "done" || view === "doneWithErrors") && summary ? (
           <SummaryStats summary={summary} />
+        ) : null}
+
+        {canvasSynced ? (
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <Download className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {t("sync.canvasFilesNote")}
+          </p>
         ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3">

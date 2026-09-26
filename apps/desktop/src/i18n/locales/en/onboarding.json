@@ -24,6 +24,7 @@
     "description": "{{product}} is copying your courses to this computer. The first sync can take a minute.",
     "doneTitle": "Your courses are ready",
     "doneDescription": "Everything is on this computer now. Next, connect the AI app you already use so it can read your courses.",
+    "doneDescriptionCanvas": "Your courses, their weekly structure and deadlines are on this computer now. Next, connect the AI app you already use so it can read them.",
     "problemsTitle": "Almost there",
     "problemsDescription": "Some sources didn't sync. You can carry on and fix them later on Sources & sync.",
     "failedTitle": "The sync didn't run",
@@ -33,6 +34,7 @@
     "materials": "Materials",
     "events": "Deadlines and events",
     "noCourses": "No courses found yet. If you added a folder, check that it has one sub-folder per course. You can change your sources at any time on Sources & sync.",
+    "canvasFilesNote": "Canvas files aren't downloaded automatically, because Canvas can count a download as viewing the file. To add a course's files, open the course and use “Download files…” on its “This week” tab.",
     "connect": "Connect your AI app",
     "goToCourses": "Go to my courses"
   }
