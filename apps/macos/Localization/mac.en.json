@@ -1,0 +1,195 @@
+{
+  "app": {
+    "name": "{{product}}"
+  },
+  "nav": {
+    "thisWeek": "This Week",
+    "sources": "Sources & Sync",
+    "connect": "Connect AI App"
+  },
+  "sidebar": {
+    "setup": "Setup"
+  },
+  "menu": {
+    "go": "Go",
+    "course": "Course",
+    "help": "{{product}} Help"
+  },
+  "toolbar": {
+    "inspector": "Inspector",
+    "backToCurrentWeek": "This Week",
+    "showRecentMaterials": "Show Recent Materials"
+  },
+  "actions": {
+    "syncNow": "Sync Now",
+    "syncAll": "Sync All",
+    "tryAgain": "Try Again",
+    "checkAgain": "Check Again",
+    "hideResults": "Hide Results",
+    "openSourcesAndSync": "Open Sources & Sync",
+    "replaceToken": "Replace Token…",
+    "replaceFeed": "Replace Feed Address…",
+    "addASource": "Add a Source…",
+    "addSource": "Add Source…",
+    "setUp": "Set Up {{product}}…",
+    "showInFinder": "Show in Finder",
+    "copyPath": "Copy Path",
+    "copyConfiguration": "Copy Configuration",
+    "copyCommand": "Copy Command",
+    "copyRemoveCommand": "Copy Remove Command",
+    "openCourseWebsite": "Open Course Website",
+    "openInBrowser": "Open in Browser",
+    "openCourse": "Open Course",
+    "showFullPlan": "Show Full Plan",
+    "showLess": "Show Less",
+    "copyThePrompt": "Copy the Prompt",
+    "backToThisWeek": "Back to This Week",
+    "setTermDates": "Set Term Dates…",
+    "aiPolicy": "AI Policy…",
+    "previousWeek": "Previous Week",
+    "nextWeek": "Next Week",
+    "currentWeek": "Current Week",
+    "copyDiagnosticReport": "Copy Diagnostic Report…",
+    "copyReport": "Copy Report",
+    "openLogsFolder": "Open Logs Folder",
+    "reportProblem": "Report a Problem…",
+    "reportProblemOnGitHub": "Report a Problem on GitHub",
+    "reopenNow": "Reopen Now",
+    "done": "Done",
+    "copyTitle": "Copy Title",
+    "copyLink": "Copy Link",
+    "goToCourse": "Go to Course"
+  },
+  "thisWeek": {
+    "nextUp": "Next up",
+    "planTasksToday_one": "{{count}} plan task today",
+    "planTasksToday_other": "{{count}} plan tasks today",
+    "deadlineCount_one": "{{count}} deadline",
+    "deadlineCount_other": "{{count}} deadlines",
+    "classCount_one": "{{count}} class",
+    "classCount_other": "{{count}} classes"
+  },
+  "countdown": {
+    "minutes_one": "in {{count}} min",
+    "minutes_other": "in {{count}} min",
+    "hours_one": "in {{count}} h",
+    "hours_other": "in {{count}} h",
+    "hoursMinutes": "in {{hours}} h {{minutes}} min"
+  },
+  "course": {
+    "eyebrow": "{{code}} · {{source}} · synced {{when}}",
+    "eyebrowNeverSynced": "{{code}} · {{source}} · not synced yet",
+    "eyebrowSyncing": "{{code}} · {{source}} · Syncing now…",
+    "aiStatus": {
+      "notSet": "AI policy not set · Set…"
+    },
+    "sections": {
+      "week": "This Week"
+    },
+    "readableShort": "{{indexed}} of {{count}} readable",
+    "week": {
+      "relative": {
+        "thisWeek": "This week",
+        "lastWeek": "Last week",
+        "nextWeek": "Next week",
+        "inWeeks_one": "In {{count}} week",
+        "inWeeks_other": "In {{count}} weeks",
+        "weeksAgo_one": "{{count}} week ago",
+        "weeksAgo_other": "{{count}} weeks ago"
+      }
+    },
+    "timeline": {
+      "wrongWeek": "Wrong week?"
+    },
+    "term": {
+      "source": {
+        "user": "Set by you",
+        "synced": "From {{source}}",
+        "none": "No dates yet"
+      }
+    },
+    "noAI": {
+      "body": "Your AI app can still see titles, dates and deadlines for planning, but it won't read this course's materials."
+    }
+  },
+  "materialStatus": {
+    "ok": "Readable",
+    "pending": "Waiting",
+    "not_downloaded": "Not downloaded",
+    "unsupported": "Can't be read",
+    "error": "Couldn't extract",
+    "withheld_by_policy": "Not shared",
+    "turned_off": "Off for AI"
+  },
+  "inspector": {
+    "aiPolicy": "AI Policy",
+    "courseMaterials": "Course Materials",
+    "termDates": "Term Dates",
+    "course": "Course"
+  },
+  "sources": {
+    "lastRun": "Last run"
+  },
+  "connect": {
+    "disclosureTitle": "What your AI app can read",
+    "setUpLabel": "Set up",
+    "otherApp": "Other app",
+    "configured": "Set up",
+    "quitFirst": "Quit {{app}} completely first (⌘Q). It saves over this file when it quits, so changes made while it's open are lost.",
+    "copyAnyway": {
+      "title": "Copy anyway?",
+      "message": "It will stop working after you move {{product}}.",
+      "confirm": "Copy Anyway"
+    }
+  },
+  "settings": {
+    "tabs": {
+      "general": "General",
+      "data": "Data",
+      "privacy": "Privacy",
+      "help": "Help"
+    },
+    "language": {
+      "system": "System ({{language}})",
+      "reopenHint": "The menu bar switches language after {{product}} reopens."
+    },
+    "privacy": {
+      "disclosureTitle": "How your AI app uses your courses",
+      "perCourse": "You can stop your AI app from reading any course's materials: open the course and turn off the switch under Course Materials in its inspector."
+    }
+  },
+  "diagnostics": {
+    "previewTitle": "Diagnostic Report"
+  },
+  "capsule": {
+    "syncing": "Syncing {{done}} of {{total}} · {{source}}",
+    "needsToken": "{{source}} needs a new token",
+    "needsFeed": "{{source}} needs a new feed address"
+  },
+  "a11y": {
+    "sidebarCourse": "{{code}}, {{name}}, {{week}}",
+    "sidebarCourseNoAI": "{{code}}, {{name}}, {{week}}, No AI",
+    "sidebarCourseAttention": "{{code}}, {{name}}, {{week}}, source needs attention",
+    "sidebarCourseNoAIAttention": "{{code}}, {{name}}, {{week}}, No AI, source needs attention",
+    "deadlineRow": "{{title}}. {{course}}, {{kind}}. Due {{when}}.",
+    "deadlineRowCountdown": "{{title}}. {{course}}, {{kind}}. Due {{when}}, {{remaining}}.",
+    "contentsRow": "{{code}}, {{name}}. {{week}}. {{next}}. AI policy: {{policy}}. {{materials}}.",
+    "contentsRowNoDeadline": "{{code}}, {{name}}. {{week}}. AI policy: {{policy}}. {{materials}}.",
+    "planItem": "{{title}}, {{course}}, {{duration}}, {{state}}",
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes",
+    "capsuleLabel": "Sync status: {{status}}",
+    "capsuleHint": "Shows details",
+    "syncStarted": "Sync started"
+  },
+  "common": {
+    "week": {
+      "compact": "Wk {{week}}"
+    }
+  },
+  "courses": {
+    "thisWeek": {
+      "next7": "Next 7 days"
+    }
+  }
+}

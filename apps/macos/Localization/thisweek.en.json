@@ -1,0 +1,24 @@
+{
+  "thisWeek": {
+    "dueToday": "Due today {{time}}",
+    "dueTomorrow": "Due tomorrow {{time}}",
+    "todayAt": "Today {{time}}",
+    "tomorrowAt": "Tomorrow {{time}}",
+    "allHidden": "All of your courses are hidden.",
+    "contents": {
+      "policyNotSet": "AI policy not set",
+      "notShared": "materials not shared",
+      "aiOff": "AI access off"
+    },
+    "a11y": {
+      "deadlinesRotor": "Deadlines",
+      "deadlineRowNoCourse": "{{title}}. {{kind}}. Due {{when}}.",
+      "deadlineRowCountdownNoCourse": "{{title}}. {{kind}}. Due {{when}}, {{remaining}}.",
+      "eventRow": "{{title}}. {{course}}, {{kind}}. {{when}}.",
+      "eventRowNoCourse": "{{title}}. {{kind}}. {{when}}.",
+      "planItemNoCourse": "{{title}}, {{duration}}, {{state}}",
+      "planItemNoDuration": "{{title}}, {{course}}, {{state}}",
+      "planItemTitleOnly": "{{title}}, {{state}}"
+    }
+  }
+}

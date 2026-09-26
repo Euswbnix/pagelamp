@@ -1,0 +1,25 @@
+{
+  "course": {
+    "value": {
+      "on": "On",
+      "off": "Off"
+    },
+    "policy": {
+      "syllabusRule": "Rule from your syllabus"
+    },
+    "term": {
+      "lastDay": "Last day of term",
+      "noDate": "Not set",
+      "sourceFolder": "From your course folder settings"
+    },
+    "a11y": {
+      "weekLine": "{{week}}, {{relative}}",
+      "materialRow": "{{title}}. {{meta}}. {{status}}.",
+      "aiStatusHint": "Shows the AI policy in the inspector"
+    },
+    "sourceAlert": {
+      "expiredBody": "This course isn't updating. Replace the token in Sources & Sync to get new materials and deadlines.",
+      "failedBody": "What you see here may be out of date. Sources & Sync has the details."
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "thisWeek": {
+    "dueToday": "今天 {{time}} 截止",
+    "dueTomorrow": "明天 {{time}} 截止",
+    "todayAt": "今天 {{time}}",
+    "tomorrowAt": "明天 {{time}}",
+    "allHidden": "所有课程都已隐藏。",
+    "contents": {
+      "policyNotSet": "尚未设置 AI 使用规定",
+      "notShared": "资料不共享",
+      "aiOff": "已关闭 AI 读取"
+    },
+    "a11y": {
+      "deadlinesRotor": "截止日期",
+      "deadlineRowNoCourse": "{{title}}。{{kind}}。{{when}}截止。",
+      "deadlineRowCountdownNoCourse": "{{title}}。{{kind}}。{{when}}截止，{{remaining}}。",
+      "eventRow": "{{title}}。{{course}}，{{kind}}。{{when}}。",
+      "eventRowNoCourse": "{{title}}。{{kind}}。{{when}}。",
+      "planItemNoCourse": "{{title}}，{{duration}}，{{state}}",
+      "planItemNoDuration": "{{title}}，{{course}}，{{state}}",
+      "planItemTitleOnly": "{{title}}，{{state}}"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "actions": {
+    "copyEntryOnly": "仅复制这一项",
+    "copyServersSection": "复制 mcpServers 部分"
+  },
+  "sources": {
+    "fixUnavailable": "这个预览版暂时还不能更换访问令牌或日历订阅地址。"
+  },
+  "connect": {
+    "existingFile": {
+      "hasServers": "文件里已经有 \"mcpServers\"",
+      "otherSettings": "文件里有其他设置，但没有 \"mcpServers\""
+    }
+  },
+  "about": {
+    "tagline": "为每门课点一盏读书灯。"
+  }
+}

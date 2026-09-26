@@ -1,0 +1,18 @@
+{
+  "actions": {
+    "copyEntryOnly": "Copy Entry Only",
+    "copyServersSection": "Copy mcpServers Section"
+  },
+  "sources": {
+    "fixUnavailable": "This preview can't replace tokens or feed addresses yet."
+  },
+  "connect": {
+    "existingFile": {
+      "hasServers": "It already has an \"mcpServers\" section",
+      "otherSettings": "It has other settings but no \"mcpServers\""
+    }
+  },
+  "about": {
+    "tagline": "A reading lamp for your courses."
+  }
+}

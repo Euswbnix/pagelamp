@@ -1,0 +1,195 @@
+{
+  "app": {
+    "name": "{{product}}"
+  },
+  "nav": {
+    "thisWeek": "本周",
+    "sources": "数据来源与同步",
+    "connect": "连接 AI 应用"
+  },
+  "sidebar": {
+    "setup": "配置"
+  },
+  "menu": {
+    "go": "前往",
+    "course": "课程",
+    "help": "{{product}} 帮助"
+  },
+  "toolbar": {
+    "inspector": "检查器",
+    "backToCurrentWeek": "回到本周",
+    "showRecentMaterials": "查看近期资料"
+  },
+  "actions": {
+    "syncNow": "立即同步",
+    "syncAll": "全部同步",
+    "tryAgain": "重试",
+    "checkAgain": "重新检查",
+    "hideResults": "隐藏结果",
+    "openSourcesAndSync": "前往“数据来源与同步”",
+    "replaceToken": "更换访问令牌…",
+    "replaceFeed": "更换日历订阅地址…",
+    "addASource": "添加数据来源…",
+    "addSource": "添加数据来源…",
+    "setUp": "设置 {{product}}…",
+    "showInFinder": "在访达中显示",
+    "copyPath": "复制路径",
+    "copyConfiguration": "复制配置",
+    "copyCommand": "复制命令",
+    "copyRemoveCommand": "复制移除命令",
+    "openCourseWebsite": "打开课程网站",
+    "openInBrowser": "在浏览器中打开",
+    "openCourse": "打开课程",
+    "showFullPlan": "查看完整计划",
+    "showLess": "收起",
+    "copyThePrompt": "复制这句话",
+    "backToThisWeek": "返回本周",
+    "setTermDates": "设置学期日期…",
+    "aiPolicy": "AI 使用规定…",
+    "previousWeek": "上一周",
+    "nextWeek": "下一周",
+    "currentWeek": "当前周",
+    "copyDiagnosticReport": "复制诊断报告…",
+    "copyReport": "复制报告",
+    "openLogsFolder": "打开日志文件夹",
+    "reportProblem": "反馈问题…",
+    "reportProblemOnGitHub": "在 GitHub 上反馈问题",
+    "reopenNow": "立即重新打开",
+    "done": "完成",
+    "copyTitle": "复制标题",
+    "copyLink": "复制链接",
+    "goToCourse": "前往课程"
+  },
+  "thisWeek": {
+    "nextUp": "接下来",
+    "planTasksToday_one": "今天有 {{count}} 项学习任务",
+    "planTasksToday_other": "今天有 {{count}} 项学习任务",
+    "deadlineCount_one": "{{count}} 个截止日期",
+    "deadlineCount_other": "{{count}} 个截止日期",
+    "classCount_one": "{{count}} 节课",
+    "classCount_other": "{{count}} 节课"
+  },
+  "countdown": {
+    "minutes_one": "还有 {{count}} 分钟",
+    "minutes_other": "还有 {{count}} 分钟",
+    "hours_one": "还有 {{count}} 小时",
+    "hours_other": "还有 {{count}} 小时",
+    "hoursMinutes": "还有 {{hours}} 小时 {{minutes}} 分钟"
+  },
+  "course": {
+    "eyebrow": "{{code}} · {{source}} · {{when}}同步",
+    "eyebrowNeverSynced": "{{code}} · {{source}} · 尚未同步",
+    "eyebrowSyncing": "{{code}} · {{source}} · 正在同步…",
+    "aiStatus": {
+      "notSet": "尚未设置 AI 使用规定 · 去设置…"
+    },
+    "sections": {
+      "week": "本周"
+    },
+    "readableShort": "{{count}} 份中 {{indexed}} 份可读取",
+    "week": {
+      "relative": {
+        "thisWeek": "本周",
+        "lastWeek": "上周",
+        "nextWeek": "下周",
+        "inWeeks_one": "{{count}} 周后",
+        "inWeeks_other": "{{count}} 周后",
+        "weeksAgo_one": "{{count}} 周前",
+        "weeksAgo_other": "{{count}} 周前"
+      }
+    },
+    "timeline": {
+      "wrongWeek": "周次不对？"
+    },
+    "term": {
+      "source": {
+        "user": "由你设置",
+        "synced": "来自 {{source}}",
+        "none": "还没有日期"
+      }
+    },
+    "noAI": {
+      "body": "你的 AI 应用仍能看到标题、日期和截止日期，用来帮你做计划，但不会读取这门课的资料。"
+    }
+  },
+  "materialStatus": {
+    "ok": "可读取",
+    "pending": "等待处理",
+    "not_downloaded": "未下载",
+    "unsupported": "无法读取",
+    "error": "提取失败",
+    "withheld_by_policy": "不共享",
+    "turned_off": "未向 AI 开放"
+  },
+  "inspector": {
+    "aiPolicy": "AI 使用规定",
+    "courseMaterials": "课程资料",
+    "termDates": "学期日期",
+    "course": "课程"
+  },
+  "sources": {
+    "lastRun": "上次运行"
+  },
+  "connect": {
+    "disclosureTitle": "你的 AI 应用能读取什么",
+    "setUpLabel": "设置",
+    "otherApp": "其他应用",
+    "configured": "已设置",
+    "quitFirst": "先完全退出 {{app}}（⌘Q）。它退出时会覆盖这个文件，所以在它运行时做的修改会丢失。",
+    "copyAnyway": {
+      "title": "仍要复制吗？",
+      "message": "移动 {{product}} 之后，这段设置就会失效。",
+      "confirm": "仍要复制"
+    }
+  },
+  "settings": {
+    "tabs": {
+      "general": "通用",
+      "data": "数据",
+      "privacy": "隐私",
+      "help": "帮助"
+    },
+    "language": {
+      "system": "跟随系统（{{language}}）",
+      "reopenHint": "菜单栏会在 {{product}} 重新打开后切换语言。"
+    },
+    "privacy": {
+      "disclosureTitle": "你的 AI 应用如何使用你的课程",
+      "perCourse": "你可以让 AI 应用不再读取任何一门课的资料：打开这门课，在检查器的“课程资料”里关掉开关。"
+    }
+  },
+  "diagnostics": {
+    "previewTitle": "诊断报告"
+  },
+  "capsule": {
+    "syncing": "正在同步 {{done}}/{{total}} · {{source}}",
+    "needsToken": "{{source}} 需要新的访问令牌",
+    "needsFeed": "{{source}} 需要新的日历订阅地址"
+  },
+  "a11y": {
+    "sidebarCourse": "{{code}}，{{name}}，{{week}}",
+    "sidebarCourseNoAI": "{{code}}，{{name}}，{{week}}，禁止使用 AI",
+    "sidebarCourseAttention": "{{code}}，{{name}}，{{week}}，数据来源需要处理",
+    "sidebarCourseNoAIAttention": "{{code}}，{{name}}，{{week}}，禁止使用 AI，数据来源需要处理",
+    "deadlineRow": "{{title}}。{{course}}，{{kind}}。{{when}}截止。",
+    "deadlineRowCountdown": "{{title}}。{{course}}，{{kind}}。{{when}}截止，{{remaining}}。",
+    "contentsRow": "{{code}}，{{name}}。{{week}}。{{next}}。AI 使用规定：{{policy}}。{{materials}}。",
+    "contentsRowNoDeadline": "{{code}}，{{name}}。{{week}}。AI 使用规定：{{policy}}。{{materials}}。",
+    "planItem": "{{title}}，{{course}}，{{duration}}，{{state}}",
+    "minutes_one": "{{count}} 分钟",
+    "minutes_other": "{{count}} 分钟",
+    "capsuleLabel": "同步状态：{{status}}",
+    "capsuleHint": "显示详情",
+    "syncStarted": "开始同步"
+  },
+  "common": {
+    "week": {
+      "compact": "第 {{week}} 周"
+    }
+  },
+  "courses": {
+    "thisWeek": {
+      "next7": "未来 7 天"
+    }
+  }
+}

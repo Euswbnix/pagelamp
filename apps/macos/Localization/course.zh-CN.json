@@ -1,0 +1,25 @@
+{
+  "course": {
+    "value": {
+      "on": "开启",
+      "off": "关闭"
+    },
+    "policy": {
+      "syllabusRule": "课程大纲中的规定"
+    },
+    "term": {
+      "lastDay": "学期结束日期",
+      "noDate": "未设置",
+      "sourceFolder": "来自课程文件夹的设置"
+    },
+    "a11y": {
+      "weekLine": "{{week}}，{{relative}}",
+      "materialRow": "{{title}}。{{meta}}。{{status}}。",
+      "aiStatusHint": "在检查器中显示 AI 使用规定"
+    },
+    "sourceAlert": {
+      "expiredBody": "这门课程目前无法更新。请到“数据来源与同步”中更换访问令牌，才能获取新的资料和截止日期。",
+      "failedBody": "这里的内容可能不是最新的，详情请查看“数据来源与同步”。"
+    }
+  }
+}
