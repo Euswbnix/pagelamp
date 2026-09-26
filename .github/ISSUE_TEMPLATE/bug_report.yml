@@ -1,0 +1,47 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing StudentOS! **Never paste Canvas tokens, calendar-feed links, real course
+        materials or classmates' names** — describe them or use made-up examples.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Desktop app
+        - Command line (studentos)
+        - My AI app with StudentOS (MCP)
+        - Sync (course folder / calendar feed)
+        - Sync (Canvas)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: ai-app
+    attributes:
+      label: AI app (if relevant)
+      placeholder: e.g. Claude Desktop 1.x, ChatGPT desktop (Work mode), Claude Code
+  - type: input
+    id: version
+    attributes:
+      label: StudentOS version and OS
+      placeholder: e.g. studentos 0.1.0-beta.1 on macOS 27 (Apple silicon)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or output
+      description: Check that nothing personal or secret is included.
+      render: text
