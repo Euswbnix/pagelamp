@@ -23,8 +23,8 @@ First public beta.
   "Connect your AI app", settings), in English and 简体中文, light and dark.
 
 ### Upgrading from an earlier build
-- After installing a new version, open PageLamp once (or run `pagelamp sync`), then restart your
-  AI app so it starts the new `pagelamp`.
+- After installing a new version, quit your AI app completely and open it again so it starts the new
+  `pagelamp` (on macOS, open PageLamp once first so macOS lets the new build run).
 
 ### Known limitations
 - Builds are not code-signed yet (see the README for first-launch steps).
@@ -34,8 +34,9 @@ First public beta.
   in *Connect your AI app*); the Linux `.AppImage` can't serve your AI app — use the `.deb`/`.rpm`.
 - Older `.ppt`/`.doc` files and scanned PDFs (no text layer) are listed but not searchable.
 - Windows and Linux builds are x86_64 only.
-- Text extraction runs in the sync process. PDFs are checked for decompression bombs first, but
-  image streams, LZW-compressed and encrypted streams aren't measured, so a deliberately crafted
-  file can still use a lot of memory (an isolated extraction worker is planned for v0.2).
+- Text extraction runs in the sync process. PDFs are checked for decompression bombs and their image
+  data is never decoded, but streams compressed only with LZW aren't measured, so a deliberately
+  crafted file can still use more memory than it should (an isolated extraction worker is planned
+  for v0.2).
 - Installer file names and the OS-level app version show `0.1.0` for every 0.1.0 beta; the real
   version is in *Settings → About* or `pagelamp --version`.

@@ -194,9 +194,18 @@ Additions agreed 2026-09-25 (after the first draft of this section):
   — stable codes next to the English text so the UI can localise.
 
 Additions agreed 2026-09-26 (release audit):
-- `McpNoteCode::RunFromTemporaryLocation`: the `pagelamp` binary runs from a path that won't last
-  (macOS disk image `/Volumes/…` or Gatekeeper `AppTranslocation` copy; Linux AppImage mount). The
-  UI shows it as a warning above the snippets ("move PageLamp to Applications first").
+- `McpNoteCode::RunFromTemporaryLocation` + `McpLaunch.temporary_location: Option<TemporaryLocation>`
+  (`disk_image` = `/Volumes/…` on a read-only volume, `translocated` = Gatekeeper `AppTranslocation`
+  copy, `appimage` = inside `$APPDIR` or a `.mount_*` dir): the `pagelamp` binary runs from a path that
+  won't last. The UI shows a warning above the snippets ("move PageLamp to Applications first").
+- `McpNoteCode::QuitBeforeEditing` (Claude Desktop only, replaces `restart_client_after_change` there):
+  quit Claude Desktop, then edit, save, reopen — it saves over its config when it quits.
+- `CourseOverview.downloadable_files` (Canvas files not yet downloaded and not blocked) and
+  `MaterialView.download_blocked: Option<locked | too_large>`.
+- `App::open_at_with_secrets(data_dir, Arc<dyn SecretBackend>)` for embedders and tests
+  (`MemorySecrets` never touches the OS keychain).
+- `pagelamp mcp` never creates a database but migrates an existing older one once at startup
+  (additive migrations only).
 - Versions: `[workspace.package] version` carries the pre-release (`0.1.0-beta.1`) and is what users
   see (`--version`, About, reports, MCP `serverInfo`); `tauri.conf.json` keeps the numeric part
   (MSI rejects pre-releases). `release.yml` refuses a tag that doesn't match.

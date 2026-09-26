@@ -35,6 +35,8 @@ pnpm run dev:mock        # UI in the browser with synthetic data
 pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build
 pnpm tauri dev           # the real app
 pnpm run smoke           # real app against a throw-away synthetic course folder
+# After changing a facade type, regenerate src/api/generated.ts (CI fails on drift):
+pnpm run gen:types
 # The desktop crate needs the built frontend and the bundled CLI before cargo can check it:
 pnpm run build && pnpm run build:sidecar
 cargo clippy -p pagelamp-desktop --all-targets -- -D warnings && cargo test -p pagelamp-desktop

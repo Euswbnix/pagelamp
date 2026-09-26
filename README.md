@@ -107,6 +107,7 @@ KWallet); course folders work without one.
    ```bash
    pagelamp folder add ~/Courses --term-start 2026-09-08
    pagelamp ical add            # paste the feed link when asked (optional)
+   pagelamp canvas add --base-url https://canvas.school.edu   # optional, your own token only
    pagelamp sync
    pagelamp courses
    ```
