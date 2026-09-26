@@ -59,6 +59,10 @@ folder is shown as `~`. A diagnostic report (*Copy diagnostic report* in the app
 replaces course names with "Course 1", "Course 2". Nothing is ever sent automatically — you decide
 whether to share a report, e.g. in a GitHub issue.
 
+To replace names of courses you have since renamed or removed, PageLamp keeps a small list of course
+names, codes and folder names in `course-aliases.json` in your data folder (readable only by you,
+never included in a report). Each entry is deleted 30 days after the course was last seen.
+
 ## Questions
 
 Open an issue at https://github.com/Euswbnix/pagelamp/issues (don't include personal data), or see
