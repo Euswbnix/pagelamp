@@ -11,7 +11,7 @@ interface RevealFolderButtonProps {
   reveal: () => Promise<void>;
 }
 
-/** Opens one of Weekmark's folders in Finder / Explorer. */
+/** Opens one of PageLamp's folders in Finder / Explorer. */
 export function RevealFolderButton({ label, reveal }: RevealFolderButtonProps) {
   const { t } = useTranslation("settings");
   const { t: tc } = useTranslation();

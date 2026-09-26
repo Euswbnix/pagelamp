@@ -3,10 +3,10 @@ import type { Brand } from "../types";
 /** The plain brand that ships on GitHub. Distributions copy this file; see ../types.ts. */
 const brand: Brand = {
   id: "default",
-  productName: "Weekmark",
+  productName: "PageLamp",
   tagline: {
-    en: "Bookmark this week of every course.",
-    "zh-CN": "给每门课的这一周，夹上一枚书签。",
+    en: "A reading lamp for your courses.",
+    "zh-CN": "为每门课点一盏读书灯。",
   },
   defaultLocale: "en",
   colors: {
@@ -18,8 +18,8 @@ const brand: Brand = {
   },
   logo: null,
   links: {
-    homepage: "https://github.com/Euswbnix/weekmark",
-    issues: "https://github.com/Euswbnix/weekmark/issues/new/choose",
+    homepage: "https://github.com/Euswbnix/pagelamp",
+    issues: "https://github.com/Euswbnix/pagelamp/issues/new/choose",
   },
   aiPolicyHint: {
     en: "Many universities don't allow generative AI in a course unless the instructor permits it — check your syllabus.",

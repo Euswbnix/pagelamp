@@ -1,6 +1,6 @@
 // ─── Tauri boundary ────────────────────────────────────────────────────────────────────────
 // This file is the ONLY place the UI talks to Rust. Each method invokes one command defined in
-// src-tauri/src/commands.rs, which is a thin wrapper over `weekmark_app::App`.
+// src-tauri/src/commands.rs, which is a thin wrapper over `pagelamp_app::App`.
 //
 // Argument names: Tauri maps Rust snake_case parameters to camelCase keys, so the Rust
 // parameter `base_url` is passed here as `baseUrl`.
@@ -11,7 +11,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isHttpUrl } from "@/lib/url";
-import type { WeekmarkApi } from "./client";
+import type { PageLampApi } from "./client";
 import { ApiError, toApiError } from "./errors";
 import type { SyncEvent } from "./types";
 
@@ -29,7 +29,7 @@ function eventChannel(onEvent: (event: SyncEvent) => void): Channel<SyncEvent> {
   return channel;
 }
 
-export function createTauriApi(): WeekmarkApi {
+export function createTauriApi(): PageLampApi {
   return {
     status: () => call("status"),
     listSources: () => call("list_sources"),

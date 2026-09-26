@@ -40,7 +40,7 @@ describe("diagnostic report", () => {
     );
     const text = await within(dialog).findByRole("textbox", { name: "Diagnostic report" });
     expect(text).toHaveAttribute("readonly");
-    expect((text as HTMLTextAreaElement).value).toContain("# Weekmark diagnostic report");
+    expect((text as HTMLTextAreaElement).value).toContain("# PageLamp diagnostic report");
     // Opening the preview fetched the report but copied nothing.
     expect(report).toHaveBeenCalledTimes(1);
     expect(writeText).not.toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe("Help & feedback", () => {
     const { user } = renderRoute("/settings", { api });
     const help = await helpSection();
     const link = within(help).getByRole("link", { name: "Report a problem on GitHub" });
-    expect(link).toHaveAttribute("href", "https://github.com/Euswbnix/weekmark/issues/new/choose");
+    expect(link).toHaveAttribute("href", "https://github.com/Euswbnix/pagelamp/issues/new/choose");
 
     await user.click(link);
     expect(openExternal).toHaveBeenCalledWith(brand.links.issues);
@@ -121,7 +121,7 @@ describe("crash notice", () => {
     const { user } = renderRoute("/courses", { api });
 
     const region = await screen.findByRole("region", {
-      name: "Weekmark closed unexpectedly last time",
+      name: "PageLamp closed unexpectedly last time",
     });
     expect(within(region).getByText(/^It happened /)).toBeInTheDocument();
     expect(within(region).getByRole("link", { name: "Report a problem on GitHub" })).toBeVisible();
@@ -156,7 +156,7 @@ describe("crash notice", () => {
     renderRoute("/courses", { api });
     expect(
       await screen.findByRole("region", {
-        name: "Weekmark stopped unexpectedly while your AI app was using it",
+        name: "PageLamp stopped unexpectedly while your AI app was using it",
       }),
     ).toBeInTheDocument();
   });

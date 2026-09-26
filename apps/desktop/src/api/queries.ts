@@ -6,7 +6,7 @@ import { useApi } from "./context";
 import type { AiPolicy, IsoDate } from "./types";
 
 export const queryKeys = {
-  all: ["weekmark"] as const,
+  all: ["pagelamp"] as const,
   status: () => [...queryKeys.all, "status"] as const,
   sources: () => [...queryKeys.all, "sources"] as const,
   courses: () => [...queryKeys.all, "courses"] as const,

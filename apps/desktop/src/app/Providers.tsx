@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { I18nextProvider } from "react-i18next";
-import type { WeekmarkApi } from "@/api/client";
+import type { PageLampApi } from "@/api/client";
 import { ApiProvider } from "@/api/context";
 import { isApiError } from "@/api/errors";
 import { Toaster } from "@/components/ui/sonner";
@@ -34,7 +34,7 @@ export function Providers({
   queryClient,
   children,
 }: {
-  api: WeekmarkApi;
+  api: PageLampApi;
   queryClient?: QueryClient;
   children: ReactNode;
 }) {

@@ -39,8 +39,8 @@ function findChrome() {
   return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 }
 
-const frameDir = mkdtempSync(join(tmpdir(), "weekmark-demo-"));
-const profile = mkdtempSync(join(tmpdir(), "weekmark-demo-profile-"));
+const frameDir = mkdtempSync(join(tmpdir(), "pagelamp-demo-"));
+const profile = mkdtempSync(join(tmpdir(), "pagelamp-demo-profile-"));
 const port = 9334;
 const chrome = spawn(findChrome(), [
   "--headless=new",

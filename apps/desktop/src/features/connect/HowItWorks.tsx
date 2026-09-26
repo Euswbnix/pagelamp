@@ -6,7 +6,7 @@ const POINTS: { key: "background" | "local" | "once" | "moved"; icon: LucideIcon
   { key: "background", icon: Power },
   { key: "local", icon: HardDrive },
   { key: "once", icon: Repeat },
-  // The snippets contain the app's absolute path (the bundled `weekmark` binary).
+  // The snippets contain the app's absolute path (the bundled `pagelamp` binary).
   { key: "moved", icon: FolderInput },
 ];
 

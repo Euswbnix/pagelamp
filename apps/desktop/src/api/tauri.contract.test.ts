@@ -1,4 +1,4 @@
-// IPC contract, TypeScript half. Calls every WeekmarkApi method of the real Tauri client with
+// IPC contract, TypeScript half. Calls every PageLampApi method of the real Tauri client with
 // a mocked IPC and records exactly what would cross the boundary (command + arguments) in
 // src-tauri/tests/fixtures/ipc-calls.json. The Rust half (src-tauri/tests/ipc_contract.rs)
 // replays that file against the real commands, so a renamed argument or an unregistered

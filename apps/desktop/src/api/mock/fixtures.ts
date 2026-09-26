@@ -55,7 +55,7 @@ export interface MockDb {
   lastCrash: CrashReport | null;
 }
 
-export const MOCK_BINARY_PATH = "/Users/demo/Weekmark/target/debug/weekmark";
+export const MOCK_BINARY_PATH = "/Users/demo/PageLamp/target/debug/pagelamp";
 
 // Calendar arithmetic (not "+ N × 24 h"), so dates stay right across daylight-saving changes.
 function at(now: Date, days: number, hour = 12, minute = 0): string {
@@ -559,7 +559,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       install_kind: "json_snippet",
       config_path_hint: "~/Library/Application Support/Claude/claude_desktop_config.json",
       content: JSON.stringify(
-        { mcpServers: { weekmark: { command: binary, args: ["mcp"] } } },
+        { mcpServers: { pagelamp: { command: binary, args: ["mcp"] } } },
         null,
         2,
       ),
@@ -580,7 +580,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       title: "Claude Code",
       install_kind: "shell_command",
       config_path_hint: null,
-      content: `claude mcp add --scope user weekmark -- ${binary} mcp`,
+      content: `claude mcp add --scope user pagelamp -- ${binary} mcp`,
       notes: ["Claude Code needs a paid Claude plan (Pro or higher)."],
       note_codes: ["needs_paid_claude_plan"],
       launch,
@@ -590,7 +590,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       title: "Codex / ChatGPT desktop (Work/Codex mode)",
       install_kind: "toml_snippet",
       config_path_hint: "~/.codex/config.toml",
-      content: `[mcp_servers.weekmark]\ncommand = "${binary}"\nargs = ["mcp"]\n`,
+      content: `[mcp_servers.pagelamp]\ncommand = "${binary}"\nargs = ["mcp"]\n`,
       notes: [
         "The ChatGPT desktop app (Work/Codex mode) reads the same ~/.codex/config.toml.",
         "Documented for ChatGPT Plus and higher, and for Edu.",
@@ -613,7 +613,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
 export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
   materialSeq = 0;
   eventSeq = 0;
-  const dataDir = "/Users/demo/Library/Application Support/dev.Weekmark.Weekmark";
+  const dataDir = "/Users/demo/Library/Application Support/dev.PageLamp.PageLamp";
   if (scenario === "empty") {
     return {
       dataDir,
@@ -641,12 +641,12 @@ function crash(now: Date): CrashReport {
     version: "0.1.0-mock",
     process: "app",
     message: "called `Option::unwrap()` on a `None` value",
-    location: "crates/weekmark-app/src/sync.rs:212:31",
+    location: "crates/pagelamp-app/src/sync.rs:212:31",
   };
 }
 
 /**
- * Stand-in for the Rust diagnostic report (weekmark_app::diagnostics): same kind of content,
+ * Stand-in for the Rust diagnostic report (pagelamp_app::diagnostics): same kind of content,
  * made-up values. The real format is decided by the backend; the UI only shows the text.
  */
 export function diagnosticReport(status: AppStatus, lastCrash: CrashReport | null, now: Date) {
@@ -658,11 +658,11 @@ export function diagnosticReport(status: AppStatus, lastCrash: CrashReport | nul
     ? `${lastCrash.time} · ${lastCrash.process} · ${lastCrash.message}${lastCrash.location ? ` (${lastCrash.location})` : ""}`
     : "none";
   return [
-    "# Weekmark diagnostic report",
+    "# PageLamp diagnostic report",
     "",
     `- Version: ${status.version}`,
     "- OS: macOS 15.5 (aarch64)",
-    "- Data folder: ~/Library/Application Support/dev.Weekmark.Weekmark",
+    "- Data folder: ~/Library/Application Support/dev.PageLamp.PageLamp",
     "- Database: ok",
     "- Keychain: available",
     "",
@@ -683,8 +683,8 @@ export function diagnosticReport(status: AppStatus, lastCrash: CrashReport | nul
     "## Recent log (redacted)",
     "",
     "```",
-    `${now.toISOString()} INFO  weekmark::sync: sync finished (course-1, course-2, course-3)`,
-    `${now.toISOString()} DEBUG weekmark::canvas: GET /api/v1/courses → 200 (token [redacted])`,
+    `${now.toISOString()} INFO  pagelamp::sync: sync finished (course-1, course-2, course-3)`,
+    `${now.toISOString()} DEBUG pagelamp::canvas: GET /api/v1/courses → 200 (token [redacted])`,
     "```",
     "",
   ].join("\n");

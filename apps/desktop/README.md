@@ -1,8 +1,8 @@
-# Weekmark desktop app
+# PageLamp desktop app
 
 The desktop app is a small control panel. You use it to add course sources, sync them, check on
 your courses, and connect the AI app you already use. It has no chat UI. Students talk to their
-own AI app, which reads Weekmark over MCP (see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
+own AI app, which reads PageLamp over MCP (see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)).
 
 Stack: Tauri 2 · React 19 · TypeScript (strict) · Vite · Tailwind CSS v4 + shadcn/ui · TanStack
 Query · Zustand · react-i18next · Biome · Vitest.
@@ -19,9 +19,9 @@ pnpm run dev:mock      # UI only, in the browser, with synthetic demo data (no R
 pnpm tauri dev         # the real desktop app (builds src-tauri and the Rust core)
 ```
 
-The desktop app bundles the `weekmark` CLI as a sidecar (`src-tauri/binaries/`, built by
+The desktop app bundles the `pagelamp` CLI as a sidecar (`src-tauri/binaries/`, built by
 `pnpm run build:sidecar`). Tauri builds it automatically before `tauri dev` / `tauri build`; on a
-fresh checkout run `pnpm run build:sidecar` once before `cargo clippy/test -p weekmark-desktop`.
+fresh checkout run `pnpm run build:sidecar` once before `cargo clippy/test -p pagelamp-desktop`.
 
 Checks (all must pass before handing work over):
 
@@ -34,11 +34,11 @@ pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build
 ## Smoke test against the real backend
 
 ```bash
-pnpm run smoke        # creates synthetic data in <temp>/weekmark-smoke, prints the steps, runs `pnpm tauri dev`
-pnpm run smoke:clean  # deletes <temp>/weekmark-smoke
+pnpm run smoke        # creates synthetic data in <temp>/pagelamp-smoke, prints the steps, runs `pnpm tauri dev`
+pnpm run smoke:clean  # deletes <temp>/pagelamp-smoke
 ```
 
-It points `WEEKMARK_HOME` at a scratch folder (never your real data) and creates a synthetic
+It points `PAGELAMP_HOME` at a scratch folder (never your real data) and creates a synthetic
 course folder with two DEMO courses. The printed steps say what to click and what to expect.
 
 ## Mock mode
@@ -68,7 +68,7 @@ src/
   api/            the backend contract
     generated.ts    TS types generated from Rust (never edit; run `pnpm run gen:types`)
     types.ts        re-exports the generated types (+ a few UI helpers)
-    client.ts       WeekmarkApi: one method per facade call
+    client.ts       PageLampApi: one method per facade call
     tauri.ts        ── Tauri boundary ── the only file that calls Rust (invoke / Channel)
     mock/           in-memory implementation + synthetic fixtures
     queries.ts      TanStack Query hooks the screens use
@@ -82,16 +82,16 @@ src/
   i18n/           i18next setup + locales/<lang>/<screen>.json
   stores/         Zustand: ui preferences, live sync progress
   lib/            formatting, route paths, utils
-src-tauri/        Rust shell: commands.rs = thin wrappers over weekmark_app::App
+src-tauri/        Rust shell: commands.rs = thin wrappers over pagelamp_app::App
 ```
 
 ## The Tauri boundary
 
 - **UI → Rust:** `src/api/tauri.ts` calls commands with `invoke`. Rust parameter names are
   snake_case and are passed from JS in camelCase (`base_url` → `baseUrl`).
-- **Rust side:** `src-tauri/src/commands.rs` has one command per `weekmark_app::App` method, with
+- **Rust side:** `src-tauri/src/commands.rs` has one command per `pagelamp_app::App` method, with
   the same names. Commands contain no logic. If the UI needs something new, add it to the facade
-  in `crates/weekmark-app` first (ask the backend), then add a wrapper here.
+  in `crates/pagelamp-app` first (ask the backend), then add a wrapper here.
 - **Errors:** every command fails with `AppError { kind, message }`, which becomes an `ApiError`
   in TS. The UI branches on `kind`, never on `message`.
 - **Sync progress** streams over a `tauri::ipc::Channel<SyncEvent>`.
@@ -102,7 +102,7 @@ src-tauri/        Rust shell: commands.rs = thin wrappers over weekmark_app::App
 
 `src/api/tauri.contract.test.ts` calls every method of the real Tauri client with a mocked IPC
 and records what crosses the boundary in `src-tauri/tests/fixtures/ipc-calls.json`;
-`src-tauri/tests/ipc_contract.rs` (`cargo test -p weekmark-desktop`) replays that file against
+`src-tauri/tests/ipc_contract.rs` (`cargo test -p pagelamp-desktop`) replays that file against
 the real commands. A renamed argument or a missing command fails one side. After changing
 `tauri.ts` on purpose, run `pnpm exec vitest run -u src/api/tauri.contract.test.ts` and commit
 the updated fixture.
@@ -112,7 +112,7 @@ the updated fixture.
 When the backend changes a type:
 
 ```bash
-pnpm run gen:types                        # runs `cargo run -p weekmark-cli -- schema`
+pnpm run gen:types                        # runs `cargo run -p pagelamp-cli -- schema`
 pnpm run gen:types --from schema.json     # or from a schema file
 ```
 

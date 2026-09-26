@@ -5,8 +5,8 @@
 //   pnpm run smoke --no-launch  # only (re)create the scratch data and print the steps
 //   pnpm run smoke:clean      # delete the scratch directory
 //
-// Everything lives in <OS temp dir>/weekmark-smoke — never in the real Weekmark data folder:
-//   home/     WEEKMARK_HOME for this run (database, file cache)
+// Everything lives in <OS temp dir>/pagelamp-smoke — never in the real PageLamp data folder:
+//   home/     PAGELAMP_HOME for this run (database, file cache)
 //   Courses/  a synthetic course folder: two DEMO courses with "Week 1".."Week 4" folders
 // All content is made up (docs/ARCHITECTURE.md §3.7).
 
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(desktopDir, "../..");
-const root = join(tmpdir(), "weekmark-smoke");
+const root = join(tmpdir(), "pagelamp-smoke");
 const home = join(root, "home");
 const courses = join(root, "Courses");
 const args = new Set(process.argv.slice(2));
@@ -151,13 +151,13 @@ createCourses();
 // Steps for the person at the window
 // ---------------------------------------------------------------------------------------------
 
-const cli = join(repoRoot, "target/debug/weekmark");
+const cli = join(repoRoot, "target/debug/pagelamp");
 const steps = `
-Weekmark smoke test — synthetic data only
-  data folder (WEEKMARK_HOME): ${home}
+PageLamp smoke test — synthetic data only
+  data folder (PAGELAMP_HOME): ${home}
   course folder to add:         ${courses}
 
- 1. The window opens on "Welcome to Weekmark" (if it opens on Courses instead, go to
+ 1. The window opens on "Welcome to PageLamp" (if it opens on Courses instead, go to
     Sources & sync → Add source and continue at step 3).
     Expect: the AI disclosure and an unticked "I understand"; "Get started" explains that you
     must tick it first.
@@ -189,8 +189,8 @@ Weekmark smoke test — synthetic data only
  9. Connect your AI app.
     Expect: Claude Desktop first; its JSON snippet runs
       ${cli}
-    with WEEKMARK_HOME set to the data folder above (because it isn't the default).
-    ${existsSync(cli) ? "" : "(That binary isn't built yet; `cargo build -p weekmark-cli` makes it — only needed to actually connect an AI app.)\n    "}Nothing needs to be pasted anywhere for this test.
+    with PAGELAMP_HOME set to the data folder above (because it isn't the default).
+    ${existsSync(cli) ? "" : "(That binary isn't built yet; `cargo build -p pagelamp-cli` makes it — only needed to actually connect an AI app.)\n    "}Nothing needs to be pasted anywhere for this test.
 10. Settings.
     Expect: Data folder = the data folder above; "Show folder" opens it in Finder; the privacy
     section says when you confirmed the disclosure. Switch to 简体中文 and dark mode and glance
@@ -209,7 +209,7 @@ if (args.has("--no-launch")) process.exit(0);
 
 const env = {
   ...process.env,
-  WEEKMARK_HOME: home,
+  PAGELAMP_HOME: home,
   // cargo is often not on PATH in GUI-launched shells; rustup installs it here.
   PATH: `${join(homedir(), ".cargo/bin")}:${process.env.PATH}`,
 };

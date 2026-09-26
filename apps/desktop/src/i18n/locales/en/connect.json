@@ -54,7 +54,7 @@
     "codex_plus_and_edu_documented": "Documented for ChatGPT Plus and higher, and for Edu.",
     "free_go_undocumented": "Support on the Free and Go plans isn't documented.",
     "restart_client_after_change": "Quit and reopen the app after changing its config.",
-    "custom_data_dir": "This setup includes WEEKMARK_HOME because {{product}} uses a custom data folder.",
+    "custom_data_dir": "This setup includes PAGELAMP_HOME because {{product}} uses a custom data folder.",
     "generic_stdio_client": "Any other AI app that supports local (stdio) MCP servers works too: adapt the command, arguments and environment to its config format."
   },
   "quarantine": {

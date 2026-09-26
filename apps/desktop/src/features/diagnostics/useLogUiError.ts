@@ -29,7 +29,7 @@ function cap(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-/** Writes an error-boundary error to Weekmark's log (Settings → Help & feedback → logs). */
+/** Writes an error-boundary error to PageLamp's log (Settings → Help & feedback → logs). */
 export function useLogUiError(error: unknown) {
   const api = useApi();
   useEffect(() => {

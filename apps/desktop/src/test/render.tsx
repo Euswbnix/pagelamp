@@ -11,14 +11,14 @@ import { QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import type { WeekmarkApi } from "@/api/client";
+import type { PageLampApi } from "@/api/client";
 import { createMockApi, type MockOptions } from "@/api/mock";
 import { Providers } from "@/app/Providers";
 import { routes } from "@/app/router";
 
 export interface RenderRouteOptions extends MockOptions {
   /** Use this API instead of a new mock (e.g. a mock wrapped with vi.fn spies). */
-  api?: WeekmarkApi;
+  api?: PageLampApi;
 }
 
 export function renderRoute(path: string, options: RenderRouteOptions = {}) {
