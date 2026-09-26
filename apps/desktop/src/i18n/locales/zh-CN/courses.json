@@ -9,7 +9,7 @@
   },
   "problems": {
     "tokenExpiredTitle": "{{source}} 的 Canvas 令牌已失效",
-    "tokenExpired": "令牌可能已过期（学生令牌最长 30 天有效）或已被撤销。换上新令牌后，这些课程才能继续更新。",
+    "tokenExpired": "令牌可能已过期或已被撤销。换上新令牌后，这些课程才能继续更新。",
     "feedRejectedTitle": "{{source}} 的订阅地址已失效",
     "feedRejected": "订阅可能已被重置或关闭。粘贴最新的订阅地址后，截止日期才能继续更新。",
     "failedTitle": "{{source}} 同步失败：{{reason}}",

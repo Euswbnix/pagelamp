@@ -170,12 +170,14 @@ describe("OnboardingPage", () => {
 
     expect(
       screen.getByText(
-        "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
+        "Personal access tokens are for your own use only, and they expire — Canvas shows the maximum when you create one (often 30–90 days).",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Personal use")).toBeInTheDocument();
     expect(
-      screen.getByText("In Canvas: Account → Settings → New access token."),
+      screen.getByText(
+        /^In Canvas: Account → Settings → Approved Integrations → \+ New Access Token\./,
+      ),
     ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Canvas address"), "https://canvas.demo.test");

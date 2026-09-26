@@ -44,7 +44,7 @@ describe("translations", () => {
   it("keeps the required policy wording verbatim", () => {
     const common = en.common as Record<string, unknown>;
     expect(common.canvasNotice).toBe(
-      "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
+      "Personal access tokens are for your own use only, and they expire — Canvas shows the maximum when you create one (often 30–90 days).",
     );
     expect((common.disclosure as Record<string, string>).full).toBe(
       "When you ask your AI app about a course, it reads that course's materials from {{product}} and sends them to your AI provider under your own account. {{product}} itself stores nothing remotely. You're responsible for following each course's AI policy — and you can turn sharing off for any course.",

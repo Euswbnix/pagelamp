@@ -42,13 +42,13 @@
   "problem": {
     "title": "The last sync didn't work",
     "expiredTitle": "Access expired",
-    "expiredCanvas": "Student tokens last at most 30 days. Create a new token in Canvas (Account → Settings → New access token) and replace it here.",
+    "expiredCanvas": "Your Canvas token has expired or was revoked. Create a new one in Canvas (Account → Settings → Approved Integrations → + New Access Token) and replace it here.",
     "expiredFeed": "The calendar no longer accepts this feed address. Copy the address again from your LMS and replace it here."
   },
   "replace": {
     "titleToken": "Replace token",
     "titleFeed": "Replace feed address",
-    "descriptionToken": "Create a new token in Canvas (Account → Settings → New access token) and paste it here. {{label}} and its courses stay as they are.",
+    "descriptionToken": "Create a new token in Canvas (Account → Settings → Approved Integrations → + New Access Token) and paste it here. {{label}} and its courses stay as they are.",
     "descriptionFeed": "Copy the calendar feed address again from your LMS and paste it here. {{label}} and its events stay as they are.",
     "tokenLabel": "New access token",
     "feedLabel": "New calendar feed address",
@@ -121,7 +121,8 @@
     "urlHint": "The address you open Canvas at in your browser.",
     "httpWarning": "Canvas addresses use https. Check that yours starts with https://.",
     "tokenLabel": "Access token",
-    "tokenHowTo": "In Canvas: Account → Settings → New access token.",
+    "tokenHowTo": "In Canvas: Account → Settings → Approved Integrations → + New Access Token. Fill in the purpose (e.g. 'personal study planner, read-only') and pick an expiry date. Copy the token right away — Canvas shows it only once.",
+    "noTokenButton": "If you don't see this button, your school has turned off student tokens — use Course folder + calendar feed instead.",
     "tokenPrivate": "{{product}} checks the token with Canvas, then stores it in your system keychain.",
     "missingUrl": "Enter your Canvas address.",
     "missingToken": "Paste your access token.",

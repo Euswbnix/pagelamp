@@ -129,7 +129,7 @@
     "acknowledge": "I understand",
     "acknowledgedOn": "You confirmed this on {{date}}."
   },
-  "canvasNotice": "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
+  "canvasNotice": "Personal access tokens are for your own use only, and they expire — Canvas shows the maximum when you create one (often 30–90 days).",
   "secret": {
     "show": "Show",
     "hide": "Hide"

@@ -9,7 +9,7 @@
   },
   "problems": {
     "tokenExpiredTitle": "Your Canvas token for {{source}} stopped working",
-    "tokenExpired": "It may have expired (student tokens last at most 30 days) or been revoked. Add a new token to keep these courses up to date.",
+    "tokenExpired": "It may have expired or been revoked. Add a new token to keep these courses up to date.",
     "feedRejectedTitle": "The feed address for {{source}} stopped working",
     "feedRejected": "It may have been reset or turned off. Paste the current address to keep deadlines up to date.",
     "failedTitle": "{{source}} couldn't sync: {{reason}}",

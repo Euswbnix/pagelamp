@@ -73,6 +73,7 @@ export function AddCanvasForm({ submitLabel, onAdded, footerStart }: AddFormProp
     urlHttp: `${id}-url-http`,
     token: `${id}-token`,
     tokenHowTo: `${id}-token-how`,
+    tokenNoButton: `${id}-token-no-button`,
     tokenPrivate: `${id}-token-private`,
     tokenMissing: `${id}-token-missing`,
     error: `${id}-error`,
@@ -131,12 +132,16 @@ export function AddCanvasForm({ submitLabel, onAdded, footerStart }: AddFormProp
             aria-invalid={missing.token ? true : undefined}
             aria-describedby={describedBy(
               ids.tokenHowTo,
+              ids.tokenNoButton,
               ids.tokenPrivate,
               missing.token && ids.tokenMissing,
               error && ids.error,
             )}
           />
           <FieldDescription id={ids.tokenHowTo}>{t("canvasForm.tokenHowTo")}</FieldDescription>
+          <FieldDescription id={ids.tokenNoButton}>
+            {t("canvasForm.noTokenButton")}
+          </FieldDescription>
           <FieldDescription id={ids.tokenPrivate} className="flex items-start gap-1.5">
             <LockKeyhole className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             {t("canvasForm.tokenPrivate")}

@@ -129,7 +129,7 @@
     "acknowledge": "我已了解",
     "acknowledgedOn": "你已于 {{date}} 确认过。"
   },
-  "canvasNotice": "个人访问令牌仅供你本人使用；Canvas 学生令牌最长 30 天就会过期。",
+  "canvasNotice": "个人访问令牌仅供你本人使用，而且会过期——创建时 Canvas 会显示最长有效期（通常是 30–90 天）。",
   "secret": {
     "show": "显示",
     "hide": "隐藏"

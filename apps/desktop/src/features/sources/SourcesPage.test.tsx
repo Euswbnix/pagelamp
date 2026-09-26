@@ -85,7 +85,7 @@ describe("SourcesPage", () => {
     expect(await screen.findAllByText("Access expired")).toHaveLength(2);
     expect(
       screen.getByText(
-        "Student tokens last at most 30 days. Create a new token in Canvas (Account → Settings → New access token) and replace it here.",
+        "Your Canvas token has expired or was revoked. Create a new one in Canvas (Account → Settings → Approved Integrations → + New Access Token) and replace it here.",
       ),
     ).toBeInTheDocument();
 
@@ -93,7 +93,7 @@ describe("SourcesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Replace token" });
     expect(
       within(dialog).getByText(
-        "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
+        "Personal access tokens are for your own use only, and they expire — Canvas shows the maximum when you create one (often 30–90 days).",
       ),
     ).toBeInTheDocument();
     await user.type(within(dialog).getByLabelText("New access token"), NEW_TOKEN);

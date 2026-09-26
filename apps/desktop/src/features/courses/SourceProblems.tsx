@@ -9,7 +9,7 @@ import { Notice } from "./parts/Notice";
 
 /**
  * One notice per source whose last sync failed, so stale courses are explained. An expired
- * or revoked secret gets its own wording (Canvas tokens expire within 30 days).
+ * or revoked secret gets its own wording (Canvas tokens expire; the limit varies by school).
  */
 export function SourceProblems() {
   const status = useStatus();
