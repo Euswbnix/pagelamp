@@ -19,8 +19,12 @@ export function deadlineTime(deadline: Deadline): string | null {
   return deadline.due_at ?? deadline.starts_at ?? null;
 }
 
-/** Groups events by local calendar day, soonest first. Events without a time are dropped. */
-export function groupByDay(items: Deadline[], now: Date = new Date()): DayGroup[] {
+/**
+ * Groups events by local calendar day, soonest first. Events without a time are dropped, and
+ * with `days` set only today and the following `days - 1` calendar days are kept (the backend's
+ * window is "now + N×24 h", which would reach into an extra day).
+ */
+export function groupByDay(items: Deadline[], now: Date = new Date(), days?: number): DayGroup[] {
   const timed = items
     .map((deadline) => ({ deadline, iso: deadlineTime(deadline) }))
     .filter((x): x is { deadline: Deadline; iso: string } => x.iso !== null)
@@ -29,6 +33,7 @@ export function groupByDay(items: Deadline[], now: Date = new Date()): DayGroup[
   const groups = new Map<number, DayGroup>();
   for (const { deadline, iso } of timed) {
     const dayDiff = calendarDayDiff(iso, now);
+    if (days !== undefined && (dayDiff < 0 || dayDiff >= days)) continue;
     let group = groups.get(dayDiff);
     if (!group) {
       group = { dayDiff, iso, deadlines: [], classes: [] };

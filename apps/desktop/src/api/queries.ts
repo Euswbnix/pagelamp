@@ -60,10 +60,16 @@ export function useWeekMaterials(courseId: string, week: number | null) {
   });
 }
 
-export function useDeadlines(courseId: string | null, daysAhead: number, daysBack = 0) {
+/** `day` (e.g. from useToday) only keys the cache, so the window moves on at midnight. */
+export function useDeadlines(
+  courseId: string | null,
+  daysAhead: number,
+  daysBack = 0,
+  day?: string,
+) {
   const api = useApi();
   return useQuery({
-    queryKey: queryKeys.deadlines(courseId, daysAhead, daysBack),
+    queryKey: [...queryKeys.deadlines(courseId, daysAhead, daysBack), day ?? null],
     queryFn: () => api.listDeadlines(courseId, daysAhead, daysBack),
   });
 }

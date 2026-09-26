@@ -52,16 +52,19 @@ export interface MockDb {
 
 export const MOCK_BINARY_PATH = "/Users/demo/StudentOS/target/debug/studentos";
 
-const DAY = 24 * 60 * 60 * 1000;
-
+// Calendar arithmetic (not "+ N × 24 h"), so dates stay right across daylight-saving changes.
 function at(now: Date, days: number, hour = 12, minute = 0): string {
-  const d = new Date(now.getTime() + days * DAY);
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + days,
+    hour,
+    minute,
+  ).toISOString();
 }
 
 function dateOnly(now: Date, days: number): string {
-  const d = new Date(now.getTime() + days * DAY);
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");

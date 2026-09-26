@@ -3,7 +3,8 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CourseSummary, StudyPlan, StudyPlanItem } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { formatIsoDay, todayIso } from "@/lib/format";
+import { formatIsoDay } from "@/lib/format";
+import { useToday } from "@/lib/useToday";
 import { cn } from "@/lib/utils";
 import { courseLabelFor } from "./lib/courses";
 import { addDays, groupPlanByDate, isInFocus, type PlanDay } from "./lib/plan";
@@ -21,7 +22,7 @@ export function StudyPlanBody({ plan, courses }: StudyPlanBodyProps) {
   const { t } = useTranslation("courses");
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
-  const today = todayIso();
+  const today = useToday();
 
   const days = groupPlanByDate(plan.items);
   const focus = days.filter((day) => isInFocus(day.date, today));

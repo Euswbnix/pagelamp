@@ -12,12 +12,13 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { formatDay } from "@/lib/format";
+import { useToday } from "@/lib/useToday";
 import { countDue, type DayGroup, groupByDay } from "./lib/thisWeek";
 import { Section } from "./parts/Section";
 import { ThisWeekSkeleton } from "./Skeletons";
 
-/** How far ahead the strip looks. */
-const DAYS_AHEAD = 7;
+/** Today plus the next 6 calendar days. */
+const DAYS = 7;
 
 /**
  * "This week": every deadline and class in the next 7 days across visible courses, grouped
@@ -25,7 +26,9 @@ const DAYS_AHEAD = 7;
  */
 export function ThisWeek() {
   const { t } = useTranslation("courses");
-  const deadlines = useDeadlines(null, DAYS_AHEAD, 0);
+  const today = useToday();
+  // One extra day from the backend, then trimmed to whole calendar days by groupByDay.
+  const deadlines = useDeadlines(null, DAYS + 1, 0, today);
 
   let summary: string | null = null;
   let body: ReactNode;
@@ -41,7 +44,7 @@ export function ThisWeek() {
     );
   } else {
     // Group first: events without a time can't be placed on a day, so they don't count.
-    const groups = groupByDay(deadlines.data);
+    const groups = groupByDay(deadlines.data, new Date(), DAYS);
     if (groups.length === 0) {
       body = <NothingDue />;
     } else {

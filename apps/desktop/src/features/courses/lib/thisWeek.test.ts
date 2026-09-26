@@ -58,3 +58,19 @@ describe("countDue", () => {
     expect(countDue(groups)).toBe(2);
   });
 });
+
+describe("groupByDay with a day window", () => {
+  it("keeps today and the next 6 calendar days, nothing on the 8th", () => {
+    const groups = groupByDay(
+      [
+        event("Due today", "assignment_due", 0, 23),
+        event("Due in 6 days", "assignment_due", 6, 23),
+        // 7 × 24 h from 10:00 today reaches 09:00 on day 7 — outside "this week".
+        event("Early on day 7", "assignment_due", 7, 9),
+      ],
+      NOW,
+      7,
+    );
+    expect(groups.map((g) => g.dayDiff)).toEqual([0, 6]);
+  });
+});

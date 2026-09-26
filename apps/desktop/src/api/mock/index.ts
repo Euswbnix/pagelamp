@@ -539,7 +539,15 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
       c.course.term_end = end;
       c.course.term_source = "user";
       if (start) {
-        const weeks = Math.floor((now().getTime() - Date.parse(start)) / (7 * DAY)) + 1;
+        // Whole local calendar days since the start date (Date.parse would read it as UTC).
+        const [y, m, d] = start.split("-").map(Number) as [number, number, number];
+        const n = now();
+        const days = Math.round(
+          (new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime() -
+            new Date(y, m - 1, d).getTime()) /
+            DAY,
+        );
+        const weeks = Math.floor(days / 7) + 1;
         c.timeline = {
           ...c.timeline,
           current_week: weeks >= 1 ? weeks : null,
