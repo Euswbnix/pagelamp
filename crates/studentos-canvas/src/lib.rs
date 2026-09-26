@@ -40,9 +40,22 @@
 //! announcements → `MaterialUpsert { kind: Announcement }` indexed via `ingest::index_html`;
 //! assignments/quizzes due dates + planner items → `Event`s.
 
+mod api;
+mod endpoint;
+mod json;
+mod map;
+mod sync;
+mod transport;
+
+#[cfg(test)]
+mod tests_sync;
+
 use std::path::{Path, PathBuf};
 
 use studentos_core::source::{ProgressFn, SourceError};
+
+use crate::api::Api;
+use crate::transport::{CanvasTransport, RetryPolicy, TokenTransport};
 
 /// Connection settings for token mode. `Debug` is implemented by hand so the token can never
 /// end up in logs.
@@ -132,32 +145,68 @@ pub fn source_id(base_url: &str) -> String {
     format!("canvas:{}", authority.to_ascii_lowercase())
 }
 
-/// Canvas sync is being built (milestone M-F); until then these fail cleanly instead of
-/// panicking, before any secret is stored.
-fn not_available() -> SourceError {
-    SourceError::other(
-        "Canvas sync isn't available in this build yet — use `studentos folder add` + `studentos ical add`.",
-    )
-}
-
 /// Validate a token by calling `GET /api/v1/users/self`; returns the user's display name.
 pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
-    let _ = config;
-    Err(not_available())
+    let api = token_api(config, RetryPolicy::default())?;
+    let user: json::User = api
+        .get_one(endpoint::Endpoint::UsersSelf)
+        .await
+        .map_err(|e| sync::required(e, "your Canvas account"))?;
+    Ok(user
+        .name
+        .or(user.short_name)
+        .unwrap_or_else(|| "Canvas user".into()))
 }
 
 /// Full sync of the active courses into the store at `db_path`. The source row must already
 /// exist. The DB is opened per unit of work inside `spawn_blocking` (the future is `Send`);
 /// store writes happen in short transactions per course; the caller records the outcome with
-/// `Store::record_sync`.
+/// `Store::record_sync`. Files are downloaded only when `options.download_files` (Canvas
+/// counts a download as viewing the file).
 pub async fn sync(
     db_path: &Path,
     config: &CanvasConfig,
     options: &SyncOptions,
     progress: ProgressFn<'_>,
 ) -> Result<SyncReport, SourceError> {
-    let _ = (db_path, config, options, progress);
-    Err(not_available())
+    let api = token_api(config, RetryPolicy::default())?;
+    // Same id the App stored when the source was added (from the normalised URL).
+    let source_id = source_id(&normalize_base_url(&config.base_url)?);
+    sync_with(&api, db_path, &source_id, options, progress).await
+}
+
+/// The sync over any transport (tests use short retry delays).
+pub(crate) async fn sync_with<T: CanvasTransport>(
+    api: &Api<T>,
+    db_path: &Path,
+    source_id: &str,
+    options: &SyncOptions,
+    progress: ProgressFn<'_>,
+) -> Result<SyncReport, SourceError> {
+    sync::Syncer {
+        api,
+        db: db_path,
+        source_id,
+        options,
+        progress,
+        now: chrono::Utc::now(),
+    }
+    .run()
+    .await
+}
+
+fn token_api(
+    config: &CanvasConfig,
+    retry: RetryPolicy,
+) -> Result<Api<TokenTransport>, SourceError> {
+    let base = normalize_base_url(&config.base_url)?;
+    let base = url::Url::parse(&base).map_err(|_| SourceError::other("invalid Canvas URL"))?;
+    if config.token.trim().is_empty() {
+        return Err(SourceError::auth("No Canvas access token was given."));
+    }
+    let transport = TokenTransport::new(base.clone(), &config.token, retry)
+        .map_err(|e| SourceError::auth(format!("The Canvas access token looks wrong ({e}).")))?;
+    Ok(Api::new(transport, base))
 }
 
 #[cfg(test)]

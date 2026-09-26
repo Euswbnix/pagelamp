@@ -298,9 +298,16 @@ fn canvas_add_fails_cleanly_and_stores_nothing() {
         "demo-not-a-real-token\n",
     );
     assert!(!bad_url.status.success());
+    // A local port nobody listens on: the token check fails fast, without real network use.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let base_url = format!("http://127.0.0.1:{port}");
     let output = studentos_with_stdin(
         &home,
-        &["canvas", "add", "--base-url", "https://lms.example.edu"],
+        &["canvas", "add", "--base-url", &base_url],
         "demo-not-a-real-token\n",
     );
     let stderr = String::from_utf8_lossy(&output.stderr);

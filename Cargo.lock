@@ -4634,10 +4634,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
  "studentos-core",
+ "studentos-extract",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
