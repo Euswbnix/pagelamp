@@ -49,7 +49,11 @@ export function DeadlineRow({ deadline, showCourse = false, now }: DeadlineRowPr
             </span>
           ) : null}
           {deadline.url ? (
-            <ExternalLink href={deadline.url} className="font-medium" showIcon={false}>
+            <ExternalLink
+              href={deadline.url}
+              className="font-medium underline decoration-muted-foreground/40 underline-offset-4"
+              showIcon={false}
+            >
               {deadline.title}
             </ExternalLink>
           ) : (

@@ -81,8 +81,8 @@ describe("SourcesPage", () => {
   it("shows the token-expired callout, and replacing the token clears the error", async () => {
     const { user, queryClient } = renderRoute("/sources", { scenario: "expired" });
 
-    expect(await screen.findByText("Access expired")).toBeInTheDocument();
-    expect(screen.getByText("Token expired")).toBeInTheDocument();
+    // The callout title and the card's status badge.
+    expect(await screen.findAllByText("Access expired")).toHaveLength(2);
     expect(
       screen.getByText(
         "Student tokens last at most 30 days. Create a new token in Canvas (Account → Settings → New access token) and replace it here.",
@@ -102,7 +102,6 @@ describe("SourcesPage", () => {
     expect(await screen.findByText("Token replaced for Demo Canvas")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await waitFor(() => expect(screen.queryByText("Access expired")).not.toBeInTheDocument());
-    expect(screen.queryByText("Token expired")).not.toBeInTheDocument();
     // The button that opened the dialog went away with the callout: focus lands on the h1.
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 1, name: "Sources & sync" })).toHaveFocus(),
@@ -337,7 +336,7 @@ describe("SourcesPage", () => {
       await screen.findByRole("heading", { level: 2, name: "Sync finished with problems" }),
     ).toBeInTheDocument();
     const panel = screen.getByRole("region", { name: "Sync finished with problems" });
-    expect(within(panel).getByText("Token expired")).toBeInTheDocument();
+    expect(within(panel).getByText("Access expired")).toBeInTheDocument();
     expect(within(panel).getByText(/Access expired. Replace the token/)).toBeInTheDocument();
   });
 

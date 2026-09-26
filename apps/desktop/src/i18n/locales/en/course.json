@@ -21,7 +21,8 @@
     "expiredBody": "This course isn't updating. Replace the token in Sources & sync to get new materials and deadlines.",
     "failedTitle": "This course's source didn't sync last time: {{reason}}",
     "failedBody": "What you see here may be out of date. Sources & sync has the details.",
-    "action": "Open Sources & sync"
+    "action": "Open Sources & sync",
+    "failedTitleGeneric": "This course's source didn't sync last time"
   },
   "tabs": {
     "label": "Course sections",

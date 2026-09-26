@@ -10,6 +10,9 @@ import { paths } from "@/lib/routes";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
+/** Queries that skip visually hidden live-region copies of on-screen text. */
+const VISIBLE_ONLY = "script, style, .sr-only";
+
 function mockApi(): StudentOsApi {
   return createMockApi({ latencyMs: 0, syncStepMs: 0 });
 }
@@ -341,14 +344,16 @@ describe("CoursesPage — sync", () => {
 
     await user.click(await screen.findByRole("button", { name: "Sync now" }));
 
-    expect(await screen.findByText("Sync failed")).toBeInTheDocument();
+    // The headline is also announced from a visually hidden status; check the visible box.
+    expect(await screen.findByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Sync failed");
     expect(
       screen.getByText(
         "Couldn't reach the server. Check your internet connection and the address.",
       ),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByText("Sync failed")).toBeNull();
+    expect(screen.queryByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeNull();
   });
 
   it("disables 'Sync now' while another process is syncing, and checks again", async () => {
@@ -356,7 +361,9 @@ describe("CoursesPage — sync", () => {
     const status = vi.spyOn(api, "status");
     const { user } = renderRoute("/courses", { api });
 
-    expect(await screen.findByText("Another sync is running")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Another sync is running", { ignore: VISIBLE_ONLY }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sync now" })).toBeDisabled();
 
     const before = status.mock.calls.length;
@@ -389,8 +396,8 @@ describe("CoursesPage — sync", () => {
       paths.sources,
     );
     const list = await coursesRegion();
-    expect(within(card(list, "DEMO205")).getByText("Token expired")).toBeInTheDocument();
-    expect(within(card(list, "DEMO101")).queryByText("Token expired")).toBeNull();
+    expect(within(card(list, "DEMO205")).getByText("Access expired")).toBeInTheDocument();
+    expect(within(card(list, "DEMO101")).queryByText("Access expired")).toBeNull();
   });
 });
 

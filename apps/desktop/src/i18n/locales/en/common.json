@@ -44,7 +44,9 @@
     "emptyTitle": "Nothing here yet",
     "errorTitle": "Something went wrong",
     "backendUnavailableTitle": "{{product}} couldn't load your data",
-    "backendUnavailableBody": "The desktop app couldn't talk to its local database. Try again, or restart {{product}}."
+    "backendUnavailableBody": "The desktop app couldn't talk to its local database. Try again, or restart {{product}}.",
+    "crashTitle": "Something went wrong on this screen",
+    "crashBody": "Try again, or restart {{product}}. Your data on this computer is not affected."
   },
   "errors": {
     "auth": "The token or feed address was rejected. It may have expired or been revoked.",
@@ -61,7 +63,7 @@
     "ical": "Calendar feed"
   },
   "sourceError": {
-    "auth_expired_or_revoked": "Token expired",
+    "auth_expired_or_revoked": "Access expired",
     "network": "Can't connect",
     "not_found": "Not found",
     "rate_limited": "Rate limited",
@@ -146,5 +148,8 @@
   },
   "punctuation": {
     "colon": ": "
+  },
+  "a11y": {
+    "notifications": "Notifications"
   }
 }

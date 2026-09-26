@@ -33,9 +33,15 @@ export function CopyButton({ text, label, size = "sm", variant = "outline" }: Co
   }
 
   return (
-    <Button type="button" size={size} variant={variant} onClick={copy} aria-label={label}>
-      {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
-      <span aria-live="polite">{copied ? t("actions.copied") : t("actions.copy")}</span>
-    </Button>
+    <>
+      <Button type="button" size={size} variant={variant} onClick={copy} aria-label={label}>
+        {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+        {copied ? t("actions.copied") : t("actions.copy")}
+      </Button>
+      {/* Announces "Copied" once; clearing it afterwards is silent. */}
+      <span role="status" className="sr-only">
+        {copied ? t("actions.copied") : ""}
+      </span>
+    </>
   );
 }

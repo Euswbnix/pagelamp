@@ -1,9 +1,8 @@
 import { CircleAlert, CircleCheck, CircleDashed, LoaderCircle } from "lucide-react";
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useStatus } from "@/api/queries";
-import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
+import { formatRelative } from "@/lib/format";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { useSyncCounts, useSyncStore } from "@/stores/sync";
@@ -13,7 +12,7 @@ import { useSyncCounts, useSyncStore } from "@/stores/sync";
  * or "Needs attention". Links to Sources & sync.
  */
 export function SyncPill() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const status = useStatus();
   const running = useSyncStore((s) => s.running);
   const { done, total } = useSyncCounts();
@@ -23,7 +22,7 @@ export function SyncPill() {
   const externalSync = status.data?.sync_in_progress ?? false;
 
   let icon = <CircleDashed className="size-4" aria-hidden />;
-  let text: ReactNode = t("sync.never");
+  let text = t("sync.never");
   let tone = "text-muted-foreground";
 
   if (running || externalSync) {
@@ -36,24 +35,22 @@ export function SyncPill() {
     tone = "text-destructive";
   } else if (status.data?.last_synced_at) {
     icon = <CircleCheck className="size-4" aria-hidden />;
-    text = (
-      <SentenceWithTime
-        text={t("sync.syncedAgo", { when: WHEN })}
-        iso={status.data.last_synced_at}
-      />
-    );
+    text = t("sync.syncedAgo", { when: formatRelative(status.data.last_synced_at, i18n.language) });
   }
 
   return (
+    // No live region here: the screen that started a sync announces it (Courses banner,
+    // Sources panel). The link's name says both the status and where it goes.
     <Link
       to={paths.sources}
+      aria-label={t("sync.pillLabel", { status: text })}
       className={cn(
         "flex items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors hover:bg-sidebar-accent",
         tone,
       )}
     >
       {icon}
-      <span aria-live="polite">{text}</span>
+      <span>{text}</span>
     </Link>
   );
 }

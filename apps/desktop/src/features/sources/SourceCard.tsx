@@ -62,7 +62,7 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
         <SourceDetails source={source} />
 
         {source.last_error_kind ? (
-          <Alert variant="destructive">
+          <Alert role="status" variant="destructive">
             {expired ? <KeyRound aria-hidden /> : <CircleAlert aria-hidden />}
             <AlertTitle>{expired ? t("problem.expiredTitle") : t("problem.title")}</AlertTitle>
             <AlertDescription className="space-y-2">

@@ -44,7 +44,9 @@
     "emptyTitle": "这里还是空的",
     "errorTitle": "出了点问题",
     "backendUnavailableTitle": "{{product}} 读取不到你的数据",
-    "backendUnavailableBody": "桌面应用无法访问本地数据库。请重试，或重新打开 {{product}}。"
+    "backendUnavailableBody": "桌面应用无法访问本地数据库。请重试，或重新打开 {{product}}。",
+    "crashTitle": "这个页面出错了",
+    "crashBody": "请重试，或重新打开 {{product}}。这台电脑上的数据不受影响。"
   },
   "errors": {
     "auth": "令牌或订阅地址被拒绝，可能已过期或被撤销。",
@@ -61,7 +63,7 @@
     "ical": "日历订阅"
   },
   "sourceError": {
-    "auth_expired_or_revoked": "令牌已过期",
+    "auth_expired_or_revoked": "访问权限已过期",
     "network": "无法连接",
     "not_found": "找不到",
     "rate_limited": "请求过于频繁",
@@ -146,5 +148,8 @@
   },
   "punctuation": {
     "colon": "："
+  },
+  "a11y": {
+    "notifications": "通知"
   }
 }

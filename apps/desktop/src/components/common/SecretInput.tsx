@@ -32,7 +32,7 @@ export function SecretInput(props: SecretInputProps) {
         variant="ghost"
         className="absolute top-1/2 right-1.5 -translate-y-1/2"
         onClick={() => setVisible((v) => !v)}
-        aria-pressed={visible}
+        aria-controls={props.id}
       >
         {visible ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
         {visible ? t("secret.hide") : t("secret.show")}

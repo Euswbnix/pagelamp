@@ -19,12 +19,15 @@ export function SourceAlert({ sourceId }: { sourceId: string }) {
   const expired = kind === "auth_expired_or_revoked";
   const Icon = expired ? KeyRound : CircleAlert;
   return (
-    <Alert variant={expired ? "destructive" : "default"} className="mt-4">
+    // role="status": shown on every visit, so it must not interrupt like role="alert".
+    <Alert role="status" variant={expired ? "destructive" : "default"} className="mt-4">
       <Icon aria-hidden />
       <AlertTitle>
         {expired
           ? t("sourceAlert.expiredTitle")
-          : t("sourceAlert.failedTitle", { reason: tc(`sourceError.${kind}`) })}
+          : kind === "other"
+            ? t("sourceAlert.failedTitleGeneric")
+            : t("sourceAlert.failedTitle", { reason: tc(`sourceError.${kind}`) })}
       </AlertTitle>
       <AlertDescription>
         <p>

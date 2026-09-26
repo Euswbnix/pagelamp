@@ -25,6 +25,9 @@ export function SyncBanner() {
   const [dismissed, setDismissed] = useState<ApiError | null>(null);
 
   let content: ReactNode = null;
+  // Only the headline is announced (below); the box itself is ordinary content, so its hint
+  // and per-step progress don't get re-read on every sync step.
+  let announcement = "";
   if (running) {
     const current = order.map((id) => bySource[id]).find((p) => p && !p.result);
     content = (
@@ -39,7 +42,7 @@ export function SyncBanner() {
         <p>{t("banner.runningHint")}</p>
         {current?.message ? (
           // Progress changes every step; keep it out of the announcements.
-          <p aria-live="off" className="text-xs">
+          <p className="text-xs">
             {current.label}
             {tc("punctuation.colon")}
             <span lang="en">{current.message}</span>
@@ -47,7 +50,11 @@ export function SyncBanner() {
         ) : null}
       </Notice>
     );
+    announcement = counts.total
+      ? tc("sync.syncingProgress", { done: counts.done, total: counts.total })
+      : tc("sync.syncing");
   } else if (external) {
+    announcement = t("banner.externalTitle");
     content = (
       <Notice
         icon={<LoaderCircle className="size-4 animate-spin text-muted-foreground" aria-hidden />}
@@ -66,6 +73,7 @@ export function SyncBanner() {
       </Notice>
     );
   } else if (runError && runError !== dismissed) {
+    announcement = tc("sync.failed");
     content = (
       <Notice
         icon={<CircleAlert className="size-4 text-warning" aria-hidden />}
@@ -82,8 +90,11 @@ export function SyncBanner() {
   }
 
   return (
-    <div role="status" aria-live="polite">
+    <>
+      <p role="status" className="sr-only">
+        {announcement}
+      </p>
       {content ? <div className="mb-6">{content}</div> : null}
-    </div>
+    </>
   );
 }
