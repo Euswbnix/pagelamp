@@ -350,15 +350,69 @@ fn unknown_keys<'a>(file: &str, keys: impl Iterator<Item = &'a String>) -> Vec<S
         .collect()
 }
 
+/// Largest `course.toml` / `course.json` we read (they hold four short settings).
+const MAX_COURSE_FILE_BYTES: u64 = 64 * 1024;
+
+/// The text of the course file at `path`, `Ok(None)` when there is none. Like the rest of the
+/// walk it never follows a link: a linked file could be anything on the computer, and its
+/// text would end up in warnings and logs. Messages never quote the file's content.
+fn read_course_file(path: &Path, name: &str) -> Result<Option<String>, String> {
+    use std::io::Read;
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("{name} could not be read ({})", err.kind())),
+    };
+    if metadata.file_type().is_symlink() {
+        return Err(format!("{name} is a link to another file and was ignored"));
+    }
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+    let too_large = || {
+        format!(
+            "{name} is larger than {} KB and was ignored",
+            MAX_COURSE_FILE_BYTES / 1024
+        )
+    };
+    if metadata.len() > MAX_COURSE_FILE_BYTES {
+        return Err(too_large());
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(MAX_COURSE_FILE_BYTES + 1).read_to_end(&mut bytes))
+        .map_err(|err| format!("{name} could not be read ({})", err.kind()))?;
+    if bytes.len() as u64 > MAX_COURSE_FILE_BYTES {
+        return Err(too_large());
+    }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| format!("{name} is not UTF-8 text"))
+}
+
+/// "line L, column C" of byte `offset` in `text`.
+fn position(text: &str, offset: usize) -> String {
+    let mut end = offset.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let before = &text[..end];
+    let line = before.matches('\n').count() + 1;
+    let column = before.rsplit('\n').next().unwrap_or("").chars().count() + 1;
+    format!("line {line}, column {column}")
+}
+
 /// Read `course.toml` (preferred) or `course.json` in `dir`. Missing files → defaults; a
-/// malformed file → `Err(message)` (the caller warns and ignores it).
+/// malformed, linked or oversized file → `Err(message)` (the caller warns and ignores it).
 pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
-    let toml_path = dir.join("course.toml");
-    if toml_path.is_file() {
-        let text = std::fs::read_to_string(&toml_path)
-            .map_err(|err| format!("course.toml could not be read ({err})"))?;
-        let table: toml::Table = toml::from_str(&text)
-            .map_err(|err| format!("course.toml is not valid TOML ({err})"))?;
+    if let Some(text) = read_course_file(&dir.join("course.toml"), "course.toml")? {
+        let table: toml::Table = toml::from_str(&text).map_err(|err| {
+            let at = err
+                .span()
+                .map(|span| format!(" at {}", position(&text, span.start)))
+                .unwrap_or_default();
+            format!("course.toml is not valid TOML{at}")
+        })?;
         let mut meta = meta_from(|key| match table.get(key)? {
             toml::Value::String(s) => Some(s.clone()),
             // Bare TOML dates: term_start = 2026-09-08
@@ -369,12 +423,14 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
         meta.warnings = unknown_keys("course.toml", table.keys());
         return Ok(meta);
     }
-    let json_path = dir.join("course.json");
-    if json_path.is_file() {
-        let text = std::fs::read_to_string(&json_path)
-            .map_err(|err| format!("course.json could not be read ({err})"))?;
-        let value: serde_json::Value = serde_json::from_str(&text)
-            .map_err(|err| format!("course.json is not valid JSON ({err})"))?;
+    if let Some(text) = read_course_file(&dir.join("course.json"), "course.json")? {
+        let value: serde_json::Value = serde_json::from_str(&text).map_err(|err| {
+            format!(
+                "course.json is not valid JSON at line {}, column {}",
+                err.line(),
+                err.column()
+            )
+        })?;
         let mut meta = meta_from(|key| value.get(key)?.as_str().map(str::to_string))
             .map_err(|err| format!("course.json: {err}"))?;
         if let Some(object) = value.as_object() {
@@ -395,7 +451,7 @@ fn meta_from(get: impl Fn(&str) -> Option<String>) -> Result<CourseMeta, String>
         text(key)
             .map(|v| {
                 NaiveDate::parse_from_str(&v, "%Y-%m-%d")
-                    .map_err(|_| format!("{key} must be a date like 2026-09-08, not '{v}'"))
+                    .map_err(|_| format!("{key} must be a date like 2026-09-08"))
             })
             .transpose()
     };
@@ -495,11 +551,51 @@ mod tests {
                 .unwrap_err()
                 .contains("term_start")
         );
-        std::fs::write(dir.path().join("course.toml"), "code = [unclosed").unwrap();
+        std::fs::write(
+            dir.path().join("course.toml"),
+            "code = \"DEMO303\"\nname = [unclosed secret-text",
+        )
+        .unwrap();
+        let err = read_course_meta(dir.path()).unwrap_err();
+        assert!(
+            err.starts_with("course.toml is not valid TOML at line 2"),
+            "{err}"
+        );
+        assert!(!err.contains("secret-text"), "{err}");
+    }
+
+    #[test]
+    fn course_files_that_are_links_or_huge_are_ignored_without_quoting_them() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("course.json"), "{\"name\": secret-text}").unwrap();
+        let err = read_course_meta(dir.path()).unwrap_err();
+        assert!(
+            err.starts_with("course.json is not valid JSON at line 1"),
+            "{err}"
+        );
+        assert!(!err.contains("secret-text"), "{err}");
+
+        std::fs::write(
+            dir.path().join("course.toml"),
+            "x".repeat(MAX_COURSE_FILE_BYTES as usize + 1),
+        )
+        .unwrap();
         assert!(
             read_course_meta(dir.path())
                 .unwrap_err()
-                .contains("not valid TOML")
+                .contains("larger than 64 KB")
         );
+
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().unwrap();
+            let target = outside.path().join("private.toml");
+            std::fs::write(&target, "name = \"secret-text\"\n").unwrap();
+            std::fs::remove_file(dir.path().join("course.toml")).unwrap();
+            std::os::unix::fs::symlink(&target, dir.path().join("course.toml")).unwrap();
+            let err = read_course_meta(dir.path()).unwrap_err();
+            assert!(err.contains("is a link"), "{err}");
+            assert!(!err.contains("secret-text"), "{err}");
+        }
     }
 }
