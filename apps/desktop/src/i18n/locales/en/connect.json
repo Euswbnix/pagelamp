@@ -44,5 +44,16 @@
     "title": "No setup steps available",
     "description": "{{product}} couldn't prepare the setup steps for your AI app. Try again in a moment."
   },
-  "errorTitle": "Couldn't load the setup steps"
+  "errorTitle": "Couldn't load the setup steps",
+  "noteCodes": {
+    "works_on_all_claude_plans": "Works on every Claude plan, including Free.",
+    "admins_may_disable_extensions": "On Team, Enterprise and Education plans an admin can turn extensions off.",
+    "needs_paid_claude_plan": "Claude Code needs a paid Claude plan (Pro or higher).",
+    "codex_config_shared_with_chatgpt_desktop": "The ChatGPT desktop app (Work/Codex mode) reads the same ~/.codex/config.toml.",
+    "codex_plus_and_edu_documented": "Documented for ChatGPT Plus and higher, and for Edu.",
+    "free_go_undocumented": "Support on the Free and Go plans isn't documented.",
+    "restart_client_after_change": "Quit and reopen the app after changing its config.",
+    "custom_data_dir": "This setup includes STUDENTOS_HOME because {{product}} uses a custom data folder.",
+    "generic_stdio_client": "Any other AI app that supports local (stdio) MCP servers works too: adapt the command, arguments and environment to its config format."
+  }
 }

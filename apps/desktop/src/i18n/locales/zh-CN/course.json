@@ -57,6 +57,11 @@
     "announcements": {
       "title": "近期公告",
       "empty": "最近两周没有公告。"
+    },
+    "note": {
+      "current_week_unknown": "暂时无法确定这门课现在是第几周，下面列出的是最近 14 天的资料。",
+      "outside_term": "今天不在这门课的学期日期范围内，所以没有“本周”。",
+      "no_materials_this_week": "这一周没有模块或资料。"
     }
   },
   "timeline": {

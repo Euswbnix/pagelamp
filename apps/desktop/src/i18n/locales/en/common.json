@@ -143,5 +143,8 @@
     "readableNone": "No materials yet",
     "turned_off": "AI access to materials is off",
     "withheld_by_policy": "Materials not shared (No AI course)"
+  },
+  "punctuation": {
+    "colon": ": "
   }
 }

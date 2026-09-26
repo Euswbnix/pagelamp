@@ -83,7 +83,9 @@ describe("This week tab", () => {
   it("explains the fallback when the current week is unknown", async () => {
     const { user } = await openCourse(DEMO310);
     expect(
-      await screen.findByText("Current week unknown — showing materials of the last 14 days."),
+      await screen.findByText(
+        "We couldn't work out which week this course is in, so these are the materials from the last 14 days.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "Recent materials" })).toBeInTheDocument();
     expect(within(materialsList()).getByText("Discussion guide")).toBeInTheDocument();

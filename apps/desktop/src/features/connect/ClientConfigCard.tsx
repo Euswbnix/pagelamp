@@ -46,7 +46,7 @@ export function ClientConfigCard({ config, recommended = false }: ClientConfigCa
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <ClientNotes notes={config.notes} />
+          <ClientNotes notes={config.notes} codes={config.note_codes} />
           <InstallSteps config={config} />
         </CardContent>
       </Card>

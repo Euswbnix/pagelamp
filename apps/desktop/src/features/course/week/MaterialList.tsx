@@ -86,7 +86,9 @@ function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReada
           aiReadable={aiReadable}
         />
         {material.text_error ? (
-          <p className="text-xs text-muted-foreground">{material.text_error}</p>
+          <p lang="en" className="text-xs text-muted-foreground">
+            {material.text_error}
+          </p>
         ) : null}
       </div>
     </li>

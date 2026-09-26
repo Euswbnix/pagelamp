@@ -47,7 +47,9 @@ export function TimelineTab({ course, timeline }: { course: Course; timeline: Co
               className="list-disc space-y-1 pl-5 text-sm text-muted-foreground"
             >
               {evidence.map((reason) => (
-                <li key={reason}>{reason}</li>
+                <li key={reason} lang="en">
+                  {reason}
+                </li>
               ))}
             </ul>
           ) : (

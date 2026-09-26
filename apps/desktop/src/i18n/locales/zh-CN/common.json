@@ -143,5 +143,8 @@
     "readableNone": "还没有资料",
     "turned_off": "已关闭 AI 读取资料",
     "withheld_by_policy": "资料不共享（禁止使用 AI 的课程）"
+  },
+  "punctuation": {
+    "colon": "："
   }
 }

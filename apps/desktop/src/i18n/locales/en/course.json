@@ -57,6 +57,11 @@
     "announcements": {
       "title": "Recent announcements",
       "empty": "No announcements in the last two weeks."
+    },
+    "note": {
+      "current_week_unknown": "We couldn't work out which week this course is in, so these are the materials from the last 14 days.",
+      "outside_term": "Today is outside this course's term dates, so there's no current week.",
+      "no_materials_this_week": "There are no modules or materials for this week."
     }
   },
   "timeline": {

@@ -84,6 +84,8 @@ function WeekView({
 }) {
   const { t } = useTranslation("course");
   const week = data.week ?? null;
+  // "No materials this week" is already what the empty state below says.
+  const showNote = !!data.note && data.note_kind !== "no_materials_this_week";
   return (
     <div className={cn("space-y-6 transition-opacity", stale && "opacity-60")} aria-busy={stale}>
       <WeekSwitcher
@@ -92,11 +94,14 @@ function WeekView({
         availableWeeks={data.available_weeks}
         onSelect={onSelectWeek}
       />
-      {data.note ? (
+      {showNote ? (
         <Alert role="status">
           <Info aria-hidden />
-          <AlertDescription>{data.note}</AlertDescription>
-          {week === null ? (
+          <AlertDescription>
+            {/* Localised by code; a note without a known code is the backend's English text. */}
+            {data.note_kind ? t(`week.note.${data.note_kind}`) : <span lang="en">{data.note}</span>}
+          </AlertDescription>
+          {week === null || data.note_kind === "outside_term" ? (
             <AlertAction>
               <Button size="xs" variant="outline" onClick={onSetTermDates}>
                 {t("week.setTermDates")}

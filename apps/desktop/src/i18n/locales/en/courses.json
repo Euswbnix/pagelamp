@@ -3,7 +3,6 @@
   "description": "Where each course is this week, and what's coming up.",
   "banner": {
     "runningHint": "Your courses update when it finishes.",
-    "sourceProgress": "{{source}}: {{message}}",
     "externalTitle": "Another sync is running",
     "externalHint": "It may have been started from the command line. When it finishes, check again to refresh.",
     "checkAgain": "Check again"

@@ -50,7 +50,11 @@ export function SyncProgressRow({
           </span>
         </div>
 
-        {!result && message ? <p className="text-xs text-muted-foreground">{message}</p> : null}
+        {!result && message ? (
+          <p lang="en" className="text-xs text-muted-foreground">
+            {message}
+          </p>
+        ) : null}
         {!result && percent !== null ? (
           // The shared Progress does not forward `value` to the progressbar role, so the
           // aria-value* attributes are passed explicitly.
@@ -63,7 +67,9 @@ export function SyncProgressRow({
         ) : null}
 
         {result && !result.ok && result.error ? (
-          <p className="text-xs text-destructive">{result.error}</p>
+          <p lang="en" className="text-xs text-destructive">
+            {result.error}
+          </p>
         ) : null}
         {result?.errorKind === "auth_expired_or_revoked" ? (
           <p className="text-xs">
@@ -99,7 +105,7 @@ function Warnings({ warnings }: { warnings: string[] }) {
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+        <ul lang="en" className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
           {unique.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}

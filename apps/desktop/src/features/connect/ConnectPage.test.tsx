@@ -90,7 +90,7 @@ describe("ConnectPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows every backend note verbatim, in a note callout", async () => {
+  it("shows every note, localised from its code, in a note callout", async () => {
     renderRoute("/connect");
     const desktop = await card("Claude Desktop");
     const note = within(desktop).getByRole("note");
@@ -98,8 +98,26 @@ describe("ConnectPage", () => {
       within(note).getByText("Works on every Claude plan, including Free."),
     ).toBeInTheDocument();
     for (const c of CONFIGS) {
-      for (const text of c.notes) expect(screen.getByText(text)).toBeInTheDocument();
+      for (const code of c.note_codes) {
+        expect(screen.getAllByText(i18n.t(`connect:noteCodes.${code}`)).length).toBeGreaterThan(0);
+      }
     }
+  });
+
+  it("falls back to the backend's English text for a note it has no code for", async () => {
+    const [first] = CONFIGS;
+    if (!first) throw new Error("no configs");
+    const newer = {
+      ...first,
+      notes: ["A note from a newer backend."],
+      note_codes: ["from_the_future" as McpClientConfig["note_codes"][number]],
+    };
+    useUiStore.getState().setLocale("zh-CN");
+    renderRoute("/connect", {
+      api: mockApi({ mcpClientConfigs: vi.fn().mockResolvedValue([newer]) }),
+    });
+    const text = await screen.findByText("A note from a newer backend.");
+    expect(text).toHaveAttribute("lang", "en");
   });
 
   it("copies the exact configuration snippet", async () => {
@@ -167,8 +185,8 @@ describe("ConnectPage", () => {
       await screen.findByRole("heading", { level: 1, name: "连接 AI 应用" }),
     ).toBeInTheDocument();
     expect(await screen.findByText("我这周各门课都有什么安排？")).toBeInTheDocument();
-    // Backend notes stay verbatim.
-    expect(screen.getByText("Works on every Claude plan, including Free.")).toBeInTheDocument();
+    // Notes are localised from their codes.
+    expect(screen.getByText("所有 Claude 套餐都能用，包括免费版。")).toBeInTheDocument();
   });
 
   it("shows an empty state with a retry when there are no configs", async () => {

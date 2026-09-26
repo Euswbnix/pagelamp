@@ -30,7 +30,9 @@ export function ErrorState({ error, onRetry, title }: ErrorStateProps) {
         <EmptyTitle>{title ?? t("states.errorTitle")}</EmptyTitle>
         <EmptyDescription>{t(`errors.${apiError.kind}`)}</EmptyDescription>
         {apiError.message ? (
-          <EmptyDescription className="text-xs">{apiError.message}</EmptyDescription>
+          <EmptyDescription lang="en" className="text-xs">
+            {apiError.message}
+          </EmptyDescription>
         ) : null}
       </EmptyHeader>
       {onRetry ? (

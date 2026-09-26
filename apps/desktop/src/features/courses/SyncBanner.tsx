@@ -40,7 +40,9 @@ export function SyncBanner() {
         {current?.message ? (
           // Progress changes every step; keep it out of the announcements.
           <p aria-live="off" className="text-xs">
-            {t("banner.sourceProgress", { source: current.label, message: current.message })}
+            {current.label}
+            {tc("punctuation.colon")}
+            <span lang="en">{current.message}</span>
           </p>
         ) : null}
       </Notice>

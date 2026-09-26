@@ -71,7 +71,7 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
                   {t(canvas ? "problem.expiredCanvas" : "problem.expiredFeed")}
                 </p>
               ) : null}
-              {source.last_error ? <p>{source.last_error}</p> : null}
+              {source.last_error ? <p lang="en">{source.last_error}</p> : null}
               {expired && hasSecret(source.kind) ? (
                 <Button size="sm" onClick={() => onReplaceSecret(source)} aria-label={replaceName}>
                   <KeyRound aria-hidden />
