@@ -1,7 +1,9 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { configure, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createMockApi } from "@/api/mock";
 import { brand } from "@/brand";
+import i18n from "@/i18n";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
@@ -123,6 +125,19 @@ describe("OnboardingPage", () => {
       screen.getByText("Choose a folder or paste a calendar feed address — or both."),
     ).toBeInTheDocument();
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+  });
+
+  it("names a new feed in the app's language, not the backend's English default", async () => {
+    const api = createMockApi({ scenario: "empty", latencyMs: 0, syncStepMs: 0 });
+    const addFeed = vi.spyOn(api, "addIcalSource");
+    const { user } = renderRoute("/welcome", { api });
+    await goToSourceStep(user);
+    await user.type(screen.getByLabelText("Folder path"), "/Users/demo/Courses");
+    await user.type(screen.getByLabelText("Calendar feed address (optional)"), FEED_URL);
+    await user.click(screen.getByRole("button", { name: "Add and continue" }));
+    await screen.findByText("Step 3 of 3");
+    expect(addFeed).toHaveBeenCalledWith(FEED_URL, i18n.t("sourceKind.ical"));
+    expect(i18n.t("sourceKind.ical", { lng: "zh-CN" })).toBe("日历订阅");
   });
 
   it("shows per-item errors and doesn't add the working part twice", async () => {

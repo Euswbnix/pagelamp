@@ -28,6 +28,7 @@ import type { AddFormProps } from "./types";
  */
 export function AddFolderFeedForm({ submitLabel, onAdded, footerStart }: AddFormProps) {
   const { t } = useTranslation("sources");
+  const { t: tc } = useTranslation();
   const api = useApi();
   const addFolder = useAddFolderSource();
   const addFeed = useAddIcalSource();
@@ -78,8 +79,12 @@ export function AddFolderFeedForm({ submitLabel, onAdded, footerStart }: AddForm
 
   async function addFeedPart(): Promise<SourceRecord | null> {
     try {
-      // The name field belongs to the folder; the feed keeps the backend's default name.
-      const record = await addFeed.mutateAsync({ feedUrl: feedUrl.trim(), label: null });
+      // The name field belongs to the folder. The feed is named after its kind in the UI's
+      // language (the backend's default name is English).
+      const record = await addFeed.mutateAsync({
+        feedUrl: feedUrl.trim(),
+        label: tc("sourceKind.ical"),
+      });
       setFeedUrl("");
       setFeedAdded(record);
       setFeedError(null);
