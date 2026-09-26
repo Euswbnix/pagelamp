@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
+import { useSyncStore } from "@/stores/sync";
 import { DEMO101, DEMO205, DEMO310, openCourse } from "../testing";
 
 function materialsList() {
@@ -235,6 +236,32 @@ describe("Downloading Canvas files", () => {
     // No week callout on this tab, but the header still offers it.
     expect(screen.queryByText(/isn't downloaded yet/)).toBeNull();
     expect(await screen.findByRole("button", { name: "Download files…" })).toBeInTheDocument();
+  });
+
+  it("says 'Downloading…' only while this course's own files download", async () => {
+    const { user } = await openCourse(DEMO205, { query: "tab=deadlines" });
+    const button = await screen.findByRole("button", { name: "Download files…" });
+
+    // A regular sync (Sync now, the first sync…) is running: nothing is downloading here.
+    act(() => useSyncStore.setState({ running: true, downloadCourseId: null }));
+    expect(button).toHaveTextContent("Download files…");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription("Available when the sync finishes");
+    await user.click(button);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+
+    // Another course's download: same.
+    act(() => useSyncStore.setState({ downloadCourseId: "canvas:other/course/1" }));
+    expect(button).toHaveTextContent("Download files…");
+
+    // This course's download.
+    act(() => useSyncStore.setState({ downloadCourseId: DEMO205 }));
+    expect(button).toHaveTextContent("Downloading…");
+    expect(button).not.toHaveAccessibleDescription("Available when the sync finishes");
+
+    act(() => useSyncStore.setState({ running: false, downloadCourseId: null }));
+    expect(button).toHaveTextContent("Download files…");
+    expect(button).not.toHaveAttribute("aria-disabled");
   });
 
   it("never offers a download for folder courses", async () => {

@@ -1,4 +1,5 @@
 import { CloudDownload } from "lucide-react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import type { Course } from "@/api/types";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { useApiErrorText } from "@/lib/useApiErrorText";
-import { useDownloadCourseFiles, useSyncStore } from "@/stores/sync";
+import { useDownloadCourseFiles, useSyncActivity, useSyncStore } from "@/stores/sync";
 
 // Warnings listed in the toast; the rest are summed up as "…and N more".
 const SHOWN_WARNINGS = 3;
@@ -36,7 +37,14 @@ export function DownloadCourseFilesButton({
   const { t: tc } = useTranslation();
   const errorText = useApiErrorText();
   const download = useDownloadCourseFiles();
-  const running = useSyncStore((s) => s.running);
+  const hintId = useId();
+  const [open, setOpen] = useState(false);
+  // "Downloading…" only while THIS course's files download. During any other run (a sync, the
+  // first sync, another course's download, the CLI) the label stays, the button waits and says
+  // why: a greyed "Downloading…" would suggest files are being fetched (Canvas may count views).
+  const downloadingThis = useSyncStore((s) => s.running && s.downloadCourseId === course.id);
+  const { busy } = useSyncActivity();
+  const waiting = busy && !downloadingThis;
 
   async function start() {
     const ran = await download(course.id);
@@ -70,16 +78,22 @@ export function DownloadCourseFilesButton({
   }
 
   return (
-    <AlertDialog>
+    <AlertDialog open={open} onOpenChange={(next) => setOpen(next && !busy)}>
+      {waiting ? (
+        <span id={hintId} className="text-xs text-muted-foreground">
+          {t("download.availableAfterSync")}
+        </span>
+      ) : null}
       <AlertDialogTrigger asChild>
         <Button
           size={size}
           variant="outline"
-          aria-disabled={running || undefined}
+          aria-disabled={busy || undefined}
+          aria-describedby={waiting ? hintId : undefined}
           className="aria-disabled:opacity-50"
         >
           <CloudDownload aria-hidden />
-          {running ? t("download.running") : t("download.action")}
+          {downloadingThis ? t("download.running") : t("download.action")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -94,7 +108,7 @@ export function DownloadCourseFilesButton({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
-          <AlertDialogAction disabled={running} onClick={() => void start()}>
+          <AlertDialogAction disabled={busy} onClick={() => void start()}>
             {t("download.confirm")}
           </AlertDialogAction>
         </AlertDialogFooter>

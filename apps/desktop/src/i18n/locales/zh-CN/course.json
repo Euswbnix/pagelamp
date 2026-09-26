@@ -136,6 +136,7 @@
     "calloutHint": "页面顶部的“下载文件…”会下载这门课的全部文件。",
     "action": "下载文件…",
     "running": "正在下载…",
+    "availableAfterSync": "同步结束后可用",
     "dialogTitle": "要下载这门课的文件吗？",
     "viewingNotice": "通过 Canvas 下载文件可能会被算作“已查看”（例如满足模块里“必须查看”的要求）。",
     "dialogDetail": "{{product}} 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中提交或修改任何内容。",

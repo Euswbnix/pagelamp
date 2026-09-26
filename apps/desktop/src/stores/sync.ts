@@ -32,7 +32,9 @@ interface SyncState {
   lastSummary: SyncSummary | null;
   /** Error that stopped the whole run (e.g. `busy`). Per-source failures live in bySource. */
   runError: ApiError | null;
-  begin: (total: number | null) => void;
+  /** The course whose files this run downloads (download_course_files); null for a sync. */
+  downloadCourseId: string | null;
+  begin: (total: number | null, downloadCourseId?: string | null) => void;
   apply: (event: SyncEvent) => void;
   finish: (summary: SyncSummary | null, error: ApiError | null) => void;
   /** Hide the "sync failed" message (it stays hidden until the next run). */
@@ -47,11 +49,13 @@ const idle = {
   bySource: {},
   lastSummary: null,
   runError: null,
+  downloadCourseId: null,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
-  begin: (total) => set({ running: true, total, order: [], bySource: {}, runError: null }),
+  begin: (total, downloadCourseId = null) =>
+    set({ running: true, total, order: [], bySource: {}, runError: null, downloadCourseId }),
   apply: (event) =>
     set((state) => {
       const prev = state.bySource[event.source_id];
@@ -100,6 +104,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
   finish: (summary, error) =>
     set((state) => ({
       running: false,
+      downloadCourseId: null,
       lastSummary: summary,
       runError: error,
       // Sources that never reported back didn't run to the end: mark them stopped so no
@@ -134,7 +139,7 @@ export function useDownloadCourseFiles() {
     async (courseId: string): Promise<boolean> => {
       const store = useSyncStore.getState();
       if (store.running) return false;
-      store.begin(1);
+      store.begin(1, courseId);
       const onEvent = (event: SyncEvent) => useSyncStore.getState().apply(event);
       try {
         const result = await api.downloadCourseFiles(courseId, onEvent);
