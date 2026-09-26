@@ -477,7 +477,7 @@ impl App {
         feed_url: &str,
         label: Option<&str>,
     ) -> Result<SourceRecord> {
-        let feed_url = non_empty_secret(feed_url, "calendar feed URL")?;
+        let feed_url = normalized_feed_url(feed_url)?;
         studentos_local::fetch_ical(&feed_url).await?;
         let label = label
             .map(str::trim)
@@ -521,7 +521,7 @@ impl App {
             .read_store()?
             .get_source(source_id)?
             .ok_or_else(|| unknown_source(source_id))?;
-        let secret = non_empty_secret(secret, "secret")?;
+        let mut secret = non_empty_secret(secret, "secret")?;
         match source.kind {
             SourceKind::Folder => {
                 return Err(AppError::new(
@@ -538,6 +538,7 @@ impl App {
                 .await?;
             }
             SourceKind::Ical => {
+                secret = normalized_feed_url(&secret)?;
                 studentos_local::fetch_ical(&secret).await?;
             }
         }
@@ -714,6 +715,13 @@ fn non_empty_secret(secret: &str, what: &str) -> Result<String> {
         ));
     }
     Ok(secret.to_string())
+}
+
+/// A usable feed URL (`webcal://` → `https://`), or `Invalid` (the message never repeats it).
+fn normalized_feed_url(input: &str) -> Result<String> {
+    let input = non_empty_secret(input, "calendar feed URL")?;
+    studentos_local::normalize_feed_url(&input)
+        .map_err(|err| AppError::new(AppErrorKind::Invalid, err.message))
 }
 
 fn canvas_base_url(source: &SourceRecord) -> Result<String> {

@@ -21,4 +21,5 @@ tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+wiremock = "0.6"
 tokio.workspace = true

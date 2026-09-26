@@ -500,3 +500,149 @@ fn json_schema_covers_the_facade_types() {
         json!(false)
     );
 }
+
+// ----- end-to-end sync with the local sources ---------------------------------------------------
+
+fn write(root: &Path, relative: &str, content: &str) {
+    let path = root.join(relative);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, content).unwrap();
+}
+
+#[tokio::test]
+async fn folder_sync_end_to_end_with_events_and_recorded_outcome() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let courses = temp.path().join("Courses");
+    write(
+        &courses,
+        "DEMO101 Intro/Week 1/notes.md",
+        "# Basics\nphotosynthesis basics",
+    );
+    write(&courses, "DEMO101 Intro/clip.mp4", "binary-ish");
+    let source = app
+        .add_folder_source(&courses, Some(date("2026-09-07")), None)
+        .unwrap();
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = events.clone();
+    let summary = app
+        .sync_all(SyncRequest::default(), move |e| {
+            sink.lock().unwrap().push(e)
+        })
+        .await
+        .unwrap();
+    assert!(summary.ok, "{summary:?}");
+    let result = &summary.results[0];
+    assert_eq!(
+        (result.courses, result.materials, result.files_indexed),
+        (1, 2, 1)
+    );
+    let events = events.lock().unwrap().clone();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, SyncEvent::Progress { .. }))
+    );
+    assert!(matches!(
+        events.last(),
+        Some(SyncEvent::SourceFinished { ok: true, .. })
+    ));
+
+    let course = &app.list_courses().unwrap()[0];
+    assert_eq!(course.course.code.as_deref(), Some("DEMO101"));
+    assert_eq!(course.course.term_start, Some(date("2026-09-07")));
+    assert_eq!(course.counts.indexed_materials, 1);
+    assert_eq!(app.search("photosynthesis", None, 5).unwrap().len(), 1);
+    let status = app.status().unwrap();
+    assert!(status.sources[0].last_synced_at.is_some());
+
+    // The folder disappears: the sync fails as not_found and keeps the data.
+    std::fs::remove_dir_all(&courses).unwrap();
+    let failed = app
+        .sync_source(&source.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(!failed.ok);
+    assert_eq!(failed.error_kind, Some(SourceErrorKind::NotFound));
+    assert_eq!(app.list_courses().unwrap().len(), 1);
+    let source = &app.list_sources().unwrap()[0];
+    assert_eq!(source.last_error_kind, Some(SourceErrorKind::NotFound));
+}
+
+#[tokio::test]
+async fn ical_source_is_validated_saved_synced_and_its_url_replaced() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    let feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\n\
+                UID:ps1\r\nDTSTART:20300930T035900Z\r\nDTEND:20300930T035900Z\r\n\
+                SUMMARY:Problem Set 1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    Mock::given(method("GET"))
+        .and(path("/feed-secret-1.ics"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(feed))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/revoked.ics"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    assert_eq!(
+        kind(app.add_ical_source("not a url feed-secret", None).await),
+        AppErrorKind::Invalid
+    );
+    let revoked = app
+        .add_ical_source(&format!("{}/revoked.ics", server.uri()), None)
+        .await
+        .unwrap_err();
+    assert_eq!(revoked.kind, AppErrorKind::Auth);
+    assert!(
+        app.list_sources().unwrap().is_empty(),
+        "nothing saved on failure"
+    );
+
+    let url = format!("{}/feed-secret-1.ics", server.uri());
+    let source = app
+        .add_ical_source(&url, Some("Demo calendar"))
+        .await
+        .unwrap();
+    assert!(source.id.starts_with("ical:"));
+    assert!(!source.id.contains("feed-secret"));
+    assert_eq!(source.label, "Demo calendar");
+    assert_eq!(
+        secrets.get(&source.id).unwrap().as_deref(),
+        Some(url.as_str())
+    );
+    assert!(
+        !serde_json::to_string(&source)
+            .unwrap()
+            .contains("feed-secret")
+    );
+
+    let result = app
+        .sync_source(&source.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(result.ok, "{result:?}");
+    assert_eq!(result.events, 1);
+    let deadlines = app.list_deadlines(None, 365 * 10, 0).unwrap();
+    assert_eq!(deadlines[0].event.title, "Problem Set 1");
+
+    // Replacing the URL validates it first and keeps the source id.
+    let bad = app
+        .update_source_secret(&source.id, &format!("{}/revoked.ics", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(bad.kind, AppErrorKind::Auth);
+    assert_eq!(
+        secrets.get(&source.id).unwrap().as_deref(),
+        Some(url.as_str())
+    );
+    let updated = app.update_source_secret(&source.id, &url).await.unwrap();
+    assert_eq!(updated.id, source.id);
+}
