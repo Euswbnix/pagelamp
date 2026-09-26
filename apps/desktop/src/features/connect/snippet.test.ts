@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcpServerEntry } from "./snippet";
+import { mcpServerEntry, mcpServersKey } from "./snippet";
 
 describe("mcpServerEntry", () => {
   it("extracts the one server entry, ready to paste into an existing mcpServers", () => {
@@ -22,5 +22,21 @@ describe("mcpServerEntry", () => {
     expect(mcpServerEntry(JSON.stringify({ mcpServers: {} }))).toBeNull();
     expect(mcpServerEntry(JSON.stringify({ mcpServers: { a: {}, b: {} } }))).toBeNull();
     expect(mcpServerEntry(JSON.stringify({ other: 1 }))).toBeNull();
+  });
+});
+
+describe("mcpServersKey", () => {
+  it("wraps the entry as a top-level key to add next to other settings", () => {
+    const content = JSON.stringify({ mcpServers: { pagelamp: { command: "x", args: ["mcp"] } } });
+    const key = mcpServersKey(content);
+    expect(key?.startsWith('"mcpServers": {')).toBe(true);
+    expect(JSON.parse(`{"preferences": {}, ${key}}`)).toEqual({
+      preferences: {},
+      mcpServers: { pagelamp: { command: "x", args: ["mcp"] } },
+    });
+  });
+
+  it("gives up on a bare server definition", () => {
+    expect(mcpServersKey(JSON.stringify({ command: "x", args: ["mcp"] }))).toBeNull();
   });
 });

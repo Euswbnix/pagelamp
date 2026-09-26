@@ -35,6 +35,10 @@
     "openTomlNoPath": "Open the app's TOML configuration file.",
     "pasteJson": "If the file is new or empty, paste in this snippet.",
     "pasteJsonEntry": "If it already has an \"mcpServers\" section, add only this entry inside it (with a comma after the entry before it):",
+    "pasteJsonKey": "If it has other settings (such as \"preferences\") but no \"mcpServers\", add this inside the outer { } instead, with a comma after the setting before it:",
+    "pasteJsonMerge": "Paste in this snippet. If the file already has settings, merge the two.",
+    "genericOpen": "Open your AI app's settings for MCP servers (or its configuration file).",
+    "genericAdd": "Add a local (stdio) server with this command, arguments and environment. The exact format depends on the app.",
     "saveAndReopen": "Save the file, then open {{app}} again.",
     "pasteToml": "Add these lines to the file.",
     "restart": "Save the file, then fully quit the app and open it again.",
@@ -44,6 +48,7 @@
   "copyPath": "Copy {{app}} file path",
   "copyConfig": "Copy {{app}} configuration",
   "copyEntry": "Copy {{app}} entry only",
+  "copyKey": "Copy {{app}} mcpServers section",
   "copyCommand": "Copy {{app}} command",
   "notes": {
     "title": "Good to know"

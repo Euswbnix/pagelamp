@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { McpClientConfig } from "@/api/types";
 import { CodeBlock } from "@/components/common/CodeBlock";
 import { CopyButton } from "@/components/common/CopyButton";
-import { mcpServerEntry } from "./snippet";
+import { mcpServerEntry, mcpServersKey } from "./snippet";
 
 interface Step {
   key: string;
@@ -52,22 +52,40 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
 
   switch (config.install_kind) {
     case "json_snippet":
-      // Quit first: apps like Claude Desktop write this file when they quit, overwriting an
-      // edit made while they were running.
+      if (config.client === "claude_desktop") {
+        // Quit first: Claude Desktop writes this file when it quits, overwriting an edit made
+        // while it was running.
+        return [
+          { key: "quit", text: t("steps.quitFirst", { app: config.title }) },
+          {
+            key: "open",
+            text: path ? t("steps.openJson") : t("steps.openJsonNoPath"),
+            extra: path,
+          },
+          {
+            key: "paste",
+            text: t("steps.pasteJson"),
+            extra: (
+              <>
+                {snippet}
+                <ExistingFile config={config} />
+              </>
+            ),
+          },
+          { key: "reopen", text: t("steps.saveAndReopen", { app: config.title }) },
+        ];
+      }
+      if (config.client === "generic") {
+        // A bare server definition: every client has its own config format.
+        return [
+          { key: "open", text: t("steps.genericOpen") },
+          { key: "add", text: t("steps.genericAdd"), extra: snippet },
+        ];
+      }
       return [
-        { key: "quit", text: t("steps.quitFirst", { app: config.title }) },
         { key: "open", text: path ? t("steps.openJson") : t("steps.openJsonNoPath"), extra: path },
-        {
-          key: "paste",
-          text: t("steps.pasteJson"),
-          extra: (
-            <>
-              {snippet}
-              <EntryOnly config={config} />
-            </>
-          ),
-        },
-        { key: "reopen", text: t("steps.saveAndReopen", { app: config.title }) },
+        { key: "paste", text: t("steps.pasteJsonMerge"), extra: snippet },
+        { key: "restart", text: t("steps.restart") },
       ];
     case "toml_snippet":
       return [
@@ -83,16 +101,30 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
   }
 }
 
-/** For a file that already has an `mcpServers` section: just our entry, to add inside it. */
-function EntryOnly({ config }: { config: McpClientConfig }) {
+/**
+ * For a config file that isn't new: with an `mcpServers` section, just our entry goes inside it;
+ * with other settings but no `mcpServers` (Claude Desktop writes "preferences" itself), the
+ * whole `"mcpServers": { … }` key goes next to them. The full snippet fits neither.
+ */
+function ExistingFile({ config }: { config: McpClientConfig }) {
   const { t } = useTranslation("connect");
   const entry = mcpServerEntry(config.content);
-  if (!entry) return null;
+  const key = mcpServersKey(config.content);
   return (
-    <div className="space-y-2 pt-1">
-      <p>{t("steps.pasteJsonEntry")}</p>
-      <CodeBlock code={entry} copyLabel={t("copyEntry", { app: config.title })} />
-    </div>
+    <>
+      {entry ? (
+        <div className="space-y-2 pt-1">
+          <p>{t("steps.pasteJsonEntry")}</p>
+          <CodeBlock code={entry} copyLabel={t("copyEntry", { app: config.title })} />
+        </div>
+      ) : null}
+      {key ? (
+        <div className="space-y-2 pt-1">
+          <p>{t("steps.pasteJsonKey")}</p>
+          <CodeBlock code={key} copyLabel={t("copyKey", { app: config.title })} />
+        </div>
+      ) : null}
+    </>
   );
 }
 

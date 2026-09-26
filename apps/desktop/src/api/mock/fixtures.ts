@@ -615,6 +615,19 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       ],
       launch,
     },
+    {
+      client: "generic",
+      title: "Other MCP clients",
+      install_kind: "json_snippet",
+      config_path_hint: null,
+      // A bare server definition (no "mcpServers" wrapper), like the backend's.
+      content: JSON.stringify({ command: binary, args: ["mcp"] }, null, 2),
+      notes: [
+        "Any MCP client that can launch a local (stdio) server can use PageLamp: adapt this command, arguments and environment to that client's config format.",
+      ],
+      note_codes: ["generic_stdio_client"],
+      launch,
+    },
   ];
 }
 

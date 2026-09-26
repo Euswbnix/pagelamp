@@ -54,13 +54,18 @@ describe("ConnectPage", () => {
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 
-  it("renders one card per AI app: Claude Desktop, Claude Code, then Codex", async () => {
+  it("renders one card per AI app: Claude Desktop, Claude Code, Codex, then the rest", async () => {
     renderRoute("/connect");
     await card("Claude Desktop");
     const titles = screen
       .getAllByRole("article")
       .map((article) => within(article).getByRole("heading", { level: 2 }).textContent);
-    expect(titles).toEqual(["Claude Desktop", "Claude Code", config("codex").title]);
+    expect(titles).toEqual([
+      "Claude Desktop",
+      "Claude Code",
+      config("codex").title,
+      "Other MCP clients",
+    ]);
   });
 
   it("sorts by client whatever order the backend sends, with other apps last", async () => {
@@ -163,6 +168,37 @@ describe("ConnectPage", () => {
     expect(JSON.parse(`{${entry}}`)).toEqual(
       JSON.parse(config("claude_desktop").content).mcpServers,
     );
+  });
+
+  it("adds an mcpServers key to a Claude Desktop file that has other settings", async () => {
+    const { user } = renderRoute("/connect");
+    const desktop = await card("Claude Desktop");
+    expect(
+      within(desktop).getByText(/but no "mcpServers", add this inside the outer/),
+    ).toBeVisible();
+    const writeText = spyOnClipboard();
+    await user.click(
+      within(desktop).getByRole("button", { name: "Copy Claude Desktop mcpServers section" }),
+    );
+    const key = writeText.mock.calls[0]?.[0] ?? "";
+    // Claude Desktop writes "preferences" itself; the copied key goes next to it.
+    const merged = JSON.parse(`{"preferences": {"sidebarMode": "chat"}, ${key}}`);
+    expect(merged.mcpServers).toEqual(JSON.parse(config("claude_desktop").content).mcpServers);
+  });
+
+  it("keeps the generic card neutral: no Claude Desktop steps, just the server", async () => {
+    const { user } = renderRoute("/connect");
+    const other = await card("Other MCP clients");
+    const steps = within(other).getByRole("list", { name: "Steps for Other MCP clients" });
+    const items = within(steps).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[1]).toHaveTextContent(/The exact format depends on the app\./);
+    expect(within(other).queryByText(/Quit|⌘Q|new or empty|mcpServers/)).toBeNull();
+    const writeText = spyOnClipboard();
+    await user.click(
+      within(other).getByRole("button", { name: "Copy Other MCP clients configuration" }),
+    );
+    expect(writeText).toHaveBeenCalledWith(config("generic").content);
   });
 
   it("warns at the top when PageLamp runs from the disk image, not in every card", async () => {

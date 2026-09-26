@@ -35,6 +35,10 @@
     "openTomlNoPath": "打开该应用的 TOML 配置文件。",
     "pasteJson": "如果文件是新建的或者是空的，就把下面这段配置粘贴进去。",
     "pasteJsonEntry": "如果文件里已经有 \"mcpServers\"，只需把下面这一项加到里面（记得在前一项的后面加上逗号）：",
+    "pasteJsonKey": "如果文件里有其他设置（比如 \"preferences\"），但没有 \"mcpServers\"，就把下面这段加到最外层的 { } 里，并在它前一项设置的后面加上逗号：",
+    "pasteJsonMerge": "把下面这段配置粘贴进去；如果文件里已经有其他设置，就把两者合并。",
+    "genericOpen": "打开你的 AI 应用里 MCP 服务器的设置（或它的配置文件）。",
+    "genericAdd": "添加一个本地（stdio）服务器，使用下面的命令、参数和环境变量。具体格式取决于这个应用。",
     "saveAndReopen": "保存文件，然后重新打开 {{app}}。",
     "pasteToml": "把下面几行添加到文件中。",
     "restart": "保存文件，然后彻底退出该应用，再重新打开。",
@@ -44,6 +48,7 @@
   "copyPath": "复制 {{app}} 配置文件路径",
   "copyConfig": "复制 {{app}} 配置",
   "copyEntry": "仅复制 {{app}} 的条目",
+  "copyKey": "复制 {{app}} 的 mcpServers 部分",
   "copyCommand": "复制 {{app}} 命令",
   "notes": {
     "title": "注意事项"
