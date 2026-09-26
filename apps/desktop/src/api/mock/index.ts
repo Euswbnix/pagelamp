@@ -75,9 +75,9 @@ function parseHttpUrl(value: string, allowWebcal = false): URL | null {
 
 /**
  * Mirrors the backend's normalize_base_url (pagelamp-canvas), in the same order: a pasted token
- * ("7~AbC…") or a single word ("canvas") is refused before anything else, then a page link
- * (path, query or fragment), then anything but https (http only for localhost). The messages
- * never repeat the input; at most the host.
+ * ("7~AbC…") or a single word ("canvas", "7", "canvas.") is refused before anything else, then a
+ * page link (path, query or fragment), then anything but https (http only for localhost). The
+ * messages never repeat the input; at most the host.
  */
 function canvasAddress(input: string): URL {
   const trimmed = input.trim();
@@ -87,9 +87,17 @@ function canvasAddress(input: string): URL {
       "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
     );
   if (trimmed.includes("~")) throw invalid();
+  const withScheme = trimmed.includes("://") ? trimmed : `https://${trimmed}`;
+  // The host as typed, before the URL parser turns "7" into 0.0.0.7: after "://", up to the
+  // first / ? #, without user info, without a port (unless IPv6), without a trailing dot.
+  let typed = withScheme.slice(withScheme.indexOf("://") + 3).split(/[/?#]/)[0] ?? "";
+  typed = typed.split("@").pop() ?? "";
+  if (!typed.startsWith("[")) typed = typed.split(":")[0] ?? "";
+  typed = typed.replace(/\.+$/, "");
+  if (!typed.includes(".") && !typed.startsWith("[") && typed !== "localhost") throw invalid();
   let url: URL;
   try {
-    url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    url = new URL(withScheme);
   } catch {
     throw invalid();
   }

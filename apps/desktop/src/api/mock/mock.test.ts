@@ -25,26 +25,35 @@ describe("mock API", () => {
     const token = "demo-token-0001";
     const notCanvas =
       "That is not a Canvas address. Enter just the address, like https://lms.example.edu";
-    for (const input of [
+    const notAddresses = [
       "7~AbCdEfGhIjKl", // a token pasted into the address field
       "7~AbCd/courses/1", // token-shaped wins over "page link"
       "canvas", // a single word
-      "https://canvas/courses/1", // single word wins over "page link"
+      "7",
+      "canvas.", // still one word
+      "https://7:8443", // one word with a port
+      "7/courses/1", // one word wins over "page link"
+      "https://canvas/courses/1",
       "http://canvas.demo.test", // not https
       "https://student:secret@canvas.demo.test",
-    ]) {
-      await expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
-        kind: "invalid",
-        message: notCanvas,
-      });
-    }
-    for (const input of ["https://canvas.demo.test/courses/1", "canvas.demo.test/?login=1"]) {
-      await expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
-        kind: "invalid",
-        message:
-          "That is a link to a page, not a Canvas address. Enter just the address, like https://canvas.demo.test",
-      });
-    }
+    ];
+    const pageLinks = ["https://canvas.demo.test/courses/1", "canvas.demo.test/?login=1"];
+    // In parallel: the mock takes 500 ms per Canvas check.
+    await Promise.all([
+      ...notAddresses.map((input) =>
+        expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
+          kind: "invalid",
+          message: notCanvas,
+        }),
+      ),
+      ...pageLinks.map((input) =>
+        expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
+          kind: "invalid",
+          message:
+            "That is a link to a page, not a Canvas address. Enter just the address, like https://canvas.demo.test",
+        }),
+      ),
+    ]);
     await expect(api.addCanvasSource("canvas.demo.test/", token)).resolves.toMatchObject({
       kind: "canvas",
     });
