@@ -110,6 +110,9 @@ impl CourseDir<'_> {
                 CourseMeta::default()
             }
         };
+        for message in &meta.warnings {
+            warn(report, format!("{}: {message}", self.dir_name));
+        }
         let code = meta.code.clone().or_else(|| course_code(self.dir_name));
         let label = code.clone().unwrap_or_else(|| self.dir_name.to_string());
         progress(SyncProgress::Step {
@@ -327,6 +330,24 @@ pub(crate) struct CourseMeta {
     pub name: Option<String>,
     pub term_start: Option<NaiveDate>,
     pub term_end: Option<NaiveDate>,
+    /// One message per setting we don't know (a typo would otherwise be silently ignored).
+    pub warnings: Vec<String>,
+}
+
+/// The settings `course.toml` / `course.json` may contain.
+const COURSE_KEYS: [&str; 4] = ["code", "name", "term_start", "term_end"];
+
+/// Warnings for the keys of a course file that aren't `COURSE_KEYS`.
+fn unknown_keys<'a>(file: &str, keys: impl Iterator<Item = &'a String>) -> Vec<String> {
+    keys.filter(|key| !COURSE_KEYS.contains(&key.as_str()))
+        .map(|key| {
+            let key: String = key.chars().take(40).collect();
+            format!(
+                "{file}: unknown setting {key:?} ignored (use {})",
+                COURSE_KEYS.join(", ")
+            )
+        })
+        .collect()
 }
 
 /// Read `course.toml` (preferred) or `course.json` in `dir`. Missing files → defaults; a
@@ -338,13 +359,15 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
             .map_err(|err| format!("course.toml could not be read ({err})"))?;
         let table: toml::Table = toml::from_str(&text)
             .map_err(|err| format!("course.toml is not valid TOML ({err})"))?;
-        return meta_from(|key| match table.get(key)? {
+        let mut meta = meta_from(|key| match table.get(key)? {
             toml::Value::String(s) => Some(s.clone()),
             // Bare TOML dates: term_start = 2026-09-08
             toml::Value::Datetime(dt) => dt.date.map(|d| d.to_string()),
             _ => None,
         })
-        .map_err(|err| format!("course.toml: {err}"));
+        .map_err(|err| format!("course.toml: {err}"))?;
+        meta.warnings = unknown_keys("course.toml", table.keys());
+        return Ok(meta);
     }
     let json_path = dir.join("course.json");
     if json_path.is_file() {
@@ -352,8 +375,12 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
             .map_err(|err| format!("course.json could not be read ({err})"))?;
         let value: serde_json::Value = serde_json::from_str(&text)
             .map_err(|err| format!("course.json is not valid JSON ({err})"))?;
-        return meta_from(|key| value.get(key)?.as_str().map(str::to_string))
-            .map_err(|err| format!("course.json: {err}"));
+        let mut meta = meta_from(|key| value.get(key)?.as_str().map(str::to_string))
+            .map_err(|err| format!("course.json: {err}"))?;
+        if let Some(object) = value.as_object() {
+            meta.warnings = unknown_keys("course.json", object.keys());
+        }
+        return Ok(meta);
     }
     Ok(CourseMeta::default())
 }
@@ -377,6 +404,7 @@ fn meta_from(get: impl Fn(&str) -> Option<String>) -> Result<CourseMeta, String>
         name: text("name"),
         term_start: date("term_start")?,
         term_end: date("term_end")?,
+        warnings: Vec::new(),
     })
 }
 
@@ -438,8 +466,24 @@ mod tests {
         let meta = read_course_meta(dir.path()).unwrap();
         assert_eq!(meta.code.as_deref(), Some("DEMO303"));
         assert_eq!(meta.name, None);
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
         assert_eq!(meta.term_start, NaiveDate::from_ymd_opt(2026, 9, 10));
         assert_eq!(meta.term_end, NaiveDate::from_ymd_opt(2026, 12, 20));
+
+        // A misspelt setting is reported, not silently ignored.
+        std::fs::write(
+            dir.path().join("course.toml"),
+            "code = \"DEMO303\"\nterm_sart = 2026-09-10\n",
+        )
+        .unwrap();
+        let meta = read_course_meta(dir.path()).unwrap();
+        assert_eq!(meta.code.as_deref(), Some("DEMO303"));
+        assert_eq!(meta.warnings.len(), 1);
+        assert!(
+            meta.warnings[0].contains("unknown setting \"term_sart\""),
+            "{:?}",
+            meta.warnings
+        );
 
         std::fs::write(
             dir.path().join("course.toml"),

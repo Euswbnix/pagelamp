@@ -180,7 +180,8 @@ fn course_settings_commands() {
     assert_eq!(list[1]["course"]["ai_policy_note"], "syllabus §2");
 
     ok(&pagelamp(&home, &["course", "term", "DEMO101", "--clear"]));
-    ok(&pagelamp(&home, &["course", "hide", "DEMO202"]));
+    let hidden = json_out(&pagelamp(&home, &["--json", "course", "hide", "DEMO202"]));
+    assert_eq!(hidden["saved"], true);
     let list = json_out(&pagelamp(&home, &["--json", "courses"]));
     // No course.toml and no --term-start: nothing synced to fall back to.
     assert_eq!(list[0]["course"]["term_source"], "none");
@@ -441,6 +442,29 @@ fn mcp_sessions_are_logged_without_arguments_or_output() {
         !log.contains("zebra-demo-query") && !log.contains("photosynthesis"),
         "{log}"
     );
+}
+
+#[test]
+fn help_explains_arguments_and_removal_prints_json() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let help = ok(&pagelamp(&home, &["sync", "--help"]));
+    assert!(
+        help.contains("Folder and calendar sources always sync fully"),
+        "{help}"
+    );
+    let help = ok(&pagelamp(&home, &["course", "term", "--help"]));
+    assert!(help.contains("Last day of the term (YYYY-MM-DD)"), "{help}");
+
+    let courses = temp.path().join("Courses");
+    demo_courses(&courses);
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "folder", "add", courses.to_str().unwrap()],
+    ));
+    let id = added["id"].as_str().unwrap();
+    let removed = json_out(&pagelamp(&home, &["--json", "sources", "remove", id]));
+    assert_eq!(removed["removed"], id);
 }
 
 #[test]

@@ -61,7 +61,8 @@ enum Command {
         /// Only this source id (see `sources`).
         #[arg(long)]
         source: Option<String>,
-        /// Only these courses (id or code); repeatable.
+        /// Only these Canvas courses (id or code); repeatable. Folder and calendar sources
+        /// always sync fully.
         #[arg(long = "course")]
         courses: Vec<String>,
         /// Download and index Canvas files (counts as viewing them in Canvas).
@@ -80,9 +81,12 @@ enum Command {
     Course(CourseCommand),
     /// Search your course materials.
     Search {
+        /// Words to look for (any of them; best matches first).
         query: String,
+        /// Only this course (code, name or id).
         #[arg(long)]
         course: Option<String>,
+        /// At most this many results.
         #[arg(long, default_value_t = 10)]
         limit: u32,
     },
@@ -119,10 +123,12 @@ enum CanvasCommand {
 enum FolderCommand {
     /// Add a folder whose sub-folders are courses.
     Add {
+        /// The folder that contains one sub-folder per course.
         path: PathBuf,
         /// First day of the term (YYYY-MM-DD), used when a course has no course.toml.
         #[arg(long, value_parser = parse_date)]
         term_start: Option<NaiveDate>,
+        /// Name shown for this source (default: the folder's name).
         #[arg(long)]
         label: Option<String>,
     },
@@ -132,6 +138,7 @@ enum FolderCommand {
 enum IcalCommand {
     /// Add a calendar feed. The URL is read without echo (or from stdin when piped).
     Add {
+        /// Name shown for this source (default: "Calendar feed").
         #[arg(long)]
         label: Option<String>,
     },
@@ -142,36 +149,60 @@ enum SourcesCommand {
     /// List sources (default).
     List,
     /// Remove a source and everything synced from it.
-    Remove { source_id: String },
+    Remove {
+        /// The source's id, as shown by `sources`.
+        source_id: String,
+    },
     /// Replace an expired Canvas token or a changed feed URL (read like `add`).
-    UpdateSecret { source_id: String },
+    UpdateSecret {
+        /// The source's id, as shown by `sources`.
+        source_id: String,
+    },
 }
 
 #[derive(Subcommand)]
 enum CourseCommand {
     /// Record the course's generative-AI policy.
     Policy {
+        /// The course's code, name or id.
         course: String,
+        /// What the syllabus allows (learning_aid / allowed_with_citation also work).
         policy: PolicyArg,
+        /// Where the policy comes from, e.g. "syllabus §4".
         #[arg(long)]
         note: Option<String>,
     },
     /// Override the term dates (or --clear to use the synced ones).
     Term {
+        /// The course's code, name or id.
         course: String,
+        /// First day of the term (YYYY-MM-DD).
         #[arg(long, value_parser = parse_date)]
         start: Option<NaiveDate>,
+        /// Last day of the term (YYYY-MM-DD).
         #[arg(long, value_parser = parse_date)]
         end: Option<NaiveDate>,
+        /// Forget your dates and use the synced ones again.
         #[arg(long, conflicts_with_all = ["start", "end"])]
         clear: bool,
     },
     /// Hide a course everywhere (including from your AI app).
-    Hide { course: String },
+    Hide {
+        /// The course's code, name or id.
+        course: String,
+    },
     /// Show a hidden course again.
-    Show { course: String },
+    Show {
+        /// The course's code, name or id.
+        course: String,
+    },
     /// Let your AI app read this course's materials (on) or not (off).
-    AiAccess { course: String, access: OnOff },
+    AiAccess {
+        /// The course's code, name or id.
+        course: String,
+        /// on: your AI app may read the material text; off: titles and dates only.
+        access: OnOff,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -364,12 +395,18 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 }
                 SourcesCommand::Remove { source_id } => {
                     app.remove_source(&source_id)?;
+                    if json {
+                        return print_json(&serde_json::json!({ "removed": source_id }));
+                    }
                     println!("Removed {source_id}.");
                     Ok(())
                 }
                 SourcesCommand::UpdateSecret { source_id } => {
                     let secret = read_secret("New token or feed URL: ")?;
                     let source = app.update_source_secret(&source_id, &secret).await?;
+                    if json {
+                        return print_json(&source);
+                    }
                     println!("Updated {}.", source.id);
                     Ok(())
                 }
@@ -393,7 +430,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             match source {
                 Some(id) => {
                     let result = app.sync_source(&id, req, print_event).await?;
-                    finish_sync(&[result], json)
+                    finish_sync(&[result], json, cli.verbose)
                 }
                 None => {
                     let summary: SyncSummary = app.sync_all(req, print_event).await?;
@@ -404,7 +441,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         );
                         return Ok(());
                     }
-                    finish_sync(&summary.results, json)
+                    finish_sync(&summary.results, json, cli.verbose)
                 }
             }
         }
@@ -504,6 +541,9 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     app.set_course_ai_access(&course, matches!(access, OnOff::On))?
                 }
             }
+            if json {
+                return print_json(&serde_json::json!({ "saved": true }));
+            }
             println!("Saved.");
             Ok(())
         }
@@ -585,7 +625,7 @@ fn print_event(event: SyncEvent) {
     }
 }
 
-fn finish_sync(results: &[SourceSyncResult], json: bool) -> anyhow::Result<()> {
+fn finish_sync(results: &[SourceSyncResult], json: bool, verbose: bool) -> anyhow::Result<()> {
     if json {
         print_json(&results)?;
     } else {
@@ -630,7 +670,8 @@ fn finish_sync(results: &[SourceSyncResult], json: bool) -> anyhow::Result<()> {
                 Some(requests) => println!("  {requests} requests · {seconds:.1} s"),
                 None => println!("  {seconds:.1} s"),
             }
-            if !r.warnings.is_empty() {
+            // Only request-making sources (Canvas) have request details to show.
+            if !r.warnings.is_empty() && r.requests.is_some() && !verbose {
                 println!(
                     "  {} warning(s) above; run with -v for request details",
                     r.warnings.len()
