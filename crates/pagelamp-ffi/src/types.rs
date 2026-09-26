@@ -1,0 +1,600 @@
+//! UniFFI mirrors of every facade type the Swift app sees.
+//!
+//! `#[uniffi::remote(..)]` mirrors restate the real definitions from `pagelamp-app` /
+//! `pagelamp-core` (which do not depend on UniFFI). The generated converters construct and
+//! destructure the real types field by field and match every enum variant, so a mirror that
+//! drifts from the facade (a field or variant added, removed, renamed or retyped) is a
+//! compile error in this crate. `tests::every_schema_type_is_mirrored` additionally fails
+//! when the facade's JSON Schema (`pagelamp schema`) gains a type nobody mirrored yet.
+//!
+//! Types UniFFI cannot carry become custom types (Swift sees the builtin on the right):
+//!
+//! | Rust (facade)                 | alias here   | Swift                  |
+//! |-------------------------------|--------------|------------------------|
+//! | `chrono::DateTime<Utc>`       | `Timestamp`  | `Date`                 |
+//! | `chrono::NaiveDate`           | `IsoDate`    | `String`, "YYYY-MM-DD" |
+//! | `serde_json::Value`           | `JsonString` | `String` (JSON text)   |
+//! | `BTreeMap<String, String>`    | `EnvMap`     | `[String: String]`     |
+//!
+//! `PathBuf`/`&Path` never cross the boundary as such: the exported methods take and return
+//! `String`s (see `lib.rs`).
+
+use std::collections::{BTreeMap, HashMap};
+use std::time::SystemTime;
+
+use pagelamp_app::diagnostics::{
+    CrashReport, DoctorReport, DoctorSource, McpClientPresence, ProcessKind,
+};
+use pagelamp_app::{
+    AppStatus, InstallKind, McpClient, McpClientConfig, McpLaunch, McpNoteCode, SourceSyncResult,
+    SyncEvent, SyncRequest, SyncSummary, TemporaryLocation,
+};
+use pagelamp_core::model::{
+    AiMaterialsState, AiPolicy, Confidence, Course, CourseTimeline, DownloadBlock, Event,
+    EventKind, MaterialKind, Module, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
+    StoreCounts, StoredStudyPlan, StudyPlan, StudyPlanItem, TermSource, TextStatus,
+};
+use pagelamp_core::source::CourseSyncSummary;
+use pagelamp_core::views::{
+    CourseCounts, CourseOverview, CourseSummary, Deadline, MaterialView, WeekMaterials,
+    WeekNoteKind,
+};
+
+use crate::PageLampError;
+
+// ---------------------------------------------------------------------------------------------
+// Custom types
+// ---------------------------------------------------------------------------------------------
+
+/// A point in time (UTC). Swift: `Date`.
+pub type Timestamp = chrono::DateTime<chrono::Utc>;
+uniffi::custom_type!(Timestamp, SystemTime, {
+    remote,
+    lower: |time| SystemTime::from(time),
+    try_lift: |time| Ok(Timestamp::from(time)),
+});
+
+/// A calendar date without a time zone. Swift: `String`, always "YYYY-MM-DD".
+pub type IsoDate = chrono::NaiveDate;
+uniffi::custom_type!(IsoDate, String, {
+    remote,
+    lower: |date| iso_date_to_string(date),
+    try_lift: |text| Ok(iso_date_from_string(&text)?),
+});
+
+/// Free-form JSON (`SourceRecord.config`). Swift: `String` holding JSON text.
+pub type JsonString = serde_json::Value;
+uniffi::custom_type!(JsonString, String, {
+    remote,
+    lower: |value| value.to_string(),
+    try_lift: |text| Ok(json_from_string(&text)?),
+});
+
+/// Environment variables (`McpLaunch.env`). Swift: `[String: String]`. UniFFI has no ordered
+/// map; the order of environment variables carries no meaning.
+pub type EnvMap = BTreeMap<String, String>;
+uniffi::custom_type!(EnvMap, HashMap<String, String>, {
+    remote,
+    lower: |map| map.into_iter().collect(),
+    try_lift: |map| Ok(map.into_iter().collect()),
+});
+
+/// "YYYY-MM-DD".
+pub(crate) fn iso_date_to_string(date: IsoDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
+/// Parses exactly "YYYY-MM-DD" (surrounding whitespace ignored); anything else is `Invalid`,
+/// so a bad date from Swift throws `PageLampError.invalid`, not an internal error.
+pub(crate) fn iso_date_from_string(text: &str) -> Result<IsoDate, PageLampError> {
+    let trimmed = text.trim();
+    let shaped = trimmed.len() == 10
+        && trimmed.bytes().enumerate().all(|(i, b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        });
+    shaped
+        .then(|| IsoDate::parse_from_str(trimmed, "%Y-%m-%d").ok())
+        .flatten()
+        .ok_or_else(|| PageLampError::Invalid {
+            message: format!("'{text}' is not a date (expected YYYY-MM-DD)"),
+        })
+}
+
+pub(crate) fn json_from_string(text: &str) -> Result<JsonString, PageLampError> {
+    serde_json::from_str(text).map_err(|err| PageLampError::Invalid {
+        message: format!("not valid JSON: {err}"),
+    })
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-core: model
+// ---------------------------------------------------------------------------------------------
+
+#[uniffi::remote(Enum)]
+pub enum SourceKind {
+    Canvas,
+    Folder,
+    Ical,
+}
+
+/// Why a source's last sync failed; UIs branch on this, never on the message.
+#[uniffi::remote(Enum)]
+pub enum SourceErrorKind {
+    AuthExpiredOrRevoked,
+    Network,
+    NotFound,
+    RateLimited,
+    Other,
+}
+
+/// A configured source. `config` is JSON text: Canvas `{base_url, account_name}`, folder
+/// `{path, term_start?}`, iCal `{}`.
+#[uniffi::remote(Record)]
+pub struct SourceRecord {
+    pub id: String,
+    pub kind: SourceKind,
+    pub label: String,
+    pub config: JsonString,
+    pub last_synced_at: Option<Timestamp>,
+    pub last_error: Option<String>,
+    pub last_error_kind: Option<SourceErrorKind>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum AiPolicy {
+    Unknown,
+    Prohibited,
+    LearningAid,
+    AllowedWithCitation,
+    Unrestricted,
+}
+
+#[uniffi::remote(Record)]
+pub struct Course {
+    pub id: String,
+    pub source_id: String,
+    pub external_id: String,
+    pub code: Option<String>,
+    pub name: String,
+    pub term_start: Option<IsoDate>,
+    pub term_end: Option<IsoDate>,
+    pub term_source: TermSource,
+    pub url: Option<String>,
+    pub ai_policy: AiPolicy,
+    pub ai_policy_note: Option<String>,
+    pub ai_access: bool,
+    pub hidden: bool,
+    pub enrollment_active: bool,
+    pub updated_at: Timestamp,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TermSource {
+    User,
+    Synced,
+    None,
+}
+
+#[uniffi::remote(Enum)]
+pub enum AiMaterialsState {
+    Readable,
+    TurnedOff,
+    WithheldByPolicy,
+}
+
+#[uniffi::remote(Record)]
+pub struct Module {
+    pub id: String,
+    pub course_id: String,
+    pub name: String,
+    pub position: Option<i64>,
+    pub unlock_at: Option<Timestamp>,
+    pub week_hint: Option<u32>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum MaterialKind {
+    File,
+    Page,
+    Announcement,
+    Syllabus,
+    ExternalLink,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TextStatus {
+    Pending,
+    Ok,
+    Unsupported,
+    NotDownloaded,
+    Error,
+}
+
+#[uniffi::remote(Enum)]
+pub enum DownloadBlock {
+    Locked,
+    TooLarge,
+}
+
+#[uniffi::remote(Enum)]
+pub enum EventKind {
+    AssignmentDue,
+    QuizDue,
+    Exam,
+    ClassEvent,
+    PlannerItem,
+    Other,
+}
+
+/// `course_hint` is internal to syncing (never serialised by the facade); it is always nil in
+/// values the facade returns.
+#[uniffi::remote(Record)]
+pub struct Event {
+    pub id: String,
+    pub source_id: String,
+    pub course_id: Option<String>,
+    pub kind: EventKind,
+    pub title: String,
+    pub starts_at: Option<Timestamp>,
+    pub ends_at: Option<Timestamp>,
+    pub due_at: Option<Timestamp>,
+    pub url: Option<String>,
+    pub updated_at: Timestamp,
+    pub course_hint: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SearchHit {
+    pub material_id: String,
+    pub material_title: String,
+    pub course_id: String,
+    pub course_code: Option<String>,
+    pub chunk_ord: u32,
+    pub locator: Option<String>,
+    pub snippet: String,
+    pub url: Option<String>,
+    pub week_hint: Option<u32>,
+    pub score: f64,
+}
+
+#[uniffi::remote(Enum)]
+pub enum Confidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseTimeline {
+    pub as_of: IsoDate,
+    pub current_week: Option<u32>,
+    pub confidence: Confidence,
+    pub evidence: Vec<String>,
+    pub current_module_ids: Vec<String>,
+    pub outside_term: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct StoreCounts {
+    pub courses: u32,
+    pub hidden_courses: u32,
+    pub modules: u32,
+    pub materials: u32,
+    pub indexed_materials: u32,
+    pub chunks: u32,
+    pub events: u32,
+    pub study_plans: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct StudyPlanItem {
+    pub date: IsoDate,
+    pub course_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub material_ids: Vec<String>,
+    pub minutes: Option<u32>,
+    pub done: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct StudyPlan {
+    pub horizon_start: IsoDate,
+    pub horizon_end: IsoDate,
+    pub items: Vec<StudyPlanItem>,
+    pub notes: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct StoredStudyPlan {
+    pub id: i64,
+    pub created_at: Timestamp,
+    pub plan: StudyPlan,
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-core: views and source
+// ---------------------------------------------------------------------------------------------
+
+/// A deadline: the event (flattened in JSON, nested here) plus its course's code and name.
+#[uniffi::remote(Record)]
+pub struct Deadline {
+    pub event: Event,
+    pub course_code: Option<String>,
+    pub course_name: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseCounts {
+    pub modules: u32,
+    pub materials: u32,
+    pub indexed_materials: u32,
+    pub upcoming_deadlines: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseSummary {
+    pub course: Course,
+    pub ai_materials: AiMaterialsState,
+    pub timeline: CourseTimeline,
+    pub counts: CourseCounts,
+    pub next_deadline: Option<Deadline>,
+    pub source_label: String,
+    pub last_synced_at: Option<Timestamp>,
+}
+
+#[uniffi::remote(Record)]
+pub struct MaterialView {
+    pub id: String,
+    pub course_id: String,
+    pub title: String,
+    pub kind: MaterialKind,
+    pub module_id: Option<String>,
+    pub module_name: Option<String>,
+    pub week_hint: Option<u32>,
+    pub published_at: Option<Timestamp>,
+    pub url: Option<String>,
+    pub text_status: TextStatus,
+    pub text_error: Option<String>,
+    pub download_blocked: Option<DownloadBlock>,
+    pub chunk_count: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseOverview {
+    pub course: Course,
+    pub ai_materials: AiMaterialsState,
+    pub timeline: CourseTimeline,
+    pub current_modules: Vec<Module>,
+    pub recent_materials: Vec<MaterialView>,
+    pub upcoming_deadlines: Vec<Deadline>,
+    pub recent_announcements: Vec<MaterialView>,
+    pub source_label: String,
+    pub last_synced_at: Option<Timestamp>,
+    pub downloadable_files: u32,
+}
+
+#[uniffi::remote(Enum)]
+pub enum WeekNoteKind {
+    CurrentWeekUnknown,
+    OutsideTerm,
+    NoMaterialsThisWeek,
+}
+
+#[uniffi::remote(Record)]
+pub struct WeekMaterials {
+    pub course: Course,
+    pub ai_materials: AiMaterialsState,
+    pub week: Option<u32>,
+    pub requested_week: Option<u32>,
+    pub timeline: CourseTimeline,
+    pub modules: Vec<Module>,
+    pub materials: Vec<MaterialView>,
+    pub available_weeks: Vec<u32>,
+    pub note: Option<String>,
+    pub note_kind: Option<WeekNoteKind>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseSyncSummary {
+    pub course: String,
+    pub modules: u32,
+    pub pages: u32,
+    pub files: u32,
+    pub events: u32,
+    pub warnings: u32,
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-app: status, sync, "connect your AI app"
+// ---------------------------------------------------------------------------------------------
+
+#[uniffi::remote(Record)]
+pub struct AppStatus {
+    pub version: String,
+    pub data_dir: String,
+    pub db_path: String,
+    pub sources: Vec<SourceRecord>,
+    pub counts: StoreCounts,
+    pub last_synced_at: Option<Timestamp>,
+    pub sync_in_progress: bool,
+}
+
+/// Options for a sync run; `SyncRequest()` in Swift equals the facade's `SyncRequest::default()`
+/// (checked by `tests::sync_request_defaults_match_the_facade` and, through the generated
+/// initialiser, by the Swift tests against `defaultSyncRequest()`).
+#[uniffi::remote(Record)]
+pub struct SyncRequest {
+    #[uniffi(default)]
+    pub download_files: bool,
+    #[uniffi(default = 50)]
+    pub max_file_mb: u32,
+    #[uniffi(default)]
+    pub only_courses: Vec<String>,
+}
+
+/// Progress of a sync run, delivered to `SyncObserver.on_event`.
+#[uniffi::remote(Enum)]
+pub enum SyncEvent {
+    SourceStarted {
+        source_id: String,
+        label: String,
+    },
+    Progress {
+        source_id: String,
+        message: String,
+        current: Option<u32>,
+        total: Option<u32>,
+    },
+    Warning {
+        source_id: String,
+        message: String,
+    },
+    SourceFinished {
+        source_id: String,
+        ok: bool,
+        error: Option<String>,
+        error_kind: Option<SourceErrorKind>,
+    },
+}
+
+#[uniffi::remote(Record)]
+pub struct SourceSyncResult {
+    pub source_id: String,
+    pub label: String,
+    pub kind: SourceKind,
+    pub ok: bool,
+    pub error: Option<String>,
+    pub error_kind: Option<SourceErrorKind>,
+    pub started_at: Timestamp,
+    pub finished_at: Timestamp,
+    pub courses: u32,
+    pub modules: u32,
+    pub materials: u32,
+    pub files_downloaded: u32,
+    pub files_indexed: u32,
+    pub events: u32,
+    pub warnings: Vec<String>,
+    pub course_summaries: Vec<CourseSyncSummary>,
+    pub requests: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SyncSummary {
+    pub started_at: Timestamp,
+    pub finished_at: Timestamp,
+    pub ok: bool,
+    pub results: Vec<SourceSyncResult>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum McpClient {
+    ClaudeDesktop,
+    ClaudeCode,
+    Codex,
+    Generic,
+}
+
+#[uniffi::remote(Enum)]
+pub enum InstallKind {
+    JsonSnippet,
+    ShellCommand,
+    TomlSnippet,
+}
+
+#[uniffi::remote(Record)]
+pub struct McpLaunch {
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: EnvMap,
+    pub temporary_location: Option<TemporaryLocation>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TemporaryLocation {
+    DiskImage,
+    Translocated,
+    AppImage,
+}
+
+#[uniffi::remote(Record)]
+pub struct McpClientConfig {
+    pub client: McpClient,
+    pub title: String,
+    pub install_kind: InstallKind,
+    pub config_path_hint: Option<String>,
+    pub content: String,
+    pub notes: Vec<String>,
+    pub note_codes: Vec<McpNoteCode>,
+    pub launch: McpLaunch,
+}
+
+#[uniffi::remote(Enum)]
+pub enum McpNoteCode {
+    WorksOnAllClaudePlans,
+    AdminsMayDisableExtensions,
+    NeedsPaidClaudePlan,
+    CodexConfigSharedWithChatgptDesktop,
+    CodexPlusAndEduDocumented,
+    FreeGoUndocumented,
+    RestartClientAfterChange,
+    QuitBeforeEditing,
+    CustomDataDir,
+    GenericStdioClient,
+    RunFromTemporaryLocation,
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-app: diagnostics
+// ---------------------------------------------------------------------------------------------
+
+#[uniffi::remote(Enum)]
+pub enum ProcessKind {
+    App,
+    Mcp,
+}
+
+#[uniffi::remote(Record)]
+pub struct CrashReport {
+    pub time: Timestamp,
+    pub version: String,
+    pub process: ProcessKind,
+    pub message: String,
+    pub location: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DoctorSource {
+    pub kind: SourceKind,
+    pub ok: bool,
+    pub last_synced_at: Option<Timestamp>,
+    pub last_error_kind: Option<SourceErrorKind>,
+}
+
+#[uniffi::remote(Record)]
+pub struct McpClientPresence {
+    pub claude_desktop: bool,
+    pub claude_code: bool,
+    pub codex: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct DoctorReport {
+    pub version: String,
+    pub os: String,
+    pub arch: String,
+    pub data_dir: String,
+    pub logs_dir: String,
+    pub schema_version: Option<i64>,
+    pub database_error: Option<String>,
+    pub keychain_available: bool,
+    pub keychain_error: Option<String>,
+    pub sources: Vec<DoctorSource>,
+    pub courses: u32,
+    pub hidden_courses: u32,
+    pub materials: u32,
+    pub events: u32,
+    pub mcp_clients: McpClientPresence,
+    pub last_crash: Option<CrashReport>,
+}

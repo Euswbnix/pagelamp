@@ -1,0 +1,8 @@
+[bindings.swift]
+# The app writes its own localised `LocalizedError` for `PageLampError` (the generated one
+# would show `String(reflecting:)`).
+omit_localized_error_conformance = true
+# Facade values are snapshots: `let` fields.
+generate_immutable_records = true
+# Pickers over simple enums (AI policy, …) without a hand-written case list.
+generate_case_iterable_conformance = true

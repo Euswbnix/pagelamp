@@ -1,0 +1,38 @@
+[package]
+name = "pagelamp-ffi"
+description = "UniFFI bindings of the PageLamp facade (pagelamp-app) for the native macOS app"
+version.workspace = true
+edition.workspace = true
+# UniFFI 0.32 is tested down to Rust 1.90 (the workspace minimum is 1.89).
+rust-version = "1.90"
+license.workspace = true
+publish = false
+
+[lib]
+name = "pagelamp_ffi"
+# staticlib: linked into the Swift app (apps/macos/scripts/build-ffi.sh builds the xcframework);
+# lib: for this crate's tests and the bindgen binary.
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+# Generates the Swift bindings from the built library: see apps/macos/scripts/build-ffi.sh.
+name = "uniffi-bindgen-swift"
+path = "src/bin/uniffi-bindgen-swift.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[dependencies]
+pagelamp-app.workspace = true
+pagelamp-core.workspace = true
+# Pinned: the generated Swift checks the scaffolding contract and per-function checksums, so the
+# bindings and the library must always come from the same UniFFI version (build-ffi.sh makes both).
+uniffi = "=0.32.2"
+tokio.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
