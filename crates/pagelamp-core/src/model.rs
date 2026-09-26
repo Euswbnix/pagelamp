@@ -417,6 +417,32 @@ pub struct Event {
     pub due_at: Option<Timestamp>,
     pub url: Option<String>,
     pub updated_at: Timestamp,
+    /// The course text the source gave, e.g. the iCal "[DEMO101H1 F LEC0101]" suffix. Kept
+    /// so `Store::relink_events` can link the event to a course that a later folder/Canvas
+    /// sync creates. Internal: never serialised.
+    #[serde(skip)]
+    pub course_hint: Option<String>,
+}
+
+/// The course that a source's course text (e.g. the iCal "[DEMO101H1 F LEC0101]" suffix)
+/// refers to: the course whose code is a prefix of the text, case-insensitive with spaces
+/// ignored. The longest code wins ("DEMO1011" over "DEMO101").
+pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Course> {
+    fn squash(text: &str) -> String {
+        text.chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(char::to_uppercase)
+            .collect()
+    }
+    let target = squash(hint);
+    courses
+        .iter()
+        .filter_map(|course| {
+            let code = squash(course.code.as_deref()?);
+            (!code.is_empty() && target.starts_with(&code)).then_some((code.len(), course))
+        })
+        .max_by_key(|(len, _)| *len)
+        .map(|(_, course)| course)
 }
 
 impl Event {

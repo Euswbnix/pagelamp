@@ -278,6 +278,7 @@ pub(crate) fn assignment(
             .as_deref()
             .and_then(|u| absolute_url(base, u)),
         updated_at: now,
+        course_hint: None,
     })
 }
 
@@ -329,6 +330,7 @@ pub(crate) fn planner_item(
         due_at: Some(date),
         url: item.html_url.as_deref().and_then(|u| absolute_url(base, u)),
         updated_at: now,
+        course_hint: None,
     })
 }
 

@@ -648,6 +648,94 @@ async fn ical_source_is_validated_saved_synced_and_its_url_replaced() {
     assert_eq!(updated.id, source.id);
 }
 
+/// A feed with one deadline for DEMO101H1 (Canvas-style bracket suffix), served by `server`.
+async fn demo_feed(server: &wiremock::MockServer) -> String {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, ResponseTemplate};
+    let feed = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\n\
+                UID:ps1\r\nDTSTART:20300930T035900Z\r\nDTEND:20300930T035900Z\r\n\
+                SUMMARY:Problem Set 1 [DEMO101H1 F LEC0101]\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    Mock::given(method("GET"))
+        .and(path("/demo-feed.ics"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(feed))
+        .mount(server)
+        .await;
+    format!("{}/demo-feed.ics", server.uri())
+}
+
+/// `<dir>/Courses/DEMO101H1 Intro/week1.txt`; returns the `Courses` root.
+fn demo_course_folder(dir: &Path) -> std::path::PathBuf {
+    let root = dir.join("Courses");
+    std::fs::create_dir_all(root.join("DEMO101H1 Intro")).unwrap();
+    std::fs::write(root.join("DEMO101H1 Intro/week1.txt"), "Demo notes").unwrap();
+    root
+}
+
+#[tokio::test]
+async fn sync_all_runs_calendar_feeds_after_the_sources_that_create_courses() {
+    let server = wiremock::MockServer::start().await;
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    // "Calendar feed" sorts before "Courses": label order alone would sync the feed first,
+    // before DEMO101H1 exists.
+    let feed = app
+        .add_ical_source(&demo_feed(&server).await, Some("Calendar feed"))
+        .await
+        .unwrap();
+    let folder = app
+        .add_folder_source(&demo_course_folder(temp.path()), None, None)
+        .unwrap();
+    assert_eq!(folder.label, "Courses");
+
+    let events = Mutex::new(Vec::new());
+    let summary = app
+        .sync_all(SyncRequest::default(), |event| {
+            if let SyncEvent::SourceStarted { source_id, .. } = event {
+                events.lock().unwrap().push(source_id);
+            }
+        })
+        .await
+        .unwrap();
+    assert!(summary.ok, "{summary:?}");
+    assert_eq!(*events.lock().unwrap(), [folder.id, feed.id]);
+    let deadlines = app.list_deadlines(Some("DEMO101H1"), 365 * 10, 0).unwrap();
+    assert_eq!(deadlines.len(), 1, "{deadlines:?}");
+    assert_eq!(deadlines[0].event.title, "Problem Set 1");
+}
+
+#[tokio::test]
+async fn calendar_events_are_linked_to_courses_synced_later() {
+    let server = wiremock::MockServer::start().await;
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let feed = app
+        .add_ical_source(&demo_feed(&server).await, None)
+        .await
+        .unwrap();
+    let result = app
+        .sync_source(&feed.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(result.ok, "{result:?}");
+    let unlinked = app.list_deadlines(None, 365 * 10, 0).unwrap();
+    assert_eq!(unlinked.len(), 1);
+    assert!(unlinked[0].event.course_id.is_none());
+
+    // The folder is added and synced on its own; the feed is not fetched again.
+    drop(server);
+    let folder = app
+        .add_folder_source(&demo_course_folder(temp.path()), None, None)
+        .unwrap();
+    let result = app
+        .sync_source(&folder.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(result.ok, "{result:?}");
+    let linked = app.list_deadlines(Some("DEMO101H1"), 365 * 10, 0).unwrap();
+    assert_eq!(linked.len(), 1, "{linked:?}");
+    assert_eq!(linked[0].event.title, "Problem Set 1");
+}
+
 #[tokio::test]
 async fn canvas_source_is_validated_before_its_token_is_stored() {
     use wiremock::matchers::{header, method, path};

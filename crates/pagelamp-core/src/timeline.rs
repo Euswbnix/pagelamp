@@ -883,6 +883,7 @@ mod tests {
             due_at: Some(noon(date(2026, 9, 29))),
             url: None,
             updated_at: noon(date(2026, 9, 1)),
+            course_hint: None,
         };
         let t = infer_timeline(&course_without_term(), &[], &[], &[event], today);
         assert_eq!(t.current_week, None);

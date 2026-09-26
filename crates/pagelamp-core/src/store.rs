@@ -40,7 +40,7 @@ use rusqlite::{
 use crate::model::*;
 use crate::{Error, Result};
 
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// Version-1 schema. Applied by `open` when `user_version` is 0.
 pub const SCHEMA_V1: &str = r#"
@@ -151,10 +151,15 @@ CREATE TABLE study_plans (
 );
 "#;
 
+/// Version 2: `events.course_hint` (the course text a calendar feed gave, for relinking).
+pub const SCHEMA_V2: &str = r#"
+ALTER TABLE events ADD COLUMN course_hint TEXT;
+"#;
+
 /// Schema migrations, in order: `MIGRATIONS[i]` upgrades a database from `user_version` `i`
 /// to `i + 1`. To change the schema, APPEND a migration (never edit one that has shipped) and
 /// bump `SCHEMA_VERSION`; the assertion below keeps the two in step.
-const MIGRATIONS: &[&str] = &[SCHEMA_V1];
+const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
 const _: () = assert!(MIGRATIONS.len() as i64 == SCHEMA_VERSION);
 
 /// How long a statement waits for another connection's lock before failing with "busy".
@@ -196,8 +201,8 @@ const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hin
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, updated_at";
 const CHUNK_COLUMNS: &str = "material_id, ord, locator, text";
-const EVENT_COLUMNS: &str =
-    "id, source_id, course_id, kind, title, starts_at, ends_at, due_at, url, updated_at";
+const EVENT_COLUMNS: &str = "id, source_id, course_id, kind, title, starts_at, ends_at, due_at, url, \
+                             updated_at, course_hint";
 
 pub struct Store {
     conn: Connection,
@@ -860,8 +865,8 @@ impl Store {
         self.atomic(|| {
             let mut upsert = self.conn.prepare_cached(
                 "INSERT INTO events (id, source_id, course_id, kind, title, starts_at, ends_at,
-                                     due_at, url, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                                     due_at, url, updated_at, course_hint)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                  ON CONFLICT(id) DO UPDATE SET
                      source_id = excluded.source_id,
                      course_id = excluded.course_id,
@@ -871,7 +876,8 @@ impl Store {
                      ends_at = excluded.ends_at,
                      due_at = excluded.due_at,
                      url = excluded.url,
-                     updated_at = excluded.updated_at",
+                     updated_at = excluded.updated_at,
+                     course_hint = excluded.course_hint",
             )?;
             for event in events {
                 upsert.execute(params![
@@ -885,6 +891,7 @@ impl Store {
                     opt_ts_text(event.due_at),
                     event.url,
                     ts_text(event.updated_at),
+                    event.course_hint,
                 ])?;
             }
             self.conn.execute(
@@ -918,6 +925,41 @@ impl Store {
             params![ts_text(from), ts_text(to), course_id],
             event_from_row,
         )
+    }
+
+    /// Link events that have no course yet but carry a `course_hint` to the course that hint
+    /// names (`model::course_for_hint`, over all courses including hidden ones). Run after a
+    /// folder/Canvas sync so calendar events synced before their course existed get linked.
+    /// Local only; returns how many events were linked.
+    pub fn relink_events(&self) -> Result<usize> {
+        let courses = self.list_courses(true)?;
+        if courses.is_empty() {
+            return Ok(0);
+        }
+        let pending: Vec<(String, String)> = self.query_list(
+            "SELECT id, course_hint FROM events
+             WHERE course_id IS NULL AND course_hint IS NOT NULL
+             ORDER BY id",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let links: Vec<(String, &str)> = pending
+            .into_iter()
+            .filter_map(|(id, hint)| Some((id, course_for_hint(&hint, &courses)?.id.as_str())))
+            .collect();
+        if links.is_empty() {
+            return Ok(0);
+        }
+        self.atomic(|| {
+            let mut update = self
+                .conn
+                .prepare_cached("UPDATE events SET course_id = ?2 WHERE id = ?1")?;
+            for (id, course_id) in &links {
+                update.execute(params![id, course_id])?;
+            }
+            Ok(())
+        })?;
+        Ok(links.len())
     }
 
     // ----- search --------------------------------------------------------------------------
@@ -1384,6 +1426,7 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<Event> {
         due_at: get_opt_value(row, "due_at")?,
         url: row.get("url")?,
         updated_at: get_value(row, "updated_at")?,
+        course_hint: row.get("course_hint")?,
     })
 }
 

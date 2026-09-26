@@ -38,7 +38,9 @@ struct Counts {
 }
 
 impl App {
-    /// Sync every source in order. Holds `sync.lock` for the whole run (`Busy` if taken).
+    /// Sync every source: course-creating sources (folder, Canvas) first, then calendar
+    /// feeds, so feed events can be matched to their courses in the same run; otherwise in
+    /// `list_sources` order. Holds `sync.lock` for the whole run (`Busy` if taken).
     pub async fn sync_all(
         &self,
         req: SyncRequest,
@@ -46,7 +48,9 @@ impl App {
     ) -> Result<SyncSummary> {
         let _lock = self.acquire_sync_lock()?;
         let started_at = Utc::now();
-        let sources = self.read_store()?.list_sources()?;
+        let mut sources = self.read_store()?.list_sources()?;
+        // Stable: keeps the label order within each group.
+        sources.sort_by_key(|source| source.kind == SourceKind::Ical);
         let mut results = Vec::with_capacity(sources.len());
         for source in &sources {
             results.push(self.sync_one(source, &req, &on_event).await);
@@ -127,6 +131,9 @@ impl App {
             SourceKind::Ical => self.run_ical(source, &progress).await,
             SourceKind::Canvas => self.run_canvas(source, req, &progress).await,
         };
+        if matches!(source.kind, SourceKind::Folder | SourceKind::Canvas) {
+            self.relink_events();
+        }
         let finished_at = Utc::now();
         let error = outcome.as_ref().err().map(|e| (e.kind, e.message.clone()));
         // Log file: kind and counts at info; course/file names only at debug.
@@ -187,6 +194,25 @@ impl App {
             warnings: counts.warnings,
             course_summaries: counts.course_summaries,
             requests: counts.requests,
+        }
+    }
+
+    /// Link calendar events synced before their course existed (local, no network). Runs
+    /// after every folder/Canvas sync, even a failed one: it may still have added courses.
+    fn relink_events(&self) {
+        match self
+            .write_store()
+            .and_then(|store| Ok(store.relink_events()?))
+        {
+            Ok(0) => {}
+            Ok(linked) => tracing::info!(
+                target: "pagelamp::sync",
+                "linked {linked} calendar events to their courses"
+            ),
+            Err(err) => tracing::warn!(
+                target: "pagelamp::sync",
+                "could not link calendar events to courses: {err}"
+            ),
         }
     }
 

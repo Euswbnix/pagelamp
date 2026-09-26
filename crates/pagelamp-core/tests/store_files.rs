@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use chrono::NaiveDate;
 use pagelamp_core::Error;
 use pagelamp_core::model::*;
-use pagelamp_core::store::{SCHEMA_VERSION, Store};
+use pagelamp_core::store::{SCHEMA_V1, SCHEMA_VERSION, Store};
 use tempfile::TempDir;
 
 /// Well below `busy_timeout` (5 s): a read that took this long was blocked by the writer.
@@ -91,6 +91,43 @@ fn open_creates_db_with_expected_settings() {
         pragma_text(&store, "user_version"),
         SCHEMA_VERSION.to_string()
     );
+}
+
+#[test]
+fn a_version_1_database_is_migrated_by_open_and_keeps_its_events() {
+    let (_dir, path) = temp_db();
+    let plain = rusqlite::Connection::open(&path).unwrap();
+    plain.execute_batch(SCHEMA_V1).unwrap();
+    plain.pragma_update(None, "user_version", 1).unwrap();
+    plain
+        .execute_batch(
+            "INSERT INTO sources (id, kind, label) \
+               VALUES ('ical:demo', 'ical', 'Demo feed'); \
+             INSERT INTO events (id, source_id, kind, title, due_at, updated_at) \
+               VALUES ('ical:demo/event/1', 'ical:demo', 'quiz_due', 'Demo quiz', \
+                       '2026-10-01T10:00:00Z', '2026-09-20T00:00:00Z');",
+        )
+        .unwrap();
+    drop(plain);
+    // Readers never migrate: an older schema needs a read-write open (app start or sync).
+    assert!(matches!(
+        Store::open_read_only(&path),
+        Err(Error::NotInitialised(_))
+    ));
+
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+    let events = store
+        .list_events(
+            chrono::DateTime::<chrono::Utc>::MIN_UTC,
+            chrono::DateTime::<chrono::Utc>::MAX_UTC,
+            None,
+        )
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].title, "Demo quiz");
+    assert_eq!(events[0].course_hint, None);
+    assert!(Store::open_read_only(&path).is_ok());
 }
 
 #[test]

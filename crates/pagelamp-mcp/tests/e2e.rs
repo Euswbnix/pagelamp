@@ -137,6 +137,7 @@ fn fixture(dir: &Path) -> PathBuf {
         due_at: Some(Utc::now() + TimeDelta::days(days)),
         url: Some(format!("https://lms.example.edu/assignments/{id}")),
         updated_at: Utc::now(),
+        course_hint: None,
     };
     store
         .replace_events(

@@ -27,7 +27,9 @@
 //! `Event`s (never storing DESCRIPTION — rule 4):
 //! - Canvas puts the course in the SUMMARY suffix, e.g. "Assignment 1 [DEMO101H1 F LEC0101]";
 //!   match the bracketed code against known course codes (prefix match, case-insensitive)
-//!   to set course_id; strip the bracket from the title.
+//!   to set course_id; strip the bracket from the title. The bracket text is kept as
+//!   `course_hint`, so events of a course synced later still get linked
+//!   (`Store::relink_events`, run by the App after every folder/Canvas sync).
 //! - kind: summary/description mentioning assignment/due → AssignmentDue; quiz → QuizDue;
 //!   exam/midterm/final → Exam; else ClassEvent. All-day events: due_at = end of that day in
 //!   the local timezone converted to UTC.

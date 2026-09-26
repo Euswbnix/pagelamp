@@ -13,7 +13,7 @@ use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc
 use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
 use pagelamp_core::Store;
 use pagelamp_core::ingest::sha256_hex;
-use pagelamp_core::model::{Course, Event, EventKind};
+use pagelamp_core::model::{Course, Event, EventKind, course_for_hint};
 use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress};
 use regex::Regex;
 
@@ -257,7 +257,9 @@ pub(crate) fn parse_with<Tz: TimeZone>(
         parsed.events.push(Event {
             id: format!("{source_id}/event/{id_part}"),
             source_id: source_id.to_string(),
-            course_id: bracket.and_then(|b| match_course(b, known_courses)),
+            course_id: bracket
+                .and_then(|b| course_for_hint(b, known_courses))
+                .map(|c| c.id.clone()),
             kind,
             title: if title.is_empty() {
                 "(untitled)".into()
@@ -269,6 +271,7 @@ pub(crate) fn parse_with<Tz: TimeZone>(
             due_at,
             url: event.get_url().map(str::to_string),
             updated_at: now,
+            course_hint: bracket.map(str::to_string),
         });
     }
     Ok(parsed)
@@ -284,27 +287,6 @@ fn split_bracket(summary: &str) -> (String, Option<&str>) {
         }
         None => (summary.to_string(), None),
     }
-}
-
-/// The course whose code is a prefix of the bracket text (case-insensitive, spaces ignored);
-/// the longest code wins ("DEMO1011" over "DEMO101").
-fn match_course(bracket: &str, courses: &[Course]) -> Option<String> {
-    let target = squash(bracket);
-    courses
-        .iter()
-        .filter_map(|course| {
-            let code = squash(course.code.as_deref()?);
-            (!code.is_empty() && target.starts_with(&code)).then_some((code.len(), &course.id))
-        })
-        .max_by_key(|(len, _)| *len)
-        .map(|(_, id)| id.clone())
-}
-
-fn squash(text: &str) -> String {
-    text.chars()
-        .filter(|c| !c.is_whitespace())
-        .flat_map(char::to_uppercase)
-        .collect()
 }
 
 /// Quiz → QuizDue; assignment/due/homework/submission → AssignmentDue; exam/midterm/final →
@@ -444,14 +426,14 @@ mod tests {
     fn longest_matching_code_wins_and_unknown_codes_stay_unmatched() {
         let courses = [course("DEMO101"), course("DEMO1011")];
         assert_eq!(
-            match_course("DEMO1011 S LEC0101", &courses).as_deref(),
+            course_for_hint("DEMO1011 S LEC0101", &courses).map(|c| c.id.as_str()),
             Some("folder:demo/course/DEMO1011")
         );
         assert_eq!(
-            match_course("demo 101 f", &courses).as_deref(),
+            course_for_hint("demo 101 f", &courses).map(|c| c.id.as_str()),
             Some("folder:demo/course/DEMO101")
         );
-        assert_eq!(match_course("OTHER999", &courses), None);
+        assert!(course_for_hint("OTHER999", &courses).is_none());
     }
 
     #[test]

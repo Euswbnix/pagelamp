@@ -104,6 +104,7 @@ fn event(id: &str, source_id: &str, course_id: Option<&str>, title: &str) -> Eve
         due_at: None,
         url: None,
         updated_at: ts("2026-09-20T00:00:00Z"),
+        course_hint: None,
     }
 }
 
@@ -1058,6 +1059,52 @@ fn replace_events_upserts_and_deletes_missing() {
         store.replace_events(SOURCE, &[quiz_for(FEED)]),
         Err(Error::Invalid(_))
     ));
+}
+
+#[test]
+fn relink_events_links_hinted_events_to_courses_created_later() {
+    let store = demo_store();
+    store
+        .upsert_source(&source(FEED, SourceKind::Ical, "Demo feed"))
+        .unwrap();
+    let hinted = |id: &str, hint: Option<&str>| {
+        let mut event = event(id, FEED, None, id);
+        event.due_at = Some(ts("2026-10-01T10:00:00Z"));
+        event.course_hint = hint.map(str::to_string);
+        event
+    };
+    store
+        .replace_events(
+            FEED,
+            &[
+                hinted("ev-202", Some("demo 202 F LEC0101")),
+                hinted("ev-other", Some("OTHER999")),
+                hinted("ev-plain", None),
+            ],
+        )
+        .unwrap();
+    assert_eq!(
+        store.relink_events().unwrap(),
+        0,
+        "DEMO202 does not exist yet"
+    );
+
+    store
+        .upsert_course(&course("202", Some("DEMO202"), "Advanced Demo Studies"))
+        .unwrap();
+    assert_eq!(store.relink_events().unwrap(), 1);
+    assert_eq!(store.relink_events().unwrap(), 0, "nothing left to link");
+    let events = store
+        .list_events(ts("2026-01-01T00:00:00Z"), ts("2027-01-01T00:00:00Z"), None)
+        .unwrap();
+    let by_id = |id: &str| events.iter().find(|e| e.id == id).unwrap();
+    assert_eq!(by_id("ev-202").course_id, Some(course_id("202")));
+    assert_eq!(
+        by_id("ev-202").course_hint.as_deref(),
+        Some("demo 202 F LEC0101")
+    );
+    assert_eq!(by_id("ev-other").course_id, None);
+    assert_eq!(by_id("ev-plain").course_id, None);
 }
 
 fn quiz_for(source_id: &str) -> Event {

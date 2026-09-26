@@ -119,6 +119,7 @@ fn event(id: &str, course: Option<&str>, title: &str, due: &str) -> Event {
         due_at: Some(ts(due)),
         url: None,
         updated_at: ts("2026-09-01T00:00:00Z"),
+        course_hint: None,
     }
 }
 
