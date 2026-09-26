@@ -5,9 +5,10 @@ import { CodeBlock } from "@/components/common/CodeBlock";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 /**
- * The beta isn't signed: if macOS blocks the bundled `studentos` when an AI app starts it,
- * removing the quarantine flag fixes it. Shown only in production macOS builds
- * (see lib/platform.ts).
+ * The beta is only ad-hoc signed (not notarized): macOS's own path is "Open Anyway" in
+ * System Settings › Privacy & Security; removing the quarantine flag is the fallback, e.g. when
+ * the bundled `studentos` is blocked as an AI app starts it. Shown only in production macOS
+ * builds (see lib/platform.ts).
  */
 export function QuarantineHint() {
   const { t } = useTranslation("connect");
@@ -18,6 +19,7 @@ export function QuarantineHint() {
       <AlertTitle>{t("quarantine.title")}</AlertTitle>
       <AlertDescription className="space-y-2">
         <p>{t("quarantine.body")}</p>
+        <p>{t("quarantine.fallback")}</p>
         <CodeBlock code={command} copyLabel={t("quarantine.copy")} />
       </AlertDescription>
     </Alert>

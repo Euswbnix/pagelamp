@@ -47,7 +47,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": null,
+      "signingIdentity": "-",
       "minimumSystemVersion": "11.0"
     }
   }
