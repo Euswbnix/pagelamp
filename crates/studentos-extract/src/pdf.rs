@@ -37,8 +37,9 @@ pub(crate) fn extract(bytes: &[u8], max_pages: usize) -> Result<Vec<Segment>, Ex
     let (document, pages) = catch_panic("PDF", || load(bytes))??;
     if pages.len() > max_pages {
         return Err(failed(format!(
-            "PDF has too many pages ({} > {max_pages})",
-            pages.len()
+            "PDF has more than {} pages (it has {}), so it was not indexed",
+            crate::util::thousands(max_pages as u64),
+            crate::util::thousands(pages.len() as u64)
         )));
     }
 
@@ -310,7 +311,7 @@ mod tests {
         assert_eq!(extract(&bytes, 3).unwrap().len(), 3);
         let result = extract(&bytes, 2);
         assert!(
-            matches!(&result, Err(ExtractError::Failed(m)) if m.contains("too many pages")),
+            matches!(&result, Err(ExtractError::Failed(m)) if m == "PDF has more than 2 pages (it has 3), so it was not indexed"),
             "{result:?}"
         );
     }

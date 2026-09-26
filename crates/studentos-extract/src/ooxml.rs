@@ -57,9 +57,8 @@ impl<R: Read + Seek> Package<R> {
         let archive = ZipArchive::new(reader).map_err(|e| {
             if budget.get() == 0 {
                 failed(format!(
-                    "Office file has too many zip entries (its zip directory is larger than {} bytes; at most {} entries are allowed)",
-                    open_read_budget(limits),
-                    limits.max_zip_entries
+                    "document has too many internal parts (more than {}), so it was not indexed",
+                    crate::util::thousands(limits.max_zip_entries as u64)
                 ))
             } else {
                 failed(format!(
@@ -71,9 +70,9 @@ impl<R: Read + Seek> Package<R> {
         budget.set(u64::MAX);
         if archive.len() > limits.max_zip_entries {
             return Err(failed(format!(
-                "Office file has too many zip entries ({} > {})",
-                archive.len(),
-                limits.max_zip_entries
+                "document has too many internal parts ({}; the limit is {}), so it was not indexed",
+                crate::util::thousands(archive.len() as u64),
+                crate::util::thousands(limits.max_zip_entries as u64)
             )));
         }
 
@@ -114,8 +113,12 @@ impl<R: Read + Seek> Package<R> {
         let cap = self.limits.max_zip_entry_bytes.min(total_left);
         let too_large = || {
             failed(format!(
-                "{name} is too large when decompressed (limits: {} bytes per part, {} bytes per file)",
-                self.limits.max_zip_entry_bytes, self.limits.max_zip_total_bytes
+                "document is too large when uncompressed ({name} exceeds the {} limit), so it was not indexed",
+                crate::util::size_text(
+                    self.limits
+                        .max_zip_entry_bytes
+                        .min(self.limits.max_zip_total_bytes)
+                )
             ))
         };
 
@@ -484,7 +487,7 @@ mod tests {
         };
         let result = Package::open(reader, &small_limits());
         assert!(
-            matches!(&result, Err(ExtractError::Failed(m)) if m.contains("too many zip entries")),
+            matches!(&result, Err(ExtractError::Failed(m)) if m.contains("too many internal parts")),
             "{:?}",
             result.err()
         );

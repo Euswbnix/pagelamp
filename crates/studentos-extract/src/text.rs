@@ -18,7 +18,9 @@ const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 /// read as TypeScript.
 pub(crate) fn plain_segments(bytes: &[u8]) -> Result<Vec<Segment>, ExtractError> {
     if looks_binary(bytes) {
-        return Err(failed("file looks binary, not like text"));
+        return Err(failed(
+            "file looks binary (not text), so it was not indexed",
+        ));
     }
     Ok(vec![Segment {
         locator: None,

@@ -17,6 +17,11 @@
 //! The markers and id digits are Unicode private-use characters (U+E000–U+E1FF) that never
 //! reach the output. Literal copies in the input are removed first; one written as an HTML
 //! entity (`&#xE000;`) could at worst cause an extra split.
+//!
+//! Depth guard: html2text's rendering time grows quadratically with tag nesting depth (a
+//! hostile page nested 100,000 deep takes minutes). Real LMS pages nest a few dozen levels, so
+//! input nested deeper than [`MAX_RENDER_DEPTH`] is instead converted by [`plain_text`], a
+//! simple linear tag stripper (no heading split, no link URLs).
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -66,10 +71,116 @@ const RENDER_WIDTH: usize = 1_000_000;
 /// locator; each heading section starts with the heading text itself. Never fails: HTML that
 /// cannot be rendered yields no segments.
 pub(crate) fn segments(html: &str) -> Vec<Segment> {
+    if nesting_depth(html) > MAX_RENDER_DEPTH {
+        let text = plain_text(html);
+        return if text.trim().is_empty() {
+            Vec::new()
+        } else {
+            vec![Segment {
+                locator: None,
+                text,
+            }]
+        };
+    }
     match render(&strip_markers(html)) {
         Some(text) => split_at_headings(&text),
         None => Vec::new(),
     }
+}
+
+/// Deepest tag nesting html2text may render (see the module docs).
+pub(crate) const MAX_RENDER_DEPTH: usize = 400;
+
+/// Elements that never contain anything (they don't add nesting).
+const VOID_ELEMENTS: [&str; 14] = [
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
+];
+
+/// Upper bound of the tag nesting depth, in one linear pass: `<x>` adds one unless `x` is a
+/// void element or the tag is self-closing, `</x>` removes one. Unclosed optional tags
+/// (`<p>`, `<li>`) make this overestimate, which only means the simple renderer is used.
+fn nesting_depth(html: &str) -> usize {
+    let bytes = html.as_bytes();
+    let (mut depth, mut deepest, mut i) = (0usize, 0usize, 0usize);
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        let closing = bytes.get(i + 1) == Some(&b'/');
+        let name_start = if closing { i + 2 } else { i + 1 };
+        let name_end = bytes[name_start.min(bytes.len())..]
+            .iter()
+            .position(|b| !b.is_ascii_alphanumeric())
+            .map_or(bytes.len(), |n| name_start + n);
+        let tag_end = bytes[i..]
+            .iter()
+            .position(|&b| b == b'>')
+            .map_or(bytes.len(), |n| i + n);
+        if name_end > name_start {
+            let name = html[name_start..name_end].to_ascii_lowercase();
+            let self_closing = tag_end > 0 && bytes.get(tag_end - 1) == Some(&b'/');
+            if closing {
+                depth = depth.saturating_sub(1);
+            } else if !self_closing && !VOID_ELEMENTS.contains(&name.as_str()) {
+                depth += 1;
+                deepest = deepest.max(depth);
+            }
+        }
+        i = tag_end.max(i + 1);
+    }
+    deepest
+}
+
+/// Linear-time HTML → text for pathological input: drops `<script>`/`<style>` content and all
+/// tags, turns block-level tags into line breaks, decodes common entities.
+fn plain_text(html: &str) -> String {
+    const BLOCKS: [&str; 16] = [
+        "p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article",
+        "ul", "ol", "table",
+    ];
+    let mut out = String::with_capacity(html.len() / 2);
+    let mut rest = html;
+    while let Some(start) = rest.find('<') {
+        out.push_str(&decode_entities(&rest[..start]));
+        let after = &rest[start + 1..];
+        let end = after.find('>').map_or(after.len(), |n| n + 1);
+        let tag = &after[..end.saturating_sub(1)];
+        let name: String = tag
+            .trim_start_matches('/')
+            .chars()
+            .take_while(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_ascii_lowercase();
+        rest = &after[end.min(after.len())..];
+        if (name == "script" || name == "style") && !tag.starts_with('/') {
+            // Skip to the matching close tag (case-insensitive).
+            let close = format!("</{name}");
+            let lower = rest.to_ascii_lowercase();
+            let skip = lower.find(&close).map_or(rest.len(), |n| {
+                n + lower[n..].find('>').map_or(lower.len() - n, |m| m + 1)
+            });
+            rest = &rest[skip.min(rest.len())..];
+        } else if BLOCKS.contains(&name.as_str()) {
+            out.push('\n');
+        }
+    }
+    out.push_str(&decode_entities(rest));
+    crate::util::normalize_whitespace(&strip_markers(&out))
+}
+
+/// The handful of entities that matter for readable text.
+fn decode_entities(text: &str) -> String {
+    if !text.contains('&') {
+        return text.to_string();
+    }
+    text.replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }
 
 /// Render with our decorator; `None` if html2text reports an error or panics.
@@ -265,6 +376,37 @@ fn is_useful_url(url: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn deeply_nested_html_uses_the_linear_renderer_quickly() {
+        let depth = 100_000;
+        let html = format!(
+            "{}<script>var hidden = 1;</script>deep text &amp; more{}",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth)
+        );
+        let started = std::time::Instant::now();
+        let segments = segments(&html);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].text, "deep text & more");
+        assert!(!segments[0].text.contains("hidden"));
+    }
+
+    #[test]
+    fn nesting_depth_ignores_void_and_self_closing_tags() {
+        assert_eq!(nesting_depth("<p>a<br>b<img src=x/><br/></p>"), 1);
+        assert_eq!(nesting_depth("<div><div><span>x</span></div></div>"), 3);
+        assert_eq!(nesting_depth("no tags at all < 3 > 2"), 0);
+        assert_eq!(nesting_depth("<DIV><Div>"), 2);
+        // Normal pages stay on the html2text path.
+        let normal = format!("<h1>Week 1</h1>{}", "<ul><li>item</li></ul>".repeat(50));
+        assert!(nesting_depth(&normal) < MAX_RENDER_DEPTH);
+    }
+
     use super::*;
 
     fn all_text(segments: &[Segment]) -> String {

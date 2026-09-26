@@ -135,6 +135,37 @@ pub(crate) fn catch_panic<T>(what: &str, f: impl FnOnce() -> T) -> Result<T, Ext
     })
 }
 
+/// `12345` → `"12,345"` (for user-visible messages).
+pub(crate) fn thousands(n: u64) -> String {
+    let digits = n.to_string();
+    let mut out = String::with_capacity(digits.len() + digits.len() / 3);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Human-readable size for messages: "200 MB", "1.5 MB", "900 KB", "12 bytes".
+pub(crate) fn size_text(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * 1024;
+    if bytes >= MB {
+        let mb = bytes as f64 / MB as f64;
+        if bytes.is_multiple_of(MB) {
+            format!("{} MB", bytes / MB)
+        } else {
+            format!("{mb:.1} MB")
+        }
+    } else if bytes >= KB {
+        format!("{} KB", bytes / KB)
+    } else {
+        format!("{bytes} bytes")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +249,17 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
         assert_eq!(catch_panic("demo", || 7).unwrap(), 7);
+    }
+
+    #[test]
+    fn human_numbers_for_messages() {
+        assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(999), "999");
+        assert_eq!(thousands(5000), "5,000");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(size_text(200 * 1024 * 1024), "200 MB");
+        assert_eq!(size_text(1536 * 1024), "1.5 MB");
+        assert_eq!(size_text(2048), "2 KB");
+        assert_eq!(size_text(12), "12 bytes");
     }
 }

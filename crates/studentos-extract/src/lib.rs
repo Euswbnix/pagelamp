@@ -187,9 +187,9 @@ fn extract_file_with_limits(
 
 fn too_large(size: u64, limit: u64) -> ExtractError {
     failed(format!(
-        "file is too large to extract ({:.1} MB; the limit is {:.1} MB)",
-        size as f64 / MB as f64,
-        limit as f64 / MB as f64
+        "file is too large to index ({}; the limit is {})",
+        util::size_text(size),
+        util::size_text(limit)
     ))
 }
 
