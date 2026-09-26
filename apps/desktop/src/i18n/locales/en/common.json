@@ -151,5 +151,9 @@
   },
   "a11y": {
     "notifications": "Notifications"
+  },
+  "pastCourse": {
+    "badge": "Past course",
+    "hint": "Canvas no longer lists this course as active. Its data is kept."
   }
 }

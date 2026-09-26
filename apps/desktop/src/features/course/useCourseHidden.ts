@@ -13,7 +13,8 @@ export function useCourseHidden(course: Course) {
   const errorText = useApiErrorText();
   const mutation = useSetCourseHidden();
 
-  async function setHidden(hidden: boolean) {
+  /** Resolves true when the change was saved. */
+  async function setHidden(hidden: boolean): Promise<boolean> {
     // mutateAsync (not mutate + callbacks): the button that triggered this may unmount when the
     // course refreshes, and per-call callbacks are skipped for unmounted components.
     try {
@@ -23,8 +24,10 @@ export function useCourseHidden(course: Course) {
           ? t("settings.hiddenToast", { course: course.name })
           : t("settings.shownToast", { course: course.name }),
       );
+      return true;
     } catch (error) {
       toast.error(errorText(error));
+      return false;
     }
   }
 

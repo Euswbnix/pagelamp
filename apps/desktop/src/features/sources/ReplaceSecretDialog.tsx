@@ -86,6 +86,7 @@ function ReplaceSecretForm({ source, onDone }: { source: SourceRecord; onDone: (
       onDone();
     } catch (err) {
       setError(toApiError(err));
+      document.getElementById(inputId)?.focus();
     } finally {
       setPending(false);
       // Drop the mutation (and the secret in its variables) from the mutation cache now.

@@ -307,6 +307,11 @@ export interface Course {
    */
   ai_policy_note?: string | null;
   code?: string | null;
+  /**
+   * False when the LMS no longer lists the course as active (e.g. the term ended). Such
+   * courses are kept with all their data; only the student removes them.
+   */
+  enrollment_active: boolean;
   external_id: string;
   hidden: boolean;
   id: string;

@@ -13,6 +13,7 @@ function summary(id: string, code: string | null, hidden = false): CourseSummary
       hidden,
       ai_access: true,
       term_source: "none",
+      enrollment_active: true,
       ai_policy: "unknown",
       updated_at: "2026-09-24T09:00:00Z",
     },

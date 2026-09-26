@@ -151,5 +151,9 @@
   },
   "a11y": {
     "notifications": "通知"
+  },
+  "pastCourse": {
+    "badge": "往期课程",
+    "hint": "Canvas 已不再把这门课列为进行中，它的数据会继续保留。"
   }
 }

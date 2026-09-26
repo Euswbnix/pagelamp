@@ -16,7 +16,7 @@
     "failedTitleGeneric": "{{source}} couldn't sync",
     "failed": "Courses from this source may be out of date.",
     "replaceToken": "Replace token",
-    "replaceFeed": "Update feed address",
+    "replaceFeed": "Replace feed address",
     "open": "Open Sources & sync"
   },
   "thisWeek": {

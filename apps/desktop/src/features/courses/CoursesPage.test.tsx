@@ -90,6 +90,14 @@ describe("CoursesPage — course list", () => {
     ).toBeInTheDocument();
   });
 
+  it("marks a course Canvas no longer lists as active as a past course", async () => {
+    useUiStore.setState({ showHiddenCourses: true });
+    renderRoute("/courses");
+    const list = await coursesRegion();
+    expect(within(card(list, "DEMO099")).getByText("Past course")).toBeInTheDocument();
+    expect(within(card(list, "DEMO101")).queryByText("Past course")).not.toBeInTheDocument();
+  });
+
   it("puts a hidden course back in the list from its card", async () => {
     useUiStore.setState({ showHiddenCourses: true });
     const { user, api } = renderRoute("/courses");

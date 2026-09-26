@@ -3,6 +3,7 @@ import { type ReactNode, useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import type { StudentOsApi } from "@/api/client";
 import { ApiProvider } from "@/api/context";
+import { isApiError } from "@/api/errors";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import i18n from "@/i18n";
@@ -14,7 +15,8 @@ export function createQueryClient() {
       queries: {
         // Local data: no need to hammer the backend when the window regains focus.
         refetchOnWindowFocus: false,
-        retry: 1,
+        // One retry for transient failures; "not found" won't change, so show it right away.
+        retry: (failures, error) => !isApiError(error, "not_found") && failures < 1,
         staleTime: 30_000,
       },
     },

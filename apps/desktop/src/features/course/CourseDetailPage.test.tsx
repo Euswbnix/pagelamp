@@ -147,4 +147,24 @@ describe("CourseDetailPage", () => {
     expect(screen.getByRole("tab", { name: "AI 使用规定" })).toBeInTheDocument();
     expect(screen.getByText(/^数据来源：Course folder/)).toBeInTheDocument();
   });
+
+  it("shows 'not found' instead of stale data once the course is gone", async () => {
+    const { api, queryClient } = await openCourse(DEMO101);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Intro to Demo Studies" }),
+    ).toBeInTheDocument();
+
+    // Its source is removed (e.g. from another window); the next refresh finds nothing.
+    await api.removeSource(SOURCE_FOLDER);
+    await queryClient.invalidateQueries();
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Course not found" }),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a past course in the header", async () => {
+    await openCourse(DEMO099);
+    expect(screen.getByRole("list", { name: "Course status" })).toHaveTextContent("Past course");
+  });
 });

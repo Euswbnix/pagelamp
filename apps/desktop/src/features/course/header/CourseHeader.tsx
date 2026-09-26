@@ -2,12 +2,14 @@ import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, LoaderCircle } from "luc
 import { useTranslation } from "react-i18next";
 import type { Course, CourseOverview } from "@/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
+import { PastCourseBadge } from "@/components/common/PastCourseBadge";
 import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { focusPageHeading } from "@/lib/focus";
 import { isHttpUrl } from "@/lib/url";
 import { useSyncStore } from "@/stores/sync";
 import { BackToCourses } from "../BackToCourses";
@@ -37,6 +39,11 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
         <li>
           <WeekLabel timeline={timeline} />
         </li>
+        {course.enrollment_active ? null : (
+          <li>
+            <PastCourseBadge />
+          </li>
+        )}
         {course.hidden ? (
           <li className="flex items-center gap-2">
             <HiddenNotice course={course} />
@@ -110,7 +117,17 @@ function HiddenNotice({ course }: { course: Course }) {
         <EyeOff aria-hidden />
         {t("header.hidden")}
       </Badge>
-      <Button size="xs" variant="outline" disabled={isPending} onClick={() => setHidden(false)}>
+      <Button
+        size="xs"
+        variant="outline"
+        aria-disabled={isPending || undefined}
+        className="aria-disabled:opacity-50"
+        onClick={async () => {
+          if (isPending) return;
+          // The button goes away once the course is visible again; continue from the heading.
+          if (await setHidden(false)) focusPageHeading();
+        }}
+      >
         <Eye aria-hidden />
         {t("header.showInList")}
       </Button>

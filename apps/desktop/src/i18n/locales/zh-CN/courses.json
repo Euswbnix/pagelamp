@@ -16,7 +16,7 @@
     "failedTitleGeneric": "{{source}} 同步失败",
     "failed": "这个数据来源的课程信息可能已经过时。",
     "replaceToken": "更换令牌",
-    "replaceFeed": "更新订阅地址",
+    "replaceFeed": "更换订阅地址",
     "open": "前往“数据来源与同步”"
   },
   "thisWeek": {

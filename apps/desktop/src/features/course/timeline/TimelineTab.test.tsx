@@ -44,7 +44,7 @@ describe("Timeline tab", () => {
     expect(start).toHaveValue(course.term_start);
     expect(end).toHaveValue(course.term_end);
     const save = screen.getByRole("button", { name: "Save dates" });
-    expect(save).toBeDisabled(); // nothing changed yet
+    expect(save).toHaveAttribute("aria-disabled", "true"); // nothing changed yet
 
     const newStart = shiftIso(course.term_start ?? todayIso(), -7);
     await user.clear(start);
@@ -68,7 +68,10 @@ describe("Timeline tab", () => {
     expect(await screen.findByText("Term dates saved")).toBeInTheDocument();
     expect(start).toHaveValue(newStart);
     expect(start).toHaveFocus();
-    expect(screen.getByRole("button", { name: "Save dates" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save dates" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("shows an inline error when the term ends before it starts", async () => {

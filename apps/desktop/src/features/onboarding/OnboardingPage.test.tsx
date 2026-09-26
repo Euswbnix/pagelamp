@@ -197,6 +197,8 @@ describe("OnboardingPage", () => {
     expect(
       screen.getByText("Canvas rejected this token. It may have expired or been revoked."),
     ).toBeInTheDocument();
+    // Focus goes back to the field to fix, not to <body>.
+    expect(screen.getByLabelText("Access token")).toHaveFocus();
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
   });
 

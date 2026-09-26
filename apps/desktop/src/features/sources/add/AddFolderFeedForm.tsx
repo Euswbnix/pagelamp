@@ -107,8 +107,9 @@ export function AddFolderFeedForm({ submitLabel, onAdded, footerStart }: AddForm
     const folder = wantsFolder ? await addFolderPart() : folderAdded;
     const feed = wantsFeed ? await addFeedPart() : feedAdded;
     setPending(false);
-    const failed = (wantsFolder && !folder) || (wantsFeed && !feed);
-    if (!failed) onAdded([folder, feed].filter((r): r is SourceRecord => r !== null));
+    const failedField = wantsFolder && !folder ? ids.path : wantsFeed && !feed ? ids.feed : null;
+    if (failedField) document.getElementById(failedField)?.focus();
+    else onAdded([folder, feed].filter((r): r is SourceRecord => r !== null));
   }
 
   const ids = {

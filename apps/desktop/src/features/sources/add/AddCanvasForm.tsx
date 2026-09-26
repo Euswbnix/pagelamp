@@ -58,8 +58,11 @@ export function AddCanvasForm({ submitLabel, onAdded, footerStart }: AddFormProp
       setPending(false);
       onAdded([record]);
     } catch (err) {
-      setError(toApiError(err));
+      const apiError = toApiError(err);
+      setError(apiError);
       setPending(false);
+      // Rejected token → fix the token; anything else (bad address, unreachable) → the address.
+      document.getElementById(apiError.kind === "auth" ? ids.token : ids.url)?.focus();
     } finally {
       // Drop the mutation (and the token in its variables) from the mutation cache now.
       addCanvas.reset();

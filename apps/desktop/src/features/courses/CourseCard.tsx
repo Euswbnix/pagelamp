@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { CourseSummary, SourceErrorKind } from "@/api/types";
 import { AiMaterialsStatus } from "@/components/common/AiMaterialsStatus";
+import { PastCourseBadge } from "@/components/common/PastCourseBadge";
 import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { WeekLabel } from "@/components/common/WeekLabel";
@@ -117,6 +118,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
             {tc(`sourceError.${sourceError}`)}
           </span>
         ) : null}
+        {course.enrollment_active ? null : <PastCourseBadge />}
         {course.hidden ? (
           <>
             <Badge variant="outline">

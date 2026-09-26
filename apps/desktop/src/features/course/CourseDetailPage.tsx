@@ -14,7 +14,9 @@ export function CourseDetailPage() {
   const { courseId = "" } = useParams();
   const overview = useCourseOverview(courseId);
 
-  // Keep showing loaded data if a background refetch fails.
+  // A course that is gone (e.g. its source was removed) must not keep showing stale data.
+  if (isApiError(overview.error, "not_found")) return <CourseNotFound />;
+  // Keep showing loaded data if a background refetch fails for another reason.
   if (overview.data) {
     return (
       <>
@@ -25,7 +27,6 @@ export function CourseDetailPage() {
     );
   }
   if (overview.isError) {
-    if (isApiError(overview.error, "not_found")) return <CourseNotFound />;
     return <CourseLoadError error={overview.error} onRetry={() => void overview.refetch()} />;
   }
   return <CourseDetailSkeleton />;

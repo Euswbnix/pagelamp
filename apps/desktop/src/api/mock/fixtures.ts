@@ -134,6 +134,8 @@ interface CourseSpec {
   policyNote: string | null;
   hidden: boolean;
   aiAccess?: boolean;
+  /** False = Canvas no longer lists the course as active (term over). */
+  enrollmentActive?: boolean;
   termStartDays: number | null;
   week: number | null;
   confidence: Confidence;
@@ -154,6 +156,7 @@ function course(spec: CourseSpec, now: Date): Course {
     ai_policy: spec.policy,
     ai_policy_note: spec.policyNote,
     ai_access: spec.aiAccess ?? true,
+    enrollment_active: spec.enrollmentActive ?? true,
     term_source: spec.termStartDays === null ? "none" : "synced",
     hidden: spec.hidden,
     updated_at: at(now, -1, 9),
@@ -445,6 +448,7 @@ function demo099(now: Date): MockCourse {
     policy: "unknown",
     policyNote: null,
     hidden: true,
+    enrollmentActive: false,
     termStartDays: -30,
     week: 5,
     confidence: "medium",

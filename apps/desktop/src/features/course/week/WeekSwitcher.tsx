@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Undo2 } from "lucide-react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +22,7 @@ export function WeekSwitcher({ week, currentWeek, availableWeeks, onSelect }: We
     week === null ? availableWeeks.at(-1) : availableWeeks.filter((w) => w < week).at(-1);
   const next = week === null ? undefined : availableWeeks.find((w) => w > week);
   const showArrows = availableWeeks.length > 0;
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   return (
     <fieldset className="flex min-w-0 flex-wrap items-center gap-2">
@@ -30,15 +32,18 @@ export function WeekSwitcher({ week, currentWeek, availableWeeks, onSelect }: We
           variant="outline"
           size="icon-sm"
           aria-label={t("week.previous")}
-          disabled={previous === undefined}
+          aria-disabled={previous === undefined || undefined}
+          className="aria-disabled:opacity-50"
           onClick={() => previous !== undefined && onSelect(previous)}
         >
           <ChevronLeft aria-hidden />
         </Button>
       ) : null}
       <h2
+        ref={headingRef}
+        tabIndex={-1}
         aria-live="polite"
-        className="min-w-28 px-1 text-center font-heading text-lg font-semibold tracking-tight"
+        className="min-w-28 px-1 text-center font-heading text-lg font-semibold tracking-tight outline-none"
       >
         {week !== null ? tc("week.current", { week }) : t("week.recent")}
         {week !== null && week === currentWeek ? (
@@ -53,7 +58,8 @@ export function WeekSwitcher({ week, currentWeek, availableWeeks, onSelect }: We
           variant="outline"
           size="icon-sm"
           aria-label={t("week.next")}
-          disabled={next === undefined}
+          aria-disabled={next === undefined || undefined}
+          className="aria-disabled:opacity-50"
           onClick={() => next !== undefined && onSelect(next)}
         >
           <ChevronRight aria-hidden />
@@ -61,7 +67,15 @@ export function WeekSwitcher({ week, currentWeek, availableWeeks, onSelect }: We
       ) : null}
       {/* Back to the default view: this week, or "Recent materials" when the week is unknown. */}
       {week !== currentWeek ? (
-        <Button variant="ghost" size="sm" onClick={() => onSelect(null)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            onSelect(null);
+            // This button disappears once back on this week; keep focus on the week's heading.
+            headingRef.current?.focus();
+          }}
+        >
           <Undo2 aria-hidden />
           {currentWeek !== null ? t("week.goToThisWeek") : t("week.showRecent")}
         </Button>

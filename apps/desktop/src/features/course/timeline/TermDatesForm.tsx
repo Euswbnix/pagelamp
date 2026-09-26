@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { toApiError } from "@/api/errors";
@@ -18,6 +18,7 @@ export function TermDatesForm({ course }: { course: Course }) {
   const [start, setStart] = useState(savedStart);
   const [end, setEnd] = useState(savedEnd);
   const mutation = useSetCourseTerm();
+  const saveRef = useRef<HTMLButtonElement>(null);
 
   // When the saved dates change (after saving or clearing), start again from them. This is
   // done here instead of re-keying the form, so focus stays in the date field after Enter.
@@ -53,6 +54,7 @@ export function TermDatesForm({ course }: { course: Course }) {
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (!changed || mutation.isPending) return;
     void save({ start: start || null, end: end || null }, t("term.saved"));
   }
 
@@ -99,7 +101,12 @@ export function TermDatesForm({ course }: { course: Course }) {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={!changed || mutation.isPending}>
+        <Button
+          ref={saveRef}
+          type="submit"
+          aria-disabled={!changed || mutation.isPending}
+          className="aria-disabled:opacity-50"
+        >
           {mutation.isPending ? tc("actions.saving") : t("term.save")}
         </Button>
         {overridden ? (
@@ -107,7 +114,11 @@ export function TermDatesForm({ course }: { course: Course }) {
             type="button"
             variant="outline"
             disabled={mutation.isPending}
-            onClick={() => void save({ start: null, end: null }, t("term.usedSynced"))}
+            onClick={() => {
+              // The button disappears once the override is gone; focus moves to Save.
+              saveRef.current?.focus();
+              void save({ start: null, end: null }, t("term.usedSynced"));
+            }}
           >
             {t("term.useSynced")}
           </Button>

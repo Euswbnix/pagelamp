@@ -49,21 +49,24 @@ describe("This week tab", () => {
     await screen.findByRole("heading", { level: 2, name: "Week 4 (this week)" });
     const previous = screen.getByRole("button", { name: "Previous week" });
     const next = screen.getByRole("button", { name: "Next week" });
-    expect(previous).toBeEnabled();
-    expect(next).toBeDisabled(); // week 4 is the last week with materials
+    expect(previous).not.toHaveAttribute("aria-disabled");
+    expect(next).toHaveAttribute("aria-disabled", "true"); // week 4 is the last week with materials
 
     await user.click(previous);
     expect(await screen.findByRole("heading", { level: 2, name: "Week 3" })).toBeInTheDocument();
     expect(await screen.findByText("Week 3 slides — Measuring Nothing Carefully")).toBeVisible();
     expect(within(materialsList()).getByText("Can't be read (e.g. video)")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Next week" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Next week" })).not.toHaveAttribute("aria-disabled");
     expect(router.state.location.search).toContain("week=3");
 
     await user.click(screen.getByRole("button", { name: "Previous week" }));
     await screen.findByRole("heading", { level: 2, name: "Week 2" });
     await user.click(screen.getByRole("button", { name: "Previous week" }));
     expect(await screen.findByRole("heading", { level: 2, name: "Week 1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous week" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
 
     await user.click(screen.getByRole("button", { name: "Go to this week" }));
     expect(
@@ -76,8 +79,13 @@ describe("This week tab", () => {
     await openCourse(DEMO101, { query: "week=9" });
     expect(await screen.findByText("No materials found for week 9")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Sources & sync" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Previous week" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous week" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+    expect(screen.getByRole("button", { name: "Next week" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("explains the fallback when the current week is unknown", async () => {
