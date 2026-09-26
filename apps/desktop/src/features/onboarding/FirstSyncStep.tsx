@@ -86,9 +86,11 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
             <ArrowLeft aria-hidden />
             {tc("actions.back")}
           </Button>
-          {view === "running" ? (
+          {view === "running" && waiting ? null : view === "running" ? (
             // A long first Canvas sync shouldn't trap the student here (Back is disabled):
             // the sync lives in the store and keeps going; the sidebar shows its progress.
+            // Not while `waiting` for another run to end: this screen starts ours then, so
+            // leaving would silently drop it.
             <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
               <span className="text-sm text-muted-foreground">{t("sync.backgroundHint")}</span>
               <Button asChild variant="outline">

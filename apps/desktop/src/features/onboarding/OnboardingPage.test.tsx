@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { configure, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
 import { brand } from "@/brand";
@@ -125,6 +125,26 @@ describe("OnboardingPage", () => {
       screen.getByText("Choose a folder or paste a calendar feed address — or both."),
     ).toBeInTheDocument();
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+  });
+
+  it("doesn't offer to leave while its sync is only queued behind another run", async () => {
+    const { user } = renderRoute("/welcome", { scenario: "empty", syncStepMs: 60 });
+    await goToSourceStep(user);
+    await user.type(screen.getByLabelText("Folder path"), "/Users/demo/Courses");
+    // Another run in this window is still going when the step starts ours.
+    act(() => useSyncStore.setState({ running: true }));
+    await user.click(screen.getByRole("button", { name: "Add and continue" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Syncing your courses" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Continue in the background" })).toBeNull();
+
+    // Once that run ends, ours starts, and leaving is safe again.
+    act(() => useSyncStore.setState({ running: false }));
+    expect(
+      await screen.findByRole("link", { name: "Continue in the background" }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false), { timeout: 5000 });
   });
 
   it("warns before connecting when PageLamp runs from the disk image", async () => {
