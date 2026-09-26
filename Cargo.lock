@@ -3288,6 +3288,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "unicode-normalization",
  "wiremock",
 ]
 

@@ -222,6 +222,89 @@ fn remove_source_deletes_rows_and_secret() {
     assert!(files.join("OTHER-9/1-slides.txt").is_file());
 }
 
+#[test]
+fn removal_cleans_old_download_dirs_and_skips_files_links_and_shared_dirs() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    seed(&app);
+    let files = app.data_dir().join("files");
+    let store = Store::open(&app.db_path()).unwrap();
+    // DEMO101 was called OLD101 when its slides were downloaded.
+    std::fs::create_dir_all(files.join("OLD101-101")).unwrap();
+    std::fs::write(files.join("OLD101-101/1-slides.txt"), "demo").unwrap();
+    store
+        .upsert_material(&MaterialUpsert {
+            id: "canvas:lms.example.edu/file/2".into(),
+            course_id: "canvas:lms.example.edu/course/101".into(),
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "Old slides".into(),
+            url: None,
+            local_path: Some(files.join("OLD101-101/1-slides.txt").display().to_string()),
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        })
+        .unwrap();
+    // A stray regular file where DEMO303's directory would be.
+    std::fs::write(files.join("DEMO303-303"), "not a directory").unwrap();
+    // Another Canvas uses "demo101-101" too (same name on a case-insensitive disk).
+    store
+        .upsert_source(&SourceRecord {
+            id: "canvas:other.example.edu".into(),
+            kind: SourceKind::Canvas,
+            label: "other.example.edu".into(),
+            config: json!({}),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: "canvas:other.example.edu/course/101".into(),
+            source_id: "canvas:other.example.edu".into(),
+            external_id: "101".into(),
+            code: Some("demo101".into()),
+            name: "Other demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+        })
+        .unwrap();
+    std::fs::create_dir_all(files.join("demo101-101")).unwrap();
+    std::fs::write(files.join("demo101-101/1-other.txt"), "other").unwrap();
+    drop(store);
+
+    app.remove_source("canvas:lms.example.edu").unwrap();
+    assert!(!files.join("OLD101-101").exists(), "old code dir removed");
+    assert!(
+        files.join("DEMO303-303").is_file(),
+        "a stray file is left alone"
+    );
+    assert!(
+        files.join("demo101-101/1-other.txt").is_file(),
+        "shared dir kept"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn removal_deletes_a_linked_download_dir_but_not_its_target() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    seed(&app);
+    let files = app.data_dir().join("files");
+    let outside = temp.path().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("keep.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink(&outside, files.join("DEMO101-101")).unwrap();
+    app.remove_source("canvas:lms.example.edu").unwrap();
+    assert!(std::fs::symlink_metadata(files.join("DEMO101-101")).is_err());
+    assert!(outside.join("keep.txt").is_file());
+}
+
 /// Secrets that must never be deleted (folder sources have none).
 struct NoDelete(MemorySecrets);
 
@@ -799,7 +882,9 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
     Mock::given(method("GET"))
         .and(path("/api/v1/users/self"))
         .and(header("authorization", "Bearer demo-good-token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1, "name": "Demo Student"})))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"id": 1, "name": "Demo Student"})),
+        )
         .mount(&canvas)
         .await;
     Mock::given(method("GET"))
@@ -864,7 +949,8 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
         .and(path("/api/v1/users/self"))
         .and(header("authorization", "Bearer demo-other-token"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({"id": 2, "name": "Other Demo Student"})),
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"id": 2, "name": "Other Demo Student"})),
         )
         .mount(&canvas)
         .await;

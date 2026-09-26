@@ -14,6 +14,8 @@ pagelamp-local.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 regex.workspace = true
+# Compare download directory names the way APFS/NTFS do (already used by pdf-extract).
+unicode-normalization = "0.1"
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true

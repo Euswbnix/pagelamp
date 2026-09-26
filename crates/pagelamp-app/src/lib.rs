@@ -577,33 +577,53 @@ impl App {
 
     /// Delete `<data_dir>/files/<CODE>-<id>/` of every course of this Canvas source, except a
     /// directory another source's course also maps to.
+    /// Delete the download directories of every course of this Canvas source: its current
+    /// `<data_dir>/files/<CODE>-<id>/` and the directories its materials' local copies are in
+    /// (an older course code), when they are direct children of `files/`. A directory that
+    /// another source's course also uses is kept (compared case-insensitively and in NFC, as
+    /// APFS and NTFS do).
     fn remove_downloaded_files(&self, store: &Store, source_id: &str) -> Result<()> {
         let files_dir = paths::files_dir_in(self.data_dir());
-        let dir_of = |course: &Course| {
-            pagelamp_canvas::course_files_dir(
+        let dirs_of = |course: &Course| -> Result<Vec<PathBuf>> {
+            let mut dirs = vec![pagelamp_canvas::course_files_dir(
                 &files_dir,
                 course.code.as_deref(),
                 &course.external_id,
-            )
-        };
-        let courses = store.list_courses(true)?;
-        let (own, others): (Vec<&Course>, Vec<&Course>) =
-            courses.iter().partition(|c| c.source_id == source_id);
-        let kept: std::collections::HashSet<PathBuf> = others.into_iter().map(dir_of).collect();
-        for dir in own.into_iter().map(dir_of).filter(|d| !kept.contains(d)) {
-            match std::fs::remove_dir_all(&dir) {
-                Ok(()) => {}
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => {
-                    return Err(AppError::new(
-                        AppErrorKind::Internal,
-                        format!(
-                            "Could not delete the downloaded course files in {}: {err}",
-                            pagelamp_core::diagnostics::shorten_home(&dir.display().to_string())
-                        ),
-                    ));
+            )];
+            for material in store.list_materials(&course.id)? {
+                let parent = material
+                    .local_path
+                    .as_deref()
+                    .and_then(|p| Path::new(p).parent())
+                    .filter(|parent| parent.parent() == Some(files_dir.as_path()));
+                if let Some(parent) = parent {
+                    dirs.push(parent.to_path_buf());
                 }
             }
+            Ok(dirs)
+        };
+        let mut own = Vec::new();
+        let mut kept = std::collections::HashSet::new();
+        for course in store.list_courses(true)? {
+            let dirs = dirs_of(&course)?;
+            if course.source_id == source_id {
+                own.extend(dirs);
+            } else {
+                kept.extend(dirs.iter().map(|dir| dir_key(dir)));
+            }
+        }
+        own.sort();
+        own.dedup();
+        for dir in own.iter().filter(|dir| !kept.contains(&dir_key(dir))) {
+            remove_download_dir(dir).map_err(|err| {
+                AppError::new(
+                    AppErrorKind::Internal,
+                    format!(
+                        "Could not delete the downloaded course files in {}: {err}",
+                        pagelamp_core::diagnostics::shorten_home(&dir.display().to_string())
+                    ),
+                )
+            })?;
         }
         Ok(())
     }
@@ -844,6 +864,40 @@ impl App {
 }
 
 // ----- facade helpers ---------------------------------------------------------------------------
+
+/// A download directory's name as the file system compares it: case-insensitive, NFC.
+fn dir_key(dir: &Path) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    dir.file_name()
+        .map(|name| {
+            name.to_string_lossy()
+                .nfc()
+                .collect::<String>()
+                .to_lowercase()
+        })
+        .unwrap_or_default()
+}
+
+/// Remove one download directory: a directory with everything in it, a symbolic link itself
+/// (never what it points to); anything else (a stray file) is left alone.
+fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
+    let metadata = match std::fs::symlink_metadata(dir) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    let removed = if metadata.file_type().is_symlink() {
+        std::fs::remove_file(dir)
+    } else if metadata.is_dir() {
+        std::fs::remove_dir_all(dir)
+    } else {
+        return Ok(());
+    };
+    match removed {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        other => other,
+    }
+}
 
 fn unknown_source(source_id: &str) -> AppError {
     AppError::new(AppErrorKind::NotFound, format!("no source '{source_id}'"))
