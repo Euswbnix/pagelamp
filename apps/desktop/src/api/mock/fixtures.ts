@@ -50,7 +50,7 @@ export interface MockDb {
   externalSyncRunning: boolean;
 }
 
-export const MOCK_BINARY_PATH = "/Users/demo/StudentOS/target/debug/studentos";
+export const MOCK_BINARY_PATH = "/Users/demo/Weekmark/target/debug/weekmark";
 
 // Calendar arithmetic (not "+ N × 24 h"), so dates stay right across daylight-saving changes.
 function at(now: Date, days: number, hour = 12, minute = 0): string {
@@ -554,7 +554,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       install_kind: "json_snippet",
       config_path_hint: "~/Library/Application Support/Claude/claude_desktop_config.json",
       content: JSON.stringify(
-        { mcpServers: { studentos: { command: binary, args: ["mcp"] } } },
+        { mcpServers: { weekmark: { command: binary, args: ["mcp"] } } },
         null,
         2,
       ),
@@ -575,7 +575,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       title: "Claude Code",
       install_kind: "shell_command",
       config_path_hint: null,
-      content: `claude mcp add --scope user studentos -- ${binary} mcp`,
+      content: `claude mcp add --scope user weekmark -- ${binary} mcp`,
       notes: ["Claude Code needs a paid Claude plan (Pro or higher)."],
       note_codes: ["needs_paid_claude_plan"],
       launch,
@@ -585,7 +585,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       title: "Codex / ChatGPT desktop (Work/Codex mode)",
       install_kind: "toml_snippet",
       config_path_hint: "~/.codex/config.toml",
-      content: `[mcp_servers.studentos]\ncommand = "${binary}"\nargs = ["mcp"]\n`,
+      content: `[mcp_servers.weekmark]\ncommand = "${binary}"\nargs = ["mcp"]\n`,
       notes: [
         "The ChatGPT desktop app (Work/Codex mode) reads the same ~/.codex/config.toml.",
         "Documented for ChatGPT Plus and higher, and for Edu.",
@@ -608,7 +608,7 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
 export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
   materialSeq = 0;
   eventSeq = 0;
-  const dataDir = "/Users/demo/Library/Application Support/dev.StudentOS.StudentOS";
+  const dataDir = "/Users/demo/Library/Application Support/dev.Weekmark.Weekmark";
   if (scenario === "empty") {
     return { dataDir, sources: [], courses: [], studyPlan: null, externalSyncRunning: false };
   }

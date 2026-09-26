@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 /**
  * The beta is only ad-hoc signed (not notarized): macOS's own path is "Open Anyway" in
  * System Settings › Privacy & Security; removing the quarantine flag is the fallback, e.g. when
- * the bundled `studentos` is blocked as an AI app starts it. Shown only in production macOS
+ * the bundled `weekmark` is blocked as an AI app starts it. Shown only in production macOS
  * builds (see lib/platform.ts).
  */
 export function QuarantineHint() {

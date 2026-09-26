@@ -84,7 +84,7 @@ describe("AI policy tab", () => {
   it("explains a failed save by error kind", async () => {
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
     vi.spyOn(api, "setCoursePolicy").mockRejectedValueOnce(
-      new ApiError("busy", "Another StudentOS process is already syncing."),
+      new ApiError("busy", "Another Weekmark process is already syncing."),
     );
     const { user } = await openCourse(DEMO205, { api, query: "tab=policy" });
 

@@ -1,8 +1,8 @@
-import type { StudentOsApi } from "./client";
+import type { WeekmarkApi } from "./client";
 import { createMockApi, MOCK_SCENARIOS, type MockScenario } from "./mock";
 import { createTauriApi } from "./tauri";
 
-export type { StudentOsApi } from "./client";
+export type { WeekmarkApi } from "./client";
 export { ApiError, isApiError, toApiError } from "./errors";
 export * from "./types";
 
@@ -14,6 +14,6 @@ function scenarioFromUrl(): MockScenario {
   return MOCK_SCENARIOS.includes(value as MockScenario) ? (value as MockScenario) : "demo";
 }
 
-export function createApi(): StudentOsApi {
+export function createApi(): WeekmarkApi {
   return API_MODE === "mock" ? createMockApi({ scenario: scenarioFromUrl() }) : createTauriApi();
 }

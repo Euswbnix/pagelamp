@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "StudentOS",
+  "productName": "Weekmark",
   "version": "0.1.0",
-  "identifier": "dev.studentos.desktop",
+  "identifier": "dev.weekmark.desktop",
   "build": {
     "beforeDevCommand": "node scripts/build-sidecar.mjs --dev && pnpm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "StudentOS",
+        "title": "Weekmark",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
@@ -29,14 +29,14 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "publisher": "StudentOS contributors",
-    "homepage": "https://github.com/Euswbnix/studentos",
+    "publisher": "Weekmark contributors",
+    "homepage": "https://github.com/Euswbnix/weekmark",
     "category": "Education",
     "shortDescription": "Your courses, ready for the AI app you already use",
-    "longDescription": "StudentOS keeps your course materials, weekly structure and deadlines on your computer and serves them over MCP to the AI app you already use (Claude Desktop, Claude Code, Codex). It never solves or submits assignments.",
-    "copyright": "© 2026 StudentOS contributors",
+    "longDescription": "Weekmark keeps your course materials, weekly structure and deadlines on your computer and serves them over MCP to the AI app you already use (Claude Desktop, Claude Code, Codex). It never solves or submits assignments.",
+    "copyright": "© 2026 Weekmark contributors",
     "license": "Apache-2.0",
-    "externalBin": ["binaries/studentos"],
+    "externalBin": ["binaries/weekmark"],
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",

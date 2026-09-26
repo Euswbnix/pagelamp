@@ -40,7 +40,7 @@ export const useUiStore = create<UiState>()(
         set({ aiDisclosureAcknowledgedAt: acknowledged ? new Date().toISOString() : null }),
     }),
     {
-      name: "studentos.ui",
+      name: "weekmark.ui",
       version: 1,
       storage: createJSONStorage(() => localStorage),
       // Explicit allow-list: only these keys are ever written to disk.

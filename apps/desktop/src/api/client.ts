@@ -18,7 +18,7 @@ import type {
 
 /**
  * Everything the UI can ask of the backend. One method per facade method in
- * crates/studentos-app (docs/ARCHITECTURE.md §5), plus a few desktop-only helpers at the end.
+ * crates/weekmark-app (docs/ARCHITECTURE.md §5), plus a few desktop-only helpers at the end.
  *
  * Two implementations:
  * - `tauri.ts` — calls the Rust commands in src-tauri (the real app).
@@ -27,7 +27,7 @@ import type {
  * Every method rejects with an `ApiError` (see errors.ts) — branch on `error.kind`.
  * `course` parameters always take `course.id` (never a code).
  */
-export interface StudentOsApi {
+export interface WeekmarkApi {
   // ----- status & sources ------------------------------------------------------------------
   status(): Promise<AppStatus>;
   listSources(): Promise<SourceRecord[]>;
@@ -80,7 +80,7 @@ export interface StudentOsApi {
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 
   // ----- "connect your AI app" -------------------------------------------------------------
-  /** The Rust side decides which `studentos` binary the snippets point at. */
+  /** The Rust side decides which `weekmark` binary the snippets point at. */
   mcpClientConfigs(): Promise<McpClientConfig[]>;
 
   // ----- desktop helpers (not part of the facade) --------------------------------------------
@@ -88,6 +88,6 @@ export interface StudentOsApi {
   pickFolder(): Promise<string | null>;
   /** Open an http(s) link in the default browser. Other schemes are rejected. */
   openExternal(url: string): Promise<void>;
-  /** Show the StudentOS data folder in Finder / Explorer. */
+  /** Show the Weekmark data folder in Finder / Explorer. */
   revealDataDir(): Promise<void>;
 }

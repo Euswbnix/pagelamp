@@ -1,7 +1,7 @@
 import { API_MODE } from "@/api";
 
 /**
- * The v0.1 beta is unsigned, so macOS may quarantine the bundled `studentos` binary when an AI
+ * The v0.1 beta is unsigned, so macOS may quarantine the bundled `weekmark` binary when an AI
  * app starts it. The hint only makes sense in a real (production) macOS build of the desktop
  * app — not in dev, mock mode or on other systems.
  */

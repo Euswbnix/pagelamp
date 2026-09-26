@@ -296,7 +296,7 @@ describe("OnboardingPage", () => {
 
     await user.click(screen.getByRole("checkbox", { name: "I understand" }));
     expect(useUiStore.getState().aiDisclosureAcknowledgedAt).not.toBeNull();
-    expect(localStorage.getItem("studentos.ui")).toContain("aiDisclosureAcknowledgedAt");
+    expect(localStorage.getItem("weekmark.ui")).toContain("aiDisclosureAcknowledgedAt");
     expect(screen.getByText(/^You confirmed this on /)).toBeInTheDocument();
 
     await user.click(start);

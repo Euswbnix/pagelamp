@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { StudentOsApi } from "@/api/client";
+import type { WeekmarkApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { SOURCE_CANVAS } from "@/api/mock/fixtures";
@@ -13,7 +13,7 @@ import { renderRoute } from "@/test/render";
 /** Queries that skip visually hidden live-region copies of on-screen text. */
 const VISIBLE_ONLY = "script, style, .sr-only";
 
-function mockApi(): StudentOsApi {
+function mockApi(): WeekmarkApi {
   return createMockApi({ latencyMs: 0, syncStepMs: 0 });
 }
 
@@ -183,7 +183,7 @@ describe("CoursesPage — this week", () => {
     const api = mockApi();
     const real = api.listDeadlines;
     api.listDeadlines = vi
-      .fn<StudentOsApi["listDeadlines"]>()
+      .fn<WeekmarkApi["listDeadlines"]>()
       .mockRejectedValueOnce(new ApiError("internal", "Synthetic failure"))
       .mockImplementation(real);
     const { user } = renderRoute("/courses", { api });
@@ -326,7 +326,7 @@ describe("CoursesPage — sync", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const syncAll = vi.fn<StudentOsApi["syncAll"]>(async (req, onEvent) => {
+    const syncAll = vi.fn<WeekmarkApi["syncAll"]>(async (req, onEvent) => {
       await gate;
       return realSyncAll(req, onEvent);
     });
@@ -444,7 +444,7 @@ describe("CoursesPage — empty and error", () => {
     const api = mockApi();
     const real = api.listCourses;
     api.listCourses = vi
-      .fn<StudentOsApi["listCourses"]>()
+      .fn<WeekmarkApi["listCourses"]>()
       .mockRejectedValueOnce(new ApiError("internal", "Synthetic failure"))
       .mockImplementation(real);
     const { user } = renderRoute("/courses", { api });

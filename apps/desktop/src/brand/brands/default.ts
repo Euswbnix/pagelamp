@@ -3,10 +3,10 @@ import type { Brand } from "../types";
 /** The plain brand that ships on GitHub. Distributions copy this file; see ../types.ts. */
 const brand: Brand = {
   id: "default",
-  productName: "StudentOS",
+  productName: "Weekmark",
   tagline: {
-    en: "Your courses, on your computer, ready for the AI app you already use.",
-    "zh-CN": "课程资料存在你自己的电脑上，随时交给你正在用的 AI 应用。",
+    en: "Bookmark this week of every course.",
+    "zh-CN": "给每门课的这一周，夹上一枚书签。",
   },
   defaultLocale: "en",
   colors: {
@@ -18,8 +18,8 @@ const brand: Brand = {
   },
   logo: null,
   links: {
-    homepage: "https://github.com/Euswbnix/studentos",
-    issues: "https://github.com/Euswbnix/studentos/issues",
+    homepage: "https://github.com/Euswbnix/weekmark",
+    issues: "https://github.com/Euswbnix/weekmark/issues",
   },
   aiPolicyHint: {
     en: "Many universities don't allow generative AI in a course unless the instructor permits it — check your syllabus.",

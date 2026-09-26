@@ -1,7 +1,7 @@
 // The backend ⇄ frontend contract, as TypeScript.
 //
 // All shapes come from `generated.ts`, which `pnpm gen:types` produces from the Rust facade's
-// JSON Schema (crates/studentos-app). Never hand-write a contract type here — change the Rust
+// JSON Schema (crates/weekmark-app). Never hand-write a contract type here — change the Rust
 // type and regenerate. This file only re-exports them and adds a few UI conveniences.
 //
 // Conventions (serde on the Rust side):

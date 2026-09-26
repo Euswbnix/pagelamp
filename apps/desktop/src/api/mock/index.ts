@@ -1,4 +1,4 @@
-// In-memory implementation of StudentOsApi for `pnpm dev:mock` and tests.
+// In-memory implementation of WeekmarkApi for `pnpm dev:mock` and tests.
 //
 // It behaves like the real facade where the UI can tell the difference: validation errors use
 // the same AppError kinds, sync streams SyncEvents over time, and settings persist for the
@@ -9,7 +9,7 @@
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
-import type { StudentOsApi } from "../client";
+import type { WeekmarkApi } from "../client";
 import { ApiError } from "../errors";
 import {
   type AppStatus,
@@ -72,7 +72,7 @@ function parseHttpUrl(value: string, allowWebcal = false): URL | null {
   }
 }
 
-export function createMockApi(options: MockOptions = {}): StudentOsApi {
+export function createMockApi(options: MockOptions = {}): WeekmarkApi {
   const scenario = options.scenario ?? "demo";
   const latency = options.latencyMs ?? 250;
   const syncStep = options.syncStepMs ?? 350;
@@ -158,7 +158,7 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
     return {
       version: "0.1.0-mock",
       data_dir: db.dataDir,
-      db_path: `${db.dataDir}/studentos.db`,
+      db_path: `${db.dataDir}/weekmark.db`,
       sources: db.sources,
       counts: {
         courses: visible.length,
@@ -232,7 +232,7 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
   ): Promise<SourceSyncResult[]> {
     if (syncing || db.externalSyncRunning) {
       await sleep(latency);
-      throw new ApiError("busy", "Another StudentOS process is already syncing.");
+      throw new ApiError("busy", "Another Weekmark process is already syncing.");
     }
     syncing = true;
     const results: SourceSyncResult[] = [];

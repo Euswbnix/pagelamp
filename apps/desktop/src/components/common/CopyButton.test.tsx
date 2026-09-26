@@ -6,12 +6,12 @@ import { CopyButton } from "./CopyButton";
 describe("CopyButton", () => {
   it("copies and announces it once from a status outside the button", async () => {
     const user = userEvent.setup();
-    render(<CopyButton text="claude mcp add studentos" label="Copy command" />);
+    render(<CopyButton text="claude mcp add weekmark" label="Copy command" />);
     const button = screen.getByRole("button", { name: "Copy command" });
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
 
     await user.click(button);
-    expect(await navigator.clipboard.readText()).toBe("claude mcp add studentos");
+    expect(await navigator.clipboard.readText()).toBe("claude mcp add weekmark");
     expect(screen.getByRole("status")).toHaveTextContent("Copied");
     expect(button).not.toContainElement(screen.getByRole("status"));
   });
