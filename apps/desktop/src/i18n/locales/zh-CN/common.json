@@ -33,9 +33,9 @@
     "syncing": "正在同步…",
     "syncingProgress": "正在同步 {{done}}/{{total}}…",
     "needsAttention": "需要处理",
-    "busy": "已有同步在进行（可能是命令行发起的），请等它结束后再试。",
+    "busy": "已经有一个同步在进行（可能是从命令行启动的），请等它结束后再试。",
     "done": "同步完成",
-    "doneWithErrors": "同步已结束，但有来源出了问题",
+    "doneWithErrors": "同步已结束，但有数据来源出了问题",
     "failed": "同步失败",
     "pillLabel": "同步状态：{{status}}。打开“数据来源与同步”。"
   },
@@ -49,12 +49,12 @@
     "crashBody": "请重试，或重新打开 {{product}}。这台电脑上的数据不受影响。"
   },
   "errors": {
-    "auth": "令牌或订阅地址被拒绝，可能已过期或被撤销。",
+    "auth": "访问令牌或日历订阅地址被拒绝，可能已过期或被撤销。",
     "network": "连不上服务器。请检查网络连接和地址是否正确。",
     "invalid": "请检查输入的内容。",
     "not_found": "没有找到对应的内容。",
     "ambiguous": "匹配到了不止一门课程。",
-    "busy": "已有同步在进行，请等它结束后再试。",
+    "busy": "已经有一个同步在进行，请等它结束后再试。",
     "internal": "发生了意外错误。"
   },
   "sourceKind": {
@@ -65,9 +65,9 @@
   "sourceError": {
     "auth_expired_or_revoked": "访问权限已过期",
     "network": "无法连接",
-    "not_found": "找不到",
+    "not_found": "找不到来源",
     "rate_limited": "请求过于频繁",
-    "other": "出错"
+    "other": "同步出错"
   },
   "policy": {
     "label": "AI 使用规定",
@@ -104,7 +104,7 @@
   },
   "textStatus": {
     "ok": "AI 应用可以读取",
-    "pending": "等待索引",
+    "pending": "等待处理",
     "unsupported": "无法读取（如视频）",
     "not_downloaded": "未下载",
     "error": "文字提取失败"

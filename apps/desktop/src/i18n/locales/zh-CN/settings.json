@@ -40,7 +40,7 @@
   },
   "privacy": {
     "title": "隐私",
-    "keychain": "你的 Canvas 令牌和日历订阅地址保存在系统钥匙串中，不会写入 {{product}} 的数据库。",
+    "keychain": "你的 Canvas 访问令牌和日历订阅地址保存在系统钥匙串中，不会写入 {{product}} 的数据库。",
     "readOnly": "{{product}} 只从 Canvas 读取数据，从不在上面发帖、提交或修改任何内容。",
     "aiProvider": "只有当 AI 应用为了回答你的问题而读取课程内容时，这些内容才会发送给 AI 服务商。",
     "perCourse": "你可以不让 AI 应用读取任意一门课的资料：打开那门课，在“AI 使用规定”标签页里关掉开关即可。",

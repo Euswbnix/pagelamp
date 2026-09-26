@@ -8,15 +8,15 @@
     "checkAgain": "重新检查"
   },
   "problems": {
-    "tokenExpiredTitle": "{{source}} 的 Canvas 令牌已失效",
-    "tokenExpired": "令牌可能已过期或已被撤销。换上新令牌后，这些课程才能继续更新。",
-    "feedRejectedTitle": "{{source}} 的订阅地址已失效",
-    "feedRejected": "订阅可能已被重置或关闭。粘贴最新的订阅地址后，截止日期才能继续更新。",
+    "tokenExpiredTitle": "{{source}} 的 Canvas 访问令牌已失效",
+    "tokenExpired": "访问令牌可能已过期或被撤销。换上新的访问令牌后，这些课程才能继续更新。",
+    "feedRejectedTitle": "{{source}} 的日历订阅地址已失效",
+    "feedRejected": "日历订阅可能已被重置或关闭。粘贴最新的日历订阅地址后，截止日期才能继续更新。",
     "failedTitle": "{{source}} 同步失败：{{reason}}",
     "failedTitleGeneric": "{{source}} 同步失败",
     "failed": "这个数据来源的课程信息可能已经过时。",
-    "replaceToken": "更换令牌",
-    "replaceFeed": "更换订阅地址",
+    "replaceToken": "更换访问令牌",
+    "replaceFeed": "更换日历订阅地址",
     "open": "前往“数据来源与同步”"
   },
   "thisWeek": {
@@ -57,7 +57,7 @@
     "next": "下一项：{{title}} · {{when}}",
     "noDeadlines": "近期没有截止日期",
     "setPolicy": "去设置",
-    "setTerm": "设置开学日期后就能确定周次",
+    "setTerm": "设置学期开始日期后就能确定周次",
     "synced": "{{source}} · {{when}}同步",
     "notSynced": "{{source}} · 还没有同步过",
     "hidden": "已隐藏",
