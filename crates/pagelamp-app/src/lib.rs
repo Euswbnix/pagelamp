@@ -580,13 +580,11 @@ impl App {
         }
     }
 
-    /// Delete `<data_dir>/files/<CODE>-<id>/` of every course of this Canvas source, except a
-    /// directory another source's course also maps to.
-    /// Delete the download directories of every course of this Canvas source: its current
-    /// `<data_dir>/files/<CODE>-<id>/` and the directories its materials' local copies are in
-    /// (an older course code), when they are direct children of `files/`. A directory that
-    /// another source's course also uses is kept (compared case-insensitively and in NFC, as
-    /// APFS and NTFS do).
+    /// Delete the download directories of every course of this Canvas source, all direct
+    /// children of `files/`: its current `<CODE>-<id>/`, the directories its materials' local
+    /// copies are in, and any other `…-<id>/` (the same course under an older code) unless
+    /// another source has a course with that id. A directory another source's course uses is
+    /// kept (compared case-insensitively and in NFC, as APFS and NTFS do).
     fn remove_downloaded_files(&self, store: &Store, source_id: &str) -> Result<()> {
         let files_dir = paths::files_dir_in(self.data_dir());
         let dirs_of = |course: &Course| -> Result<Vec<PathBuf>> {
@@ -607,14 +605,33 @@ impl App {
             }
             Ok(dirs)
         };
+        let suffix_of =
+            |course: &Course| fold_name(&pagelamp_canvas::course_dir_suffix(&course.external_id));
         let mut own = Vec::new();
+        let mut own_suffixes = std::collections::HashSet::new();
         let mut kept = std::collections::HashSet::new();
+        let mut other_suffixes = std::collections::HashSet::new();
         for course in store.list_courses(true)? {
             let dirs = dirs_of(&course)?;
             if course.source_id == source_id {
                 own.extend(dirs);
+                own_suffixes.insert(suffix_of(&course));
             } else {
                 kept.extend(dirs.iter().map(|dir| dir_key(dir)));
+                other_suffixes.insert(suffix_of(&course));
+            }
+        }
+        // The same courses under older codes: `<OLDCODE>-<id>`.
+        own_suffixes.retain(|suffix| !other_suffixes.contains(suffix));
+        if let Ok(entries) = std::fs::read_dir(&files_dir) {
+            for entry in entries.flatten() {
+                let name = fold_name(&entry.file_name().to_string_lossy());
+                if own_suffixes
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix.as_str()))
+                {
+                    own.push(entry.path());
+                }
             }
         }
         own.sort();
@@ -872,15 +889,15 @@ impl App {
 
 /// A download directory's name as the file system compares it: case-insensitive, NFC.
 fn dir_key(dir: &Path) -> String {
-    use unicode_normalization::UnicodeNormalization;
     dir.file_name()
-        .map(|name| {
-            name.to_string_lossy()
-                .nfc()
-                .collect::<String>()
-                .to_lowercase()
-        })
+        .map(|name| fold_name(&name.to_string_lossy()))
         .unwrap_or_default()
+}
+
+/// `name` in NFC and lower case.
+fn fold_name(name: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    name.nfc().collect::<String>().to_lowercase()
 }
 
 /// Remove one download directory: a directory with everything in it, a symbolic link itself

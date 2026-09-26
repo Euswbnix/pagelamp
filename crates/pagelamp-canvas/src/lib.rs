@@ -190,6 +190,12 @@ pub fn course_files_dir(files_dir: &Path, code: Option<&str>, external_id: &str)
     files_dir.join(sync::course_dir_name(code, external_id))
 }
 
+/// The end of every download directory name a course has had (`-<canvas id>`, sanitised),
+/// whatever its course code was at the time.
+pub fn course_dir_suffix(external_id: &str) -> String {
+    format!("-{}", sync::safe_name(external_id, 40))
+}
+
 /// How a failed `/users/self` probe is reported (adding a source, and the first request of
 /// every sync). An answer that isn't Canvas's — a web page or JSON without a user id, a
 /// redirect (e.g. to a login page), a 403 or a "not authorized" 401, another 3xx/4xx

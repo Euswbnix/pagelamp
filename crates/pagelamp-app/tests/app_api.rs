@@ -289,6 +289,62 @@ fn removal_cleans_old_download_dirs_and_skips_files_links_and_shared_dirs() {
     );
 }
 
+#[test]
+fn removal_deletes_the_course_under_any_older_code_unless_another_source_has_that_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    seed(&app);
+    let files = app.data_dir().join("files");
+    // DEMO101 (id 101) was once ANCIENT101; DEMO303 (id 303) was once OLD303. Nothing in
+    // the database points at those directories any more.
+    for dir in ["ANCIENT101-101", "OLD303-303", "DEMO999-2101", "NOTES"] {
+        std::fs::create_dir_all(files.join(dir)).unwrap();
+        std::fs::write(files.join(dir).join("1-notes.txt"), "demo").unwrap();
+    }
+    // Another Canvas also has a course with id 303: its old directories can't be told apart.
+    let store = Store::open(&app.db_path()).unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: "canvas:other.example.edu".into(),
+            kind: SourceKind::Canvas,
+            label: "other.example.edu".into(),
+            config: json!({}),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: "canvas:other.example.edu/course/303".into(),
+            source_id: "canvas:other.example.edu".into(),
+            external_id: "303".into(),
+            code: Some("OTHER303".into()),
+            name: "Other demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+        })
+        .unwrap();
+    drop(store);
+
+    app.remove_source("canvas:lms.example.edu").unwrap();
+    assert!(
+        !files.join("ANCIENT101-101").exists(),
+        "older code of course 101"
+    );
+    assert!(
+        files.join("OLD303-303").is_dir(),
+        "id 303 is shared with another source"
+    );
+    assert!(
+        files.join("DEMO999-2101").is_dir(),
+        "another id that ends in 101"
+    );
+    assert!(files.join("NOTES").is_dir());
+}
+
 #[cfg(unix)]
 #[test]
 fn removal_deletes_a_linked_download_dir_but_not_its_target() {
