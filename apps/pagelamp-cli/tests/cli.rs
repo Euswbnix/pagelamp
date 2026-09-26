@@ -16,6 +16,9 @@ fn pagelamp_with_stdin(home: &Path, args: &[&str], stdin: &str) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_pagelamp"))
         .args(args)
         .env("PAGELAMP_HOME", home)
+        // Nothing may fall back to the real home directory (e.g. MCP client config paths).
+        .env("HOME", home)
+        .env("USERPROFILE", home)
         .env_remove("RUST_LOG")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
