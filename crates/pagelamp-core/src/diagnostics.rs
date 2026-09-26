@@ -80,22 +80,34 @@ pub fn logs_dir_in(data_dir: &Path) -> PathBuf {
 
 static BEARER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+").expect("valid regex"));
-/// Canvas access tokens look like `1234~AbCd…` (numeric id, tilde, long random part).
+/// Canvas access tokens look like `1234~AbCd…` (numeric id, tilde — maybe URL-encoded as
+/// `%7E` — and a random part). Short random parts count too (test and sandbox tokens); an
+/// all-digit part is a sharded Canvas id (`1234~5678`), not a token (see `redact`).
 static CANVAS_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{1,8}~[A-Za-z0-9]{16,}").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"\b\d{1,8}(?:~|%7[Ee])([A-Za-z0-9]{6,})").expect("valid regex"));
 static SECRET_QUERY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(access_token|verifier|sig|signature|token|x-amz-[a-z0-9-]+|key-pair-id|policy|client_secret)=[^&\s'<>]+",
+        r"(?i)\b(access_token|authtoken|verifier|sig|signature|token|key|pwd|x-amz-[a-z0-9-]+|key-pair-id|policy|client_secret)=[^&\s'<>]+",
     )
     .expect("valid regex")
+});
+/// Any `webcal://` URL is a calendar subscription, whose path or query is the secret.
+static WEBCAL_URL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\bwebcal://([^/?#\s"'<>]+)[^\s"'<>]*"#).expect("valid regex")
+});
+static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b")
+        .expect("valid regex")
 });
 static SECRET_ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)\b(password|secret|api[_-]?key|authorization)\s*[:=]\s*["']?[^\s"',;]+"#)
         .expect("valid regex")
 });
-/// Calendar feed URLs embed a private token in the path: keep the host only.
+/// Calendar feed URLs embed a private token in the path or query (Canvas `/feeds/…ics`,
+/// Moodle `/calendar/export_execute.php?…&authtoken=…`, iCloud `/published/…`): keep the
+/// host only.
 static FEED_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(?:webcal|https?)://([^/\s"'<>]+)/[^\s"'<>]*(?:\.ics|/feeds?/|/calendar)[^\s"'<>]*"#)
+    Regex::new(r#"(?i)\b(?:webcal|https?)://([^/\s"'<>]+)(?:/[^\s"'<>]*)?(?:\.ics|/feeds?/|/calendar|/published/)[^\s"'<>]*"#)
         .expect("valid regex")
 });
 
@@ -103,10 +115,18 @@ static FEED_URL: LazyLock<Regex> = LazyLock::new(|| {
 /// should never have been logged in the first place, and shortens the home dir to `~`.
 pub fn redact(text: &str) -> String {
     let text = BEARER.replace_all(text, "Bearer <redacted>");
-    let text = CANVAS_TOKEN.replace_all(&text, "<redacted-token>");
+    let text = CANVAS_TOKEN.replace_all(&text, |caps: &regex::Captures<'_>| {
+        if caps[1].bytes().all(|b| b.is_ascii_digit()) {
+            caps[0].to_string() // a sharded id like 1234~5678
+        } else {
+            "<redacted-token>".to_string()
+        }
+    });
     let text = FEED_URL.replace_all(&text, "https://$1/…");
+    let text = WEBCAL_URL.replace_all(&text, "webcal://$1/…");
     let text = SECRET_QUERY.replace_all(&text, "$1=<redacted>");
     let text = SECRET_ASSIGNMENT.replace_all(&text, "$1=<redacted>");
+    let text = EMAIL.replace_all(&text, "<email>");
     shorten_home(&text)
 }
 
@@ -451,14 +471,15 @@ pub fn recent_log_lines(data_dir: &Path, max: usize) -> Vec<String> {
         .filter(|p| p.extension().is_some_and(|e| e == "log"))
         .collect();
     files.sort();
-    // Events: (timestamp, text); a line not starting with a digit continues the last event.
+    // Events: (timestamp, text); a line that doesn't start with a timestamp continues the
+    // last event (e.g. a backtrace, or "1 | …" in a multi-line message).
     let mut events: Vec<(String, String)> = Vec::new();
     for file in files.iter().rev().take(4) {
         let Ok(text) = std::fs::read_to_string(file) else {
             continue;
         };
         for line in text.lines() {
-            if line.starts_with(|c: char| c.is_ascii_digit()) {
+            if starts_with_timestamp(line) {
                 let stamp = line.split(' ').next().unwrap_or("").to_string();
                 events.push((stamp, line.to_string()));
             } else if let Some(last) = events.last_mut() {
@@ -471,6 +492,18 @@ pub fn recent_log_lines(data_dir: &Path, max: usize) -> Vec<String> {
     let lines: Vec<String> = events.into_iter().map(|(_, text)| redact(&text)).collect();
     let skip = lines.len().saturating_sub(max);
     lines.into_iter().skip(skip).collect()
+}
+
+/// `YYYY-MM-DDT…`: the start of a log event.
+fn starts_with_timestamp(line: &str) -> bool {
+    let b = line.as_bytes();
+    b.len() > 10
+        && [0, 1, 2, 3, 5, 6, 8, 9]
+            .iter()
+            .all(|&i| b[i].is_ascii_digit())
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[10] == b'T'
 }
 
 #[cfg(test)]
@@ -506,6 +539,21 @@ mod tests {
             ),
             ("?access_token=abc123secret&page=2", "abc123secret"),
             ("password=hunter2 and api_key: sk-demo", "hunter2"),
+            (
+                "https://moodle.example.edu/calendar/export_execute.php?userid=7&authtoken=M00dleT0k&preset_what=all",
+                "M00dleT0k",
+            ),
+            ("GET /x?authtoken=Tok3nA&key=K3yB&pwd=P4ssC", "Tok3nA"),
+            ("GET /x?authtoken=Tok3nA&key=K3yB&pwd=P4ssC", "K3yB"),
+            ("GET /x?authtoken=Tok3nA&key=K3yB&pwd=P4ssC", "P4ssC"),
+            ("feed webcal://example.edu/cal?u=Pr1vate", "Pr1vate"),
+            (
+                "https://p01-caldav.icloud.com/published/2/MTIzSecretICloud",
+                "MTIzSecretICloud",
+            ),
+            ("GET /api?access=1234%7EAbCdEfGhIjKlMnOp", "AbCdEfGh"),
+            ("sandbox token 1~sh0rtT", "sh0rtT"),
+            ("student demo.student@example.edu wrote", "demo.student@"),
         ];
         for (line, secret) in planted {
             let redacted = redact(line);
@@ -516,6 +564,11 @@ mod tests {
             "https://calendar.example.edu/…"
         );
         assert_eq!(redact("page=2&per_page=100"), "page=2&per_page=100");
+        // Sharded Canvas ids are not tokens.
+        assert_eq!(
+            redact("course 1234~567890 synced"),
+            "course 1234~567890 synced"
+        );
     }
 
     #[test]
@@ -599,7 +652,7 @@ mod tests {
         std::fs::create_dir_all(&logs).unwrap();
         std::fs::write(
             logs.join("app-2026-09-26.log"),
-            "2026-09-26T10:00:00Z pid=1 INFO a\n2026-09-26T10:00:02Z pid=1 ERROR crash\n  at frame 1\n",
+            "2026-09-26T10:00:00Z pid=1 INFO a\n2026-09-26T10:00:02Z pid=1 ERROR crash\n  at frame 1\n1 | code = [\n",
         )
         .unwrap();
         std::fs::write(
@@ -610,6 +663,9 @@ mod tests {
         let lines = recent_log_lines(temp.path(), 2);
         assert_eq!(lines.len(), 2);
         assert!(lines[0].ends_with("INFO b"));
-        assert!(lines[1].contains("ERROR crash\n  at frame 1"));
+        assert!(lines[1].contains("ERROR crash\n  at frame 1\n1 | code = ["));
+        assert!(starts_with_timestamp("2026-09-26T10:00:00Z pid=1 INFO a"));
+        assert!(!starts_with_timestamp("1 | code"));
+        assert!(!starts_with_timestamp("2026-09-26"));
     }
 }
