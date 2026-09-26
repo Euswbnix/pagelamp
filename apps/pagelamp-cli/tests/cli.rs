@@ -543,10 +543,23 @@ fn mcp_logs_being_terminated() {
         .status()
         .unwrap();
     assert!(killed.success());
-    let (status, _) = mcp.finish();
+    // With stdin still open (a client that signals before closing the pipe): the process
+    // must end by itself.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let status = loop {
+        if let Some(status) = mcp.child.try_wait().unwrap() {
+            break status;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "still running 10 s after SIGTERM"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
     assert!(status.success(), "{status:?}");
     let log = log_text(&home, "mcp-");
     assert!(log.contains("MCP server stopped (terminated)"), "{log}");
+    drop(mcp);
 }
 
 #[cfg(unix)]

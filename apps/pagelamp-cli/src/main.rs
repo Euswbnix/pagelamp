@@ -283,10 +283,18 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(run(cli)) {
+    let result = runtime.block_on(run(cli));
+    // Don't wait for leftover blocking threads: the MCP server's stdin reader only ends at
+    // EOF, so after a stop signal (stdin still open) dropping the runtime would hang.
+    runtime.shutdown_background();
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
-            eprintln!("error: {err}");
+            // Redacted like the log: stderr of `pagelamp mcp` ends up in the AI app's logs.
+            eprintln!(
+                "error: {}",
+                pagelamp_core::diagnostics::redact(&err.to_string())
+            );
             ExitCode::FAILURE
         }
     }
