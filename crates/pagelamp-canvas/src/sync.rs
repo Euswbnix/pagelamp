@@ -713,10 +713,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         }
 
         // ---- files: download (when asked), keep earlier copies, or mark not downloaded -----------
-        let course_dir = self
-            .options
-            .files_dir
-            .join(course_dir_name(upsert.code.as_deref(), &upsert.external_id));
+        let course_dir = crate::course_files_dir(
+            &self.options.files_dir,
+            upsert.code.as_deref(),
+            &upsert.external_id,
+        );
         let mut downloads: Vec<DownloadJob> = Vec::new();
         let mut not_downloaded: Vec<String> = Vec::new();
         // Why a not-downloaded file can't be downloaded on request; other files are cleared.

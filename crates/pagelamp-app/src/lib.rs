@@ -36,8 +36,8 @@ use std::sync::Arc;
 use chrono::NaiveDate;
 use pagelamp_canvas::CanvasConfig;
 use pagelamp_core::model::{
-    AiMaterialsState, AiPolicy, SearchHit, SourceErrorKind, SourceKind, SourceRecord, StoreCounts,
-    StoredStudyPlan, TermSource, Timestamp,
+    AiMaterialsState, AiPolicy, Course, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
+    StoreCounts, StoredStudyPlan, TermSource, Timestamp,
 };
 use pagelamp_core::paths;
 use pagelamp_core::secrets::{KeychainSecrets, SecretBackend};
@@ -47,6 +47,8 @@ use pagelamp_core::views::{self, AsOf, CourseOverview, CourseSummary, Deadline, 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use crate::lock::SyncLock;
 
 // ---------------------------------------------------------------------------------------------
 // Errors
@@ -514,14 +516,56 @@ impl App {
         )
     }
 
-    /// Removes the source, everything synced from it, and its keychain secret.
+    /// Removes the source, everything synced from it, the files downloaded for its Canvas
+    /// courses and its keychain secret. A folder source has no secret, and the student's own
+    /// folder is never touched. `Busy` while a sync runs (it could write those files).
     pub fn remove_source(&self, source_id: &str) -> Result<()> {
+        let _lock = SyncLock::acquire(&paths::sync_lock_path_in(self.data_dir()))?;
         let store = self.write_store()?;
-        if store.get_source(source_id)?.is_none() {
+        let Some(source) = store.get_source(source_id)? else {
             return Err(unknown_source(source_id));
+        };
+        if source.kind == SourceKind::Canvas {
+            // Files first: if deleting fails, the source stays and removing can be retried.
+            self.remove_downloaded_files(&store, source_id)?;
         }
         store.remove_source(source_id)?;
-        self.secrets.delete(source_id)?;
+        if source.kind != SourceKind::Folder {
+            self.secrets.delete(source_id)?;
+        }
+        Ok(())
+    }
+
+    /// Delete `<data_dir>/files/<CODE>-<id>/` of every course of this Canvas source, except a
+    /// directory another source's course also maps to.
+    fn remove_downloaded_files(&self, store: &Store, source_id: &str) -> Result<()> {
+        let files_dir = paths::files_dir_in(self.data_dir());
+        let dir_of = |course: &Course| {
+            pagelamp_canvas::course_files_dir(
+                &files_dir,
+                course.code.as_deref(),
+                &course.external_id,
+            )
+        };
+        let courses = store.list_courses(true)?;
+        let (own, others): (Vec<&Course>, Vec<&Course>) =
+            courses.iter().partition(|c| c.source_id == source_id);
+        let kept: std::collections::HashSet<PathBuf> = others.into_iter().map(dir_of).collect();
+        for dir in own.into_iter().map(dir_of).filter(|d| !kept.contains(d)) {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => {
+                    return Err(AppError::new(
+                        AppErrorKind::Internal,
+                        format!(
+                            "Could not delete the downloaded course files in {}: {err}",
+                            pagelamp_core::diagnostics::shorten_home(&dir.display().to_string())
+                        ),
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 

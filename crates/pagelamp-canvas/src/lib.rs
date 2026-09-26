@@ -164,6 +164,12 @@ pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
         .unwrap_or_else(|| "Canvas user".into()))
 }
 
+/// Where `sync` keeps the downloaded files of a course: `<files_dir>/<CODE>-<canvas id>`
+/// (sanitised; always a direct child of `files_dir`).
+pub fn course_files_dir(files_dir: &Path, code: Option<&str>, external_id: &str) -> PathBuf {
+    files_dir.join(sync::course_dir_name(code, external_id))
+}
+
 /// How a failed `/users/self` probe is reported. An answer that isn't Canvas's — a web page
 /// instead of JSON, a redirect (e.g. to a login page) or another 3xx/4xx status — means there
 /// is no Canvas at that address, not an internal error.

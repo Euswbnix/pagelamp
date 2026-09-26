@@ -192,10 +192,64 @@ fn remove_source_deletes_rows_and_secret() {
         kind(app.remove_source("canvas:nope")),
         AppErrorKind::NotFound
     );
+    // Downloaded copies of both courses (DEMO303 is hidden) go too; other dirs stay.
+    let files = app.data_dir().join("files");
+    for dir in ["DEMO101-101", "DEMO303-303", "OTHER-9"] {
+        std::fs::create_dir_all(files.join(dir)).unwrap();
+        std::fs::write(files.join(dir).join("1-slides.txt"), "demo").unwrap();
+    }
+
+    // Not while a sync runs (it could be writing those files).
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(app.data_dir().join("sync.lock"))
+        .unwrap();
+    lock.try_lock().unwrap();
+    assert_eq!(
+        kind(app.remove_source("canvas:lms.example.edu")),
+        AppErrorKind::Busy
+    );
+    drop(lock);
+
     app.remove_source("canvas:lms.example.edu").unwrap();
     assert!(app.list_sources().unwrap().is_empty());
     assert!(app.list_courses().unwrap().is_empty());
     assert_eq!(secrets.get("canvas:lms.example.edu").unwrap(), None);
+    assert!(!files.join("DEMO101-101").exists());
+    assert!(!files.join("DEMO303-303").exists());
+    assert!(files.join("OTHER-9/1-slides.txt").is_file());
+}
+
+/// Secrets that must never be deleted (folder sources have none).
+struct NoDelete(MemorySecrets);
+
+impl SecretBackend for NoDelete {
+    fn get(&self, source_id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.0.get(source_id)
+    }
+    fn set(&self, source_id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.0.set(source_id, secret)
+    }
+    fn delete(&self, source_id: &str) -> pagelamp_core::Result<()> {
+        panic!("keychain delete for {source_id}")
+    }
+}
+
+#[test]
+fn removing_a_folder_source_leaves_the_keychain_and_the_folder_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(
+        temp.path().join("data"),
+        Arc::new(NoDelete(MemorySecrets::new())),
+    )
+    .unwrap();
+    let root = demo_course_folder(temp.path());
+    let folder = app.add_folder_source(&root, None, None).unwrap();
+    app.remove_source(&folder.id).unwrap();
+    assert!(app.list_sources().unwrap().is_empty());
+    assert!(root.join("DEMO101H1 Intro/week1.txt").is_file());
 }
 
 #[tokio::test]
