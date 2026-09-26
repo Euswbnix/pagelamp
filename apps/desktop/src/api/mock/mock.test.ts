@@ -20,6 +20,36 @@ describe("mock API", () => {
     expect(error.message).not.toContain(token);
   });
 
+  it("refuses Canvas addresses like the backend, in the same order, without echoing them", async () => {
+    const api = createMockApi({ ...fast, scenario: "empty" });
+    const token = "demo-token-0001";
+    const notCanvas =
+      "That is not a Canvas address. Enter just the address, like https://lms.example.edu";
+    for (const input of [
+      "7~AbCdEfGhIjKl", // a token pasted into the address field
+      "7~AbCd/courses/1", // token-shaped wins over "page link"
+      "canvas", // a single word
+      "https://canvas/courses/1", // single word wins over "page link"
+      "http://canvas.demo.test", // not https
+      "https://student:secret@canvas.demo.test",
+    ]) {
+      await expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
+        kind: "invalid",
+        message: notCanvas,
+      });
+    }
+    for (const input of ["https://canvas.demo.test/courses/1", "canvas.demo.test/?login=1"]) {
+      await expect(api.addCanvasSource(input, token), input).rejects.toMatchObject({
+        kind: "invalid",
+        message:
+          "That is a link to a page, not a Canvas address. Enter just the address, like https://canvas.demo.test",
+      });
+    }
+    await expect(api.addCanvasSource("canvas.demo.test/", token)).resolves.toMatchObject({
+      kind: "canvas",
+    });
+  });
+
   it("streams sync events and reports failed sources without throwing", async () => {
     const api = createMockApi({ ...fast, scenario: "expired" });
     const events: SyncEvent[] = [];

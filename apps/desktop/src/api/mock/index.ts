@@ -73,6 +73,42 @@ function parseHttpUrl(value: string, allowWebcal = false): URL | null {
   }
 }
 
+/**
+ * Mirrors the backend's normalize_base_url (pagelamp-canvas), in the same order: a pasted token
+ * ("7~AbC…") or a single word ("canvas") is refused before anything else, then a page link
+ * (path, query or fragment), then anything but https (http only for localhost). The messages
+ * never repeat the input; at most the host.
+ */
+function canvasAddress(input: string): URL {
+  const trimmed = input.trim();
+  const invalid = () =>
+    new ApiError(
+      "invalid",
+      "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
+    );
+  if (trimmed.includes("~")) throw invalid();
+  let url: URL;
+  try {
+    url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+  } catch {
+    throw invalid();
+  }
+  const host = url.hostname;
+  if (!host || (!host.includes(".") && !host.includes(":") && host !== "localhost")) {
+    throw invalid();
+  }
+  if (url.username || url.password) throw invalid();
+  if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) {
+    throw new ApiError(
+      "invalid",
+      `That is a link to a page, not a Canvas address. Enter just the address, like https://${url.host}`,
+    );
+  }
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(host);
+  if (!(url.protocol === "https:" || (url.protocol === "http:" && local))) throw invalid();
+  return url;
+}
+
 export function createMockApi(options: MockOptions = {}): PageLampApi {
   const scenario = options.scenario ?? "demo";
   const latency = options.latencyMs ?? 250;
@@ -324,23 +360,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
     addCanvasSource: async (baseUrl, token) => {
       await sleep(latency + 500);
-      const url = parseHttpUrl(baseUrl);
-      // Like the backend (pagelamp-canvas normalize_base_url): just the address, so a pasted
-      // course link isn't reinterpreted. Its messages never repeat the input; at most the host.
-      if (url?.protocol !== "https:" || url.username || url.password) {
-        throw new ApiError(
-          "invalid",
-          "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
-        );
-      }
-      if (url.pathname !== "/" || url.search || url.hash) {
-        throw new ApiError(
-          "invalid",
-          `That is a link to a page, not a Canvas address. Enter just the address, like https://${url.host}`,
-        );
-      }
-      if (!url || url.hostname.includes("offline")) {
-        throw new ApiError("network", `Couldn't reach ${url?.hostname ?? baseUrl}.`);
+      const url = canvasAddress(baseUrl);
+      if (url.hostname.includes("offline")) {
+        throw new ApiError("network", `Couldn't reach ${url.hostname}.`);
       }
       validateCanvasToken(token);
       return clone(
