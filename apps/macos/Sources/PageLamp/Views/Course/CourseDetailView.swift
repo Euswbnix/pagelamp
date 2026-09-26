@@ -145,10 +145,18 @@ struct CourseSourceAlert: View {
                 tone: .danger,
                 symbol: "key",
                 title: l10n("course.sourceAlert.expiredTitle"),
-                message: l10n("mac.course.sourceAlert.expiredBody")
+                message: SourceRow.canReplaceSecrets
+                    ? l10n("mac.course.sourceAlert.expiredBody")
+                    : l10n("mac.course.sourceAlert.expiredBodyPreview")
             ) {
-                Button(l10n.fix(fix)) { model.fixSource(source.id) }
-                    .arbitratedButtonStyle(.fixSource(source.id))
+                if SourceRow.canReplaceSecrets {
+                    Button(l10n.fix(fix)) { model.fixSource(source.id) }
+                        .arbitratedButtonStyle(.fixSource(source.id))
+                } else {
+                    // No Replace sheet yet (M2): lead to the source, like This Week does.
+                    Button(l10n("mac.actions.openSourcesAndSync")) { model.fixSource(source.id) }
+                        .buttonStyle(.bordered)
+                }
             }
         case .failed(let kind):
             Callout(

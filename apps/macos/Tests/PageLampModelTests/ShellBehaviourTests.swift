@@ -19,7 +19,8 @@ struct ShellBehaviourTests {
         await model.refresh()
         let summary = try #require(model.courses.first { $0.course.sourceId == canvas })
         let source = model.sources.first { $0.id == canvas }
-        let coursePage = CourseDetailModel.primaryActionCandidates(source: source, timeline: summary.timeline)
+        // As it will be once the Replace sheet exists (M2); M1 has no fix candidate on the page.
+        let coursePage = CourseDetailModel.primaryActionCandidates(source: source, timeline: summary.timeline, canReplaceSecrets: true)
         #expect(coursePage.first == .fixSource(canvas))
         model.destination = .course(summary.course.id)
 

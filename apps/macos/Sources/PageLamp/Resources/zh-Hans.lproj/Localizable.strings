@@ -437,6 +437,7 @@
 "mac.course.readableShort" = "%2$@ 份中 %1$@ 份可读取";
 "mac.course.sections.week" = "本周";
 "mac.course.sourceAlert.expiredBody" = "这门课程目前无法更新。请到“数据来源与同步”中更换访问令牌，才能获取新的资料和截止日期。";
+"mac.course.sourceAlert.expiredBodyPreview" = "这门课程目前无法更新，因为它的数据来源已不再接受 PageLamp 的访问。前往“数据来源与同步”查看处理方法。";
 "mac.course.sourceAlert.failedBody" = "这里的内容可能不是最新的，详情请查看“数据来源与同步”。";
 "mac.course.term.lastDay" = "学期结束日期";
 "mac.course.term.noDate" = "未设置";
@@ -498,6 +499,8 @@
 "mac.sidebar.setup" = "配置";
 "mac.sources.fixUnavailable" = "将在这个预览版的下一次更新中提供。";
 "mac.sources.lastRun" = "上次运行";
+"mac.sources.problem.expiredCanvasPreview" = "你的 Canvas 访问令牌已过期或被撤销。请在 Canvas 中新建一个（Account → Settings → Approved Integrations → + New Access Token）。这个预览版还不能直接更换：请在 PageLamp 应用中使用“更换访问令牌”，或在终端运行 pagelamp sources update-secret %1$@。";
+"mac.sources.problem.expiredFeedPreview" = "这个日历订阅地址已经失效。请从教学平台重新复制。这个预览版还不能直接更换：请在 PageLamp 应用中使用“更换日历订阅地址”，或在终端运行 pagelamp sources update-secret %1$@。";
 "mac.syncDetails.done" = "完成";
 "mac.syncDetails.failed" = "未完成";
 "mac.syncDetails.progress" = "%1$@/%2$@";

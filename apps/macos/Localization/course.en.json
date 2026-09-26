@@ -19,7 +19,8 @@
     },
     "sourceAlert": {
       "expiredBody": "This course isn't updating. Replace the token in Sources & Sync to get new materials and deadlines.",
-      "failedBody": "What you see here may be out of date. Sources & Sync has the details."
+      "failedBody": "What you see here may be out of date. Sources & Sync has the details.",
+      "expiredBodyPreview": "This course isn’t updating because its source no longer accepts PageLamp’s access. Open Sources & Sync to see how to fix it."
     }
   }
 }

@@ -118,6 +118,8 @@ public enum LocalFile {
         "app", "command", "tool", "terminal", "sh", "bash", "zsh", "csh", "tcsh", "ksh", "fish",
         "py", "pyw", "rb", "pl", "php", "jar", "pkg", "mpkg", "workflow", "action", "scpt",
         "scptd", "applescript", "prefpane", "saver", "osax", "kext", "plugin", "bundle",
+        // Documents whose default app opens something else (a file, a web page, a profile).
+        "fileloc", "webloc", "inetloc", "mobileconfig",
     ]
 
     /// Whether opening `url` would run a program: a launchable extension, an application, or a
@@ -126,6 +128,9 @@ public enum LocalFile {
     /// (every file on an exFAT drive has one): its type decides, like Finder. Reads the file
     /// system, so call it on an action (a click, Return), never from a view body.
     public static func isLaunchable(_ url: URL) -> Bool {
+        // NSWorkspace follows symlinks, so judge the file a link points to, not the link.
+        let target = url.resolvingSymlinksInPath()
+        if target != url, isLaunchable(target) { return true }
         if launchableExtensions.contains(url.pathExtension.lowercased()) { return true }
         guard let values = try? url.resourceValues(forKeys: [.isApplicationKey, .contentTypeKey]) else { return false }
         if values.isApplication == true { return true }

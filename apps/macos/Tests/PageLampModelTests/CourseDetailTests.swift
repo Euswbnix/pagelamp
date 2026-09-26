@@ -195,8 +195,12 @@ struct CourseDeadlinesTests {
         #expect(SourceProblem(source: source(nil)) == nil)
 
         // The fix outranks Set Term Dates…
-        let both = CourseDetailModel.primaryActionCandidates(source: expired, timeline: timeline(week: nil))
+        let both = CourseDetailModel.primaryActionCandidates(source: expired, timeline: timeline(week: nil), canReplaceSecrets: true)
         #expect(PrimaryActionArbiter.winner(both) == .fixSource("canvas:x"))
+        // Without the Replace sheet (M1) the fix is no candidate: Set Term Dates… wins instead.
+        let preview = CourseDetailModel.primaryActionCandidates(source: expired, timeline: timeline(week: nil), canReplaceSecrets: false)
+        #expect(!preview.contains(.fixSource("canvas:x")))
+        #expect(PrimaryActionArbiter.winner(preview) == .setTermDates)
         // A failure without a fix (can't connect) is no candidate.
         #expect(CourseDetailModel.primaryActionCandidates(source: source(.network), timeline: timeline(week: 4)).isEmpty)
         // Unknown week, outside term or low confidence: Set Term Dates… is tinted.

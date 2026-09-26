@@ -233,9 +233,17 @@ extension CourseDetailModel {
     /// The page's candidates for its one tinted action, in page order (spec §3.0): the fix of
     /// the course's source (S7), then Set Term Dates…. Course detail has no page primary; Save AI
     /// Policy (1) is M2.
-    public static func primaryActionCandidates(source: SourceRecord?, timeline: CourseTimeline) -> [PrimaryActionCandidate] {
+    public static func primaryActionCandidates(
+        source: SourceRecord?,
+        timeline: CourseTimeline,
+        canReplaceSecrets: Bool = SourceRow.canReplaceSecrets
+    ) -> [PrimaryActionCandidate] {
         var candidates: [PrimaryActionCandidate] = []
-        if let source, SourceProblem(source: source)?.fix != nil { candidates.append(.fixSource(source.id)) }
+        // A fix is a candidate only where it can be done (the Replace sheet is M2); until then the
+        // header leads to Sources & Sync with a plain button.
+        if canReplaceSecrets, let source, SourceProblem(source: source)?.fix != nil {
+            candidates.append(.fixSource(source.id))
+        }
         if needsTermDates(timeline) { candidates.append(.setTermDates) }
         return candidates
     }

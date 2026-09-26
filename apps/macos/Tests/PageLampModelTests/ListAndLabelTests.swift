@@ -148,6 +148,12 @@ struct LinkActionTests {
         try Data("%PDF-1.4\n".utf8).write(to: pdf)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: pdf.path(percentEncoded: false))
         #expect(!LocalFile.isLaunchable(pdf))
+
+        // A link to a program counts as the program, whatever the link is called.
+        let link = folder.appending(path: "notes-link.pdf")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: tool)
+        #expect(LocalFile.isLaunchable(link))
+        #expect(LocalFile.isLaunchable(URL(filePath: "/nonexistent/PageLampTests/shortcut.webloc")))
         #expect(LinkAction.of(.file(pdf)) == .open(pdf))
 
         // A plain text file without an extension or executable bit opens.

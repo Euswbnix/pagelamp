@@ -273,7 +273,7 @@ private struct SourceProblemBlock: View {
                     .font(PLType.headline.font)
                     .fixedSize(horizontal: false, vertical: true)
                 if let fix = expiredFix {
-                    Text(fix == .replaceFeed ? l10n("sources.problem.expiredFeed") : l10n("sources.problem.expiredCanvas"))
+                    Text(expiredMessage(fix))
                         .font(PLType.body.font)
                         .paragraphLineSpacing()
                         .fixedSize(horizontal: false, vertical: true)
@@ -295,6 +295,17 @@ private struct SourceProblemBlock: View {
     }
 
     private var expiredFix: CapsuleState.Attention.Fix? { problem.fix }
+
+    /// The shared text says "replace it here"; until this build has the Replace sheet it says
+    /// where to replace it instead (the PageLamp app or the CLI), with this source's id.
+    private func expiredMessage(_ fix: CapsuleState.Attention.Fix) -> String {
+        if SourceRow.canReplaceSecrets {
+            return fix == .replaceFeed ? l10n("sources.problem.expiredFeed") : l10n("sources.problem.expiredCanvas")
+        }
+        return fix == .replaceFeed
+            ? l10n("mac.sources.problem.expiredFeedPreview", ["id": row.source.id])
+            : l10n("mac.sources.problem.expiredCanvasPreview", ["id": row.source.id])
+    }
 
     /// Replace Token… / Replace Feed Address…: the arbiter's candidate (2) once this build has
     /// the Replace sheet (M2 presents it from `AppModel.fixSource(_:)`). Until then it stays

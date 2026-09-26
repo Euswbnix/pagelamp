@@ -105,15 +105,15 @@ jobs:
   # only in Chrome/, generated tokens and strings current, string keys exist) and the
   # generators' tests. Needs an Apple silicon runner on macOS 26 or later with Xcode 27.
   #
-  # Runner (assumption, unverified): GitHub's image label for macOS 27 / Xcode 27 could not be
-  # confirmed from inside the repo when this job was written, so it runs on `macos-latest`
-  # unless the repository variable MACOS_APP_RUNNER names another image (e.g. `macos-27`). The
+  # Runner: GitHub's `xcode-27` image (arm64, public preview since 2026-09-10; `macos-latest` is
+  # still macOS 26 with an older Xcode, and the app needs the macOS 27 SDK to compile). The
+  # repository variable MACOS_APP_RUNNER overrides it, e.g. once Xcode 27 reaches a GA image. The
   # first step picks Xcode 27 from the image (/Applications/Xcode_27.0.app, else the newest
   # /Applications/Xcode_27*.app, else the selected Xcode if it is 27) and fails with the list of
   # installed Xcodes when there is none, instead of building with an older toolchain.
   macos-app:
     name: macOS app
-    runs-on: ${{ vars.MACOS_APP_RUNNER || 'macos-latest' }}
+    runs-on: ${{ vars.MACOS_APP_RUNNER || 'xcode-27' }}
     steps:
       - uses: actions/checkout@v7
       - name: Select Xcode 27

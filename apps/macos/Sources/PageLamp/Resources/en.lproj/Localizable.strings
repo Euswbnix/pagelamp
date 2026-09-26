@@ -437,6 +437,7 @@
 "mac.course.readableShort" = "%1$@ of %2$@ readable";
 "mac.course.sections.week" = "This Week";
 "mac.course.sourceAlert.expiredBody" = "This course isn't updating. Replace the token in Sources & Sync to get new materials and deadlines.";
+"mac.course.sourceAlert.expiredBodyPreview" = "This course isn’t updating because its source no longer accepts PageLamp’s access. Open Sources & Sync to see how to fix it.";
 "mac.course.sourceAlert.failedBody" = "What you see here may be out of date. Sources & Sync has the details.";
 "mac.course.term.lastDay" = "Last day of term";
 "mac.course.term.noDate" = "Not set";
@@ -498,6 +499,8 @@
 "mac.sidebar.setup" = "Setup";
 "mac.sources.fixUnavailable" = "Coming in the next update of this preview.";
 "mac.sources.lastRun" = "Last run";
+"mac.sources.problem.expiredCanvasPreview" = "Your Canvas token has expired or was revoked. Create a new one in Canvas (Account → Settings → Approved Integrations → + New Access Token). This preview can’t replace it yet: use Replace token in the PageLamp app, or run pagelamp sources update-secret %1$@ in Terminal.";
+"mac.sources.problem.expiredFeedPreview" = "The calendar no longer accepts this feed address. Copy the address again from your LMS. This preview can’t replace it yet: use Replace feed address in the PageLamp app, or run pagelamp sources update-secret %1$@ in Terminal.";
 "mac.syncDetails.done" = "Done";
 "mac.syncDetails.failed" = "Didn't finish";
 "mac.syncDetails.progress" = "%1$@ of %2$@";
