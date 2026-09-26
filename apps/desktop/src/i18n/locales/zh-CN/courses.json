@@ -68,6 +68,8 @@
     "title": "还没有课程",
     "description": "添加一个数据来源，{{product}} 就能找到你的课程。",
     "descriptionHasSources": "还没有从你的数据来源同步到任何课程。可以现在同步，或者再添加一个数据来源。",
-    "addSource": "添加数据来源"
+    "addSource": "添加数据来源",
+    "syncingTitle": "正在同步你的课程",
+    "syncingDescription": "同步完成后，你的课程会显示在这里。"
   }
 }

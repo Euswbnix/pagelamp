@@ -7,14 +7,15 @@ import { SOURCE_CANVAS } from "@/api/mock/fixtures";
 import { brand } from "@/brand";
 import i18n from "@/i18n";
 import { paths } from "@/lib/routes";
+import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
 /** Queries that skip visually hidden live-region copies of on-screen text. */
 const VISIBLE_ONLY = "script, style, .sr-only";
 
-function mockApi(): PageLampApi {
-  return createMockApi({ latencyMs: 0, syncStepMs: 0 });
+function mockApi(options: Parameters<typeof createMockApi>[0] = {}): PageLampApi {
+  return createMockApi({ latencyMs: 0, syncStepMs: 0, ...options });
 }
 
 function coursesRegion() {
@@ -458,6 +459,33 @@ describe("CoursesPage — empty and error", () => {
     expect(buttons).toHaveLength(1);
     await user.click(buttons[0] as HTMLElement);
     expect(syncAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the courses are on their way while a sync runs, not 'No courses yet'", async () => {
+    const api = mockApi();
+    api.listCourses = vi.fn().mockResolvedValue([]);
+    renderRoute("/courses", { api });
+    expect(await screen.findByText("No courses yet")).toBeInTheDocument();
+
+    // E.g. the first sync, left running in the background from onboarding.
+    act(() => useSyncStore.setState({ running: true }));
+    expect(
+      await screen.findByText("Your courses appear here when the sync finishes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No courses yet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
+
+    act(() => useSyncStore.setState({ running: false }));
+    expect(await screen.findByText("No courses yet")).toBeInTheDocument();
+  });
+
+  it("also waits for a sync another process (the CLI) is running", async () => {
+    const api = mockApi({ scenario: "busy" });
+    api.listCourses = vi.fn().mockResolvedValue([]);
+    renderRoute("/courses", { api });
+    expect(
+      await screen.findByText("Your courses appear here when the sync finishes."),
+    ).toBeInTheDocument();
   });
 
   it("shows an error with retry when courses fail to load", async () => {

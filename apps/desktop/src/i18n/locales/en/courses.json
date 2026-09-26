@@ -68,6 +68,8 @@
     "title": "No courses yet",
     "description": "Add a source so {{product}} can find your courses.",
     "descriptionHasSources": "Your sources haven't brought in any courses yet. Sync now, or add another source.",
-    "addSource": "Add a source"
+    "addSource": "Add a source",
+    "syncingTitle": "Syncing your courses",
+    "syncingDescription": "Your courses appear here when the sync finishes."
   }
 }
