@@ -17,7 +17,7 @@ pub const TAGLINE: &str =
     "Your own course materials, deadlines and study plans, served to the AI app you already use";
 
 /// Project homepage (README, issue tracker).
-pub const HOMEPAGE: &str = "https://github.com/<owner>/studentos";
+pub const HOMEPAGE: &str = "https://github.com/Euswbnix/studentos";
 
 // ----- stable identifiers (do NOT change in distributions) --------------------------------
 

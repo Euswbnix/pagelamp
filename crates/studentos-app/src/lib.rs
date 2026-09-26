@@ -241,9 +241,36 @@ pub struct McpClientConfig {
     pub config_path_hint: Option<String>,
     /// The snippet / command to copy.
     pub content: String,
-    /// Facts the student should know (plan availability, restart the app, …).
+    /// Facts the student should know (plan availability, restart the app, …), in English.
     pub notes: Vec<String>,
+    /// Machine-readable code of each entry of `notes` (same length, same order) so UIs can
+    /// localise.
+    pub note_codes: Vec<McpNoteCode>,
     pub launch: McpLaunch,
+}
+
+/// Stable codes for `McpClientConfig.notes` (one code per note).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum McpNoteCode {
+    /// Claude Desktop: works on every Claude plan, including Free.
+    WorksOnAllClaudePlans,
+    /// Claude Desktop: admins of Team/Enterprise/Education workspaces can disable extensions.
+    AdminsMayDisableExtensions,
+    /// Claude Code: needs a paid Claude plan (Pro or higher).
+    NeedsPaidClaudePlan,
+    /// Codex: the ChatGPT desktop app (Work/Codex mode) reads the same ~/.codex/config.toml.
+    CodexConfigSharedWithChatgptDesktop,
+    /// Codex: documented for ChatGPT Plus and higher, plus Edu.
+    CodexPlusAndEduDocumented,
+    /// Codex: Free/Go support is undocumented.
+    FreeGoUndocumented,
+    /// Restart / reload the AI app after changing its config.
+    RestartClientAfterChange,
+    /// The snippet sets STUDENTOS_HOME because a non-default data directory is in use.
+    CustomDataDir,
+    /// Generic stdio MCP client: adapt the command/args/env to that client's config format.
+    GenericStdioClient,
 }
 
 // ---------------------------------------------------------------------------------------------

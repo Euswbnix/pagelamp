@@ -8,20 +8,24 @@
 //! - Only HTTP GET. The client must make it impossible to issue POST/PUT/DELETE
 //!   (no submission, quiz answers, discussion posts, "mark done", etc.).
 //! - Endpoint allow-list (all under `{base_url}/api/v1`):
-//!     GET /users/self
-//!     GET /courses?enrollment_state=active&include[]=term&include[]=syllabus_body&per_page=100
-//!     GET /courses/:id/tabs
-//!     GET /courses/:id/modules?include[]=items&include[]=content_details&per_page=100
-//!     GET /courses/:id/modules/:module_id/items?include[]=content_details&per_page=100 (fallback)
-//!     GET /courses/:id/files?per_page=100          (skip if Files tab hidden / 401 / 403)
-//!     GET /courses/:id/files/:file_id               (metadata for module file items)
-//!     GET /courses/:id/pages?per_page=100 and /courses/:id/pages/:url_or_id (body)
-//!     GET /courses/:id/assignments?per_page=100     (name + due_at + html_url ONLY; never
-//!                                                    store assignment descriptions)
-//!     GET /announcements?context_codes[]=course_:id&start_date=…&per_page=100
-//!     GET /planner/items?start_date=…&end_date=…&per_page=100
-//!     file download URL from the file object (follow redirects; never forward the
-//!       Authorization header to another host)
+//!
+//!   ```text
+//!   GET /users/self
+//!   GET /courses?enrollment_state=active&include[]=term&include[]=syllabus_body&per_page=100
+//!   GET /courses/:id/tabs
+//!   GET /courses/:id/modules?include[]=items&include[]=content_details&per_page=100
+//!   GET /courses/:id/modules/:module_id/items?include[]=content_details&per_page=100 (fallback)
+//!   GET /courses/:id/files?per_page=100          (skip if Files tab hidden / 401 / 403)
+//!   GET /courses/:id/files/:file_id               (metadata for module file items)
+//!   GET /courses/:id/pages?per_page=100 and /courses/:id/pages/:url_or_id (body)
+//!   GET /courses/:id/assignments?per_page=100     (name + due_at + html_url ONLY; never
+//!                                                  store assignment descriptions)
+//!   GET /announcements?context_codes[]=course_:id&start_date=…&per_page=100
+//!   GET /planner/items?start_date=…&end_date=…&per_page=100
+//!   file download URL from the file object (follow redirects; never forward the
+//!     Authorization header to another host)
+//!   ```
+//!
 //! - Canvas is never called from the MCP server; only `studentos sync` calls this crate.
 //! - Pagination: follow `Link: <…>; rel="next"` as an opaque URL (must stay on base host).
 //! - Throttling: at most 2 concurrent requests; if `X-Rate-Limit-Remaining` < 100 slow down;

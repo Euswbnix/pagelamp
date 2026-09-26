@@ -28,6 +28,7 @@
 //!   the local timezone converted to UTC.
 //! - Canvas assignment events are all-day-less instants where DTSTART == DTEND: treat as due_at.
 //! - id = `ical:<source>/event/<UID>` (fallback: hash of summary+dtstart).
+//!
 //! Offline fallback: if the fetch fails, keep existing events and return an error so the
 //! caller records `last_error`.
 

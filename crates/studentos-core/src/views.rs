@@ -129,6 +129,21 @@ pub struct WeekMaterials {
     pub available_weeks: Vec<u32>,
     /// Explains any fallback, e.g. "current week unknown — showing materials of the last 14 days".
     pub note: Option<String>,
+    /// Machine-readable class of `note` (UIs localise from this; `note` stays English).
+    pub note_kind: Option<WeekNoteKind>,
+}
+
+/// Why `WeekMaterials.note` is set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WeekNoteKind {
+    /// No week requested and the current week could not be inferred — showing the materials
+    /// of the last `RECENT_DAYS` days instead (`week` is None).
+    CurrentWeekUnknown,
+    /// Today is before the term start or after the term end.
+    OutsideTerm,
+    /// The week is known but has no modules or materials.
+    NoMaterialsThisWeek,
 }
 
 /// A window of a material's text chunks (pagination via `next_chunk`).
