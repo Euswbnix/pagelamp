@@ -1,0 +1,6 @@
+# Spike-local ignores (the repo root .gitignore also ignores *.pem)
+node_modules/
+.tmp/
+out/
+*.pem
+native-host/run-host.sh

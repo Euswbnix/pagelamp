@@ -1,0 +1,16 @@
+{
+  "name": "studentos-canvas-connector-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Throwaway spike: does a GET-only MV3 extension + native messaging host work as a Canvas connector? Runs only against a local mock Canvas.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "setup": "npx playwright install chromium",
+    "mock": "node mock-canvas/server.js",
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
