@@ -42,7 +42,9 @@
     "title": "Privacy",
     "keychain": "Your Canvas token and calendar feed addresses are kept in your system keychain, never in {{product}}'s database.",
     "readOnly": "{{product}} only reads from Canvas. It never posts, submits or changes anything there.",
-    "aiProvider": "Course text reaches an AI provider only when your AI app reads it to answer you."
+    "aiProvider": "Course text reaches an AI provider only when your AI app reads it to answer you.",
+    "perCourse": "You can stop your AI app from reading any course's materials: open the course and use the switch on its “AI policy” tab.",
+    "notAcknowledged": "You haven't confirmed this yet. You'll be asked when you set up a source."
   },
   "about": {
     "title": "About",

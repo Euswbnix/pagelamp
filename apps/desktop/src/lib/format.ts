@@ -45,6 +45,15 @@ export function formatDay(iso: string, locale: string): string {
   }).format(new Date(iso));
 }
 
+/** An instant as a plain date in local time: "Sep 25, 2026" / "2026年9月25日". */
+export function formatDate(iso: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(iso));
+}
+
 /** Calendar date "YYYY-MM-DD" → "Oct 3, 2026" (no timezone shift). */
 export function formatIsoDate(date: string, locale: string): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];

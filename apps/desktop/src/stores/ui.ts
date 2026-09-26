@@ -20,7 +20,8 @@ interface UiState {
   setLocale: (locale: Locale) => void;
   setShowHiddenCourses: (show: boolean) => void;
   setOnboardingSkipped: (skipped: boolean) => void;
-  acknowledgeAiDisclosure: () => void;
+  /** Tick/untick "I understand" under the AI disclosure. */
+  setAiDisclosureAcknowledged: (acknowledged: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -35,7 +36,8 @@ export const useUiStore = create<UiState>()(
       setLocale: (locale) => set({ locale }),
       setShowHiddenCourses: (showHiddenCourses) => set({ showHiddenCourses }),
       setOnboardingSkipped: (onboardingSkipped) => set({ onboardingSkipped }),
-      acknowledgeAiDisclosure: () => set({ aiDisclosureAcknowledgedAt: new Date().toISOString() }),
+      setAiDisclosureAcknowledged: (acknowledged) =>
+        set({ aiDisclosureAcknowledgedAt: acknowledged ? new Date().toISOString() : null }),
     }),
     {
       name: "studentos.ui",

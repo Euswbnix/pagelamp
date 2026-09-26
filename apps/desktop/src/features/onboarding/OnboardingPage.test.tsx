@@ -47,7 +47,8 @@ async function expectSecretNotKept(secret: string, queryClient: QueryClient) {
 }
 
 async function goToSourceStep(user: ReturnType<typeof renderRoute>["user"]) {
-  await user.click(await screen.findByRole("button", { name: "Get started" }));
+  await user.click(await screen.findByRole("checkbox", { name: "I understand" }));
+  await user.click(screen.getByRole("button", { name: "Get started" }));
   await screen.findByRole("heading", { level: 1, name: "Where are your courses?" });
 }
 
@@ -277,6 +278,38 @@ describe("OnboardingPage", () => {
       await screen.findByRole("heading", { level: 1, name: `Welcome to ${brand.productName}` }),
     ).toBeInTheDocument();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+  });
+
+  it("asks the student to acknowledge the AI disclosure before continuing", async () => {
+    const { user } = renderRoute("/welcome", { scenario: "empty" });
+    const start = await screen.findByRole("button", { name: "Get started" });
+    expect(start).toHaveAttribute("aria-disabled", "true");
+
+    await user.click(start);
+    expect(screen.getByRole("alert")).toHaveTextContent("Tick “I understand” to continue.");
+    expect(start).toHaveFocus(); // still focusable: the hint is read, focus isn't lost
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Welcome to");
+
+    await user.click(screen.getByRole("checkbox", { name: "I understand" }));
+    expect(useUiStore.getState().aiDisclosureAcknowledgedAt).not.toBeNull();
+    expect(localStorage.getItem("studentos.ui")).toContain("aiDisclosureAcknowledgedAt");
+    expect(screen.getByText(/^You confirmed this on /)).toBeInTheDocument();
+
+    await user.click(start);
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Where are your courses?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("remembers an earlier acknowledgement", async () => {
+    useUiStore.setState({ aiDisclosureAcknowledgedAt: "2026-09-01T12:00:00.000Z" });
+    renderRoute("/welcome", { scenario: "empty" });
+    expect(await screen.findByRole("checkbox", { name: "I understand" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Get started" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByText("You confirmed this on Sep 1, 2026.")).toBeInTheDocument();
   });
 
   it("'Skip for now' remembers the choice and opens the courses", async () => {

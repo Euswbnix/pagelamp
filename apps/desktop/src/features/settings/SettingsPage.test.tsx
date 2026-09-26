@@ -177,6 +177,20 @@ describe("SettingsPage", () => {
     expect(within(privacy).getByText(i18n.t("settings:privacy.readOnly"))).toBeInTheDocument();
   });
 
+  it("says whether the AI disclosure was acknowledged and how to turn sharing off", async () => {
+    renderRoute("/settings");
+    const privacy = await section("Privacy");
+    expect(
+      within(privacy).getByText(
+        "You haven't confirmed this yet. You'll be asked when you set up a source.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(privacy).getByText(/use the switch on its “AI policy” tab/)).toBeInTheDocument();
+
+    useUiStore.getState().setAiDisclosureAcknowledged(true);
+    expect(await within(privacy).findByText(/^You confirmed this on /)).toBeInTheDocument();
+  });
+
   it("shows the version, license, tagline and brand links", async () => {
     renderRoute("/settings");
     const about = await section("About");

@@ -11,6 +11,7 @@
     "title": "Welcome to {{product}}",
     "body": "{{product}} keeps your courses — materials, weekly structure and deadlines — on your computer, and serves them to the AI app you already use, like Claude or ChatGPT. Ask your AI app to plan your week, explain this week's material or help you catch up. {{product}} never solves or submits assignments for you.",
     "start": "Get started",
+    "acknowledgeFirst": "Tick “I understand” to continue.",
     "skip": "Skip for now"
   },
   "source": {

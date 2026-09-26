@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { SyncEvent } from "@/api/types";
+import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
 // The mock adds a fixed 500 ms to token/feed validation; leave headroom on slow CI machines.
@@ -216,6 +217,19 @@ describe("SourcesPage", () => {
     expect(storageDump()).not.toContain("private-replacement-5d19");
   });
 
+  it("skips the disclosure in the dialog once it was acknowledged", async () => {
+    useUiStore.setState({ aiDisclosureAcknowledgedAt: "2026-09-01T12:00:00.000Z" });
+    const { user } = renderRoute("/sources");
+    await user.click(await screen.findByRole("button", { name: "Add source" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+    expect(
+      within(dialog).queryByRole("checkbox", { name: "I understand" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("radio", { name: "Course folder + calendar feed" }),
+    ).toBeChecked();
+  });
+
   it("returns focus to Add source when the dialog is cancelled", async () => {
     const { user } = renderRoute("/sources");
     const add = await screen.findByRole("button", { name: "Add source" });
@@ -234,6 +248,10 @@ describe("SourcesPage", () => {
     await user.click(screen.getByRole("button", { name: "Add your first source" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+    // Onboarding was skipped, so the AI disclosure comes first and gates the forms.
+    expect(within(dialog).getByText(/sends them to your AI provider/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("radio")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("checkbox", { name: "I understand" }));
     expect(
       within(dialog).getByRole("radio", { name: "Course folder + calendar feed" }),
     ).toBeChecked();

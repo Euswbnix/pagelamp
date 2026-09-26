@@ -1,20 +1,32 @@
-import { BookOpen, KeyRound, type LucideIcon, Send } from "lucide-react";
+import { BookOpen, KeyRound, type LucideIcon, Send, ToggleRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AiDisclosure } from "@/components/common/AiDisclosure";
+import { formatDate } from "@/lib/format";
+import { useUiStore } from "@/stores/ui";
 import { SettingsSection } from "./SettingsSection";
 
-const POINTS: { key: "keychain" | "readOnly" | "aiProvider"; icon: LucideIcon }[] = [
+const POINTS: { key: "keychain" | "readOnly" | "aiProvider" | "perCourse"; icon: LucideIcon }[] = [
   { key: "keychain", icon: KeyRound },
   { key: "readOnly", icon: BookOpen },
   { key: "aiProvider", icon: Send },
+  { key: "perCourse", icon: ToggleRight },
 ];
 
-/** The required AI disclosure plus the concrete promises behind it. */
+/** The required AI disclosure (and whether it was acknowledged) plus the promises behind it. */
 export function PrivacySection() {
   const { t } = useTranslation("settings");
+  const { t: tc, i18n } = useTranslation();
+  const acknowledgedAt = useUiStore((s) => s.aiDisclosureAcknowledgedAt);
   return (
     <SettingsSection title={t("privacy.title")}>
-      <AiDisclosure />
+      <div className="space-y-2">
+        <AiDisclosure />
+        <p className="text-xs text-muted-foreground">
+          {acknowledgedAt
+            ? tc("disclosure.acknowledgedOn", { date: formatDate(acknowledgedAt, i18n.language) })
+            : t("privacy.notAcknowledged")}
+        </p>
+      </div>
       <ul className="space-y-2.5">
         {POINTS.map(({ key, icon: Icon }) => (
           <li key={key} className="flex gap-2.5">
