@@ -274,6 +274,25 @@ pub struct McpLaunch {
     pub args: Vec<String>,
     /// Extra environment (only `PAGELAMP_HOME` when the data dir is not the default).
     pub env: BTreeMap<String, String>,
+    /// Set when `command` lives somewhere it won't be found later; every config then starts
+    /// with a `RunFromTemporaryLocation` note.
+    pub temporary_location: Option<TemporaryLocation>,
+}
+
+/// A place the `pagelamp` binary runs from that won't exist (or move) later, so an AI app
+/// configured with that path loses the server.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum TemporaryLocation {
+    /// macOS: opened from the downloaded disk image (a read-only volume under `/Volumes`).
+    #[serde(rename = "disk_image")]
+    DiskImage,
+    /// macOS: a randomised read-only copy (App Translocation) of an app that was not moved
+    /// out of Downloads yet.
+    #[serde(rename = "translocated")]
+    Translocated,
+    /// Linux: inside an AppImage, which is mounted at a new path every launch.
+    #[serde(rename = "appimage")]
+    AppImage,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -312,6 +331,9 @@ pub enum McpNoteCode {
     FreeGoUndocumented,
     /// Restart / reload the AI app after changing its config.
     RestartClientAfterChange,
+    /// Claude Desktop: quit it completely before editing its config (it rewrites the file when
+    /// it quits), then paste, save and open it again.
+    QuitBeforeEditing,
     /// The snippet sets PAGELAMP_HOME because a non-default data directory is in use.
     CustomDataDir,
     /// Generic stdio MCP client: adapt the command/args/env to that client's config format.
@@ -792,14 +814,10 @@ impl App {
     /// `<pagelamp_binary> mcp`. `PAGELAMP_HOME` is included only when this App's data dir
     /// is not the platform default.
     pub fn mcp_client_configs(&self, pagelamp_binary: &Path) -> Vec<McpClientConfig> {
-        let launch = self.mcp_launch(pagelamp_binary);
-        let temporary =
-            mcp_config::temporary_location(&launch.command, std::env::var_os("APPIMAGE").is_some());
         mcp_config::client_configs(
-            &launch,
+            &self.mcp_launch(pagelamp_binary),
             mcp_config::Shell::current(),
             mcp_config::claude_desktop_config_hint(),
-            temporary,
         )
     }
 
@@ -814,10 +832,13 @@ impl App {
                 self.data_dir.display().to_string(),
             );
         }
+        let temporary_location =
+            mcp_config::temporary_location(&command, &mcp_config::LaunchEnv::current());
         McpLaunch {
             command: command.display().to_string(),
             args: vec!["mcp".to_string()],
             env,
+            temporary_location,
         }
     }
 }

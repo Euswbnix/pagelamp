@@ -339,7 +339,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             for config in &configs {
                 print_config(config, configs.len() > 1);
             }
-            eprintln!("{}", text::restart_hint());
+            eprintln!("{}", text::try_prompt());
             Ok(())
         }
         Command::Canvas(CanvasCommand::Add { base_url }) => {

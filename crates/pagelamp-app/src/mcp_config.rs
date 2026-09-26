@@ -14,10 +14,11 @@
 //! Notes state facts only; each note has a stable `McpNoteCode` so UIs can localise.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use pagelamp_core::brand;
 
-use crate::{InstallKind, McpClient, McpClientConfig, McpLaunch, McpNoteCode};
+use crate::{InstallKind, McpClient, McpClientConfig, McpLaunch, McpNoteCode, TemporaryLocation};
 
 /// Which shell quoting rules the Claude Code command uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,13 +39,12 @@ impl Shell {
 
 /// All four configs for `launch`. `desktop_config_hint` is the OS-specific location of
 /// `claude_desktop_config.json` (None where Claude Desktop has no documented location).
-/// When the binary runs from a `temporary` location, every config starts with a
-/// `RunFromTemporaryLocation` note.
+/// When the binary runs from a temporary location (`McpLaunch::temporary_location`), every
+/// config starts with a `RunFromTemporaryLocation` note.
 pub(crate) fn client_configs(
     launch: &McpLaunch,
     shell: Shell,
     desktop_config_hint: Option<&str>,
-    temporary: Option<TemporaryLocation>,
 ) -> Vec<McpClientConfig> {
     let mut configs = vec![
         claude_desktop(launch, desktop_config_hint),
@@ -52,9 +52,9 @@ pub(crate) fn client_configs(
         codex(launch),
         generic(launch),
     ];
-    if let Some(temporary) = temporary {
+    if let Some(temporary) = launch.temporary_location {
         for config in &mut configs {
-            config.notes.insert(0, temporary.note());
+            config.notes.insert(0, temporary_note(temporary));
             config
                 .note_codes
                 .insert(0, McpNoteCode::RunFromTemporaryLocation);
@@ -63,41 +63,95 @@ pub(crate) fn client_configs(
     configs
 }
 
-/// A place the `pagelamp` binary won't be found at later, so a config pointing there breaks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TemporaryLocation {
-    /// macOS: opened from the disk image (`/Volumes/…`) or from a randomised read-only copy
-    /// (App Translocation, for apps not yet moved out of Downloads).
-    MacDiskImageOrTranslocated,
-    /// Linux: inside an AppImage, which is mounted at a new `/tmp/.mount_*` path every launch.
-    AppImage,
+fn temporary_note(location: TemporaryLocation) -> String {
+    match location {
+        TemporaryLocation::DiskImage | TemporaryLocation::Translocated => format!(
+            "{name} is running from a temporary location. Move {name} to Applications, open it from there, then copy this again — otherwise your AI app won't find {name} later.",
+            name = brand::PRODUCT_NAME
+        ),
+        TemporaryLocation::AppImage => format!(
+            "The {cli} inside the AppImage moves every launch; for your AI app use the .deb/.rpm or the command-line archive.",
+            cli = brand::CLI_NAME
+        ),
+    }
 }
 
-impl TemporaryLocation {
-    fn note(self) -> String {
-        match self {
-            TemporaryLocation::MacDiskImageOrTranslocated => format!(
-                "{name} is running from a temporary location. Move {name} to Applications, open it from there, then copy this again — otherwise your AI app won't find {name} later.",
-                name = brand::PRODUCT_NAME
-            ),
-            TemporaryLocation::AppImage => format!(
-                "The {cli} inside the AppImage moves every launch; for your AI app use the .deb/.rpm or the command-line archive.",
-                cli = brand::CLI_NAME
-            ),
+/// What detection needs to know about this process's environment (a parameter, so tests can
+/// fake it).
+pub(crate) struct LaunchEnv {
+    /// `$APPDIR`: set by the AppImage runtime to where the image is mounted.
+    pub appdir: Option<PathBuf>,
+    /// `$TMPDIR` (AppImages mount under it when it is set).
+    pub tmpdir: Option<PathBuf>,
+    /// Whether the volume holding a path is mounted read-only.
+    pub read_only_volume: fn(&Path) -> bool,
+}
+
+impl LaunchEnv {
+    pub(crate) fn current() -> LaunchEnv {
+        let dir = |var: &str| {
+            std::env::var_os(var)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        };
+        LaunchEnv {
+            appdir: dir("APPDIR"),
+            tmpdir: dir("TMPDIR"),
+            read_only_volume,
         }
     }
 }
 
-/// Where `command` (the absolute binary path) lives, if that place is temporary.
-/// `in_appimage`: the `APPIMAGE` environment variable is set (this process runs from one).
-pub(crate) fn temporary_location(command: &str, in_appimage: bool) -> Option<TemporaryLocation> {
-    if in_appimage || command.starts_with("/tmp/.mount_") {
-        Some(TemporaryLocation::AppImage)
-    } else if command.starts_with("/Volumes/") || command.contains("/AppTranslocation/") {
-        Some(TemporaryLocation::MacDiskImageOrTranslocated)
-    } else {
-        None
+/// Where `command` (the absolute binary path) lives, if that place is temporary:
+/// - `/AppTranslocation/` anywhere: macOS runs an app not yet moved out of Downloads from a
+///   randomised read-only copy;
+/// - under `/Volumes/` on a read-only volume: the downloaded disk image (a copy on an
+///   external drive is fine);
+/// - inside `$APPDIR` (only an AppImage sets it; merely inheriting `APPIMAGE` from a parent
+///   app doesn't count), or under a `.mount_*` directory in `/tmp` or `$TMPDIR`.
+pub(crate) fn temporary_location(command: &Path, env: &LaunchEnv) -> Option<TemporaryLocation> {
+    let text = command.to_string_lossy();
+    if text.contains("/AppTranslocation/") {
+        return Some(TemporaryLocation::Translocated);
     }
+    if text.starts_with("/Volumes/") && (env.read_only_volume)(command) {
+        return Some(TemporaryLocation::DiskImage);
+    }
+    let under_mount = |dir: &Path| {
+        command
+            .strip_prefix(dir)
+            .ok()
+            .and_then(|rest| rest.components().next())
+            .is_some_and(|first| first.as_os_str().to_string_lossy().starts_with(".mount_"))
+    };
+    let in_appdir = env
+        .appdir
+        .as_deref()
+        .is_some_and(|appdir| command.starts_with(appdir));
+    if in_appdir || under_mount(Path::new("/tmp")) || env.tmpdir.as_deref().is_some_and(under_mount)
+    {
+        return Some(TemporaryLocation::AppImage);
+    }
+    None
+}
+
+/// Whether the file system holding `path` is mounted read-only (a disk image is).
+#[cfg(target_os = "macos")]
+fn read_only_volume(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return false;
+    };
+    let mut stats = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `path` is a valid NUL-terminated string and `stats` is large enough for the
+    // result; it is only read after statfs reported success.
+    let ok = unsafe { libc::statfs(path.as_ptr(), stats.as_mut_ptr()) } == 0;
+    ok && unsafe { stats.assume_init() }.f_flags & (libc::MNT_RDONLY as u32) != 0
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_only_volume(_path: &Path) -> bool {
+    false
 }
 
 /// `claude_desktop_config.json` location for the OS this binary was built for.
@@ -124,7 +178,7 @@ fn claude_desktop(launch: &McpLaunch, hint: Option<&str>) -> McpClientConfig {
         "Admins of Team, Enterprise and Education workspaces can disable extensions.",
     );
     notes.add(
-        McpNoteCode::RestartClientAfterChange,
+        McpNoteCode::QuitBeforeEditing,
         format!(
             "1) Quit Claude Desktop completely. 2) Open the config file (create it if it's missing) and paste this in; if it already has \"mcpServers\", add only the \"{key}\" entry inside it. 3) Save the file. 4) Open Claude Desktop: {name} appears under the tools (🔌) menu.",
             key = brand::MCP_SERVER_KEY,
@@ -361,6 +415,7 @@ mod tests {
             env: home
                 .map(|h| BTreeMap::from([("PAGELAMP_HOME".to_string(), h.to_string())]))
                 .unwrap_or_default(),
+            temporary_location: None,
         }
     }
 
@@ -371,7 +426,7 @@ mod tests {
     #[test]
     fn four_clients_with_notes_in_lockstep() {
         let launch = launch("/Applications/PageLamp/pagelamp", None);
-        let configs = client_configs(&launch, Shell::Posix, Some("~/demo.json"), None);
+        let configs = client_configs(&launch, Shell::Posix, Some("~/demo.json"));
         let clients: Vec<_> = configs.iter().map(|c| c.client).collect();
         assert_eq!(
             clients,
@@ -418,61 +473,105 @@ mod tests {
 
     #[test]
     fn temporary_locations_get_a_note_first_in_every_config() {
-        for (command, appimage, expected) in [
+        fn read_only(path: &Path) -> bool {
+            path.starts_with("/Volumes/PageLamp")
+        }
+        let env = |appdir: Option<&str>, tmpdir: Option<&str>| LaunchEnv {
+            appdir: appdir.map(PathBuf::from),
+            tmpdir: tmpdir.map(PathBuf::from),
+            read_only_volume: read_only,
+        };
+        let plain = env(None, None);
+        use TemporaryLocation::*;
+        for (command, env, expected) in [
             (
                 "/Applications/PageLamp.app/Contents/MacOS/pagelamp",
-                false,
+                &plain,
                 None,
             ),
-            ("/home/demo/.local/bin/pagelamp", false, None),
-            (r"C:\Program Files\PageLamp\pagelamp.exe", false, None),
+            ("/home/demo/.local/bin/pagelamp", &plain, None),
+            (r"C:\Program Files\PageLamp\pagelamp.exe", &plain, None),
+            // The downloaded disk image (read-only) vs a copy on an external drive.
             (
                 "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp",
-                false,
-                Some(TemporaryLocation::MacDiskImageOrTranslocated),
+                &plain,
+                Some(DiskImage),
+            ),
+            (
+                "/Volumes/USB Stick/PageLamp.app/Contents/MacOS/pagelamp",
+                &plain,
+                None,
             ),
             (
                 "/private/var/folders/x/T/AppTranslocation/1234/d/PageLamp.app/Contents/MacOS/pagelamp",
-                false,
-                Some(TemporaryLocation::MacDiskImageOrTranslocated),
+                &plain,
+                Some(Translocated),
             ),
             (
                 "/tmp/.mount_PageLaAbCd/usr/bin/pagelamp",
-                false,
-                Some(TemporaryLocation::AppImage),
+                &plain,
+                Some(AppImage),
             ),
             (
-                "/opt/demo/pagelamp",
-                true,
-                Some(TemporaryLocation::AppImage),
+                "/run/user/1000/.mount_PageLa1/usr/bin/pagelamp",
+                &env(None, Some("/run/user/1000")),
+                Some(AppImage),
             ),
+            (
+                "/mnt/image/usr/bin/pagelamp",
+                &env(Some("/mnt/image"), None),
+                Some(AppImage),
+            ),
+            // A .deb install run from a shell that an AppImage app started (it inherits
+            // APPDIR, but the binary is not inside it).
+            (
+                "/usr/bin/pagelamp",
+                &env(Some("/tmp/.mount_Other1"), None),
+                None,
+            ),
+            ("/tmp/pagelamp-build/pagelamp", &plain, None),
         ] {
-            assert_eq!(temporary_location(command, appimage), expected, "{command}");
+            assert_eq!(
+                temporary_location(Path::new(command), env),
+                expected,
+                "{command}"
+            );
         }
 
-        let launch = launch(
+        let mut launch = launch(
             "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp",
             None,
         );
-        let temporary = temporary_location(&launch.command, false);
-        for config in client_configs(&launch, Shell::Posix, None, temporary) {
+        assert!(client_configs(&launch, Shell::Posix, None).iter().all(|c| {
+            !c.note_codes
+                .contains(&McpNoteCode::RunFromTemporaryLocation)
+        }));
+        launch.temporary_location = Some(DiskImage);
+        for config in client_configs(&launch, Shell::Posix, None) {
             assert_eq!(config.note_codes[0], McpNoteCode::RunFromTemporaryLocation);
             assert!(config.notes[0].contains("Move PageLamp to Applications"));
             assert_eq!(config.notes.len(), config.note_codes.len());
         }
-        let appimage = client_configs(
-            &launch,
-            Shell::Posix,
-            None,
-            Some(TemporaryLocation::AppImage),
-        );
+        launch.temporary_location = Some(AppImage);
+        let appimage = client_configs(&launch, Shell::Posix, None);
         assert!(appimage[0].notes[0].contains(".deb/.rpm"));
+        let json = serde_json::to_value(&launch).unwrap();
+        assert_eq!(json["temporary_location"], "appimage");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn read_only_volumes_are_detected() {
+        // The sealed system volume is mounted read-only; a temp dir is writable.
+        assert!(read_only_volume(Path::new("/System/Library")));
+        assert!(!read_only_volume(&std::env::temp_dir()));
+        assert!(!read_only_volume(Path::new("/Volumes/no such volume/pagelamp")));
     }
 
     #[test]
     fn claude_desktop_and_generic_are_valid_json() {
         let launch = launch("/demo/bin/pagelamp", Some("/demo/data \"x\""));
-        let configs = client_configs(&launch, Shell::Posix, None, None);
+        let configs = client_configs(&launch, Shell::Posix, None);
         let desktop: Value =
             serde_json::from_str(&by_client(&configs, McpClient::ClaudeDesktop).content).unwrap();
         let server = &desktop["mcpServers"]["pagelamp"];
@@ -480,7 +579,14 @@ mod tests {
         assert_eq!(server["args"], json!(["mcp"]));
         assert_eq!(server["env"]["PAGELAMP_HOME"], "/demo/data \"x\"");
         // Quit first: Claude Desktop rewrites its config file on exit.
-        let steps = &by_client(&configs, McpClient::ClaudeDesktop).notes;
+        let desktop = by_client(&configs, McpClient::ClaudeDesktop);
+        assert!(desktop.note_codes.contains(&McpNoteCode::QuitBeforeEditing));
+        assert!(
+            !desktop
+                .note_codes
+                .contains(&McpNoteCode::RestartClientAfterChange)
+        );
+        let steps = &desktop.notes;
         let steps = steps.iter().find(|n| n.contains("Quit")).unwrap();
         assert!(
             steps.starts_with("1) Quit Claude Desktop completely."),
@@ -499,7 +605,7 @@ mod tests {
 
     #[test]
     fn env_is_omitted_when_default_data_dir() {
-        let configs = client_configs(&launch("/demo/pagelamp", None), Shell::Posix, None, None);
+        let configs = client_configs(&launch("/demo/pagelamp", None), Shell::Posix, None);
         let desktop: Value =
             serde_json::from_str(&by_client(&configs, McpClient::ClaudeDesktop).content).unwrap();
         assert!(desktop["mcpServers"]["pagelamp"].get("env").is_none());
@@ -518,14 +624,14 @@ mod tests {
             "/Users/demo/My Apps/it's/pagelamp",
             Some("/Users/demo/Study Data"),
         );
-        let configs = client_configs(&launch, Shell::Posix, None, None);
+        let configs = client_configs(&launch, Shell::Posix, None);
         let code = &by_client(&configs, McpClient::ClaudeCode).content;
         assert_eq!(
             code,
             "claude mcp add --scope user --env 'PAGELAMP_HOME=/Users/demo/Study Data' \
              --transport stdio pagelamp -- '/Users/demo/My Apps/it'\\''s/pagelamp' mcp"
         );
-        let windows = client_configs(&launch, Shell::Windows, None, None);
+        let windows = client_configs(&launch, Shell::Windows, None);
         let code = &by_client(&windows, McpClient::ClaudeCode).content;
         assert!(
             code.contains("\"/Users/demo/My Apps/it's/pagelamp\" mcp"),
@@ -539,7 +645,7 @@ mod tests {
             r"C:\Users\Demo\pagelamp.exe",
             Some(r#"C:\Data\"quoted"	tab"#),
         );
-        let configs = client_configs(&launch, Shell::Windows, None, None);
+        let configs = client_configs(&launch, Shell::Windows, None);
         let codex = &by_client(&configs, McpClient::Codex).content;
         assert_eq!(
             codex,

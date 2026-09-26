@@ -32,9 +32,8 @@ pub const CANVAS_TOKEN_HOWTO: &str = "Canvas: Account → Settings → Approved 
 pub const CANVAS_DOWNLOAD_NOTICE: &str = "Downloading files through Canvas can count as viewing \
     them (e.g. module 'must view' requirements).";
 
-pub fn restart_hint() -> String {
-    format!(
-        "Then restart your AI app. Try: \"Using {PRODUCT_NAME}, where is each of my courses this \
-         week?\""
-    )
+/// Printed after the snippets (each client's notes say how to load it, e.g. quit Claude
+/// Desktop first, so no generic "restart" line here).
+pub fn try_prompt() -> String {
+    format!("Try: \"Using {PRODUCT_NAME}, where is each of my courses this week?\"")
 }

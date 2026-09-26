@@ -20,6 +20,10 @@ schemars.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# statfs: is the disk image PageLamp runs from a read-only volume?
+libc = "0.2"
+
 [dev-dependencies]
 tempfile.workspace = true
 wiremock = "0.6"

@@ -3276,6 +3276,7 @@ version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "libc",
  "pagelamp-canvas",
  "pagelamp-core",
  "pagelamp-extract",
