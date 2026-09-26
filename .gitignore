@@ -27,7 +27,7 @@ apps/desktop/src-tauri/gen/schemas/
 !.vscode/extensions.json
 
 # Local data from manual testing — never commit real course data or tokens
-/.studentos-dev/
+/.weekmark-dev/
 *.db
 *.db-wal
 *.db-shm

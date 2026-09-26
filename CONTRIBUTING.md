@@ -1,4 +1,4 @@
-# Contributing to StudentOS
+# Contributing to Weekmark
 
 Thanks for helping! Bug reports, ideas, docs fixes and code are all welcome.
 [中文 ↓](#中文)
@@ -40,22 +40,22 @@ pnpm run smoke           # real app against a throw-away synthetic course folder
 Try the MCP server without touching your real data:
 
 ```bash
-export STUDENTOS_HOME="$(mktemp -d)"
-cargo run -p studentos-cli -- folder add path/to/synthetic/Courses
-cargo run -p studentos-cli -- sync
-cargo run -p studentos-cli -- mcp-config claude-desktop
+export WEEKMARK_HOME="$(mktemp -d)"
+cargo run -p weekmark-cli -- folder add path/to/synthetic/Courses
+cargo run -p weekmark-cli -- sync
+cargo run -p weekmark-cli -- mcp-config claude-desktop
 ```
 
 ## Where things live
 
 | Path | What |
 |---|---|
-| `crates/studentos-core` | data model, SQLite store, timeline inference, read views |
-| `crates/studentos-extract` | PDF/PPTX/DOCX/notebook/HTML text extraction |
-| `crates/studentos-local`, `crates/studentos-canvas` | folder + calendar-feed sources, Canvas (read-only) |
-| `crates/studentos-mcp` | MCP server — **all wording sent to AI apps is in `src/text.rs`** (editable without Rust knowledge) |
-| `crates/studentos-app` | the facade used by the CLI and the desktop app |
-| `apps/studentos-cli` | the `studentos` command |
+| `crates/weekmark-core` | data model, SQLite store, timeline inference, read views |
+| `crates/weekmark-extract` | PDF/PPTX/DOCX/notebook/HTML text extraction |
+| `crates/weekmark-local`, `crates/weekmark-canvas` | folder + calendar-feed sources, Canvas (read-only) |
+| `crates/weekmark-mcp` | MCP server — **all wording sent to AI apps is in `src/text.rs`** (editable without Rust knowledge) |
+| `crates/weekmark-app` | the facade used by the CLI and the desktop app |
+| `apps/weekmark-cli` | the `weekmark` command |
 | `apps/desktop` | Tauri 2 + React app (copy in `src/i18n`, brand in `src/brand`) |
 
 ## Pull requests
@@ -70,5 +70,5 @@ cargo run -p studentos-cli -- mcp-config claude-desktop
 欢迎提 bug、提建议、改文档和提交代码。提交前请先读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 第 3 节的硬性规则
 （Canvas 只读、MCP 不联网、密钥只存系统钥匙串、不代写作业、"禁止使用 AI"的课不共享课件）。
 测试和截图只能用合成数据，不能出现真实课件、姓名、令牌或日历链接。贡献按 Apache-2.0 授权，新依赖必须与之兼容。
-给 AI 看的所有文字都在 `crates/studentos-mcp/src/text.rs`，界面文案在 `apps/desktop/src/i18n`，不会 Rust 也能改。
+给 AI 看的所有文字都在 `crates/weekmark-mcp/src/text.rs`，界面文案在 `apps/desktop/src/i18n`，不会 Rust 也能改。
 面向用户的文字改动需要同时提供英文和简体中文。

@@ -42,11 +42,11 @@ jobs:
             notes="docs/release-notes/${TAG}.md"
             [ -f "$notes" ] || notes="/dev/null"
             gh release create "$TAG" --draft $prerelease --verify-tag \
-              --title "StudentOS $TAG" --notes-file "$notes"
+              --title "Weekmark $TAG" --notes-file "$notes"
           fi
           echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
 
-  # Desktop installers (.dmg/.app, .msi/.exe, .AppImage/.deb) with the `studentos` CLI bundled
+  # Desktop installers (.dmg/.app, .msi/.exe, .AppImage/.deb) with the `weekmark` CLI bundled
   # as a Tauri sidecar (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE).
   app:
     needs: create-release
@@ -103,7 +103,7 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
-  # Standalone CLI archives for people who only want `studentos` (MCP server + sync).
+  # Standalone CLI archives for people who only want `weekmark` (MCP server + sync).
   cli:
     needs: create-release
     strategy:
@@ -135,21 +135,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev
       - name: Build
-        run: cargo build --release --locked -p studentos-cli --target ${{ matrix.target }}
+        run: cargo build --release --locked -p weekmark-cli --target ${{ matrix.target }}
       - name: Package and upload
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          name="studentos-${TAG}-${{ matrix.target }}"
+          name="weekmark-${TAG}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp LICENSE README.md "dist/$name/"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/studentos.exe" "dist/$name/"
+            cp "target/${{ matrix.target }}/release/weekmark.exe" "dist/$name/"
             (cd dist && 7z a "$name.zip" "$name" >/dev/null)
             archive="dist/$name.zip"
           else
-            cp "target/${{ matrix.target }}/release/studentos" "dist/$name/"
+            cp "target/${{ matrix.target }}/release/weekmark" "dist/$name/"
             tar -C dist -czf "dist/$name.tar.gz" "$name"
             archive="dist/$name.tar.gz"
           fi

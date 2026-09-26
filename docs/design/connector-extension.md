@@ -10,7 +10,7 @@ prototype (`spikes/canvas-connector`, not committed) run against a mock Canvas: 
 
 A GET-only MV3 extension that reads the student's own Canvas data using the session they are
 already logged into (the model used by Better Canvas / BetterCampus, ~2M users, and Tasks for
-Canvas, ~1M), and hands it to the StudentOS core over Chrome Native Messaging. It would avoid
+Canvas, ~1M), and hands it to the Weekmark core over Chrome Native Messaging. It would avoid
 personal access tokens (≤ 30-day expiry, not distributable) and institutional Developer Keys.
 
 ## What the prototype proved (Chrome for Testing 153, mock Canvas)
@@ -52,7 +52,7 @@ Server can distinguish service-worker requests (`Sec-Fetch-Site: none`, no Origi
 
 - **v0.2:** do **not** publish the Connector. Improve folder + calendar-feed (distributable, lowest
   risk); apply for a UofT Developer Key and ask for a written policy clarification; make
-  `studentos-canvas` transport-agnostic (one GET allow-list, pagination and mapping behind a
+  `weekmark-canvas` transport-agnostic (one GET allow-list, pagination and mapping behind a
   `CanvasTransport` trait: token now, OAuth next, extension possibly later).
 - **Later, only if** UofT/Instructure confirm in writing (or legal review concludes) that
   student-initiated, read-only, session-based export of one's own course data to a personal study
