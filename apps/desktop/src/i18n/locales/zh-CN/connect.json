@@ -46,8 +46,10 @@
     "saveAndReopen": "保存文件，然后重新打开 {{app}}。",
     "pasteToml": "把下面几行添加到文件中。",
     "restart": "保存文件，然后彻底退出该应用，再重新打开。",
+    "restartCodex": "保存文件，然后重启该应用，或者新开一个 Codex 会话。",
     "openTerminal": "打开终端。",
-    "runCommand": "运行下面这条命令。"
+    "runCommand": "运行下面这条命令。",
+    "claudeCodeAfter": "运行一次之后，新的 Claude Code 会话里就能用 {{product}} 了。"
   },
   "copyPath": "复制 {{app}} 配置文件路径",
   "copyConfig": "复制 {{app}} 配置",

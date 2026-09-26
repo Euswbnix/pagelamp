@@ -13,7 +13,11 @@ interface Step {
   extra?: ReactNode;
 }
 
-/** Numbered setup steps. They depend only on `install_kind`, so new clients need no UI change. */
+/**
+ * Numbered setup steps, by `install_kind`, with a few app-specific ones (Claude Desktop's
+ * quit-first order, Claude Code's "new sessions", Codex's "new session", the generic card's
+ * neutral wording). A new client with a known install kind still needs no UI change.
+ */
 export function InstallSteps({ config }: { config: McpClientConfig }) {
   const { t } = useTranslation("connect");
   const steps = stepsFor(config, t);
@@ -91,12 +95,18 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
       return [
         { key: "open", text: path ? t("steps.openToml") : t("steps.openTomlNoPath"), extra: path },
         { key: "paste", text: t("steps.pasteToml"), extra: snippet },
-        { key: "restart", text: t("steps.restart") },
+        {
+          key: "restart",
+          text: config.client === "codex" ? t("steps.restartCodex") : t("steps.restart"),
+        },
       ];
     case "shell_command":
       return [
         { key: "terminal", text: t("steps.openTerminal") },
         { key: "run", text: t("steps.runCommand"), extra: snippet },
+        ...(config.client === "claude_code"
+          ? [{ key: "after", text: t("steps.claudeCodeAfter") }]
+          : []),
       ];
   }
 }

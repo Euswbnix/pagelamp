@@ -46,8 +46,10 @@
     "saveAndReopen": "Save the file, then open {{app}} again.",
     "pasteToml": "Add these lines to the file.",
     "restart": "Save the file, then fully quit the app and open it again.",
+    "restartCodex": "Save the file, then restart the app, or start a new Codex session.",
     "openTerminal": "Open a terminal.",
-    "runCommand": "Run this command."
+    "runCommand": "Run this command.",
+    "claudeCodeAfter": "New Claude Code sessions have {{product}} after you run this once."
   },
   "copyPath": "Copy {{app}} file path",
   "copyConfig": "Copy {{app}} configuration",

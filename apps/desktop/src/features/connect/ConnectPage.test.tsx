@@ -7,6 +7,7 @@ import type { McpClientConfig, McpNoteCode, TemporaryLocation } from "@/api/type
 import i18n from "@/i18n";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
+import { showsOnCard } from "./ClientNotes";
 
 const CONFIGS = mcpClientConfigs(MOCK_BINARY_PATH);
 
@@ -113,12 +114,15 @@ describe("ConnectPage", () => {
       within(note).getByText("Works on every Claude plan, including Free."),
     ).toBeInTheDocument();
     for (const c of CONFIGS) {
+      const appCard = await card(c.title);
       for (const code of c.note_codes) {
-        // Shown elsewhere, not as a card note: the page-level warning and the steps.
-        if (code === "run_from_temporary_location" || code === "quit_before_editing") continue;
-        const known: Exclude<McpNoteCode, "run_from_temporary_location" | "quit_before_editing"> =
-          code;
-        expect(screen.getAllByText(i18n.t(`connect:noteCodes.${known}`)).length).toBeGreaterThan(0);
+        // Some are said elsewhere: the page-level warning, or that app's own steps.
+        if (!showsOnCard(c.client, code)) continue;
+        const known = code as Exclude<
+          McpNoteCode,
+          "run_from_temporary_location" | "quit_before_editing"
+        >;
+        expect(within(appCard).getByText(i18n.t(`connect:noteCodes.${known}`))).toBeVisible();
       }
     }
   });
@@ -184,16 +188,26 @@ describe("ConnectPage", () => {
     );
   });
 
-  it("doesn't tell Claude Desktop users to quit after editing, only other apps", async () => {
+  it("says when each app picks up the change in its own steps, not a generic note", async () => {
     renderRoute("/connect");
-    const desktop = await card("Claude Desktop");
     // The backend sends quit_before_editing here (older ones: restart_client_after_change);
     // the numbered steps already say it, in the right order.
+    const desktop = await card("Claude Desktop");
     expect(config("claude_desktop").note_codes).toContain("quit_before_editing");
     expect(within(desktop).queryByText(/Quit Claude Desktop before editing its config/)).toBeNull();
-    expect(within(desktop).queryByText(/Quit and reopen the app after changing/)).toBeNull();
+    // Claude Code has no config file to change: new sessions pick it up.
+    const code = await card("Claude Code");
+    expect(config("claude_code").note_codes).toContain("restart_client_after_change");
+    expect(
+      within(code).getByText("New Claude Code sessions have PageLamp after you run this once."),
+    ).toBeVisible();
+    // Codex: restart, or just a new session.
     const codex = await card(config("codex").title);
-    expect(within(codex).getByText(/Quit and reopen the app after changing/)).toBeVisible();
+    expect(
+      within(codex).getByText("Save the file, then restart the app, or start a new Codex session."),
+    ).toBeVisible();
+    // Nowhere the generic "quit and reopen after changing its config".
+    expect(screen.queryByText(/Quit and reopen the app after changing/)).toBeNull();
   });
 
   it("adds an mcpServers key to a Claude Desktop file that has other settings", async () => {
@@ -293,7 +307,7 @@ describe("ConnectPage", () => {
     expect(within(code).getByText("Run in a terminal")).toBeInTheDocument();
     expect(within(code).getByText("Open a terminal.")).toBeInTheDocument();
     const steps = within(code).getByRole("list", { name: "Steps for Claude Code" });
-    expect(within(steps).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(3);
     // No config file for a shell command.
     expect(within(code).queryByRole("button", { name: /file path/ })).not.toBeInTheDocument();
     const writeText = spyOnClipboard();

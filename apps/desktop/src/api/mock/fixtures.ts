@@ -591,8 +591,11 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       install_kind: "shell_command",
       config_path_hint: null,
       content: `claude mcp add --scope user pagelamp -- ${binary} mcp`,
-      notes: ["Claude Code needs a paid Claude plan (Pro or higher)."],
-      note_codes: ["needs_paid_claude_plan"],
+      notes: [
+        "Claude Code needs a paid Claude plan (Pro or higher).",
+        "Run this once in a terminal; new Claude Code sessions then have the server.",
+      ],
+      note_codes: ["needs_paid_claude_plan", "restart_client_after_change"],
       launch,
     },
     {

@@ -25,12 +25,22 @@ function isKnown(code: McpNoteCode | undefined): code is KnownCode {
 // Shown once, prominently, at the top of the page (TemporaryLocationWarning), not per app.
 const PAGE_LEVEL: readonly McpNoteCode[] = ["run_from_temporary_location"];
 
-// Notes an app's numbered steps already cover (in the right order). Claude Desktop's steps
-// say to quit BEFORE editing (the backend's quit_before_editing); an older backend's "quit and
-// reopen after changing" would contradict them.
+// Notes an app's numbered steps already say, in words that fit that app (InstallSteps). Claude
+// Desktop's steps say to quit BEFORE editing (quit_before_editing; an older backend's "quit and
+// reopen after changing" would contradict them); Claude Code has no config file to "change"
+// (new sessions pick it up); Codex can also just start a new session; the generic card's steps
+// are the generic_stdio_client advice.
 const COVERED_BY_STEPS: Partial<Record<McpClient, readonly McpNoteCode[]>> = {
   claude_desktop: ["restart_client_after_change", "quit_before_editing"],
+  claude_code: ["restart_client_after_change"],
+  codex: ["restart_client_after_change"],
+  generic: ["generic_stdio_client"],
 };
+
+/** Whether a note with this code appears in `client`'s card (not the page, not its steps). */
+export function showsOnCard(client: McpClient, code: McpNoteCode): boolean {
+  return !PAGE_LEVEL.includes(code) && !(COVERED_BY_STEPS[client] ?? []).includes(code);
+}
 
 /**
  * The backend's notes for one AI app (plan availability, restart hints…), shown prominently.
@@ -48,11 +58,9 @@ export function ClientNotes({
 }) {
   const { t } = useTranslation("connect");
   const paired = codes.length === notes.length;
-  const covered = COVERED_BY_STEPS[client] ?? [];
   const shown = notes.flatMap((note, index) => {
     const code = paired ? codes[index] : undefined;
-    const hidden = code && (PAGE_LEVEL.includes(code) || covered.includes(code));
-    return hidden ? [] : [{ note, code }];
+    return code && !showsOnCard(client, code) ? [] : [{ note, code }];
   });
   if (shown.length === 0) return null;
   return (
