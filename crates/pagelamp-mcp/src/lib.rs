@@ -61,6 +61,8 @@ mod format;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
@@ -72,12 +74,15 @@ use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, Deadline, MaterialView};
 use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolResult, Implementation, PromptMessage, Role, ServerCapabilities, ServerConfig,
+    CallToolRequestParams, CallToolResponse, CallToolResult, Implementation, PromptMessage, Role,
+    ServerCapabilities, ServerConfig,
 };
+use rmcp::service::{QuitReason, RequestContext};
 use rmcp::{
-    ErrorData, ServerHandler, ServiceExt, prompt, prompt_handler, prompt_router, tool,
+    ErrorData, RoleServer, ServerHandler, ServiceExt, prompt, prompt_handler, prompt_router, tool,
     tool_handler, tool_router,
 };
 use schemars::JsonSchema;
@@ -89,12 +94,65 @@ use crate::format::{OUTPUT_CAP, cap_list, error_result, json_result, text_result
 /// `db_path` is normally `pagelamp_core::paths::db_path()`. The server starts even when the
 /// database does not exist yet (tools then tell the student to sync); it never touches the
 /// network and never writes to stdout except protocol messages.
+///
+/// Log file (`logs/mcp-*.log`): start, the client's name/version and protocol version, and
+/// exit (reason, tool calls, uptime) at info; one line per tool call (name, time, ok/error,
+/// output size) at debug. Tool arguments, queries and output text are never logged.
 pub async fn serve_stdio(db_path: PathBuf) -> anyhow::Result<()> {
-    let service = PageLampServer::new(db_path)
-        .serve(rmcp::transport::stdio())
-        .await?;
-    service.waiting().await?;
+    let started = Instant::now();
+    tracing::info!(
+        target: LOG_TARGET,
+        "MCP server {} started (pid {})",
+        env!("CARGO_PKG_VERSION"),
+        std::process::id()
+    );
+    let server = PageLampServer::new(db_path);
+    let tool_calls = Arc::clone(&server.tool_calls);
+    let exit = |reason: &str| {
+        tracing::info!(
+            target: LOG_TARGET,
+            "MCP server stopped ({reason}); tool calls: {}, uptime: {} s",
+            tool_calls.load(Ordering::Relaxed),
+            started.elapsed().as_secs()
+        );
+    };
+    let service = match server.serve(rmcp::transport::stdio()).await {
+        Ok(service) => service,
+        Err(err) => {
+            tracing::warn!(target: LOG_TARGET, "MCP handshake failed: {err}");
+            exit("handshake failed");
+            return Err(err.into());
+        }
+    };
+    match service.peer().peer_info() {
+        Some(info) => tracing::info!(
+            target: LOG_TARGET,
+            "client {:?} {:?}, protocol {:?}",
+            clip(&info.client_info.name),
+            clip(&info.client_info.version),
+            clip(&info.protocol_version.to_string())
+        ),
+        None => tracing::info!(target: LOG_TARGET, "client connected without client info"),
+    }
+    match service.waiting().await {
+        Ok(QuitReason::Closed) => exit("client disconnected"),
+        Ok(QuitReason::Cancelled) => exit("cancelled"),
+        Ok(QuitReason::JoinError(err)) | Err(err) => {
+            exit("crashed");
+            return Err(err.into());
+        }
+        Ok(_) => exit("stopped"),
+    }
     Ok(())
+}
+
+/// Log target of this crate (`-v` / `PAGELAMP_LOG=debug` raise `pagelamp*` targets).
+const LOG_TARGET: &str = "pagelamp::mcp";
+
+/// Client-supplied text for the log: at most 64 characters (logged with `{:?}`, so line
+/// breaks and control characters stay escaped).
+fn clip(text: &str) -> String {
+    text.chars().take(64).collect()
 }
 
 /// The MCP server. Cheap to clone; every request opens its own short-lived read-only
@@ -104,6 +162,8 @@ pub struct PageLampServer {
     db_path: Arc<PathBuf>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
+    /// Tool calls served (shared by clones), for the exit log line.
+    tool_calls: Arc<AtomicU64>,
 }
 
 // ----- limits ---------------------------------------------------------------------------------
@@ -660,6 +720,40 @@ impl ServerHandler for PageLampServer {
         )
         .with_instructions(text::instructions())
     }
+
+    /// The router's dispatch plus a debug log line: tool name, time, ok/error and output size.
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        self.tool_calls.fetch_add(1, Ordering::Relaxed);
+        let started = Instant::now();
+        let name = clip(&request.name);
+        let response = self
+            .tool_router
+            .call(ToolCallContext::new(self, request, context))
+            .await;
+        if tracing::enabled!(target: LOG_TARGET, tracing::Level::DEBUG) {
+            let outcome = match &response {
+                Ok(CallToolResponse::Complete(result)) if result.is_error == Some(true) => "error",
+                Ok(_) => "ok",
+                Err(_) => "protocol error",
+            };
+            let bytes = match &response {
+                Ok(CallToolResponse::Complete(result)) => {
+                    serde_json::to_vec(result).map_or(0, |json| json.len())
+                }
+                _ => 0,
+            };
+            tracing::debug!(
+                target: LOG_TARGET,
+                "tool {name:?}: {outcome}, {} ms, {bytes} bytes",
+                started.elapsed().as_millis()
+            );
+        }
+        response
+    }
 }
 
 impl PageLampServer {
@@ -669,6 +763,7 @@ impl PageLampServer {
             db_path: Arc::new(db_path),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
+            tool_calls: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -717,7 +812,7 @@ fn core_error(err: pagelamp_core::Error) -> CallToolResult {
         err @ E::Ambiguous { .. } => error_result(err.to_string()),
         err @ E::SchemaTooNew { .. } => error_result(err.to_string()),
         other => {
-            tracing::error!("tool failed: {other}");
+            tracing::error!(target: LOG_TARGET, "tool failed: {other}");
             error_result(format!("Internal error: {other}"))
         }
     }

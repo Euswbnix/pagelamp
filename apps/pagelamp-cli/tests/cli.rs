@@ -389,6 +389,57 @@ fn doctor_report_and_log_files() {
     assert!(ok(&pagelamp(&home, &["report"])).contains("## Recent log"));
 }
 
+/// The whole `logs/<prefix>*.log` text.
+fn log_text(home: &Path, prefix: &str) -> String {
+    std::fs::read_dir(home.join("logs"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().unwrap().to_string_lossy().starts_with(prefix))
+        .map(|p| std::fs::read_to_string(p).unwrap())
+        .collect()
+}
+
+#[test]
+fn mcp_sessions_are_logged_without_arguments_or_output() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let courses = temp.path().join("Courses");
+    demo_courses(&courses);
+    ok(&pagelamp(
+        &home,
+        &["folder", "add", courses.to_str().unwrap()],
+    ));
+    ok(&pagelamp(&home, &["sync"]));
+
+    let session = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"demo-client","version":"9.9"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search","arguments":{"query":"zebra-demo-query"}}}"#,
+        "",
+    ]
+    .join("\n");
+    let output = pagelamp_with_stdin(&home, &["-v", "mcp"], &session);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""id":1"#), "{stdout}");
+
+    let log = log_text(&home, "mcp-");
+    let version = env!("CARGO_PKG_VERSION");
+    assert!(
+        log.contains(&format!("MCP server {version} started (pid ")),
+        "{log}"
+    );
+    assert!(
+        log.contains(r#"client "demo-client" "9.9", protocol "2025-06-18""#),
+        "{log}"
+    );
+    assert!(log.contains("MCP server stopped ("), "{log}");
+    assert!(
+        !log.contains("zebra-demo-query") && !log.contains("photosynthesis"),
+        "{log}"
+    );
+}
+
 #[test]
 fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
     let temp = tempfile::tempdir().unwrap();
