@@ -8,6 +8,7 @@
 // ───────────────────────────────────────────────────────────────────────────────────────────
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isHttpUrl } from "@/lib/url";
@@ -91,6 +92,27 @@ export function createTauriApi(): PageLampApi {
       }
     },
     revealDataDir: () => call("reveal_data_dir"),
+    onWindowFocus: (onFocus) => {
+      let unlisten: (() => void) | null = null;
+      let stopped = false;
+      // Events need no extra capability (core:default). If listening fails, the UI just
+      // doesn't refresh on focus; that's not worth an error.
+      Promise.resolve()
+        .then(() =>
+          getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+            if (focused) onFocus();
+          }),
+        )
+        .then((stop) => {
+          if (stopped) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        stopped = true;
+        unlisten?.();
+      };
+    },
     revealLogsDir: () => call("reveal_logs_dir"),
     logUiError: async (message, stack) => {
       try {

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
@@ -293,6 +293,26 @@ describe("CoursesPage — study plan", () => {
     const plan = await screen.findByRole("region", { name: "Your study plan" });
     const row = (await within(plan).findByText(first.title)).closest("li") as HTMLElement;
     expect(within(row).getByText("Sections 4.1 to 4.3")).toBeInTheDocument();
+  });
+
+  it("shows a plan the AI app saved while the window was in the background", async () => {
+    const api = mockApi();
+    const saved = await api.latestStudyPlan();
+    const latest = vi.fn<PageLampApi["latestStudyPlan"]>().mockResolvedValue(null);
+    api.latestStudyPlan = latest;
+    renderRoute("/courses", { api });
+    const plan = await screen.findByRole("region", { name: "Your study plan" });
+    expect(await within(plan).findByText("No study plan yet")).toBeInTheDocument();
+
+    // The student saves a plan in their AI app, then comes back to PageLamp.
+    latest.mockResolvedValue(saved);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    const open = saved?.plan.items.find((item) => !item.done);
+    if (!open) throw new Error("demo plan has open tasks");
+    expect(await within(plan).findByText(open.title)).toBeInTheDocument();
+    expect(within(plan).queryByText("No study plan yet")).toBeNull();
   });
 
   it("explains how to get a plan when there is none", async () => {

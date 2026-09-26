@@ -2,6 +2,7 @@
 // methods directly for reads; they use these hooks so caching and invalidation stay consistent.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useApi } from "./context";
 import type { AiPolicy, IsoDate } from "./types";
 
@@ -90,6 +91,25 @@ export function useMcpClientConfigs() {
     queryFn: () => api.mcpClientConfigs(),
     staleTime: Number.POSITIVE_INFINITY,
   });
+}
+
+/**
+ * The AI app saves study plans (and the CLI may sync) while PageLamp's window is in the
+ * background, so refresh what they change when the student comes back to the window.
+ * Queries refetch only if something shows them. Mount once, in the app shell.
+ */
+export function useRefreshOnWindowFocus() {
+  const api = useApi();
+  const client = useQueryClient();
+  useEffect(
+    () =>
+      api.onWindowFocus(() => {
+        for (const queryKey of [queryKeys.studyPlan(), queryKeys.courses(), queryKeys.status()]) {
+          void client.invalidateQueries({ queryKey });
+        }
+      }),
+    [api, client],
+  );
 }
 
 /** What the panic hook recorded last time (null = nothing to report). */

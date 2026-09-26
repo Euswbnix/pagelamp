@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Outlet, useLocation } from "react-router";
+import { useRefreshOnWindowFocus } from "@/api/queries";
 import { brand } from "@/brand";
 import { CrashNotice } from "@/features/diagnostics/CrashNotice";
 import { useRefreshAfterExternalSync } from "@/stores/sync";
@@ -10,6 +11,7 @@ export function AppShell() {
   const mainRef = useRef<HTMLElement>(null);
   useRouteAnnouncements(mainRef);
   useRefreshAfterExternalSync();
+  useRefreshOnWindowFocus();
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />

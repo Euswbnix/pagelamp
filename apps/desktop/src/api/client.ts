@@ -101,6 +101,11 @@ export interface PageLampApi {
   openExternal(url: string): Promise<void>;
   /** Show the PageLamp data folder in Finder / Explorer. */
   revealDataDir(): Promise<void>;
+  /**
+   * Calls `onFocus` whenever the app window gains focus, e.g. after the student saved a study
+   * plan in their AI app. Returns a function that stops listening.
+   */
+  onWindowFocus(onFocus: () => void): () => void;
   /** Show the folder with PageLamp's log files in Finder / Explorer. */
   revealLogsDir(): Promise<void>;
   /**

@@ -604,6 +604,12 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       // Mock mode never leaves the page: demo links point at *.demo.test.
     },
     revealDataDir: async () => {},
+    onWindowFocus: (onFocus) => {
+      // The browser tab's focus stands in for the desktop window's.
+      const handler = () => onFocus();
+      window.addEventListener("focus", handler);
+      return () => window.removeEventListener("focus", handler);
+    },
     revealLogsDir: async () => {},
     logUiError: async () => {},
   };
