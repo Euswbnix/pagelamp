@@ -3,6 +3,7 @@ import { Navigate } from "react-router";
 import { useStatus } from "@/api/queries";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Spinner } from "@/components/ui/spinner";
+import { ProblemActions } from "@/features/diagnostics/ProblemActions";
 import { paths } from "@/lib/routes";
 import { useUiStore } from "@/stores/ui";
 
@@ -25,6 +26,10 @@ export function StartGate() {
       <div className="mx-auto max-w-lg p-8">
         <h1 className="sr-only">{t("states.backendUnavailableTitle")}</h1>
         <ErrorState error={status.error} onRetry={() => status.refetch()} />
+        {/* Diagnostics work even when the database can't be opened. */}
+        <div className="mt-4">
+          <ProblemActions />
+        </div>
       </div>
     );
   }

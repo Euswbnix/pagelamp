@@ -118,7 +118,7 @@
     "shareHint": "Helping classmates set up? Point them to the course folder + calendar feed option instead.",
     "urlLabel": "Canvas address",
     "urlPlaceholder": "https://canvas.example.edu",
-    "urlHint": "The address you open Canvas at in your browser.",
+    "urlHint": "The address you open Canvas at in your browser — just the address, not a link to a course.",
     "httpWarning": "Canvas addresses use https. Check that yours starts with https://.",
     "tokenLabel": "Access token",
     "tokenHowTo": "In Canvas: Account → Settings → Approved Integrations → + New Access Token. Fill in the purpose (e.g. 'personal study planner, read-only') and pick an expiry date. Copy the token right away — Canvas shows it only once.",

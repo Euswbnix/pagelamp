@@ -48,6 +48,23 @@
     "crashTitle": "这个页面出错了",
     "crashBody": "请重试，或重新打开 {{product}}。这台电脑上的数据不受影响。"
   },
+  "diagnostics": {
+    "copyReport": "复制诊断报告…",
+    "previewTitle": "诊断报告",
+    "previewNote": "分享之前，请先确认里面没有隐私信息。",
+    "previewContents": "报告包含版本号、同步状态和最近的日志。令牌会被自动移除，课程名称会被替换成代号。",
+    "reportLabel": "诊断报告",
+    "copyAria": "复制诊断报告",
+    "reportProblem": "反馈问题",
+    "reportProblemOnGitHub": "在 GitHub 上反馈问题",
+    "crash": {
+      "titleApp": "{{product}} 上次意外退出了",
+      "titleMcp": "{{product}} 上次在 AI 应用使用它时意外停止了",
+      "body": "发生在{{when}}。分享一份诊断报告，能帮助我们修复这个问题。",
+      "dismiss": "忽略",
+      "dismissFailed": "无法关闭这条提示"
+    }
+  },
   "errors": {
     "auth": "访问令牌或日历订阅地址被拒绝，可能已过期或被撤销。",
     "network": "连不上服务器。请检查网络连接和地址是否正确。",

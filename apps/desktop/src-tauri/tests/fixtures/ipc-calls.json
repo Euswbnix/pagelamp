@@ -161,7 +161,37 @@
     "args": {}
   },
   {
+    "cmd": "diagnostic_report",
+    "args": {}
+  },
+  {
+    "cmd": "last_crash",
+    "args": {}
+  },
+  {
+    "cmd": "clear_last_crash",
+    "args": {}
+  },
+  {
     "cmd": "reveal_data_dir",
     "args": {}
+  },
+  {
+    "cmd": "reveal_logs_dir",
+    "args": {}
+  },
+  {
+    "cmd": "log_ui_error",
+    "args": {
+      "message": "contract-test error",
+      "stack": "Error: contract-test error\n    at render"
+    }
+  },
+  {
+    "cmd": "log_ui_error",
+    "args": {
+      "message": "contract-test error without a stack",
+      "stack": null
+    }
   }
 ]

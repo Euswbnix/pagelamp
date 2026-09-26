@@ -9,7 +9,7 @@ interface CopyButtonProps {
   /** Accessible name, e.g. "Copy Claude Desktop config". Defaults to "Copy". */
   label?: string;
   size?: "sm" | "default";
-  variant?: "outline" | "ghost" | "secondary";
+  variant?: "default" | "outline" | "ghost" | "secondary";
 }
 
 /** Copies `text` to the clipboard and confirms with a check mark for 2 seconds. */

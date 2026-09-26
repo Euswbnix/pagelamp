@@ -66,6 +66,10 @@ export function createTauriApi(): WeekmarkApi {
 
     mcpClientConfigs: () => call("mcp_client_configs"),
 
+    diagnosticReport: () => call("diagnostic_report"),
+    lastCrash: () => call("last_crash"),
+    clearLastCrash: () => call("clear_last_crash"),
+
     // Plugin calls, like commands, reject only with an ApiError.
     pickFolder: async () => {
       try {
@@ -87,5 +91,13 @@ export function createTauriApi(): WeekmarkApi {
       }
     },
     revealDataDir: () => call("reveal_data_dir"),
+    revealLogsDir: () => call("reveal_logs_dir"),
+    logUiError: async (message, stack) => {
+      try {
+        await call("log_ui_error", { message, stack });
+      } catch {
+        // Nowhere left to report it; the UI already shows the original error.
+      }
+    },
   };
 }

@@ -217,6 +217,18 @@ describe("OnboardingPage", () => {
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
   });
 
+  it("rejects a pasted course link and returns to the address", async () => {
+    const { user } = renderRoute("/welcome", { scenario: "empty" });
+    await goToSourceStep(user);
+    await user.click(screen.getByRole("radio", { name: "Canvas access token" }));
+    await user.type(screen.getByLabelText("Canvas address"), "canvas.demo.test/courses/1");
+    await user.type(screen.getByLabelText("Access token"), CANVAS_TOKEN);
+    await user.click(screen.getByRole("button", { name: "Add and continue" }));
+    expect(await screen.findByText(/is not a Canvas address/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Canvas address")).toHaveFocus();
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+  });
+
   it("requires both Canvas fields", async () => {
     const { user } = renderRoute("/welcome", { scenario: "empty" });
     await goToSourceStep(user);

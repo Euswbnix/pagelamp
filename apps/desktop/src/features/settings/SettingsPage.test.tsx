@@ -24,7 +24,14 @@ describe("SettingsPage", () => {
     renderRoute("/settings");
     expect(await screen.findByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    for (const name of ["Appearance", "Reminders", "Your data", "Privacy", "About"]) {
+    for (const name of [
+      "Appearance",
+      "Reminders",
+      "Your data",
+      "Privacy",
+      "Help & feedback",
+      "About",
+    ]) {
       expect(screen.getByRole("region", { name })).toBeInTheDocument();
     }
   });
@@ -191,7 +198,7 @@ describe("SettingsPage", () => {
     expect(await within(privacy).findByText(/^You confirmed this on /)).toBeInTheDocument();
   });
 
-  it("shows the version, license, tagline and brand links", async () => {
+  it("shows the version, license, tagline and the homepage link", async () => {
     renderRoute("/settings");
     const about = await section("About");
     expect(await within(about).findByText("0.1.0-mock")).toBeInTheDocument();
@@ -199,7 +206,8 @@ describe("SettingsPage", () => {
     expect(within(about).getByText(brand.productName)).toBeInTheDocument();
     expect(within(about).getByText(localized(brand.tagline, "en"))).toBeInTheDocument();
 
-    const expected = (["homepage", "help", "issues"] as const).filter((k) => brand.links[k]);
+    // `help` and `issues` live in Help & feedback (features/diagnostics/diagnostics.test.tsx).
+    const expected = (["homepage"] as const).filter((k) => brand.links[k]);
     const links = within(about).queryAllByRole("link");
     expect(links).toHaveLength(expected.length);
     for (const key of expected) {

@@ -27,7 +27,10 @@ export interface BrandLinks {
   homepage?: string;
   /** Where students get help (FAQ, docs). */
   help?: string;
-  /** Where to report a problem. */
+  /**
+   * Where to report a problem, ideally a new-issue form (Settings → Help & feedback and the
+   * crash notice). Opened as is: report data is never added to it.
+   */
   issues?: string;
 }
 

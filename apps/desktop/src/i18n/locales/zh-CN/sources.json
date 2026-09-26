@@ -118,7 +118,7 @@
     "shareHint": "想帮同学设置？请让他们使用“课程文件夹 + 日历订阅”方式。",
     "urlLabel": "Canvas 地址",
     "urlPlaceholder": "https://canvas.example.edu",
-    "urlHint": "就是你在浏览器里打开 Canvas 时的网址。",
+    "urlHint": "就是你在浏览器里打开 Canvas 时的网址。只填网址本身，不要粘贴某门课的链接。",
     "httpWarning": "Canvas 地址都是 https 开头的，请确认一下是不是 https://。",
     "tokenLabel": "访问令牌",
     "tokenHowTo": "在 Canvas 中：Account → Settings → Approved Integrations → + New Access Token。用途（Purpose）请如实填写，例如“个人学习规划，只读”，并选好到期日期。令牌只显示一次，请马上复制。",

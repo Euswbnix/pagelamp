@@ -11,7 +11,8 @@ import { SettingsSection } from "./SettingsSection";
 // SPDX identifier of the project license (root LICENSE, docs/ARCHITECTURE.md §7).
 const LICENSE = "Apache-2.0";
 
-const LINK_KEYS: (keyof BrandLinks)[] = ["homepage", "help", "issues"];
+// `help` and `issues` are in Help & feedback.
+const LINK_KEYS: (keyof BrandLinks)[] = ["homepage"];
 
 /** Product name, tagline, version, license and the brand's links (only those that are set). */
 export function AboutSection() {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Outlet, useLocation } from "react-router";
 import { brand } from "@/brand";
+import { CrashNotice } from "@/features/diagnostics/CrashNotice";
 import { useRefreshAfterExternalSync } from "@/stores/sync";
 import { Sidebar } from "./Sidebar";
 
@@ -19,6 +20,7 @@ export function AppShell() {
         className="min-w-0 flex-1 overflow-y-auto outline-none"
       >
         <div className="mx-auto max-w-5xl px-8 py-8">
+          <CrashNotice />
           <Outlet />
         </div>
       </main>

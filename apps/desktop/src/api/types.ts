@@ -20,6 +20,7 @@ export type {
   CourseOverview,
   CourseSummary,
   CourseTimeline,
+  CrashReport,
   Deadline,
   EventKind,
   InstallKind,

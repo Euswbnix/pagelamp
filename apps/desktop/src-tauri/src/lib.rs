@@ -7,7 +7,8 @@
 //! is added to the facade in crates/weekmark-app first.
 //!
 //! Permissions granted to the webview are in `capabilities/default.json`: the folder picker
-//! (`dialog:allow-open`) and opening http(s) links. No shell and no filesystem access.
+//! (`dialog:allow-open`) and opening http(s) links. No shell and no filesystem access; the
+//! data and logs folders are opened by commands that take no path from the UI.
 //! ─────────────────────────────────────────────────────────────────────────────────────────────
 
 pub mod backend;
@@ -40,11 +41,19 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::set_course_ai_access,
         commands::set_course_hidden,
         commands::mcp_client_configs,
+        commands::diagnostic_report,
+        commands::last_crash,
+        commands::clear_last_crash,
         commands::reveal_data_dir,
+        commands::reveal_logs_dir,
+        commands::log_ui_error,
     ])
 }
 
 pub fn run() {
+    // First of all: log files, redacted stderr and the panic hook, so a failure while opening
+    // the core below is logged and a crash is recorded for the next launch's notice.
+    weekmark_app::diagnostics::init(weekmark_app::diagnostics::ProcessKind::App, false);
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

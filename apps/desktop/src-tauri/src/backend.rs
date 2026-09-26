@@ -5,6 +5,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use weekmark_app::diagnostics::{expect_panics, expect_panics_in};
 use weekmark_app::{App, AppError, AppErrorKind};
 
 /// Managed Tauri state. If the core fails to open (e.g. the data folder isn't writable yet),
@@ -49,16 +50,37 @@ impl Backend {
     }
 
     /// Run a synchronous facade call (they open SQLite) on the blocking pool, never on the
-    /// UI thread. Panics become `internal` errors.
+    /// UI thread. Panics become `internal` errors (logged, but not recorded as a crash: the app
+    /// keeps running).
     pub async fn blocking<T, F>(&self, f: F) -> Result<T, AppError>
     where
         T: Send + 'static,
         F: FnOnce(&App) -> Result<T, AppError> + Send + 'static,
     {
         let app = self.app()?;
-        tauri::async_runtime::spawn_blocking(move || f(&app))
+        tauri::async_runtime::spawn_blocking(move || expect_panics(|| f(&app)))
             .await
             .map_err(|err| internal(format!("background task failed: {err}")))?
+    }
+
+    /// Diagnostics must work even when the facade can't open: a locked or damaged database is
+    /// exactly when a tester needs a report. With an open facade they use its data dir,
+    /// otherwise the default one (`weekmark_app::diagnostics`, resolved like `App::open`).
+    pub async fn diagnostics<T, F, G>(&self, with_app: F, without_app: G) -> Result<T, AppError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&App) -> Result<T, AppError> + Send + 'static,
+        G: FnOnce() -> Result<T, AppError> + Send + 'static,
+    {
+        let app = self.app().ok();
+        tauri::async_runtime::spawn_blocking(move || {
+            expect_panics(|| match &app {
+                Some(app) => with_app(app),
+                None => without_app(),
+            })
+        })
+        .await
+        .map_err(|err| internal(format!("background task failed: {err}")))?
     }
 
     /// Run an async facade call (network: token validation, sync) as its own task. Panics
@@ -70,7 +92,7 @@ impl Backend {
         Fut: Future<Output = Result<T, AppError>> + Send + 'static,
     {
         let fut = f(self.app()?);
-        tauri::async_runtime::spawn(AssertUnwindSafe(fut))
+        tauri::async_runtime::spawn(expect_panics_in(AssertUnwindSafe(fut)))
             .await
             .map_err(|err| internal(format!("background task failed: {err}")))?
     }
@@ -78,7 +100,7 @@ impl Backend {
 
 /// Open the facade; a panic inside the core must not kill the window, so it becomes an error.
 fn open_guarded(open: fn() -> Result<App, AppError>) -> Result<App, AppError> {
-    panic::catch_unwind(open).unwrap_or_else(|payload| {
+    expect_panics(|| panic::catch_unwind(open)).unwrap_or_else(|payload| {
         Err(internal(format!(
             "Weekmark core failed to start: {}",
             panic_message(&*payload)
@@ -145,6 +167,28 @@ mod tests {
             3,
             "an opened facade is kept, not reopened"
         );
+    }
+
+    #[test]
+    fn diagnostics_use_the_default_data_dir_only_when_the_core_cannot_open() {
+        fn locked_open() -> Result<App, AppError> {
+            Err(AppError::new(AppErrorKind::Internal, "database is locked"))
+        }
+        let backend = Backend::open_with(locked_open);
+        let used = tauri::async_runtime::block_on(
+            backend.diagnostics(|_| Ok("facade"), || Ok("default data dir")),
+        );
+        assert_eq!(used.unwrap(), "default data dir");
+
+        // With an open facade, its own data dir: tests never touch the real default one.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let app = App::open_at(dir.path().to_path_buf()).expect("open App in a temp dir");
+        let backend = Backend::from_app(app);
+        let used = tauri::async_runtime::block_on(backend.diagnostics(
+            |app| Ok(app.data_dir().to_path_buf()),
+            || panic!("the open facade's data dir must be used"),
+        ));
+        assert_eq!(used.unwrap(), dir.path());
     }
 
     #[test]

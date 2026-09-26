@@ -19,7 +19,7 @@ const brand: Brand = {
   logo: null,
   links: {
     homepage: "https://github.com/Euswbnix/weekmark",
-    issues: "https://github.com/Euswbnix/weekmark/issues",
+    issues: "https://github.com/Euswbnix/weekmark/issues/new/choose",
   },
   aiPolicyHint: {
     en: "Many universities don't allow generative AI in a course unless the instructor permits it — check your syllabus.",

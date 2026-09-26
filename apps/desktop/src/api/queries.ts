@@ -17,6 +17,10 @@ export const queryKeys = {
     [...queryKeys.all, "deadlines", courseId, daysAhead, daysBack] as const,
   studyPlan: () => [...queryKeys.all, "study-plan"] as const,
   mcpConfigs: () => [...queryKeys.all, "mcp-configs"] as const,
+  lastCrash: () => [...queryKeys.all, "last-crash"] as const,
+  // Deliberately outside `all`: a sync finishing (which invalidates `all`) must not swap the
+  // text the student is reviewing before they copy it.
+  diagnosticReport: () => ["diagnostic-report"] as const,
 };
 
 // ----- reads ----------------------------------------------------------------------------------
@@ -85,6 +89,31 @@ export function useMcpClientConfigs() {
     queryKey: queryKeys.mcpConfigs(),
     queryFn: () => api.mcpClientConfigs(),
     staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** What the panic hook recorded last time (null = nothing to report). */
+export function useLastCrash() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.lastCrash(),
+    queryFn: () => api.lastCrash(),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/**
+ * The diagnostic report, fetched while `enabled` (the preview is open). `gcTime: 0` drops it as
+ * soon as the preview closes, so every preview shows a fresh report and none stays in memory.
+ */
+export function useDiagnosticReport(enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.diagnosticReport(),
+    queryFn: () => api.diagnosticReport(),
+    enabled,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 0,
   });
 }
 
@@ -192,5 +221,14 @@ export function useSetCourseHidden() {
     mutationFn: (v: { courseId: string; hidden: boolean }) =>
       api.setCourseHidden(v.courseId, v.hidden),
     onSuccess: invalidate,
+  });
+}
+
+export function useClearLastCrash() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearLastCrash(),
+    onSuccess: () => client.setQueryData(queryKeys.lastCrash(), null),
   });
 }

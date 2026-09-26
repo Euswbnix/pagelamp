@@ -3,6 +3,7 @@ import type {
   AppStatus,
   CourseOverview,
   CourseSummary,
+  CrashReport,
   Deadline,
   IsoDate,
   McpClientConfig,
@@ -83,6 +84,16 @@ export interface WeekmarkApi {
   /** The Rust side decides which `weekmark` binary the snippets point at. */
   mcpClientConfigs(): Promise<McpClientConfig[]>;
 
+  // ----- diagnostics (work even when the database can't be opened) ----------------------------
+  /**
+   * Markdown report for bug reports: versions, source states, recent log lines and the last
+   * crash. Redacted and pseudonymised by the Rust side; the UI shows it before copying.
+   */
+  diagnosticReport(): Promise<string>;
+  /** The crash the panic hook recorded, until `clearLastCrash()`. */
+  lastCrash(): Promise<CrashReport | null>;
+  clearLastCrash(): Promise<void>;
+
   // ----- desktop helpers (not part of the facade) --------------------------------------------
   /** Native folder picker. Resolves null when cancelled. */
   pickFolder(): Promise<string | null>;
@@ -90,4 +101,11 @@ export interface WeekmarkApi {
   openExternal(url: string): Promise<void>;
   /** Show the Weekmark data folder in Finder / Explorer. */
   revealDataDir(): Promise<void>;
+  /** Show the folder with Weekmark's log files in Finder / Explorer. */
+  revealLogsDir(): Promise<void>;
+  /**
+   * Write a UI crash (error-boundary) to the log: message and stack only, never app data.
+   * Never rejects — logging must not cause a second error.
+   */
+  logUiError(message: string, stack: string | null): Promise<void>;
 }

@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { useApi } from "@/api/context";
 import { useStatus } from "@/api/queries";
 import type { AppStatus, StoreCounts } from "@/api/types";
 import { CopyButton } from "@/components/common/CopyButton";
@@ -9,7 +10,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { paths } from "@/lib/routes";
-import { RevealDataDirButton } from "./RevealDataDirButton";
+import { RevealFolderButton } from "./RevealFolderButton";
 import { SettingsSection } from "./SettingsSection";
 
 /** Where the data lives on disk and how much of it there is. */
@@ -31,6 +32,7 @@ export function DataSection() {
 
 function DataDetails({ status }: { status: AppStatus }) {
   const { t } = useTranslation("settings");
+  const api = useApi();
   return (
     <>
       <dl className="space-y-4">
@@ -38,7 +40,9 @@ function DataDetails({ status }: { status: AppStatus }) {
           label={t("data.folder")}
           path={status.data_dir}
           copyLabel={t("data.copyFolder")}
-          action={<RevealDataDirButton />}
+          action={
+            <RevealFolderButton label={t("data.reveal")} reveal={() => api.revealDataDir()} />
+          }
         />
         <PathRow
           label={t("data.database")}

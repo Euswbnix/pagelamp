@@ -73,6 +73,13 @@ export type Confidence = "high" | "medium" | "low";
 export type EventKind =
   ("assignment_due" | "quiz_due" | "exam" | "other") | "class_event" | "planner_item";
 /**
+ * Which kind of process writes the log (selects the file name).
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "ProcessKind".
+ */
+export type ProcessKind = "app" | "mcp";
+/**
  * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
  * via the `definition` "McpClient".
  */
@@ -155,8 +162,12 @@ export interface WeekmarkAppTypes {
   app_status: AppStatus;
   course_overview: CourseOverview;
   course_summary: CourseSummary;
+  course_sync_summary: CourseSyncSummary;
+  crash_report: CrashReport;
   deadline: Deadline;
+  doctor_report: DoctorReport;
   mcp_client_config: McpClientConfig;
+  process_kind: ProcessKind;
   search_hit: SearchHit;
   source_error_kind: SourceErrorKind;
   source_record: SourceRecord;
@@ -462,6 +473,105 @@ export interface CourseCounts {
   upcoming_deadlines: number;
 }
 /**
+ * What one sync did for one course (the `weekmark sync` summary; desktop status screens).
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "CourseSyncSummary".
+ */
+export interface CourseSyncSummary {
+  /**
+   * Course code, or name when it has no code.
+   */
+  course: string;
+  /**
+   * Deadlines/events read for this course.
+   */
+  events: number;
+  /**
+   * Files listed (downloaded or not).
+   */
+  files: number;
+  modules: number;
+  pages: number;
+  warnings: number;
+}
+/**
+ * The most recent crash (`logs/last-crash.json`), until cleared.
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "CrashReport".
+ */
+export interface CrashReport {
+  /**
+   * `file.rs:line:column` of the panic.
+   */
+  location?: string | null;
+  /**
+   * Redacted, at most 500 characters.
+   */
+  message: string;
+  process: ProcessKind;
+  time: string;
+  version: string;
+}
+/**
+ * `weekmark doctor`: the facts a maintainer needs to help, and nothing personal.
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "DoctorReport".
+ */
+export interface DoctorReport {
+  arch: string;
+  courses: number;
+  /**
+   * With the home directory shortened to `~`.
+   */
+  data_dir: string;
+  /**
+   * Why the database could not be read (then the counts are 0).
+   */
+  database_error?: string | null;
+  events: number;
+  hidden_courses: number;
+  keychain_available: boolean;
+  keychain_error?: string | null;
+  last_crash?: CrashReport | null;
+  logs_dir: string;
+  materials: number;
+  mcp_clients: McpClientPresence;
+  os: string;
+  schema_version?: number | null;
+  sources: DoctorSource[];
+  version: string;
+}
+/**
+ * Whether each AI app's config has a Weekmark entry (presence only; nothing else is read
+ * out of those files).
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "McpClientPresence".
+ */
+export interface McpClientPresence {
+  claude_code: boolean;
+  claude_desktop: boolean;
+  codex: boolean;
+}
+/**
+ * A source as `doctor` shows it: no ids, URLs or labels.
+ *
+ * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
+ * via the `definition` "DoctorSource".
+ */
+export interface DoctorSource {
+  kind: SourceKind;
+  last_error_kind?: SourceErrorKind | null;
+  last_synced_at?: string | null;
+  /**
+   * The last sync succeeded (false when it failed or never ran).
+   */
+  ok: boolean;
+}
+/**
  * This interface was referenced by `WeekmarkAppTypes`'s JSON-Schema
  * via the `definition` "McpClientConfig".
  */
@@ -541,6 +651,10 @@ export interface SearchHit {
  * via the `definition` "SourceSyncResult".
  */
 export interface SourceSyncResult {
+  /**
+   * Per-course details (Canvas; empty for other sources).
+   */
+  course_summaries: CourseSyncSummary[];
   courses: number;
   error?: string | null;
   error_kind?: SourceErrorKind | null;
@@ -553,6 +667,10 @@ export interface SourceSyncResult {
   materials: number;
   modules: number;
   ok: boolean;
+  /**
+   * HTTP requests made (Canvas; None for other sources).
+   */
+  requests?: number | null;
   source_id: string;
   started_at: string;
   warnings: string[];

@@ -4,9 +4,11 @@
 
 import type {
   AiPolicy,
+  AppStatus,
   Confidence,
   Course,
   CourseTimeline,
+  CrashReport,
   Deadline,
   EventKind,
   MaterialKind,
@@ -19,7 +21,7 @@ import type {
   TextStatus,
 } from "../types";
 
-export type MockScenario = "demo" | "empty" | "expired" | "error" | "busy";
+export type MockScenario = "demo" | "empty" | "expired" | "error" | "busy" | "crashed";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -27,6 +29,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "expired",
   "error",
   "busy",
+  "crashed",
 ];
 
 /** One course with everything the views need. */
@@ -48,6 +51,8 @@ export interface MockDb {
   studyPlan: StoredStudyPlan | null;
   /** Simulates another process (the CLI) holding sync.lock. */
   externalSyncRunning: boolean;
+  /** What the panic hook recorded last time ("crashed" scenario). */
+  lastCrash: CrashReport | null;
 }
 
 export const MOCK_BINARY_PATH = "/Users/demo/Weekmark/target/debug/weekmark";
@@ -610,7 +615,14 @@ export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
   eventSeq = 0;
   const dataDir = "/Users/demo/Library/Application Support/dev.Weekmark.Weekmark";
   if (scenario === "empty") {
-    return { dataDir, sources: [], courses: [], studyPlan: null, externalSyncRunning: false };
+    return {
+      dataDir,
+      sources: [],
+      courses: [],
+      studyPlan: null,
+      externalSyncRunning: false,
+      lastCrash: null,
+    };
   }
   const courses = [demo101(now), demo205(now), demo310(now), demo099(now)];
   return {
@@ -619,5 +631,61 @@ export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
     courses,
     studyPlan: studyPlan(now, courses),
     externalSyncRunning: scenario === "busy",
+    lastCrash: scenario === "crashed" ? crash(now) : null,
   };
+}
+
+function crash(now: Date): CrashReport {
+  return {
+    time: at(now, -1, 21, 14),
+    version: "0.1.0-mock",
+    process: "app",
+    message: "called `Option::unwrap()` on a `None` value",
+    location: "crates/weekmark-app/src/sync.rs:212:31",
+  };
+}
+
+/**
+ * Stand-in for the Rust diagnostic report (weekmark_app::diagnostics): same kind of content,
+ * made-up values. The real format is decided by the backend; the UI only shows the text.
+ */
+export function diagnosticReport(status: AppStatus, lastCrash: CrashReport | null, now: Date) {
+  const sources = status.sources.map(
+    (s) =>
+      `| ${s.kind} | ${s.last_error_kind ? "no" : "yes"} | ${s.last_synced_at ?? "never"} | ${s.last_error_kind ?? "—"} |`,
+  );
+  const crashLine = lastCrash
+    ? `${lastCrash.time} · ${lastCrash.process} · ${lastCrash.message}${lastCrash.location ? ` (${lastCrash.location})` : ""}`
+    : "none";
+  return [
+    "# Weekmark diagnostic report",
+    "",
+    `- Version: ${status.version}`,
+    "- OS: macOS 15.5 (aarch64)",
+    "- Data folder: ~/Library/Application Support/dev.Weekmark.Weekmark",
+    "- Database: ok",
+    "- Keychain: available",
+    "",
+    "## Sources",
+    "",
+    "| kind | ok | last synced | last error |",
+    "| --- | --- | --- | --- |",
+    ...(sources.length > 0 ? sources : ["| — | — | — | — |"]),
+    "",
+    "## Library",
+    "",
+    `${status.counts.courses} courses (${status.counts.hidden_courses} hidden), ${status.counts.materials} materials, ${status.counts.events} events`,
+    "",
+    "## Last crash",
+    "",
+    crashLine,
+    "",
+    "## Recent log (redacted)",
+    "",
+    "```",
+    `${now.toISOString()} INFO  weekmark::sync: sync finished (course-1, course-2, course-3)`,
+    `${now.toISOString()} DEBUG weekmark::canvas: GET /api/v1/courses → 200 (token [redacted])`,
+    "```",
+    "",
+  ].join("\n");
 }

@@ -3,10 +3,11 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DataSection } from "./DataSection";
+import { HelpSection } from "./HelpSection";
 import { PrivacySection } from "./PrivacySection";
 import { RemindersSection } from "./RemindersSection";
 
-/** Settings: appearance, (upcoming) reminders, where the data lives, privacy and about. */
+/** Settings: appearance, (upcoming) reminders, data, privacy, help & feedback and about. */
 export function SettingsPage() {
   const { t } = useTranslation("settings");
   return (
@@ -17,6 +18,7 @@ export function SettingsPage() {
         <RemindersSection />
         <DataSection />
         <PrivacySection />
+        <HelpSection />
         <AboutSection />
       </div>
     </div>

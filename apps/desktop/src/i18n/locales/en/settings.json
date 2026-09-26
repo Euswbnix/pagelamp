@@ -46,6 +46,15 @@
     "perCourse": "You can stop your AI app from reading any course's materials: open the course and use the switch on its “AI policy” tab.",
     "notAcknowledged": "You haven't confirmed this yet. You'll be asked when you set up a source."
   },
+  "help": {
+    "title": "Help & feedback",
+    "description": "Something not working? These help find the cause. Nothing is sent anywhere unless you share it yourself.",
+    "reportHint": "Version numbers, sync status and recent log lines. You'll see the whole report before anything is copied.",
+    "openLogs": "Open logs folder",
+    "logsHint": "{{product}}'s log files, in case someone helping you asks for them.",
+    "issueHint": "Opens a new issue in your browser. Paste the diagnostic report there.",
+    "helpLink": "Help and FAQ"
+  },
   "about": {
     "title": "About",
     "version": "Version",

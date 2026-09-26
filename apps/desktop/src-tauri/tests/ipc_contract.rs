@@ -18,7 +18,7 @@ use weekmark_core::secrets::MemorySecrets;
 use weekmark_desktop_lib::{Backend, with_commands};
 
 /// Commands with real side effects on the machine running the tests.
-const SKIPPED: &[&str] = &["reveal_data_dir"];
+const SKIPPED: &[&str] = &["reveal_data_dir", "reveal_logs_dir"];
 
 #[test]
 fn every_ui_call_reaches_its_command() {

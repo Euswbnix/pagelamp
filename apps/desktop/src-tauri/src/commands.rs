@@ -13,6 +13,7 @@ use chrono::NaiveDate;
 use tauri::State;
 use tauri::ipc::Channel;
 use tauri_plugin_opener::OpenerExt;
+use weekmark_app::diagnostics::{self, CrashReport};
 use weekmark_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
@@ -271,4 +272,52 @@ pub async fn reveal_data_dir<R: tauri::Runtime>(
         .opener()
         .reveal_item_in_dir(app.data_dir())
         .map_err(|err| internal(format!("couldn't open the data folder: {err}")))
+}
+
+// ----- diagnostics (work even when the facade couldn't open) -------------------------------------
+
+#[tauri::command]
+pub async fn diagnostic_report(backend: State<'_, Backend>) -> CmdResult<String> {
+    backend
+        .diagnostics(
+            |app| app.diagnostic_report(),
+            diagnostics::diagnostic_report,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn last_crash(backend: State<'_, Backend>) -> CmdResult<Option<CrashReport>> {
+    backend
+        .diagnostics(|app| app.last_crash(), diagnostics::last_crash)
+        .await
+}
+
+#[tauri::command]
+pub async fn clear_last_crash(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend
+        .diagnostics(|app| app.clear_last_crash(), diagnostics::clear_last_crash)
+        .await
+}
+
+/// Opens the logs folder itself. It takes no path from the UI, so nothing else can be opened.
+#[tauri::command]
+pub async fn reveal_logs_dir<R: tauri::Runtime>(
+    backend: State<'_, Backend>,
+    window: tauri::WebviewWindow<R>,
+) -> CmdResult<()> {
+    let dir = backend
+        .diagnostics(|app| app.logs_dir(), diagnostics::logs_dir)
+        .await?;
+    window
+        .opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|err| internal(format!("couldn't open the logs folder: {err}")))
+}
+
+/// A screen crashed (the UI's error boundary): message and stack only, capped and redacted by
+/// the core. Never fails, so logging can't cause a second error in the UI.
+#[tauri::command]
+pub async fn log_ui_error(message: String, stack: Option<String>) {
+    diagnostics::log_ui_error(&message, stack.as_deref());
 }

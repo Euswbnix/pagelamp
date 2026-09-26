@@ -54,7 +54,13 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setCourseAiAccess(COURSE, false);
   await api.setCourseHidden(COURSE, true);
   await api.mcpClientConfigs();
+  await api.diagnosticReport();
+  await api.lastCrash();
+  await api.clearLastCrash();
   await api.revealDataDir();
+  await api.revealLogsDir();
+  await api.logUiError("contract-test error", "Error: contract-test error\n    at render");
+  await api.logUiError("contract-test error without a stack", null);
 
   // Channels serialise as "__CHANNEL__:<callback id>"; the id is irrelevant to the contract.
   const json = JSON.stringify(calls, null, 2).replace(/"__CHANNEL__:\d+"/g, '"__CHANNEL__:0"');

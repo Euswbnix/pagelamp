@@ -4,7 +4,7 @@
 // the same AppError kinds, sync streams SyncEvents over time, and settings persist for the
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
-// Scenarios: demo (default) · empty · expired · error · busy.
+// Scenarios: demo (default) · empty · expired · error · busy · crashed.
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -25,6 +25,7 @@ import {
 } from "../types";
 import {
   buildMockDb,
+  diagnosticReport,
   MOCK_BINARY_PATH,
   type MockCourse,
   type MockDb,
@@ -297,6 +298,18 @@ export function createMockApi(options: MockOptions = {}): WeekmarkApi {
           files_indexed: failure ? 0 : 2,
           events: courses.reduce((n, c) => n + c.deadlines.length, 0),
           warnings,
+          // Per-course details come from Canvas only.
+          course_summaries:
+            source.kind === "canvas" && !failure
+              ? courses.map((c) => ({
+                  course: c.course.code ?? c.course.name,
+                  modules: c.modules.length,
+                  pages: c.materials.filter((m) => m.kind === "page").length,
+                  files: c.materials.filter((m) => m.kind === "file").length,
+                  events: c.deadlines.length,
+                  warnings: 0,
+                }))
+              : [],
         });
       }
     } finally {
@@ -312,8 +325,14 @@ export function createMockApi(options: MockOptions = {}): WeekmarkApi {
     addCanvasSource: async (baseUrl, token) => {
       await sleep(latency + 500);
       const url = parseHttpUrl(baseUrl);
-      if (url?.protocol !== "https:") {
-        throw new ApiError("invalid", "Enter your Canvas address, e.g. https://canvas.example.edu");
+      // Like the backend: just the address, so a pasted course link isn't reinterpreted.
+      const onlyAddress =
+        url?.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
+      if (url?.protocol !== "https:" || !onlyAddress) {
+        throw new ApiError(
+          "invalid",
+          `'${baseUrl.trim()}' is not a Canvas address. Enter just the address, like https://canvas.example.edu`,
+        );
       }
       if (!url || url.hostname.includes("offline")) {
         throw new ApiError("network", `Couldn't reach ${url?.hostname ?? baseUrl}.`);
@@ -570,10 +589,19 @@ export function createMockApi(options: MockOptions = {}): WeekmarkApi {
 
     mcpClientConfigs: () => respond(() => mcpClientConfigs(MOCK_BINARY_PATH)),
 
+    diagnosticReport: () => respond(() => diagnosticReport(status(), db.lastCrash, now())),
+    lastCrash: () => respond(() => db.lastCrash),
+    clearLastCrash: () =>
+      respond(() => {
+        db.lastCrash = null;
+      }),
+
     pickFolder: () => respond("/Users/demo/Documents/Courses"),
     openExternal: async () => {
       // Mock mode never leaves the page: demo links point at *.demo.test.
     },
     revealDataDir: async () => {},
+    revealLogsDir: async () => {},
+    logUiError: async () => {},
   };
 }
