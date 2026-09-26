@@ -13,7 +13,8 @@
 //!
 //! Notes state facts only; each note has a stable `McpNoteCode` so UIs can localise.
 
-use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
+
 use studentos_core::brand;
 
 use crate::{InstallKind, McpClient, McpClientConfig, McpLaunch, McpNoteCode};
@@ -62,7 +63,8 @@ pub(crate) fn claude_desktop_config_hint() -> Option<&'static str> {
 }
 
 fn claude_desktop(launch: &McpLaunch, hint: Option<&str>) -> McpClientConfig {
-    let content = json!({ "mcpServers": { brand::MCP_SERVER_KEY: server_json(launch) } });
+    let servers = BTreeMap::from([(brand::MCP_SERVER_KEY, server_entry(launch))]);
+    let content = BTreeMap::from([("mcpServers", servers)]);
     let mut notes = Notes::default();
     notes.add(
         McpNoteCode::WorksOnAllClaudePlans,
@@ -189,7 +191,7 @@ fn generic(launch: &McpLaunch) -> McpClientConfig {
         "Other MCP clients",
         InstallKind::JsonSnippet,
         None,
-        pretty(&server_json(launch)),
+        pretty(&server_entry(launch)),
         notes,
         launch,
     )
@@ -244,19 +246,26 @@ fn config(
     }
 }
 
-/// `{"command", "args", "env"?}` — the per-server object used by JSON configs.
-fn server_json(launch: &McpLaunch) -> Value {
-    let mut server = Map::new();
-    server.insert("command".into(), json!(launch.command));
-    server.insert("args".into(), json!(launch.args));
-    if !launch.env.is_empty() {
-        server.insert("env".into(), json!(launch.env));
-    }
-    Value::Object(server)
+/// `{"command", "args", "env"?}` — the per-server object used by JSON configs (a struct, so
+/// the keys keep this natural order in the printed snippet).
+#[derive(serde::Serialize)]
+struct ServerEntry<'a> {
+    command: &'a str,
+    args: &'a [String],
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    env: &'a BTreeMap<String, String>,
 }
 
-fn pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(value).expect("a JSON value always serialises")
+fn server_entry(launch: &McpLaunch) -> ServerEntry<'_> {
+    ServerEntry {
+        command: &launch.command,
+        args: &launch.args,
+        env: &launch.env,
+    }
+}
+
+fn pretty(value: &impl serde::Serialize) -> String {
+    serde_json::to_string_pretty(value).expect("plain maps and strings always serialise")
 }
 
 /// Quote one shell word. POSIX: unchanged when it only has safe characters, else single
@@ -291,7 +300,7 @@ fn toml_string(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use serde_json::{Value, json};
 
     use super::*;
 

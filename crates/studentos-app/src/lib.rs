@@ -457,7 +457,12 @@ impl App {
         let label = match (label.map(str::trim).filter(|l| !l.is_empty()), &existing) {
             (Some(label), _) => label.to_string(),
             (None, Some(existing)) => existing.label.clone(),
-            (None, None) => display_path(&root),
+            // The folder's own name: short, and doesn't put the local path (user name) into
+            // labels that the MCP server shows to the AI app. The full path is in `config`.
+            (None, None) => root
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| display_path(&root)),
         };
         store.upsert_source(&SourceRecord {
             id: id.clone(),
