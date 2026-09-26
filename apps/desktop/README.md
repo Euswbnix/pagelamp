@@ -19,6 +19,10 @@ pnpm run dev:mock      # UI only, in the browser, with synthetic demo data (no R
 pnpm tauri dev         # the real desktop app (builds src-tauri and the Rust core)
 ```
 
+The desktop app bundles the `studentos` CLI as a sidecar (`src-tauri/binaries/`, built by
+`pnpm run build:sidecar`). Tauri builds it automatically before `tauri dev` / `tauri build`; on a
+fresh checkout run `pnpm run build:sidecar` once before `cargo clippy/test -p studentos-desktop`.
+
 Checks (all must pass before handing work over):
 
 ```bash

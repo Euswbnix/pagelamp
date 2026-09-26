@@ -5,7 +5,8 @@
     "title": "How it works",
     "background": "Your AI app starts {{product}} in the background when it needs it. There's nothing to keep open.",
     "local": "Your data stays on this computer until your AI app reads it to answer your question.",
-    "once": "You only need to set this up once for each app."
+    "once": "You only need to set this up once for each app.",
+    "moved": "If you move {{product}} to another folder, copy the setup here again — the path changes with it."
   },
   "clients": {
     "recommended": "Easiest to start with"
@@ -55,5 +56,10 @@
     "restart_client_after_change": "Quit and reopen the app after changing its config.",
     "custom_data_dir": "This setup includes STUDENTOS_HOME because {{product}} uses a custom data folder.",
     "generic_stdio_client": "Any other AI app that supports local (stdio) MCP servers works too: adapt the command, arguments and environment to its config format."
+  },
+  "quarantine": {
+    "title": "If macOS blocks {{product}}",
+    "body": "This beta isn't signed yet. If macOS stops {{product}} when your AI app starts it, run this once in Terminal:",
+    "copy": "Copy the Terminal command"
   }
 }

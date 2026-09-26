@@ -73,28 +73,31 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or_else(|| "unknown panic".to_string())
 }
 
-/// The `studentos` binary that AI apps should launch for MCP.
-///
-/// - Debug builds (`pnpm tauri dev`): the workspace build at `<repo>/target/debug/studentos`
-///   (run `cargo build -p studentos-cli` once).
-/// - Release builds: next to the app executable, where a Tauri `externalBin` sidecar is placed
-///   (bundling the sidecar is on the backlog).
+/// The `studentos` binary that AI apps launch for MCP: the file next to this app's executable,
+/// without a target-triple suffix. Release bundles ship it there as a Tauri sidecar
+/// (`scripts/build-sidecar.mjs`, macOS: `StudentOS.app/Contents/MacOS/studentos`); in development
+/// it is the workspace build in `target/debug` (`cargo build -p studentos-cli`).
 pub fn studentos_binary() -> PathBuf {
-    if cfg!(debug_assertions) {
-        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
-        let bin = repo.join("target/debug").join(exe_name());
-        return bin.canonicalize().unwrap_or(bin);
-    }
+    let name = format!("studentos{}", std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join(exe_name())))
-        .unwrap_or_else(|| PathBuf::from(exe_name()))
+        .map(|exe| exe.with_file_name(&name))
+        .unwrap_or_else(|_| PathBuf::from(name))
 }
 
-fn exe_name() -> &'static str {
-    if cfg!(windows) {
-        "studentos.exe"
-    } else {
-        "studentos"
+#[cfg(test)]
+mod tests {
+    use super::studentos_binary;
+
+    #[test]
+    fn the_mcp_binary_sits_next_to_the_app() {
+        let exe = std::env::current_exe().expect("current exe");
+        let bin = studentos_binary();
+        assert_eq!(bin.parent(), exe.parent());
+        let name = bin
+            .file_name()
+            .expect("file name")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(name, format!("studentos{}", std::env::consts::EXE_SUFFIX));
     }
 }

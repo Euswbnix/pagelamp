@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.studentos.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "node scripts/build-sidecar.mjs --dev && pnpm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm run build:sidecar && pnpm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -29,15 +29,27 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "StudentOS contributors",
+    "homepage": "https://github.com/Euswbnix/studentos",
     "category": "Education",
     "shortDescription": "Your courses, ready for the AI app you already use",
-    "copyright": "Apache-2.0",
+    "longDescription": "StudentOS keeps your course materials, weekly structure and deadlines on your computer and serves them over MCP to the AI app you already use (Claude Desktop, Claude Code, Codex). It never solves or submits assignments.",
+    "copyright": "© 2026 StudentOS contributors",
+    "license": "Apache-2.0",
+    "licenseFile": "../../../LICENSE",
+    "externalBin": ["binaries/studentos"],
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": null,
+      "minimumSystemVersion": "11.0"
+    }
   }
 }

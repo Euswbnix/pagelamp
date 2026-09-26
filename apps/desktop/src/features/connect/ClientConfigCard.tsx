@@ -4,9 +4,11 @@ import { useTranslation } from "react-i18next";
 import type { InstallKind, McpClientConfig } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { MAC_QUARANTINE_HINT } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { ClientNotes } from "./ClientNotes";
 import { InstallSteps } from "./InstallSteps";
+import { QuarantineHint } from "./QuarantineHint";
 
 const KIND_ICON: Record<InstallKind, LucideIcon> = {
   json_snippet: FileCode,
@@ -48,6 +50,7 @@ export function ClientConfigCard({ config, recommended = false }: ClientConfigCa
         <CardContent className="space-y-5">
           <ClientNotes notes={config.notes} codes={config.note_codes} />
           <InstallSteps config={config} />
+          {config.client === "claude_desktop" && MAC_QUARANTINE_HINT ? <QuarantineHint /> : null}
         </CardContent>
       </Card>
     </article>

@@ -21,7 +21,8 @@
     "gen:types": "node scripts/gen-types.mjs",
     "smoke": "node scripts/smoke-setup.mjs",
     "smoke:clean": "node scripts/smoke-setup.mjs --clean",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:sidecar": "node scripts/build-sidecar.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
