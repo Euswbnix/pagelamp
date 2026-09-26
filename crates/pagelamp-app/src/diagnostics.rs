@@ -307,9 +307,10 @@ fn names_of(course: &Course) -> impl Iterator<Item = String> {
     .flatten()
 }
 
-/// The remembered courses still within `ALIAS_RETENTION_DAYS` (expired ones are dropped on
-/// read, too). Also reads the file where versions before 0.1.0-beta.1 kept it (`logs/`).
-fn read_remembered(data_dir: &Path) -> RememberedCourses {
+/// The remembered courses still within `ALIAS_RETENTION_DAYS`, and whether expired entries
+/// were dropped (the file then needs rewriting). Also reads the file where versions before
+/// 0.1.0-beta.1 kept it (`logs/`).
+fn read_remembered(data_dir: &Path) -> (RememberedCourses, bool) {
     let read = |path: PathBuf| -> RememberedCourses {
         std::fs::read_to_string(path)
             .ok()
@@ -326,8 +327,10 @@ fn read_remembered(data_dir: &Path) -> RememberedCourses {
         entry.last_seen = entry.last_seen.max(old.last_seen);
     }
     let oldest = Local::now().date_naive() - TimeDelta::days(ALIAS_RETENTION_DAYS);
+    let before = remembered.courses.len();
     remembered.courses.retain(|_, c| c.last_seen >= oldest);
-    remembered
+    let expired = remembered.courses.len() != before;
+    (remembered, expired)
 }
 
 fn legacy_alias_path(data_dir: &Path) -> PathBuf {
@@ -338,8 +341,12 @@ fn legacy_alias_path(data_dir: &Path) -> PathBuf {
 /// before and after every source sync or removal. Writes only when something changed.
 pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::Result<()> {
     let today = Local::now().date_naive();
-    let before = read_remembered(data_dir);
-    let mut remembered = read_remembered(data_dir);
+    let (mut remembered, expired) = read_remembered(data_dir);
+    let unchanged = courses.iter().all(|course| {
+        remembered.courses.get(&course.id).is_some_and(|known| {
+            known.last_seen == today && names_of(course).all(|name| known.names.contains(&name))
+        })
+    });
     for course in courses {
         let entry = remembered
             .courses
@@ -353,9 +360,11 @@ pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::
     }
     let legacy = legacy_alias_path(data_dir);
     let path = paths::course_aliases_path_in(data_dir);
-    if remembered != before || !path.exists() || legacy.exists() {
+    // Expired entries must leave the file too (PRIVACY.md), even when nothing else changed.
+    if !unchanged || expired || !path.exists() || legacy.exists() {
         paths::create_private_dir_all(data_dir)?;
-        let temp = data_dir.join("course-aliases.json.tmp");
+        // Per process: two processes may remember at the same time.
+        let temp = data_dir.join(format!("course-aliases.json.{}.tmp", std::process::id()));
         let mut options = std::fs::OpenOptions::new();
         options.create(true).write(true).truncate(true);
         #[cfg(unix)]
@@ -374,7 +383,7 @@ fn course_names(data_dir: &Path) -> Vec<(Regex, String)> {
     let current = Store::open_read_only(&paths::db_path_in(data_dir))
         .and_then(|store| store.list_courses(true))
         .unwrap_or_default();
-    let mut remembered = read_remembered(data_dir).courses;
+    let mut remembered = read_remembered(data_dir).0.courses;
     let mut pairs: Vec<(String, String)> = Vec::new();
     let mut add = |names: &mut dyn Iterator<Item = String>, alias: &str| {
         pairs.extend(names.map(|name| (name, alias.to_string())));
@@ -391,6 +400,8 @@ fn course_names(data_dir: &Path) -> Vec<(Regex, String)> {
         add(&mut old.names.into_iter(), &alias);
     }
     let mut variants: Vec<(String, String)> = Vec::new();
+    // Names of digits and punctuation only ("2026", "101") would match timestamps and ids.
+    pairs.retain(|(name, _)| name.chars().any(char::is_alphabetic));
     for (name, alias) in pairs {
         let json = serde_json::to_string(&name).unwrap_or_default();
         let json = json.trim_matches('"').to_string();
@@ -425,9 +436,28 @@ const NOT_COURSE_PREFIXES: &[&str] = &[
 fn pseudonymise(text: &str, names: &[(Regex, String)]) -> String {
     let mut text = text.to_string();
     for (name, alias) in names {
-        if name.is_match(&text) {
-            text = name.replace_all(&text, regex::NoExpand(alias)).into_owned();
+        if !name.is_match(&text) {
+            continue;
         }
+        // A whole-word match only: where the name starts or ends with a word character, the
+        // text next to it must not be one ("Art" is not replaced inside "Started").
+        let mut out = String::with_capacity(text.len());
+        let mut last = 0;
+        for found in name.find_iter(&text) {
+            let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+            let (start, end) = (found.start(), found.end());
+            let inner_start = text[start..].chars().next();
+            let inner_end = text[..end].chars().next_back();
+            let outer_start = text[..start].chars().next_back();
+            let outer_end = text[end..].chars().next();
+            let whole =
+                !(word(inner_start) && word(outer_start)) && !(word(inner_end) && word(outer_end));
+            out.push_str(&text[last..start]);
+            out.push_str(if whole { alias } else { found.as_str() });
+            last = end;
+        }
+        out.push_str(&text[last..]);
+        text = out;
     }
     COURSE_CODE
         .replace_all(&text, |caps: &regex::Captures<'_>| {
@@ -616,6 +646,56 @@ mod tests {
         assert!(report.contains("synced Course 1"), "{report}");
         assert!(report.contains("- ical: not ok"), "{report}");
         assert!(report.contains("## Recent log"));
+    }
+
+    #[test]
+    fn short_or_numeric_course_names_never_mangle_other_words() {
+        let temp = tempfile::tempdir().unwrap();
+        seeded(temp.path());
+        let store = Store::open(&paths::db_path_in(temp.path())).unwrap();
+        for (dir, name) in [("Art", "Art"), ("2026", "2026")] {
+            store
+                .upsert_course(&CourseUpsert {
+                    id: format!("folder:x/course/{dir}"),
+                    source_id: "folder:x".into(),
+                    external_id: dir.into(),
+                    code: None,
+                    name: name.into(),
+                    term_start: None,
+                    term_end: None,
+                    url: None,
+                    syllabus_text: None,
+                })
+                .unwrap();
+        }
+        let names = course_names(temp.path());
+        let line = "2026-09-26T10:00:00Z Started the Art sync (Artwork, art.)";
+        let out = pseudonymise(line, &names);
+        assert!(
+            out.starts_with("2026-09-26T10:00:00Z Started the Course"),
+            "{out}"
+        );
+        assert!(out.contains("(Artwork, Course"), "{out}");
+    }
+
+    #[test]
+    fn expired_aliases_leave_the_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = paths::course_aliases_path_in(temp.path());
+        std::fs::write(
+            &path,
+            r#"{"courses":{"folder:x/course/OLD":{"names":["Old Demo Course"],"last_seen":"2000-01-01"}}}"#,
+        )
+        .unwrap();
+        remember_courses(temp.path(), &[]).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("Old Demo Course"), "{text}");
+        assert!(
+            std::fs::read_dir(temp.path())
+                .unwrap()
+                .flatten()
+                .all(|e| !e.file_name().to_string_lossy().ends_with(".tmp"))
+        );
     }
 
     #[test]

@@ -176,7 +176,6 @@ const OWN_ENTRIES: &[&str] = &[
     SYNC_LOCK_FILE,
     "logs",
     COURSE_ALIASES_FILE,
-    "course-aliases.json.tmp",
     ".DS_Store",
 ];
 
@@ -184,7 +183,10 @@ const OWN_ENTRIES: &[&str] = &[
 fn make_private_if_ours(dir: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let name = entry?.file_name();
-        if !OWN_ENTRIES.iter().any(|own| name == *own) {
+        let name = name.to_string_lossy();
+        // A course-aliases.json.<pid>.tmp left behind by an interrupted write is ours too.
+        let alias_temp = name.starts_with("course-aliases.json.") && name.ends_with(".tmp");
+        if !OWN_ENTRIES.contains(&name.as_ref()) && !alias_temp {
             return Ok(()); // shared with other things: not ours to lock down
         }
     }
