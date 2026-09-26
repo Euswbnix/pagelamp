@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
@@ -11,9 +12,8 @@ applyBrandTheme();
 document.title = brand.productName;
 if (API_MODE === "tauri") {
   // The native window title follows the brand too (permission: core:window:allow-set-title).
-  void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-    getCurrentWindow().setTitle(brand.productName),
-  );
+  // A static import: api/tauri.ts imports this module anyway, so a dynamic one splits nothing.
+  void getCurrentWindow().setTitle(brand.productName);
 }
 initI18n(useUiStore.getState().locale);
 
