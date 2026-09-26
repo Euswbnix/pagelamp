@@ -1,6 +1,6 @@
 [package]
-name = "weekmark-desktop"
-description = "Weekmark desktop app: a Tauri shell whose commands are thin wrappers over weekmark-app"
+name = "pagelamp-desktop"
+description = "PageLamp desktop app: a Tauri shell whose commands are thin wrappers over pagelamp-app"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,15 @@ license.workspace = true
 publish = false
 
 [lib]
-name = "weekmark_desktop_lib"
+name = "pagelamp_desktop_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
-weekmark-app.workspace = true
-weekmark-core.workspace = true
+pagelamp-app.workspace = true
+pagelamp-core.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -27,6 +27,6 @@ tauri-plugin-opener = "2.5"
 [dev-dependencies]
 # `test` enables tauri::test (mock runtime) for the IPC contract test.
 tauri = { version = "2.11", features = ["test"] }
-weekmark-core.workspace = true
+pagelamp-core.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

@@ -1,10 +1,10 @@
-//! Weekmark desktop shell.
+//! PageLamp desktop shell.
 //!
 //! ─── Tauri boundary ──────────────────────────────────────────────────────────────────────────
 //! The React UI (apps/desktop/src) calls the commands in `commands.rs` through
-//! `src/api/tauri.ts`. Each command is a thin wrapper over one `weekmark_app::App` method —
+//! `src/api/tauri.ts`. Each command is a thin wrapper over one `pagelamp_app::App` method —
 //! NO business logic lives here (docs/ARCHITECTURE.md §6). If the UI needs something new, it
-//! is added to the facade in crates/weekmark-app first.
+//! is added to the facade in crates/pagelamp-app first.
 //!
 //! Permissions granted to the webview are in `capabilities/default.json`: the folder picker
 //! (`dialog:allow-open`) and opening http(s) links. No shell and no filesystem access; the
@@ -53,12 +53,12 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
 pub fn run() {
     // First of all: log files, redacted stderr and the panic hook, so a failure while opening
     // the core below is logged and a crash is recorded for the next launch's notice.
-    weekmark_app::diagnostics::init(weekmark_app::diagnostics::ProcessKind::App, false);
+    pagelamp_app::diagnostics::init(pagelamp_app::diagnostics::ProcessKind::App, false);
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Backend::open());
     with_commands(builder)
         .run(tauri::generate_context!())
-        .expect("error while running the Weekmark desktop app");
+        .expect("error while running the PageLamp desktop app");
 }

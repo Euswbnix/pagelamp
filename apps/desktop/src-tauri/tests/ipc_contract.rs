@@ -9,13 +9,13 @@
 
 use std::sync::Arc;
 
+use pagelamp_app::App;
+use pagelamp_core::secrets::MemorySecrets;
+use pagelamp_desktop_lib::{Backend, with_commands};
 use serde_json::Value;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
 use tauri::webview::InvokeRequest;
-use weekmark_app::App;
-use weekmark_core::secrets::MemorySecrets;
-use weekmark_desktop_lib::{Backend, with_commands};
 
 /// Commands with real side effects on the machine running the tests.
 const SKIPPED: &[&str] = &["reveal_data_dir", "reveal_logs_dir"];

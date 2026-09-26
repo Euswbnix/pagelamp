@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    weekmark_desktop_lib::run()
+    pagelamp_desktop_lib::run()
 }

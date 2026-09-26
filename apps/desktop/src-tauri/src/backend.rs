@@ -1,12 +1,12 @@
-//! Owns the one `weekmark_app::App` instance and runs facade calls off the main thread.
+//! Owns the one `pagelamp_app::App` instance and runs facade calls off the main thread.
 
 use std::future::Future;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use weekmark_app::diagnostics::{expect_panics, expect_panics_in};
-use weekmark_app::{App, AppError, AppErrorKind};
+use pagelamp_app::diagnostics::{expect_panics, expect_panics_in};
+use pagelamp_app::{App, AppError, AppErrorKind};
 
 /// Managed Tauri state. If the core fails to open (e.g. the data folder isn't writable yet),
 /// the window still starts and every command returns that error, so the UI can explain it. A
@@ -65,7 +65,7 @@ impl Backend {
 
     /// Diagnostics must work even when the facade can't open: a locked or damaged database is
     /// exactly when a tester needs a report. With an open facade they use its data dir,
-    /// otherwise the default one (`weekmark_app::diagnostics`, resolved like `App::open`).
+    /// otherwise the default one (`pagelamp_app::diagnostics`, resolved like `App::open`).
     pub async fn diagnostics<T, F, G>(&self, with_app: F, without_app: G) -> Result<T, AppError>
     where
         T: Send + 'static,
@@ -102,7 +102,7 @@ impl Backend {
 fn open_guarded(open: fn() -> Result<App, AppError>) -> Result<App, AppError> {
     expect_panics(|| panic::catch_unwind(open)).unwrap_or_else(|payload| {
         Err(internal(format!(
-            "Weekmark core failed to start: {}",
+            "PageLamp core failed to start: {}",
             panic_message(&*payload)
         )))
     })
@@ -120,12 +120,12 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
         .unwrap_or_else(|| "unknown panic".to_string())
 }
 
-/// The `weekmark` binary that AI apps launch for MCP: the file next to this app's executable,
+/// The `pagelamp` binary that AI apps launch for MCP: the file next to this app's executable,
 /// without a target-triple suffix. Release bundles ship it there as a Tauri sidecar
-/// (`scripts/build-sidecar.mjs`, macOS: `Weekmark.app/Contents/MacOS/weekmark`); in development
-/// it is the workspace build in `target/debug` (`cargo build -p weekmark-cli`).
-pub fn weekmark_binary() -> PathBuf {
-    let name = format!("weekmark{}", std::env::consts::EXE_SUFFIX);
+/// (`scripts/build-sidecar.mjs`, macOS: `PageLamp.app/Contents/MacOS/pagelamp`); in development
+/// it is the workspace build in `target/debug` (`cargo build -p pagelamp-cli`).
+pub fn pagelamp_binary() -> PathBuf {
+    let name = format!("pagelamp{}", std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .map(|exe| exe.with_file_name(&name))
         .unwrap_or_else(|_| PathBuf::from(name))
@@ -135,9 +135,9 @@ pub fn weekmark_binary() -> PathBuf {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use weekmark_app::{App, AppError, AppErrorKind};
+    use pagelamp_app::{App, AppError, AppErrorKind};
 
-    use super::{Backend, weekmark_binary};
+    use super::{Backend, pagelamp_binary};
 
     #[test]
     fn a_failed_open_is_retried_and_success_is_kept() {
@@ -150,7 +150,7 @@ mod tests {
                 )),
                 1 => panic!("core crashed"),
                 _ => {
-                    let dir = std::env::temp_dir().join("weekmark-backend-retry-test");
+                    let dir = std::env::temp_dir().join("pagelamp-backend-retry-test");
                     App::open_at(dir)
                 }
             }
@@ -158,7 +158,7 @@ mod tests {
         let backend = Backend::open_with(flaky_open);
         assert_eq!(
             backend.app().unwrap_err().message,
-            "Weekmark core failed to start: core crashed"
+            "PageLamp core failed to start: core crashed"
         );
         assert!(backend.app().is_ok(), "third attempt opens");
         assert!(backend.app().is_ok());
@@ -194,13 +194,13 @@ mod tests {
     #[test]
     fn the_mcp_binary_sits_next_to_the_app() {
         let exe = std::env::current_exe().expect("current exe");
-        let bin = weekmark_binary();
+        let bin = pagelamp_binary();
         assert_eq!(bin.parent(), exe.parent());
         let name = bin
             .file_name()
             .expect("file name")
             .to_string_lossy()
             .into_owned();
-        assert_eq!(name, format!("weekmark{}", std::env::consts::EXE_SUFFIX));
+        assert_eq!(name, format!("pagelamp{}", std::env::consts::EXE_SUFFIX));
     }
 }

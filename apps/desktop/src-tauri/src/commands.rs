@@ -10,17 +10,17 @@
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
+use pagelamp_app::diagnostics::{self, CrashReport};
+use pagelamp_app::{
+    AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
+};
+use pagelamp_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
+use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 use tauri::State;
 use tauri::ipc::Channel;
 use tauri_plugin_opener::OpenerExt;
-use weekmark_app::diagnostics::{self, CrashReport};
-use weekmark_app::{
-    AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
-};
-use weekmark_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
-use weekmark_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 
-use crate::backend::{Backend, internal, weekmark_binary};
+use crate::backend::{Backend, internal, pagelamp_binary};
 
 type CmdResult<T> = Result<T, AppError>;
 
@@ -250,11 +250,11 @@ pub async fn set_course_hidden(
 
 // ----- "connect your AI app" ---------------------------------------------------------------------
 
-/// The binary path is decided here, never by the UI (see `backend::weekmark_binary`).
+/// The binary path is decided here, never by the UI (see `backend::pagelamp_binary`).
 #[tauri::command]
 pub async fn mcp_client_configs(backend: State<'_, Backend>) -> CmdResult<Vec<McpClientConfig>> {
     backend
-        .blocking(|app| Ok(app.mcp_client_configs(&weekmark_binary())))
+        .blocking(|app| Ok(app.mcp_client_configs(&pagelamp_binary())))
         .await
 }
 

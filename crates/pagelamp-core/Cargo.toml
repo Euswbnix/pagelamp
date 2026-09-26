@@ -1,0 +1,27 @@
+[package]
+name = "pagelamp-core"
+description = "PageLamp data model, local SQLite store, full-text search and course-timeline inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+rusqlite.workspace = true
+pagelamp-extract.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+directories = "6.0"
+keyring = "4.2"
+
+[dev-dependencies]
+tempfile.workspace = true

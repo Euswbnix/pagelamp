@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/weekmark-core",
-    "crates/weekmark-extract",
-    "crates/weekmark-canvas",
-    "crates/weekmark-local",
-    "crates/weekmark-mcp",
-    "crates/weekmark-app",
-    "apps/weekmark-cli",
+    "crates/pagelamp-core",
+    "crates/pagelamp-extract",
+    "crates/pagelamp-canvas",
+    "crates/pagelamp-local",
+    "crates/pagelamp-mcp",
+    "crates/pagelamp-app",
+    "apps/pagelamp-cli",
     "apps/desktop/src-tauri",
 ]
 
@@ -16,15 +16,15 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
-repository = "https://github.com/Euswbnix/weekmark"
+repository = "https://github.com/Euswbnix/pagelamp"
 
 [workspace.dependencies]
-weekmark-core = { path = "crates/weekmark-core" }
-weekmark-extract = { path = "crates/weekmark-extract" }
-weekmark-canvas = { path = "crates/weekmark-canvas" }
-weekmark-local = { path = "crates/weekmark-local" }
-weekmark-mcp = { path = "crates/weekmark-mcp" }
-weekmark-app = { path = "crates/weekmark-app" }
+pagelamp-core = { path = "crates/pagelamp-core" }
+pagelamp-extract = { path = "crates/pagelamp-extract" }
+pagelamp-canvas = { path = "crates/pagelamp-canvas" }
+pagelamp-local = { path = "crates/pagelamp-local" }
+pagelamp-mcp = { path = "crates/pagelamp-mcp" }
+pagelamp-app = { path = "crates/pagelamp-app" }
 
 anyhow = "1.0"
 thiserror = "2.0"

@@ -1,0 +1,27 @@
+[package]
+name = "pagelamp-cli"
+description = "The `pagelamp` command: sync your courses and serve them to your AI app over MCP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pagelamp"
+path = "src/main.rs"
+
+[dependencies]
+pagelamp-core.workspace = true
+pagelamp-app.workspace = true
+pagelamp-mcp.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+chrono.workspace = true
+serde.workspace = true
+rpassword = "7"
+
+[dev-dependencies]
+tempfile.workspace = true
