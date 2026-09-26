@@ -206,6 +206,18 @@ pub async fn set_course_term(
         .await
 }
 
+/// "Let my AI app read this course's materials" (ARCHITECTURE §3 rule 8).
+#[tauri::command]
+pub async fn set_course_ai_access(
+    backend: State<'_, Backend>,
+    course: String,
+    allowed: bool,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_course_ai_access(&course, allowed))
+        .await
+}
+
 #[tauri::command]
 pub async fn set_course_hidden(
     backend: State<'_, Backend>,

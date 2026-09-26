@@ -38,6 +38,7 @@ pub fn run() {
             commands::latest_study_plan,
             commands::set_course_policy,
             commands::set_course_term,
+            commands::set_course_ai_access,
             commands::set_course_hidden,
             commands::mcp_client_configs,
             commands::reveal_data_dir,

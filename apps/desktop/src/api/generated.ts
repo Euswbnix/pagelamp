@@ -3,6 +3,16 @@
 // Source of truth: crates/studentos-app/src/lib.rs, crates/studentos-core/src/{model,views}.rs
 
 /**
+ * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
+ * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
+ * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
+ * always available; only material text is withheld.
+ *
+ * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
+ * via the `definition` "AiMaterialsState".
+ */
+export type AiMaterialsState = "readable" | "turned_off" | "withheld_by_policy";
+/**
  * How the student is allowed to use generative AI in a course. Defaults to `Unknown`,
  * which consumers must treat like `LearningAid` for explanations but must never treat as
  * permission to produce graded work (UofT default: GenAI not permitted unless allowed).
@@ -120,6 +130,13 @@ export type SyncEvent =
       type: "source_finished";
     };
 /**
+ * Origin of a course's effective term dates.
+ *
+ * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
+ * via the `definition` "TermSource".
+ */
+export type TermSource = "user" | "synced" | "none";
+/**
  * Why `WeekMaterials.note` is set.
  *
  * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
@@ -132,6 +149,7 @@ export type WeekNoteKind = "current_week_unknown" | "outside_term" | "no_materia
  * (`$defs`), so json-schema-to-typescript emits one TS file with all of them.
  */
 export interface StudentOsAppTypes {
+  ai_materials_state: AiMaterialsState;
   ai_policy: AiPolicy;
   app_error: AppError;
   app_status: AppStatus;
@@ -147,6 +165,7 @@ export interface StudentOsAppTypes {
   sync_event: SyncEvent;
   sync_request: SyncRequest;
   sync_summary: SyncSummary;
+  term_source: TermSource;
   week_materials: WeekMaterials;
 }
 /**
@@ -215,7 +234,7 @@ export interface StoreCounts {
  */
 export interface SourceRecord {
   /**
-   * Non-secret configuration. Canvas: `{"base_url": "https://q.utoronto.ca"}`.
+   * Non-secret configuration. Canvas: `{"base_url": "https://lms.example.edu"}`.
    * Folder: `{"path": "/Users/me/Courses", "term_start": "2026-09-08"?}`.
    * Ical: `{}` (the URL itself is a secret).
    */
@@ -223,7 +242,7 @@ export interface SourceRecord {
     [k: string]: unknown;
   };
   /**
-   * e.g. `canvas:q.utoronto.ca`, `folder:3f2a…`, `ical:9b1c…`
+   * e.g. `canvas:lms.example.edu`, `folder:3f2a…`, `ical:9b1c…`
    */
   id: string;
   kind: SourceKind;
@@ -248,6 +267,10 @@ export interface SourceRecord {
  * via the `definition` "CourseOverview".
  */
 export interface CourseOverview {
+  /**
+   * Effective AI access to this course's material text (`Course::ai_materials`).
+   */
+  ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   course: Course;
   current_modules: Module[];
   last_synced_at?: string | null;
@@ -273,6 +296,11 @@ export interface CourseOverview {
  * via the `definition` "Course".
  */
 export interface Course {
+  /**
+   * The student's switch "Let my AI app read this course's materials" (default on).
+   * Use `ai_materials()` for the effective state — a `prohibited` policy wins over it.
+   */
+  ai_access: boolean;
   ai_policy: AiPolicy;
   /**
    * Free text the student recorded about the policy (e.g. a quote from the syllabus).
@@ -285,6 +313,11 @@ export interface Course {
   name: string;
   source_id: string;
   term_end?: string | null;
+  /**
+   * Where the effective term dates come from (`set_course_term(None, None)` clears the
+   * user override and falls back to the synced dates).
+   */
+  term_source: "user" | "synced" | "none";
   /**
    * Effective term start = user override if set, else synced value.
    */
@@ -387,6 +420,10 @@ export interface Deadline {
  * via the `definition` "CourseSummary".
  */
 export interface CourseSummary {
+  /**
+   * Effective AI access to this course's material text (`Course::ai_materials`).
+   */
+  ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   counts: CourseCounts;
   course: Course;
   /**
@@ -408,7 +445,8 @@ export interface CourseSummary {
  */
 export interface CourseCounts {
   /**
-   * Materials with searchable text.
+   * Materials whose text the student's AI app can read: indexed materials, but 0 unless
+   * the course's `ai_materials` state is `readable`.
    */
   indexed_materials: number;
   materials: number;
@@ -592,6 +630,10 @@ export interface SyncSummary {
  * via the `definition` "WeekMaterials".
  */
 export interface WeekMaterials {
+  /**
+   * Effective AI access to this course's material text (`Course::ai_materials`).
+   */
+  ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   /**
    * Every week that has at least one module or material (plus the current week), ascending —
    * drives the ‹ Week › switcher.
