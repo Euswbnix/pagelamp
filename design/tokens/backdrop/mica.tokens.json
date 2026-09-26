@@ -1,0 +1,13 @@
+{
+  "$description": "Backdrop modifier, context \"mica\" (Windows 11 build ≥ 22621 with a transparent window; data-backdrop=\"mica\"). backdrop-filter cannot see through transparent pixels, so glass gets a near-opaque tint.",
+  "color": {
+    "glass": {
+      "tint": { "$value": "{palette.mica.glass-tint}" }
+    }
+  },
+  "glass": {
+    "prominent": {
+      "accent-mix": { "$value": 0.96 }
+    }
+  }
+}

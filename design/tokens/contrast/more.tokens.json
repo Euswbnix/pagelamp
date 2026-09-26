@@ -1,0 +1,40 @@
+{
+  "$description": "Contrast modifier, context \"more\" (Increase Contrast; web: data-contrast=\"more\" or prefers-contrast: more). Colours alias the theme-dependent palette.ic.*; glass turns opaque with a text.primary outline; the lamp wash is replaced by lamp.rule (no wash override).",
+  "color": {
+    "accent": { "$value": "{palette.ic.accent}" },
+    "on-accent": { "$value": "{palette.ic.on-accent}" },
+    "surface": {
+      "content": { "$value": "{palette.ic.surface.content}" },
+      "raised": { "$value": "{palette.ic.surface.raised}" },
+      "sidebar": { "$value": "{palette.ic.surface.sidebar}" },
+      "popover": { "$value": "{palette.ic.surface.popover}" }
+    },
+    "text": {
+      "primary": { "$value": "{palette.ic.text.primary}" },
+      "secondary": { "$value": "{palette.ic.text.secondary}" },
+      "tertiary": { "$value": "{palette.ic.text.tertiary}" }
+    },
+    "rule": { "$value": "{palette.ic.rule}" },
+    "lamp": {
+      "rule": { "$value": "{palette.ic.lamp-rule}" }
+    },
+    "status": {
+      "success": { "$value": "{palette.ic.success}" },
+      "warning": { "$value": "{palette.ic.warning}" },
+      "danger": { "$value": "{palette.ic.danger}" }
+    },
+    "glass": {
+      "tint": { "$value": "{color.surface.popover}" },
+      "rim": { "$value": "{color.text.primary}" },
+      "edge": { "$value": "{color.text.primary}" }
+    },
+    "mica": {
+      "layer-fill": { "$value": "{palette.ic.mica-layer-fill}" }
+    }
+  },
+  "glass": {
+    "prominent": {
+      "accent-mix": { "$value": 1 }
+    }
+  }
+}

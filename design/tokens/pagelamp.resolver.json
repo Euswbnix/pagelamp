@@ -1,0 +1,153 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/resolver.json",
+  "version": "2025.10",
+  "name": "PageLamp",
+  "description": "PageLamp design tokens (docs/design/macos-shell.md §10). One base set plus five orthogonal modifiers; later entries in resolutionOrder win, so increased contrast and reduced transparency override the Mica backdrop. Modifier $extensions[\"dev.pagelamp\"].css tells gen-tokens.mjs how a context reaches CSS (a selector on <html>, optionally also a media query). The native Mac app resolves platform=macos, backdrop=none, transparency=auto and emits theme × contrast as the four NSAppearance variants.",
+  "sets": {
+    "base": {
+      "description": "Light theme, normal contrast, macOS, no backdrop, transparency auto.",
+      "sources": [
+        {
+          "$ref": "pagelamp.tokens.json"
+        }
+      ]
+    }
+  },
+  "modifiers": {
+    "theme": {
+      "description": "Light or dark appearance (Tauri: the .dark class on <html>; Mac: aqua / darkAqua).",
+      "contexts": {
+        "light": [],
+        "dark": [
+          {
+            "$ref": "theme/dark.tokens.json"
+          }
+        ]
+      },
+      "default": "light",
+      "$extensions": {
+        "dev.pagelamp": {
+          "css": {
+            "dark": {
+              "selector": ".dark"
+            }
+          }
+        }
+      }
+    },
+    "platform": {
+      "description": "Which platform the Tauri app runs on (data-platform on <html>). The native Mac app always resolves macos.",
+      "contexts": {
+        "macos": [],
+        "windows": [
+          {
+            "$ref": "platform/windows.tokens.json"
+          }
+        ],
+        "linux": [
+          {
+            "$ref": "platform/linux.tokens.json"
+          }
+        ]
+      },
+      "default": "macos",
+      "$extensions": {
+        "dev.pagelamp": {
+          "css": {
+            "windows": {
+              "selector": "[data-platform=\"windows\"]"
+            },
+            "linux": {
+              "selector": "[data-platform=\"linux\"]"
+            }
+          }
+        }
+      }
+    },
+    "backdrop": {
+      "description": "Window backdrop decided in Rust at startup: Mica on Windows 11 ≥ 22621, otherwise an opaque window.",
+      "contexts": {
+        "none": [],
+        "mica": [
+          {
+            "$ref": "backdrop/mica.tokens.json"
+          }
+        ]
+      },
+      "default": "none",
+      "$extensions": {
+        "dev.pagelamp": {
+          "css": {
+            "mica": {
+              "selector": "[data-backdrop=\"mica\"]"
+            }
+          }
+        }
+      }
+    },
+    "contrast": {
+      "description": "Normal or increased contrast (Mac: accessibilityHighContrastAqua / …DarkAqua; web: data-contrast=\"more\" or prefers-contrast: more).",
+      "contexts": {
+        "normal": [],
+        "more": [
+          {
+            "$ref": "contrast/more.tokens.json"
+          }
+        ]
+      },
+      "default": "normal",
+      "$extensions": {
+        "dev.pagelamp": {
+          "css": {
+            "more": {
+              "selector": "[data-contrast=\"more\"]",
+              "media": "(prefers-contrast: more)"
+            }
+          }
+        }
+      }
+    },
+    "transparency": {
+      "description": "Reduce Transparency (web: data-transparency=\"reduced\" or prefers-reduced-transparency: reduce; the in-app toggle exists because WebKitGTK lacks the media query). The Mac handles it in views (§7.2), not in colours.",
+      "contexts": {
+        "auto": [],
+        "reduced": [
+          {
+            "$ref": "transparency/reduced.tokens.json"
+          }
+        ]
+      },
+      "default": "auto",
+      "$extensions": {
+        "dev.pagelamp": {
+          "css": {
+            "reduced": {
+              "selector": "[data-transparency=\"reduced\"]",
+              "media": "(prefers-reduced-transparency: reduce)"
+            }
+          }
+        }
+      }
+    }
+  },
+  "resolutionOrder": [
+    {
+      "$ref": "#/sets/base"
+    },
+    {
+      "$ref": "#/modifiers/theme"
+    },
+    {
+      "$ref": "#/modifiers/platform"
+    },
+    {
+      "$ref": "#/modifiers/backdrop"
+    },
+    {
+      "$ref": "#/modifiers/contrast"
+    },
+    {
+      "$ref": "#/modifiers/transparency"
+    }
+  ]
+}
