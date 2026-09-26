@@ -799,7 +799,7 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
     Mock::given(method("GET"))
         .and(path("/api/v1/users/self"))
         .and(header("authorization", "Bearer demo-good-token"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"name": "Demo Student"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1, "name": "Demo Student"})))
         .mount(&canvas)
         .await;
     Mock::given(method("GET"))
@@ -864,7 +864,7 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
         .and(path("/api/v1/users/self"))
         .and(header("authorization", "Bearer demo-other-token"))
         .respond_with(
-            ResponseTemplate::new(200).set_body_json(json!({"name": "Other Demo Student"})),
+            ResponseTemplate::new(200).set_body_json(json!({"id": 2, "name": "Other Demo Student"})),
         )
         .mount(&canvas)
         .await;

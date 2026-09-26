@@ -60,6 +60,9 @@ impl std::fmt::Display for CanvasId {
 /// `GET /users/self`
 #[derive(Debug, Deserialize)]
 pub(crate) struct User {
+    /// Required: an answer without a user id is not Canvas (see `probe_error`).
+    #[allow(dead_code)]
+    pub id: CanvasId,
     #[serde(default, deserialize_with = "lenient")]
     pub name: Option<String>,
     #[serde(default, deserialize_with = "lenient")]

@@ -179,6 +179,13 @@ impl<T: CanvasTransport> Syncer<'_, T> {
     }
 
     pub(crate) async fn run(&self) -> Result<SyncReport, SourceError> {
+        // Same reading as when the source was added: a moved or redirecting Canvas says so.
+        self.step("Checking the Canvas token".into(), None, None);
+        let _user: json::User = self
+            .api
+            .get_one(Endpoint::UsersSelf)
+            .await
+            .map_err(crate::probe_error)?;
         self.run_inner().await.map_err(|err| {
             fatal(&err).unwrap_or_else(|| SourceError::other(format!("Canvas sync failed: {err}.")))
         })
@@ -186,8 +193,6 @@ impl<T: CanvasTransport> Syncer<'_, T> {
 
     async fn run_inner(&self) -> Result<SyncReport, CanvasError> {
         let mut report = SyncReport::default();
-        self.step("Checking the Canvas token".into(), None, None);
-        let _user: json::User = self.api.get_one(Endpoint::UsersSelf).await?;
 
         self.step("Listing courses".into(), None, None);
         let listing = self.api.get_all::<json::Course>(Endpoint::Courses).await?;

@@ -179,13 +179,14 @@ pub fn course_files_dir(files_dir: &Path, code: Option<&str>, external_id: &str)
     files_dir.join(sync::course_dir_name(code, external_id))
 }
 
-/// How a failed `/users/self` probe is reported. An answer that isn't Canvas's — a web page
-/// instead of JSON, a redirect (e.g. to a login page) or another 3xx/4xx status — means there
-/// is no Canvas at that address, not an internal error.
-fn probe_error(err: transport::CanvasError) -> SourceError {
+/// How a failed `/users/self` probe is reported (adding a source, and the first request of
+/// every sync). An answer that isn't Canvas's — a web page or JSON without a user id, a
+/// redirect (e.g. to a login page), a 403 or a "not authorized" 401, another 3xx/4xx
+/// status — means there is no Canvas at that address (or it moved), not an internal error.
+pub(crate) fn probe_error(err: transport::CanvasError) -> SourceError {
     use transport::CanvasError;
     match err {
-        CanvasError::BadResponse(_) => sync::no_canvas_here(),
+        CanvasError::BadResponse(_) | CanvasError::Forbidden => sync::no_canvas_here(),
         CanvasError::Http(status) if (300..500).contains(&status) => sync::no_canvas_here(),
         other => sync::required(other, "your Canvas account"),
     }
@@ -254,7 +255,11 @@ mod tests {
 
         let answers = [
             ResponseTemplate::new(200).set_body_string("<html>Demo University</html>"),
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"status": "ok"})),
             ResponseTemplate::new(302).insert_header("Location", "https://sso.example.edu/login"),
+            ResponseTemplate::new(403).set_body_string("Forbidden"),
+            ResponseTemplate::new(401)
+                .set_body_string(r#"{"status":"unauthorized","errors":[{"message":"user not authorized to perform that action"}]}"#),
             ResponseTemplate::new(405),
         ];
         for answer in answers {

@@ -451,6 +451,21 @@ async fn invalid_token_aborts_and_never_leaks() {
 }
 
 #[tokio::test]
+async fn a_canvas_that_moved_is_not_found_not_an_internal_error() {
+    let f = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", "https://sso.example.edu/login"),
+        )
+        .mount(&f.canvas)
+        .await;
+    let err = f.sync(&f.options(false)).await.unwrap_err();
+    assert_eq!(err.kind, SourceErrorKind::NotFound, "{}", err.message);
+    assert_eq!(f.canvas.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn throttling_backs_off_then_succeeds_or_gives_up() {
     let f = Fixture::new().await;
     Mock::given(method("GET"))
@@ -462,7 +477,8 @@ async fn throttling_backs_off_then_succeeds_or_gives_up() {
         .with_priority(1)
         .mount(&f.canvas)
         .await;
-    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
     let user: crate::json::User = f
         .api()
         .get_one(crate::endpoint::Endpoint::UsersSelf)
@@ -518,7 +534,8 @@ async fn forbidden_areas_warn_and_prevent_pruning() {
 #[tokio::test]
 async fn foreign_next_links_are_never_followed() {
     let f = Fixture::new().await;
-    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
     let evil = MockServer::start().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
@@ -662,7 +679,8 @@ fn sync_future_is_send() {
 // ----- regressions from the independent review (each scenario once lost data or leaked) -----
 
 async fn one_course(f: &Fixture, tabs: Value) {
-    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
     f.get(
         "/courses",
         json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"}]),
@@ -1319,7 +1337,8 @@ async fn debug_output_shows_requests_but_never_secrets() {
 #[tokio::test]
 async fn every_module_item_type_locked_items_and_embeds() {
     let f = Fixture::new().await;
-    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
     f.get(
         "/courses",
         json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"}]),
@@ -1455,7 +1474,8 @@ async fn every_module_item_type_locked_items_and_embeds() {
 #[tokio::test]
 async fn two_hundred_pages_paginate_and_are_skipped_when_unchanged() {
     let f = Fixture::new().await;
-    f.get("/users/self", json!({"name": "Demo Student"})).await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
     f.get(
         "/courses",
         json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"}]),
