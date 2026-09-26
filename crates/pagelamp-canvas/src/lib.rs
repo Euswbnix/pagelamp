@@ -157,11 +157,23 @@ pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
     let user: json::User = api
         .get_one(endpoint::Endpoint::UsersSelf)
         .await
-        .map_err(|e| sync::required(e, "your Canvas account"))?;
+        .map_err(probe_error)?;
     Ok(user
         .name
         .or(user.short_name)
         .unwrap_or_else(|| "Canvas user".into()))
+}
+
+/// How a failed `/users/self` probe is reported. An answer that isn't Canvas's — a web page
+/// instead of JSON, a redirect (e.g. to a login page) or another 3xx/4xx status — means there
+/// is no Canvas at that address, not an internal error.
+fn probe_error(err: transport::CanvasError) -> SourceError {
+    use transport::CanvasError;
+    match err {
+        CanvasError::BadResponse(_) => sync::no_canvas_here(),
+        CanvasError::Http(status) if (300..500).contains(&status) => sync::no_canvas_here(),
+        other => sync::required(other, "your Canvas account"),
+    }
 }
 
 /// Full sync of the active courses into the store at `db_path`. The source row must already
@@ -218,6 +230,46 @@ fn token_api(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn an_address_without_canvas_is_not_found_not_an_internal_error() {
+        use pagelamp_core::model::SourceErrorKind;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let answers = [
+            ResponseTemplate::new(200).set_body_string("<html>Demo University</html>"),
+            ResponseTemplate::new(302).insert_header("Location", "https://sso.example.edu/login"),
+            ResponseTemplate::new(405),
+        ];
+        for answer in answers {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/api/v1/users/self"))
+                .respond_with(answer)
+                .mount(&server)
+                .await;
+            let config = CanvasConfig {
+                base_url: server.uri(),
+                token: "demo-token".into(),
+            };
+            let err = check_token(&config).await.unwrap_err();
+            assert_eq!(err.kind, SourceErrorKind::NotFound, "{}", err.message);
+            assert!(err.message.contains("No Canvas"), "{}", err.message);
+        }
+        // A server error is not "no Canvas here".
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let config = CanvasConfig {
+            base_url: server.uri(),
+            token: "demo-token".into(),
+        };
+        let err = check_token(&config).await.unwrap_err();
+        assert_ne!(err.kind, SourceErrorKind::NotFound, "{}", err.message);
+    }
 
     #[test]
     fn base_urls_are_normalised() {

@@ -69,11 +69,14 @@ pub(crate) fn fatal(err: &CanvasError) -> Option<SourceError> {
 /// The first error of a call that must succeed (e.g. `/users/self`, the course list).
 pub(crate) fn required(err: CanvasError, what: &str) -> SourceError {
     fatal(&err).unwrap_or_else(|| match err {
-        CanvasError::NotFound => SourceError::not_found(
-            "No Canvas API was found at this address — check the Canvas URL.",
-        ),
+        CanvasError::NotFound => no_canvas_here(),
         other => SourceError::other(format!("Could not read {what} from Canvas: {other}.")),
     })
+}
+
+/// The Canvas address answered, but not with the Canvas API.
+pub(crate) fn no_canvas_here() -> SourceError {
+    SourceError::not_found("No Canvas API was found at this address — check the Canvas URL.")
 }
 
 /// Run a store job on the blocking pool with a fresh read-write `Store`.
