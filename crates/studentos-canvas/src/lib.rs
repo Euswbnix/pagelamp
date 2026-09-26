@@ -40,20 +40,32 @@
 //! announcements → `MaterialUpsert { kind: Announcement }` indexed via `ingest::index_html`;
 //! assignments/quizzes due dates + planner items → `Event`s.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use studentos_core::Store;
+use studentos_core::source::{ProgressFn, SourceError};
 
-#[derive(Clone, Debug)]
+/// Connection settings for token mode. `Debug` is implemented by hand so the token can never
+/// end up in logs.
+#[derive(Clone)]
 pub struct CanvasConfig {
-    /// e.g. "https://lms.example.edu" (no trailing slash, no /api/v1)
+    /// e.g. "https://lms.example.edu" (no trailing slash, no /api/v1); see `normalize_base_url`.
     pub base_url: String,
     pub token: String,
 }
 
+impl std::fmt::Debug for CanvasConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CanvasConfig")
+            .field("base_url", &self.base_url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SyncOptions {
-    /// Download files and index their text. When false, files are recorded as NotDownloaded.
+    /// Download files and index their text. When false (the default for Canvas — downloads
+    /// count as views, see crate docs), files are recorded as NotDownloaded.
     pub download_files: bool,
     /// Skip files larger than this (bytes). Default 50 MB.
     pub max_file_bytes: u64,
@@ -71,30 +83,39 @@ pub struct SyncReport {
     pub files_downloaded: usize,
     pub files_indexed: usize,
     pub events: usize,
-    /// Non-fatal problems (e.g. "CSC413: Files tab hidden, used module items only").
+    /// Non-fatal problems (e.g. "DEMO101: Files tab hidden, used module items only").
     pub warnings: Vec<String>,
 }
 
-/// Source id for a Canvas base URL: `canvas:<host>`.
+/// Validate and normalise a user-entered Canvas URL to `scheme://host[:port]` (no path,
+/// no trailing slash). https only, except http for localhost/127.0.0.1 (tests).
+pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
+    let _ = input;
+    todo!()
+}
+
+/// Source id for a (normalised) Canvas base URL: `canvas:<host>` (plus `:<port>` if any).
 pub fn source_id(base_url: &str) -> String {
     let _ = base_url;
     todo!()
 }
 
 /// Validate a token by calling `GET /api/v1/users/self`; returns the user's display name.
-pub async fn check_token(config: &CanvasConfig) -> anyhow::Result<String> {
+pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
     let _ = config;
     todo!()
 }
 
-/// Full sync of all active courses into the store. The source row must already exist.
-/// Store writes happen in short transactions per course; the caller records the sync
-/// outcome with `Store::record_sync`.
+/// Full sync of the active courses into the store at `db_path`. The source row must already
+/// exist. The DB is opened per unit of work inside `spawn_blocking` (the future is `Send`);
+/// store writes happen in short transactions per course; the caller records the outcome with
+/// `Store::record_sync`.
 pub async fn sync(
-    store: &Store,
+    db_path: &Path,
     config: &CanvasConfig,
     options: &SyncOptions,
-) -> anyhow::Result<SyncReport> {
-    let _ = (store, config, options);
+    progress: ProgressFn<'_>,
+) -> Result<SyncReport, SourceError> {
+    let _ = (db_path, config, options, progress);
     todo!()
 }
