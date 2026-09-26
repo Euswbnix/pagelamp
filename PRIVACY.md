@@ -34,7 +34,10 @@ dates and links. It never reads your university password.
 - **Hide a course** to keep it out of your AI app entirely: `pagelamp course hide <course>`.
 - **Remove a source** (`pagelamp sources remove <id>` or *Sources & sync → Remove*) deletes its
   courses from the database and its secret from the keychain.
-- **Delete everything:** quit PageLamp and delete the data folder above.
+- **Delete everything:** remove each source first (so its token or feed link is deleted from the
+  keychain), then quit PageLamp and delete the data folder above. The desktop app also keeps its
+  display preferences (theme, language, onboarding done) in its own app storage under
+  `dev.pagelamp.desktop`; they contain no course data.
 
 ## AI disclosure
 

@@ -119,12 +119,15 @@ impl App {
     // sync (progress streamed to the UI; desktop forwards via tauri::ipc::Channel)
     pub async fn sync_all(&self, req: SyncRequest, on_event: impl Fn(SyncEvent) + Send + Sync) -> Result<SyncSummary>;
     pub async fn sync_source(&self, source_id: &str, req: SyncRequest, on_event: impl Fn(SyncEvent) + Send + Sync) -> Result<SourceSyncResult>;
+    /// Explicit per-course "download & index files" for an LMS course (downloads can count as
+    /// "viewed" in Canvas module requirements, so never part of a normal sync).
+    pub async fn download_course_files(&self, course: &str, on_event: impl Fn(SyncEvent) + Send + Sync) -> Result<SourceSyncResult>;
 
     // read views (same functions back the MCP tools)
     pub fn list_courses(&self) -> Result<Vec<CourseSummary>>;           // course + timeline + counts + next deadline
     pub fn course_overview(&self, course: &str) -> Result<CourseOverview>;
     pub fn week_materials(&self, course: &str, week: Option<u32>) -> Result<WeekMaterials>;
-    pub fn list_deadlines(&self, course: Option<&str>, days_ahead: u32, days_back: u32) -> Result<Vec<Event>>;
+    pub fn list_deadlines(&self, course: Option<&str>, days_ahead: u32, days_back: u32) -> Result<Vec<Deadline>>;
     pub fn search(&self, query: &str, course: Option<&str>, limit: u32) -> Result<Vec<SearchHit>>;
     pub fn latest_study_plan(&self) -> Result<Option<StoredStudyPlan>>;
 
@@ -136,6 +139,14 @@ impl App {
 
     // "connect your AI app"
     pub fn mcp_client_configs(&self, pagelamp_binary: &Path) -> Vec<McpClientConfig>;
+    pub fn mcp_launch(&self, pagelamp_binary: &Path) -> McpLaunch;   // command + args + env
+
+    // diagnostics (logs, crash notice, doctor, redacted report)
+    pub fn logs_dir(&self) -> Result<PathBuf>;
+    pub fn last_crash(&self) -> Result<Option<CrashReport>>;
+    pub fn clear_last_crash(&self) -> Result<()>;
+    pub fn doctor(&self) -> Result<DoctorReport>;
+    pub fn diagnostic_report(&self) -> Result<String>;    // Markdown, redacted, course names → "Course N"
 }
 
 pub enum SyncEvent {            // serde tag = "type"
@@ -165,7 +176,9 @@ pub struct AppError {           // Serialize + JsonSchema
 pub struct McpClientConfig {    // one per client: claude_desktop | claude_code | codex | generic
     client, title, install_kind /* json_snippet | shell_command | toml_snippet */,
     config_path_hint: Option<String>, content: String, notes: Vec<String>,
+    note_codes: Vec<McpNoteCode>, launch: McpLaunch,
 }
+pub struct McpLaunch { command: String /* absolute path */, args: Vec<String>, env: BTreeMap<String, String> }
 ```
 
 Read-view types (`CourseSummary`, `CourseOverview`, `WeekMaterials`, `MaterialView`) live in
@@ -180,6 +193,16 @@ Additions agreed 2026-09-25 (after the first draft of this section):
 - `WeekMaterials.note_kind: Option<WeekNoteKind>` and `McpClientConfig.note_codes: Vec<McpNoteCode>`
   — stable codes next to the English text so the UI can localise.
 
+Additions agreed 2026-09-26 (release audit):
+- `McpNoteCode::RunFromTemporaryLocation`: the `pagelamp` binary runs from a path that won't last
+  (macOS disk image `/Volumes/…` or Gatekeeper `AppTranslocation` copy; Linux AppImage mount). The
+  UI shows it as a warning above the snippets ("move PageLamp to Applications first").
+- Versions: `[workspace.package] version` carries the pre-release (`0.1.0-beta.1`) and is what users
+  see (`--version`, About, reports, MCP `serverInfo`); `tauri.conf.json` keeps the numeric part
+  (MSI rejects pre-releases). `release.yml` refuses a tag that doesn't match.
+- `sync_all` syncs course-creating sources (folder, Canvas) before calendar feeds, and re-links
+  unmatched calendar events after each course-creating sync.
+
 ## 6. Desktop app (frontend) baseline
 
 - `apps/desktop`: pnpm, Vite, React 19, TypeScript strict, Tailwind v4 + shadcn/ui, lucide icons,
@@ -189,8 +212,9 @@ Additions agreed 2026-09-25 (after the first draft of this section):
   (synthetic "DEMO101 — Intro to Demo Studies" fixture), selected by `VITE_API=mock`, so the UI is
   built and tested in a plain browser before the Rust facade lands.
 - `src-tauri`: Tauri 2; commands = thin wrappers over `pagelamp_app::App`; no business logic;
-  no `shell:*` permissions granted to the frontend. Once it compiles, add
-  `"apps/desktop/src-tauri"` to root workspace `members` (the only root-file edit allowed).
+  no `shell:*` permissions granted to the frontend. It is a root workspace member, but `cargo`
+  can only build it after `pnpm run build && pnpm run build:sidecar`, so workspace-wide checks use
+  `--exclude pagelamp-desktop`.
 - Screens v0.1: Welcome/onboarding (pick source: Folder+Calendar feed [recommended, shareable] /
   Canvas token [personal use notice]) · Sources & Sync (status, progress, errors, token-expiry
   hints) · Courses (code, name, current week + confidence, next deadline, AI-policy badge) ·
@@ -216,8 +240,9 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 
 - Stay inside your owned paths (§2). Need a change elsewhere → message the owner (cc leader for
   contract changes in §3–§5).
-- Definition of done — backend: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-  `cargo test --workspace` green; frontend: `pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build`
+- Definition of done — backend: `cargo fmt --check`,
+  `cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings`,
+  `cargo test --workspace --exclude pagelamp-desktop` green; frontend: `pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build`
   green, `pnpm tauri dev` launches.
 
 ### Git workflow (user decision 2026-09-25: commit locally, push every 5 commits)

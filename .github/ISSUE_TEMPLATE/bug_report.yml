@@ -36,7 +36,7 @@ body:
     id: version
     attributes:
       label: PageLamp version and OS
-      placeholder: e.g. pagelamp 0.1.0-beta.1 on macOS 27 (Apple silicon)
+      placeholder: e.g. PageLamp 0.1.0-beta.1 on macOS 27 (Apple silicon) — see Settings → About or `pagelamp --version`
     validations:
       required: true
   - type: textarea
@@ -44,10 +44,9 @@ body:
     attributes:
       label: Diagnostic report
       description: |
-        Desktop app: Settings → Help & feedback → Copy diagnostic report.
-        Command line: `pagelamp report --out pagelamp-report.md` (attach the file).
-        Read it before pasting — it's already redacted, but it's your data.
-      render: markdown
+        Desktop app: Settings → Help & feedback → Copy diagnostic report…, then paste it here.
+        Command line: `pagelamp report --out pagelamp-report.md`, then drag the file into this box
+        or paste its contents. Read it first — it's already redacted, but it's your data.
   - type: textarea
     id: logs
     attributes:

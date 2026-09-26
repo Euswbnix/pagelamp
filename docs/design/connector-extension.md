@@ -3,7 +3,7 @@
 Status: **evaluated, not scheduled.** Recommendation below awaits the maintainer's decision.
 Evidence: 4 research tracks with adversarial fact-checks (Chromium source, canvas-lms source,
 Chrome/MDN/Instructure/UofT primary docs, unauthenticated probes of a real Canvas host) and a local
-prototype (`spikes/canvas-connector`, not committed) run against a mock Canvas: 58/58 checks, re-run
+prototype (`spikes/canvas-connector`, committed for reference) run against a mock Canvas: 58/58 checks, re-run
 3× by an independent reviewer.
 
 ## Idea

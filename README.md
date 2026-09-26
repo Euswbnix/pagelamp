@@ -34,9 +34,15 @@ or *"Make me a study plan for the next two weeks"* — without re-uploading anyt
 ### Desktop app (recommended)
 
 Download the installer for your system from the
-[latest release](https://github.com/Euswbnix/pagelamp/releases): `.dmg` for macOS (Apple silicon
-or Intel), `.msi`/`.exe` for Windows, `.AppImage`/`.deb` for Linux. The desktop app includes the
-`pagelamp` command-line tool your AI app needs.
+[latest release](https://github.com/Euswbnix/pagelamp/releases): `.dmg` for macOS
+(`aarch64` = Apple silicon, `x64` = Intel), `.msi`/`.exe` for Windows, `.deb`/`.rpm` for Linux.
+The desktop app includes the `pagelamp` command-line tool your AI app needs.
+
+- **macOS:** open the `.dmg` and **drag PageLamp into Applications**, then open it from there —
+  your AI app is pointed at that location, so don't run PageLamp from the disk image or Downloads.
+- **Linux:** the `.deb`/`.rpm` also install `pagelamp` as `/usr/bin/pagelamp`. The `.AppImage` runs
+  the app, but in this beta your AI app can't use the `pagelamp` inside it — use the `.deb`/`.rpm`
+  or the command-line archive for that.
 
 The beta is **not code-signed yet**:
 - **macOS:** open PageLamp once; when macOS says it can't verify the developer, go to
@@ -44,6 +50,11 @@ The beta is **not code-signed yet**:
   your AI app later can't start PageLamp, run once:
   `xattr -dr com.apple.quarantine /Applications/PageLamp.app`
 - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
+
+On macOS and Windows the desktop app doesn't add `pagelamp` to your PATH. You don't need it to
+connect your AI app — *Connect your AI app* shows the full path. To run the `pagelamp …` commands
+in this README on macOS, use the full path, for example
+`/Applications/PageLamp.app/Contents/MacOS/pagelamp doctor`.
 
 ### Command-line tool only
 
@@ -83,7 +94,9 @@ KWallet); course folders work without one.
        Week 1/ …
    ```
 
-   PDF, PowerPoint, Word, Jupyter notebooks, Markdown, text, HTML and source code are indexed.
+   PDF, PowerPoint (`.pptx`), Word (`.docx`), Jupyter notebooks, Markdown, text, HTML and source
+   code are indexed. Older `.ppt`/`.doc` files and scanned PDFs without a text layer are listed but
+   not searchable.
 
 2. **Add your calendar feed** for deadlines (optional): in Canvas, open **Calendar → Calendar Feed**
    and copy the link; other LMSs call it "export calendar" or iCal. It's private — PageLamp keeps it
@@ -98,8 +111,10 @@ KWallet); course folders work without one.
    pagelamp courses
    ```
 
-4. **Connect your AI app.** Open *Connect your AI app* in the desktop app, or run
-   `pagelamp mcp-config claude-desktop` (also `claude-code`, `codex`), and follow the printed steps.
+4. **Connect your AI app.** Open *Connect your AI app* in the desktop app, or, with the
+   command-line tool, run `pagelamp mcp-config claude-desktop` (also `claude-code`, `codex`), and
+   follow the steps. For Claude Desktop, **quit it completely before editing its config file** — it
+   rewrites the file while it runs.
    Then restart your AI app and ask: *"Using PageLamp, where is each of my courses this week?"*
 
 | AI app | How it connects | Plans |
@@ -114,14 +129,19 @@ Canvas personal access tokens are for **your own use only** — Canvas's API pol
 to ask other people to create them. Tokens expire (Canvas shows the maximum when you create one).
 If you share PageLamp with classmates, point them to the course folder + calendar feed setup.
 Canvas sync never downloads files unless you ask, because downloads can count as "viewed" in
-module requirements.
+module requirements. Sync does read course pages (only new or changed ones); that doesn't complete
+module requirements, but Canvas may list it in your course access report, just like opening a page
+in the Canvas mobile app.
 
 ### Course AI policies
 
 Many universities don't allow generative AI in a course unless the instructor permits it — check
 your syllabus. Record each course's policy in PageLamp (`pagelamp course policy CHEM101
-learning_aid`, or the course's *AI policy* tab). Your AI app sees it and adjusts; for courses marked
-`prohibited` ("No AI"), PageLamp doesn't share the course materials at all.
+learning-aid`, or the course's *AI policy* tab; values: `unknown`, `prohibited`, `learning-aid`,
+`allowed-with-citation`, `unrestricted`). Your AI app sees it and adjusts; for courses marked
+`prohibited` ("No AI"), PageLamp doesn't share the materials' text — titles, deadlines and your
+study plan stay available for planning. You can also turn sharing off for any course
+(`pagelamp course ai-access CHEM101 off`, or the switch on the course's *AI policy* tab).
 
 ## Troubleshooting and reporting problems
 
@@ -134,7 +154,8 @@ AI apps). `pagelamp report --out pagelamp-report.md` writes a report to attach t
 it first. Reports contain your PageLamp version, OS, setup checks and recent log lines; course names
 are replaced by "Course 1", "Course 2", and tokens, calendar-feed links and course text are removed.
 
-**Logs** stay on your computer, in the `logs/` folder of your data folder (kept for 7 days).
+**Logs** stay on your computer, in the `logs/` folder of your data folder (kept for 7 days) — open
+it with *Settings → Help & feedback → Open logs folder*, or see the path printed by `pagelamp doctor`.
 If your AI app can't reach PageLamp, also check the AI app's own logs — for Claude Desktop on macOS:
 `~/Library/Logs/Claude/mcp.log` and `~/Library/Logs/Claude/mcp-server-pagelamp.log`.
 
@@ -196,13 +217,16 @@ PageLamp（"读书灯"：为每门课点一盏读书灯）把你的课程——�
 不替你写作业；会提醒 AI 标注出处、以辅导为主，并遵守每门课的 AI 政策。
 
 **安装**：从 [Releases](https://github.com/Euswbnix/pagelamp/releases) 下载对应系统的安装包。
+macOS 请先把 PageLamp **拖进「应用程序」文件夹**再打开（AI 应用会指向这个位置，不要直接在磁盘映像或「下载」里运行）。
 测试版还没有代码签名：macOS 首次打开被拦后，到「系统设置 → 隐私与安全性」点「仍要打开」（不行再在终端运行 `xattr -dr com.apple.quarantine /Applications/PageLamp.app`）；Windows 出现 SmartScreen 时点「更多信息 → 仍要运行」。
 
 **上手**：
-1. 把课件放进一个文件夹，每门课一个子文件夹，里面可以按「Week 1」「Week 2」分周；
+1. 把课件放进一个文件夹，每门课一个子文件夹，里面可以按「Week 1」「Week 2」分周（支持 PDF、.pptx、.docx、Markdown、文本等；旧版 .ppt/.doc 和扫描版 PDF 只列出、不能搜索）；
 2. （可选）在 Canvas 的 **Calendar → Calendar Feed** 复制日历订阅链接，用来导入截止日期；
 3. 在桌面应用的引导页添加文件夹和日历订阅并同步；
-4. 打开「连接你的 AI 应用」，按提示把 PageLamp 加到 Claude Desktop 等应用里，重启后问：「用 PageLamp 看看我这周各门课在讲什么？」
+4. 打开「连接 AI 应用」，按提示把 PageLamp 加到 Claude Desktop 等应用里（改 Claude Desktop 配置前要先**完全退出** Claude Desktop），重新打开后问：「用 PageLamp 看看我这周各门课在讲什么？」
+
+**遇到问题**：在「设置 → 帮助与反馈 → 复制诊断报告…」先查看再复制报告（课程名已替换为 Course 1、Course 2，令牌和日历链接已去除），贴到 [GitHub issue](https://github.com/Euswbnix/pagelamp/issues/new/choose)。不要贴令牌、日历订阅链接或课件。
 
 **关于 Canvas 令牌**：个人访问令牌仅供你本人使用，不要让同学生成令牌填进来；推荐给同学时请用「课程文件夹 + 日历订阅」方式。
 

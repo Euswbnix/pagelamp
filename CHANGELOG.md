@@ -8,14 +8,14 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 First public beta.
 
 ### Added
-- Local course knowledge base (SQLite + full-text search) with text extraction for PDF, PowerPoint,
-  Word, Jupyter notebooks, Markdown, HTML, plain text and source code; citations point to page,
+- Local course knowledge base (SQLite + full-text search) with text extraction for PDF, PowerPoint
+  (.pptx), Word (.docx), Jupyter notebooks, Markdown, HTML, plain text and source code; citations point to page,
   slide, cell or section.
 - Sources: course folder (one sub-folder per course, week folders, optional `course.toml`),
   calendar feed (iCal/webcal, e.g. Canvas Calendar Feed), and Canvas with a personal access token
   (read-only; personal use only; files downloaded only on request).
 - "Which week is this course in" inference with confidence and evidence.
-- MCP server (`pagelamp mcp`) with 10 read-only tools plus `save_study_plan`, and the
+- MCP server (`pagelamp mcp`) with 9 read-only tools plus `save_study_plan` (saves only to your local database), and the
   `weekly_review`, `catch_up` and `study_plan` prompts, for Claude Desktop, ChatGPT desktop /
   Codex and Claude Code.
 - Per-course AI policy and AI-access switch; material text is withheld for "No AI" courses.
@@ -26,3 +26,9 @@ First public beta.
 - Builds are not code-signed yet (see the README for first-launch steps).
 - No reminders/notifications yet (planned for v0.2).
 - Canvas access uses a personal token until an institution-approved sign-in is available.
+- On macOS and Windows the desktop app doesn't put `pagelamp` on your PATH (use the full path shown
+  in *Connect your AI app*); the Linux `.AppImage` can't serve your AI app — use the `.deb`/`.rpm`.
+- Older `.ppt`/`.doc` files and scanned PDFs (no text layer) are listed but not searchable.
+- Windows and Linux builds are x86_64 only.
+- Text extraction runs in the sync process; a deliberately malformed file can use a lot of memory
+  (an isolated extraction worker is planned for v0.2).

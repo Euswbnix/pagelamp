@@ -25,8 +25,8 @@ Thanks for helping! Bug reports, ideas, docs fixes and code are all welcome.
 ```bash
 # Rust workspace (core, sources, MCP server, CLI)
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings
+cargo test --workspace --exclude pagelamp-desktop
 
 # Desktop app
 cd apps/desktop
@@ -35,6 +35,9 @@ pnpm run dev:mock        # UI in the browser with synthetic data
 pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build
 pnpm tauri dev           # the real app
 pnpm run smoke           # real app against a throw-away synthetic course folder
+# The desktop crate needs the built frontend and the bundled CLI before cargo can check it:
+pnpm run build && pnpm run build:sidecar
+cargo clippy -p pagelamp-desktop --all-targets -- -D warnings && cargo test -p pagelamp-desktop
 ```
 
 Try the MCP server without touching your real data:
