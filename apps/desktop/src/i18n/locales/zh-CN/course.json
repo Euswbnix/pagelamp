@@ -42,7 +42,6 @@
     "setTermDates": "设置学期日期",
     "modules": "模块",
     "materials": "课程资料",
-    "summary": "共 {{total}} 份资料，你的 AI 应用能读取其中 {{readable}} 份",
     "sections_one": "{{count}} 个部分",
     "sections_other": "{{count}} 个部分",
     "readableSections_one": "AI 应用可以读取，共 {{count}} 个部分",
@@ -99,7 +98,7 @@
   },
   "policy": {
     "title": "这门课可以怎样使用 AI？",
-    "explanation": "你的 AI 应用会看到这项设置，并据此调整帮助你的方式：设为“{{prohibited}}”或“{{unknown}}”时，它只会讲解课程概念。",
+    "explanation": "你的 AI 应用会看到这项设置：设为“{{prohibited}}”时，它仍能帮你按截止日期安排学习，但不会读取这门课的资料；设为“{{unknown}}”时，它只会讲解概念。",
     "noteLabel": "粘贴课程大纲里的相关规定（可选）",
     "noteHelp": "你的 AI 应用也会看到这段文字，并按原文要求来帮你。",
     "unsaved": "有未保存的更改",
@@ -113,5 +112,16 @@
     "hideDescription": "隐藏的课程不会出现在课程列表里，你的 AI 应用也看不到它。",
     "hiddenToast": "已隐藏 {{course}}，你的 AI 应用不会再看到它。",
     "shownToast": "{{course}} 已重新显示在课程列表中。"
+  },
+  "aiAccess": {
+    "title": "课程资料",
+    "label": "允许 AI 应用读取这门课的资料",
+    "note": {
+      "readable": "你问到这门课时，AI 应用可以读取它的资料。",
+      "turned_off": "AI 应用仍能看到截止日期和课程结构，但看不到资料内容。",
+      "withheld_by_policy": "你把这门课标记为“禁止使用 AI”，所以它的资料不会共享给 AI 应用。如需共享，请修改上面的 AI 使用规定。"
+    },
+    "nowOn": "已允许 AI 应用读取这门课的资料",
+    "nowOff": "AI 应用将不再读取这门课的资料"
   }
 }

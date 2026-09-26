@@ -69,6 +69,43 @@ describe("CoursesPage — course list", () => {
     expect(within(list).getAllByRole("link").at(-1)?.textContent).toMatch(/^DEMO099/);
   });
 
+  it("shows each course's AI access to materials, with icon and text", async () => {
+    const api = mockApi();
+    await api.setCourseAiAccess("folder:demo-courses/course/DEMO101", false);
+    renderRoute("/courses", { api });
+    const list = await coursesRegion();
+
+    expect(
+      within(card(list, "DEMO101")).getByText("AI access to materials is off"),
+    ).toBeInTheDocument();
+    expect(
+      within(card(list, "DEMO205")).getByText("4 of 5 materials readable by your AI app"),
+    ).toBeInTheDocument();
+    // DEMO310 is a "No AI" course: its materials are withheld whatever the switch says.
+    expect(
+      within(card(list, "DEMO310")).getByText("Materials not shared (No AI course)"),
+    ).toBeInTheDocument();
+  });
+
+  it("puts a hidden course back in the list from its card", async () => {
+    useUiStore.setState({ showHiddenCourses: true });
+    const { user, api } = renderRoute("/courses");
+    const setHidden = vi.spyOn(api, "setCourseHidden");
+    const list = await coursesRegion();
+    const hidden = card(list, "DEMO099");
+    // The action is a sibling of the card's link, not nested inside it.
+    const show = within(hidden).getByRole("button", { name: "Show in course list" });
+    expect(show.closest("a")).toBeNull();
+
+    await user.click(show);
+    expect(setHidden).toHaveBeenCalledWith("canvas:canvas.demo.test/course/99", false);
+    expect(await screen.findByText("DEMO099 is back in your course list")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(list).getByRole("link", { name: /^DEMO099\b/ })).toHaveFocus(),
+    );
+    expect(within(card(list, "DEMO099")).queryByText("Hidden")).not.toBeInTheDocument();
+  });
+
   it("opens a course's page when its card is clicked", async () => {
     const { user, router } = renderRoute("/courses");
     const list = await coursesRegion();

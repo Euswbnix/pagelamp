@@ -61,7 +61,7 @@ export function CourseTabs({ overview }: { overview: CourseOverview }) {
         <DeadlinesTab courseId={course.id} />
       </TabsContent>
       <TabsContent value="policy" className={PANEL} forceMount hidden={tab !== "policy"}>
-        <PolicyTab course={course} />
+        <PolicyTab course={course} aiMaterials={overview.ai_materials} />
       </TabsContent>
       <TabsContent value="settings" className={PANEL}>
         <SettingsTab course={course} />

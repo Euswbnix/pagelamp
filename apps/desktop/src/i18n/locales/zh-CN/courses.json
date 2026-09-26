@@ -57,14 +57,13 @@
   "card": {
     "next": "下一项：{{title}} · {{when}}",
     "noDeadlines": "近期没有截止日期",
-    "readable_one": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
-    "readable_other": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
-    "noFiles": "还没有资料",
     "setPolicy": "去设置",
     "setTerm": "设置开学日期后就能确定周次",
     "synced": "{{source}} · {{when}}同步",
     "notSynced": "{{source}} · 还没有同步过",
-    "hidden": "已隐藏"
+    "hidden": "已隐藏",
+    "showInList": "在课程列表中显示",
+    "shownAgain": "{{course}} 已重新显示在课程列表中"
   },
   "empty": {
     "title": "还没有课程",

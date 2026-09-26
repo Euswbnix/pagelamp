@@ -18,11 +18,31 @@ const STYLE: Record<TextStatus, { icon: LucideIcon; className: string }> = {
   error: { icon: CircleAlert, className: "text-warning" },
 };
 
-/** Whether the AI app can read a material: icon + text, never colour alone. */
-export function TextStatusLabel({ status, chunks }: { status: TextStatus; chunks: number }) {
+/**
+ * Whether the AI app can read a material: icon + text, never colour alone. `aiReadable` is false
+ * when the course's materials are withheld from the AI app (switch off or "No AI"); an indexed
+ * material then only shows its size, without the "readable" claim.
+ */
+export function TextStatusLabel({
+  status,
+  chunks,
+  aiReadable,
+}: {
+  status: TextStatus;
+  chunks: number;
+  aiReadable: boolean;
+}) {
   const { t } = useTranslation("course");
   const { t: tc } = useTranslation();
   const { icon: Icon, className } = STYLE[status];
+  if (status === "ok" && !aiReadable) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Icon className="size-3.5 shrink-0" aria-hidden />
+        {t("week.sections", { count: chunks })}
+      </span>
+    );
+  }
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}>
       <Icon className="size-3.5 shrink-0" aria-hidden />

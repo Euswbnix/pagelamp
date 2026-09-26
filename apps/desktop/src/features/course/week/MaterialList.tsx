@@ -1,7 +1,8 @@
 import { BookMarked, FileText, Link2, type LucideIcon, Megaphone, StickyNote } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { MaterialKind, MaterialView } from "@/api/types";
+import type { AiMaterialsState, MaterialKind, MaterialView } from "@/api/types";
+import { AiMaterialsStatus } from "@/components/common/AiMaterialsStatus";
 import { ExternalLink } from "@/components/common/ExternalLink";
 import { formatDay } from "@/lib/format";
 import { isHttpUrl } from "@/lib/url";
@@ -15,8 +16,14 @@ const MATERIAL_ICON: Record<MaterialKind, LucideIcon> = {
   external_link: Link2,
 };
 
-/** Materials of one week, with a "4 of 6 readable by your AI app" summary. */
-export function MaterialList({ materials }: { materials: MaterialView[] }) {
+/** Materials of one week, with a "4 of 6 materials readable by your AI app" line. */
+export function MaterialList({
+  materials,
+  aiMaterials,
+}: {
+  materials: MaterialView[];
+  aiMaterials: AiMaterialsState;
+}) {
   const { t } = useTranslation("course");
   const headingId = useId();
   const readable = materials.filter((m) => m.text_status === "ok").length;
@@ -26,20 +33,27 @@ export function MaterialList({ materials }: { materials: MaterialView[] }) {
         <h3 id={headingId} className="text-sm font-medium text-muted-foreground">
           {t("week.materials")}
         </h3>
-        <p className="text-sm text-muted-foreground">
-          {t("week.summary", { readable, total: materials.length })}
-        </p>
+        <AiMaterialsStatus
+          state={aiMaterials}
+          indexed={readable}
+          total={materials.length}
+          className="text-sm text-muted-foreground"
+        />
       </div>
       <ul className="divide-y rounded-lg border bg-card">
         {materials.map((material) => (
-          <MaterialRow key={material.id} material={material} />
+          <MaterialRow
+            key={material.id}
+            material={material}
+            aiReadable={aiMaterials === "readable"}
+          />
         ))}
       </ul>
     </section>
   );
 }
 
-function MaterialRow({ material }: { material: MaterialView }) {
+function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReadable: boolean }) {
   const { t, i18n } = useTranslation("course");
   const { t: tc } = useTranslation();
   const Icon = MATERIAL_ICON[material.kind];
@@ -66,7 +80,11 @@ function MaterialRow({ material }: { material: MaterialView }) {
         <p className="text-xs text-muted-foreground">{meta.join(" · ")}</p>
       </div>
       <div className="flex max-w-[45%] shrink-0 flex-col items-end gap-0.5 text-right">
-        <TextStatusLabel status={material.text_status} chunks={material.chunk_count} />
+        <TextStatusLabel
+          status={material.text_status}
+          chunks={material.chunk_count}
+          aiReadable={aiReadable}
+        />
         {material.text_error ? (
           <p className="text-xs text-muted-foreground">{material.text_error}</p>
         ) : null}

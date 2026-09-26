@@ -3,14 +3,14 @@ import {
   CalendarDays,
   ChevronRight,
   EyeOff,
-  FileText,
   type LucideIcon,
   TriangleAlert,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { CourseSummary, SourceErrorKind } from "@/api/types";
+import { AiMaterialsStatus } from "@/components/common/AiMaterialsStatus";
 import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { WeekLabel } from "@/components/common/WeekLabel";
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { deadlineTime } from "./lib/thisWeek";
+import { ShowInListButton } from "./ShowInListButton";
 
 interface CourseCardProps {
   summary: CourseSummary;
@@ -37,6 +38,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
   const { course, timeline, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
   const weekUnknown = timeline.current_week == null && !timeline.outside_term;
+  const linkRef = useRef<HTMLAnchorElement>(null);
 
   return (
     <article
@@ -49,6 +51,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
       <div className="flex items-start justify-between gap-3">
         <h3 className="min-w-0">
           <Link
+            ref={linkRef}
             to={paths.course(course.id)}
             className="outline-none after:absolute after:inset-0 after:rounded-xl"
           >
@@ -88,13 +91,13 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
             <span className="text-muted-foreground">{t("card.noDeadlines")}</span>
           )}
         </Fact>
-        <Fact icon={FileText}>
-          {counts.materials > 0 ? (
-            t("card.readable", { indexed: counts.indexed_materials, count: counts.materials })
-          ) : (
-            <span className="text-muted-foreground">{t("card.noFiles")}</span>
-          )}
-        </Fact>
+        <li>
+          <AiMaterialsStatus
+            state={summary.ai_materials}
+            indexed={counts.indexed_materials}
+            total={counts.materials}
+          />
+        </li>
       </ul>
 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
@@ -115,10 +118,17 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
           </span>
         ) : null}
         {course.hidden ? (
-          <Badge variant="outline">
-            <EyeOff aria-hidden />
-            {t("card.hidden")}
-          </Badge>
+          <>
+            <Badge variant="outline">
+              <EyeOff aria-hidden />
+              {t("card.hidden")}
+            </Badge>
+            <ShowInListButton
+              courseId={course.id}
+              courseName={course.code ?? course.name}
+              linkRef={linkRef}
+            />
+          </>
         ) : null}
       </div>
     </article>

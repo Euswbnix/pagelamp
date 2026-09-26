@@ -3,7 +3,7 @@ import { type FormEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useSetCoursePolicy } from "@/api/queries";
-import { AI_POLICIES, type AiPolicy, type Course } from "@/api/types";
+import { AI_POLICIES, type AiMaterialsState, type AiPolicy, type Course } from "@/api/types";
 import { brand, localized } from "@/brand";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,16 +11,30 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useApiErrorText } from "@/lib/useApiErrorText";
+import { AiAccessSection } from "./AiAccessSection";
 import { PolicyOption } from "./PolicyOption";
 
 function isAiPolicy(value: string): value is AiPolicy {
   return AI_POLICIES.includes(value as AiPolicy);
 }
 
-/** The course's AI-use rule, which the student's AI app reads and follows. */
-export function PolicyTab({ course }: { course: Course }) {
-  // Re-create the form (fresh draft) whenever the saved policy changes.
-  return <PolicyForm key={`${course.ai_policy}|${course.ai_policy_note ?? ""}`} course={course} />;
+/**
+ * The course's AI-use rule, which the student's AI app reads and follows, and whether the AI app
+ * may read the course's materials at all.
+ */
+export function PolicyTab({
+  course,
+  aiMaterials,
+}: {
+  course: Course;
+  aiMaterials: AiMaterialsState;
+}) {
+  return (
+    <div className="space-y-8">
+      <PolicyForm course={course} />
+      <AiAccessSection course={course} state={aiMaterials} />
+    </div>
+  );
 }
 
 function PolicyForm({ course }: { course: Course }) {
@@ -32,6 +46,15 @@ function PolicyForm({ course }: { course: Course }) {
   const [policy, setPolicy] = useState<AiPolicy>(course.ai_policy);
   const [note, setNote] = useState(savedNote);
   const mutation = useSetCoursePolicy();
+
+  // When the saved policy changes (after saving), start the draft again from it. Done here
+  // rather than by re-keying the form, so keyboard focus stays on the Save button.
+  const [shown, setShown] = useState({ policy: course.ai_policy, note: savedNote });
+  if (shown.policy !== course.ai_policy || shown.note !== savedNote) {
+    setShown({ policy: course.ai_policy, note: savedNote });
+    setPolicy(course.ai_policy);
+    setNote(savedNote);
+  }
 
   const changed = policy !== course.ai_policy || note.trim() !== savedNote.trim();
 
@@ -49,7 +72,7 @@ function PolicyForm({ course }: { course: Course }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    // mutateAsync: the form re-mounts when the saved policy changes (see `key` above).
+    if (!changed || mutation.isPending) return;
     try {
       await mutation.mutateAsync({ courseId: course.id, policy, note: note.trim() || null });
       toast.success(t("policy.saved"));
@@ -102,11 +125,25 @@ function PolicyForm({ course }: { course: Course }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={!changed || mutation.isPending}>
+        {/* aria-disabled keeps focus on the button after saving (disabled would drop it). */}
+        <Button
+          type="submit"
+          aria-disabled={!changed || mutation.isPending}
+          className="aria-disabled:opacity-50"
+        >
           {mutation.isPending ? tc("actions.saving") : t("policy.save")}
         </Button>
         {changed ? (
-          <Button type="button" variant="ghost" onClick={discard} disabled={mutation.isPending}>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              discard();
+              // The button disappears once nothing is changed; keep focus on the form.
+              document.getElementById(`${ids.options}-${course.ai_policy}`)?.focus();
+            }}
+            disabled={mutation.isPending}
+          >
             {t("policy.discard")}
           </Button>
         ) : null}

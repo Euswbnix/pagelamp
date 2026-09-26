@@ -42,7 +42,6 @@
     "setTermDates": "Set term dates",
     "modules": "Modules",
     "materials": "Materials",
-    "summary": "{{readable}} of {{total}} readable by your AI app",
     "sections_one": "{{count}} section",
     "sections_other": "{{count}} sections",
     "readableSections_one": "Readable by your AI app, {{count}} section",
@@ -99,7 +98,7 @@
   },
   "policy": {
     "title": "How can you use AI in this course?",
-    "explanation": "Your AI app sees this setting and adjusts how it helps: with “{{prohibited}}” or “{{unknown}}”, it sticks to explaining course concepts.",
+    "explanation": "Your AI app sees this setting. With “{{prohibited}}”, it can still help you plan around deadlines, but it won't read this course's materials. With “{{unknown}}”, it sticks to explaining concepts.",
     "noteLabel": "Paste the rule from your syllabus (optional)",
     "noteHelp": "Your AI app sees this note too, so it can follow the exact wording.",
     "unsaved": "Unsaved changes",
@@ -113,5 +112,16 @@
     "hideDescription": "Hidden courses are skipped in your course list and never shown to your AI app.",
     "hiddenToast": "{{course}} is hidden. Your AI app won't see it.",
     "shownToast": "{{course}} is back in your course list."
+  },
+  "aiAccess": {
+    "title": "Course materials",
+    "label": "Let my AI app read this course's materials",
+    "note": {
+      "readable": "When you ask about this course, your AI app can read its materials.",
+      "turned_off": "Your AI app can still see deadlines and course structure, but not the materials.",
+      "withheld_by_policy": "You marked this course “No AI”, so its materials aren't shared with your AI app. Change the AI policy to share them."
+    },
+    "nowOn": "Your AI app can now read this course's materials",
+    "nowOff": "Your AI app will no longer read this course's materials"
   }
 }

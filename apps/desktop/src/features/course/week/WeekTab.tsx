@@ -107,7 +107,7 @@ function WeekView({
       ) : null}
       {data.modules.length > 0 ? <ModuleList modules={data.modules} /> : null}
       {data.materials.length > 0 ? (
-        <MaterialList materials={data.materials} />
+        <MaterialList materials={data.materials} aiMaterials={data.ai_materials} />
       ) : (
         <EmptyWeek week={week} />
       )}

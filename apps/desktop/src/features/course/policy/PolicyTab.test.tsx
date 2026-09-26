@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { brand, localized } from "@/brand";
-import { DEMO101, DEMO205, openCourse } from "../testing";
+import { DEMO101, DEMO205, DEMO310, openCourse } from "../testing";
 
 const NOTE = "Syllabus section 4: AI may be used to review material only.";
 
@@ -22,8 +22,11 @@ describe("AI policy tab", () => {
       "No generative AI for this course's assessed work.",
     );
     expect(screen.getByText(localized(brand.aiPolicyHint, "en"))).toBeInTheDocument();
-    expect(screen.getByText(/it sticks to explaining course concepts/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save AI policy" })).toBeDisabled();
+    expect(screen.getByText(/it won't read this course's materials/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI policy" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("saves a new policy with a note and updates the header badge", async () => {
@@ -43,7 +46,9 @@ describe("AI policy tab", () => {
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Learning aid only" })).toBeChecked();
     expect(screen.getByLabelText("Paste the rule from your syllabus (optional)")).toHaveValue(NOTE);
-    expect(screen.getByRole("button", { name: "Save AI policy" })).toBeDisabled();
+    const save = screen.getByRole("button", { name: "Save AI policy" });
+    expect(save).toHaveAttribute("aria-disabled", "true");
+    expect(save).toHaveFocus(); // focus isn't dropped to <body> after saving
   });
 
   it("can be changed with the keyboard and discarded", async () => {
@@ -96,5 +101,61 @@ describe("AI policy tab", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Save AI policy" }));
     expect(await screen.findByText("AI policy saved")).toBeInTheDocument();
+  });
+
+  describe("AI access to materials", () => {
+    const LABEL = "Let my AI app read this course's materials";
+
+    it("turns reading the materials off and on again", async () => {
+      const { user, api } = await openCourse(DEMO101, { query: "tab=policy" });
+      const setAccess = vi.spyOn(api, "setCourseAiAccess");
+      const toggle = screen.getByRole("switch", { name: LABEL });
+      expect(toggle).toBeChecked();
+      expect(toggle).toHaveAccessibleDescription(
+        "When you ask about this course, your AI app can read its materials.",
+      );
+
+      await user.click(toggle);
+      expect(setAccess).toHaveBeenCalledWith(DEMO101, false);
+      expect(
+        await screen.findByText("Your AI app will no longer read this course's materials"),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(toggle).toHaveAccessibleDescription(
+          "Your AI app can still see deadlines and course structure, but not the materials.",
+        ),
+      );
+      expect(toggle).not.toBeChecked();
+      expect(toggle).toHaveFocus();
+
+      await user.click(toggle);
+      expect(setAccess).toHaveBeenLastCalledWith(DEMO101, true);
+      await waitFor(() => expect(toggle).toBeChecked());
+    });
+
+    it("withholds the materials of a 'No AI' course whatever the switch says", async () => {
+      const { user, api } = await openCourse(DEMO310, { query: "tab=policy" });
+      const setAccess = vi.spyOn(api, "setCourseAiAccess");
+      const toggle = screen.getByRole("switch", { name: LABEL });
+      expect(toggle).not.toBeChecked();
+      expect(toggle).toHaveAttribute("aria-disabled", "true");
+      expect(toggle).toHaveAccessibleDescription(
+        "You marked this course “No AI”, so its materials aren't shared with your AI app. Change the AI policy to share them.",
+      );
+      await user.click(toggle);
+      expect(setAccess).not.toHaveBeenCalled();
+    });
+
+    it("keeps the stored switch when the policy becomes 'No AI'", async () => {
+      const { user, api } = await openCourse(DEMO101, { query: "tab=policy" });
+      await user.click(screen.getByRole("radio", { name: "No AI" }));
+      await user.click(screen.getByRole("button", { name: "Save AI policy" }));
+      await screen.findByText("AI policy saved");
+
+      const toggle = screen.getByRole("switch", { name: LABEL });
+      await waitFor(() => expect(toggle).toHaveAttribute("aria-disabled", "true"));
+      expect(toggle).not.toBeChecked();
+      expect((await api.courseOverview(DEMO101)).course.ai_access).toBe(true);
+    });
   });
 });

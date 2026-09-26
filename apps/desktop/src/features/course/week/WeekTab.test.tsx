@@ -31,7 +31,7 @@ describe("This week tab", () => {
     expect(
       within(list).getByText("The PDF contains only images; no text could be extracted."),
     ).toBeInTheDocument();
-    expect(screen.getByText("4 of 6 readable by your AI app")).toBeInTheDocument();
+    expect(screen.getByText("4 of 6 materials readable by your AI app")).toBeInTheDocument();
     // Other weeks' materials are not listed.
     expect(within(list).queryByText(/Week 3 slides/)).not.toBeInTheDocument();
   });
