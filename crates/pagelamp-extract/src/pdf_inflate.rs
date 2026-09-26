@@ -20,10 +20,13 @@
 //! `FlateDecode` are decoded on the way, every `FlateDecode` layer is inflated, and any other
 //! filter before a `FlateDecode` makes the file refused (its expansion can't be measured).
 //! Limits: `Caps::per_stream` for one stream, `Caps::total` for all together. Known gaps,
-//! until extraction runs in a separate process: `LZWDecode` alone is not measured (its worst
-//! ratio is far smaller), and the raw scan can be misled about what is an image (the stream
-//! is then emptied by `defuse` unless it is an object stream, which `lopdf` decodes while
-//! loading).
+//! until extraction runs in a separate worker process (v0.2):
+//! - `LZWDecode` alone is not measured;
+//! - the raw scan can be misled about what is an image (the stream is then emptied by
+//!   `defuse`, unless it is an object stream, which `lopdf` decodes while loading);
+//! - page content streams and drawn Form XObjects within the caps are still parsed in
+//!   memory, and parsing can take far more memory than the decoded bytes (about 110× was
+//!   measured for token-dense content).
 
 use std::borrow::Cow;
 use std::io::Read;
