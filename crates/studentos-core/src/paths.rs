@@ -123,11 +123,41 @@ mod tests {
         assert!(data_dir_from(Some(OsString::new()), None).is_err());
     }
 
+    // The CLI, the desktop app and every `studentos mcp` launched by an AI app resolve the
+    // data dir through `data_dir()`; without STUDENTOS_HOME they must all land here, so the
+    // MCP server sees what the desktop app synced. These pin the per-OS location.
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_default_is_application_support() {
         let dir = platform_data_dir().unwrap();
         assert!(dir.ends_with("Library/Application Support/dev.StudentOS.StudentOS"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_default_is_roaming_app_data() {
+        let dir = platform_data_dir().unwrap();
+        assert!(
+            dir.ends_with(r"StudentOS\StudentOS\data"),
+            "{}",
+            dir.display()
+        );
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn linux_default_is_xdg_data_home() {
+        let dir = platform_data_dir().unwrap();
+        assert!(dir.ends_with("studentos"), "{}", dir.display());
+    }
+
+    #[test]
+    fn default_is_the_platform_dir_without_studentos_home() {
+        let platform = platform_data_dir();
+        match data_dir_from(None, platform.clone()) {
+            Ok(dir) => assert_eq!(Some(dir), platform),
+            Err(err) => assert!(platform.is_none() && matches!(err, Error::NoDataDir)),
+        }
     }
 
     #[test]
