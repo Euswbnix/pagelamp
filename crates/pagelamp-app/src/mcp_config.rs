@@ -565,7 +565,9 @@ mod tests {
         // The sealed system volume is mounted read-only; a temp dir is writable.
         assert!(read_only_volume(Path::new("/System/Library")));
         assert!(!read_only_volume(&std::env::temp_dir()));
-        assert!(!read_only_volume(Path::new("/Volumes/no such volume/pagelamp")));
+        assert!(!read_only_volume(Path::new(
+            "/Volumes/no such volume/pagelamp"
+        )));
     }
 
     #[test]
