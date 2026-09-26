@@ -678,6 +678,50 @@ async fn missing_database_gives_a_helpful_tool_error() {
 }
 
 #[tokio::test]
+async fn the_course_a_prompt_names_is_accepted_by_the_tools_it_names() {
+    let temp = tempfile::tempdir().unwrap();
+    let client = connect(fixture(temp.path())).await;
+    for (prompt, tool) in [
+        ("weekly_review", "week_materials"),
+        ("catch_up", "course_overview"),
+    ] {
+        let rendered = client
+            .get_prompt(
+                GetPromptRequestParams::new(prompt).with_arguments(
+                    json!({"course": "intro to demo"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                ),
+            )
+            .await
+            .unwrap();
+        let text: String = rendered
+            .messages
+            .iter()
+            .filter_map(|m| m.content.as_text().map(|t| t.text.clone()))
+            .collect();
+        // The argument the prompt tells the AI to use: `(course "…"`.
+        let course = text
+            .split("(course \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .unwrap_or_else(|| panic!("no course argument in: {text}"));
+        let result = call(&client, tool, json!({ "course": course })).await;
+        assert!(!is_error(&result), "{prompt}: {}", text_of(&result));
+        // The display name, as shown everywhere, resolves too.
+        let result = call(
+            &client,
+            tool,
+            json!({ "course": "DEMO101 — Intro to Demo Studies" }),
+        )
+        .await;
+        assert!(!is_error(&result), "{prompt}: {}", text_of(&result));
+    }
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn a_database_without_sources_asks_for_one_not_for_a_sync() {
     let temp = tempfile::tempdir().unwrap();
     let db = temp.path().join("pagelamp.db");

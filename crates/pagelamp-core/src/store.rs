@@ -511,7 +511,8 @@ impl Store {
         )
     }
 
-    /// Resolve a user/AI-supplied course reference. Tries, in order: exact id; exact code
+    /// Resolve a user/AI-supplied course reference. Tries, in order: exact id; exact display
+    /// name ("DEMO101 — Intro…", ASCII case-insensitive); exact code
     /// (case-insensitive, ignoring spaces); unique code prefix ("demo101" → "DEMO101H1");
     /// unique case-insensitive substring of name. Hidden courses are excluded.
     /// Errors: `NotFound` (message lists available codes) or `Ambiguous`.
@@ -532,9 +533,16 @@ impl Store {
             return Err(course_not_found(query, &courses));
         }
 
-        // 1. Exact id.
+        // 1. Exact id, or exact display name ("DEMO101 — Intro…", as shown everywhere).
         if let Some(course) = courses.iter().find(|c| c.id == query) {
             return Ok(course.clone());
+        }
+        let by_display: Vec<&Course> = courses
+            .iter()
+            .filter(|c| c.display_name().eq_ignore_ascii_case(query))
+            .collect();
+        if let Some(result) = pick_course(query, by_display) {
+            return result;
         }
 
         // 2. Exact code, 3. code prefix — both case-insensitive and ignoring spaces.

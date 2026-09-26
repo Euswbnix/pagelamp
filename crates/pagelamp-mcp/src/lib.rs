@@ -788,9 +788,9 @@ impl PageLampServer {
         Parameters(args): Parameters<WeeklyReviewArgs>,
     ) -> Result<Vec<PromptMessage>, ErrorData> {
         let week = parse_number(args.week.as_deref(), "week")?;
-        let (label, state) = self.course_state(&args.course).await?;
-        let mut message = text::weekly_review(&label, week);
-        append_withheld(&mut message, &label, state);
+        let course = self.course_state(&args.course).await?;
+        let mut message = text::weekly_review(&course.label, &course.reference, week);
+        append_withheld(&mut message, &course.label, course.state);
         Ok(vec![PromptMessage::new_text(Role::User, message)])
     }
 
@@ -810,9 +810,10 @@ impl PageLampServer {
             })?,
             None => Local::now().date_naive() - TimeDelta::days(i64::from(views::RECENT_DAYS)),
         };
-        let (label, state) = self.course_state(&args.course).await?;
-        let mut message = text::catch_up(&label, &since.format("%Y-%m-%d").to_string());
-        append_withheld(&mut message, &label, state);
+        let course = self.course_state(&args.course).await?;
+        let since = since.format("%Y-%m-%d").to_string();
+        let mut message = text::catch_up(&course.label, &course.reference, &since);
+        append_withheld(&mut message, &course.label, course.state);
         Ok(vec![PromptMessage::new_text(Role::User, message)])
     }
 
@@ -913,18 +914,35 @@ impl PageLampServer {
 
     /// Display label and AI-materials state of a course, for prompts. Before the first sync
     /// the prompt still works (the tools will explain the missing data).
-    async fn course_state(&self, course: &str) -> Result<(String, AiMaterialsState), ErrorData> {
+    async fn course_state(&self, course: &str) -> Result<PromptCourse, ErrorData> {
         let db = Arc::clone(&self.db_path);
         let query = course.to_string();
-        let found =
-            tokio::task::spawn_blocking(move || Store::open_read_only(&db)?.resolve_course(&query))
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+        let found = tokio::task::spawn_blocking(move || {
+            let store = Store::open_read_only(&db)?;
+            let course = store.resolve_course(&query)?;
+            // What the prompt tells the AI to pass to the tools: the code when it names only
+            // this course, else the id (both resolve; the display name may not).
+            let reference = match &course.code {
+                Some(code) if store.resolve_course(code).is_ok_and(|c| c.id == course.id) => {
+                    code.clone()
+                }
+                _ => course.id.clone(),
+            };
+            Ok::<_, pagelamp_core::Error>(PromptCourse {
+                label: course.display_name(),
+                reference,
+                state: course.ai_materials(),
+            })
+        })
+        .await
+        .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
         match found {
-            Ok(course) => Ok((course.display_name(), course.ai_materials())),
-            Err(pagelamp_core::Error::NotInitialised(_)) => {
-                Ok((course.to_string(), AiMaterialsState::Readable))
-            }
+            Ok(course) => Ok(course),
+            Err(pagelamp_core::Error::NotInitialised(_)) => Ok(PromptCourse {
+                label: course.to_string(),
+                reference: course.to_string(),
+                state: AiMaterialsState::Readable,
+            }),
             // Fixed texts: rmcp logs error responses, and neither the query nor the course
             // list belongs in a log.
             Err(pagelamp_core::Error::NotFound(_)) => Err(ErrorData::invalid_params(
@@ -944,6 +962,15 @@ impl PageLampServer {
 }
 
 // ----- helpers --------------------------------------------------------------------------------
+
+/// A course as a prompt names it.
+struct PromptCourse {
+    /// For the prose ("DEMO101 — Intro to Demo Studies").
+    label: String,
+    /// For tool arguments: a code or id that resolves to this course.
+    reference: String,
+    state: AiMaterialsState,
+}
 
 /// A core error as a tool error the model can explain to the student.
 fn core_error(err: pagelamp_core::Error) -> CallToolResult {

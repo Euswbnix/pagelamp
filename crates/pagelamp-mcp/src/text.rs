@@ -202,14 +202,15 @@ pub fn prompt_withheld(course: &str, turned_off: bool) -> String {
     )
 }
 
-pub fn weekly_review(course: &str, week: Option<u32>) -> String {
+/// `course` names the course in prose; `reference` is what the tools accept (code or id).
+pub fn weekly_review(course: &str, reference: &str, week: Option<u32>) -> String {
     let which = match week {
         Some(n) => format!("week {n}"),
         None => "the current week".to_string(),
     };
     format!(
         "Help me review {which} of {course}.\n\
-         1. Call week_materials (course \"{course}\"{week_arg}) to see the materials.\n\
+         1. Call week_materials (course \"{reference}\"{week_arg}) to see the materials.\n\
          2. Read the most important ones with read_material.\n\
          3. Explain the main ideas in a sensible order, citing each point as \"Title, locator\".\n\
          4. Then ask me 2–3 short questions to check my understanding, and give feedback on my \
@@ -219,11 +220,12 @@ pub fn weekly_review(course: &str, week: Option<u32>) -> String {
     )
 }
 
-pub fn catch_up(course: &str, since: &str) -> String {
+/// `course` names the course in prose; `reference` is what the tools accept (code or id).
+pub fn catch_up(course: &str, reference: &str, since: &str) -> String {
     format!(
         "I've fallen behind in {course} since {since}. Help me catch up.\n\
-         1. Call course_overview for \"{course}\", and week_materials for each week since \
-            {since}.\n\
+         1. Call course_overview (course \"{reference}\"), and week_materials for each week \
+            since {since}.\n\
          2. List what I missed in order (weeks, materials, announcements, deadlines).\n\
          3. Suggest what to study first, and summarise the key ideas of each missed week, \
             citing \"Title, locator\".\n\
