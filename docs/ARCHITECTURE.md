@@ -56,7 +56,7 @@ Rust workspace:
    MCP servers).
 2. **Personal token = personal use.** Instructure: asking other users to manually generate a token
    for your app violates the API Policy. UI and CLI must say so when adding a Canvas source; the
-   folder + calendar-feed path is the shareable one. Student tokens expire after ≤ 30 days — surface
+   folder + calendar-feed path is the shareable one. Tokens expire (the maximum is set per school/role and shown by Canvas, e.g. 90 days at UofT for this user; Instructure caps student-only users at 30) — surface
    expiry/401 clearly.
 3. **Secrets** (Canvas token, calendar-feed URL) live only in the OS keychain (`core::secrets`);
    never in the DB, logs, MCP output, frontend state beyond the input field, or test fixtures.

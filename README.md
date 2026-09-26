@@ -41,7 +41,7 @@ studentos mcp  ──reads──▶  studentos.db (on your computer)  ◀──w
 ## A note on Canvas access tokens
 
 Canvas personal access tokens are for **your own use**. Canvas's API policy does not allow apps to
-ask other users to generate tokens, and student tokens expire within 30 days. The shareable way to
+ask other users to generate tokens, and tokens expire (Canvas shows the maximum, often 30–90 days). The shareable way to
 use StudentOS is a course folder + your LMS calendar feed; institution-approved sign-in is on the
 roadmap.
 
