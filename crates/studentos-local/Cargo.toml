@@ -1,0 +1,27 @@
+[package]
+name = "studentos-local"
+description = "LMS-independent sources for StudentOS: local course folders and iCalendar feeds"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+studentos-core.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+regex.workspace = true
+url.workspace = true
+walkdir = "2.5"
+mime_guess = "2.0"
+icalendar = { version = "0.17", features = ["parser"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock = "0.6"

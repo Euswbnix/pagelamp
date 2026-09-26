@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/studentos-core",
+    "crates/studentos-extract",
+    "crates/studentos-canvas",
+    "crates/studentos-local",
+    "crates/studentos-mcp",
+    "crates/studentos-app",
+    "apps/studentos-cli",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+repository = "https://github.com/Euswbnix/studentos"
+
+[workspace.dependencies]
+studentos-core = { path = "crates/studentos-core" }
+studentos-extract = { path = "crates/studentos-extract" }
+studentos-canvas = { path = "crates/studentos-canvas" }
+studentos-local = { path = "crates/studentos-local" }
+studentos-mcp = { path = "crates/studentos-mcp" }
+studentos-app = { path = "crates/studentos-app" }
+
+anyhow = "1.0"
+thiserror = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+schemars = { version = "1.2", features = ["chrono04"] }
+tokio = { version = "1.53", features = ["macros", "rt-multi-thread", "io-std", "sync", "time", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+rusqlite = { version = "0.40", features = ["bundled", "chrono", "serde_json"] }
+regex = "1.13"
+sha2 = "0.11"
+hex = "0.4"
+url = "2.5"
+tempfile = "3.27"

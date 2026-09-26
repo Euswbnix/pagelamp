@@ -1,0 +1,22 @@
+[package]
+name = "studentos-mcp"
+description = "StudentOS MCP server (stdio): read-only course context for the student's own AI client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+studentos-core.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+rmcp = { version = "3.4", features = ["server", "macros", "schemars", "transport-io"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+rmcp = { version = "3.4", features = ["client", "transport-async-rw"] }

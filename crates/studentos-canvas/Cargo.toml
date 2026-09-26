@@ -1,0 +1,23 @@
+[package]
+name = "studentos-canvas"
+description = "Read-only Canvas LMS sync for StudentOS (personal-token mode)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+studentos-core.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock = "0.6"

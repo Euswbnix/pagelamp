@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "label": "Main",
+    "courses": "Courses",
+    "sources": "Sources & sync",
+    "connect": "Connect your AI app",
+    "settings": "Settings"
+  },
+  "actions": {
+    "retry": "Try again",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "close": "Close",
+    "back": "Back",
+    "continue": "Continue",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Couldn't copy — select the text and copy it manually",
+    "open": "Open",
+    "openInBrowser": "Open in browser",
+    "remove": "Remove",
+    "syncNow": "Sync now",
+    "show": "Show",
+    "hide": "Hide",
+    "reveal": "Show",
+    "conceal": "Hide"
+  },
+  "sync": {
+    "never": "Not synced yet",
+    "syncedAgo": "Synced {{when}}",
+    "syncing": "Syncing…",
+    "syncingProgress": "Syncing {{done}}/{{total}}…",
+    "needsAttention": "Needs attention",
+    "busy": "A sync is already running (maybe from the command line). Try again when it finishes.",
+    "done": "Sync finished",
+    "doneWithErrors": "Sync finished with problems",
+    "failed": "Sync failed",
+    "pillLabel": "Sync status: {{status}}. Open Sources & sync."
+  },
+  "states": {
+    "loading": "Loading…",
+    "emptyTitle": "Nothing here yet",
+    "errorTitle": "Something went wrong",
+    "backendUnavailableTitle": "{{product}} couldn't load your data",
+    "backendUnavailableBody": "The desktop app couldn't talk to its local database. Try again, or restart {{product}}."
+  },
+  "errors": {
+    "auth": "The token or feed address was rejected. It may have expired or been revoked.",
+    "network": "Couldn't reach the server. Check your internet connection and the address.",
+    "invalid": "Please check what you entered.",
+    "not_found": "We couldn't find that.",
+    "ambiguous": "That matches more than one course.",
+    "busy": "A sync is already running. Try again when it finishes.",
+    "internal": "Something unexpected went wrong."
+  },
+  "sourceKind": {
+    "canvas": "Canvas",
+    "folder": "Course folder",
+    "ical": "Calendar feed"
+  },
+  "sourceError": {
+    "auth_expired_or_revoked": "Token expired",
+    "network": "Can't connect",
+    "not_found": "Not found",
+    "rate_limited": "Rate limited",
+    "other": "Error"
+  },
+  "policy": {
+    "label": "AI policy",
+    "unknown": "Not set",
+    "prohibited": "No AI",
+    "learning_aid": "Learning aid only",
+    "allowed_with_citation": "Allowed with citation",
+    "unrestricted": "No restrictions",
+    "description": {
+      "unknown": "You haven't recorded this course's rule yet. Your AI app will stick to explaining concepts.",
+      "prohibited": "No generative AI for this course's assessed work.",
+      "learning_aid": "AI can help you understand the material, but not produce graded work.",
+      "allowed_with_citation": "AI can be used for assessed work if you cite or disclose it.",
+      "unrestricted": "The instructor places no restrictions on AI use."
+    }
+  },
+  "confidence": {
+    "high": "high confidence",
+    "medium": "medium confidence",
+    "low": "low confidence"
+  },
+  "week": {
+    "current": "Week {{week}}",
+    "unknown": "Week unknown",
+    "outsideTerm": "Outside term"
+  },
+  "eventKind": {
+    "assignment_due": "Assignment",
+    "quiz_due": "Quiz",
+    "exam": "Exam",
+    "class_event": "Class",
+    "planner_item": "To-do",
+    "other": "Event"
+  },
+  "textStatus": {
+    "ok": "Readable by your AI app",
+    "pending": "Waiting to be indexed",
+    "unsupported": "Can't be read (e.g. video)",
+    "not_downloaded": "Not downloaded",
+    "error": "Couldn't extract text"
+  },
+  "materialKind": {
+    "file": "File",
+    "page": "Page",
+    "announcement": "Announcement",
+    "syllabus": "Syllabus",
+    "external_link": "Link"
+  },
+  "time": {
+    "due": "Due {{when}}",
+    "today": "Today",
+    "tomorrow": "Tomorrow"
+  },
+  "disclosure": {
+    "title": "Privacy",
+    "short": "{{product}} keeps your courses on this computer. Your AI app reads them only when you ask.",
+    "full": "{{product}} stores everything on this computer and sends nothing anywhere. When you ask your AI app about a course, the course text it reads is sent to that AI provider under your account."
+  },
+  "canvasNotice": "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
+  "secret": {
+    "show": "Show",
+    "hide": "Hide"
+  },
+  "language": {
+    "en": "English",
+    "zh-CN": "简体中文"
+  }
+}

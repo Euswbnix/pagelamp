@@ -1,0 +1,6 @@
+minimumReleaseAgeExclude:
+  - '@tanstack/query-core@5.103.3'
+  - '@tanstack/react-query@5.103.3'
+  - '@vitest/mocker@5.0.2'
+  - '@vitest/spy@5.0.2'
+  - vitest@5.0.2

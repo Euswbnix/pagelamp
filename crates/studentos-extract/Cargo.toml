@@ -1,0 +1,19 @@
+[package]
+name = "studentos-extract"
+description = "Text extraction (PDF, PPTX, DOCX, notebooks, HTML, text) and chunking for StudentOS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+pdf-extract = "0.12"
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
+quick-xml = "0.42"
+html2text = "0.17"
+
+[dev-dependencies]
+tempfile.workspace = true

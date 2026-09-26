@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "label": "主导航",
+    "courses": "课程",
+    "sources": "数据来源与同步",
+    "connect": "连接 AI 应用",
+    "settings": "设置"
+  },
+  "actions": {
+    "retry": "重试",
+    "cancel": "取消",
+    "save": "保存",
+    "saving": "正在保存…",
+    "saved": "已保存",
+    "close": "关闭",
+    "back": "返回",
+    "continue": "继续",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyFailed": "复制失败，请手动选中文字后复制",
+    "open": "打开",
+    "openInBrowser": "在浏览器中打开",
+    "remove": "移除",
+    "syncNow": "立即同步",
+    "show": "显示",
+    "hide": "隐藏",
+    "reveal": "显示",
+    "conceal": "隐藏"
+  },
+  "sync": {
+    "never": "还没有同步过",
+    "syncedAgo": "{{when}}同步",
+    "syncing": "正在同步…",
+    "syncingProgress": "正在同步 {{done}}/{{total}}…",
+    "needsAttention": "需要处理",
+    "busy": "已有同步在进行（可能是命令行发起的），请等它结束后再试。",
+    "done": "同步完成",
+    "doneWithErrors": "同步已结束，但有来源出了问题",
+    "failed": "同步失败",
+    "pillLabel": "同步状态：{{status}}。打开“数据来源与同步”。"
+  },
+  "states": {
+    "loading": "正在加载…",
+    "emptyTitle": "这里还是空的",
+    "errorTitle": "出了点问题",
+    "backendUnavailableTitle": "{{product}} 读取不到你的数据",
+    "backendUnavailableBody": "桌面应用无法访问本地数据库。请重试，或重新打开 {{product}}。"
+  },
+  "errors": {
+    "auth": "令牌或订阅地址被拒绝，可能已过期或被撤销。",
+    "network": "连不上服务器。请检查网络连接和地址是否正确。",
+    "invalid": "请检查输入的内容。",
+    "not_found": "没有找到对应的内容。",
+    "ambiguous": "匹配到了不止一门课程。",
+    "busy": "已有同步在进行，请等它结束后再试。",
+    "internal": "发生了意外错误。"
+  },
+  "sourceKind": {
+    "canvas": "Canvas",
+    "folder": "课程文件夹",
+    "ical": "日历订阅"
+  },
+  "sourceError": {
+    "auth_expired_or_revoked": "令牌已过期",
+    "network": "无法连接",
+    "not_found": "找不到",
+    "rate_limited": "请求过于频繁",
+    "other": "出错"
+  },
+  "policy": {
+    "label": "AI 使用规定",
+    "unknown": "未设置",
+    "prohibited": "禁止使用 AI",
+    "learning_aid": "仅限辅助学习",
+    "allowed_with_citation": "注明后可用",
+    "unrestricted": "没有限制",
+    "description": {
+      "unknown": "你还没有记录这门课的规定。在此之前，你的 AI 应用只会帮你讲解概念。",
+      "prohibited": "这门课计分的作业和考试都不能使用生成式 AI。",
+      "learning_aid": "可以用 AI 帮你理解课程内容，但不能用它完成计分作业。",
+      "allowed_with_citation": "计分作业可以使用 AI，但需要注明或声明。",
+      "unrestricted": "任课老师对使用 AI 没有限制。"
+    }
+  },
+  "confidence": {
+    "high": "把握较大",
+    "medium": "把握一般",
+    "low": "把握较小"
+  },
+  "week": {
+    "current": "第 {{week}} 周",
+    "unknown": "周次未知",
+    "outsideTerm": "不在学期内"
+  },
+  "eventKind": {
+    "assignment_due": "作业",
+    "quiz_due": "小测",
+    "exam": "考试",
+    "class_event": "上课",
+    "planner_item": "待办",
+    "other": "日程"
+  },
+  "textStatus": {
+    "ok": "AI 应用可以读取",
+    "pending": "等待索引",
+    "unsupported": "无法读取（如视频）",
+    "not_downloaded": "未下载",
+    "error": "文字提取失败"
+  },
+  "materialKind": {
+    "file": "文件",
+    "page": "页面",
+    "announcement": "公告",
+    "syllabus": "课程大纲",
+    "external_link": "链接"
+  },
+  "time": {
+    "due": "{{when}}截止",
+    "today": "今天",
+    "tomorrow": "明天"
+  },
+  "disclosure": {
+    "title": "隐私",
+    "short": "{{product}} 只把课程资料保存在这台电脑上，只有在你提问时，AI 应用才会读取。",
+    "full": "{{product}} 的所有数据都保存在这台电脑上，不会向任何地方发送。当你向 AI 应用询问某门课时，它读取的课程内容会以你的账号发送给该 AI 服务商。"
+  },
+  "canvasNotice": "个人访问令牌仅供你本人使用；Canvas 学生令牌最长 30 天就会过期。",
+  "secret": {
+    "show": "显示",
+    "hide": "隐藏"
+  },
+  "language": {
+    "en": "English",
+    "zh-CN": "简体中文"
+  }
+}
