@@ -128,6 +128,27 @@ pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
     if token_shaped {
         return Err(invalid());
     }
+    // The host as typed (before the URL parser turns "7" into 0.0.0.7), without a trailing
+    // dot ("canvas."): a school's Canvas has a full domain name; a single word is a typo or
+    // something pasted into the wrong field.
+    let typed_host = with_scheme
+        .split_once("://")
+        .map_or("", |(_, rest)| rest)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .rsplit('@')
+        .next()
+        .unwrap_or("");
+    let typed_host = if typed_host.starts_with('[') {
+        typed_host // IPv6 literal
+    } else {
+        typed_host.split(':').next().unwrap_or("")
+    };
+    let typed_host = typed_host.trim_end_matches('.');
+    if !typed_host.contains('.') && !typed_host.starts_with('[') && typed_host != "localhost" {
+        return Err(invalid());
+    }
     let url = url::Url::parse(&with_scheme).map_err(|_| invalid())?;
     let host = url
         .host_str()
@@ -328,7 +349,10 @@ mod tests {
             "7~AbCdEfGhIjKlMnOpQrStUvWxYz",
             "https://7~AbCdEfGhIjKl",
             "canvas",
+            "canvas.",
             "https://intranet/",
+            "7",
+            "https://7:8443",
         ] {
             let err = normalize_base_url(bad).unwrap_err();
             assert!(!err.message.contains("AbCdEf"), "{}", err.message);
