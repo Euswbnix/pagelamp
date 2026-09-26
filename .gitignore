@@ -31,3 +31,8 @@ apps/desktop/src-tauri/gen/schemas/
 *.db
 *.db-wal
 *.db-shm
+
+# Keys (e.g. dev extension signing keys) — never commit private keys
+*.pem
+*.key
+*.p12

@@ -66,6 +66,20 @@ Rust workspace:
 6. **AI disclosure** (Canvas API Policy §2E): UI states that course text is sent to whatever AI app
    the student connects, and that StudentOS itself stores nothing remotely.
 7. **Test data is synthetic.** No real course materials, names, or tokens anywhere in the repo.
+8. **AI access to course materials is the student's choice, on by default** (decided 2026-09-25).
+   - One-time disclosure at onboarding (and printed by `studentos mcp-config`): when the student
+     asks their AI app about a course, the app reads that course's materials from StudentOS and
+     sends them to the AI provider under the student's own account; the student is responsible
+     for following each course's AI policy; sharing can be turned off per course.
+   - Per-course switch `ai_access` ("Let my AI app read this course's materials"), default **on**.
+   - If the student marks a course `ai_policy = prohibited`, its material **text** is withheld from
+     MCP regardless of the switch (the switch keeps its stored value and applies again if the policy
+     changes). Structure, titles, deadlines and the study plan remain available for planning.
+   - Effective state is computed, never stored: `AiMaterialsState = readable | turned_off |
+     withheld_by_policy`.
+   - "Material text" = `read_material` content, `search_materials` snippets, announcement bodies,
+     syllabus text, and any text a prompt would inline. Titles, kinds, dates, week numbers, URLs and
+     counts are structure and stay available.
 
 ## 4. Concurrency (why there is no connection pool)
 
@@ -118,6 +132,7 @@ impl App {
     pub fn set_course_policy(&self, course: &str, policy: AiPolicy, note: Option<&str>) -> Result<()>;
     pub fn set_course_term(&self, course: &str, start: Option<NaiveDate>, end: Option<NaiveDate>) -> Result<()>;
     pub fn set_course_hidden(&self, course: &str, hidden: bool) -> Result<()>;
+    pub fn set_course_ai_access(&self, course: &str, allowed: bool) -> Result<()>;  // §3 rule 8
 
     // "connect your AI app"
     pub fn mcp_client_configs(&self, studentos_binary: &Path) -> Vec<McpClientConfig>;
@@ -156,6 +171,15 @@ pub struct McpClientConfig {    // one per client: claude_desktop | claude_code 
 Read-view types (`CourseSummary`, `CourseOverview`, `WeekMaterials`, `MaterialView`) live in
 `studentos_core::views` so the MCP server can use them over a read-only store.
 
+Additions agreed 2026-09-25 (after the first draft of this section):
+- `Course.term_source: TermSource` = `user | synced | none`.
+- `Course.ai_access: bool` (stored, default true; schema v1 column `courses.ai_access INTEGER NOT
+  NULL DEFAULT 1`) and `CourseSummary.ai_materials` / `CourseOverview.ai_materials:
+  AiMaterialsState` (computed: `readable | turned_off | withheld_by_policy`; `prohibited` policy
+  wins over the switch). "Materials readable by your AI app" counts are 0 unless `readable`.
+- `WeekMaterials.note_kind: Option<WeekNoteKind>` and `McpClientConfig.note_codes: Vec<McpNoteCode>`
+  — stable codes next to the English text so the UI can localise.
+
 ## 6. Desktop app (frontend) baseline
 
 - `apps/desktop`: pnpm, Vite, React 19, TypeScript strict, Tailwind v4 + shadcn/ui, lucide icons,
@@ -191,9 +215,30 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 
 - Stay inside your owned paths (§2). Need a change elsewhere → message the owner (cc leader for
   contract changes in §3–§5).
-- No git commits/branches/pushes; leave changes in the working tree. The leader reviews and
-  commits only when the user asks.
 - Definition of done — backend: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-  `cargo test --workspace` green; frontend: `pnpm typecheck && pnpm lint && pnpm test && pnpm build`
+  `cargo test --workspace` green; frontend: `pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build`
   green, `pnpm tauri dev` launches.
+
+### Git workflow (user decision 2026-09-25: commit locally, push every 5 commits)
+
+All sessions share ONE working tree and ONE local `main`. The repo is public.
+- **Commit** each finished logical change yourself (small, focused commits). Before committing,
+  the checks of your area must pass (DoD above, scoped to what you changed at minimum).
+- **Stage only your own paths, explicitly**: backend `git add crates/ apps/studentos-cli/`
+  (+ `Cargo.lock` only when you changed dependencies); frontend `git add apps/desktop/`
+  (+ `Cargo.lock` only when src-tauri dependencies changed); leader: root files, `docs/`, `spikes/`.
+  Never `git add -A`, `git add .`, `git commit -a`, or staging someone else's files. Check
+  `git diff --cached --stat` before every commit.
+- **Push when ≥ 5 local commits are ahead**: `git fetch origin && git rev-list --count origin/main..main`;
+  if ≥ 5 → run the full DoD for your area once more, scan staged history for secrets, then
+  `git push origin main`. Whoever makes the 5th commit pushes (including others' commits — they
+  were checked by their owners). Never force-push; never rewrite pushed history.
+- `.git/index.lock` exists → another session is committing; wait a few seconds and retry. Never
+  delete the lock file.
+- Commit messages: imperative subject ≤ 72 chars with an area prefix (`core:`, `extract:`,
+  `canvas:`, `local:`, `mcp:`, `app:`, `cli:`, `desktop:`, `docs:`, `spike:`), body explains why.
+  **No `Co-Authored-By: Claude` trailers and no "Generated with Claude Code" lines** (explicit
+  user preference). Commits are authored by the configured git identity; don't change git config.
+- Tooling note: `/usr/local/bin/gh` is an x86_64 build that breaks when it shells out to git — use
+  plain `git push` (credential helper works) and `gh api` for GitHub API calls.
 - Report milestones to the leader with what changed, how it was verified, and open questions.
