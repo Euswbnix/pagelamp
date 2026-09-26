@@ -14,10 +14,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { MAC_QUARANTINE_HINT } from "@/lib/platform";
 import { ClientConfigCard } from "./ClientConfigCard";
 import { ConnectSkeleton } from "./ConnectSkeleton";
 import { HowItWorks } from "./HowItWorks";
 import { sortClientConfigs } from "./order";
+import { QuarantineHint } from "./QuarantineHint";
 import { TryItCard } from "./TryItCard";
 
 /** "Connect your AI app": one setup card per supported AI app, built from the backend's configs. */
@@ -51,6 +53,8 @@ export function ConnectPage() {
 }
 
 function ClientList({ configs }: { configs: McpClientConfig[] }) {
+  // Every AI app launches the same binary, so macOS's quarantine hint is shown once, for it.
+  const command = configs[0]?.launch.command;
   return (
     <div className="space-y-4">
       {sortClientConfigs(configs).map((config, index) => (
@@ -60,6 +64,7 @@ function ClientList({ configs }: { configs: McpClientConfig[] }) {
           recommended={index === 0 && config.client === "claude_desktop"}
         />
       ))}
+      {MAC_QUARANTINE_HINT && command ? <QuarantineHint command={command} /> : null}
     </div>
   );
 }
