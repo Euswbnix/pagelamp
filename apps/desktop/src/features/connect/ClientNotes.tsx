@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { McpNoteCode } from "@/api/types";
+import type { McpClient, McpNoteCode } from "@/api/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const KNOWN_CODES: readonly McpNoteCode[] = [
@@ -18,23 +18,34 @@ const KNOWN_CODES: readonly McpNoteCode[] = [
 // Shown once, prominently, at the top of the page (TemporaryLocationWarning), not per app.
 const PAGE_LEVEL: readonly McpNoteCode[] = ["run_from_temporary_location"];
 
+// Notes an app's numbered steps already cover (in the right order). Claude Desktop's steps
+// say to quit BEFORE editing; "quit and reopen after changing" would contradict them.
+// Plain strings: `quit_before_editing` may be newer than this build's types.
+const COVERED_BY_STEPS: Partial<Record<McpClient, readonly string[]>> = {
+  claude_desktop: ["restart_client_after_change", "quit_before_editing"],
+};
+
 /**
  * The backend's notes for one AI app (plan availability, restart hints…), shown prominently.
  * Each note is localised from its code (`note_codes[i]` belongs to `notes[i]`); a note whose
  * code is missing or unknown to this build is shown as the backend's English text.
  */
 export function ClientNotes({
+  client,
   notes,
   codes,
 }: {
+  client: McpClient;
   notes: readonly string[];
   codes: readonly McpNoteCode[];
 }) {
   const { t } = useTranslation("connect");
   const paired = codes.length === notes.length;
+  const covered = COVERED_BY_STEPS[client] ?? [];
   const shown = notes.flatMap((note, index) => {
     const code = paired ? codes[index] : undefined;
-    return code && PAGE_LEVEL.includes(code) ? [] : [{ note, code }];
+    const hidden = code && (PAGE_LEVEL.includes(code) || covered.includes(code));
+    return hidden ? [] : [{ note, code }];
   });
   if (shown.length === 0) return null;
   return (

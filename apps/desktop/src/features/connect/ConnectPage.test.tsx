@@ -170,6 +170,15 @@ describe("ConnectPage", () => {
     );
   });
 
+  it("doesn't tell Claude Desktop users to quit after editing, only other apps", async () => {
+    renderRoute("/connect");
+    const desktop = await card("Claude Desktop");
+    expect(config("claude_desktop").note_codes).toContain("restart_client_after_change");
+    expect(within(desktop).queryByText(/Quit and reopen the app after changing/)).toBeNull();
+    const codex = await card(config("codex").title);
+    expect(within(codex).getByText(/Quit and reopen the app after changing/)).toBeVisible();
+  });
+
   it("adds an mcpServers key to a Claude Desktop file that has other settings", async () => {
     const { user } = renderRoute("/connect");
     const desktop = await card("Claude Desktop");
