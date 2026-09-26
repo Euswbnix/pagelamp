@@ -153,7 +153,11 @@ describe("OnboardingPage", () => {
     api.mcpClientConfigs = async () =>
       real.map((c) => ({
         ...c,
-        launch: { ...c.launch, command: "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp" },
+        launch: {
+          ...c.launch,
+          command: "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp",
+          temporary_location: "disk_image" as const,
+        },
         note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
         notes: ["temporary", ...c.notes],
       }));

@@ -26,9 +26,9 @@ function isKnown(code: McpNoteCode | undefined): code is KnownCode {
 const PAGE_LEVEL: readonly McpNoteCode[] = ["run_from_temporary_location"];
 
 // Notes an app's numbered steps already cover (in the right order). Claude Desktop's steps
-// say to quit BEFORE editing; "quit and reopen after changing" would contradict them.
-// Plain strings: `quit_before_editing` may be newer than this build's types.
-const COVERED_BY_STEPS: Partial<Record<McpClient, readonly string[]>> = {
+// say to quit BEFORE editing (the backend's quit_before_editing); an older backend's "quit and
+// reopen after changing" would contradict them.
+const COVERED_BY_STEPS: Partial<Record<McpClient, readonly McpNoteCode[]>> = {
   claude_desktop: ["restart_client_after_change", "quit_before_editing"],
 };
 

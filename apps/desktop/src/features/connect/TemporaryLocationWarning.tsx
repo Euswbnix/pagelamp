@@ -1,19 +1,17 @@
 import { TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useMcpClientConfigs } from "@/api/queries";
-import type { McpClientConfig } from "@/api/types";
+import type { McpClientConfig, TemporaryLocation } from "@/api/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 /**
- * The backend adds `run_from_temporary_location` (first, to every config) when the binary AI
- * apps would launch lives somewhere that disappears: the mounted disk image, a macOS App
- * Translocation copy, or an AppImage mount. A config copied now breaks later, so say so before
- * anything else. Which case it is follows from the path: macOS paths are inside a `.app`.
+ * Where the binary AI apps would launch runs from, when that place won't last: the mounted
+ * disk image, a macOS App Translocation copy (the app wasn't moved out of Downloads) or an
+ * AppImage mount. A config copied now breaks later, so say so before anything else. Every
+ * config carries the same launch, so the first one that says so decides.
  */
-export function temporaryLocation(configs: readonly McpClientConfig[]): "mac" | "appimage" | null {
-  const config = configs.find((c) => c.note_codes.includes("run_from_temporary_location"));
-  if (!config) return null;
-  return config.launch.command.includes(".app/") ? "mac" : "appimage";
+export function temporaryLocation(configs: readonly McpClientConfig[]): TemporaryLocation | null {
+  return configs.find((c) => c.launch.temporary_location)?.launch.temporary_location ?? null;
 }
 
 /** Prominent warning for the Connect page and onboarding's last step; nothing when all is well. */

@@ -44,6 +44,7 @@ export type {
   SyncEvent,
   SyncRequest,
   SyncSummary,
+  TemporaryLocation,
   TermSource,
   TextStatus,
   WeekMaterials,

@@ -475,6 +475,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           source_label: sourceLabel(c.course.source_id),
           last_synced_at: sourceSyncedAt(c.course.source_id),
           ai_materials: aiMaterialsState(c.course),
+          // Like the backend: what a course-wide download would fetch (all weeks).
+          downloadable_files: c.materials.filter(
+            (m) => m.kind === "file" && m.text_status === "not_downloaded" && !m.download_blocked,
+          ).length,
         };
       }),
 

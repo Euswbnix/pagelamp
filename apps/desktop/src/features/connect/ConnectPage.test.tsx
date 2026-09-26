@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_BINARY_PATH, mcpClientConfigs } from "@/api/mock/fixtures";
-import type { McpClientConfig, McpNoteCode } from "@/api/types";
+import type { McpClientConfig, McpNoteCode, TemporaryLocation } from "@/api/types";
 import i18n from "@/i18n";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
@@ -18,6 +18,16 @@ function config(client: McpClientConfig["client"]): McpClientConfig {
 
 function mockApi(overrides: Partial<ReturnType<typeof createMockApi>> = {}) {
   return { ...createMockApi({ latencyMs: 0, syncStepMs: 0 }), ...overrides };
+}
+
+/** Configs as the backend sends them when the binary runs from a temporary location. */
+function atTemporaryLocation(command: string, where: TemporaryLocation): McpClientConfig[] {
+  return mcpClientConfigs(command).map((c) => ({
+    ...c,
+    launch: { ...c.launch, temporary_location: where },
+    notes: ["PageLamp is running from a temporary location.", ...c.notes],
+    note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
+  }));
 }
 
 /** The setup card whose h2 is `title`. */
@@ -104,8 +114,10 @@ describe("ConnectPage", () => {
     ).toBeInTheDocument();
     for (const c of CONFIGS) {
       for (const code of c.note_codes) {
-        // The page-level temporary-location code has no per-card text (and isn't in the mock).
-        const known = code as Exclude<McpNoteCode, "run_from_temporary_location">;
+        // Shown elsewhere, not as a card note: the page-level warning and the steps.
+        if (code === "run_from_temporary_location" || code === "quit_before_editing") continue;
+        const known: Exclude<McpNoteCode, "run_from_temporary_location" | "quit_before_editing"> =
+          code;
         expect(screen.getAllByText(i18n.t(`connect:noteCodes.${known}`)).length).toBeGreaterThan(0);
       }
     }
@@ -175,7 +187,10 @@ describe("ConnectPage", () => {
   it("doesn't tell Claude Desktop users to quit after editing, only other apps", async () => {
     renderRoute("/connect");
     const desktop = await card("Claude Desktop");
-    expect(config("claude_desktop").note_codes).toContain("restart_client_after_change");
+    // The backend sends quit_before_editing here (older ones: restart_client_after_change);
+    // the numbered steps already say it, in the right order.
+    expect(config("claude_desktop").note_codes).toContain("quit_before_editing");
+    expect(within(desktop).queryByText(/Quit Claude Desktop before editing its config/)).toBeNull();
     expect(within(desktop).queryByText(/Quit and reopen the app after changing/)).toBeNull();
     const codex = await card(config("codex").title);
     expect(within(codex).getByText(/Quit and reopen the app after changing/)).toBeVisible();
@@ -213,17 +228,15 @@ describe("ConnectPage", () => {
   });
 
   it("warns at the top when PageLamp runs from the disk image, not in every card", async () => {
-    const temp = "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp";
-    const configs = mcpClientConfigs(temp).map((c) => ({
-      ...c,
-      notes: ["PageLamp is running from a temporary location.", ...c.notes],
-      note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
-    }));
+    const configs = atTemporaryLocation(
+      "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp",
+      "disk_image",
+    );
     renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
 
     const title = await screen.findByText("Move PageLamp to Applications before connecting");
     expect(title.closest("[data-slot=alert]")).toHaveTextContent(
-      /drag it into your Applications folder, open it from there/,
+      /running from the disk image.*drag it into your Applications folder, open it from there/,
     );
     // Above everything else on the page, including the AI disclosure.
     const disclosure = screen.getByText(i18n.t("disclosure.full"));
@@ -236,15 +249,23 @@ describe("ConnectPage", () => {
   });
 
   it("tells AppImage users to use an installed build instead", async () => {
-    const configs = mcpClientConfigs("/tmp/.mount_PageLaXyZ/usr/bin/pagelamp").map((c) => ({
-      ...c,
-      notes: ["moves every launch", ...c.notes],
-      note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
-    }));
+    const configs = atTemporaryLocation("/tmp/.mount_PageLaXyZ/usr/bin/pagelamp", "appimage");
     renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
     expect(
       await screen.findByText("Use the installed version for your AI app"),
     ).toBeInTheDocument();
+  });
+
+  it("explains a translocated copy (the app was never moved out of Downloads)", async () => {
+    const configs = atTemporaryLocation(
+      "/private/var/folders/x/T/AppTranslocation/1/d/PageLamp.app/Contents/MacOS/pagelamp",
+      "translocated",
+    );
+    renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
+    const title = await screen.findByText("Move PageLamp to Applications before connecting");
+    expect(title.closest("[data-slot=alert]")).toHaveTextContent(
+      /hasn't been moved out of the folder you downloaded it to/,
+    );
   });
 
   it("shows no location warning for an installed app", async () => {

@@ -97,6 +97,14 @@ export type McpClient = "claude_desktop" | "claude_code" | "codex" | "generic";
  */
 export type InstallKind = "json_snippet" | "shell_command" | "toml_snippet";
 /**
+ * A place the `pagelamp` binary runs from that won't exist (or move) later, so an AI app
+ * configured with that path loses the server.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TemporaryLocation".
+ */
+export type TemporaryLocation = "disk_image" | "translocated" | "appimage";
+/**
  * Stable codes for `McpClientConfig.notes` (one code per note).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -110,6 +118,7 @@ export type McpNoteCode =
   | "codex_plus_and_edu_documented"
   | "free_go_undocumented"
   | "restart_client_after_change"
+  | "quit_before_editing"
   | "custom_data_dir"
   | "generic_stdio_client"
   | "run_from_temporary_location";
@@ -292,6 +301,11 @@ export interface CourseOverview {
   ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   course: Course;
   current_modules: Module[];
+  /**
+   * Files a "download this course's files" action would fetch: kind `file`, text status
+   * `not_downloaded` and no `download_blocked` reason (all weeks).
+   */
+  downloadable_files: number;
   last_synced_at?: string | null;
   /**
    * Announcements posted in the last `RECENT_DAYS` days, newest first (titles + ids only).
@@ -633,6 +647,11 @@ export interface McpLaunch {
   env: {
     [k: string]: string;
   };
+  /**
+   * Set when `command` lives somewhere it won't be found later; every config then starts
+   * with a `RunFromTemporaryLocation` note.
+   */
+  temporary_location?: TemporaryLocation | null;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema

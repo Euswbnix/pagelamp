@@ -576,12 +576,12 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       notes: [
         "Works on every Claude plan, including Free.",
         "On Team, Enterprise and Education plans an admin can turn extensions off.",
-        "Quit and reopen Claude Desktop after changing its config.",
+        "Quit Claude Desktop before editing its config: it rewrites the file when it quits.",
       ],
       note_codes: [
         "works_on_all_claude_plans",
         "admins_may_disable_extensions",
-        "restart_client_after_change",
+        "quit_before_editing",
       ],
       launch,
     },

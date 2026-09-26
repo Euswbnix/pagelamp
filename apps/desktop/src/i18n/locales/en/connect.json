@@ -2,9 +2,13 @@
   "title": "Connect your AI app",
   "description": "{{product}} works inside the AI app you already use. Add it once, then ask about your courses in plain language.",
   "temporaryLocation": {
-    "mac": {
+    "disk_image": {
       "title": "Move {{product}} to Applications before connecting",
-      "body": "{{product}} is running from the disk image or a temporary copy, so the setup below would point to a place that disappears, and your AI app would lose {{product}}. Quit {{product}}, drag it into your Applications folder, open it from there, then come back to this page."
+      "body": "{{product}} is running from the disk image, so the setup below would point to a place that disappears when the disk image is ejected, and your AI app would lose {{product}}. Quit {{product}}, drag it into your Applications folder, open it from there, then come back to this page."
+    },
+    "translocated": {
+      "title": "Move {{product}} to Applications before connecting",
+      "body": "macOS is running a temporary copy of {{product}} because it hasn't been moved out of the folder you downloaded it to, so the setup below would stop working later. Quit {{product}}, drag it into your Applications folder, open it from there, then come back to this page."
     },
     "appimage": {
       "title": "Use the installed version for your AI app",
