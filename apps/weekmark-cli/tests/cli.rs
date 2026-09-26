@@ -322,3 +322,78 @@ fn canvas_add_fails_cleanly_and_stores_nothing() {
             .is_empty()
     );
 }
+
+#[test]
+fn doctor_report_and_log_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let courses = temp.path().join("Courses");
+    demo_courses(&courses);
+    ok(&weekmark(
+        &home,
+        &["folder", "add", courses.to_str().unwrap()],
+    ));
+    let sync = ok(&weekmark(&home, &["sync"]));
+    assert!(
+        sync.contains("s\n") || sync.contains(" s"),
+        "elapsed time shown: {sync}"
+    );
+
+    let doctor = ok(&weekmark(&home, &["doctor"]));
+    assert!(doctor.contains("Database: ok (schema"), "{doctor}");
+    assert!(doctor.contains("Source folder: ok"), "{doctor}");
+    assert!(doctor.contains("Courses: 2"), "{doctor}");
+    let doctor_json = json_out(&weekmark(&home, &["--json", "doctor"]));
+    assert_eq!(doctor_json["courses"], 2);
+
+    // The app log file exists, has the sync line, and no course names at info level.
+    let logs = home.join("logs");
+    let log_file = std::fs::read_dir(&logs)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.file_name().unwrap().to_string_lossy().starts_with("app-"))
+        .expect("app log file");
+    let log = std::fs::read_to_string(log_file).unwrap();
+    assert!(log.contains("folder sync ok: 2 courses"), "{log}");
+    assert!(log.contains(" pid="), "{log}");
+    assert!(
+        !log.contains("DEMO101") && !log.contains("photosynthesis"),
+        "{log}"
+    );
+
+    // The report pseudonymises course names and goes to a file on request.
+    let out = temp.path().join("report.md");
+    let written = weekmark(&home, &["report", "--out", out.to_str().unwrap()]);
+    ok(&written);
+    let report = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        report.starts_with("# Weekmark diagnostic report"),
+        "{report}"
+    );
+    assert!(report.contains("- folder: ok"), "{report}");
+    assert!(
+        !report.contains("DEMO101") && !report.contains("Intro to Demo Studies"),
+        "{report}"
+    );
+    assert!(ok(&weekmark(&home, &["report"])).contains("## Recent log"));
+}
+
+#[test]
+fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    for url in [
+        "https://lms.example.edu/courses/1",
+        "https://lms.example.edu/?login=1",
+    ] {
+        let output = weekmark_with_stdin(
+            &home,
+            &["canvas", "add", "--base-url", url],
+            "demo-not-a-real-token\n",
+        );
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("Enter just the address"), "{stderr}");
+    }
+}

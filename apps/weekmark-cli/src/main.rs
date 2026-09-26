@@ -18,6 +18,7 @@ use std::process::ExitCode;
 use chrono::NaiveDate;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
+use weekmark_app::diagnostics;
 use weekmark_app::{
     App, AppError, McpClient, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest,
     SyncSummary,
@@ -31,6 +32,10 @@ struct Cli {
     /// Print machine-readable JSON instead of text (where supported).
     #[arg(long, global = true)]
     json: bool,
+    /// Show detailed diagnostics (e.g. every Canvas request) on stderr and in the log file;
+    /// same as WEEKMARK_LOG=debug. Never shows tokens, feed URLs or course text.
+    #[arg(short, long, global = true)]
+    verbose: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -90,6 +95,14 @@ enum Command {
     },
     /// Print JSON Schemas of the app facade types (for the desktop frontend).
     Schema,
+    /// Check the setup: version, data folder, database, keychain, sources, AI apps.
+    Doctor,
+    /// Print a diagnostic report to paste into a GitHub issue (read it first).
+    Report {
+        /// Write the report to this file instead of stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -214,7 +227,12 @@ fn parse_date(text: &str) -> Result<NaiveDate, String> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    init_logging(matches!(cli.command, Command::Mcp));
+    let kind = if matches!(cli.command, Command::Mcp) {
+        diagnostics::ProcessKind::Mcp
+    } else {
+        diagnostics::ProcessKind::App
+    };
+    diagnostics::init(kind, cli.verbose);
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(err) => {
@@ -231,18 +249,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Logs always go to stderr (stdout carries MCP protocol in `mcp`). `RUST_LOG` overrides.
-fn init_logging(mcp: bool) {
-    let default = if mcp { "warn" } else { "error" };
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .try_init();
-}
-
 async fn run(cli: Cli) -> anyhow::Result<()> {
     let json = cli.json;
     match cli.command {
@@ -252,6 +258,35 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             weekmark_mcp::serve_stdio(db).await
         }
         Command::Schema => print_json(&weekmark_app::json_schema()),
+        Command::Doctor => {
+            // Works even when the database can't be opened.
+            let doctor = match App::open() {
+                Ok(app) => app.doctor()?,
+                Err(_) => diagnostics::doctor()?,
+            };
+            if json {
+                return print_json(&doctor);
+            }
+            print_doctor(&doctor);
+            Ok(())
+        }
+        Command::Report { out } => {
+            let report = match App::open() {
+                Ok(app) => app.diagnostic_report()?,
+                Err(_) => diagnostics::diagnostic_report()?,
+            };
+            match out {
+                Some(path) => {
+                    std::fs::write(&path, &report)?;
+                    eprintln!(
+                        "Wrote {}. Read it before sharing; it contains no tokens, feed links or course names.",
+                        path.display()
+                    );
+                }
+                None => print!("{report}"),
+            }
+            Ok(())
+        }
         Command::McpConfig { client } => {
             let app = App::open()?;
             let binary = std::env::current_exe()?;
@@ -278,7 +313,15 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             eprintln!("{}", text::CANVAS_TOKEN_HOWTO);
             let token = read_secret("Canvas access token: ")?;
             let source = app.add_canvas_source(&base_url, &token).await?;
-            print_added(&source, json)
+            if json {
+                return print_json(&source);
+            }
+            let name = source.config["account_name"]
+                .as_str()
+                .unwrap_or("your Canvas account");
+            println!("Connected as {name}");
+            eprintln!("Next: run `{} sync`.", brand::CLI_NAME);
+            Ok(())
         }
         Command::Folder(FolderCommand::Add {
             path,
@@ -544,6 +587,7 @@ fn finish_sync(results: &[SourceSyncResult], json: bool) -> anyhow::Result<()> {
         print_json(&results)?;
     } else {
         for r in results {
+            let seconds = (r.finished_at - r.started_at).num_milliseconds() as f64 / 1000.0;
             if r.ok {
                 println!(
                     "{}: ok — {} courses, {} materials ({} newly indexed), {} events",
@@ -556,12 +600,113 @@ fn finish_sync(results: &[SourceSyncResult], json: bool) -> anyhow::Result<()> {
                     r.error.as_deref().unwrap_or("unknown error")
                 );
             }
+            if !r.course_summaries.is_empty() {
+                let width = r
+                    .course_summaries
+                    .iter()
+                    .map(|c| c.course.chars().count())
+                    .max()
+                    .unwrap_or(0);
+                for c in &r.course_summaries {
+                    println!(
+                        "  {:<width$}  {:>3} modules  {:>4} pages  {:>4} files  {:>3} events{}",
+                        c.course,
+                        c.modules,
+                        c.pages,
+                        c.files,
+                        c.events,
+                        match c.warnings {
+                            0 => String::new(),
+                            1 => "  1 warning".to_string(),
+                            n => format!("  {n} warnings"),
+                        }
+                    );
+                }
+            }
+            match r.requests {
+                Some(requests) => println!("  {requests} requests · {seconds:.1} s"),
+                None => println!("  {seconds:.1} s"),
+            }
+            if !r.warnings.is_empty() {
+                println!(
+                    "  {} warning(s) above; run with -v for request details",
+                    r.warnings.len()
+                );
+            }
         }
     }
     if results.iter().any(|r| !r.ok) {
         anyhow::bail!("some sources failed to sync");
     }
     Ok(())
+}
+
+fn print_doctor(doctor: &diagnostics::DoctorReport) {
+    let yes = |b: bool| if b { "yes" } else { "no" };
+    println!(
+        "{} {} on {} ({})",
+        brand::PRODUCT_NAME,
+        doctor.version,
+        doctor.os,
+        doctor.arch
+    );
+    println!("Data folder: {}", doctor.data_dir);
+    println!("Logs folder: {}", doctor.logs_dir);
+    match (&doctor.schema_version, &doctor.database_error) {
+        (Some(v), _) => println!("Database: ok (schema {v})"),
+        (None, Some(err)) => println!("Database: not readable — {err}"),
+        (None, None) => println!("Database: unknown"),
+    }
+    match &doctor.keychain_error {
+        None => println!("Keychain: available"),
+        Some(err) => println!("Keychain: NOT available — {err}"),
+    }
+    println!(
+        "Courses: {} ({} hidden) · materials: {} · events: {}",
+        doctor.courses, doctor.hidden_courses, doctor.materials, doctor.events
+    );
+    if doctor.sources.is_empty() {
+        println!(
+            "Sources: none (add one with `{} folder add <path>`)",
+            brand::CLI_NAME
+        );
+    }
+    for source in &doctor.sources {
+        println!(
+            "Source {}: {}{}{}",
+            source.kind.as_str(),
+            if source.ok { "ok" } else { "not ok" },
+            source
+                .last_synced_at
+                .map(|t| format!(
+                    ", last synced {}",
+                    t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M")
+                ))
+                .unwrap_or_default(),
+            source
+                .last_error_kind
+                .map(|k| format!(", last error: {}", k.as_str()))
+                .unwrap_or_default()
+        );
+    }
+    println!(
+        "AI apps with {} configured: Claude Desktop {} · Claude Code {} · Codex {}",
+        brand::PRODUCT_NAME,
+        yes(doctor.mcp_clients.claude_desktop),
+        yes(doctor.mcp_clients.claude_code),
+        yes(doctor.mcp_clients.codex)
+    );
+    if let Some(crash) = &doctor.last_crash {
+        println!(
+            "Last crash: {} ({}); run `{} report` to include it in an issue",
+            crash
+                .time
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M"),
+            crash.message,
+            brand::CLI_NAME
+        );
+    }
 }
 
 fn print_config(config: &McpClientConfig, with_title: bool) {
