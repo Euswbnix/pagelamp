@@ -314,6 +314,10 @@ pub enum McpNoteCode {
     CustomDataDir,
     /// Generic stdio MCP client: adapt the command/args/env to that client's config format.
     GenericStdioClient,
+    /// PageLamp runs from a place its binary won't be found at later (macOS: the disk image
+    /// or an App Translocation copy → move it to Applications and copy again; Linux: inside an
+    /// AppImage → use the .deb/.rpm or the command-line archive). Always the first note.
+    RunFromTemporaryLocation,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -727,10 +731,14 @@ impl App {
     /// `<pagelamp_binary> mcp`. `PAGELAMP_HOME` is included only when this App's data dir
     /// is not the platform default.
     pub fn mcp_client_configs(&self, pagelamp_binary: &Path) -> Vec<McpClientConfig> {
+        let launch = self.mcp_launch(pagelamp_binary);
+        let temporary =
+            mcp_config::temporary_location(&launch.command, std::env::var_os("APPIMAGE").is_some());
         mcp_config::client_configs(
-            &self.mcp_launch(pagelamp_binary),
+            &launch,
             mcp_config::Shell::current(),
             mcp_config::claude_desktop_config_hint(),
+            temporary,
         )
     }
 
