@@ -185,8 +185,10 @@ describe("SourcesPage", () => {
 
     await user.click(await screen.findByRole("button", { name: "Remove Course calendar" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Remove Course calendar?" });
-    expect(within(dialog).getByText(/everything synced from it/)).toBeInTheDocument();
+    // A feed only brings deadlines and events; it never creates courses.
+    expect(within(dialog).getByText(/the deadlines and events synced from it/)).toBeInTheDocument();
     expect(within(dialog).getByText(/its stored feed address/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Your courses aren't affected/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Remove source" }));
 
     expect(await screen.findByText("Removed Course calendar")).toBeInTheDocument();
@@ -200,6 +202,14 @@ describe("SourcesPage", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 1, name: "Sources & sync" })).toHaveFocus(),
     );
+  });
+
+  it("says removing Canvas also deletes the downloaded course files", async () => {
+    const { user } = renderRoute("/sources");
+    await user.click(await screen.findByRole("button", { name: "Remove Demo Canvas" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove Demo Canvas?" });
+    expect(within(dialog).getByText(/the course files you downloaded/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Nothing in Canvas changes/)).toBeInTheDocument();
   });
 
   it("explains that removing a folder source leaves the files alone", async () => {

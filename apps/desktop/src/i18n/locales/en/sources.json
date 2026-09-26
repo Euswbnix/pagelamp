@@ -65,8 +65,8 @@
     "title": "Remove {{label}}?",
     "description": {
       "folder": "This removes the source and everything synced from it: its courses, and your AI-policy and term settings for those courses. The files in your folder aren't touched.",
-      "canvas": "This removes the source and everything synced from it: its courses, your AI-policy and term settings for those courses, and its stored access token. Nothing in Canvas changes.",
-      "ical": "This removes the source and everything synced from it: its deadlines, events and courses (with your settings for those courses), and its stored feed address. Your LMS calendar doesn't change."
+      "canvas": "This removes the source and everything synced from it: its courses, the course files you downloaded, your AI-policy and term settings for those courses, and its stored access token. Nothing in Canvas changes.",
+      "ical": "This removes the source, the deadlines and events synced from it, and its stored feed address. Your courses aren't affected, and your LMS calendar doesn't change."
     },
     "confirm": "Remove source",
     "removing": "Removing…",
