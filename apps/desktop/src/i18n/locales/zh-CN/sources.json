@@ -27,6 +27,7 @@
   },
   "card": {
     "canvasAddress": "Canvas 地址",
+    "kindConnectedAs": "{{kind}} · 已连接账户：{{name}}",
     "folderPath": "文件夹",
     "termStart": "学期开始日期",
     "feed": "日历订阅地址",

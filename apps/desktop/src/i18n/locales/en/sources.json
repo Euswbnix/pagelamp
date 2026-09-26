@@ -27,6 +27,7 @@
   },
   "card": {
     "canvasAddress": "Canvas address",
+    "kindConnectedAs": "{{kind}} · Connected as {{name}}",
     "folderPath": "Folder",
     "termStart": "Term starts",
     "feed": "Feed address",

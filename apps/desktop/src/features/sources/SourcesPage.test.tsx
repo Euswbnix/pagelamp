@@ -52,6 +52,37 @@ describe("SourcesPage", () => {
     expect(screen.getByText(/keeps your courses on this computer/)).toBeInTheDocument();
   });
 
+  it("says which Canvas account a source is connected as", async () => {
+    renderRoute("/sources");
+    const canvas = (await screen.findByRole("heading", { level: 2, name: "Demo Canvas" })).closest(
+      "[data-slot=card]",
+    );
+    if (!(canvas instanceof HTMLElement)) throw new Error("no Canvas card");
+    expect(within(canvas).getByText("Canvas · Connected as Demo Student")).toBeInTheDocument();
+    // Other kinds just name the kind.
+    const folder = screen
+      .getByRole("heading", { level: 2, name: "Course folder" })
+      .closest("[data-slot=card]");
+    if (!(folder instanceof HTMLElement)) throw new Error("no folder card");
+    expect(within(folder).queryByText(/Connected as/)).toBeNull();
+  });
+
+  it("leaves out the account for Canvas sources added before it was recorded", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const sources = await api.listSources();
+    api.listSources = async () =>
+      sources.map((s) =>
+        s.kind === "canvas" ? { ...s, config: { base_url: s.config.base_url } } : s,
+      );
+    renderRoute("/sources", { api });
+    const canvas = (await screen.findByRole("heading", { level: 2, name: "Demo Canvas" })).closest(
+      "[data-slot=card]",
+    );
+    if (!(canvas instanceof HTMLElement)) throw new Error("no Canvas card");
+    expect(within(canvas).getByText("Canvas")).toBeInTheDocument();
+    expect(within(canvas).queryByText(/Connected as/)).toBeNull();
+  });
+
   it("shows a skeleton while loading", async () => {
     renderRoute("/sources", { latencyMs: 20 });
     expect(screen.getByText("Loading your sources…")).toBeInTheDocument();

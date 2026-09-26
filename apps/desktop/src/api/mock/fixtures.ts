@@ -114,7 +114,7 @@ function sources(now: Date, scenario: MockScenario): SourceRecord[] {
       id: SOURCE_CANVAS,
       kind: "canvas",
       label: "Demo Canvas",
-      config: { base_url: "https://canvas.demo.test" },
+      config: { base_url: "https://canvas.demo.test", account_name: "Demo Student" },
       last_synced_at: scenario === "expired" ? at(now, -9, 18) : ok,
       ...(scenario === "expired"
         ? failed(

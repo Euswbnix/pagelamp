@@ -38,6 +38,8 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
   const Icon = SOURCE_ICON[source.kind];
   const expired = source.last_error_kind === "auth_expired_or_revoked";
   const canvas = source.kind === "canvas";
+  // Canvas: the account's display name from when the token was checked (never an email or id).
+  const accountName = canvas ? configString(source, "account_name") : null;
   const replaceLabel = t(canvas ? "actions.replaceToken" : "actions.replaceFeed");
   // Unique per card for screen readers ("Replace token for Demo Canvas"); starts with the
   // visible text so voice control users can say what they see.
@@ -52,7 +54,14 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
           <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <h2 className="min-w-0 truncate">{source.label}</h2>
         </CardTitle>
-        <CardDescription>{tc(`sourceKind.${source.kind}`)}</CardDescription>
+        <CardDescription>
+          {accountName
+            ? t("card.kindConnectedAs", {
+                kind: tc(`sourceKind.${source.kind}`),
+                name: accountName,
+              })
+            : tc(`sourceKind.${source.kind}`)}
+        </CardDescription>
         <CardAction>
           <SourceStatusBadge source={source} syncing={syncing} />
         </CardAction>

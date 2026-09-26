@@ -339,7 +339,10 @@ export function createMockApi(options: MockOptions = {}): WeekmarkApi {
       }
       validateCanvasToken(token);
       return clone(
-        addSource("canvas", `canvas:${url.hostname}`, url.hostname, { base_url: url.origin }),
+        addSource("canvas", `canvas:${url.hostname}`, url.hostname, {
+          base_url: url.origin,
+          account_name: "Demo Student",
+        }),
       );
     },
 
