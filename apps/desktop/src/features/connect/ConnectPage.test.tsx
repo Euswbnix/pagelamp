@@ -144,6 +144,27 @@ describe("ConnectPage", () => {
     expect(writeText).toHaveBeenCalledWith(path);
   });
 
+  it("tells students to quit Claude Desktop before editing its config", async () => {
+    const { user } = renderRoute("/connect");
+    const desktop = await card("Claude Desktop");
+    const steps = within(desktop).getByRole("list", { name: "Steps for Claude Desktop" });
+    const items = within(steps).getAllByRole("listitem");
+    expect(items).toHaveLength(4);
+    expect(items[0]).toHaveTextContent(/Quit Claude Desktop completely first/);
+    expect(items[3]).toHaveTextContent("Save the file, then open Claude Desktop again.");
+
+    // A file that already has mcpServers gets only the pagelamp entry.
+    const writeText = spyOnClipboard();
+    await user.click(
+      within(desktop).getByRole("button", { name: "Copy Claude Desktop entry only" }),
+    );
+    const entry = writeText.mock.calls[0]?.[0] ?? "";
+    expect(entry.startsWith('"pagelamp": {')).toBe(true);
+    expect(JSON.parse(`{${entry}}`)).toEqual(
+      JSON.parse(config("claude_desktop").content).mcpServers,
+    );
+  });
+
   it("gives the TOML card its own file path and three steps", async () => {
     const { user } = renderRoute("/connect");
     const codex = await card(config("codex").title);

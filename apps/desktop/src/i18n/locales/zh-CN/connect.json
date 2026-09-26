@@ -18,11 +18,14 @@
   },
   "steps": {
     "label": "{{app}} 的设置步骤",
+    "quitFirst": "先完全退出 {{app}}：Mac 上按 ⌘Q；Windows 上在系统托盘里右键点它的图标，选择“退出”。它退出时会覆盖这个文件，所以在它运行时做的修改会丢失。",
     "openJson": "打开下面这个位置的配置文件；如果文件还不存在，就新建一个。",
     "openJsonNoPath": "打开该应用的配置文件。",
     "openToml": "打开下面这个 TOML 文件；如果文件还不存在，就新建一个。",
     "openTomlNoPath": "打开该应用的 TOML 配置文件。",
-    "pasteJson": "把下面这段配置粘贴进去；如果文件里已经有其他设置，就把两者合并。",
+    "pasteJson": "如果文件是新建的或者是空的，就把下面这段配置粘贴进去。",
+    "pasteJsonEntry": "如果文件里已经有 \"mcpServers\"，只需把下面这一项加到里面（记得在前一项的后面加上逗号）：",
+    "saveAndReopen": "保存文件，然后重新打开 {{app}}。",
     "pasteToml": "把下面几行添加到文件中。",
     "restart": "保存文件，然后彻底退出该应用，再重新打开。",
     "openTerminal": "打开终端。",
@@ -30,6 +33,7 @@
   },
   "copyPath": "复制 {{app}} 配置文件路径",
   "copyConfig": "复制 {{app}} 配置",
+  "copyEntry": "仅复制 {{app}} 的条目",
   "copyCommand": "复制 {{app}} 命令",
   "notes": {
     "title": "注意事项"

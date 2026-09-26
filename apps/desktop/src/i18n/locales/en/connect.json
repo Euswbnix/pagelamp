@@ -18,11 +18,14 @@
   },
   "steps": {
     "label": "Steps for {{app}}",
+    "quitFirst": "Quit {{app}} completely first: on a Mac press ⌘Q; on Windows right-click its icon in the system tray and choose Quit. It saves over this file when it quits, so changes made while it's open are lost.",
     "openJson": "Open the configuration file at this location. Create it if it isn't there yet.",
     "openJsonNoPath": "Open the app's configuration file.",
     "openToml": "Open this TOML file. Create it if it isn't there yet.",
     "openTomlNoPath": "Open the app's TOML configuration file.",
-    "pasteJson": "Paste in this snippet. If the file already has settings, merge the two.",
+    "pasteJson": "If the file is new or empty, paste in this snippet.",
+    "pasteJsonEntry": "If it already has an \"mcpServers\" section, add only this entry inside it (with a comma after the entry before it):",
+    "saveAndReopen": "Save the file, then open {{app}} again.",
     "pasteToml": "Add these lines to the file.",
     "restart": "Save the file, then fully quit the app and open it again.",
     "openTerminal": "Open a terminal.",
@@ -30,6 +33,7 @@
   },
   "copyPath": "Copy {{app}} file path",
   "copyConfig": "Copy {{app}} configuration",
+  "copyEntry": "Copy {{app}} entry only",
   "copyCommand": "Copy {{app}} command",
   "notes": {
     "title": "Good to know"

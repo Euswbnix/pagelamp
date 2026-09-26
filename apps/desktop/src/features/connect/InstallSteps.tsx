@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { McpClientConfig } from "@/api/types";
 import { CodeBlock } from "@/components/common/CodeBlock";
 import { CopyButton } from "@/components/common/CopyButton";
+import { mcpServerEntry } from "./snippet";
 
 interface Step {
   key: string;
@@ -51,10 +52,22 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
 
   switch (config.install_kind) {
     case "json_snippet":
+      // Quit first: apps like Claude Desktop write this file when they quit, overwriting an
+      // edit made while they were running.
       return [
+        { key: "quit", text: t("steps.quitFirst", { app: config.title }) },
         { key: "open", text: path ? t("steps.openJson") : t("steps.openJsonNoPath"), extra: path },
-        { key: "paste", text: t("steps.pasteJson"), extra: snippet },
-        { key: "restart", text: t("steps.restart") },
+        {
+          key: "paste",
+          text: t("steps.pasteJson"),
+          extra: (
+            <>
+              {snippet}
+              <EntryOnly config={config} />
+            </>
+          ),
+        },
+        { key: "reopen", text: t("steps.saveAndReopen", { app: config.title }) },
       ];
     case "toml_snippet":
       return [
@@ -68,6 +81,19 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
         { key: "run", text: t("steps.runCommand"), extra: snippet },
       ];
   }
+}
+
+/** For a file that already has an `mcpServers` section: just our entry, to add inside it. */
+function EntryOnly({ config }: { config: McpClientConfig }) {
+  const { t } = useTranslation("connect");
+  const entry = mcpServerEntry(config.content);
+  if (!entry) return null;
+  return (
+    <div className="space-y-2 pt-1">
+      <p>{t("steps.pasteJsonEntry")}</p>
+      <CodeBlock code={entry} copyLabel={t("copyEntry", { app: config.title })} />
+    </div>
+  );
 }
 
 /** The config file location in monospace with its own copy button. */
