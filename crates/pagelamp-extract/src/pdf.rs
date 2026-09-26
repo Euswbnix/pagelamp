@@ -14,8 +14,9 @@
 //! - `output_doc_page` re-reads the whole page tree on every call, so the work grows with the
 //!   square of the page count. Files with more than `Limits::max_pdf_pages` page entries are
 //!   refused, and a page listed twice in the page tree (only in broken files) is read once.
-//! - Stream decompression inside `lopdf` has no size limit; `pdf_inflate` checks the file
-//!   first (see "Safety limits" in `lib.rs`).
+//! - Stream decompression inside `lopdf` has no size limit; `pdf_inflate` checks the raw file
+//!   first, and `defuse` empties image streams and measures the rest right after loading
+//!   (see "Safety limits" in `lib.rs`).
 //! - It does not print to stdout itself: its debug macro is a no-op and its warnings go
 //!   through the `log` crate, so they appear only where the host's logger sends them (e.g. a
 //!   `tracing-subscriber` with the `log` bridge). `lopdf` only prints in its own tests and
@@ -24,17 +25,23 @@
 
 use std::collections::HashSet;
 
-use pdf_extract::{Document, ObjectId, PlainTextOutput};
+use pdf_extract::{Document, Object, ObjectId, PlainTextOutput};
 
 use crate::pdf_check::PageChecker;
+use crate::pdf_inflate::{Budget, Caps, plan_for};
 use crate::util::{catch_panic, failed};
 use crate::{ExtractError, Segment};
 
 /// Extract the text of every page of the PDF in `bytes`. PDFs whose page tree lists more
-/// than `max_pages` pages are refused.
-pub(crate) fn extract(bytes: &[u8], max_pages: usize) -> Result<Vec<Segment>, ExtractError> {
+/// than `max_pages` pages, or whose streams would expand past `caps`, are refused.
+pub(crate) fn extract(
+    bytes: &[u8],
+    max_pages: usize,
+    caps: Caps,
+) -> Result<Vec<Segment>, ExtractError> {
     // First `?`: the parser panicked. Second `?`: it returned an error.
-    let (document, pages) = catch_panic("PDF", || load(bytes))??;
+    let (mut document, pages) = catch_panic("PDF", || load(bytes))??;
+    defuse(&mut document, caps)?;
     if pages.len() > max_pages {
         return Err(failed(format!(
             "PDF has more than {} pages (it has {}), so it was not indexed",
@@ -84,6 +91,37 @@ fn load(bytes: &[u8]) -> Result<(Document, Vec<(u32, ObjectId)>), ExtractError> 
     Ok((document, pages))
 }
 
+/// Check 2 of `pdf_inflate`, on the objects `lopdf` parsed: empty every image stream (text
+/// extraction never needs image bytes, but `pdf-extract` decodes and parses every drawn
+/// XObject), and measure every other stream with the filters `lopdf` will apply to it.
+fn defuse(document: &mut Document, caps: Caps) -> Result<(), ExtractError> {
+    let mut budget = Budget::new(caps);
+    for object in document.objects.values_mut() {
+        let Object::Stream(stream) = object else {
+            continue;
+        };
+        let image = stream
+            .dict
+            .get(b"Subtype")
+            .and_then(Object::as_name)
+            .is_ok_and(|name| name == b"Image");
+        if image {
+            stream.set_plain_content(Vec::new());
+            continue;
+        }
+        // No (readable) /Filter: `lopdf` uses the bytes as they are.
+        let Ok(filters) = stream.filters() else {
+            continue;
+        };
+        let names: Vec<String> = filters
+            .iter()
+            .map(|name| String::from_utf8_lossy(name).into_owned())
+            .collect();
+        budget.measure(plan_for(&names), &stream.content)?;
+    }
+    Ok(())
+}
+
 fn page_text(
     document: &Document,
     page: u32,
@@ -109,10 +147,16 @@ mod tests {
     use super::*;
     use crate::Limits;
     use crate::test_support::{PdfFixture, pdf_bytes, pdf_bytes_with_broken_page};
+    use lopdf::dictionary;
     use pdf_extract::Dictionary;
 
+    const CAPS: Caps = Caps {
+        per_stream: Limits::DEFAULT.max_pdf_stream_bytes,
+        total: Limits::DEFAULT.max_pdf_inflated_bytes,
+    };
+
     fn read(bytes: &[u8]) -> Result<Vec<Segment>, ExtractError> {
-        extract(bytes, Limits::DEFAULT.max_pdf_pages)
+        extract(bytes, Limits::DEFAULT.max_pdf_pages, CAPS)
     }
 
     fn page_texts(segments: &[Segment]) -> Vec<(String, String)> {
@@ -201,6 +245,68 @@ mod tests {
         page.set("Parent", page_id);
         pdf.add_page(page_id, page);
         assert_first_page_is_skipped(pdf);
+    }
+
+    /// A page that shows "Visible text" and draws image `/Im1`, whose stream is `image` with
+    /// `/Filter /FlateDecode`.
+    fn page_drawing_an_image(image: Vec<u8>, subtype: &str) -> Vec<u8> {
+        let mut pdf = PdfFixture::new();
+        let image = pdf.add_object(lopdf::Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => subtype,
+                "Width" => 1000,
+                "Height" => 1000,
+                "BitsPerComponent" => 8,
+                "ColorSpace" => "DeviceGray",
+                "Filter" => "FlateDecode",
+            },
+            image,
+        ));
+        let resources = pdf.resources_with_forms(&[("Im1", image)]);
+        let mut operations = PdfFixture::text("Visible text");
+        operations.push(PdfFixture::draw("Im1"));
+        let page = pdf.page_dict(operations, resources);
+        let page_id = pdf.next_id();
+        pdf.add_page(page_id, page);
+        pdf.finish()
+    }
+
+    fn zlib(data: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn drawn_images_are_never_decoded() {
+        // 3 MB of token-dense "image" data: parsed as a content stream it would grow a lot.
+        let dense = zlib(&b"0 0 m ".repeat(500_000));
+        let tight = Caps {
+            per_stream: 1_000_000,
+            total: 2_000_000,
+        };
+        let bytes = page_drawing_an_image(dense.clone(), "Image");
+        let segments = extract(&bytes, 10, tight).unwrap();
+        assert_eq!(segments[0].text.trim(), "Visible text");
+        // The image's bytes are gone before any page is read.
+        let (mut document, _) = load(&bytes).unwrap();
+        defuse(&mut document, tight).unwrap();
+        let images: Vec<&pdf_extract::Stream> = document
+            .objects
+            .values()
+            .filter_map(|o| o.as_stream().ok())
+            .filter(|s| s.dict.get(b"Subtype").and_then(Object::as_name).ok() == Some(b"Image"))
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert!(images[0].content.is_empty() && images[0].filters().is_err());
+        // The same stream as a form (which is decoded) is measured and refused.
+        let bytes = page_drawing_an_image(dense, "Form");
+        assert!(matches!(
+            extract(&bytes, 10, tight),
+            Err(ExtractError::Failed(m)) if m.contains("would expand")
+        ));
     }
 
     #[test]
@@ -308,8 +414,8 @@ mod tests {
     #[test]
     fn too_many_pages_is_failed() {
         let bytes = pdf_bytes(&[Some("Alpha"), Some("Beta"), Some("Gamma")]);
-        assert_eq!(extract(&bytes, 3).unwrap().len(), 3);
-        let result = extract(&bytes, 2);
+        assert_eq!(extract(&bytes, 3, CAPS).unwrap().len(), 3);
+        let result = extract(&bytes, 2, CAPS);
         assert!(
             matches!(&result, Err(ExtractError::Failed(m)) if m == "PDF has more than 2 pages (it has 3), so it was not indexed"),
             "{result:?}"
