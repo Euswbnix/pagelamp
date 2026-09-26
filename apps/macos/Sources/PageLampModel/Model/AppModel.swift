@@ -37,26 +37,59 @@ public enum FooterStatus: Equatable, Sendable {
     case neverSynced
 }
 
+/// A source row on Sources & Sync to scroll to and briefly highlight (a fix or "Open Sources &
+/// Sync" led there). Each request is new, so asking again for the same source highlights again.
+public struct SourceHighlight: Equatable, Sendable {
+    public let sourceId: String
+    public let request: Int
+}
+
+/// A menu command that shows its result in the main window, which may be closed (only Settings
+/// open): the command opens the main window first (spec §2.7).
+public enum MainWindowCommand: Equatable, Sendable {
+    /// View ▸ This Week ⌘1 · Sources & Sync ⌘2 · Connect AI App ⌘3.
+    case show(Destination)
+    /// Go ▸ Previous Week ⌘[ (-1) · Next Week ⌘] (+1).
+    case stepWeek(Int)
+    /// Go ▸ Current Week ⇧⌘T.
+    case currentWeek
+    /// Help ▸ Copy Diagnostic Report… (the preview sheet is the main window's).
+    case diagnosticReport
+    /// Debug ▸ Data Source ▸ Live Data… (the confirmation is the main window's).
+    case liveData
+}
+
 @Observable @MainActor
 public final class AppModel {
-    /// How long transient capsule states stay, and how fast the mock answers.
+    /// How long transient states stay, how fast the mock answers, and how the model waits.
     public struct Timing: Sendable {
+        /// Waits for a duration; returns early when the waiting task is cancelled. Every timer of
+        /// the model goes through it, so tests can fire timers themselves instead of sleeping.
+        public typealias Sleep = @Sendable (Duration) async -> Void
+
         public var finishedCapsule: Duration
         public var failedCapsule: Duration
         public var mock: MockService.Timing
         /// How often to look again while another process syncs (spec §2.2, S17).
         public var busyPoll: Duration
+        /// How long a source row stays highlighted after a fix led to it.
+        public var sourceHighlight: Duration
+        public var sleep: Sleep
 
         public init(
             finishedCapsule: Duration,
             failedCapsule: Duration,
             mock: MockService.Timing,
-            busyPoll: Duration = .seconds(5)
+            busyPoll: Duration = .seconds(5),
+            sourceHighlight: Duration = .seconds(2),
+            sleep: @escaping Sleep = { try? await Task.sleep(for: $0) }
         ) {
             self.finishedCapsule = finishedCapsule
             self.failedCapsule = failedCapsule
             self.mock = mock
             self.busyPoll = busyPoll
+            self.sourceHighlight = sourceHighlight
+            self.sleep = sleep
         }
 
         /// The app: "Sync finished" for 4 s (spec §6.2).
@@ -110,13 +143,20 @@ public final class AppModel {
     /// Set while the app runs from a temporary location (Connect warns, spec S15).
     public private(set) var temporaryLocation: TemporaryLocation?
     public private(set) var sectionErrors: [ShellPart: PageLampFailure] = [:]
-    /// How many refreshes started (diagnostics and tests).
+    /// How many refreshes started (each refresh's sequence number; diagnostics and tests).
     public private(set) var refreshCount = 0
+    /// The sequence number of the last refresh whose results were applied (older refreshes that
+    /// finish after a newer one started are dropped; tests).
+    public private(set) var appliedRefresh = 0
 
     // MARK: Navigation (spec §2.4)
 
     public var destination: Destination = .thisWeek
     public var inspectorShown = false
+    /// Whether a main window restored its stored destination and inspector in this run. Only the
+    /// first one does: a window reopened later (say by ⌘2 with only Settings open) shows where
+    /// the model is now, which the command just set, not what an older window stored.
+    @ObservationIgnored public var restoredWindowState = false
     @ObservationIgnored private var courseStates: [String: CourseUIState] = [:]
 
     // MARK: Sync and the capsule (spec §6.2)
@@ -128,6 +168,12 @@ public final class AppModel {
     public private(set) var capsule: CapsuleState = .hidden
     @ObservationIgnored private var dismissedAttention: Set<String> = []
     @ObservationIgnored private var capsuleTimer: Task<Void, Never>?
+    /// The source row Sources & Sync scrolls to and highlights (spec §3.3; the fix bubble).
+    public private(set) var sourceHighlight: SourceHighlight?
+    @ObservationIgnored private var highlightTimer: Task<Void, Never>?
+    @ObservationIgnored private var highlightRequests = 0
+    /// Why the crash notice couldn't be dismissed (S6), shown under it.
+    public private(set) var crashDismissFailure: PageLampFailure?
 
     // MARK: Presentation requests (commands → views)
 
@@ -194,6 +240,7 @@ public final class AppModel {
         activationTask?.cancel()
         capsuleTimer?.cancel()
         busyPoll?.cancel()
+        highlightTimer?.cancel()
     }
 
     // MARK: - Language
@@ -245,18 +292,27 @@ public final class AppModel {
     }
 
     /// Reloads status, courses, sources and the This Week inputs.
+    ///
+    /// Refreshes overlap (activation, the busy poll, the one after each sync, Try Again), and
+    /// the facade answers in any order: only the latest refresh to start applies its results. An
+    /// older one that finishes later (say an activation refresh that read the data before our
+    /// sync finished) is dropped instead of putting stale data back.
     public func refresh() async {
         let generation = self.generation
         let service = self.service
         let sidecar = sidecarPath
         refreshCount += 1
+        let sequence = refreshCount
 
         let status: AppStatus
         do throws(PageLampFailure) {
             status = try await service.status()
         } catch {
-            guard generation == self.generation else { return }
+            guard isLatestRefresh(sequence, generation) else { return }
+            busyPoll?.cancel()
+            busyPoll = nil
             phase = .unavailable(error)
+            appliedRefresh = sequence
             return
         }
 
@@ -268,7 +324,7 @@ public final class AppModel {
         async let crash = Self.load { () async throws(PageLampFailure) in try await service.lastCrash() }
         async let launch = Self.load { () async throws(PageLampFailure) in try await service.mcpLaunch(pagelampBinary: sidecar) }
         let loaded = await (courses, deadlines, plan, crash, launch)
-        guard generation == self.generation else { return }
+        guard isLatestRefresh(sequence, generation) else { return }
 
         self.status = status
         sources = status.sources
@@ -291,6 +347,13 @@ public final class AppModel {
         phase = .ready
         updateAttention()
         scheduleBusyPoll()
+        appliedRefresh = sequence
+    }
+
+    /// Whether the refresh numbered `sequence` (of the service generation `generation`) is still
+    /// the latest to have started.
+    private func isLatestRefresh(_ sequence: Int, _ generation: Int) -> Bool {
+        sequence == refreshCount && generation == self.generation
     }
 
     /// While another process (the CLI) holds the sync lock, look again every few seconds, so
@@ -300,11 +363,17 @@ public final class AppModel {
         busyPoll = nil
         guard externalSyncRunning else { return }
         let delay = timing.busyPoll
+        let sleep = timing.sleep
         busyPoll = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            await sleep(delay)
             guard !Task.isCancelled else { return }
             await self?.refresh()
         }
+    }
+
+    /// Whether a look-again is scheduled (S17; tests).
+    public var isBusyPollScheduled: Bool {
+        busyPoll != nil
     }
 
     private nonisolated static func load<T: Sendable>(
@@ -506,8 +575,9 @@ public final class AppModel {
     private func hideCapsule(after delay: Duration) {
         capsuleTimer?.cancel()
         let shown = capsule
+        let sleep = timing.sleep
         capsuleTimer = Task { [weak self] in
-            try? await Task.sleep(for: delay)
+            await sleep(delay)
             guard !Task.isCancelled, let self, self.capsule == shown else { return }
             self.capsule = .hidden
             self.updateAttention()
@@ -543,10 +613,71 @@ public final class AppModel {
     }
 
     /// Replace Token… / Replace Feed Address… for a source whose secret was rejected: the one
-    /// request every screen (capsule, This Week, the course header) makes. M1 opens Sources &
-    /// Sync, where the problem callout explains the fix; M2 presents the Replace sheet here.
+    /// request every fix button (the capsule's bubble, the course header) makes. M1 has no
+    /// Replace sheet, so it does the visible next best thing: Sources & Sync, scrolled to the
+    /// source, whose problem callout explains the fix. M2 presents the Replace sheet here.
     public func fixSource(_ sourceId: String) {
+        showSource(sourceId)
+    }
+
+    /// Opens Sources & Sync scrolled to `sourceId`, which is highlighted for a moment
+    /// (`sourceHighlight`, cleared after `Timing.sourceHighlight`).
+    public func showSource(_ sourceId: String) {
         destination = .sources
+        highlightRequests += 1
+        let highlight = SourceHighlight(sourceId: sourceId, request: highlightRequests)
+        sourceHighlight = highlight
+        highlightTimer?.cancel()
+        let (sleep, delay) = (timing.sleep, timing.sourceHighlight)
+        highlightTimer = Task { [weak self] in
+            await sleep(delay)
+            guard !Task.isCancelled else { return }
+            self?.endSourceHighlight(highlight)
+        }
+    }
+
+    /// Ends `highlight` (if it is still the current one).
+    public func endSourceHighlight(_ highlight: SourceHighlight) {
+        if sourceHighlight == highlight { sourceHighlight = nil }
+    }
+
+    // MARK: - Menu commands
+
+    /// Runs a menu command whose result shows in the main window. The main window may be closed
+    /// (only Settings open): `openMainWindow` (the scene's `openWindow(id: "main")`) runs first,
+    /// which also brings an open window to the front.
+    public func perform(_ command: MainWindowCommand, openMainWindow: () -> Void) async {
+        // A window this opens shows the command's result, never an older stored destination.
+        restoredWindowState = true
+        openMainWindow()
+        switch command {
+        case .show(let destination):
+            self.destination = destination
+        case .stepWeek(let delta):
+            stepWeek(by: delta)
+        case .currentWeek:
+            showCurrentWeek()
+        case .diagnosticReport:
+            await showDiagnosticReport(in: .main)
+        case .liveData:
+            if dataMode != .live { confirmingLiveData = true }
+        }
+    }
+
+    // MARK: - Crash notice (S6)
+
+    /// The crash notice's Dismiss: clears the record in the core (for the CLI's crashes too).
+    public func dismissCrash() async {
+        let generation = self.generation
+        do throws(PageLampFailure) {
+            try await service.clearLastCrash()
+            guard generation == self.generation else { return }
+            lastCrash = nil
+            crashDismissFailure = nil
+        } catch {
+            guard generation == self.generation else { return }
+            crashDismissFailure = error
+        }
     }
 
     // MARK: - Data mode
@@ -599,6 +730,9 @@ public final class AppModel {
         syncProgress = nil
         capsule = .hidden
         dismissedAttention = []
+        crashDismissFailure = nil
+        highlightTimer?.cancel()
+        sourceHighlight = nil
         courseStates = [:]
         if case .course = destination { destination = .thisWeek }
     }

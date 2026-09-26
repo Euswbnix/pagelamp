@@ -1,12 +1,15 @@
 // Menus and shortcuts (spec §2.7, M1 items). The standard menus (Edit, Window, the sidebar,
 // inspector and toolbar toggles) come from the system and follow AppleLanguages; our items use
-// `model.menuL10n` (the launch language) so the menu bar never mixes two languages.
+// `model.menuL10n` (the launch language) so the menu bar never mixes two languages. Commands
+// whose result shows in the main window go through `AppModel.perform(_:openMainWindow:)`, which
+// opens (or brings forward) the main window first: with only Settings open they still work.
 
 import SwiftUI
 import PageLampModel
 
 struct PageLampCommands: Commands {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         let l10n = model.menuL10n
@@ -29,24 +32,24 @@ struct PageLampCommands: Commands {
 
         // View ▸ This Week ⌘1 · Sources & Sync ⌘2 · Connect AI App ⌘3 (above the sidebar toggle)
         CommandGroup(before: .sidebar) {
-            Button(l10n("mac.nav.thisWeek")) { model.destination = .thisWeek }
+            Button(l10n("mac.nav.thisWeek")) { perform(.show(.thisWeek)) }
                 .keyboardShortcut("1")
-            Button(l10n("mac.nav.sources")) { model.destination = .sources }
+            Button(l10n("mac.nav.sources")) { perform(.show(.sources)) }
                 .keyboardShortcut("2")
-            Button(l10n("mac.nav.connect")) { model.destination = .connect }
+            Button(l10n("mac.nav.connect")) { perform(.show(.connect)) }
                 .keyboardShortcut("3")
             Divider()
         }
 
         // Go ▸ Previous Week ⌘[ · Next Week ⌘] · Current Week ⇧⌘T (⌘T is HIG-reserved)
         CommandMenu(l10n("mac.menu.go")) {
-            Button(l10n("mac.actions.previousWeek")) { model.stepWeek(by: -1) }
+            Button(l10n("mac.actions.previousWeek")) { perform(.stepWeek(-1)) }
                 .keyboardShortcut("[")
                 .disabled(!model.canStepWeek(by: -1))
-            Button(l10n("mac.actions.nextWeek")) { model.stepWeek(by: 1) }
+            Button(l10n("mac.actions.nextWeek")) { perform(.stepWeek(1)) }
                 .keyboardShortcut("]")
                 .disabled(!model.canStepWeek(by: 1))
-            Button(l10n("mac.actions.currentWeek")) { model.showCurrentWeek() }
+            Button(l10n("mac.actions.currentWeek")) { perform(.currentWeek) }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(!model.canShowCurrentWeek)
         }
@@ -55,14 +58,16 @@ struct PageLampCommands: Commands {
         CommandGroup(replacing: .help) {
             Button(l10n("mac.menu.help")) { AppActions.open(BrandLinks.homepage) }
             Divider()
-            Button(l10n("mac.actions.copyDiagnosticReport")) {
-                Task { await model.showDiagnosticReport(in: .main) }
-            }
+            Button(l10n("mac.actions.copyDiagnosticReport")) { perform(.diagnosticReport) }
             Button(l10n("mac.actions.reportProblem")) { AppActions.open(BrandLinks.issues) }
             Button(l10n("mac.actions.openLogsFolder")) {
                 Task { await AppActions.openLogsFolder(model) }
             }
         }
+    }
+
+    private func perform(_ command: MainWindowCommand) {
+        Task { await model.perform(command) { openWindow(id: PageLampScenes.mainWindowID) } }
     }
 }
 
@@ -93,6 +98,7 @@ struct CourseMenuCommands: Commands {
 /// Debug (preview build only): switch mock scenarios or to live data, run mock syncs.
 struct DebugCommands: Commands {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         let l10n = model.menuL10n
@@ -136,7 +142,11 @@ struct DebugCommands: Commands {
     private var live: Binding<Bool> {
         Binding(
             get: { model.dataMode == .live },
-            set: { if $0, model.dataMode != .live { model.confirmingLiveData = true } }
+            // The confirmation is the main window's alert: open it first (it may be closed).
+            set: { live in
+                guard live, model.dataMode != .live else { return }
+                Task { await model.perform(.liveData) { openWindow(id: PageLampScenes.mainWindowID) } }
+            }
         )
     }
 

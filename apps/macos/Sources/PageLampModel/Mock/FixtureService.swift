@@ -20,6 +20,10 @@ public struct FixtureService: PageLampService {
         case week
         /// `course_overview(…)`.
         case overview
+        /// `mcp_client_configs(…)` (the Connect page).
+        case clientConfigs
+        /// `clear_last_crash()` (the crash notice's Dismiss).
+        case clearCrash
     }
 
     /// What `latestStudyPlan()` answers.
@@ -202,7 +206,8 @@ public struct FixtureService: PageLampService {
     }
 
     public func mcpClientConfigs(pagelampBinary: String) async throws(PageLampFailure) -> [McpClientConfig] {
-        try await base.mcpClientConfigs(pagelampBinary: pagelampBinary)
+        try fail(.clientConfigs)
+        return try await base.mcpClientConfigs(pagelampBinary: pagelampBinary)
     }
 
     public func mcpLaunch(pagelampBinary: String) async throws(PageLampFailure) -> McpLaunch {
@@ -226,6 +231,7 @@ public struct FixtureService: PageLampService {
     }
 
     public func clearLastCrash() async throws(PageLampFailure) {
+        try fail(.clearCrash)
         try await base.clearLastCrash()
     }
 }

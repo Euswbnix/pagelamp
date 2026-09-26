@@ -30,15 +30,22 @@ struct AppModelTests {
 
     @Test("a sync streams progress into the capsule, finishes, then hides")
     func syncFlow() async {
-        let (model, mock) = makeModel(scenario: .demo, syncStep: .milliseconds(3))
+        let gate = SyncStepGate()
+        let timers = ManualTimers()
+        let (model, mock) = makeModel(scenario: .demo, gate: gate, timers: timers)
         await model.refresh()
+        #expect(model.capsule == .hidden)
 
-        var seen: [CapsuleState] = []
         let sync = Task { await model.syncAll() }
-        let sawProgress = await eventually {
-            if seen.last != model.capsule { seen.append(model.capsule) }
-            if case .syncing(let syncing) = model.capsule, syncing.sourceIndex >= 2 { return true }
-            return false
+        // Held before the folder's first step: syncing 1 of 3.
+        #expect(await gate.held() == SyncStepPosition(sourceId: "folder:demo-courses", step: 1))
+        #expect(await until {
+            if case .syncing(let syncing) = model.capsule { syncing.sourceIndex == 1 } else { false }
+        })
+        // Held before the feed's first step: syncing 2 of 3.
+        await gate.advance(until: SyncStepPosition(sourceId: "ical:demo-calendar", step: 1))
+        let sawProgress = await until {
+            if case .syncing(let syncing) = model.capsule { syncing.sourceIndex == 2 } else { false }
         }
         #expect(sawProgress)
         #expect(model.isSyncing)
@@ -54,6 +61,7 @@ struct AppModelTests {
         await model.syncAll()
         #expect(await mock.callCount("sync") == 1)
 
+        await gate.open()
         await sync.value
         #expect(!model.isSyncing)
         #expect(model.syncProgress == nil)
@@ -61,11 +69,12 @@ struct AppModelTests {
         #expect(model.lastRun?.results.map(\.ok) == [true, true, true])
         // The folder source reported a warning along the way.
         #expect(model.lastRun?.result(for: "folder:demo-courses")?.warnings.count == 1)
-        #expect(seen.first == .hidden)
-        #expect(seen.contains { if case .syncing(let s) = $0 { s.sourceIndex == 1 } else { false } })
 
-        // "Sync finished" stays for `finishedCapsule`, then the capsule leaves.
-        #expect(await eventually { model.capsule == .hidden })
+        // "Sync finished" stays until its `finishedCapsule` timer fires, then the capsule leaves.
+        await timers.waitForTimer(.seconds(4))
+        #expect(model.capsule == .finished(.init(problems: 0)))
+        await timers.fire(.seconds(4))
+        #expect(await until { model.capsule == .hidden })
         model.hideResults()
         #expect(model.lastRun == nil)
     }
@@ -91,9 +100,10 @@ struct AppModelTests {
         #expect(model.capsule == expected)
         #expect(model.lastRun?.result(for: "canvas:canvas.demo.test")?.errorKind == .authExpiredOrRevoked)
 
-        // The fix bubble opens Sources & Sync (the Replace sheet is M2).
+        // The fix bubble opens Sources & Sync at the source, highlighted (the Replace sheet is M2).
         model.performCapsuleFix()
         #expect(model.destination == .sources)
+        #expect(model.sourceHighlight?.sourceId == "canvas:canvas.demo.test")
     }
 
     @Test("Debug ▸ mock sync with a rejected token turns a healthy demo into attention")
@@ -112,14 +122,17 @@ struct AppModelTests {
 
     @Test("a sync refused as busy shows a short notice")
     func busy() async {
-        let (model, _) = makeModel(scenario: .busy)
+        let timers = ManualTimers()
+        let (model, _) = makeModel(scenario: .busy, timers: timers)
         await model.refresh()
         // The CLI holds the lock: the footer says so even though this app isn't syncing.
         #expect(model.footerStatus == .syncing)
         await model.syncAll()
         #expect(model.capsule == .failed(.busy))
         #expect(model.lastRun == nil)
-        #expect(await eventually { model.capsule == .hidden })
+        await timers.waitForTimer(.seconds(6))
+        await timers.fire(.seconds(6))
+        #expect(await until { model.capsule == .hidden })
     }
 
     @Test("a course's week stepping follows its available weeks")
@@ -190,8 +203,9 @@ struct AppModelTests {
         let before = model.refreshCount
         let statusCalls = await mock.callCount("status")
         center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-        #expect(await eventually { model.refreshCount > before })
-        #expect(await eventually { model.phase == .ready })
+        // The activation refresh started and applied its results.
+        #expect(await until { model.appliedRefresh > before })
+        #expect(model.phase == .ready)
         #expect(await mock.callCount("status") > statusCalls)
     }
 
@@ -241,6 +255,7 @@ struct AppModelTests {
         await model.refresh()
         model.fixSource("canvas:canvas.demo.test")
         #expect(model.destination == .sources)
+        #expect(model.sourceHighlight?.sourceId == "canvas:canvas.demo.test")
 
         await model.showDiagnosticReport(in: .settings)
         #expect(model.diagnosticReportHost == .settings)

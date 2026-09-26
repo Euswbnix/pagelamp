@@ -36,7 +36,7 @@ struct CourseHeader: View {
         guard let synced = summary.lastSyncedAt else {
             return l10n("mac.course.eyebrowNeverSynced", arguments)
         }
-        return l10n("mac.course.eyebrow", arguments.merging(["when": l10n.relative(synced, to: model.clock())]) { $1 })
+        return l10n("mac.course.eyebrow", arguments.merging(["when": l10n.relative(synced, to: model.clock(), calendar: model.calendar)]) { $1 })
     }
 
     /// The course's own source is being synced right now (not just any source).
@@ -116,23 +116,141 @@ struct CourseAIStatusLine: View {
     }
 }
 
-/// This Week · Deadlines · Timeline: `.tabs` on macOS 27, else `.segmented`.
+/// This Week · Deadlines · Timeline: `.tabs` on macOS 27, else `.segmented`, at its natural
+/// width; a pop-up menu when the column is too narrow for that (English at the minimum window
+/// with the inspector open: its segments are wider than Chinese ones), so the picker never runs
+/// past the reading column.
 struct CourseSectionPicker: View {
     @Binding var selection: CourseSection
     @Environment(\.l10n) private var l10n
+    @Environment(\.drawsControlStandIns) private var standIns
 
     var body: some View {
-        let picker = Picker(l10n("course.tabs.label"), selection: $selection) {
-            Text(l10n("mac.course.sections.week")).tag(CourseSection.week)
-            Text(l10n("course.tabs.deadlines")).tag(CourseSection.deadlines)
-            Text(l10n("course.tabs.timeline")).tag(CourseSection.timeline)
+        ViewThatFits(in: .horizontal) {
+            wide
+            narrow
+        }
+    }
+
+    @ViewBuilder private var wide: some View {
+        if standIns {
+            SegmentedStandIn(titles: sections.map(\.title), selected: selectedIndex)
+        } else if #available(macOS 27, *) {
+            picker.pickerStyle(.tabs).fixedSize()
+        } else {
+            picker.pickerStyle(.segmented).fixedSize()
+        }
+    }
+
+    @ViewBuilder private var narrow: some View {
+        if standIns {
+            PopUpStandIn(titles: sections.map(\.title), selected: selectedIndex)
+        } else {
+            picker.pickerStyle(.menu).fixedSize()
+        }
+    }
+
+    private var sections: [(section: CourseSection, title: String)] {
+        [
+            (.week, l10n("mac.course.sections.week")),
+            (.deadlines, l10n("course.tabs.deadlines")),
+            (.timeline, l10n("course.tabs.timeline")),
+        ]
+    }
+
+    private var selectedIndex: Int {
+        sections.firstIndex { $0.section == selection } ?? 0
+    }
+
+    private var picker: some View {
+        Picker(l10n("course.tabs.label"), selection: $selection) {
+            ForEach(sections, id: \.section) { item in
+                Text(item.title).tag(item.section)
+            }
         }
         .labelsHidden()
+    }
+}
+
+extension EnvironmentValues {
+    /// Snapshots only: ImageRenderer draws AppKit-backed controls (segmented, tab and pop-up
+    /// pickers) as placeholders, so those render as plain stand-ins of about their size, and a
+    /// snapshot shows which layout the page chose. The app never sets it.
+    @Entry package var drawsControlStandIns = false
+}
+
+/// Offscreen stand-in for a segmented / tabs picker (snapshots): equal segments as wide as the
+/// widest title plus the control's padding (like AppKit's), the selected one raised.
+private struct SegmentedStandIn: View {
+    let titles: [String]
+    let selected: Int
+
+    var body: some View {
+        EqualWidthRow {
+            ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
+                Text(title)
+                    .lineLimit(1)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 3)
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        if index == selected {
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(.background)
+                                .shadow(color: .black.opacity(0.15), radius: 0.5, y: 0.5)
+                        }
+                    }
+            }
+        }
+        .background(.fill.tertiary, in: .rect(cornerRadius: 6))
+        .accessibilityHidden(true)
+    }
+}
+
+/// Offscreen stand-in for a pop-up (menu) picker (snapshots): as wide as its widest title (like
+/// NSPopUpButton), showing the selected one and the up/down chevrons.
+private struct PopUpStandIn: View {
+    let titles: [String]
+    let selected: Int
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ZStack(alignment: .leading) {
+                ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
+                    Text(title)
+                        .lineLimit(1)
+                        .opacity(index == selected ? 1 : 0)
+                }
+            }
+            Image(systemName: "chevron.up.chevron.down")
+                .imageScale(.small)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(.fill.tertiary, in: .rect(cornerRadius: 6))
         .fixedSize()
-        if #available(macOS 27, *) {
-            picker.pickerStyle(.tabs)
-        } else {
-            picker.pickerStyle(.segmented)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Lays its children out in a row, each as wide as the widest one's ideal width.
+private struct EqualWidthRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let width = sizes.map(\.width).max() ?? 0
+        let height = sizes.map(\.height).max() ?? 0
+        return CGSize(width: width * CGFloat(subviews.count), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard !subviews.isEmpty else { return }
+        let width = bounds.width / CGFloat(subviews.count)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(
+                at: CGPoint(x: bounds.minX + width * CGFloat(index), y: bounds.minY),
+                proposal: ProposedViewSize(width: width, height: bounds.height)
+            )
         }
     }
 }
@@ -160,12 +278,26 @@ struct CourseWeekLineView: View {
         .animation(reduceMotion ? nil : PLMotion.week, value: line)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(line.spoken(l10n))
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: step(1)
-            case .decrement: step(-1)
-            @unknown default: break
+        .modifier(WeekStepping(enabled: line.isAdjustable, step: step))
+    }
+}
+
+/// The adjustable action, only where stepping weeks is what the page does (the This Week section).
+private struct WeekStepping: ViewModifier {
+    let enabled: Bool
+    let step: (Int) -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: step(1)
+                case .decrement: step(-1)
+                @unknown default: break
+                }
             }
+        } else {
+            content
         }
     }
 }

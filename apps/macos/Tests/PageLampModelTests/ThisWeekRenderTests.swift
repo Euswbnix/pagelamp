@@ -2,9 +2,9 @@
 // named after. (The PNGs themselves: SnapshotRenderTests.)
 
 import Foundation
-import PageLamp
 import PageLampKit
 import PageLampModel
+import PageLampSnapshots
 import Testing
 
 @Suite("This Week snapshot states")
@@ -19,13 +19,19 @@ struct ThisWeekSnapshotStateTests {
     func fixtureStates() async throws {
         let names = SnapshotCatalog.pages.map(\.name).filter { $0.hasPrefix("this-week-") }
         #expect(names == [
-            "default", "next-up", "next-up-morning", "quiet", "errors", "stale-plan",
+            "default", "crashed", "next-up", "next-up-morning", "quiet", "errors", "stale-plan",
             "no-sources", "no-courses", "first-sync", "narrow",
         ].map { "this-week-\($0)" })
 
         let preview = try await model("default")
         #expect(preview.thisWeekPageState == .page)
-        #expect(preview.thisWeekFixCandidates == [.fixSource("canvas:canvas.demo.test")])
+        #expect(preview.thisWeekCandidates.isEmpty)
+        #expect(preview.primaryActionWinner(for: preview.thisWeekCandidates) == .capsuleFix)
+
+        // S6: the crash notice has its crash (and This Week stays the page).
+        let crashed = try await model("crashed")
+        #expect(crashed.lastCrash != nil)
+        #expect(crashed.thisWeekPageState == .page)
 
         let nextUp = try await model("next-up")
         let digest = ThisWeekDigest(

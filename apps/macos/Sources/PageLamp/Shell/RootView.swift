@@ -66,10 +66,18 @@ public struct RootView: View {
         .appAppearance(model.appearance)
     }
 
+    /// The first main window of the run restores where the student was; a reopened one (a menu
+    /// command with the window closed) keeps the model's destination, which the command set.
     private func restore() {
         guard !restored else { return }
-        if let destination = Self.decode(storedDestination) { model.destination = destination }
-        model.inspectorShown = storedInspector
+        if model.restoredWindowState {
+            storedDestination = Self.encode(model.destination)
+            storedInspector = model.inspectorShown
+        } else {
+            if let destination = Self.decode(storedDestination) { model.destination = destination }
+            model.inspectorShown = storedInspector
+            model.restoredWindowState = true
+        }
         restored = true
     }
 

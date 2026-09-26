@@ -2,7 +2,6 @@
 // rows through a sync, the S17 busy state and the arbiter's candidates.
 
 import Foundation
-@testable import PageLamp
 import PageLampKit
 import PageLampModel
 import Testing
@@ -28,7 +27,7 @@ struct SetupSourcesTests {
         #expect(SourceConfig(json: #"{"base_url":"http://canvas.example.edu"}"#).baseURL != nil)
     }
 
-    @Test("an expired Canvas token is the page's problem and wins the arbiter")
+    @Test("an expired Canvas token is the page's problem; Sync All keeps the tint until Replace can run")
     func expiredToken() async {
         let (model, _) = makeModel(scenario: .expired)
         await model.refresh()
@@ -40,9 +39,20 @@ struct SetupSourcesTests {
         #expect(rows.map(\.hasSecret) == [false, true, true])
         #expect(rows.allSatisfy { $0.progress == nil && $0.lastRun == nil })
 
-        let candidates = SourcesPage.candidates(rows)
-        #expect(candidates == [.fixSource("canvas:canvas.demo.test"), .pagePrimary])
-        #expect(PrimaryActionArbiter.winner(candidates) == .fixSource("canvas:canvas.demo.test"))
+        // No Replace sheet in this build: Replace… shows disabled and plain, never a candidate;
+        // Sync All keeps the tint (spec §3.0 never nominates a fix that can't run).
+        #expect(!SourceRow.canReplaceSecrets)
+        let candidates = SourceRow.primaryActionCandidates(rows)
+        #expect(candidates == [.pagePrimary])
+        #expect(PrimaryActionArbiter.winner(candidates) == .pagePrimary)
+        // Once the sheet exists, the first rejected secret's Replace… outranks Sync All.
+        let withSheet = SourceRow.primaryActionCandidates(rows, canReplaceSecrets: true)
+        #expect(withSheet == [.fixSource("canvas:canvas.demo.test"), .pagePrimary])
+        #expect(PrimaryActionArbiter.winner(withSheet) == .fixSource("canvas:canvas.demo.test"))
+        // On Sources the capsule keeps its words but not its fix bubble: the page holds the tint.
+        model.destination = .sources
+        #expect(!model.showsCapsuleFix)
+        #expect(model.primaryActionWinner(for: candidates) == .page(.pagePrimary))
         #expect(model.canStartSync)
     }
 
@@ -51,7 +61,7 @@ struct SetupSourcesTests {
         let (model, _) = makeModel(scenario: .demo)
         await model.refresh()
         #expect(model.sourceRows.allSatisfy { $0.status == .ok && $0.problem == nil })
-        #expect(PrimaryActionArbiter.winner(SourcesPage.candidates(model.sourceRows)) == .pagePrimary)
+        #expect(PrimaryActionArbiter.winner(SourceRow.primaryActionCandidates(model.sourceRows)) == .pagePrimary)
     }
 
     @Test("a rejected feed address asks for a new address; a missing folder is a plain failure")
@@ -77,19 +87,23 @@ struct SetupSourcesTests {
         #expect(rows.map(\.status) == [
             .failed(.authExpiredOrRevoked), .failed(.notFound), .failed(.authExpiredOrRevoked), .neverSynced,
         ])
-        // Only secrets have a fix, so only the feed is an arbiter candidate.
-        #expect(SourcesPage.candidates(rows) == [.fixSource("ical:x"), .pagePrimary])
+        // Only secrets have a fix, so only the feed would be an arbiter candidate.
+        #expect(SourceRow.primaryActionCandidates(rows, canReplaceSecrets: true) == [.fixSource("ical:x"), .pagePrimary])
+        #expect(SourceRow.primaryActionCandidates(rows) == [.pagePrimary])
     }
 
     @Test("during Sync All each source shows done, syncing with progress, or waiting")
     func liveProgress() async {
-        let (model, _) = makeModel(scenario: .demo, syncStep: .milliseconds(5))
+        let gate = SyncStepGate()
+        let (model, _) = makeModel(scenario: .demo, gate: gate)
         await model.refresh()
         let sync = Task { await model.syncAll() }
 
-        let reachedFeed = await eventually {
+        // Held before the feed's second step: the folder is done, the feed reported step 1.
+        await gate.advance(until: SyncStepPosition(sourceId: "ical:demo-calendar", step: 2))
+        let reachedFeed = await until {
             guard let progress = model.syncProgress else { return false }
-            return progress.sourceIndex == 2 && (progress.current ?? 0) >= 1
+            return progress.sourceIndex == 2 && progress.current == 1
         }
         #expect(reachedFeed)
         let rows = model.sourceRows
@@ -110,6 +124,7 @@ struct SetupSourcesTests {
         // Busy: no sync buttons while any sync runs.
         #expect(!model.canStartSync)
 
+        await gate.open()
         await sync.value
         let done = model.sourceRows
         #expect(done.allSatisfy { $0.progress == nil && $0.status == .ok })
@@ -124,15 +139,18 @@ struct SetupSourcesTests {
 
     @Test("a single-source sync doesn't mark the other sources as waiting")
     func singleSource() async {
-        let (model, _) = makeModel(scenario: .demo, syncStep: .milliseconds(5))
+        let gate = SyncStepGate()
+        let (model, _) = makeModel(scenario: .demo, gate: gate)
         await model.refresh()
         let sync = Task { await model.syncSource("canvas:canvas.demo.test") }
-        let started = await eventually { model.syncProgress?.sourceId == "canvas:canvas.demo.test" }
+        #expect(await gate.held() == SyncStepPosition(sourceId: "canvas:canvas.demo.test", step: 1))
+        let started = await until { model.syncProgress?.sourceId == "canvas:canvas.demo.test" }
         #expect(started)
         let rows = model.sourceRows
         #expect(rows[0].status == .ok)
         #expect(rows[1].status == .ok)
         if case .syncing = rows[2].status {} else { Issue.record("Canvas should be syncing, got \(rows[2].status)") }
+        await gate.open()
         await sync.value
     }
 
@@ -169,27 +187,21 @@ struct SetupSourcesTests {
 
     @Test("while another process syncs, the app looks again by itself (S17)")
     func busyPoll() async {
-        let mock = MockService(scenario: .busy, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
-        let model = AppModel(
-            dataMode: .mock(.busy), strings: .app, settings: InMemorySettingsStore(language: .english),
-            timing: AppModel.Timing(
-                finishedCapsule: .milliseconds(60), failedCapsule: .milliseconds(60), mock: .instant,
-                busyPoll: .milliseconds(20)
-            ),
-            calendar: TestClock.calendar, clock: { TestClock.now }, notificationCenter: NotificationCenter(),
-            service: mock
-        )
+        let timers = ManualTimers()
+        let (model, mock) = makeModel(scenario: .busy, timers: timers)
         await model.refresh()
         #expect(model.externalSyncRunning)
+        #expect(model.isBusyPollScheduled)
+        await timers.waitForTimer(.seconds(5))
         let before = model.refreshCount
         await mock.setExternalSyncRunning(false)
-        // No explicit refresh: the poll finds the lock released.
-        #expect(await eventually { model.canSync })
-        #expect(model.refreshCount > before)
-        // Idle again: no more polling.
-        let settled = model.refreshCount
-        try? await Task.sleep(for: .milliseconds(100))
-        #expect(model.refreshCount == settled)
+        // No explicit refresh: the poll (its timer fired here) finds the lock released.
+        await timers.fire(.seconds(5))
+        #expect(await until { model.canSync })
+        #expect(model.refreshCount == before + 1)
+        // Idle again: nothing is scheduled, and no timer waits.
+        #expect(!model.isBusyPollScheduled)
+        #expect(await timers.pending.isEmpty)
     }
 
     @Test("no sources, no rows")
@@ -197,6 +209,6 @@ struct SetupSourcesTests {
         let (model, _) = makeModel(scenario: .empty)
         await model.refresh()
         #expect(model.sourceRows.isEmpty)
-        #expect(SourcesPage.candidates([]) == [.pagePrimary])
+        #expect(SourceRow.primaryActionCandidates([]) == [.pagePrimary])
     }
 }

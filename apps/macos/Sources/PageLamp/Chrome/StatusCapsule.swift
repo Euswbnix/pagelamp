@@ -2,6 +2,7 @@
 // syncing, finished, attention (plus a short failure notice); the M2 fused notices and the
 // union/split animation come later. Chrome/ is the only folder that may use glass (spec §1.3).
 
+import AppKit
 import SwiftUI
 import PageLampKit
 import PageLampModel
@@ -14,7 +15,11 @@ struct StatusCapsule: View {
     @Environment(\.l10n) private var l10n
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appearsActive) private var appearsActive
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showsDetails = false
+    /// Black or white on the student's accent (the fix bubble's tint, `ProminentLabel`), kept
+    /// current when the appearance or the accent (System Settings) changes.
+    @State private var darkLabelOnAccent = false
 
     var body: some View {
         // Resting gap 14 > container spacing 12: the two shapes stay separate (no union in M1).
@@ -55,14 +60,16 @@ struct StatusCapsule: View {
                         .pageLampEnvironment(model)
                 }
             }
-            if case .attention(let attention) = state {
-                // The one tinted control; never in a union (spec §6.2).
+            if case .attention(let attention) = state, model.showsCapsuleFix {
+                // The window's one tinted control while it shows (the arbiter gives the page's
+                // own fix `.bordered`); never in a union (spec §6.2). Hidden on Sources & Sync,
+                // where the source's callout is the fix. Leads to the source, highlighted.
                 Button {
                     model.performCapsuleFix()
                 } label: {
                     Text(l10n.fix(attention.fix))
                         .fontWeight(.semibold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(darkLabelOnAccent ? Color.black : Color.white)
                         .padding(.horizontal, PLSpace.s4)
                         .frame(height: PLSize.accessoryHeight)
                 }
@@ -76,6 +83,27 @@ struct StatusCapsule: View {
         .opacity(appearsActive ? 1 : 0.6)
         .animation(reduceMotion ? PLMotion.reduced : PLMotion.quick, value: state)
         .onChange(of: state) { old, new in announce(from: old, to: new) }
+        .task(id: colorScheme) {
+            let dark = colorScheme == .dark
+            darkLabelOnAccent = Self.accentPrefersDarkText(dark: dark)
+            for await _ in NotificationCenter.default.notifications(named: NSColor.systemColorsDidChangeNotification) {
+                darkLabelOnAccent = Self.accentPrefersDarkText(dark: dark)
+            }
+        }
+    }
+
+    /// Whether the fix bubble's label is black: the accent, resolved in this appearance, is too
+    /// light for white (yellow, orange, green; `ProminentLabel`).
+    static func accentPrefersDarkText(dark: Bool) -> Bool {
+        var prefersDark = false
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua) ?? NSAppearance.currentDrawing()
+        appearance.performAsCurrentDrawingAppearance {
+            guard let accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) else { return }
+            prefersDark = ProminentLabel.prefersDarkText(
+                red: Double(accent.redComponent), green: Double(accent.greenComponent), blue: Double(accent.blueComponent)
+            )
+        }
+        return prefersDark
     }
 
     /// VoiceOver hears start, end and new problems only (spec §7.1).

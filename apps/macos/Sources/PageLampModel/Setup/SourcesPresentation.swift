@@ -182,3 +182,25 @@ extension SourceRow {
         return items.filter { seen.insert($0).inserted }
     }
 }
+
+// MARK: - The page's tinted action
+
+extension SourceRow {
+    /// Whether this build can replace a rejected token or feed address (the Replace sheet, M2).
+    /// Until it can, the Sources page shows Replace… disabled and plain (with a "next update"
+    /// help tag) and never nominates it: Sync All keeps the tint.
+    public static let canReplaceSecrets = false
+
+    /// The Sources page's candidates for its one tinted action (spec §3.0), in page order: each
+    /// rejected token's or feed address's Replace… (only when this build can replace secrets: a
+    /// fix that can't run is never nominated), then Sync All.
+    public static func primaryActionCandidates(
+        _ rows: [SourceRow],
+        canReplaceSecrets: Bool = SourceRow.canReplaceSecrets
+    ) -> [PrimaryActionCandidate] {
+        let fixes: [PrimaryActionCandidate] = canReplaceSecrets
+            ? rows.compactMap { row in row.problem?.fix == nil ? nil : .fixSource(row.id) }
+            : []
+        return fixes + [.pagePrimary]
+    }
+}

@@ -453,7 +453,7 @@
 "mac.courses.thisWeek.next7" = "Next 7 days";
 "mac.debug.dataSource" = "Data Source";
 "mac.debug.live.confirm" = "Use Real Data";
-"mac.debug.live.message" = "This preview will open the same data folder and keychain items as the installed PageLamp app and its command-line tool. Syncing here changes that data.";
+"mac.debug.live.message" = "This preview will open the same data folder and keychain items as the installed PageLamp app and its command-line tool. Syncing here changes that data. Opening the folder may also update the format of its database; an older installed PageLamp would then ask to be updated before it opens your data again.";
 "mac.debug.live.title" = "Use your real PageLamp data?";
 "mac.debug.liveData" = "Live Data…";
 "mac.debug.menu" = "Debug";
@@ -496,7 +496,7 @@
 "mac.settings.tabs.help" = "Help";
 "mac.settings.tabs.privacy" = "Privacy";
 "mac.sidebar.setup" = "Setup";
-"mac.sources.fixUnavailable" = "This preview can't replace tokens or feed addresses yet.";
+"mac.sources.fixUnavailable" = "Coming in the next update of this preview.";
 "mac.sources.lastRun" = "Last run";
 "mac.syncDetails.done" = "Done";
 "mac.syncDetails.failed" = "Didn't finish";

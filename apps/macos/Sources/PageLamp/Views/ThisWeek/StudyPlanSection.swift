@@ -23,8 +23,10 @@ struct StudyPlanSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PLLayout.titleToRule) {
             SectionHeader(title: l10n("courses.plan.title"))
-            if model.sectionErrors[.studyPlan] != nil {
-                SectionError(title: l10n("courses.plan.errorTitle")) { Task { await model.refresh() } }
+            if let failure = model.sectionErrors[.studyPlan] {
+                SectionError(title: l10n("courses.plan.errorTitle"), message: failure.localizedDescription(in: l10n)) {
+                    Task { await model.refresh() }
+                }
             } else if let stored = model.studyPlan {
                 plan(stored)
             } else {

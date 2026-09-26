@@ -10,7 +10,9 @@
 #      apps launch for the MCP server);
 #   3. swift build -c release --product PageLampApp, with the SDK version stamped explicitly
 #      (SwiftPM otherwise records sdk = deployment target and AppKit falls back to pre-26 metrics);
-#   4. the bundle: Info.plist, the SwiftPM resource bundle (strings), the icon, the sidecar;
+#   4. the bundle: Info.plist, the SwiftPM resource bundle (strings) plus copies of its en and
+#      zh-Hans .lproj folders in Contents/Resources (so the system menus localize), the icon,
+#      the sidecar;
 #   5. ad-hoc signing inside out (sidecar, resource bundle, app; hardened runtime), then
 #      `codesign --verify --deep --strict` and a check that the executable's SDK stamp is >= 26.
 #
@@ -118,6 +120,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$EXECUTABLE" "$APP/Contents/MacOS/$EXECUTABLE"
 cp "$CLI" "$APP/Contents/MacOS/pagelamp"
 cp -R "$RESOURCES_BUNDLE" "$APP/Contents/Resources/"
+# The main bundle's own .lproj folders: AppKit localizes what the system provides (the Edit,
+# View and Window menus, the sidebar/toolbar items, standard panels) only in the languages the
+# *main* bundle has .lproj folders for; CFBundleLocalizations alone is not enough. The app's own
+# text still comes from the SwiftPM bundle (Bundle.module); these are copies of its tables.
+for language in en zh-Hans; do
+  lproj="$RESOURCES_BUNDLE/Contents/Resources/$language.lproj"
+  [[ -d "$lproj" ]] || fail "expected $lproj in the resource bundle"
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
 printf 'APPL????' >"$APP/Contents/PkgInfo"
 cat >"$APP/Contents/Info.plist" <<PLIST

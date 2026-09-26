@@ -7,8 +7,9 @@ import PageLampKit
 import PageLampModel
 
 /// S7: one callout per source whose last sync failed, so stale courses are explained. A
-/// rejected token or feed address gets its own words and its fix (the window's tinted action
-/// when it wins the arbiter); M1 has no Replace sheet yet, so the fix opens Sources & Sync.
+/// rejected token or feed address gets its own words. The fix itself is the capsule's tinted
+/// bubble (and, from M2, the Replace sheet); here "Open Sources & Sync" leads to the source,
+/// scrolled into view and highlighted, never a second Replace button.
 struct ThisWeekSourceProblems: View {
     @Environment(AppModel.self) private var model
 
@@ -35,14 +36,8 @@ private struct SourceProblemCallout: View {
             title: title(problem),
             message: l10n(message(problem))
         ) {
-            if let fix = problem.fix {
-                Button(l10n.fix(fix)) {
-                    model.fixSource(source.id)
-                }
-                .arbitratedButtonStyle(.fixSource(source.id))
-            }
             Button(l10n("mac.actions.openSourcesAndSync")) {
-                model.destination = .sources
+                model.showSource(source.id)
             }
             .linkButtonStyle()
         }
@@ -80,9 +75,14 @@ struct ThisWeekEmptyPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !model.failingSources.isEmpty {
+            if model.lastCrash != nil || !model.failingSources.isEmpty {
                 ReadingColumn {
-                    ThisWeekSourceProblems()
+                    if let crash = model.lastCrash {
+                        CrashNotice(crash: crash)
+                    }
+                    if !model.failingSources.isEmpty {
+                        ThisWeekSourceProblems()
+                    }
                 }
                 .padding(.top, PLSpace.s6)
             }
@@ -156,6 +156,57 @@ struct ThisWeekEmptyPage: View {
             }
         case .firstSync, .page:
             EmptyView()
+        }
+    }
+}
+
+/// S6: the panic hook recorded a crash of the app or of the MCP server an AI app started. The
+/// first callout under the band until dismissed (Dismiss clears the record in the core).
+struct CrashNotice: View {
+    let crash: CrashReport
+
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
+    @State private var dismissing = false
+
+    var body: some View {
+        Callout(
+            tone: .warning,
+            title: crash.process == .mcp
+                ? l10n("common.diagnostics.crash.titleMcp")
+                : l10n("common.diagnostics.crash.titleApp"),
+            message: l10n("common.diagnostics.crash.body", [
+                "when": l10n.relative(crash.time, to: model.clock(), calendar: model.calendar),
+            ])
+        ) {
+            VStack(alignment: .leading, spacing: PLSpace.s2) {
+                HStack(spacing: PLSpace.s2) {
+                    Button(l10n("mac.actions.copyDiagnosticReport")) {
+                        Task { await model.showDiagnosticReport(in: .main) }
+                    }
+                    .buttonStyle(.bordered)
+                    if BrandLinks.issues != nil {
+                        Button(l10n("mac.actions.reportProblem")) { AppActions.open(BrandLinks.issues) }
+                            .buttonStyle(.bordered)
+                    }
+                    Button(l10n("common.diagnostics.crash.dismiss")) {
+                        dismissing = true
+                        Task {
+                            await model.dismissCrash()
+                            dismissing = false
+                        }
+                    }
+                    .linkButtonStyle()
+                    .disabled(dismissing)
+                }
+                if let failure = model.crashDismissFailure {
+                    Text(l10n("common.diagnostics.crash.dismissFailed") + l10n("common.punctuation.colon")
+                        + failure.localizedDescription(in: l10n))
+                        .font(PLType.callout.font)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }

@@ -195,6 +195,54 @@
 			<string>%1$ld weeks ago</string>
 		</dict>
 	</dict>
+	<key>mac.relative.daysAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld day ago</string>
+			<key>other</key>
+			<string>%1$ld days ago</string>
+		</dict>
+	</dict>
+	<key>mac.relative.hoursAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld h ago</string>
+			<key>other</key>
+			<string>%1$ld h ago</string>
+		</dict>
+	</dict>
+	<key>mac.relative.minutesAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld min ago</string>
+			<key>other</key>
+			<string>%1$ld min ago</string>
+		</dict>
+	</dict>
 	<key>mac.thisWeek.classCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

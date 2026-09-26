@@ -1,6 +1,10 @@
 // The week's materials (spec §3.2 MaterialRow, "Mac list behaviour"). The page stays a
-// ScrollView (for the lamp's spill), so the rows are custom: click focuses, ↑/↓ move, Return or
-// a double-click opens, ⌘C copies, and each row has a context menu. Space → Quick Look is M3.
+// ScrollView (for the lamp's spill), so the list is custom, and behaves like a table: the whole
+// list is one keyboard stop (Tab enters and leaves it, with or without Full Keyboard Access, like
+// every macOS list), a click selects a row, ↑/↓ move the selection, Return or a double-click
+// opens, ⌘C copies, and each row has a context menu. Space → Quick Look is M3. The decisions
+// (selection, what each key and click does, what opening does, what is copied) live in
+// PageLampModel (MaterialListNavigation); the view forwards its events to `handle(_:)`.
 
 import SwiftUI
 import PageLampKit
@@ -13,7 +17,8 @@ struct CourseMaterialList: View {
     @Environment(\.l10n) private var l10n
     @Environment(\.openURL) private var openURL
     @Environment(\.detailColumnWidth) private var detailWidth
-    @FocusState private var focused: String?
+    @State private var selection = MaterialListSelection()
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -21,13 +26,15 @@ struct CourseMaterialList: View {
                 CourseMaterialRow(
                     material: material,
                     status: CourseMaterialStatus(material: material, aiMaterials: aiMaterials),
-                    isFocused: focused == material.id,
+                    isSelected: selection.selected == material.id,
+                    showsFocusRing: listFocused && selection.selected == material.id,
                     compact: ReadingMeasure.isColumn(of: detailWidth, narrowerThan: CourseMaterialRow.compactBelow)
                 )
-                .focusable(interactions: .edit)
-                .focused($focused, equals: material.id)
-                .onTapGesture(count: 2) { open(material) }
-                .simultaneousGesture(TapGesture().onEnded { focused = material.id })
+                .onTapGesture(count: 2) { handle(.doubleClick(material.id)) }
+                .simultaneousGesture(TapGesture().onEnded {
+                    handle(.click(material.id))
+                    listFocused = true
+                })
                 .contextMenu { menu(for: material) }
                 .accessibilityAction { open(material) }
                 if index < materials.count - 1 {
@@ -35,19 +42,28 @@ struct CourseMaterialList: View {
                 }
             }
         }
+        // One stop for the list. `.edit` (focusable by a click and by Tab whatever the Full
+        // Keyboard Access setting) is how macOS treats lists; per-row stops would make Tab walk
+        // every material. The selected row draws the focus ring instead of the whole list.
+        .focusable(interactions: .edit)
+        .focused($listFocused)
+        .focusEffectDisabled()
+        .onChange(of: listFocused) { _, focused in
+            if focused { handle(.focusEntered) }
+        }
+        .onChange(of: materials.map(\.id)) { _, ids in selection.keep(in: ids) }
         .onMoveCommand { direction in
             switch direction {
-            case .up: moveFocus(by: -1)
-            case .down: moveFocus(by: 1)
+            case .up: handle(.move(-1))
+            case .down: handle(.move(1))
             default: break
             }
         }
         .onKeyPress(.return) {
-            guard let material = focusedMaterial else { return .ignored }
-            open(material)
-            return .handled
+            handle(.returnKey) ? .handled : .ignored
         }
-        .copyable(focusedMaterial.map { [$0.url ?? $0.title] } ?? [])
+        .copyable(selection.copyItems(materials))
+        .accessibilityElement(children: .contain)
         .accessibilityRotor(
             Text(l10n("course.week.materials")),
             entries: materials,
@@ -56,23 +72,21 @@ struct CourseMaterialList: View {
         )
     }
 
-    private var focusedMaterial: MaterialView? {
-        materials.first { $0.id == focused }
-    }
-
-    private func moveFocus(by delta: Int) {
-        guard !materials.isEmpty else { return }
-        guard let current = materials.firstIndex(where: { $0.id == focused }) else {
-            focused = (delta > 0 ? materials.first : materials.last)?.id
-            return
+    /// Forwards an event to the selection's handler and carries out its effect; whether there
+    /// was one (Return is handled only when it opens something).
+    @discardableResult
+    private func handle(_ event: MaterialListEvent) -> Bool {
+        switch selection.handle(event, in: materials.map(\.id)) {
+        case .open(let id)?:
+            if let material = materials.first(where: { $0.id == id }) { open(material) }
+            return true
+        case nil:
+            return false
         }
-        let next = min(max(current + delta, 0), materials.count - 1)
-        focused = materials[next].id
     }
 
     private func open(_ material: MaterialView) {
-        guard let link = CourseLink(material.url) else { return }
-        Links.open(link, openURL: openURL)
+        Links.open(CourseLink(material.url), openURL: openURL)
     }
 
     @ViewBuilder private func menu(for material: MaterialView) -> some View {
@@ -93,15 +107,16 @@ struct CourseMaterialList: View {
 }
 
 /// One material: kind glyph, title, "File · Week 4: Sampling · Sep 22", and a trailing status.
-/// Two lines, hairlines between rows, no cards. Focus: `.fill.secondary` (radius 8) plus the
-/// system ring; hover: `.fill.quaternary`.
+/// Two lines, hairlines between rows, no cards. Selected: `.fill.secondary` (radius 8), plus
+/// the system focus ring while the list has keyboard focus; hover: `.fill.quaternary`.
 struct CourseMaterialRow: View {
     /// Below this list width the status moves under the title (narrow window, inspector open).
     static let compactBelow: CGFloat = 400
 
     let material: MaterialView
     let status: CourseMaterialStatus
-    var isFocused: Bool
+    var isSelected: Bool
+    var showsFocusRing = false
     var compact = false
 
     @Environment(AppModel.self) private var model
@@ -142,6 +157,12 @@ struct CourseMaterialRow: View {
         }
         .padding(PLLayout.rowPadding)
         .background(fill, in: .rect(cornerRadius: PLRadius.row))
+        .overlay {
+            if showsFocusRing {
+                RoundedRectangle(cornerRadius: PLRadius.row)
+                    .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 3)
+            }
+        }
         .rowBorder()
         .contentShape(.rect(cornerRadius: PLRadius.row))
         .onHover { hovering in
@@ -153,7 +174,7 @@ struct CourseMaterialRow: View {
             "meta": meta,
             "status": [l10n(status.spokenKey), status.blockKey.map { l10n($0) }].compactMap(\.self).joined(separator: ", "),
         ]))
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
     /// A glyph and a short word; the tone is on the glyph only.
@@ -196,7 +217,7 @@ struct CourseMaterialRow: View {
     }
 
     private var fill: AnyShapeStyle {
-        if isFocused { return AnyShapeStyle(.fill.secondary) }
+        if isSelected { return AnyShapeStyle(.fill.secondary) }
         if hovered { return AnyShapeStyle(.fill.quaternary) }
         return AnyShapeStyle(.clear)
     }

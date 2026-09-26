@@ -120,38 +120,17 @@ private struct VariantDisclosure: View {
 }
 
 /// Show in Finder for an AI app's config file: selects the file if it exists, else opens the
-/// folder it belongs in; disabled when neither exists. Only reveals; never creates or edits.
+/// folder it belongs in, else beeps (checked on click). Only reveals; never creates or edits.
 private struct ShowConfigInFinderButton: View {
     let pathHint: String
     @Environment(\.l10n) private var l10n
 
     var body: some View {
-        let target = Self.target(for: pathHint)
         Button(l10n("mac.actions.showInFinder")) {
-            guard let target else { return }
-            if target.isFile {
-                NSWorkspace.shared.activateFileViewerSelecting([target.url])
-            } else {
-                NSWorkspace.shared.open(target.url)
-            }
+            Links.revealInFinder(path: pathHint)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .disabled(target == nil)
-    }
-
-    static func target(for pathHint: String) -> (url: URL, isFile: Bool)? {
-        let path = (pathHint as NSString).expandingTildeInPath
-        let file = URL(filePath: path)
-        if FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) {
-            return (file, true)
-        }
-        let folder = file.deletingLastPathComponent()
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false), isDirectory: &isDirectory), isDirectory.boolValue {
-            return (folder, false)
-        }
-        return nil
     }
 }
 

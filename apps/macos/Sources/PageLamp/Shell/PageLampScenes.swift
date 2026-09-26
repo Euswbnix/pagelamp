@@ -7,6 +7,9 @@ import PageLampModel
 
 /// The app's scenes; `PageLampApp` (the executable) owns the model and the delegate.
 public struct PageLampScenes: Scene {
+    /// The main window's scene id (`openWindow(id:)`).
+    static let mainWindowID = "main"
+
     let model: AppModel
 
     public init(model: AppModel) {
@@ -14,7 +17,7 @@ public struct PageLampScenes: Scene {
     }
 
     public var body: some Scene {
-        Window(model.menuL10n("mac.app.name"), id: "main") {
+        Window(model.menuL10n("mac.app.name"), id: Self.mainWindowID) {
             RootView()
                 .pageLampEnvironment(model)
         }

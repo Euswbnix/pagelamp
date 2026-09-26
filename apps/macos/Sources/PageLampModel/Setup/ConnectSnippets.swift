@@ -103,6 +103,33 @@ public enum QuarantineHint {
         return "xattr -d\(target.recursive ? "r" : "") com.apple.quarantine \(shellQuote(target.path))"
     }
 
+    /// The command the Connect page shows (S15), or nil when it would not help:
+    /// - while PageLamp runs from a temporary location (App Translocation, a disk image): that
+    ///   copy goes away, and the temporary-location warning already says to move the app first;
+    /// - when no absolute path is known.
+    /// It targets the running app's real bundle (`appBundlePath`, symlinks resolved) when there
+    /// is one: the app AI apps launch the CLI from. Otherwise the launch command's app (or binary).
+    public static func command(
+        launchCommand: String?,
+        appBundlePath: String?,
+        temporaryLocation: TemporaryLocation?
+    ) -> String? {
+        guard temporaryLocation == nil else { return nil }
+        if let app = appBundlePath, app.hasPrefix("/"), app.hasSuffix(".app") {
+            return "xattr -dr com.apple.quarantine \(shellQuote(app))"
+        }
+        guard let launchCommand, launchCommand.hasPrefix("/") else { return nil }
+        return command(for: launchCommand)
+    }
+
+    /// The running app's bundle when it runs as an `.app` (symlinks resolved); nil under
+    /// `swift run`, tests and the snapshot tool.
+    public static let runningAppPath: String? = {
+        let url = Bundle.main.bundleURL
+        guard url.pathExtension == "app" else { return nil }
+        return url.resolvingSymlinksInPath().path(percentEncoded: false)
+    }()
+
     /// Single quotes, with any ' written as '\''.
     public static func shellQuote(_ text: String) -> String {
         "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"

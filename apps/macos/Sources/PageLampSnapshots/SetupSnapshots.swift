@@ -1,12 +1,14 @@
 // The setup screens in their states (Sources & Sync, Connect, Settings) for the snapshot
-// catalogue: expired token, mid-sync, results, busy (S17), empty; each Connect client, S15, the
-// error; each Settings tab.
+// catalogue: expired token (Replace… disabled until M2), a fix leading to its source
+// (highlighted), mid-sync, results, busy (S17), empty; each Connect client, S15, the error and a
+// failed reload; each Settings tab.
 //
 // Offscreen limits (ImageRenderer): segmented pickers, progress views and AppKit-backed controls
 // draw as yellow placeholders; Settings forms render with a stand-in for `.grouped` (blank
 // offscreen), see `SettingsForm`.
 
 import SwiftUI
+import PageLamp
 import PageLampKit
 import PageLampModel
 
@@ -17,6 +19,12 @@ enum SetupSnapshots {
 
     static let sourcesPages: [SnapshotPage] = [
         SnapshotPage(name: "sources-expired", width: SnapshotCatalog.detailWidth, setup: SnapshotSetup(scenario: .expired)) { _ in AnyView(SourcesPage()) },
+        // The capsule's fix bubble (or "Open Sources & Sync") led here: the source is outlined for
+        // a moment (the scroll itself needs a window).
+        SnapshotPage(name: "sources-highlighted", width: SnapshotCatalog.detailWidth, setup: SnapshotSetup(scenario: .expired)) { model in
+            model.performCapsuleFix()
+            return AnyView(SourcesPage())
+        },
         SnapshotPage(name: "sources-syncing", width: SnapshotCatalog.detailWidth, setup: SnapshotSetup(scenario: .expired, syncStep: .milliseconds(40))) { model in
             // Mid-run: the folder done (with a warning), the feed syncing, Canvas waiting.
             Task { await model.syncAll() }
@@ -70,6 +78,13 @@ enum SetupSnapshots {
             let failure = PageLampFailure(kind: .internal, message: "mock failure")
             return AnyView(ConnectPage(connect: ConnectModel(phase: .failed(failure), selectedClient: nil), showsQuarantineHint: false))
         },
+        // A reload (Try Again, a data-source switch) failed: the steps stay, with the error above.
+        SnapshotPage(name: "connect-reload-error", width: SnapshotCatalog.detailWidth) { model in
+            let connect = await loadConnect(model, client: nil)
+            let failing = FixtureService(base: model.service, failing: [.clientConfigs])
+            await connect.load(service: failing, binary: model.sidecarPath, temporaryLocation: nil)
+            return AnyView(ConnectPage(connect: connect, showsQuarantineHint: false))
+        },
     ]
 
     /// Where App Translocation runs a quarantined app from (S15).
@@ -94,27 +109,27 @@ enum SetupSnapshots {
     // MARK: Settings
 
     static let settingsPages: [SnapshotPage] = [
-        SnapshotPage(name: "settings-general", width: PLSize.settingsWidth, minHeight: 240) { model in
+        SnapshotPage(name: "settings-general", width: WindowMetrics.settingsWidth, minHeight: 240) { model in
             AnyView(SettingsTabPage(tab: .general, title: model.l10n("mac.settings.tabs.general")))
         },
         // The content speaks the other language than the menus: Reopen Now appears.
-        SnapshotPage(name: "settings-general-reopen", width: PLSize.settingsWidth, minHeight: 240, setup: SnapshotSetup(otherSystemLanguage: true)) { model in
+        SnapshotPage(name: "settings-general-reopen", width: WindowMetrics.settingsWidth, minHeight: 240, setup: SnapshotSetup(otherSystemLanguage: true)) { model in
             AnyView(SettingsTabPage(tab: .general, title: model.l10n("mac.settings.tabs.general")))
         },
-        SnapshotPage(name: "settings-data", width: PLSize.settingsWidth, minHeight: 500) { model in
+        SnapshotPage(name: "settings-data", width: WindowMetrics.settingsWidth, minHeight: 500) { model in
             AnyView(SettingsTabPage(tab: .data, title: model.l10n("mac.settings.tabs.data")))
         },
-        SnapshotPage(name: "settings-data-empty", width: PLSize.settingsWidth, minHeight: 500, setup: SnapshotSetup(scenario: .empty)) { model in
+        SnapshotPage(name: "settings-data-empty", width: WindowMetrics.settingsWidth, minHeight: 500, setup: SnapshotSetup(scenario: .empty)) { model in
             AnyView(SettingsTabPage(tab: .data, title: model.l10n("mac.settings.tabs.data")))
         },
-        SnapshotPage(name: "settings-privacy", width: PLSize.settingsWidth, minHeight: 440) { model in
+        SnapshotPage(name: "settings-privacy", width: WindowMetrics.settingsWidth, minHeight: 440) { model in
             AnyView(SettingsTabPage(tab: .privacy, title: model.l10n("mac.settings.tabs.privacy")))
         },
-        SnapshotPage(name: "settings-privacy-confirmed", width: PLSize.settingsWidth, minHeight: 440) { model in
+        SnapshotPage(name: "settings-privacy-confirmed", width: WindowMetrics.settingsWidth, minHeight: 440) { model in
             AnyView(SettingsTabPage(tab: .privacy, title: model.l10n("mac.settings.tabs.privacy"))
                 .environment(\.disclosureAcknowledgedAt, model.clock().addingTimeInterval(-86_400)))
         },
-        SnapshotPage(name: "settings-help", width: PLSize.settingsWidth, minHeight: 460) { model in
+        SnapshotPage(name: "settings-help", width: WindowMetrics.settingsWidth, minHeight: 460) { model in
             AnyView(SettingsTabPage(tab: .help, title: model.l10n("mac.settings.tabs.help")))
         },
     ]

@@ -1,13 +1,16 @@
-// The shared content components on one page, for snapshot review (never shown in the app).
-// Real strings only: every text comes from the string table.
+// The shared content components on one page, for snapshot review (never shown in the app; the
+// snapshot catalogue in PageLampSnapshots lists it). Real strings only: every text comes from
+// the string table.
 
 import SwiftUI
 import PageLampModel
 
-struct ComponentGallery: View {
+package struct ComponentGallery: View {
     @Environment(\.l10n) private var l10n
 
-    var body: some View {
+    package init() {}
+
+    package var body: some View {
         ReadingPage {
             LampBand(lit: true) {
                 PageHeader(

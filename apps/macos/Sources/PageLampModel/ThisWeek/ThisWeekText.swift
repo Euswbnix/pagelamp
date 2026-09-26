@@ -106,27 +106,32 @@ public struct ThisWeekText: Sendable {
 
     /// For VoiceOver: "in 58 minutes" / "58分钟后".
     public func spokenRemaining(until date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = l10n.locale
-        formatter.calendar = calendar
-        formatter.dateTimeStyle = .numeric
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: now)
+        now.formatted(relativeStyle(anchor: date))
     }
 
     /// "2 days ago" / "2天前": calendar days for an earlier day (a plan saved on Wednesday
     /// evening was made "2 days ago" on Friday morning), else hours or minutes.
     public func ago(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = l10n.locale
-        formatter.calendar = calendar
-        formatter.dateTimeStyle = .numeric
-        formatter.unitsStyle = .full
         let days = dayOffset(date)
         if days < 0 {
-            return formatter.localizedString(from: DateComponents(day: days))
+            // Exactly `days` calendar days before now, so the style counts days, not hours.
+            let anchor = calendar.date(byAdding: .day, value: days, to: now) ?? date
+            return now.formatted(relativeStyle(anchor: anchor))
         }
-        return formatter.localizedString(for: min(date, now), relativeTo: now)
+        return now.formatted(relativeStyle(anchor: min(date, now)))
+    }
+
+    /// `anchor` relative to the formatted date ("now"): numeric, full units, this locale and
+    /// calendar. A value type (Foundation caches its formatter), so view bodies can call it.
+    private func relativeStyle(anchor: Date) -> Date.AnchoredRelativeFormatStyle {
+        Date.AnchoredRelativeFormatStyle(
+            anchor: anchor,
+            presentation: .numeric,
+            unitsStyle: .wide,
+            locale: l10n.locale,
+            calendar: calendar,
+            capitalizationContext: .middleOfSentence
+        )
     }
 
     // MARK: - Header and Next 7 days
@@ -165,7 +170,8 @@ public struct ThisWeekText: Sendable {
     /// "Next: Quiz 3 · Sat 9:00 AM" (`courses.card.next`).
     public func next(_ deadline: Deadline) -> String? {
         guard let when = ThisWeekDigest.time(of: deadline) else { return nil }
-        return l10n("courses.card.next", ["title": deadline.event.title, "when": shortWhen(when)])
+        // The day and time never split across lines (the title may wrap).
+        return l10n("courses.card.next", ["title": deadline.event.title, "when": TextWrap.keepTogether(shortWhen(when))])
     }
 
     /// VoiceOver for a Next 7 days row or Next up (spec §7.1): "Problem Set 2. DEMO205,
@@ -247,6 +253,11 @@ public struct ThisWeekText: Sendable {
     /// The Contents policy line: "Learning aid only · 12 of 14 readable", "No AI · materials not
     /// shared", "AI policy not set · 3 of 6 readable" (spec §6.4).
     public func policyLine(_ summary: CourseSummary) -> String {
+        policyLineParts(summary).joined(separator: " · ")
+    }
+
+    /// The policy line's two items: the policy, then what the AI app may read.
+    public func policyLineParts(_ summary: CourseSummary) -> [String] {
         let policyName = summary.course.aiPolicy == .unknown
             ? l10n("mac.thisWeek.contents.policyNotSet")
             : l10n.policy(summary.course.aiPolicy)
@@ -263,7 +274,7 @@ public struct ThisWeekText: Sendable {
                     "count": l10n.number(summary.counts.materials),
                 ])
         }
-        return [policyName, materials].joined(separator: " · ")
+        return [policyName, materials]
     }
 
     /// The materials sentence for VoiceOver: "12 of 14 materials readable by your AI app".

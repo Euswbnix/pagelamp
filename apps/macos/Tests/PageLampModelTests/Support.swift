@@ -2,6 +2,7 @@
 // the user's preferences (settings live in memory) or the network.
 
 import Foundation
+import Observation
 import PageLamp
 import PageLampKit
 import PageLampModel
@@ -24,18 +25,23 @@ enum TestClock {
     }
 }
 
+/// A model over the mock. Its timers (the capsule's, the busy poll, the source highlight) never
+/// fire by themselves: they wait on `timers` until the test fires them. A `gate` holds the mock's
+/// sync before every progress step (`SyncStepGate`), so a test can look at the sync mid-run.
 @MainActor
 func makeModel(
     scenario: MockScenario = .demo,
-    syncStep: Duration = .zero,
+    gate: SyncStepGate? = nil,
+    timers: ManualTimers = ManualTimers(),
     language: AppLanguage = .english,
     preferredLanguages: [String] = ["en-US"],
     settings: InMemorySettingsStore? = nil,
-    notificationCenter: NotificationCenter = NotificationCenter()
+    notificationCenter: NotificationCenter = NotificationCenter(),
+    wrap: (MockService) -> any PageLampService = { $0 }
 ) -> (AppModel, MockService) {
     let mock = MockService(
         scenario: scenario,
-        timing: MockService.Timing(latency: .zero, syncStep: syncStep),
+        timing: MockService.Timing(latency: .zero, syncStep: .zero, gate: gate),
         calendar: TestClock.calendar,
         now: { TestClock.now }
     )
@@ -43,26 +49,114 @@ func makeModel(
         dataMode: .mock(scenario),
         strings: .app,
         settings: settings ?? InMemorySettingsStore(language: language),
-        timing: AppModel.Timing(finishedCapsule: .milliseconds(60), failedCapsule: .milliseconds(60), mock: .instant),
+        timing: AppModel.Timing(
+            finishedCapsule: .seconds(4), failedCapsule: .seconds(6), mock: .instant,
+            busyPoll: .seconds(5), sourceHighlight: .seconds(2), sleep: timers.sleep
+        ),
         calendar: TestClock.calendar,
         clock: { TestClock.now },
         notificationCenter: notificationCenter,
         preferredLanguages: { preferredLanguages },
-        service: mock
+        service: wrap(mock)
     )
     return (model, mock)
 }
 
-/// Polls `condition` on the main actor until it holds or `timeout` passes.
+/// Waits until `condition` holds, waking only when something it reads changes (Observation),
+/// never on a polling timer. `timeout` only ends a test that would otherwise hang.
 @MainActor
-func eventually(timeout: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+func until(timeout: Duration = .seconds(10), _ condition: @escaping @MainActor () -> Bool) async -> Bool {
     let clock = ContinuousClock()
     let deadline = clock.now + timeout
-    while !condition() {
-        if clock.now > deadline { return false }
-        try? await Task.sleep(for: .milliseconds(2))
+    while true {
+        let (changes, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let holds = withObservationTracking { condition() } onChange: { continuation.yield() }
+        if holds {
+            continuation.finish()
+            return true
+        }
+        let remaining = deadline - clock.now
+        guard remaining > .zero else {
+            continuation.finish()
+            return false
+        }
+        let changed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in changes { return true }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: remaining)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        continuation.finish()
+        if !changed { return condition() }
     }
-    return true
+}
+
+/// The model's timers under the test's control (`AppModel.Timing.sleep`): a timer waits until
+/// `fire` (or until its task is cancelled, like `Task.sleep`).
+actor ManualTimers {
+    private struct Waiter {
+        let id: Int
+        let duration: Duration
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var waiters: [Waiter] = []
+    private var arrivals: [CheckedContinuation<Void, Never>] = []
+    private var nextID = 0
+
+    /// For `AppModel.Timing(sleep:)`.
+    nonisolated var sleep: AppModel.Timing.Sleep {
+        { [self] duration in await self.wait(duration) }
+    }
+
+    private func wait(_ duration: Duration) async {
+        nextID += 1
+        let id = nextID
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume()
+                    return
+                }
+                waiters.append(Waiter(id: id, duration: duration, continuation: continuation))
+                for arrival in arrivals { arrival.resume() }
+                arrivals = []
+            }
+        } onCancel: {
+            Task { await self.cancel(id) }
+        }
+    }
+
+    private func cancel(_ id: Int) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume()
+    }
+
+    /// The durations of the timers waiting now.
+    var pending: [Duration] {
+        waiters.map(\.duration)
+    }
+
+    /// Waits until a timer of `duration` is waiting.
+    func waitForTimer(_ duration: Duration) async {
+        while !waiters.contains(where: { $0.duration == duration }) {
+            await withCheckedContinuation { arrivals.append($0) }
+        }
+    }
+
+    /// Fires the waiting timers of `duration` (every waiting timer when nil).
+    func fire(_ duration: Duration? = nil) {
+        let due = waiters.filter { duration == nil || $0.duration == duration }
+        waiters.removeAll { waiter in due.contains { $0.id == waiter.id } }
+        for waiter in due { waiter.continuation.resume() }
+    }
 }
 
 /// Records every sync event (thread-safe; Rust or the mock may call from any thread).

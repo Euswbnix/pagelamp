@@ -154,7 +154,7 @@ struct SidebarFooterStatus: View {
         switch status {
         case .syncing: l10n("common.sync.syncing")
         case .needsAttention: l10n("common.sync.needsAttention")
-        case .synced(let date): l10n("common.sync.syncedAgo", ["when": l10n.relative(date, to: model.clock())])
+        case .synced(let date): l10n("common.sync.syncedAgo", ["when": l10n.relative(date, to: model.clock(), calendar: model.calendar)])
         case .neverSynced: l10n("common.sync.never")
         }
     }

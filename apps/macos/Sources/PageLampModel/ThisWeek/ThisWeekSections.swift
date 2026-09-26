@@ -39,12 +39,15 @@ extension AppModel {
         )
     }
 
-    /// The fixes This Week offers for failing sources (spec §3.0 (2)): one per rejected token or
-    /// feed address, first failing source first.
-    public var thisWeekFixCandidates: [PrimaryActionCandidate] {
-        failingSources
-            .filter { SourceProblem(source: $0)?.fix != nil }
-            .map { .fixSource($0.id) }
+    /// This Week's candidates for the window's tinted action (spec §3.0): none on the page
+    /// (spec §1.2), the page primary in S3 (Add a Source…) and S4 (Sync Now). Source problems
+    /// offer no fix button here: the capsule's fix bubble is the fix (and holds the tint while it
+    /// shows), the callouts lead to Sources & Sync.
+    public var thisWeekCandidates: [PrimaryActionCandidate] {
+        switch thisWeekPageState {
+        case .page, .firstSync: []
+        case .noSources, .noCourses: [.pagePrimary]
+        }
     }
 }
 

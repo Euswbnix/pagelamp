@@ -120,7 +120,7 @@ struct SourcesToolbar: ToolbarContent {
     @Environment(\.primaryActionWinner) private var winner
 
     var body: some ToolbarContent {
-        let prominent = winner == .pagePrimary
+        let prominent = winner == .page(.pagePrimary)
         ToolbarItem(placement: .primaryAction) {
             ProminentToolbarButton(
                 title: l10n("mac.actions.syncAll"),

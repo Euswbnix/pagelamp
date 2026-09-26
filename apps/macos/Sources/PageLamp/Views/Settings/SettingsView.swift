@@ -7,7 +7,7 @@ import SwiftUI
 import PageLampModel
 
 /// The Settings tabs of M1 (Reminders is M3 and stays hidden until it ships).
-enum SettingsTab: String, CaseIterable, Sendable {
+package enum SettingsTab: String, CaseIterable, Sendable {
     case general
     case data
     case privacy
@@ -74,20 +74,20 @@ struct SettingsForm<Content: View>: View {
 }
 
 /// One tab rendered on its own, with its title (the snapshot harness).
-struct SettingsTabPage: View {
+package struct SettingsTabPage: View {
     let tab: SettingsTab
     let title: String
     let settings: SettingsModel?
 
     @State private var fallback = SettingsModel()
 
-    init(tab: SettingsTab, title: String, settings: SettingsModel? = nil) {
+    package init(tab: SettingsTab, title: String, settings: SettingsModel? = nil) {
         self.tab = tab
         self.title = title
         self.settings = settings
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
                 .font(PLType.title2.font.weight(.semibold))

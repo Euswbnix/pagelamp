@@ -26,8 +26,8 @@ struct CourseInspector: View {
 }
 
 /// The inspector's sections: AI Policy, Course Materials, Term Dates, Course.
-struct CourseInspectorForm: View {
-    enum Layout {
+package struct CourseInspectorForm: View {
+    package enum Layout {
         /// The inspector: a grouped Form.
         case form
         /// The same sections in a plain stack (snapshots: ImageRenderer can't draw a Form).
@@ -41,9 +41,14 @@ struct CourseInspectorForm: View {
     @Environment(\.l10n) private var l10n
     @Environment(\.openURL) private var openURL
 
+    package init(summary: CourseSummary, layout: Layout = .form) {
+        self.summary = summary
+        self.layout = layout
+    }
+
     private var course: Course { summary.course }
 
-    var body: some View {
+    package var body: some View {
         switch layout {
         case .form:
             Form { sections }
@@ -215,7 +220,7 @@ struct CourseInspectorForm: View {
         }
         return l10n("course.header.freshness", [
             "source": summary.sourceLabel,
-            "when": l10n.relative(synced, to: model.clock()),
+            "when": l10n.relative(synced, to: model.clock(), calendar: model.calendar),
         ])
     }
 }

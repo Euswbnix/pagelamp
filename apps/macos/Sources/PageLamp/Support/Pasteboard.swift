@@ -20,13 +20,15 @@ enum Pasteboard {
 
 @MainActor
 enum Links {
-    /// Opens a material or deadline link: a course-folder file in its app, a web address in the
-    /// browser. Anything else (no scheme, `javascript:`, …) never opens (`CourseLink`).
+    /// Opens a material or deadline link: a course-folder document in its app, a web address in
+    /// the browser. An app, executable or script in a course folder is shown in Finder instead of
+    /// run (`LinkAction`). Anything else (no scheme, `javascript:`, …) never opens (`CourseLink`).
     static func open(_ link: CourseLink?, openURL: OpenURLAction) {
-        switch link {
-        case .file(let url): NSWorkspace.shared.open(url)
-        case .web(let url): openURL(url)
-        case nil: break
+        guard let link else { return }
+        switch LinkAction.of(link) {
+        case .open(let url): NSWorkspace.shared.open(url)
+        case .reveal(let url): showInFinder(url)
+        case .openWeb(let url): openURL(url)
         }
     }
 
@@ -43,5 +45,22 @@ enum Links {
 
     static func showInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    /// Show in Finder for a path that may be gone by now (a moved course folder, a config file
+    /// not created yet): selects it, else opens its folder if that exists, else beeps. Checked
+    /// when clicked, so view bodies never touch the disk.
+    static func revealInFinder(path: String) {
+        let url = URL(filePath: (path as NSString).expandingTildeInPath)
+        let folder = url.deletingLastPathComponent()
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) {
+            showInFinder(url)
+        } else if FileManager.default.fileExists(atPath: folder.path(percentEncoded: false), isDirectory: &isDirectory),
+                  isDirectory.boolValue {
+            NSWorkspace.shared.open(folder)
+        } else {
+            NSSound.beep()
+        }
     }
 }

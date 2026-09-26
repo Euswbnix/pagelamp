@@ -23,13 +23,24 @@ extension L10n {
         return self("mac.common.week.compact", ["week": number(week)])
     }
 
-    /// "2 hr. ago" / "2小时前", relative to `now`.
-    public func relative(_ date: Date, to now: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = locale
-        formatter.dateTimeStyle = .named
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: now)
+    /// How long ago `date` was, in the spec's words (§2.3): "5 min ago", "2 h ago", "3 days ago" /
+    /// "5 分钟前", "2 小时前", "3 天前". Numbers and short units, never "now" (under a minute is
+    /// "1 min ago", like the Tauri app); minutes and hours are rounded, a day or more counts
+    /// calendar days in `calendar`. A date after `now` (clock skew) reads as a minute ago.
+    /// Plain string lookups: cheap enough for view bodies that re-render every minute.
+    public func relative(_ date: Date, to now: Date, calendar: Calendar = .current) -> String {
+        let seconds = max(0, now.timeIntervalSince(date))
+        let minutes = max(1, Int((seconds / 60).rounded()))
+        if minutes < 60 {
+            return plural("mac.relative.minutesAgo", count: minutes)
+        }
+        if seconds < 86_400 {
+            return plural("mac.relative.hoursAgo", count: max(1, Int((seconds / 3_600).rounded())))
+        }
+        let days = calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)
+        ).day ?? 1
+        return plural("mac.relative.daysAgo", count: max(1, days))
     }
 
     /// The policy's name (policies are never colour-coded, spec §1.2).

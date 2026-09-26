@@ -171,6 +171,48 @@
 			<string>%1$ld 周前</string>
 		</dict>
 	</dict>
+	<key>mac.relative.daysAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 天前</string>
+		</dict>
+	</dict>
+	<key>mac.relative.hoursAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 小时前</string>
+		</dict>
+	</dict>
+	<key>mac.relative.minutesAgo</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 分钟前</string>
+		</dict>
+	</dict>
 	<key>mac.thisWeek.classCount</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

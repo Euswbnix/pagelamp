@@ -77,14 +77,19 @@ struct CourseDetailView: View {
 }
 
 /// The page's document: rendered in the scroll view and by the snapshot harness.
-struct CourseDetailPage: View {
+package struct CourseDetailPage: View {
     let summary: CourseSummary
     let detail: CourseDetailModel
 
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package init(summary: CourseSummary, detail: CourseDetailModel) {
+        self.summary = summary
+        self.detail = detail
+    }
+
+    package var body: some View {
         let ui = model.ui(for: summary.course.id)
         // The freshest timeline: the displayed week's, else the course list's.
         let timeline = detail.week.value?.timeline ?? summary.timeline
@@ -133,8 +138,9 @@ struct CourseSourceAlert: View {
     var body: some View {
         switch problem {
         case .expired(let fix):
-            // The fix (M1: opens Sources & Sync, like the capsule's fix bubble; M2: the Replace
-            // sheet) is the arbiter's candidate (2).
+            // The fix (M1: Sources & Sync scrolled to the source, like the capsule's fix bubble;
+            // M2: the Replace sheet) is the arbiter's candidate (2); `.bordered` while the
+            // capsule's tinted bubble shows the same fix.
             Callout(
                 tone: .danger,
                 symbol: "key",
@@ -153,7 +159,7 @@ struct CourseSourceAlert: View {
                     : l10n("course.sourceAlert.failedTitle", ["reason": l10n.sourceError(kind)]),
                 message: l10n("mac.course.sourceAlert.failedBody")
             ) {
-                Button(l10n("mac.actions.openSourcesAndSync")) { model.destination = .sources }
+                Button(l10n("mac.actions.openSourcesAndSync")) { model.showSource(source.id) }
                     .buttonStyle(.bordered)
             }
         }

@@ -6,12 +6,15 @@
 //     swift run PageLampSnapshots <directory> [name-prefix …]
 //     PAGELAMP_SNAPSHOT_DIR=<directory> swift test --filter SnapshotRenderTests
 //
+// This target is the catalogue and the PNG writer; the pages themselves are views of the
+// PageLamp module, reached through `package` access, so none of this is linked into the app.
 // A screen adds its states to `SnapshotCatalog.pages` (`ThisWeekSnapshots`, `CourseSnapshots`,
 // `SetupSnapshots`): each page says how to set up its model (`SnapshotSetup`) and loads what it
 // needs in `make`, since `.task` never runs offscreen.
 
 import AppKit
 import SwiftUI
+import PageLamp
 import PageLampKit
 import PageLampModel
 
@@ -40,7 +43,7 @@ public struct SnapshotPage {
     init(
         name: String,
         width: CGFloat = SnapshotCatalog.detailWidth,
-        minHeight: CGFloat = PLSize.windowMainHeight,
+        minHeight: CGFloat = WindowMetrics.mainHeight,
         setup: SnapshotSetup = SnapshotSetup(),
         make: @escaping @MainActor (AppModel) async -> AnyView
     ) {
@@ -54,7 +57,7 @@ public struct SnapshotPage {
 
 public enum SnapshotCatalog {
     /// The detail column at the main window's default size, minus the sidebar.
-    static let detailWidth = PLSize.windowMainWidth - PLSize.sidebarIdeal
+    static let detailWidth = WindowMetrics.mainWidth - WindowMetrics.sidebarIdeal
 
     /// Every page, by screen.
     public static let pages: [SnapshotPage] =
@@ -95,12 +98,14 @@ public enum SnapshotRenderer {
         public let height: Int
     }
 
-    /// Renders the pages whose names start with one of `prefixes` (all pages without) in every
-    /// variant into `directory` as `<page>-<lang>-<scheme>.png`. Mock data at a fixed moment, so
-    /// reruns are comparable.
+    /// Renders the pages whose names start with one of `prefixes` (all pages without), or
+    /// exactly the pages called `names`, in `variants` into `directory` as
+    /// `<page>-<lang>-<scheme>.png`. Mock data at a fixed moment, so reruns are comparable.
     public static func renderAll(
         to directory: URL,
         prefixes: [String] = [],
+        names: [String]? = nil,
+        variants: [Variant] = SnapshotRenderer.variants,
         calendar: Calendar = .current,
         now: Date? = nil,
         scale: CGFloat = 2
@@ -108,7 +113,8 @@ public enum SnapshotRenderer {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let now = now ?? defaultNow(in: calendar)
         let pages = SnapshotCatalog.pages.filter { page in
-            prefixes.isEmpty || prefixes.contains { page.name.hasPrefix($0) }
+            if let names { return names.contains(page.name) }
+            return prefixes.isEmpty || prefixes.contains { page.name.hasPrefix($0) }
         }
         var rendered: [Rendered] = []
         for variant in variants {
@@ -174,6 +180,8 @@ public enum SnapshotRenderer {
             .pageLampEnvironment(model)
             .environment(\.colorScheme, dark ? .dark : .light)
             .environment(\.detailColumnWidth, page.width)
+            // Native pickers draw as placeholders offscreen: plain stand-ins show the layout.
+            .environment(\.drawsControlStandIns, true)
         let renderer = ImageRenderer(content: view)
         renderer.scale = scale
         // Propose the page width: with no proposal, a page measured at its ideal size can come

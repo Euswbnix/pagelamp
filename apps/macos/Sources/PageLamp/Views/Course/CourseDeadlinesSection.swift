@@ -138,7 +138,8 @@ struct CourseDeadlineRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     title
                         .fixedSize(horizontal: false, vertical: true)
-                    Text([day, time, kind].filter { !$0.isEmpty }.joined(separator: " · "))
+                    // Breaks only between the items, never inside a date or a time.
+                    Text(TextWrap.items([day, time, kind]))
                         .font(PLType.callout.font)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)

@@ -192,6 +192,7 @@ struct PlainText {
 
     static func plain(_ value: String) -> String {
         value.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
+            .replacingOccurrences(of: "\u{2060}", with: "")
     }
 
     var todayTitle: String { Self.plain(text.todayTitle) }

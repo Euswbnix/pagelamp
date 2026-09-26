@@ -26,6 +26,9 @@ public struct CourseWeekLine: Equatable, Sendable {
     /// The pool of light: the line shows the current week and today is inside the term.
     public let lit: Bool
     public let outsideTerm: Bool
+    /// VoiceOver steps weeks on the line (spec §6.3) only in the This Week section: the other
+    /// sections always show the current week, so stepping there would jump sections unasked.
+    public let isAdjustable: Bool
 
     /// - Parameters:
     ///   - section: the This Week section shows the selected week; the others the current week.
@@ -35,6 +38,7 @@ public struct CourseWeekLine: Equatable, Sendable {
         let shown = section == .week ? (selectedWeek ?? currentWeek) : currentWeek
         week = shown
         self.outsideTerm = outsideTerm
+        isAdjustable = section == .week
         if let shown, let currentWeek {
             let delta = Int(shown) - Int(currentWeek)
             tag = switch delta {

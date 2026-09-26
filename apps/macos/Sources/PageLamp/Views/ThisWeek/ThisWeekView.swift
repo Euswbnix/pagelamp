@@ -1,10 +1,11 @@
 // This Week (home) (spec §3.1, M1): the lamp band with today's date, the summary and Next up;
-// then source problems (S7), Next 7 days, the study plan and the Contents of the student's
-// courses. S3/S4 (and the first sync) replace the page with an empty state (spec §3.9). The day
-// ribbon is M3; the crash notice (S6) is M2.
+// then the crash notice (S6), source problems (S7), Next 7 days, the study plan and the Contents
+// of the student's courses. S3/S4 (and the first sync) replace the page with an empty state
+// (spec §3.9). The day ribbon is M3.
 //
-// One tinted action per window, and This Week normally has none (spec §1.2): only a source fix
-// (S7) or the empty states' primary action wins the arbiter.
+// One tinted action per window, and This Week normally has none (spec §1.2): a failing source's
+// fix is the capsule's tinted bubble (the S7 callouts only lead to Sources & Sync), and only the
+// empty states' primary action is a candidate on the page (`AppModel.thisWeekCandidates`).
 
 import SwiftUI
 import PageLampKit
@@ -48,7 +49,7 @@ struct ThisWeekView: View {
 }
 
 /// The page's document: rendered in the scroll view and by the snapshot harness.
-struct ThisWeekPage: View {
+package struct ThisWeekPage: View {
     /// "Now" for everything on the page; nil = `model.clock()` (snapshots).
     var now: Date?
     /// Opens Show Full Plan (snapshots of the full plan).
@@ -56,7 +57,12 @@ struct ThisWeekPage: View {
 
     @Environment(AppModel.self) private var model
 
-    var body: some View {
+    package init(now: Date? = nil, planExpanded: Bool = false) {
+        self.now = now
+        self.planExpanded = planExpanded
+    }
+
+    package var body: some View {
         let state = model.thisWeekPageState
         Group {
             switch state {
@@ -66,16 +72,7 @@ struct ThisWeekPage: View {
                 ThisWeekEmptyPage(state: state)
             }
         }
-        .primaryActionCandidates(candidates(for: state))
-    }
-
-    /// Spec §3.0: a source fix outranks the page primary; This Week itself has none.
-    private func candidates(for state: ThisWeekPageState) -> [PrimaryActionCandidate] {
-        switch state {
-        case .page, .firstSync: model.thisWeekFixCandidates
-        case .noSources: [.pagePrimary]
-        case .noCourses: model.thisWeekFixCandidates + [.pagePrimary]
-        }
+        .primaryActionCandidates(model.thisWeekCandidates)
     }
 }
 
@@ -98,6 +95,9 @@ private struct ThisWeekDocument: View {
             }
         } content: {
             ReadingColumn {
+                if let crash = model.lastCrash {
+                    CrashNotice(crash: crash)
+                }
                 if !model.failingSources.isEmpty {
                     ThisWeekSourceProblems()
                 }

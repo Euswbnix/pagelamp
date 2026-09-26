@@ -20,13 +20,19 @@ struct ConnectView: View {
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessoryBar()
         .navigationTitle(l10n("mac.nav.connect"))
-        // Reload when the data source changes (mock ↔ live) and after refreshes (the configs
-        // carry the data-folder override and the launch location).
-        .task(id: ConnectLoadKey(dataMode: model.dataMode, refresh: model.refreshCount)) {
+        // Load once, then again only when what the configs depend on changes (the data source,
+        // mock ↔ live; where PageLamp runs from) or on an explicit Try Again. Not on every app
+        // refresh: nothing else changes them, and doctor() reads the keychain.
+        .task(id: ConnectLoadKey(
+            dataMode: model.dataMode,
+            temporaryLocation: model.temporaryLocation,
+            attempt: connect.attempt
+        )) {
             await connect.load(
                 service: model.service,
                 binary: model.sidecarPath,
-                temporaryLocation: model.temporaryLocation
+                temporaryLocation: model.temporaryLocation,
+                dataMode: model.dataMode
             )
         }
     }
@@ -34,23 +40,24 @@ struct ConnectView: View {
 
 private struct ConnectLoadKey: Equatable {
     var dataMode: DataMode
-    var refresh: Int
+    var temporaryLocation: TemporaryLocation?
+    var attempt: Int
 }
 
 /// The page's document: rendered in the scroll view and by the snapshot harness.
-struct ConnectPage: View {
+package struct ConnectPage: View {
     let connect: ConnectModel
     /// Whether to show the quarantine hint (ad-hoc and unsigned builds; spec §3.4).
     let showsQuarantineHint: Bool
 
     @Environment(\.l10n) private var l10n
 
-    init(connect: ConnectModel, showsQuarantineHint: Bool? = nil) {
+    package init(connect: ConnectModel, showsQuarantineHint: Bool? = nil) {
         self.connect = connect
         self.showsQuarantineHint = showsQuarantineHint ?? CodeSigning.isAdHocOrUnsigned
     }
 
-    var body: some View {
+    package var body: some View {
         ReadingPage {
             LampBand(lit: false) {
                 PageHeader(title: l10n("connect.title"))
@@ -73,8 +80,14 @@ struct ConnectPage: View {
                 HowItWorksSection()
                 SetUpSection(connect: connect)
                 TryItSection()
-                if showsQuarantineHint, let command = connect.data?.launchCommand {
-                    QuarantineCallout(launchCommand: command)
+                // Not while running from a temporary location: the warning above says to move the
+                // app first, and a command for this temporary copy would do nothing (S15).
+                if showsQuarantineHint, let data = connect.data, let command = QuarantineHint.command(
+                    launchCommand: data.launchCommand,
+                    appBundlePath: QuarantineHint.runningAppPath,
+                    temporaryLocation: data.temporaryLocation
+                ) {
+                    QuarantineCallout(command: command)
                 }
             }
         }
@@ -157,16 +170,18 @@ private struct SetUpSection: View {
     }
 
     private var retryButton: some View {
-        Button(l10n("mac.actions.tryAgain")) {
-            Task {
-                await connect.load(service: model.service, binary: model.sidecarPath, temporaryLocation: model.temporaryLocation)
-            }
-        }
-        .buttonStyle(.bordered)
+        Button(l10n("mac.actions.tryAgain")) { connect.retry() }
+            .buttonStyle(.bordered)
     }
 
     @ViewBuilder private func loaded(_ data: ConnectData) -> some View {
         @Bindable var connect = connect
+        // A reload failed: keep the steps (they were right a moment ago) and say so above them.
+        if let failure = connect.reloadFailure {
+            Callout(tone: .warning, title: l10n("connect.errorTitle"), message: failure.localizedDescription(in: l10n)) {
+                retryButton
+            }
+        }
         Picker(l10n("mac.connect.setUpLabel"), selection: $connect.selectedClient) {
             ForEach(data.configs, id: \.client) { config in
                 Text(ConnectSetup.pickerTitle(for: config, l10n: l10n))
@@ -285,7 +300,7 @@ private struct PromptRow: View {
 /// "If macOS blocks PageLamp": Open Anyway first, then the xattr fallback for the app every AI
 /// app launches (spec S15; ad-hoc builds only).
 private struct QuarantineCallout: View {
-    let launchCommand: String
+    let command: String
     @Environment(\.l10n) private var l10n
 
     var body: some View {
@@ -300,7 +315,7 @@ private struct QuarantineCallout: View {
                     .fixedSize(horizontal: false, vertical: true)
                 CodeBlock(copyable: ConnectCopyable(
                     kind: .command,
-                    text: QuarantineHint.command(for: launchCommand),
+                    text: command,
                     copyTitle: l10n("mac.actions.copyCommand"),
                     copyAccessibilityLabel: l10n("connect.quarantine.copy")
                 ))

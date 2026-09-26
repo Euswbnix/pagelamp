@@ -13,7 +13,7 @@ extension EnvironmentValues {
 extension View {
     /// Puts the model, its strings and its locale into the environment (root view, Settings,
     /// snapshots).
-    func pageLampEnvironment(_ model: AppModel) -> some View {
+    package func pageLampEnvironment(_ model: AppModel) -> some View {
         environment(model)
             .environment(\.l10n, model.l10n)
             .environment(\.locale, model.locale)

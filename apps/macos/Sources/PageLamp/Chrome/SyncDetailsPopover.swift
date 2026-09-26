@@ -52,7 +52,7 @@ struct SyncDetailsPopover: View {
         if let kind = source.lastErrorKind {
             return failure(kind)
         }
-        return source.lastSyncedAt.map { l10n("common.sync.syncedAgo", ["when": l10n.relative($0, to: model.clock())]) }
+        return source.lastSyncedAt.map { l10n("common.sync.syncedAgo", ["when": l10n.relative($0, to: model.clock(), calendar: model.calendar)]) }
             ?? l10n("common.sync.never")
     }
 

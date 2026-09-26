@@ -92,7 +92,7 @@ extension EnvironmentValues {
     /// snapshot renderer sets it. Rows that switch to a compact layout in a narrow reading column
     /// (course materials, deadlines) read it, so they need no measuring of their own. nil =
     /// unknown (the regular layout).
-    @Entry var detailColumnWidth: CGFloat? = nil
+    @Entry package var detailColumnWidth: CGFloat? = nil
 }
 
 extension ReadingMeasure {

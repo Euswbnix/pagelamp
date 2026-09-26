@@ -12,10 +12,14 @@ public actor MockService: PageLampService {
     public struct Timing: Sendable {
         public var latency: Duration
         public var syncStep: Duration
+        /// Tests: the sync stops before every progress step until the gate lets it through
+        /// (instead of waiting `syncStep`).
+        public var gate: SyncStepGate?
 
-        public init(latency: Duration, syncStep: Duration) {
+        public init(latency: Duration, syncStep: Duration, gate: SyncStepGate? = nil) {
             self.latency = latency
             self.syncStep = syncStep
+            self.gate = gate
         }
 
         /// Feels like the real thing in the preview app.
@@ -310,7 +314,11 @@ public actor MockService: PageLampService {
             let total = UInt32(max(courses.count, 1) * 3)
             var warnings: [String] = []
             for step in 1 ... total {
-                await pause(timing.syncStep)
+                if let gate = timing.gate {
+                    await gate.pass(SyncStepPosition(sourceId: source.id, step: step))
+                } else {
+                    await pause(timing.syncStep)
+                }
                 observer.onEvent(event: .progress(
                     sourceId: source.id,
                     message: step < total ? "Indexing materials (\(step)/\(total))" : "Updating timelines",

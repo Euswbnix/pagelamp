@@ -112,6 +112,26 @@ struct SetupConnectTests {
             == "/Vol/A.app/Contents/MacOS/x/B.app")
     }
 
+    @Test("the Connect page's quarantine command: the real app, never while in a temporary location (S15)")
+    func quarantineOnPage() {
+        let launch = "/Applications/PageLamp Preview.app/Contents/MacOS/pagelamp"
+        // The running app's own bundle wins (the app the student would move and unblock).
+        #expect(QuarantineHint.command(launchCommand: launch, appBundlePath: "/Users/demo/Apps/PageLamp.app", temporaryLocation: nil)
+            == "xattr -dr com.apple.quarantine '/Users/demo/Apps/PageLamp.app'")
+        // Not running as an app (swift run, snapshots): the launch command's app.
+        #expect(QuarantineHint.command(launchCommand: launch, appBundlePath: nil, temporaryLocation: nil)
+            == "xattr -dr com.apple.quarantine '/Applications/PageLamp Preview.app'")
+        // A temporary copy: no command (the warning above says to move the app first).
+        for location in [TemporaryLocation.translocated, .diskImage] {
+            #expect(QuarantineHint.command(launchCommand: launch, appBundlePath: "/private/var/folders/x/AppTranslocation/y/d/PageLamp.app", temporaryLocation: location) == nil)
+        }
+        // Nothing absolute to point at: no command.
+        #expect(QuarantineHint.command(launchCommand: "pagelamp", appBundlePath: nil, temporaryLocation: nil) == nil)
+        #expect(QuarantineHint.command(launchCommand: nil, appBundlePath: nil, temporaryLocation: nil) == nil)
+        // The test runner is not an app.
+        #expect(QuarantineHint.runningAppPath == nil)
+    }
+
     // MARK: Clients
 
     @Test("clients are offered Claude Desktop first, generic last, whatever the core's order")
@@ -291,14 +311,73 @@ struct SetupConnectTests {
         #expect(connect.data?.temporaryLocation == .diskImage)
     }
 
-    @Test("a failing core shows the error state")
+    @Test("a failing core shows the error state; a failed reload keeps the page and says so")
     func loadFails() async {
-        // Fails at mcp_client_configs, before doctor() (which would read the real data folder).
-        let failure = PageLampFailure(kind: .internal, message: "broken")
+        // Every call goes to the mock (never the core's diagnostics, which would read the real
+        // data folder); only mcp_client_configs fails.
+        let mock = MockService(scenario: .demo, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+        let failing = FixtureService(base: mock, failing: [.clientConfigs])
         let connect = ConnectModel()
-        await connect.load(service: UnavailableService(failure: failure), binary: "/x/pagelamp")
-        #expect(connect.phase == .failed(failure))
+        await connect.load(service: failing, binary: MockService.binaryPath)
+        guard case .failed(let failure) = connect.phase else {
+            Issue.record("expected the error state, got \(connect.phase)")
+            return
+        }
+        #expect(failure.kind == .internal)
         #expect(connect.selectedConfig == nil)
+        #expect(connect.reloadFailure == nil)
+
+        // Try Again asks the page to reload (its load key changes) …
+        let attempt = connect.attempt
+        connect.retry()
+        #expect(connect.attempt == attempt + 1)
+        // … and succeeds.
+        await connect.load(service: mock, binary: MockService.binaryPath)
+        let loaded = connect.data
+        #expect(loaded?.configs.count == 4)
+        connect.selectedClient = .codex
+
+        // A reload that fails keeps the steps and the selection, with an inline error.
+        await connect.load(service: failing, binary: MockService.binaryPath)
+        #expect(connect.data == loaded)
+        #expect(connect.selectedClient == .codex)
+        #expect(connect.reloadFailure?.kind == .internal)
+        // The next good load clears it.
+        await connect.load(service: mock, binary: MockService.binaryPath)
+        #expect(connect.reloadFailure == nil)
+    }
+
+    @Test("another data source starts the page over; of overlapping loads only the latest applies")
+    func dataSourceAndOverlap() async {
+        let mock = MockService(scenario: .demo, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+        let connect = ConnectModel()
+        await connect.load(service: mock, binary: MockService.binaryPath, dataMode: .mock(.demo))
+        #expect(connect.data?.temporaryLocation == nil)
+
+        // A reload (say from a temporary location) is still waiting for the core when a newer one
+        // starts and finishes: the older answer arrives last and is dropped.
+        let hold = CallHold()
+        await hold.arm()
+        let held = HeldService(base: mock, configsHold: hold)
+        let stale = Task {
+            await connect.load(service: held, binary: MockService.binaryPath, temporaryLocation: .diskImage, dataMode: .mock(.demo))
+        }
+        await hold.waitUntilHeld()
+        await connect.load(service: mock, binary: MockService.binaryPath, dataMode: .mock(.demo))
+        await hold.release()
+        await stale.value
+        #expect(connect.data?.temporaryLocation == nil)
+        #expect(connect.reloadFailure == nil)
+
+        // Mock → live, and live fails: the mock's steps would be wrong, so the error state shows
+        // instead of them.
+        let failing = FixtureService(base: mock, failing: [.clientConfigs])
+        await connect.load(service: failing, binary: "/Applications/PageLamp Preview.app/Contents/MacOS/pagelamp", dataMode: .live)
+        guard case .failed = connect.phase else {
+            Issue.record("expected the error state, got \(connect.phase)")
+            return
+        }
+        #expect(connect.reloadFailure == nil)
     }
 }
 

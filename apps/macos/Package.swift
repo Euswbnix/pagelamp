@@ -15,7 +15,9 @@
 //   PageLamp           every view: shell, Chrome/ (the only glass), Components/, Views/; strings + tokens
 //   PageLampApp        the @main executable (CFBundleExecutable "PageLampApp", never "pagelamp":
 //                      the bundled CLI sidecar is Contents/MacOS/pagelamp and APFS is case-insensitive)
-//   PageLampSnapshots  renders content views to PNGs with ImageRenderer (headless review)
+//   PageLampSnapshots  the snapshot catalogue and PNG writer: renders content views with
+//                      ImageRenderer (headless review; never linked into the app). Reaches the
+//                      pages through `package` access; the tests render a few of them too.
 import PackageDescription
 
 /// Every Swift target: Swift 6 language mode (package-wide) and no warnings.
@@ -81,7 +83,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "PageLampSnapshots",
-            dependencies: ["PageLamp", "PageLampModel"],
+            dependencies: ["PageLamp", "PageLampModel", "PageLampKit"],
             swiftSettings: ui
         ),
         .testTarget(
@@ -91,7 +93,7 @@ let package = Package(
         ),
         .testTarget(
             name: "PageLampModelTests",
-            dependencies: ["PageLampModel", "PageLamp", "PageLampKit"],
+            dependencies: ["PageLampModel", "PageLamp", "PageLampKit", "PageLampSnapshots"],
             swiftSettings: strict
         ),
     ],

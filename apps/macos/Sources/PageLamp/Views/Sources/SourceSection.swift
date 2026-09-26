@@ -10,9 +10,14 @@ import PageLampModel
 
 struct SourceSection: View {
     let row: SourceRow
+    /// A fix elsewhere led here: an accent outline for a moment (selection colour, not glass),
+    /// and VoiceOver moves to the source.
+    var highlighted = false
 
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AccessibilityFocusState private var voiceOverFocus: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +43,18 @@ struct SourceSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .calloutSurface(.quaternary)
+        .overlay {
+            RoundedRectangle(cornerRadius: PLRadius.callout)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .opacity(highlighted ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+        .animation(reduceMotion ? PLMotion.reduced : PLMotion.calm, value: highlighted)
         .accessibilityElement(children: .contain)
+        .accessibilityFocused($voiceOverFocus)
+        .onChange(of: highlighted, initial: true) { _, highlighted in
+            if highlighted { voiceOverFocus = true }
+        }
     }
 
     // MARK: Header
@@ -280,25 +296,31 @@ private struct SourceProblemBlock: View {
 
     private var expiredFix: CapsuleState.Attention.Fix? { problem.fix }
 
-    /// The Replace sheet is M2: until then the fix is shown where it will live (so the arbiter's
-    /// choice is visible) but disabled, with a note; the callout's text says what to do. Every
-    /// other fix button (capsule, This Week, course header) calls `AppModel.fixSource(_:)`, which
-    /// leads here in M1; M2 presents the Replace sheet from there and enables this button.
-    private func fixButton(_ fix: CapsuleState.Attention.Fix) -> some View {
-        Button {
+    /// Replace Token… / Replace Feed Address…: the arbiter's candidate (2) once this build has
+    /// the Replace sheet (M2 presents it from `AppModel.fixSource(_:)`). Until then it stays
+    /// where it will live, disabled and plain (`.bordered`, never a candidate: Sync All keeps
+    /// the tint), with a help tag saying it comes in the next update — like the busy-disabled
+    /// sync buttons (S17). The callout's text says what to do meanwhile.
+    @ViewBuilder private func fixButton(_ fix: CapsuleState.Attention.Fix) -> some View {
+        let button = Button {
             model.fixSource(row.id)
         } label: {
             Label(l10n.fix(fix), systemImage: "key")
         }
-        .arbitratedButtonStyle(.fixSource(row.id))
-        .disabled(true)
-        .help(l10n("mac.sources.fixUnavailable"))
         .accessibilityLabel(
             fix == .replaceFeed
                 ? l10n("sources.actions.replaceFeedFor", ["label": row.source.label])
                 : l10n("sources.actions.replaceTokenFor", ["label": row.source.label])
         )
-        .accessibilityHint(l10n("mac.sources.fixUnavailable"))
+        if SourceRow.canReplaceSecrets {
+            button.arbitratedButtonStyle(.fixSource(row.id))
+        } else {
+            button
+                .buttonStyle(.bordered)
+                .disabled(true)
+                .help(l10n("mac.sources.fixUnavailable"))
+                .accessibilityHint(l10n("mac.sources.fixUnavailable"))
+        }
     }
 }
 
@@ -338,11 +360,10 @@ private struct SourceDetails: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button(l10n("mac.actions.showInFinder")) {
-                            Links.showInFinder(URL(filePath: path))
+                            Links.revealInFinder(path: path)
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(!FileManager.default.fileExists(atPath: path))
                     }
                 }
                 if let start = row.config.termStart,
@@ -369,7 +390,7 @@ private struct SourceDetails: View {
             GridRow {
                 label(l10n("sources.card.lastSynced"))
                 if let synced = row.source.lastSyncedAt {
-                    Text(l10n.relative(synced, to: model.clock()))
+                    Text(l10n.relative(synced, to: model.clock(), calendar: model.calendar))
                         .monospacedDigit()
                         .help(synced.formatted(.dateTime.locale(l10n.locale)))
                 } else {

@@ -18,8 +18,10 @@ struct ContentsSection: View {
         VStack(alignment: .leading, spacing: PLLayout.titleToRule) {
             SectionHeader(title: l10n("courses.list.title"))
             let courses = ThisWeekContents.courses(model.courses)
-            if model.sectionErrors[.courses] != nil {
-                SectionError(title: l10n("courses.list.errorTitle")) { Task { await model.refresh() } }
+            if let failure = model.sectionErrors[.courses] {
+                SectionError(title: l10n("courses.list.errorTitle"), message: failure.localizedDescription(in: l10n)) {
+                    Task { await model.refresh() }
+                }
             } else if ThisWeekContents.allHidden(model.courses) {
                 Text(l10n("mac.thisWeek.allHidden"))
                     .foregroundStyle(.secondary)
@@ -43,10 +45,6 @@ private struct ContentsRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
     @Environment(\.openURL) private var openURL
-    @Environment(\.detailColumnWidth) private var detailWidth
-
-    /// Below this reading-column width the next deadline and the policy take a line each.
-    static let stackBelow: CGFloat = 600
 
     private var course: Course { summary.course }
     private var past: Bool { !course.enrollmentActive }
@@ -92,24 +90,35 @@ private struct ContentsRow: View {
         }
     }
 
-    /// "Next: Quiz 3 · Sat 9:00 AM   ▪ Learning aid only · 12 of 14 readable", wrapping onto two
-    /// lines when narrow; then the term hint (S11) and the past-course note.
+    /// "Next: Quiz 3 · Sat 9:00 AM   ▪ Learning aid only · 12 of 14 readable" on one line when it
+    /// fits, else the next deadline and the policy on a line each (each wrapping between words,
+    /// never inside a date or a count); then the term hint (S11) and the past-course note.
     private func details(week: CourseWeekState) -> some View {
         let next = summary.nextDeadline.flatMap(text.next)
-        // One text that wraps where it must, on two lines in a narrow column; the glyph stays
-        // with its words (no-break space).
-        let stacked = ReadingMeasure.isColumn(of: detailWidth, narrowerThan: Self.stackBelow)
-        var parts: [Text] = []
-        if let next { parts += [Text(next), Text(verbatim: stacked ? "\n" : "   ")] }
-        parts += [
+        // The glyph stays with its words (no-break space).
+        let policy = InlineText.joined([
             InlineText.glyph(summary.course.aiPolicy.symbol),
             Text(verbatim: "\u{00A0}"),
-            Text(text.policyLine(summary)),
-        ]
+            Text(TextWrap.items(text.policyLineParts(summary))),
+        ])
         return Group {
-            InlineText.joined(parts)
+            if let next {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: PLSpace.s5) {
+                        Text(next).fixedSize()
+                        policy.fixedSize()
+                    }
+                    VStack(alignment: .leading, spacing: PLSpace.s1) {
+                        Text(next).fixedSize(horizontal: false, vertical: true)
+                        policy.fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 .monospacedDigit()
-                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                policy
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             switch week {
             case .unknown:
                 Text(l10n("courses.card.setTerm"))

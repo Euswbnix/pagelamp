@@ -1,19 +1,22 @@
 // This Week in each of its states (spec §3.1, §3.9, §7.4) for the snapshot catalogue: S7 above a
-// full week, Next up, S12 quiet empties, S14 section errors, a stale plan, S3, S4, the first sync
-// and the minimum window. States the demo data lacks come from a `FixtureService` over the mock.
+// full week, S6 after a crash, Next up, S12 quiet empties, S14 section errors, a stale plan, S3,
+// S4, the first sync and the minimum window. States the demo data lacks come from a `FixtureService` over the mock.
 
 import SwiftUI
+import PageLamp
 import PageLampKit
 import PageLampModel
 
 enum ThisWeekSnapshots {
     /// The narrowest detail column: the minimum window beside the ideal sidebar.
-    static let narrowWidth = PLSize.windowMainMinWidth - PLSize.sidebarIdeal
+    static let narrowWidth = WindowMetrics.mainMinWidth - WindowMetrics.sidebarIdeal
 
     /// The states, named `this-week-<state>`.
     static let pages: [SnapshotPage] = [
         // The preview's default: an expired Canvas token (S7) above a full week.
         page("default", SnapshotSetup(scenario: .preview)),
+        // S6: the app crashed yesterday evening (the crash notice comes first).
+        page("crashed", SnapshotSetup(scenario: .crashed)),
         // Next up, 58 minutes before the deadline (final stretch glyph).
         page("next-up", SnapshotSetup(
             moment: { now, calendar in at(now, calendar, days: 0, hour: 23, minute: 1) },

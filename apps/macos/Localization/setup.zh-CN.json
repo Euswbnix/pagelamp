@@ -4,7 +4,7 @@
     "copyServersSection": "复制 mcpServers 部分"
   },
   "sources": {
-    "fixUnavailable": "这个预览版暂时还不能更换访问令牌或日历订阅地址。"
+    "fixUnavailable": "将在这个预览版的下一次更新中提供。"
   },
   "connect": {
     "existingFile": {

@@ -1,6 +1,8 @@
 // Sources & Sync (spec §3.3, M1: list, sync, progress). One section per source with its status,
 // live progress, problem callout and Sync; the last run's results until Hide Results; the S17
-// busy callout; the short disclosure, always. Add, Replace and Remove are M2.
+// busy callout; the short disclosure, always. Add, Replace and Remove are M2. A fix elsewhere
+// (the capsule's bubble, a course header, "Open Sources & Sync" under a source problem) lands
+// here scrolled to its source, which is highlighted for a moment.
 
 import SwiftUI
 import PageLampKit
@@ -9,35 +11,42 @@ import PageLampModel
 struct SourcesView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView {
-            SourcesPage()
+        ScrollViewReader { proxy in
+            ScrollView {
+                SourcesPage()
+            }
+            // Bring the source a fix asked for into view once the page is on screen (again for a
+            // repeated request); no scrolling animation under Reduce Motion.
+            .task(id: model.sourceHighlight) {
+                guard let highlight = model.sourceHighlight else { return }
+                // Arriving from another page: let the rows lay out first.
+                await Task.yield()
+                withAnimation(reduceMotion ? nil : PLMotion.calm) {
+                    proxy.scrollTo(highlight.sourceId, anchor: .top)
+                }
+            }
         }
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .accessoryBar()
         .navigationTitle(l10n("mac.nav.sources"))
         .navigationSubtitle(l10n("sources.description"))
         .toolbar { SourcesToolbar() }
-        // The first rejected token/feed's fix outranks Sync All (spec §3.0).
-        .primaryActionCandidates(SourcesPage.candidates(model.sourceRows))
+        // Sync All, unless a Replace… this build can run outranks it (spec §3.0).
+        .primaryActionCandidates(SourceRow.primaryActionCandidates(model.sourceRows))
     }
 }
 
 /// The page's document: rendered in the scroll view and by the snapshot harness.
-struct SourcesPage: View {
+package struct SourcesPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
 
-    /// The arbiter's candidates on this page, in page order: each source's fix, then Sync All.
-    static func candidates(_ rows: [SourceRow]) -> [PrimaryActionCandidate] {
-        rows.compactMap { row in
-            if case .expired = row.problem { return PrimaryActionCandidate.fixSource(row.id) }
-            return nil
-        } + [.pagePrimary]
-    }
+    package init() {}
 
-    var body: some View {
+    package var body: some View {
         let rows = model.sourceRows
         ReadingPage {
             LampBand(lit: false) {
@@ -61,7 +70,8 @@ struct SourcesPage: View {
                     .padding(.vertical, PLSpace.s8)
                 } else {
                     ForEach(rows) { row in
-                        SourceSection(row: row)
+                        SourceSection(row: row, highlighted: model.sourceHighlight?.sourceId == row.id)
+                            .id(row.id)
                     }
                 }
                 // The short disclosure, always (spec §3.3).
@@ -77,7 +87,7 @@ struct SourcesPage: View {
                 .foregroundStyle(.secondary)
             }
         }
-        .primaryActionCandidates(Self.candidates(rows))
+        .primaryActionCandidates(SourceRow.primaryActionCandidates(rows))
     }
 }
 

@@ -29,25 +29,30 @@ struct ThisWeekSectionsTests {
         let (demo, _) = makeModel(scenario: .demo)
         await demo.refresh()
         #expect(demo.thisWeekPageState == .page)
-        #expect(demo.thisWeekFixCandidates.isEmpty)
+        // This Week has no tinted action of its own (spec §1.2).
+        #expect(demo.thisWeekCandidates.isEmpty)
 
         let (empty, _) = makeModel(scenario: .empty)
         await empty.refresh()
         #expect(empty.thisWeekPageState == .noSources)
+        #expect(empty.thisWeekCandidates == [.pagePrimary])
     }
 
-    @Test("a rejected Canvas token is This Week's fix candidate; a missing folder is not")
+    @Test("a rejected token offers no second fix button on This Week: the capsule's bubble is the fix")
     @MainActor
     func fixCandidates() async {
         let (expired, _) = makeModel(scenario: .expired)
         await expired.refresh()
-        #expect(expired.thisWeekFixCandidates == [.fixSource("canvas:canvas.demo.test")])
-        #expect(PrimaryActionArbiter.winner(expired.thisWeekFixCandidates) == .fixSource("canvas:canvas.demo.test"))
+        #expect(expired.thisWeekCandidates.isEmpty)
+        #expect(expired.showsCapsuleFix)
+        #expect(expired.primaryActionWinner(for: expired.thisWeekCandidates) == .capsuleFix)
 
         let (missing, _) = makeModel(scenario: .error)
         await missing.refresh()
         #expect(!missing.failingSources.isEmpty)
-        #expect(missing.thisWeekFixCandidates.isEmpty)
+        #expect(missing.thisWeekCandidates.isEmpty)
+        #expect(!missing.showsCapsuleFix)
+        #expect(missing.primaryActionWinner(for: missing.thisWeekCandidates) == nil)
     }
 
     // MARK: Countdown

@@ -17,6 +17,10 @@ so a key `{"nav": {"thisWeek": …}}` becomes `mac.nav.thisWeek`, whichever file
   in Chinese. `{{product}}` is replaced by the brand's `productName`. Plurals use i18next suffixes
   (`key_one`, `key_other`; Chinese keeps `_one` for parity but only `other` is used) and go to
   `Localizable.stringsdict` with `count` as `%N$ld`.
+- **Reserved keys:** a few keys have no Swift use yet because the screen that needs them comes in a
+  later milestone; keep them (the Chinese is already reviewed). `mac.actions.setUp` ("Set Up
+  PageLamp…" / "设置 PageLamp…") is the Window menu item and the S3 empty state's second button of
+  M2 (spec §2.7, §3.9 S3, the menu bar extra's empty variant in M3).
 - **Regenerate** after any change (CI runs `--check`):
 
   ```sh

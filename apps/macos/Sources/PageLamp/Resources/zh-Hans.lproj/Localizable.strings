@@ -453,7 +453,7 @@
 "mac.courses.thisWeek.next7" = "未来 7 天";
 "mac.debug.dataSource" = "数据来源";
 "mac.debug.live.confirm" = "使用真实数据";
-"mac.debug.live.message" = "这个预览版会打开与已安装的 PageLamp 应用及其命令行工具相同的数据文件夹和钥匙串项目。在这里同步会更改这些数据。";
+"mac.debug.live.message" = "这个预览版会打开与已安装的 PageLamp 应用及其命令行工具相同的数据文件夹和钥匙串项目。在这里同步会更改这些数据。打开这个文件夹时，还可能更新其中数据库的格式；之后，较旧版本的 PageLamp 会先要求你更新，才能再次打开你的数据。";
 "mac.debug.live.title" = "要使用你真实的 PageLamp 数据吗？";
 "mac.debug.liveData" = "真实数据…";
 "mac.debug.menu" = "调试";
@@ -496,7 +496,7 @@
 "mac.settings.tabs.help" = "帮助";
 "mac.settings.tabs.privacy" = "隐私";
 "mac.sidebar.setup" = "配置";
-"mac.sources.fixUnavailable" = "这个预览版暂时还不能更换访问令牌或日历订阅地址。";
+"mac.sources.fixUnavailable" = "将在这个预览版的下一次更新中提供。";
 "mac.sources.lastRun" = "上次运行";
 "mac.syncDetails.done" = "完成";
 "mac.syncDetails.failed" = "未完成";

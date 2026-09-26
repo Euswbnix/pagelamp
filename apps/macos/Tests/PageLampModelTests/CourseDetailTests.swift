@@ -59,13 +59,16 @@ struct CourseWeekLineTests {
         #expect(line.tagText(l10n(.simplifiedChinese)) == chinese)
     }
 
-    @Test("Deadlines and Timeline always show the current week")
+    @Test("Deadlines and Timeline always show the current week, and VoiceOver can't step it there")
     func otherSections() {
         for section in [CourseSection.deadlines, .timeline] {
             let line = CourseWeekLine(section: section, selectedWeek: 7, currentWeek: 4, outsideTerm: false)
             #expect(line.week == 4)
             #expect(line.lit)
+            // Stepping would switch sections unasked: the line is adjustable only in This Week.
+            #expect(!line.isAdjustable)
         }
+        #expect(CourseWeekLine(section: .week, selectedWeek: 7, currentWeek: 4, outsideTerm: false).isAdjustable)
     }
 
     @Test("an unknown week has no pool and no tag (S11)")

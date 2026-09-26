@@ -3,14 +3,15 @@
 // the read-only inspector's contents. States the demo data lacks come from a `FixtureService`.
 
 import SwiftUI
+import PageLamp
 import PageLampKit
 import PageLampModel
 
 enum CourseSnapshots {
     /// The detail column beside an open inspector at the main window's default size.
-    static let pageWidth = PLSize.windowMainWidth - PLSize.sidebarIdeal - PLSize.inspectorIdeal
+    static let pageWidth = WindowMetrics.mainWidth - WindowMetrics.sidebarIdeal - WindowMetrics.inspectorIdeal
     /// The detail column of the 760 pt minimum window with the sidebar and the inspector open.
-    static let narrowWidth = PLSize.windowMainMinWidth - PLSize.sidebarMin - PLSize.inspectorMin
+    static let narrowWidth = WindowMetrics.mainMinWidth - WindowMetrics.sidebarMin - WindowMetrics.inspectorMin
 
     /// One state of the page.
     struct Case {
@@ -31,7 +32,8 @@ enum CourseSnapshots {
         Case(name: "DEMO101-week2", code: "DEMO101", selectedWeek: 2),
         Case(name: "DEMO101-deadlines", code: "DEMO101", section: .deadlines),
         Case(name: "DEMO101-timeline", code: "DEMO101", section: .timeline),
-        // S7: the Canvas token expired (the fix wins the arbiter); policy not set; blocked file.
+        // S7: the Canvas token expired (the header's Replace Token… is bordered: the capsule's fix
+        // bubble holds the tint while it shows); policy not set; blocked file.
         Case(name: "DEMO205-week-expired", code: "DEMO205", setup: SnapshotSetup(scenario: .expired), inspector: true),
         // S9 + S11: No AI, week unknown (Set Term Dates… wins the arbiter).
         Case(name: "DEMO310-week-noai", code: "DEMO310", inspector: true),
@@ -69,7 +71,7 @@ enum CourseSnapshots {
                 },
             ]
             if item.inspector {
-                pages.append(SnapshotPage(name: "course-\(item.name)-inspector", width: PLSize.inspectorIdeal, setup: item.setup) { model in
+                pages.append(SnapshotPage(name: "course-\(item.name)-inspector", width: WindowMetrics.inspectorIdeal, setup: item.setup) { model in
                     guard let (summary, _) = await load(item, model) else { return AnyView(EmptyView()) }
                     // ImageRenderer can't draw a Form: the same sections in a plain stack.
                     return AnyView(CourseInspectorForm(summary: summary, layout: .stack))

@@ -92,10 +92,9 @@ struct SettingsPathRow: View {
             HStack(spacing: PLSpace.s2) {
                 CopyButton(title: l10n("mac.actions.copyPath"), text: path, accessibilityLabel: copyAccessibilityLabel)
                 Button(l10n("mac.actions.showInFinder")) {
-                    Links.showInFinder(URL(filePath: path))
+                    Links.revealInFinder(path: path)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!FileManager.default.fileExists(atPath: path))
             }
             .controlSize(.small)
         }

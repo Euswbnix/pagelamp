@@ -8,7 +8,7 @@ extension EnvironmentValues {
     /// When the student confirmed the AI disclosure. Nothing on the Mac records it before M2's
     /// welcome and Add Source gate (spec §13 #1: shared preferences), so it is nil in M1 and the
     /// block says "You haven't confirmed this yet…". M2 sets it in `pageLampEnvironment(_:)`.
-    @Entry var disclosureAcknowledgedAt: Date? = nil
+    @Entry package var disclosureAcknowledgedAt: Date? = nil
 }
 
 struct DisclosureBlock: View {

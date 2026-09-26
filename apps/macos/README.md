@@ -41,7 +41,7 @@ apps/macos/scripts/lint.sh             # glass only in Chrome/, generated files 
 | Mode | What | How |
 |---|---|---|
 | **Mock** (default) | `MockService`: synthetic demo data ported from the Tauri mock (DEMO101/205/310/099, three sources, a study plan, sync events streamed with delays). Never touches the data folder, keychain or network. | Every launch starts here, scenario **Expired Canvas Token** (S7 visible). Debug ▸ Data Source ▸ Mock Data switches between Demo, No Sources, Expired Canvas Token, Missing Course Folder, Another Sync Running, Recovered from a Crash. |
-| **Live** | `LiveService`: the Rust facade over the **default data folder** (`~/Library/Application Support/dev.PageLamp.PageLamp`) and the keychain. | Debug ▸ Data Source ▸ Live Data…, after a confirmation: it shares data, secrets and the sync lock with the installed PageLamp app and its CLI; syncing here changes that data. Not remembered across launches. |
+| **Live** | `LiveService`: the Rust facade over the **default data folder** (`~/Library/Application Support/dev.PageLamp.PageLamp`) and the keychain. | Debug ▸ Data Source ▸ Live Data…, after a confirmation: it shares data, secrets and the sync lock with the installed PageLamp app and its CLI; syncing here changes that data, and opening the folder may update its database format (an older installed PageLamp then asks to be updated; FACADE-REQUESTS F5 asks for a read-only check first). Not remembered across launches. |
 
 Debug ▸ Run Mock Sync / Run Mock Sync with a Rejected Token exercise the capsule. The Debug menu
 exists only with the `PAGELAMP_PREVIEW` compile flag (set in Package.swift for the UI targets);
@@ -53,16 +53,16 @@ a student build drops it.
 |---|---|---|
 | `PageLampKit` | `Sources/PageLampKit` | UniFFI bindings (generated) + `SyncEventStream` (sync callbacks → `AsyncStream`) |
 | `PageLampModel` | `Sources/PageLampModel` | `PageLampService` (the calls M1 needs; typed `throws(PageLampFailure)`), `LiveService`, `UnavailableService` (S2: diagnostics only), `MockService` + `FixtureService` (snapshots/tests: the mock with answers replaced); `AppModel` (`@Observable @MainActor`: shell data, navigation, sync + capsule, data mode, language); `L10n` + code → words helpers (`L10n+Formatting`); per screen the logic without views: `ThisWeek/` (`ThisWeekDigest`, the port of Tauri `thisWeek.ts` and M1 stand-in for `this_week`; sections, text), `Course/` (page model, presentation), `Setup/` (source rows, Connect steps and snippets, settings); `PrimaryActionArbiter` |
-| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, sidebar, commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`ReadingMeasure` layout), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview · `Support/` environment, strings, pasteboard and links · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Snapshots/` the snapshot catalogue (one file per screen) · `Generated/`, `Resources/` |
+| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, sidebar, commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`ReadingMeasure` layout), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
 | `PageLampApp` | `Sources/PageLampApp` | `@main`: owns the `AppModel` and the app delegate. Executable name `PageLampApp` (never `pagelamp`: the sidecar is `Contents/MacOS/pagelamp` on a case-insensitive disk) |
-| `PageLampSnapshots` | `Sources/PageLampSnapshots` | renders `SnapshotCatalog.pages` with `ImageRenderer` (`swift run PageLampSnapshots <dir> [name-prefix …]`) |
+| `PageLampSnapshots` | `Sources/PageLampSnapshots` | the snapshot catalogue (`SnapshotCatalog.pages`, one file per screen) and the PNG writer (`SnapshotRenderer`, `ImageRenderer`): `swift run PageLampSnapshots <dir> [name-prefix …]`. Never linked into the app; the tests import it |
 
 **Writing a screen.** A screen is `Views/<Screen>/<Screen>View.swift` (the `ScrollView` with
 `.accessoryBar()`, title and toolbar) plus a `<Screen>Page` document view (a `ReadingPage`: the
 `LampBand` first, then `ReadingColumn`). Read shell data from `@Environment(AppModel.self)`
 (`courses`, `sources`, `thisWeek`, `capsule`, …), load screen data through `model.service`
 (course detail: `model.weekMaterials(for:)` also feeds Go ▸ Previous/Next Week), and strings from
-`@Environment(\.l10n)`. Add the page's states to the snapshot catalogue (`Snapshots/<Screen>Snapshots.swift`):
+`@Environment(\.l10n)`. Add the page's states to the snapshot catalogue (`Sources/PageLampSnapshots/<Screen>Snapshots.swift`; the page view is `package`):
 each `SnapshotPage` sets up its model (`SnapshotSetup`: mock scenario, moment, a `FixtureService`
 for states the demo data lacks) and loads its data in `make` (`.task` never runs offscreen).
 
@@ -90,24 +90,32 @@ for states the demo data lacks) and loads its data in `make` (`.task` never runs
 - **Tests never touch the real data folder, keychain or preferences**: models use
   `InMemorySettingsStore`, a private `NotificationCenter`, `MockService`, or `LiveService` over
   `PageLamp.openWithMemorySecrets` in a temp folder.
+- **Tests wait on events, never on time**: a `SyncStepGate` (`MockService.Timing.gate`) holds the
+  mock's sync before each progress step, `AppModel.Timing.sleep` lets a test fire the model's timers
+  (`ManualTimers`), and `until { … }` wakes on Observation changes (its timeout only ends a hang).
 
 ## Snapshots
 
 `swift run PageLampSnapshots <dir>` (or `PAGELAMP_SNAPSHOT_DIR=<dir> swift test --filter SnapshotRenderTests`,
 optionally with `PAGELAMP_SNAPSHOT_FILTER=this-week,course-DEMO101`) renders every page of
 `SnapshotCatalog.pages` in light/dark × en/zh-Hans, on mock data at Friday 2026-09-25 10:00: This Week
-(10 states), course detail (16 states + 5 inspector views), Sources & Sync, Connect and Settings (18
-states) and the component gallery — 50 pages, 200 PNGs. `ImageRenderer` has limits: AppKit-backed
-controls (segmented/tabs pickers, borderless buttons, progress bars) draw as yellow placeholders,
-`Form` draws blank (Settings and the inspector render a stand-in of the grouped style), and window
-chrome (sidebar, toolbar, inspector column, glass capsule) is not drawn.
+(11 states), course detail (16 states + 5 inspector views), Sources & Sync, Connect and Settings (20
+states) and the component gallery — 53 pages, 212 PNGs. A plain `swift test` renders a small subset
+(This Week, a course page, Sources, the gallery; English light and Chinese dark) into a temporary
+folder. `ImageRenderer` has limits: AppKit-backed controls (segmented/tabs pickers, borderless
+buttons, progress bars) draw as yellow placeholders, except the course section picker, which draws a
+stand-in of about the real size (`\.drawsControlStandIns`) so the narrow fallback to a pop-up menu
+shows; `Form` draws blank (Settings and the inspector render a stand-in of the grouped style); and
+window chrome (sidebar, toolbar, inspector column, glass capsule) is not drawn.
 
 ## Known limits (M1)
 
-- **M2 and later, by design:** welcome window, Add Source / Replace / Remove sheets (the fix buttons
-  open Sources & Sync, where the problem callout explains the fix; the Replace button there is shown
-  disabled), downloads, inspector editing, week scrubber and term strip, hidden and past course
-  sections, search, capsule fuse/split, S5/S6/S10/S13/S16, the Connect running check and access
+- **M2 and later, by design:** welcome window, Add Source / Replace / Remove sheets (the capsule's fix
+  bubble and the course header's Replace Token… open Sources & Sync scrolled to the source, which is
+  highlighted for a moment, and the problem callout explains the fix; the Replace button there is
+  shown disabled and plain, with a "next update" help tag, and never takes the tint from Sync All),
+  downloads, inspector editing, week scrubber and term strip, hidden and past course sections,
+  search, capsule fuse/split, S5/S10/S13/S16 (S6, the crash notice, shows on This Week only), the Connect running check and access
   popover, the Privacy table, Week starts on, Reduce Highlighting Effects, the menu bar extra, Quick
   Look. The disclosure acknowledgement is not recorded on the Mac before M2 (spec §13 #1), so Connect
   and Privacy say "You haven't confirmed this yet".

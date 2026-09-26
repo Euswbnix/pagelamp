@@ -18,8 +18,10 @@ struct Next7DaysSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PLLayout.titleToRule) {
             SectionHeader(title: l10n("mac.courses.thisWeek.next7"), detail: text.next7Detail(digest))
-            if model.sectionErrors[.deadlines] != nil {
-                SectionError(title: l10n("courses.thisWeek.errorTitle")) { Task { await model.refresh() } }
+            if let failure = model.sectionErrors[.deadlines] {
+                SectionError(title: l10n("courses.thisWeek.errorTitle"), message: failure.localizedDescription(in: l10n)) {
+                    Task { await model.refresh() }
+                }
             } else if digest.groups.isEmpty {
                 QuietState(
                     symbol: "calendar",
