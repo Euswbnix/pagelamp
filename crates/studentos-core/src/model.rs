@@ -4,7 +4,7 @@
 //!
 //! Conventions:
 //! - IDs are opaque strings, stable across syncs. Format: `<source_id>/<kind>/<external_id>`
-//!   for synced entities (e.g. `canvas:q.utoronto.ca/course/12345`), so the same Canvas
+//!   for synced entities (e.g. `canvas:lms.example.edu/course/12345`), so the same Canvas
 //!   object always maps to the same row.
 //! - Instants are `DateTime<Utc>` (stored as RFC 3339 text). Calendar dates are `NaiveDate`.
 //! - Week numbers are 1-based teaching weeks counted from the course's term start.
@@ -45,12 +45,12 @@ impl SourceKind {
 /// they live in the OS keychain keyed by `id` (see `secrets`).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SourceRecord {
-    /// e.g. `canvas:q.utoronto.ca`, `folder:3f2a…`, `ical:9b1c…`
+    /// e.g. `canvas:lms.example.edu`, `folder:3f2a…`, `ical:9b1c…`
     pub id: String,
     pub kind: SourceKind,
     /// Human label shown in status output, e.g. "Quercus" or "~/Courses".
     pub label: String,
-    /// Non-secret configuration. Canvas: `{"base_url": "https://q.utoronto.ca"}`.
+    /// Non-secret configuration. Canvas: `{"base_url": "https://lms.example.edu"}`.
     /// Folder: `{"path": "/Users/me/Courses", "term_start": "2026-09-08"?}`.
     /// Ical: `{}` (the URL itself is a secret).
     pub config: serde_json::Value,
@@ -179,15 +179,66 @@ pub struct Course {
     /// Effective term start = user override if set, else synced value.
     pub term_start: Option<NaiveDate>,
     pub term_end: Option<NaiveDate>,
+    /// Where the effective term dates come from (`set_course_term(None, None)` clears the
+    /// user override and falls back to the synced dates).
+    pub term_source: TermSource,
     pub url: Option<String>,
     pub ai_policy: AiPolicy,
     /// Free text the student recorded about the policy (e.g. a quote from the syllabus).
     pub ai_policy_note: Option<String>,
+    /// The student's switch "Let my AI app read this course's materials" (default on).
+    /// Use `ai_materials()` for the effective state — a `prohibited` policy wins over it.
+    pub ai_access: bool,
     pub hidden: bool,
     pub updated_at: Timestamp,
 }
 
+/// Origin of a course's effective term dates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TermSource {
+    /// The student set a start and/or end date (overrides the synced dates).
+    User,
+    /// Dates come from the source (LMS term, course.toml, folder config).
+    Synced,
+    /// No term dates known.
+    None,
+}
+
+/// Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
+/// rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
+/// Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
+/// always available; only material text is withheld.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AiMaterialsState {
+    Readable,
+    /// The student switched AI access off for this course.
+    TurnedOff,
+    /// The student marked the course `ai_policy = prohibited` (wins over the switch).
+    WithheldByPolicy,
+}
+
+impl AiMaterialsState {
+    pub fn is_readable(self) -> bool {
+        self == AiMaterialsState::Readable
+    }
+}
+
 impl Course {
+    /// Effective AI access to this course's material text: `prohibited` policy →
+    /// `WithheldByPolicy` (whatever the switch says); else switch off → `TurnedOff`; else
+    /// `Readable` (an `unknown` policy is readable).
+    pub fn ai_materials(&self) -> AiMaterialsState {
+        if self.ai_policy == AiPolicy::Prohibited {
+            AiMaterialsState::WithheldByPolicy
+        } else if !self.ai_access {
+            AiMaterialsState::TurnedOff
+        } else {
+            AiMaterialsState::Readable
+        }
+    }
+
     /// "CSC413H1 — Neural Networks and Deep Learning" or just the name.
     pub fn display_name(&self) -> String {
         match &self.code {

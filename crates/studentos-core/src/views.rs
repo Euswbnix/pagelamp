@@ -58,7 +58,8 @@ pub struct Deadline {
 pub struct CourseCounts {
     pub modules: u32,
     pub materials: u32,
-    /// Materials with searchable text.
+    /// Materials whose text the student's AI app can read: indexed materials, but 0 unless
+    /// the course's `ai_materials` state is `readable`.
     pub indexed_materials: u32,
     /// Deadlines due in the next `UPCOMING_DAYS` days.
     pub upcoming_deadlines: u32,
@@ -68,6 +69,8 @@ pub struct CourseCounts {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CourseSummary {
     pub course: Course,
+    /// Effective AI access to this course's material text (`Course::ai_materials`).
+    pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
     pub counts: CourseCounts,
     pub next_deadline: Option<Deadline>,
@@ -100,6 +103,8 @@ pub struct MaterialView {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct CourseOverview {
     pub course: Course,
+    /// Effective AI access to this course's material text (`Course::ai_materials`).
+    pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
     pub current_modules: Vec<Module>,
     /// Materials published in the last `RECENT_DAYS` days, newest first (announcements excluded).
@@ -116,6 +121,8 @@ pub struct CourseOverview {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct WeekMaterials {
     pub course: Course,
+    /// Effective AI access to this course's material text (`Course::ai_materials`).
+    pub ai_materials: AiMaterialsState,
     /// The week actually shown (None when no week could be determined; see `note`).
     pub week: Option<u32>,
     /// The week the caller asked for (None = "current week").

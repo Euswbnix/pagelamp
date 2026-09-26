@@ -31,8 +31,8 @@ use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use studentos_core::model::{
-    AiPolicy, SearchHit, SourceErrorKind, SourceKind, SourceRecord, StoreCounts, StoredStudyPlan,
-    Timestamp,
+    AiMaterialsState, AiPolicy, SearchHit, SourceErrorKind, SourceKind, SourceRecord, StoreCounts,
+    StoredStudyPlan, TermSource, Timestamp,
 };
 use studentos_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 
@@ -441,6 +441,13 @@ impl App {
         todo!()
     }
 
+    /// The per-course switch "Let my AI app read this course's materials" (docs/ARCHITECTURE.md
+    /// §3 rule 8). A `prohibited` AI policy withholds text regardless of this switch.
+    pub fn set_course_ai_access(&self, course: &str, allowed: bool) -> Result<()> {
+        let _ = (course, allowed);
+        todo!()
+    }
+
     pub fn set_course_hidden(&self, course: &str, hidden: bool) -> Result<()> {
         let _ = (course, hidden);
         todo!()
@@ -481,6 +488,8 @@ struct AppTypes {
     search_hit: SearchHit,
     stored_study_plan: StoredStudyPlan,
     ai_policy: AiPolicy,
+    ai_materials_state: AiMaterialsState,
+    term_source: TermSource,
     mcp_client_config: McpClientConfig,
 }
 

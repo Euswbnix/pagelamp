@@ -587,7 +587,7 @@ fn outside_term_note(course: &Course, today: NaiveDate) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AiPolicy, EventKind, MaterialKind, TextStatus};
+    use crate::model::{AiPolicy, EventKind, MaterialKind, TermSource, TextStatus};
 
     // ----- helpers (synthetic data only) ------------------------------------------------------
 
@@ -623,9 +623,15 @@ mod tests {
             name: "Intro to Demo Studies".into(),
             term_start,
             term_end,
+            term_source: if term_start.is_some() || term_end.is_some() {
+                TermSource::Synced
+            } else {
+                TermSource::None
+            },
             url: None,
             ai_policy: AiPolicy::Unknown,
             ai_policy_note: None,
+            ai_access: true,
             hidden: false,
             updated_at: noon(date(2026, 9, 1)),
         }

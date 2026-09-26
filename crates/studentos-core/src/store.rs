@@ -68,6 +68,7 @@ CREATE TABLE courses (
     syllabus_text    TEXT,
     ai_policy        TEXT NOT NULL DEFAULT 'unknown',
     ai_policy_note   TEXT,
+    ai_access        INTEGER NOT NULL DEFAULT 1, -- student's "AI may read materials" switch
     hidden           INTEGER NOT NULL DEFAULT 0,
     updated_at       TEXT NOT NULL
 );
@@ -186,7 +187,10 @@ const SOURCE_COLUMNS: &str =
 const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
      COALESCE(user_term_start, term_start) AS term_start, \
      COALESCE(user_term_end, term_end) AS term_end, \
-     url, ai_policy, ai_policy_note, hidden, updated_at";
+     CASE WHEN user_term_start IS NOT NULL OR user_term_end IS NOT NULL THEN 'user' \
+          WHEN term_start IS NOT NULL OR term_end IS NOT NULL THEN 'synced' \
+          ELSE 'none' END AS term_source, \
+     url, ai_policy, ai_policy_note, ai_access, hidden, updated_at";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, updated_at";
@@ -412,7 +416,7 @@ impl Store {
 
     // ----- courses -----------------------------------------------------------------------
 
-    /// Insert or update synced fields only; never touches ai_policy, ai_policy_note,
+    /// Insert or update synced fields only; never touches ai_policy, ai_policy_note, ai_access,
     /// user_term_*, hidden. Sets updated_at = now.
     pub fn upsert_course(&self, course: &CourseUpsert) -> Result<()> {
         self.conn.execute(
@@ -576,6 +580,15 @@ impl Store {
     }
 
     /// Errors: `NotFound` if there is no such course.
+    /// The student's per-course "AI may read this course's materials" switch. Keeps its value
+    /// while a `prohibited` policy withholds the text (see `Course::ai_materials`).
+    pub fn set_course_ai_access(&self, course_id: &str, allowed: bool) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE courses SET ai_access = ?2 WHERE id = ?1",
+            params![course_id, allowed],
+        )?;
+        expect_changed(changed, "course", course_id)
+    }
     pub fn set_course_hidden(&self, course_id: &str, hidden: bool) -> Result<()> {
         let changed = self.conn.execute(
             "UPDATE courses SET hidden = ?2 WHERE id = ?1",
@@ -891,6 +904,29 @@ impl Store {
         course_id: Option<&str>,
         limit: u32,
     ) -> Result<Vec<SearchHit>> {
+        self.search_filtered(query, course_id, limit, false)
+    }
+
+    /// Like `search`, but only over courses whose material text an AI app may read
+    /// (`Course::ai_materials() == Readable`: policy not `prohibited` and `ai_access` on).
+    /// Used by the MCP server; the filter is part of the SQL so withheld text never leaves
+    /// the database.
+    pub fn search_ai_readable(
+        &self,
+        query: &str,
+        course_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<SearchHit>> {
+        self.search_filtered(query, course_id, limit, true)
+    }
+
+    fn search_filtered(
+        &self,
+        query: &str,
+        course_id: Option<&str>,
+        limit: u32,
+        ai_readable_only: bool,
+    ) -> Result<Vec<SearchHit>> {
         let Some(match_expression) = fts_match_expression(query) else {
             return Ok(Vec::new());
         };
@@ -910,9 +946,10 @@ impl Store {
              WHERE chunks_fts MATCH ?1
                AND c.hidden = 0
                AND (?2 IS NULL OR c.id = ?2)
+               AND (?4 = 0 OR (c.ai_access = 1 AND c.ai_policy <> 'prohibited'))
              ORDER BY score, ch.id
              LIMIT ?3",
-            params![match_expression, course_id, limit],
+            params![match_expression, course_id, limit, ai_readable_only],
             search_hit_from_row,
         )
     }
@@ -1244,9 +1281,15 @@ fn course_from_row(row: &Row<'_>) -> rusqlite::Result<Course> {
         name: row.get("name")?,
         term_start: get_opt_value(row, "term_start")?,
         term_end: get_opt_value(row, "term_end")?,
+        term_source: match row.get_ref("term_source")?.as_str()? {
+            "user" => TermSource::User,
+            "synced" => TermSource::Synced,
+            _ => TermSource::None,
+        },
         url: row.get("url")?,
         ai_policy: get_value(row, "ai_policy")?,
         ai_policy_note: row.get("ai_policy_note")?,
+        ai_access: row.get("ai_access")?,
         hidden: row.get("hidden")?,
         updated_at: get_value(row, "updated_at")?,
     })

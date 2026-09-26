@@ -1613,3 +1613,165 @@ fn atomic_methods_share_an_outer_transaction() {
     );
     assert_eq!(store.counts().unwrap().indexed_materials, 1);
 }
+
+// ----- term source and AI access (docs/ARCHITECTURE.md §3 rule 8) --------------------------
+
+#[test]
+fn term_source_reports_where_effective_dates_come_from() {
+    let store = demo_store();
+    let id = course_id("101");
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().term_source,
+        TermSource::Synced
+    );
+
+    store
+        .set_course_term(&id, None, Some(date("2026-12-01")))
+        .unwrap();
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().term_source,
+        TermSource::User
+    );
+
+    store.set_course_term(&id, None, None).unwrap();
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().term_source,
+        TermSource::Synced
+    );
+
+    let mut no_term = course("202", Some("DEMO202"), "Advanced Demo Studies");
+    no_term.term_start = None;
+    no_term.term_end = None;
+    store.upsert_course(&no_term).unwrap();
+    assert_eq!(
+        store
+            .get_course(&course_id("202"))
+            .unwrap()
+            .unwrap()
+            .term_source,
+        TermSource::None
+    );
+}
+
+#[test]
+fn ai_access_defaults_on_survives_resync_and_rejects_unknown_ids() {
+    let store = demo_store();
+    let id = course_id("101");
+    let stored = store.get_course(&id).unwrap().unwrap();
+    assert!(stored.ai_access);
+    assert_eq!(stored.ai_materials(), AiMaterialsState::Readable);
+
+    store.set_course_ai_access(&id, false).unwrap();
+    store
+        .upsert_course(&course("101", Some("DEMO101"), "Intro to Demo Studies"))
+        .unwrap();
+    let stored = store.get_course(&id).unwrap().unwrap();
+    assert!(!stored.ai_access, "a sync must never reset the switch");
+    assert_eq!(stored.ai_materials(), AiMaterialsState::TurnedOff);
+
+    assert!(matches!(
+        store.set_course_ai_access("canvas:lms.example.edu/course/nope", true),
+        Err(Error::NotFound(_))
+    ));
+}
+
+#[test]
+fn prohibited_policy_withholds_text_and_the_switch_applies_again_afterwards() {
+    let store = demo_store();
+    let id = course_id("101");
+    // Policy wins even with the switch on.
+    store
+        .set_course_policy(&id, AiPolicy::Prohibited, None)
+        .unwrap();
+    let stored = store.get_course(&id).unwrap().unwrap();
+    assert!(stored.ai_access);
+    assert_eq!(stored.ai_materials(), AiMaterialsState::WithheldByPolicy);
+
+    // Switch off while prohibited, then relax the policy: the stored switch applies.
+    store.set_course_ai_access(&id, false).unwrap();
+    store
+        .set_course_policy(&id, AiPolicy::LearningAid, None)
+        .unwrap();
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().ai_materials(),
+        AiMaterialsState::TurnedOff
+    );
+    store.set_course_ai_access(&id, true).unwrap();
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().ai_materials(),
+        AiMaterialsState::Readable
+    );
+
+    // `unknown` policy is readable.
+    store
+        .set_course_policy(&id, AiPolicy::Unknown, None)
+        .unwrap();
+    assert_eq!(
+        store.get_course(&id).unwrap().unwrap().ai_materials(),
+        AiMaterialsState::Readable
+    );
+}
+
+#[test]
+fn ai_readable_search_excludes_turned_off_and_prohibited_courses() {
+    let store = demo_store();
+    store
+        .upsert_course(&course("202", Some("DEMO202"), "Advanced Demo Studies"))
+        .unwrap();
+    add_material_with_chunks(&store, "m101", &["photosynthesis in demo plants"]);
+    store
+        .upsert_material(&material("m202", &course_id("202"), "m202"))
+        .unwrap();
+    store
+        .replace_chunks(
+            "m202",
+            &[chunk("m202", 0, "photosynthesis in advanced demo plants")],
+        )
+        .unwrap();
+
+    let codes = |hits: Vec<SearchHit>| -> Vec<String> {
+        let mut codes: Vec<String> = hits.into_iter().filter_map(|h| h.course_code).collect();
+        codes.sort();
+        codes
+    };
+    assert_eq!(
+        codes(
+            store
+                .search_ai_readable("photosynthesis", None, 10)
+                .unwrap()
+        ),
+        ["DEMO101", "DEMO202"]
+    );
+
+    store
+        .set_course_ai_access(&course_id("101"), false)
+        .unwrap();
+    assert_eq!(
+        codes(
+            store
+                .search_ai_readable("photosynthesis", None, 10)
+                .unwrap()
+        ),
+        ["DEMO202"]
+    );
+    store
+        .set_course_policy(&course_id("202"), AiPolicy::Prohibited, None)
+        .unwrap();
+    assert!(
+        store
+            .search_ai_readable("photosynthesis", None, 10)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .search_ai_readable("photosynthesis", Some(&course_id("202")), 10)
+            .unwrap()
+            .is_empty()
+    );
+    // The student's own (non-AI) search still sees everything that is not hidden.
+    assert_eq!(
+        codes(store.search("photosynthesis", None, 10).unwrap()),
+        ["DEMO101", "DEMO202"]
+    );
+}
