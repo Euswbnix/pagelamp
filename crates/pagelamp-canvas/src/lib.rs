@@ -108,12 +108,15 @@ pub struct SyncReport {
 /// address itself is accepted ("https://lms.example.edu", a trailing slash is fine, a missing
 /// scheme means https); a path or query ("…/courses/1", "…/?x=1") is rejected so a pasted
 /// course link isn't silently reinterpreted. https only, except http for localhost (tests).
+///
+/// Errors never repeat the input (a student may paste a secret calendar-feed link here); at
+/// most the host name is shown.
 pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
     let trimmed = input.trim();
     let invalid = || {
-        SourceError::other(format!(
-            "'{trimmed}' is not a Canvas address. Enter just the address, like https://lms.example.edu"
-        ))
+        SourceError::other(
+            "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
+        )
     };
     let with_scheme = if trimmed.contains("://") {
         trimmed.to_string()
@@ -127,8 +130,14 @@ pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
         .ok_or_else(invalid)?;
     let only_address =
         matches!(url.path(), "" | "/") && url.query().is_none() && url.fragment().is_none();
-    if !url.username().is_empty() || url.password().is_some() || !only_address {
+    if !url.username().is_empty() || url.password().is_some() {
         return Err(invalid());
+    }
+    if !only_address {
+        return Err(SourceError::other(format!(
+            "That is a link to a page, not a Canvas address. Enter just the address, like \
+             https://{host}"
+        )));
     }
     let local = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
     match url.scheme() {
@@ -275,6 +284,30 @@ mod tests {
         };
         let err = check_token(&config).await.unwrap_err();
         assert_ne!(err.kind, SourceErrorKind::NotFound, "{}", err.message);
+    }
+
+    #[test]
+    fn address_errors_never_repeat_the_input() {
+        for input in [
+            "https://q.example.edu/feeds/calendars/user_S3CR3T.ics",
+            "webcal://q.example.edu/feeds/calendars/user_S3CR3T.ics",
+            "https://student:S3CR3T@q.example.edu",
+            "not a url S3CR3T",
+        ] {
+            let err = normalize_base_url(input).unwrap_err();
+            assert!(!err.message.contains("S3CR3T"), "{}", err.message);
+            assert!(
+                err.message.contains("Enter just the address"),
+                "{}",
+                err.message
+            );
+        }
+        let err = normalize_base_url("https://q.example.edu/courses/1").unwrap_err();
+        assert!(
+            err.message.ends_with("like https://q.example.edu"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
