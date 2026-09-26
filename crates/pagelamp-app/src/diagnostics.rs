@@ -123,7 +123,7 @@ pub fn log_ui_error(message: &str, stack: Option<&str>) {
 
 pub(crate) fn logs_dir_in(data_dir: &Path) -> Result<PathBuf> {
     let dir = core_diag::logs_dir_in(data_dir);
-    std::fs::create_dir_all(&dir).map_err(|err| {
+    paths::create_private_dir_all(&dir).map_err(|err| {
         AppError::new(
             AppErrorKind::Internal,
             format!("could not create the logs folder: {err}"),
@@ -327,7 +327,7 @@ pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::
     let oldest = today - TimeDelta::days(ALIAS_RETENTION_DAYS);
     remembered.courses.retain(|_, c| c.last_seen >= oldest);
     let dir = core_diag::logs_dir_in(data_dir);
-    std::fs::create_dir_all(&dir)?;
+    paths::create_private_dir_all(&dir)?;
     let temp = dir.join(format!("{ALIAS_FILE}.tmp"));
     std::fs::write(&temp, serde_json::to_vec(&remembered)?)?;
     std::fs::rename(&temp, dir.join(ALIAS_FILE))

@@ -90,9 +90,59 @@ pub fn ensure_dirs() -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Create `dir` and `dir/files` (and any missing parents) if missing.
+/// Create `dir` and `dir/files` (and any missing parents) if missing, private to the user on
+/// Unix (see `create_private_dir_all`). A data dir that others can read, made by an older
+/// version, is made private too when it holds nothing but PageLamp's own files.
 pub fn ensure_dirs_in(dir: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(files_dir_in(dir))
+    create_private_dir_all(&files_dir_in(dir))?;
+    #[cfg(unix)]
+    make_private_if_ours(dir)?;
+    Ok(())
+}
+
+/// `create_dir_all`, but directories it creates get mode 0700 on Unix: the data dir holds
+/// course materials, logs and the database, which other users of the computer must not
+/// read. (Elsewhere the platform's per-user folder already is private.)
+pub fn create_private_dir_all(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+    }
+}
+
+/// Entries PageLamp itself creates in its data dir.
+#[cfg(unix)]
+const OWN_ENTRIES: [&str; 6] = [
+    DB_FILE,
+    "pagelamp.db-wal",
+    "pagelamp.db-shm",
+    FILES_DIR,
+    SYNC_LOCK_FILE,
+    "logs",
+];
+
+#[cfg(unix)]
+fn make_private_if_ours(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(dir)?.permissions().mode();
+    if mode & 0o077 == 0 {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(dir)? {
+        let name = entry?.file_name();
+        if !OWN_ENTRIES.iter().any(|own| name == *own) {
+            return Ok(()); // shared with other things: not ours to lock down
+        }
+    }
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(mode & 0o700))
 }
 
 #[cfg(test)]
@@ -181,6 +231,33 @@ mod tests {
         assert_eq!(db_path().unwrap(), db_path_in(&dir));
         assert_eq!(files_dir().unwrap(), files_dir_in(&dir));
         assert_eq!(sync_lock_path().unwrap(), sync_lock_path_in(&dir));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn data_dirs_are_private_to_the_user() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let temp = tempfile::tempdir().unwrap();
+        let dir = temp.path().join("new").join("pagelamp");
+        ensure_dirs_in(&dir).unwrap();
+        assert_eq!(mode(&dir), 0o700);
+        assert_eq!(mode(&files_dir_in(&dir)), 0o700);
+
+        // Made readable by an older version: locked down, but only when it is ours alone.
+        let old = temp.path().join("old");
+        std::fs::create_dir_all(files_dir_in(&old)).unwrap();
+        std::fs::write(db_path_in(&old), b"").unwrap();
+        std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_dirs_in(&old).unwrap();
+        assert_eq!(mode(&old), 0o700);
+
+        let shared = temp.path().join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("notes.txt"), b"not ours").unwrap();
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_dirs_in(&shared).unwrap();
+        assert_eq!(mode(&shared), 0o755);
     }
 
     #[test]

@@ -310,7 +310,7 @@ pub fn init(data_dir: Option<&Path>, kind: ProcessKind, verbose: bool) {
     let (file_level, stderr_level) = levels(verbose);
     let files = data_dir.and_then(|dir| {
         let logs = logs_dir_in(dir);
-        std::fs::create_dir_all(&logs).ok()?;
+        crate::paths::create_private_dir_all(&logs).ok()?;
         Some(Arc::new(LogFiles {
             dir: logs,
             kind,
@@ -436,7 +436,7 @@ fn crash_path(data_dir: &Path) -> PathBuf {
 }
 
 fn write_crash(data_dir: &Path, report: &CrashReport) -> Result<()> {
-    std::fs::create_dir_all(logs_dir_in(data_dir))?;
+    crate::paths::create_private_dir_all(&logs_dir_in(data_dir))?;
     std::fs::write(crash_path(data_dir), serde_json::to_vec_pretty(report)?)?;
     Ok(())
 }
