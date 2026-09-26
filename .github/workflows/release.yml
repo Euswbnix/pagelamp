@@ -1,0 +1,157 @@
+name: Release
+
+# Push a tag like `v0.1.0` (or `v0.1.0-beta.1`) to build installers and CLI archives for every
+# platform into a DRAFT GitHub release. Review the draft, then publish it by hand.
+# Builds are unsigned for now (macOS: right-click → Open the first time; Windows: SmartScreen
+# "More info → Run anyway"). Signing is added later via repository secrets.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v0.1.0-beta.1)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # aws-lc-sys (rustls backend) needs NASM on Windows; use its prebuilt objects instead.
+  AWS_LC_SYS_PREBUILT_NASM: 1
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  create-release:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            notes="docs/release-notes/${TAG}.md"
+            [ -f "$notes" ] || notes="/dev/null"
+            gh release create "$TAG" --draft $prerelease --verify-tag \
+              --title "StudentOS $TAG" --notes-file "$notes"
+          fi
+          echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
+
+  # Desktop installers (.dmg/.app, .msi/.exe, .AppImage/.deb) with the `studentos` CLI bundled
+  # as a Tauri sidecar (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE).
+  app:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ''
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Linux system libraries (Tauri)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf xdg-utils
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+  # Standalone CLI archives for people who only want `studentos` (MCP server + sync).
+  cli:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
+      - name: Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev
+      - name: Build
+        run: cargo build --release --locked -p studentos-cli --target ${{ matrix.target }}
+      - name: Package and upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          name="studentos-${TAG}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp LICENSE README.md "dist/$name/"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/studentos.exe" "dist/$name/"
+            (cd dist && 7z a "$name.zip" "$name" >/dev/null)
+            archive="dist/$name.zip"
+          else
+            cp "target/${{ matrix.target }}/release/studentos" "dist/$name/"
+            tar -C dist -czf "dist/$name.tar.gz" "$name"
+            archive="dist/$name.tar.gz"
+          fi
+          if command -v sha256sum >/dev/null; then sha256sum "$archive" > "$archive.sha256"; else shasum -a 256 "$archive" > "$archive.sha256"; fi
+          gh release upload "$TAG" "$archive" "$archive.sha256" --clobber

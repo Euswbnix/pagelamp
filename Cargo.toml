@@ -41,3 +41,10 @@ sha2 = "0.11"
 hex = "0.4"
 url = "2.5"
 tempfile = "3.27"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+# Never set `panic = "abort"`: text extraction relies on catch_unwind so one malformed file
+# becomes `text_status = error` instead of killing the whole sync.
