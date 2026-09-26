@@ -53,6 +53,15 @@ export interface StudentOsApi {
     onEvent: (event: SyncEvent) => void,
   ): Promise<SourceSyncResult>;
 
+  /**
+   * "Download & index this course's files" (Canvas only; folder courses → `invalid`). The UI
+   * must first say that downloading through Canvas can count as viewing a file.
+   */
+  downloadCourseFiles(
+    courseId: string,
+    onEvent: (event: SyncEvent) => void,
+  ): Promise<SourceSyncResult>;
+
   // ----- read views ----------------------------------------------------------------------------
   /** All courses, hidden ones included (check `course.hidden`). */
   listCourses(): Promise<CourseSummary[]>;

@@ -382,7 +382,11 @@ function demo205(now: Date): MockCourse {
     material(c.id, "Unit A notes", "page", 1, -24, now, { module: ma, chunks: 9 }),
     material(c.id, "Unit B notes", "page", 2, -17, now, { module: mb, chunks: 11 }),
     material(c.id, "Unit C notes", "page", 3, -10, now, { module: mc, chunks: 10 }),
-    material(c.id, "Unit C worked examples", "file", 4, -3, now, { module: mc, chunks: 7 }),
+    // Canvas files stay "not downloaded" until the student asks (download_course_files).
+    material(c.id, "Unit C worked examples", "file", 4, -3, now, {
+      module: mc,
+      status: "not_downloaded",
+    }),
     material(c.id, "Course website", "external_link", null, -24, now, { status: "unsupported" }),
   ];
   const deadlines = [

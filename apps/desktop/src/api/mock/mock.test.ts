@@ -87,4 +87,20 @@ describe("mock API", () => {
     expect(after.term_source).toBe("synced");
     expect(after.term_start).toBe(before.term_start);
   });
+
+  it("downloads Canvas course files only, and only when asked", async () => {
+    const api = createMockApi(fast);
+    const folder = "folder:demo-courses/course/DEMO101";
+    const canvas = "canvas:canvas.demo.test/course/205";
+    await expect(api.downloadCourseFiles(folder, () => {})).rejects.toMatchObject({
+      kind: "invalid",
+    });
+    const before = (await api.weekMaterials(canvas, 4)).materials;
+    expect(before.some((m) => m.text_status === "not_downloaded")).toBe(true);
+
+    const result = await api.downloadCourseFiles(canvas, () => {});
+    expect(result.files_downloaded).toBe(1);
+    const after = (await api.weekMaterials(canvas, 4)).materials;
+    expect(after.some((m) => m.text_status === "not_downloaded")).toBe(false);
+  });
 });

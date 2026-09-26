@@ -30,6 +30,7 @@ pub fn run() {
             commands::remove_source,
             commands::sync_all,
             commands::sync_source,
+            commands::download_course_files,
             commands::list_courses,
             commands::course_overview,
             commands::week_materials,

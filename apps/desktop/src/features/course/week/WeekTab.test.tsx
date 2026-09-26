@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
-import { DEMO101, DEMO310, openCourse } from "../testing";
+import { DEMO101, DEMO205, DEMO310, openCourse } from "../testing";
 
 function materialsList() {
   return screen.getByRole("region", { name: "Materials" });
@@ -137,5 +137,50 @@ describe("This week tab", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "Week 4 (this week)" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Downloading Canvas files", () => {
+  it("says a download can count as viewing, then downloads on confirm", async () => {
+    const { user, api } = await openCourse(DEMO205);
+    const download = vi.spyOn(api, "downloadCourseFiles");
+    const callout = await screen.findByText(
+      "1 file here isn't downloaded yet, so your AI app can't read it.",
+    );
+    expect(callout).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Download files…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Download this course's files?",
+    });
+    expect(
+      within(dialog).getByText(
+        "Downloading files through Canvas can count as viewing them (e.g. module 'must view' requirements).",
+      ),
+    ).toBeInTheDocument();
+    expect(download).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Download" }));
+    expect(download).toHaveBeenCalledWith(DEMO205, expect.any(Function));
+    expect(await screen.findByText("Downloaded 1 file")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Download files…" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("never offers a download for folder courses", async () => {
+    // DEMO101's week 4 has a "not downloaded" archive, but folder courses are local.
+    await openCourse(DEMO101);
+    expect(await screen.findByText("Survey dataset (large archive)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download files…" })).not.toBeInTheDocument();
+  });
+
+  it("does nothing until the student confirms", async () => {
+    const { user, api } = await openCourse(DEMO205);
+    const download = vi.spyOn(api, "downloadCourseFiles");
+    await user.click(await screen.findByRole("button", { name: "Download files…" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(download).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Download files…" })).toBeInTheDocument();
   });
 });

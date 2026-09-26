@@ -20,6 +20,7 @@ import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { useSelectedWeek } from "../useCourseParams";
 import { AnnouncementList } from "./AnnouncementList";
+import { DownloadFilesCallout } from "./DownloadFilesCallout";
 import { MaterialList } from "./MaterialList";
 import { WeekSwitcher } from "./WeekSwitcher";
 
@@ -111,6 +112,7 @@ function WeekView({
         </Alert>
       ) : null}
       {data.modules.length > 0 ? <ModuleList modules={data.modules} /> : null}
+      <DownloadFilesCallout course={data.course} materials={data.materials} />
       {data.materials.length > 0 ? (
         <MaterialList materials={data.materials} aiMaterials={data.ai_materials} />
       ) : (

@@ -123,6 +123,24 @@ pub async fn sync_source(
         .await
 }
 
+/// Explicit per-course "download & index files" (Canvas). The UI discloses first that a
+/// download through Canvas can count as viewing the file.
+#[tauri::command]
+pub async fn download_course_files(
+    backend: State<'_, Backend>,
+    course: String,
+    on_event: Channel<SyncEvent>,
+) -> CmdResult<SourceSyncResult> {
+    backend
+        .spawn(|app| async move {
+            app.download_course_files(&course, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
 // ----- read views ---------------------------------------------------------------------------------
 
 #[tauri::command]

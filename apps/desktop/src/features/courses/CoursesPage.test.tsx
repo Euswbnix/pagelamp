@@ -82,7 +82,7 @@ describe("CoursesPage — course list", () => {
       within(card(list, "DEMO101")).getByText("AI access to materials is off"),
     ).toBeInTheDocument();
     expect(
-      within(card(list, "DEMO205")).getByText("4 of 5 materials readable by your AI app"),
+      within(card(list, "DEMO205")).getByText("3 of 5 materials readable by your AI app"),
     ).toBeInTheDocument();
     // DEMO310 is a "No AI" course: its materials are withheld whatever the switch says.
     expect(

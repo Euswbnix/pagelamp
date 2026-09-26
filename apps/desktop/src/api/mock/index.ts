@@ -389,6 +389,31 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
       return clone(result);
     },
 
+    downloadCourseFiles: async (courseId, onEvent) => {
+      const c = findCourse(courseId);
+      const source = findSource(c.course.source_id);
+      if (source.kind !== "canvas") {
+        await sleep(latency);
+        throw new ApiError(
+          "invalid",
+          "Only Canvas courses have files to download; folder courses are always indexed.",
+        );
+      }
+      const [result] = await runSync([source.id], onEvent);
+      if (!result) throw new ApiError("internal", "Sync produced no result");
+      let downloaded = 0;
+      if (result.ok) {
+        for (const m of c.materials) {
+          if (m.kind === "file" && m.text_status === "not_downloaded") {
+            m.text_status = "ok";
+            m.chunk_count = 6;
+            downloaded += 1;
+          }
+        }
+      }
+      return clone({ ...result, files_downloaded: downloaded, files_indexed: downloaded });
+    },
+
     listCourses: () => respond(() => db.courses.map(summary)),
 
     courseOverview: (courseId) =>

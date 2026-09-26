@@ -598,7 +598,11 @@ export interface StudyPlanItem {
  */
 export interface SyncRequest {
   /**
-   * Download LMS files and index their text (Canvas). When false, files are listed only.
+   * Download LMS (Canvas) files and index their text. Default FALSE: downloading a file
+   * through Canvas counts as viewing it (it can complete "must view" module requirements
+   * and shows up in instructor analytics), so files are listed as `not_downloaded` unless
+   * the student explicitly asks — see `App::download_course_files`. Folder sources are
+   * local and always indexed.
    */
   download_files?: boolean;
   /**

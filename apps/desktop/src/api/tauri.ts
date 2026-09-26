@@ -44,6 +44,9 @@ export function createTauriApi(): StudentOsApi {
     syncSource: (sourceId, req, onEvent) =>
       call("sync_source", { sourceId, req, onEvent: eventChannel(onEvent) }),
 
+    downloadCourseFiles: (courseId, onEvent) =>
+      call("download_course_files", { course: courseId, onEvent: eventChannel(onEvent) }),
+
     listCourses: () => call("list_courses"),
     courseOverview: (courseId) => call("course_overview", { course: courseId }),
     weekMaterials: (courseId, week) =>

@@ -129,5 +129,18 @@
     },
     "nowOn": "Your AI app can now read this course's materials",
     "nowOff": "Your AI app will no longer read this course's materials"
+  },
+  "download": {
+    "callout_one": "{{count}} file here isn't downloaded yet, so your AI app can't read it.",
+    "callout_other": "{{count}} files here aren't downloaded yet, so your AI app can't read them.",
+    "action": "Download files…",
+    "running": "Downloading…",
+    "dialogTitle": "Download this course's files?",
+    "viewingNotice": "Downloading files through Canvas can count as viewing them (e.g. module 'must view' requirements).",
+    "dialogDetail": "{{product}} downloads the course's files to this computer and extracts their text. Nothing is submitted or changed in Canvas.",
+    "confirm": "Download",
+    "done_one": "Downloaded {{count}} file",
+    "done_other": "Downloaded {{count}} files",
+    "doneNone": "No new files to download"
   }
 }

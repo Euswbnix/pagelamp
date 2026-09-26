@@ -104,6 +104,42 @@ export function useSyncCounts(): { done: number; total: number | null } {
 }
 
 /**
+ * "Download & index files" for one Canvas course. It is a sync of that course's source, so it
+ * shares the sync progress store (and the one-sync-at-a-time rule). Resolves false when another
+ * run is already active.
+ */
+export function useDownloadCourseFiles() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (courseId: string): Promise<boolean> => {
+      const store = useSyncStore.getState();
+      if (store.running) return false;
+      store.begin(1);
+      const onEvent = (event: SyncEvent) => useSyncStore.getState().apply(event);
+      try {
+        const result = await api.downloadCourseFiles(courseId, onEvent);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.all });
+        useSyncStore.getState().finish(
+          {
+            started_at: result.started_at,
+            finished_at: result.finished_at,
+            ok: result.ok,
+            results: [result],
+          },
+          null,
+        );
+      } catch (error) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.all });
+        useSyncStore.getState().finish(null, toApiError(error));
+      }
+      return true;
+    },
+    [api, queryClient],
+  );
+}
+
+/**
  * Start a sync of every source (or one source). Returns a promise that resolves when the run
  * ends; it never rejects — failures land in the store (`runError`, per-source `result`).
  */

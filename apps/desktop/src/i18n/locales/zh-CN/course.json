@@ -129,5 +129,18 @@
     },
     "nowOn": "已允许 AI 应用读取这门课的资料",
     "nowOff": "AI 应用将不再读取这门课的资料"
+  },
+  "download": {
+    "callout_one": "这里有 {{count}} 个文件还没下载，AI 应用暂时读不到。",
+    "callout_other": "这里有 {{count}} 个文件还没下载，AI 应用暂时读不到。",
+    "action": "下载文件…",
+    "running": "正在下载…",
+    "dialogTitle": "要下载这门课的文件吗？",
+    "viewingNotice": "通过 Canvas 下载文件可能会被算作“已查看”（例如满足模块里“必须查看”的要求）。",
+    "dialogDetail": "{{product}} 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中提交或修改任何内容。",
+    "confirm": "下载",
+    "done_one": "已下载 {{count}} 个文件",
+    "done_other": "已下载 {{count}} 个文件",
+    "doneNone": "没有需要下载的新文件"
   }
 }
