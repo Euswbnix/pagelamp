@@ -343,6 +343,42 @@ fn course_overview_collects_recent_and_upcoming() {
     let methods = &overview.recent_materials[2];
     assert_eq!(methods.module_name.as_deref(), Some("Week 2: Methods"));
     assert_eq!(methods.chunk_count, 1);
+    assert_eq!(overview.downloadable_files, 0);
+}
+
+#[test]
+fn downloadable_files_counts_what_a_download_would_fetch() {
+    let store = demo_store();
+    let file = |id: &str, kind: MaterialKind| {
+        add_material(
+            &store,
+            "101",
+            id,
+            kind,
+            None,
+            Some(9),
+            "2026-01-05T10:00:00Z",
+            &[],
+        )
+    };
+    for (id, kind, blocked) in [
+        ("old-slides", MaterialKind::File, None),
+        ("old-notes", MaterialKind::File, None),
+        ("locked", MaterialKind::File, Some(DownloadBlock::Locked)),
+        ("huge", MaterialKind::File, Some(DownloadBlock::TooLarge)),
+        ("a-page", MaterialKind::Page, None),
+    ] {
+        let id = file(id, kind);
+        store
+            .set_text_state(&id, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        store.set_download_blocked(&id, blocked).unwrap();
+    }
+    let overview = views::course_overview(&store, "DEMO101", false, at()).unwrap();
+    assert_eq!(
+        overview.downloadable_files, 2,
+        "any week, files only, not blocked"
+    );
 }
 
 #[test]

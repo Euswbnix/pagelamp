@@ -121,6 +121,9 @@ pub struct CourseOverview {
     pub recent_announcements: Vec<MaterialView>,
     pub source_label: String,
     pub last_synced_at: Option<Timestamp>,
+    /// Files a "download this course's files" action would fetch: kind `file`, text status
+    /// `not_downloaded` and no `download_blocked` reason (all weeks).
+    pub downloadable_files: u32,
 }
 
 /// Materials of one teaching week.
@@ -319,6 +322,15 @@ pub fn course_overview(
         .map(|event| deadline(event, Some(&course)))
         .collect();
     let (source_label, last_synced_at) = SourceIndex::load(store)?.info(&course.source_id);
+    let downloadable_files = data
+        .materials
+        .iter()
+        .filter(|m| {
+            m.kind == MaterialKind::File
+                && m.text_status == TextStatus::NotDownloaded
+                && m.download_blocked.is_none()
+        })
+        .count();
     Ok(CourseOverview {
         ai_materials: course.ai_materials(),
         timeline,
@@ -328,6 +340,7 @@ pub fn course_overview(
         recent_announcements: recent(true),
         source_label,
         last_synced_at,
+        downloadable_files: u32::try_from(downloadable_files).unwrap_or(u32::MAX),
         course,
     })
 }
