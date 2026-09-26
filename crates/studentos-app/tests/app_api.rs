@@ -420,7 +420,8 @@ fn mcp_configs_point_at_the_binary_and_the_custom_data_dir() {
     assert_eq!(configs.len(), 4);
     for config in &configs {
         assert!(Path::new(&config.launch.command).is_absolute());
-        assert!(config.launch.command.ends_with("bin/studentos"));
+        // Compare path components, not strings (Windows uses backslashes).
+        assert!(Path::new(&config.launch.command).ends_with(Path::new("bin").join("studentos")));
         assert_eq!(config.launch.args, ["mcp"]);
         // A temp data dir is never the platform default → STUDENTOS_HOME is set.
         assert_eq!(
@@ -645,4 +646,69 @@ async fn ical_source_is_validated_saved_synced_and_its_url_replaced() {
     );
     let updated = app.update_source_secret(&source.id, &url).await.unwrap();
     assert_eq!(updated.id, source.id);
+}
+
+#[tokio::test]
+async fn canvas_source_is_validated_before_its_token_is_stored() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let canvas = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .and(header("authorization", "Bearer demo-good-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"name": "Demo Student"})))
+        .mount(&canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .set_body_json(json!({"errors": [{"message": "Invalid access token."}]})),
+        )
+        .with_priority(10)
+        .mount(&canvas)
+        .await;
+
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    assert_eq!(
+        kind(
+            app.add_canvas_source("ftp://lms.example.edu", "demo-good-token")
+                .await
+        ),
+        AppErrorKind::Invalid
+    );
+    let rejected = app
+        .add_canvas_source(&canvas.uri(), "demo-bad-token")
+        .await
+        .unwrap_err();
+    assert_eq!(rejected.kind, AppErrorKind::Auth);
+    assert!(!rejected.message.contains("demo-bad-token"));
+    assert!(app.list_sources().unwrap().is_empty());
+
+    let source = app
+        .add_canvas_source(&format!("{}/courses/1", canvas.uri()), " demo-good-token ")
+        .await
+        .unwrap();
+    assert!(source.id.starts_with("canvas:127.0.0.1:"));
+    assert_eq!(source.config["base_url"], json!(canvas.uri()));
+    assert_eq!(
+        secrets.get(&source.id).unwrap().as_deref(),
+        Some("demo-good-token")
+    );
+
+    // Replacing an expired token validates the new one first.
+    let bad = app
+        .update_source_secret(&source.id, "demo-bad-token")
+        .await
+        .unwrap_err();
+    assert_eq!(bad.kind, AppErrorKind::Auth);
+    assert_eq!(
+        secrets.get(&source.id).unwrap().as_deref(),
+        Some("demo-good-token")
+    );
+    app.update_source_secret(&source.id, "demo-good-token")
+        .await
+        .unwrap();
 }

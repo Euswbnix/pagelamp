@@ -814,3 +814,30 @@ pub fn json_schema() -> serde_json::Value {
     let schema = settings.into_generator().into_root_schema_for::<AppTypes>();
     schema.to_value()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The desktop app and the CLI both use `App::open()`, i.e. `paths::data_dir()`; config
+    /// snippets for the default location must therefore NOT pin STUDENTOS_HOME, so the MCP
+    /// server started by an AI app resolves the same folder by itself.
+    #[test]
+    fn default_data_dir_needs_no_studentos_home() {
+        let temp = tempfile::tempdir().unwrap();
+        let custom = temp.path().join("data");
+        std::fs::create_dir_all(&custom).unwrap();
+        assert!(same_dir(Some(&custom), Some(&custom)));
+        assert!(same_dir(Some(&custom), Some(&temp.path().join("data/./"))));
+        assert!(!same_dir(Some(&custom), Some(temp.path())));
+        assert!(!same_dir(Some(&custom), None));
+
+        let app = App {
+            data_dir: custom.clone(),
+            secrets: Arc::new(studentos_core::secrets::MemorySecrets::new()),
+        };
+        let launch = app.mcp_launch(Path::new("/demo/studentos"));
+        let expected_env = !same_dir(Some(&custom), paths::platform_data_dir().as_deref());
+        assert_eq!(launch.env.contains_key(paths::HOME_ENV), expected_env);
+    }
+}
