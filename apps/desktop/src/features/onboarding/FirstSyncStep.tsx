@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpenText, Cable, Download } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenText, Cable, Download } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -82,7 +82,19 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
             <ArrowLeft aria-hidden />
             {tc("actions.back")}
           </Button>
-          {view === "running" ? null : (
+          {view === "running" ? (
+            // A long first Canvas sync shouldn't trap the student here (Back is disabled):
+            // the sync lives in the store and keeps going; the sidebar shows its progress.
+            <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+              <span className="text-sm text-muted-foreground">{t("sync.backgroundHint")}</span>
+              <Button asChild variant="outline">
+                <Link to={paths.courses}>
+                  {t("sync.continueInBackground")}
+                  <ArrowRight aria-hidden />
+                </Link>
+              </Button>
+            </div>
+          ) : (
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg" variant="outline">
                 <Link to={paths.courses}>

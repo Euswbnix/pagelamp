@@ -36,6 +36,8 @@
     "noCourses": "No courses found yet. If you added a folder, check that it has one sub-folder per course. You can change your sources at any time on Sources & sync.",
     "canvasFilesNote": "Canvas files aren't downloaded automatically, because Canvas can count a download as viewing the file. To add a course's files, open the course and use “Download files…” on its “This week” tab.",
     "connect": "Connect your AI app",
-    "goToCourses": "Go to my courses"
+    "goToCourses": "Go to my courses",
+    "continueInBackground": "Continue in the background",
+    "backgroundHint": "The sync keeps running; its progress shows in the sidebar."
   }
 }

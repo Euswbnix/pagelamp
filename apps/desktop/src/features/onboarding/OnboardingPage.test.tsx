@@ -127,6 +127,24 @@ describe("OnboardingPage", () => {
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
   });
 
+  it("lets the student leave a long first sync running in the background", async () => {
+    const { user } = renderRoute("/welcome", { scenario: "empty", syncStepMs: 60 });
+    await goToSourceStep(user);
+    await user.type(screen.getByLabelText("Folder path"), "/Users/demo/Courses");
+    await user.click(screen.getByRole("button", { name: "Add and continue" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Syncing your courses" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+
+    await user.click(screen.getByRole("link", { name: "Continue in the background" }));
+    expect(await screen.findByRole("heading", { level: 1, name: "Courses" })).toBeInTheDocument();
+    expect(useSyncStore.getState().running).toBe(true);
+    // It finishes on its own, and the courses it found show up.
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false), { timeout: 5000 });
+    expect((await screen.findAllByText("DEMO101")).length).toBeGreaterThan(0);
+  });
+
   it("names a new feed in the app's language, not the backend's English default", async () => {
     const api = createMockApi({ scenario: "empty", latencyMs: 0, syncStepMs: 0 });
     const addFeed = vi.spyOn(api, "addIcalSource");
