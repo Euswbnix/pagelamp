@@ -7,14 +7,18 @@
 //! paste into an issue. It never contains tokens, feed URLs, course material text, course
 //! codes or names (pseudonymised as "Course 1", "Course 2", …), or the user name in paths.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics as core_diag;
-use pagelamp_core::model::{SourceErrorKind, SourceKind, Timestamp};
+use pagelamp_core::model::{Course, SourceErrorKind, SourceKind, Timestamp};
 use pagelamp_core::paths;
 use pagelamp_core::secrets::{KeychainSecrets, SecretBackend};
 use pagelamp_core::store::Store;
+use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -266,28 +270,107 @@ pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String 
     core_diag::redact(&out)
 }
 
-/// Course codes and names, ordered, for pseudonymisation ("Course 1", "Course 2", …).
+// ----- course names: pseudonymisation --------------------------------------------------------
+
+/// `logs/course-aliases.json`: the names and codes of every course seen after a sync, kept
+/// `ALIAS_RETENTION_DAYS` (longer than the logs), so a report also hides courses that were
+/// renamed or removed after their names were logged. Local only; never part of a report
+/// (which reads `*.log` files only).
+const ALIAS_FILE: &str = "course-aliases.json";
+const ALIAS_RETENTION_DAYS: i64 = 30;
+
+#[derive(Default, Serialize, Deserialize)]
+struct RememberedCourses {
+    /// By course id.
+    courses: BTreeMap<String, RememberedCourse>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RememberedCourse {
+    names: BTreeSet<String>,
+    last_seen: NaiveDate,
+}
+
+fn names_of(course: &Course) -> impl Iterator<Item = String> {
+    [
+        Some(course.display_name()),
+        Some(course.name.clone()),
+        course.code.clone(),
+    ]
+    .into_iter()
+    .flatten()
+}
+
+fn read_remembered(data_dir: &Path) -> RememberedCourses {
+    std::fs::read_to_string(core_diag::logs_dir_in(data_dir).join(ALIAS_FILE))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Add `courses` (all current courses) to the remembered names and drop entries not seen for
+/// `ALIAS_RETENTION_DAYS`. Called after every sync and before a source is removed.
+pub(crate) fn remember_courses(data_dir: &Path, courses: &[Course]) -> std::io::Result<()> {
+    let today = Local::now().date_naive();
+    let mut remembered = read_remembered(data_dir);
+    for course in courses {
+        let entry = remembered
+            .courses
+            .entry(course.id.clone())
+            .or_insert_with(|| RememberedCourse {
+                names: BTreeSet::new(),
+                last_seen: today,
+            });
+        entry.names.extend(names_of(course));
+        entry.last_seen = today;
+    }
+    let oldest = today - TimeDelta::days(ALIAS_RETENTION_DAYS);
+    remembered.courses.retain(|_, c| c.last_seen >= oldest);
+    let dir = core_diag::logs_dir_in(data_dir);
+    std::fs::create_dir_all(&dir)?;
+    let temp = dir.join(format!("{ALIAS_FILE}.tmp"));
+    std::fs::write(&temp, serde_json::to_vec(&remembered)?)?;
+    std::fs::rename(&temp, dir.join(ALIAS_FILE))
+}
+
+/// Course codes and names, ordered, for pseudonymisation ("Course 1", "Course 2", …): the
+/// current courses first, then remembered ones that no longer exist.
 fn course_names(data_dir: &Path) -> Vec<(String, String)> {
-    let Ok(store) = Store::open_read_only(&paths::db_path_in(data_dir)) else {
-        return Vec::new();
-    };
-    let Ok(courses) = store.list_courses(true) else {
-        return Vec::new();
-    };
+    let current = Store::open_read_only(&paths::db_path_in(data_dir))
+        .and_then(|store| store.list_courses(true))
+        .unwrap_or_default();
+    let mut remembered = read_remembered(data_dir).courses;
     let mut pairs = Vec::new();
-    for (index, course) in courses.iter().enumerate() {
+    let mut add = |names: &mut dyn Iterator<Item = String>, alias: &str| {
+        pairs.extend(names.map(|name| (name, alias.to_string())));
+    };
+    for (index, course) in current.iter().enumerate() {
         let alias = format!("Course {}", index + 1);
-        pairs.push((course.display_name(), alias.clone()));
-        pairs.push((course.name.clone(), alias.clone()));
-        if let Some(code) = &course.code {
-            pairs.push((code.clone(), alias));
+        add(&mut names_of(course), &alias);
+        if let Some(old) = remembered.remove(&course.id) {
+            add(&mut old.names.into_iter(), &alias);
         }
+    }
+    for (index, old) in remembered.into_values().enumerate() {
+        let alias = format!("Course {}", current.len() + index + 1);
+        add(&mut old.names.into_iter(), &alias);
     }
     // Longest first, so "DEMO101 — Intro" is replaced before "DEMO101".
     pairs.retain(|(name, _)| name.trim().len() >= 3);
     pairs.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
     pairs
 }
+
+/// Anything shaped like a course code ("DEMO101", "MAT 137Y1") that no known name covered,
+/// e.g. a course removed before its name was remembered, or text an AI app sent.
+static COURSE_CODE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\b([A-Z]{2,4})\s?\d{3}[A-Z0-9]*\b").expect("valid regex"));
+
+/// Upper-case words followed by a number that are not course codes.
+const NOT_COURSE_PREFIXES: &[&str] = &[
+    "API", "CPU", "GB", "GET", "GMT", "HTTP", "ISO", "KB", "MB", "MS", "OS", "PID", "RFC", "SHA",
+    "SSL", "TB", "TLS", "URL", "UTC", "UTF",
+];
 
 fn pseudonymise(text: &str, names: &[(String, String)]) -> String {
     let mut text = text.to_string();
@@ -296,7 +379,15 @@ fn pseudonymise(text: &str, names: &[(String, String)]) -> String {
             text = text.replace(name.as_str(), alias);
         }
     }
-    text
+    COURSE_CODE
+        .replace_all(&text, |caps: &regex::Captures<'_>| {
+            if NOT_COURSE_PREFIXES.contains(&&caps[1]) {
+                caps[0].to_string()
+            } else {
+                "[course code]".to_string()
+            }
+        })
+        .into_owned()
 }
 
 // ----- AI app config presence ------------------------------------------------------------------
@@ -475,5 +566,32 @@ mod tests {
         assert!(report.contains("synced Course 1"), "{report}");
         assert!(report.contains("- ical: not ok"), "{report}");
         assert!(report.contains("## Recent log"));
+    }
+
+    #[test]
+    fn report_hides_courses_removed_after_they_were_logged() {
+        let temp = tempfile::tempdir().unwrap();
+        seeded(temp.path());
+        let store = Store::open(&paths::db_path_in(temp.path())).unwrap();
+        remember_courses(temp.path(), &store.list_courses(true).unwrap()).unwrap();
+        // Removed with its source: the DB no longer knows the name.
+        store.remove_source("folder:x").unwrap();
+        let logs = core_diag::logs_dir_in(temp.path());
+        std::fs::write(
+            logs.join("mcp-2026-09-26.log"),
+            "2026-09-26T10:00:00Z pid=1 WARN rmcp: no course matches 'Intro to Demo Studies'\n\
+             2026-09-26T10:00:01Z pid=1 WARN rmcp: no course matches 'XYZ 204H1'\n\
+             2026-09-26T10:00:02Z pid=1 WARN pagelamp: Canvas answered HTTP 404 at 12:00 UTC\n",
+        )
+        .unwrap();
+        let report = report_in(temp.path(), &MemorySecrets::new());
+        for name in ["Intro to Demo Studies", "XYZ 204H1", "XYZ"] {
+            assert!(!report.contains(name), "{name} leaked:\n{report}");
+        }
+        assert!(report.contains("matches 'Course 1'"), "{report}");
+        assert!(report.contains("matches '[course code]'"), "{report}");
+        assert!(report.contains("HTTP 404"), "{report}");
+        // Only *.log files are read: the remembered names never reach a report.
+        assert!(logs.join(ALIAS_FILE).is_file());
     }
 }

@@ -525,6 +525,8 @@ impl App {
         let Some(source) = store.get_source(source_id)? else {
             return Err(unknown_source(source_id));
         };
+        // Its course names may be in the logs: keep them for the report's pseudonymisation.
+        self.remember_course_names();
         if source.kind == SourceKind::Canvas {
             // Files first: if deleting fails, the source stays and removing can be retried.
             self.remove_downloaded_files(&store, source_id)?;
@@ -534,6 +536,21 @@ impl App {
             self.secrets.delete(source_id)?;
         }
         Ok(())
+    }
+
+    /// Record the current course names for the diagnostic report (`diagnostics`). Failing
+    /// only weakens the report's pseudonymisation, so it is logged, not returned.
+    pub(crate) fn remember_course_names(&self) {
+        let remembered = self
+            .read_store()
+            .and_then(|store| Ok(store.list_courses(true)?))
+            .and_then(|courses| {
+                diagnostics::remember_courses(self.data_dir(), &courses)
+                    .map_err(|err| AppError::new(AppErrorKind::Internal, err.to_string()))
+            });
+        if let Err(err) = remembered {
+            tracing::warn!("could not update the course alias list ({:?})", err.kind);
+        }
     }
 
     /// Delete `<data_dir>/files/<CODE>-<id>/` of every course of this Canvas source, except a

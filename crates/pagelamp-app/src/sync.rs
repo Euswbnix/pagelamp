@@ -134,6 +134,7 @@ impl App {
         if matches!(source.kind, SourceKind::Folder | SourceKind::Canvas) {
             self.relink_events();
         }
+        self.remember_course_names();
         let finished_at = Utc::now();
         let error = outcome.as_ref().err().map(|e| (e.kind, e.message.clone()));
         // Log file: kind and counts at info; course/file names only at debug.
