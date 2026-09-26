@@ -141,6 +141,9 @@
     "confirm": "下载",
     "done_one": "已下载 {{count}} 个文件",
     "done_other": "已下载 {{count}} 个文件",
-    "doneNone": "没有需要下载的新文件"
+    "doneNone": "没有需要下载的新文件",
+    "someSkipped": "有些文件没能下载",
+    "moreWarnings_one": "……还有 {{count}} 条",
+    "moreWarnings_other": "……还有 {{count}} 条"
   }
 }

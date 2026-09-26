@@ -176,6 +176,30 @@ describe("Downloading Canvas files", () => {
     );
   });
 
+  it("explains files the download skipped instead of saying there was nothing new", async () => {
+    const { user, api } = await openCourse(DEMO205);
+    const real = api.downloadCourseFiles.bind(api);
+    const skipped = Array.from({ length: 4 }, (_, i) => `Demo file ${i + 1} skipped (locked)`);
+    vi.spyOn(api, "downloadCourseFiles").mockImplementation(async (courseId, onEvent) => ({
+      ...(await real(courseId, onEvent)),
+      files_downloaded: 0,
+      warnings: skipped,
+    }));
+
+    await user.click(await screen.findByRole("button", { name: "Download files…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Download this course's files?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Download" }));
+
+    expect(await screen.findByText("Some files couldn't be downloaded")).toBeInTheDocument();
+    expect(screen.getByText("Demo file 1 skipped (locked)")).toBeInTheDocument();
+    expect(screen.getByText("Demo file 3 skipped (locked)")).toBeInTheDocument();
+    expect(screen.queryByText("Demo file 4 skipped (locked)")).toBeNull();
+    expect(screen.getByText("…and 1 more")).toBeInTheDocument();
+    expect(screen.queryByText("No new files to download")).toBeNull();
+  });
+
   it("never offers a download for folder courses", async () => {
     // DEMO101's week 4 has a "not downloaded" archive, but folder courses are local.
     await openCourse(DEMO101);

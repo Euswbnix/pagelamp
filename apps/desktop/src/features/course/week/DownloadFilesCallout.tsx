@@ -19,6 +19,9 @@ import { Button } from "@/components/ui/button";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { useDownloadCourseFiles, useSyncStore } from "@/stores/sync";
 
+// Warnings listed in the toast; the rest are summed up as "…and N more".
+const SHOWN_WARNINGS = 3;
+
 /**
  * Canvas files are listed but not downloaded until the student asks, because a download
  * through Canvas can count as viewing the file (module "must view" requirements). This offers
@@ -52,11 +55,27 @@ export function DownloadFilesCallout({
     }
     const { lastSummary, runError } = useSyncStore.getState();
     const result = lastSummary?.results[0];
+    // Files that were skipped (too large, locked) are only explained in the run's warnings.
+    const warnings = result?.warnings ?? [];
+    const description =
+      warnings.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {warnings.slice(0, SHOWN_WARNINGS).map((warning) => (
+            <li key={warning} lang="en">
+              {warning}
+            </li>
+          ))}
+          {warnings.length > SHOWN_WARNINGS ? (
+            <li>{t("download.moreWarnings", { count: warnings.length - SHOWN_WARNINGS })}</li>
+          ) : null}
+        </ul>
+      ) : undefined;
     if (runError) toast.error(errorText(runError));
     else if (result && !result.ok) toast.error(tc(`sourceError.${result.error_kind ?? "other"}`));
     else if (result?.files_downloaded) {
-      toast.success(t("download.done", { count: result.files_downloaded }));
-    } else toast.success(t("download.doneNone"));
+      toast.success(t("download.done", { count: result.files_downloaded }), { description });
+    } else if (warnings.length > 0) toast.warning(t("download.someSkipped"), { description });
+    else toast.success(t("download.doneNone"));
   }
 
   return (

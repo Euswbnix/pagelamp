@@ -141,6 +141,9 @@
     "confirm": "Download",
     "done_one": "Downloaded {{count}} file",
     "done_other": "Downloaded {{count}} files",
-    "doneNone": "No new files to download"
+    "doneNone": "No new files to download",
+    "someSkipped": "Some files couldn't be downloaded",
+    "moreWarnings_one": "…and {{count}} more",
+    "moreWarnings_other": "…and {{count}} more"
   }
 }
