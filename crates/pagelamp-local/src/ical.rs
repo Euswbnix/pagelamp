@@ -61,11 +61,33 @@ pub(crate) fn normalize_feed_url(input: &str) -> Result<String, SourceError> {
     Ok(url.to_string())
 }
 
+/// Redirects to follow at most.
+const MAX_REDIRECTS: usize = 5;
+
+/// Follow at most `MAX_REDIRECTS` redirects, and only to https (http only on this computer):
+/// a feed must not be downgraded to plain http on its way. The feed URL is a secret, so no
+/// `Referer` is ever sent (reqwest would copy the full previous URL into it).
+fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > MAX_REDIRECTS {
+            return attempt.error("too many redirects");
+        }
+        let url = attempt.url();
+        let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+        match url.scheme() {
+            "https" => attempt.follow(),
+            "http" if local => attempt.follow(),
+            _ => attempt.error("refused a redirect away from https"),
+        }
+    })
+}
+
 pub(crate) async fn fetch_ical(feed_url: &str) -> Result<String, SourceError> {
     let url = normalize_feed_url(feed_url)?;
     let client = reqwest::Client::builder()
         .timeout(FETCH_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::limited(5))
+        .redirect(redirect_policy())
+        .referer(false)
         .user_agent(concat!("PageLamp/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|err| {

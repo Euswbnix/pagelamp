@@ -158,6 +158,66 @@ async fn non_calendar_and_oversized_bodies_are_rejected() {
 }
 
 #[tokio::test]
+async fn redirects_never_send_the_feed_url_as_referer_and_stay_on_https() {
+    let calendar = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/moved.ics"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(feed(TWO_EVENTS)))
+        .mount(&calendar)
+        .await;
+    let feed_host = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/feed/private-token-abc.ics"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", format!("{}/moved.ics", calendar.uri()).as_str()),
+        )
+        .mount(&feed_host)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/feed/downgrade.ics"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "http://calendar.example.edu/x.ics"),
+        )
+        .mount(&feed_host)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/feed/loop.ics"))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/feed/loop.ics"))
+        .mount(&feed_host)
+        .await;
+
+    let text = fetch_ical(&format!("{}/feed/private-token-abc.ics", feed_host.uri()))
+        .await
+        .unwrap();
+    assert!(text.contains("BEGIN:VCALENDAR"));
+    for request in calendar.received_requests().await.unwrap() {
+        assert!(!request.headers.contains_key("referer"), "{request:?}");
+    }
+
+    for bad in ["downgrade.ics", "loop.ics"] {
+        let err = fetch_ical(&format!("{}/feed/{bad}", feed_host.uri()))
+            .await
+            .unwrap_err();
+        assert!(!err.message.contains("/feed/"), "{}", err.message);
+        assert!(
+            !err.message.contains("calendar.example.edu"),
+            "{}",
+            err.message
+        );
+    }
+    let loops = feed_host
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/feed/loop.ics")
+        .count();
+    assert_eq!(loops, 6, "the first request plus at most 5 redirects");
+}
+
+#[tokio::test]
 async fn sync_future_is_send() {
     fn assert_send<T: Send>(_: &T) {}
     let (_dir, db) = db();
