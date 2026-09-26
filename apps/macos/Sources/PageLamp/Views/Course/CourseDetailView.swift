@@ -1,0 +1,161 @@
+// Course detail (spec §3.2, M1 read-only): the header band in the lamp (lit for the current
+// week), the source problem (S7), then This Week / Deadlines / Timeline; the read-only
+// inspector column; the toolbar's ‹ › and This Week (Chrome/Toolbars.swift); the accessory bar.
+// Editing, the week scrubber, downloads and the term strip are M2.
+
+import SwiftUI
+import PageLampKit
+import PageLampModel
+
+struct CourseDetailView: View {
+    let courseId: String
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
+    @State private var detail: CourseDetailModel
+    @State private var width: CGFloat = PLSize.windowMainWidth
+
+    init(courseId: String) {
+        self.courseId = courseId
+        _detail = State(initialValue: CourseDetailModel(courseId: courseId))
+    }
+
+    var body: some View {
+        @Bindable var bindable = model
+        if let summary = model.course(id: courseId) {
+            let ui = model.ui(for: courseId)
+            // Only a web address opens as the course website (never a file or script URL).
+            let website = Links.web(summary.course.url)
+            ScrollView {
+                CourseDetailPage(summary: summary, detail: detail)
+                    .environment(\.detailColumnWidth, width)
+            }
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            .accessoryBar()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .inspector(isPresented: $bindable.inspectorShown) {
+                CourseInspector(summary: summary, detail: detail)
+                    .inspectorColumnWidth(min: PLSize.inspectorMin, ideal: PLSize.inspectorIdeal, max: PLSize.inspectorMax)
+            }
+            .focusedSceneValue(\.courseCommands, CourseCommands(
+                website: website,
+                showAIPolicy: { detail.showInspector(.aiPolicy, in: model) },
+                showTermDates: { detail.showInspector(.termDates, in: model) }
+            ))
+            .navigationTitle(summary.course.code ?? summary.course.name)
+            .toolbar {
+                CourseToolbar(
+                    courseId: courseId,
+                    website: website,
+                    compact: width < 900
+                )
+            }
+            // The overview and deadlines reload when the course's data changes (after a sync,
+            // on activation); the week also when the student steps to another week.
+            .task(id: summary) {
+                await detail.loadOverviewAndDeadlines(using: model)
+            }
+            .task(id: WeekRequest(week: ui.selectedWeek, summary: summary)) {
+                await detail.loadWeek(using: model)
+            }
+        } else {
+            // S14: the course is gone (removed with its source, or not synced yet).
+            EmptyState(
+                symbol: "book.closed",
+                title: l10n("course.notFound.title"),
+                message: l10n("course.notFound.description")
+            ) {
+                Button(l10n("mac.actions.backToThisWeek")) { model.destination = .thisWeek }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private struct WeekRequest: Hashable {
+        var week: UInt32?
+        var summary: CourseSummary
+    }
+}
+
+/// The page's document: rendered in the scroll view and by the snapshot harness.
+struct CourseDetailPage: View {
+    let summary: CourseSummary
+    let detail: CourseDetailModel
+
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let ui = model.ui(for: summary.course.id)
+        // The freshest timeline: the displayed week's, else the course list's.
+        let timeline = detail.week.value?.timeline ?? summary.timeline
+        let weekLine = CourseWeekLine(
+            section: ui.section,
+            selectedWeek: ui.selectedWeek,
+            currentWeek: timeline.currentWeek,
+            outsideTerm: timeline.outsideTerm
+        )
+        let source = model.sources.first { $0.id == summary.course.sourceId }
+        ReadingPage(spacing: PLLayout.sectionGapCourse) {
+            LampBand(lit: weekLine.lit) {
+                CourseHeader(summary: summary, detail: detail, weekLine: weekLine)
+            }
+        } content: {
+            ReadingColumn(spacing: PLLayout.sectionGapCourse) {
+                if let source, let problem = SourceProblem(source: source) {
+                    CourseSourceAlert(source: source, problem: problem)
+                }
+                Group {
+                    switch ui.section {
+                    case .week:
+                        CourseWeekSection(summary: summary, detail: detail)
+                    case .deadlines:
+                        CourseDeadlinesSection(detail: detail)
+                    case .timeline:
+                        CourseTimelineSection(timeline: timeline, detail: detail)
+                    }
+                }
+                .transition(.opacity)
+                .id(ui.section)
+            }
+            .animation(reduceMotion ? PLMotion.reduced : PLMotion.section, value: ui.section)
+        }
+        .primaryActionCandidates(CourseDetailModel.primaryActionCandidates(source: source, timeline: timeline))
+    }
+}
+
+/// S7, course header variant: the course's source failed its last sync.
+struct CourseSourceAlert: View {
+    let source: SourceRecord
+    let problem: SourceProblem
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
+
+    var body: some View {
+        switch problem {
+        case .expired(let fix):
+            // The fix (M1: opens Sources & Sync, like the capsule's fix bubble; M2: the Replace
+            // sheet) is the arbiter's candidate (2).
+            Callout(
+                tone: .danger,
+                symbol: "key",
+                title: l10n("course.sourceAlert.expiredTitle"),
+                message: l10n("mac.course.sourceAlert.expiredBody")
+            ) {
+                Button(l10n.fix(fix)) { model.fixSource(source.id) }
+                    .arbitratedButtonStyle(.fixSource(source.id))
+            }
+        case .failed(let kind):
+            Callout(
+                tone: .warning,
+                // "other" has no useful reason to name.
+                title: kind == .other
+                    ? l10n("course.sourceAlert.failedTitleGeneric")
+                    : l10n("course.sourceAlert.failedTitle", ["reason": l10n.sourceError(kind)]),
+                message: l10n("mac.course.sourceAlert.failedBody")
+            ) {
+                Button(l10n("mac.actions.openSourcesAndSync")) { model.destination = .sources }
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+}

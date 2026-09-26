@@ -1,0 +1,18 @@
+// The PageLamp Preview app. Everything lives in the PageLamp library; this target only owns the
+// app's model and delegate. The executable is "PageLampApp" (never "pagelamp": the bundled CLI
+// is Contents/MacOS/pagelamp and the file system is case-insensitive).
+
+import SwiftUI
+import PageLamp
+import PageLampModel
+
+@main
+struct PageLampApp: App {
+    @NSApplicationDelegateAdaptor(PageLampAppDelegate.self) private var appDelegate
+    /// Starts on mock data (the preview's default); Debug ▸ Data Source switches.
+    @State private var model = AppModel(strings: .app)
+
+    var body: some Scene {
+        PageLampScenes(model: model)
+    }
+}
