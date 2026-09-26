@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use weekmark_canvas::{CanvasConfig, SyncOptions};
 use weekmark_core::model::{SourceKind, SourceRecord};
 use weekmark_core::paths;
-use weekmark_core::source::{SourceError, SyncProgress};
+use weekmark_core::source::{CourseSyncSummary, SourceError, SyncProgress};
 use weekmark_core::store::Store;
 
 use crate::lock::SyncLock;
@@ -33,6 +33,8 @@ struct Counts {
     files_indexed: usize,
     events: usize,
     warnings: Vec<String>,
+    course_summaries: Vec<CourseSyncSummary>,
+    requests: Option<u32>,
 }
 
 impl App {
@@ -114,6 +116,7 @@ impl App {
         on_event: &(dyn Fn(SyncEvent) + Send + Sync),
     ) -> SourceSyncResult {
         let started_at = Utc::now();
+        tracing::info!(target: "weekmark::sync", "{} sync started", source.kind.as_str());
         on_event(SyncEvent::SourceStarted {
             source_id: source.id.clone(),
             label: source.label.clone(),
@@ -126,6 +129,32 @@ impl App {
         };
         let finished_at = Utc::now();
         let error = outcome.as_ref().err().map(|e| (e.kind, e.message.clone()));
+        // Log file: kind and counts at info; course/file names only at debug.
+        match (&outcome, &error) {
+            (Ok(counts), _) => {
+                tracing::info!(
+                    target: "weekmark::sync",
+                    "{} sync ok: {} courses, {} materials, {} events, {} warnings{} in {} ms",
+                    source.kind.as_str(),
+                    counts.courses,
+                    counts.materials,
+                    counts.events,
+                    counts.warnings.len(),
+                    counts.requests.map(|r| format!(", {r} requests")).unwrap_or_default(),
+                    (finished_at - started_at).num_milliseconds()
+                );
+                for warning in &counts.warnings {
+                    tracing::debug!(target: "weekmark::sync", "warning: {warning}");
+                }
+            }
+            (Err(_), Some((kind, message))) => tracing::warn!(
+                target: "weekmark::sync",
+                "{} sync failed ({}): {message}",
+                source.kind.as_str(),
+                kind.as_str()
+            ),
+            (Err(_), None) => {}
+        }
         let recorded = self.write_store().and_then(|store| {
             let error = error.as_ref().map(|(kind, msg)| (*kind, msg.as_str()));
             Ok(store.record_sync(&source.id, finished_at, error)?)
@@ -156,6 +185,8 @@ impl App {
             files_indexed: to_u32(counts.files_indexed),
             events: to_u32(counts.events),
             warnings: counts.warnings,
+            course_summaries: counts.course_summaries,
+            requests: counts.requests,
         }
     }
 
@@ -237,6 +268,8 @@ impl App {
             files_indexed: report.files_indexed,
             events: report.events,
             warnings: report.warnings,
+            course_summaries: report.course_summaries,
+            requests: Some(u32::try_from(report.requests).unwrap_or(u32::MAX)),
         })
     }
 

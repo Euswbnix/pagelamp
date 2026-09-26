@@ -24,6 +24,7 @@
 //! Every method returns `Result<T, AppError>`; `AppError` serialises as
 //! `{ "kind": "...", "message": "..." }` and its message never contains a secret.
 
+pub mod diagnostics;
 mod lock;
 mod mcp_config;
 mod sync;
@@ -43,7 +44,7 @@ use weekmark_core::model::{
 };
 use weekmark_core::paths;
 use weekmark_core::secrets::{KeychainSecrets, SecretBackend};
-use weekmark_core::source::SourceError;
+use weekmark_core::source::{CourseSyncSummary, SourceError};
 use weekmark_core::store::Store;
 use weekmark_core::views::{self, AsOf, CourseOverview, CourseSummary, Deadline, WeekMaterials};
 
@@ -223,6 +224,10 @@ pub struct SourceSyncResult {
     pub files_indexed: u32,
     pub events: u32,
     pub warnings: Vec<String>,
+    /// Per-course details (Canvas; empty for other sources).
+    pub course_summaries: Vec<CourseSyncSummary>,
+    /// HTTP requests made (Canvas; None for other sources).
+    pub requests: Option<u32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -406,7 +411,8 @@ impl App {
             base_url: base_url.clone(),
             token: non_empty_secret(token, "Canvas access token")?,
         };
-        weekmark_canvas::check_token(&config).await?;
+        // The display name only (never email or ids) — shown as "Connected as …".
+        let account_name = weekmark_canvas::check_token(&config).await?;
         let id = weekmark_canvas::source_id(&base_url);
         let label = base_url
             .split_once("://")
@@ -417,7 +423,7 @@ impl App {
                 id,
                 kind: SourceKind::Canvas,
                 label,
-                config: json!({ "base_url": base_url }),
+                config: json!({ "base_url": base_url, "account_name": account_name }),
                 last_synced_at: None,
                 last_error: None,
                 last_error_kind: None,
@@ -673,6 +679,39 @@ impl App {
         Ok(store.set_course_hidden(&course.id, hidden)?)
     }
 
+    // ----- diagnostics (see the `diagnostics` module; these use this App's data dir) ----------
+
+    /// `<data_dir>/logs` (created if missing) — for "Open logs folder".
+    pub fn logs_dir(&self) -> Result<PathBuf> {
+        diagnostics::logs_dir_in(&self.data_dir)
+    }
+
+    pub fn last_crash(&self) -> Result<Option<diagnostics::CrashReport>> {
+        Ok(weekmark_core::diagnostics::last_crash(&self.data_dir)?)
+    }
+
+    pub fn clear_last_crash(&self) -> Result<()> {
+        Ok(weekmark_core::diagnostics::clear_last_crash(
+            &self.data_dir,
+        )?)
+    }
+
+    pub fn doctor(&self) -> Result<diagnostics::DoctorReport> {
+        Ok(diagnostics::doctor_in(
+            &self.data_dir,
+            self.secrets.as_ref(),
+        ))
+    }
+
+    /// Markdown for an issue (doctor + last crash + recent log lines), redacted and with
+    /// course names pseudonymised. Shown to the student before they share it.
+    pub fn diagnostic_report(&self) -> Result<String> {
+        Ok(diagnostics::report_in(
+            &self.data_dir,
+            self.secrets.as_ref(),
+        ))
+    }
+
     // ----- "connect your AI app" ------------------------------------------------------------
 
     /// One config per client (claude_desktop, claude_code, codex, generic) for launching
@@ -805,6 +844,10 @@ struct AppTypes {
     ai_materials_state: AiMaterialsState,
     term_source: TermSource,
     mcp_client_config: McpClientConfig,
+    doctor_report: diagnostics::DoctorReport,
+    crash_report: diagnostics::CrashReport,
+    process_kind: diagnostics::ProcessKind,
+    course_sync_summary: CourseSyncSummary,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

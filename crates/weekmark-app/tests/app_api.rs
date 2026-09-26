@@ -688,7 +688,7 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
     assert!(app.list_sources().unwrap().is_empty());
 
     let source = app
-        .add_canvas_source(&format!("{}/courses/1", canvas.uri()), " demo-good-token ")
+        .add_canvas_source(&format!("{}/", canvas.uri()), " demo-good-token ")
         .await
         .unwrap();
     assert!(source.id.starts_with("canvas:127.0.0.1:"));
@@ -696,6 +696,15 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
     assert_eq!(
         secrets.get(&source.id).unwrap().as_deref(),
         Some("demo-good-token")
+    );
+    assert_eq!(source.config["account_name"], json!("Demo Student"));
+    // A pasted course link is not a Canvas address.
+    assert_eq!(
+        kind(
+            app.add_canvas_source(&format!("{}/courses/1", canvas.uri()), "demo-good-token")
+                .await
+        ),
+        AppErrorKind::Invalid
     );
 
     // Replacing an expired token validates the new one first.
