@@ -73,6 +73,22 @@ export type McpClient = "claude_desktop" | "claude_code" | "codex" | "generic";
  */
 export type InstallKind = "json_snippet" | "shell_command" | "toml_snippet";
 /**
+ * Stable codes for `McpClientConfig.notes` (one code per note).
+ *
+ * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
+ * via the `definition` "McpNoteCode".
+ */
+export type McpNoteCode =
+  | "works_on_all_claude_plans"
+  | "admins_may_disable_extensions"
+  | "needs_paid_claude_plan"
+  | "codex_config_shared_with_chatgpt_desktop"
+  | "codex_plus_and_edu_documented"
+  | "free_go_undocumented"
+  | "restart_client_after_change"
+  | "custom_data_dir"
+  | "generic_stdio_client";
+/**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *
  * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
@@ -103,6 +119,13 @@ export type SyncEvent =
       source_id: string;
       type: "source_finished";
     };
+/**
+ * Why `WeekMaterials.note` is set.
+ *
+ * This interface was referenced by `StudentOsAppTypes`'s JSON-Schema
+ * via the `definition` "WeekNoteKind".
+ */
+export type WeekNoteKind = "current_week_unknown" | "outside_term" | "no_materials_this_week";
 
 /**
  * Container whose only purpose is to pull every facade type into one schema document
@@ -412,7 +435,12 @@ export interface McpClientConfig {
   install_kind: InstallKind;
   launch: McpLaunch;
   /**
-   * Facts the student should know (plan availability, restart the app, …).
+   * Machine-readable code of each entry of `notes` (same length, same order) so UIs can
+   * localise.
+   */
+  note_codes: McpNoteCode[];
+  /**
+   * Facts the student should know (plan availability, restart the app, …), in English.
    */
   notes: string[];
   /**
@@ -579,6 +607,10 @@ export interface WeekMaterials {
    * Explains any fallback, e.g. "current week unknown — showing materials of the last 14 days".
    */
   note?: string | null;
+  /**
+   * Machine-readable class of `note` (UIs localise from this; `note` stays English).
+   */
+  note_kind?: WeekNoteKind | null;
   /**
    * The week the caller asked for (None = "current week").
    */

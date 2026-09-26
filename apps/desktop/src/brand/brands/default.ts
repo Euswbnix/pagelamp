@@ -18,8 +18,8 @@ const brand: Brand = {
   },
   logo: null,
   links: {
-    homepage: "https://github.com/<owner>/studentos",
-    issues: "https://github.com/<owner>/studentos/issues",
+    homepage: "https://github.com/Euswbnix/studentos",
+    issues: "https://github.com/Euswbnix/studentos/issues",
   },
   aiPolicyHint: {
     en: "Many universities (including U of T) don't allow generative AI in a course unless the instructor permits it — check your syllabus.",

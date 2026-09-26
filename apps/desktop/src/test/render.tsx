@@ -2,6 +2,10 @@
 //
 //   const { user, api } = renderRoute("/courses");
 //   expect(await screen.findByText("DEMO101")).toBeInTheDocument();
+//
+// Clipboard: userEvent.setup() installs its own navigator.clipboard stub, replacing the vi.fn
+// from test/setup.ts. Assert copies with `await navigator.clipboard.readText()`, or
+// `vi.spyOn(navigator.clipboard, "writeText")` AFTER calling renderRoute.
 
 import { QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";

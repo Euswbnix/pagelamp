@@ -10,6 +10,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { isHttpUrl } from "@/lib/url";
 import type { StudentOsApi } from "./client";
 import { ApiError, toApiError } from "./errors";
 import type { SyncEvent } from "./types";
@@ -26,15 +27,6 @@ function eventChannel(onEvent: (event: SyncEvent) => void): Channel<SyncEvent> {
   const channel = new Channel<SyncEvent>();
   channel.onmessage = onEvent;
   return channel;
-}
-
-export function isSafeExternalUrl(url: string): boolean {
-  try {
-    const { protocol } = new URL(url);
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
 }
 
 export function createTauriApi(): StudentOsApi {
@@ -66,6 +58,8 @@ export function createTauriApi(): StudentOsApi {
     setCourseTerm: (courseId, start, end) =>
       call("set_course_term", { course: courseId, start, end }),
     setCourseHidden: (courseId, hidden) => call("set_course_hidden", { course: courseId, hidden }),
+    setCourseAiAccess: (courseId, allowed) =>
+      call("set_course_ai_access", { course: courseId, allowed }),
 
     mcpClientConfigs: () => call("mcp_client_configs"),
 
@@ -76,7 +70,7 @@ export function createTauriApi(): StudentOsApi {
     },
     openExternal: async (url) => {
       // The opener capability is scoped to http(s) too; this check gives a clearer error.
-      if (!isSafeExternalUrl(url)) throw new ApiError("invalid", "Only web links can be opened");
+      if (!isHttpUrl(url)) throw new ApiError("invalid", "Only web links can be opened");
       await openUrl(url);
     },
     revealDataDir: () => call("reveal_data_dir"),

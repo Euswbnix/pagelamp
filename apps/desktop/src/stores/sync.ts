@@ -7,7 +7,7 @@ import { create } from "zustand";
 import { useApi } from "@/api/context";
 import { type ApiError, toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
-import type { SourceErrorKind, SyncEvent, SyncSummary } from "@/api/types";
+import type { AppStatus, SourceErrorKind, SyncEvent, SyncSummary } from "@/api/types";
 
 export interface SourceProgress {
   sourceId: string;
@@ -22,13 +22,15 @@ export interface SourceProgress {
 
 interface SyncState {
   running: boolean;
+  /** How many sources this run covers (1 for a single-source sync), when known. */
+  total: number | null;
   /** Source ids in the order they started. */
   order: string[];
   bySource: Record<string, SourceProgress>;
   lastSummary: SyncSummary | null;
   /** Error that stopped the whole run (e.g. `busy`). Per-source failures live in bySource. */
   runError: ApiError | null;
-  begin: () => void;
+  begin: (total: number | null) => void;
   apply: (event: SyncEvent) => void;
   finish: (summary: SyncSummary | null, error: ApiError | null) => void;
   reset: () => void;
@@ -36,6 +38,7 @@ interface SyncState {
 
 const idle = {
   running: false,
+  total: null,
   order: [],
   bySource: {},
   lastSummary: null,
@@ -44,7 +47,7 @@ const idle = {
 
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
-  begin: () => set({ running: true, order: [], bySource: {}, runError: null }),
+  begin: (total) => set({ running: true, total, order: [], bySource: {}, runError: null }),
   apply: (event) =>
     set((state) => {
       const prev = state.bySource[event.source_id];
@@ -93,6 +96,13 @@ export const useSyncStore = create<SyncState>()((set) => ({
   reset: () => set(idle),
 }));
 
+/** "2 of 3 sources done" for the running sync; total is null when unknown. */
+export function useSyncCounts(): { done: number; total: number | null } {
+  const total = useSyncStore((s) => s.total);
+  const done = useSyncStore((s) => s.order.filter((id) => s.bySource[id]?.result).length);
+  return { done, total };
+}
+
 /**
  * Start a sync of every source (or one source). Returns a promise that resolves when the run
  * ends; it never rejects — failures land in the store (`runError`, per-source `result`).
@@ -105,7 +115,8 @@ export function useStartSync() {
     async (sourceId?: string) => {
       const store = useSyncStore.getState();
       if (store.running) return;
-      store.begin();
+      const known = queryClient.getQueryData<AppStatus>(queryKeys.status())?.sources.length;
+      store.begin(sourceId ? 1 : (known ?? null));
       const onEvent = (event: SyncEvent) => useSyncStore.getState().apply(event);
       try {
         let summary: SyncSummary;
@@ -120,11 +131,13 @@ export function useStartSync() {
         } else {
           summary = await api.syncAll({}, onEvent);
         }
+        // Refresh data BEFORE marking the run finished, so no screen briefly mistakes a
+        // status fetched during our own run (sync_in_progress: true) for another process.
+        await queryClient.invalidateQueries({ queryKey: queryKeys.all });
         useSyncStore.getState().finish(summary, null);
       } catch (error) {
-        useSyncStore.getState().finish(null, toApiError(error));
-      } finally {
         await queryClient.invalidateQueries({ queryKey: queryKeys.all });
+        useSyncStore.getState().finish(null, toApiError(error));
       }
     },
     [api, queryClient],

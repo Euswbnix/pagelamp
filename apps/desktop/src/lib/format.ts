@@ -10,7 +10,9 @@ export function formatRelative(iso: string, locale: string, now: Date = new Date
   const diff = Date.parse(iso) - now.getTime();
   const abs = Math.abs(diff);
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (abs < MINUTE) return rtf.format(0, "second");
+  // Under a minute reads as "1 minute ago": Intl's "now" would make "Synced now" / "现在同步"
+  // sound like a command.
+  if (abs < MINUTE) return rtf.format(diff < 0 ? -1 : 1, "minute");
   if (abs < HOUR) return rtf.format(Math.round(diff / MINUTE), "minute");
   if (abs < DAY) return rtf.format(Math.round(diff / HOUR), "hour");
   return rtf.format(calendarDayDiff(iso, now), "day");

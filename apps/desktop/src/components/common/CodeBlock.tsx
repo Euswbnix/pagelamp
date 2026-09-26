@@ -6,14 +6,17 @@ interface CodeBlockProps {
   copyLabel?: string;
 }
 
-/** Monospace, horizontally scrollable snippet with a copy button. */
+/**
+ * Monospace snippet with a copy button. The button sits in its own row, so long one-line
+ * commands scroll underneath nothing and stay readable.
+ */
 export function CodeBlock({ code, copyLabel }: CodeBlockProps) {
   return (
-    <div className="relative rounded-lg border bg-muted/50">
-      <div className="absolute top-2 right-2">
-        <CopyButton text={code} label={copyLabel} variant="secondary" />
+    <div className="overflow-hidden rounded-lg border bg-muted/50">
+      <div className="flex justify-end border-b bg-muted/60 px-2 py-1.5">
+        <CopyButton text={code} label={copyLabel} variant="ghost" />
       </div>
-      <pre className="overflow-x-auto p-4 pr-24 font-mono text-[13px] leading-relaxed">
+      <pre className="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed">
         <code>{code}</code>
       </pre>
     </div>

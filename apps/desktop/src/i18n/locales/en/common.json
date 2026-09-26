@@ -116,13 +116,16 @@
   },
   "time": {
     "due": "Due {{when}}",
+    "yesterday": "Yesterday",
     "today": "Today",
     "tomorrow": "Tomorrow"
   },
   "disclosure": {
     "title": "Privacy",
     "short": "{{product}} keeps your courses on this computer. Your AI app reads them only when you ask.",
-    "full": "{{product}} stores everything on this computer and sends nothing anywhere. When you ask your AI app about a course, the course text it reads is sent to that AI provider under your account."
+    "full": "When you ask your AI app about a course, it reads that course's materials from {{product}} and sends them to your AI provider under your own account. {{product}} itself stores nothing remotely. You're responsible for following each course's AI policy — and you can turn sharing off for any course.",
+    "acknowledge": "I understand",
+    "acknowledgedOn": "You confirmed this on {{date}}."
   },
   "canvasNotice": "Personal access tokens are for your own use only; Canvas student tokens expire within 30 days.",
   "secret": {
@@ -132,5 +135,13 @@
   "language": {
     "en": "English",
     "zh-CN": "简体中文"
+  },
+  "aiMaterials": {
+    "label": "AI access to materials",
+    "readable_one": "{{indexed}} of {{count}} material readable by your AI app",
+    "readable_other": "{{indexed}} of {{count}} materials readable by your AI app",
+    "readableNone": "No materials yet",
+    "turned_off": "AI access to materials is off",
+    "withheld_by_policy": "Materials not shared (No AI course)"
   }
 }

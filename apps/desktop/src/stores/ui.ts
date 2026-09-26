@@ -14,10 +14,13 @@ interface UiState {
   showHiddenCourses: boolean;
   /** The student dismissed onboarding without adding a source. */
   onboardingSkipped: boolean;
+  /** When the student confirmed the AI disclosure (ISO instant), null = not yet. */
+  aiDisclosureAcknowledgedAt: string | null;
   setTheme: (theme: ThemePreference) => void;
   setLocale: (locale: Locale) => void;
   setShowHiddenCourses: (show: boolean) => void;
   setOnboardingSkipped: (skipped: boolean) => void;
+  acknowledgeAiDisclosure: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -27,10 +30,12 @@ export const useUiStore = create<UiState>()(
       locale: null,
       showHiddenCourses: false,
       onboardingSkipped: false,
+      aiDisclosureAcknowledgedAt: null,
       setTheme: (theme) => set({ theme }),
       setLocale: (locale) => set({ locale }),
       setShowHiddenCourses: (showHiddenCourses) => set({ showHiddenCourses }),
       setOnboardingSkipped: (onboardingSkipped) => set({ onboardingSkipped }),
+      acknowledgeAiDisclosure: () => set({ aiDisclosureAcknowledgedAt: new Date().toISOString() }),
     }),
     {
       name: "studentos.ui",
@@ -42,6 +47,7 @@ export const useUiStore = create<UiState>()(
         locale: s.locale,
         showHiddenCourses: s.showHiddenCourses,
         onboardingSkipped: s.onboardingSkipped,
+        aiDisclosureAcknowledgedAt: s.aiDisclosureAcknowledgedAt,
       }),
     },
   ),

@@ -67,6 +67,8 @@ export interface StudentOsApi {
   setCoursePolicy(courseId: string, policy: AiPolicy, note: string | null): Promise<void>;
   setCourseTerm(courseId: string, start: IsoDate | null, end: IsoDate | null): Promise<void>;
   setCourseHidden(courseId: string, hidden: boolean): Promise<void>;
+  /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
+  setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 
   // ----- "connect your AI app" -------------------------------------------------------------
   /** The Rust side decides which `studentos` binary the snippets point at. */

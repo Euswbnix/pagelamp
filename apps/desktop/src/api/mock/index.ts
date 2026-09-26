@@ -11,16 +11,17 @@
 
 import type { StudentOsApi } from "../client";
 import { ApiError } from "../errors";
-import type {
-  AppStatus,
-  CourseSummary,
-  Deadline,
-  SourceKind,
-  SourceRecord,
-  SourceSyncResult,
-  SyncEvent,
-  SyncRequest,
-  SyncSummary,
+import {
+  type AppStatus,
+  aiMaterialsState,
+  type CourseSummary,
+  type Deadline,
+  type SourceKind,
+  type SourceRecord,
+  type SourceSyncResult,
+  type SyncEvent,
+  type SyncRequest,
+  type SyncSummary,
 } from "../types";
 import {
   buildMockDb,
@@ -127,13 +128,17 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
 
   function summary(c: MockCourse): CourseSummary {
     const upcoming = deadlinesWithin([c], 21, 0).filter((d) => d.kind !== "class_event");
+    const aiMaterials = aiMaterialsState(c.course);
     return {
       course: c.course,
       timeline: c.timeline,
+      ai_materials: aiMaterials,
       counts: {
         modules: c.modules.length,
         materials: c.materials.length,
-        indexed_materials: c.materials.filter((m) => m.text_status === "ok").length,
+        // Like the facade: "readable by your AI app" is 0 unless the AI may read materials.
+        indexed_materials:
+          aiMaterials === "readable" ? c.materials.filter((m) => m.text_status === "ok").length : 0,
         upcoming_deadlines: upcoming.length,
       },
       next_deadline: upcoming[0] ?? null,
@@ -211,6 +216,16 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
     }
   }
 
+  // First-run demo: in the "empty" scenario the first folder/Canvas source to sync "finds" the
+  // demo courses, so onboarding → courses can be walked through end to end.
+  function seedCoursesOnFirstSync(source: SourceRecord) {
+    if (scenario !== "empty" || source.kind === "ical" || db.courses.length > 0) return;
+    db.courses = buildMockDb(now(), "demo").courses.map((c) => ({
+      ...c,
+      course: { ...c.course, source_id: source.id },
+    }));
+  }
+
   async function runSync(
     sourceIds: string[],
     onEvent: (event: SyncEvent) => void,
@@ -226,6 +241,7 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
         const source = findSource(sourceId);
         const startedAt = now().toISOString();
         onEvent({ type: "source_started", source_id: source.id, label: source.label });
+        seedCoursesOnFirstSync(source);
         const courses = db.courses.filter((c) => c.course.source_id === source.id);
         const total = Math.max(courses.length, 1) * 3;
         const warnings: string[] = [];
@@ -392,6 +408,7 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
           recent_announcements: c.announcements.filter(recent),
           source_label: sourceLabel(c.course.source_id),
           last_synced_at: sourceSyncedAt(c.course.source_id),
+          ai_materials: aiMaterialsState(c.course),
         };
       }),
 
@@ -412,6 +429,7 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
               (m) => !!m.published_at && Date.parse(m.published_at) >= t - 14 * DAY,
             ),
             note: "Current week unknown — showing materials of the last 14 days.",
+            note_kind: "current_week_unknown",
           };
         }
         return {
@@ -422,7 +440,12 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
           timeline: c.timeline,
           modules: c.modules.filter((m) => m.week_hint === shown),
           materials: c.materials.filter((m) => m.week_hint === shown),
-          note: null,
+          ...(c.materials.some((m) => m.week_hint === shown)
+            ? { note: null, note_kind: null }
+            : {
+                note: `No modules or materials for week ${shown}.`,
+                note_kind: "no_materials_this_week" as const,
+              }),
         };
       }),
 
@@ -477,8 +500,17 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
       const c = findCourse(courseId);
+      if (start === null && end === null) {
+        // Clearing the override falls back to what the source reported (like the facade).
+        c.course.term_start = c.synced.termStart;
+        c.course.term_end = c.synced.termEnd;
+        c.course.term_source = c.synced.termStart ? "synced" : "none";
+        c.timeline = c.synced.timeline;
+        return;
+      }
       c.course.term_start = start;
       c.course.term_end = end;
+      c.course.term_source = "user";
       if (start) {
         const weeks = Math.floor((now().getTime() - Date.parse(start)) / (7 * DAY)) + 1;
         c.timeline = {
@@ -494,6 +526,11 @@ export function createMockApi(options: MockOptions = {}): StudentOsApi {
     setCourseHidden: async (courseId, hidden) => {
       await sleep(latency);
       findCourse(courseId).course.hidden = hidden;
+    },
+
+    setCourseAiAccess: async (courseId, allowed) => {
+      await sleep(latency);
+      findCourse(courseId).course.ai_access = allowed;
     },
 
     mcpClientConfigs: () => respond(() => mcpClientConfigs(MOCK_BINARY_PATH)),

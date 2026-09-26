@@ -3,7 +3,7 @@
 
 import type { Brand, Locale, Localized } from "./types";
 
-export type { Brand, Locale, Localized } from "./types";
+export type { Brand, BrandLinks, Locale, Localized } from "./types";
 
 const brands = import.meta.glob<{ default: Brand }>("./brands/*.ts", { eager: true });
 

@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, vi } from "vitest";
 import i18n, { initI18n } from "@/i18n";
 import { useSyncStore } from "@/stores/sync";
@@ -41,6 +42,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  // Sonner replays still-visible toasts into the next <Toaster/>; don't leak them across tests.
+  toast.dismiss();
   cleanup();
   localStorage.clear();
   useUiStore.setState(initialUi, true);

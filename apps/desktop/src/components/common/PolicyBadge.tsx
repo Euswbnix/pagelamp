@@ -1,20 +1,30 @@
-import { Ban, BookOpen, CircleCheck, CircleHelp, Quote } from "lucide-react";
+import { Ban, BookOpen, CircleCheck, CircleHelp, type LucideIcon, Quote } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AiPolicy } from "@/api/types";
 import { cn } from "@/lib/utils";
 
-const STYLE: Record<AiPolicy, { icon: typeof Ban; className: string }> = {
-  unknown: { icon: CircleHelp, className: "border-dashed text-muted-foreground" },
-  prohibited: { icon: Ban, className: "border-destructive/30 bg-destructive/10 text-destructive" },
-  learning_aid: { icon: BookOpen, className: "border-info/30 bg-info/10 text-info" },
-  allowed_with_citation: { icon: Quote, className: "border-success/30 bg-success/10 text-success" },
-  unrestricted: { icon: CircleCheck, className: "text-foreground" },
+/** One icon per policy — reuse it wherever a policy is shown so they always match. */
+export const POLICY_ICON: Record<AiPolicy, LucideIcon> = {
+  unknown: CircleHelp,
+  prohibited: Ban,
+  learning_aid: BookOpen,
+  allowed_with_citation: Quote,
+  unrestricted: CircleCheck,
+};
+
+const TONE: Record<AiPolicy, string> = {
+  unknown: "border-dashed text-muted-foreground",
+  prohibited: "border-destructive/30 bg-destructive/10 text-destructive",
+  learning_aid: "border-info/30 bg-info/10 text-info",
+  allowed_with_citation: "border-success/30 bg-success/10 text-success",
+  unrestricted: "text-foreground",
 };
 
 /** AI-policy badge: icon + text, so it never relies on colour alone. */
 export function PolicyBadge({ policy, className }: { policy: AiPolicy; className?: string }) {
   const { t } = useTranslation();
-  const { icon: Icon, className: tone } = STYLE[policy];
+  const Icon = POLICY_ICON[policy];
+  const tone = TONE[policy];
   return (
     <span
       className={cn(

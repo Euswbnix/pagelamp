@@ -33,6 +33,8 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
 export interface MockCourse {
   course: Course;
   timeline: CourseTimeline;
+  /** What the source reported, restored when the student clears their term override. */
+  synced: { termStart: string | null; termEnd: string | null; timeline: CourseTimeline };
   modules: Module[];
   materials: MaterialView[];
   announcements: MaterialView[];
@@ -128,6 +130,7 @@ interface CourseSpec {
   policy: AiPolicy;
   policyNote: string | null;
   hidden: boolean;
+  aiAccess?: boolean;
   termStartDays: number | null;
   week: number | null;
   confidence: Confidence;
@@ -147,8 +150,22 @@ function course(spec: CourseSpec, now: Date): Course {
     url: spec.url,
     ai_policy: spec.policy,
     ai_policy_note: spec.policyNote,
+    ai_access: spec.aiAccess ?? true,
+    term_source: spec.termStartDays === null ? "none" : "synced",
     hidden: spec.hidden,
     updated_at: at(now, -1, 9),
+  };
+}
+
+/** Assemble a MockCourse, remembering the synced term so an override can be undone. */
+function mockCourse(parts: Omit<MockCourse, "synced">): MockCourse {
+  return {
+    ...parts,
+    synced: {
+      termStart: parts.course.term_start ?? null,
+      termEnd: parts.course.term_end ?? null,
+      timeline: parts.timeline,
+    },
   };
 }
 
@@ -328,14 +345,14 @@ function demo101(now: Date): MockCourse {
     deadline(c, "Lecture 9", "class_event", 1, now, 10, 0),
     deadline(c, "Midterm test", "exam", 12, now, 18, 0),
   ];
-  return {
+  return mockCourse({
     course: c,
     timeline: timeline(spec, now, [m4.id]),
     modules,
     materials,
     announcements,
     deadlines,
-  };
+  });
 }
 
 function demo205(now: Date): MockCourse {
@@ -372,14 +389,14 @@ function demo205(now: Date): MockCourse {
     deadline(c, "Exercise set 3", "assignment_due", 6, now),
     deadline(c, "Exercise set 4", "assignment_due", 13, now),
   ];
-  return {
+  return mockCourse({
     course: c,
     timeline: timeline(spec, now, [mc.id]),
     modules,
     materials,
     announcements: [],
     deadlines,
-  };
+  });
 }
 
 function demo310(now: Date): MockCourse {
@@ -402,14 +419,14 @@ function demo310(now: Date): MockCourse {
     material(c.id, "Seminar reading list", "file", null, -20, now, { chunks: 4 }),
     material(c.id, "Discussion guide", "file", null, -5, now, { chunks: 6 }),
   ];
-  return {
+  return mockCourse({
     course: c,
     timeline: timeline(spec, now, []),
     modules: [],
     materials,
     announcements: [],
     deadlines: [deadline(c, "Seminar presentation", "assignment_due", 9, now, 14, 0)],
-  };
+  });
 }
 
 function demo099(now: Date): MockCourse {
@@ -428,14 +445,14 @@ function demo099(now: Date): MockCourse {
     url: "https://canvas.demo.test/courses/99",
   };
   const c = course(spec, now);
-  return {
+  return mockCourse({
     course: c,
     timeline: timeline(spec, now, []),
     modules: [],
     materials: [material(c.id, "Welcome page", "page", 1, -30, now, { chunks: 2 })],
     announcements: [],
     deadlines: [],
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -532,8 +549,13 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       ),
       notes: [
         "Works on every Claude plan, including Free.",
-        'If the file already has an "mcpServers" section, add the "studentos" entry inside it.',
-        "Quit and reopen Claude Desktop after saving the file.",
+        "On Team, Enterprise and Education plans an admin can turn extensions off.",
+        "Quit and reopen Claude Desktop after changing its config.",
+      ],
+      note_codes: [
+        "works_on_all_claude_plans",
+        "admins_may_disable_extensions",
+        "restart_client_after_change",
       ],
       launch,
     },
@@ -543,10 +565,8 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       install_kind: "shell_command",
       config_path_hint: null,
       content: `claude mcp add --scope user studentos -- ${binary} mcp`,
-      notes: [
-        "Claude Code needs a paid Claude plan (Pro, Max, Team or Enterprise).",
-        "Run the command once in a terminal; it applies to every project.",
-      ],
+      notes: ["Claude Code needs a paid Claude plan (Pro or higher)."],
+      note_codes: ["needs_paid_claude_plan"],
       launch,
     },
     {
@@ -556,8 +576,16 @@ export function mcpClientConfigs(binary: string): McpClientConfig[] {
       config_path_hint: "~/.codex/config.toml",
       content: `[mcp_servers.studentos]\ncommand = "${binary}"\nargs = ["mcp"]\n`,
       notes: [
-        "ChatGPT desktop in Work/Codex mode is documented for Plus and higher; Free/Go availability is unconfirmed.",
-        "The same file is used by the Codex CLI and IDE extension.",
+        "The ChatGPT desktop app (Work/Codex mode) reads the same ~/.codex/config.toml.",
+        "Documented for ChatGPT Plus and higher, and for Edu.",
+        "Support on the Free and Go plans isn't documented.",
+        "Restart the app after changing its config.",
+      ],
+      note_codes: [
+        "codex_config_shared_with_chatgpt_desktop",
+        "codex_plus_and_edu_documented",
+        "free_go_undocumented",
+        "restart_client_after_change",
       ],
       launch,
     },

@@ -23,7 +23,12 @@ export const queryKeys = {
 
 export function useStatus() {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.status(), queryFn: () => api.status() });
+  return useQuery({
+    queryKey: queryKeys.status(),
+    queryFn: () => api.status(),
+    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself.
+    refetchInterval: (query) => (query.state.data?.sync_in_progress ? 3000 : false),
+  });
 }
 
 export function useSources() {
@@ -82,6 +87,11 @@ export function useMcpClientConfigs() {
 // Secrets (tokens, feed URLs) are passed straight through as mutation variables and are never
 // put in a query key or cache. `gcTime: 0` drops the mutation (and its variables) from the
 // mutation cache as soon as it settles.
+//
+// Every write invalidates all queries and awaits the refetch in onSuccess. If a component
+// remounts on that refetch (e.g. a form keyed on saved values), per-call
+// `mutate(vars, { onSuccess })` callbacks never fire — use `await mutateAsync(vars)` inside
+// try/catch and show the toast afterwards.
 
 function useInvalidateAll() {
   const client = useQueryClient();
@@ -155,6 +165,16 @@ export function useSetCourseTerm() {
   return useMutation({
     mutationFn: (v: { courseId: string; start: IsoDate | null; end: IsoDate | null }) =>
       api.setCourseTerm(v.courseId, v.start, v.end),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetCourseAiAccess() {
+  const api = useApi();
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { courseId: string; allowed: boolean }) =>
+      api.setCourseAiAccess(v.courseId, v.allowed),
     onSuccess: invalidate,
   });
 }

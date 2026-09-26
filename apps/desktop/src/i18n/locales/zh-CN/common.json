@@ -116,13 +116,16 @@
   },
   "time": {
     "due": "{{when}}截止",
+    "yesterday": "昨天",
     "today": "今天",
     "tomorrow": "明天"
   },
   "disclosure": {
     "title": "隐私",
     "short": "{{product}} 只把课程资料保存在这台电脑上，只有在你提问时，AI 应用才会读取。",
-    "full": "{{product}} 的所有数据都保存在这台电脑上，不会向任何地方发送。当你向 AI 应用询问某门课时，它读取的课程内容会以你的账号发送给该 AI 服务商。"
+    "full": "当你向 AI 应用询问某门课时，它会从 {{product}} 读取这门课的资料，并用你自己的账号发送给 AI 服务商。{{product}} 本身不会把任何数据存到网上。每门课的 AI 使用规定需要你自己遵守——你也可以随时关闭任意一门课的资料共享。",
+    "acknowledge": "我已了解",
+    "acknowledgedOn": "你已于 {{date}} 确认过。"
   },
   "canvasNotice": "个人访问令牌仅供你本人使用；Canvas 学生令牌最长 30 天就会过期。",
   "secret": {
@@ -132,5 +135,13 @@
   "language": {
     "en": "English",
     "zh-CN": "简体中文"
+  },
+  "aiMaterials": {
+    "label": "AI 读取资料",
+    "readable_one": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
+    "readable_other": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
+    "readableNone": "还没有资料",
+    "turned_off": "已关闭 AI 读取资料",
+    "withheld_by_policy": "资料不共享（禁止使用 AI 的课程）"
   }
 }
