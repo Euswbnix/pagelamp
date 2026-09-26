@@ -2,8 +2,12 @@ name: Release
 
 # Push a tag like `v0.1.0` (or `v0.1.0-beta.1`) to build installers and CLI archives for every
 # platform into a DRAFT GitHub release. Review the draft, then publish it by hand.
-# Builds are unsigned for now (macOS: right-click → Open the first time; Windows: SmartScreen
-# "More info → Run anyway"). Signing is added later via repository secrets.
+# Builds are unsigned for now (macOS: System Settings → Privacy & Security → Open Anyway the first
+# time; Windows: SmartScreen "More info → Run anyway"). Signing is added later via repository
+# secrets.
+# The tag must match `[workspace.package] version` (e.g. v0.1.0-beta.1 ↔ 0.1.0-beta.1), which is
+# what `pagelamp --version`, the About screen and diagnostic reports show. tauri.conf.json keeps
+# the numeric part only (0.1.0), because MSI rejects pre-release versions.
 
 on:
   push:
@@ -36,6 +40,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
+          bundle=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
+          if [ "v$version" != "$TAG" ] || [ "$bundle" != "${version%%-*}" ]; then
+            echo "::error::Tag $TAG, Cargo version $version and tauri.conf.json version $bundle don't match"
+            exit 1
+          fi
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
           if ! gh release view "$TAG" >/dev/null 2>&1; then
@@ -153,7 +163,11 @@ jobs:
             tar -C dist -czf "dist/$name.tar.gz" "$name"
             archive="dist/$name.tar.gz"
           fi
-          if command -v sha256sum >/dev/null; then sha256sum "$archive" > "$archive.sha256"; else shasum -a 256 "$archive" > "$archive.sha256"; fi
+          # Hash from inside dist/ so the .sha256 names the bare file and `shasum -c` works
+          # next to the download.
+          file="$(basename "$archive")"
+          if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
+          (cd dist && $sum "$file" > "$file.sha256")
           gh release upload "$TAG" "$archive" "$archive.sha256" --clobber
 
   # One SHA256SUMS file covering every asset (installers + CLI archives), so testers can verify
@@ -167,6 +181,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
+          # tauri-action uploads the macOS .app packed as .app.tar.gz; without an updater it only
+          # duplicates the .dmg and confuses testers, so drop it.
+          gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".app.tar.gz"))' |
+            while read -r asset; do gh release delete-asset "$TAG" "$asset" --yes; done
           mkdir assets && cd assets
           gh release download "$TAG"
           rm -f SHA256SUMS ./*.sha256
