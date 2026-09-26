@@ -89,6 +89,12 @@ jobs:
         run: pnpm run build
       - name: Build CLI sidecar (if configured)
         run: pnpm run --if-present build:sidecar
+      - name: Generated types match the Rust facade
+        if: runner.os == 'Linux'
+        run: |
+          "$(ls src-tauri/binaries/pagelamp-* | head -n 1)" schema > "$RUNNER_TEMP/schema.json"
+          pnpm run gen:types --from "$RUNNER_TEMP/schema.json"
+          git diff --exit-code -- src/api/generated.ts
       - name: Clippy (desktop crate)
         run: cargo clippy -p pagelamp-desktop --all-targets -- -D warnings
       - name: Test (desktop crate)

@@ -21,6 +21,11 @@ on:
 permissions:
   contents: write
 
+# One run per tag at a time, so a re-run can't upload installers after another run's SHA256SUMS.
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   # aws-lc-sys (rustls backend) needs NASM on Windows; use its prebuilt objects instead.
@@ -46,11 +51,16 @@ jobs:
             echo "::error::Tag $TAG, Cargo version $version and tauri.conf.json version $bundle don't match"
             exit 1
           fi
+          notes="docs/release-notes/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::$notes is missing — write the release notes before tagging"
+            exit 1
+          fi
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            notes="docs/release-notes/${TAG}.md"
-            [ -f "$notes" ] || notes="/dev/null"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file "$notes"
+          else
             gh release create "$TAG" --draft $prerelease --verify-tag \
               --title "PageLamp $TAG" --notes-file "$notes"
           fi
@@ -177,6 +187,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Compute and upload SHA256SUMS
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
