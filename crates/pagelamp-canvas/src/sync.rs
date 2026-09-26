@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, TimeDelta, Utc};
 use pagelamp_core::ingest::{self, IndexOutcome};
 use pagelamp_core::model::{
-    CourseUpsert, Event, Material, MaterialKind, MaterialUpsert, Module, TextStatus,
+    CourseUpsert, DownloadBlock, Event, Material, MaterialKind, MaterialUpsert, Module, TextStatus,
 };
 use pagelamp_core::source::{CourseSyncSummary, ProgressFn, SourceError, SyncProgress};
 use pagelamp_core::store::Store;
@@ -716,6 +716,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .join(course_dir_name(upsert.code.as_deref(), &upsert.external_id));
         let mut downloads: Vec<DownloadJob> = Vec::new();
         let mut not_downloaded: Vec<String> = Vec::new();
+        // Why a not-downloaded file can't be downloaded on request; other files are cleared.
+        let mut blocked: HashMap<String, DownloadBlock> = HashMap::new();
         for (id, material) in materials.iter_mut() {
             let Some(file) = file_objects.get(id) else {
                 continue;
@@ -781,7 +783,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                             material.local_path = copy.local_path.clone();
                             material.published_at = copy.published_at;
                         }
-                        None => not_downloaded.push(id.clone()),
+                        None => {
+                            not_downloaded.push(id.clone());
+                            if file.locked_for_user == Some(true) {
+                                blocked.insert(id.clone(), DownloadBlock::Locked);
+                            } else if file.size.is_some_and(|s| s > self.options.max_file_bytes) {
+                                blocked.insert(id.clone(), DownloadBlock::TooLarge);
+                            }
+                        }
                     }
                 }
             }
@@ -853,6 +862,10 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                             material.module_id = None;
                         }
                         store.upsert_material(&material)?;
+                        if material.kind == MaterialKind::File {
+                            let block = blocked.get(&material.id).copied();
+                            store.set_download_blocked(&material.id, block)?;
+                        }
                     }
                     for id in &not_downloaded {
                         store.set_text_state(id, TextStatus::NotDownloaded, None, None)?;
@@ -946,6 +959,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 // An expired token aborts; anything else about ONE file is a warning.
                 Err(CanvasError::Unauthorized) => return Err(CanvasError::Unauthorized),
                 Err(err) => {
+                    // Larger than its listed size said: asking again won't help.
+                    if matches!(err, CanvasError::TooLarge) && !job.had_copy {
+                        let id = job.material.id.clone();
+                        with_store(self.db, move |store| {
+                            store.set_download_blocked(&id, Some(DownloadBlock::TooLarge))
+                        })
+                        .await?;
+                    }
                     let note = if job.had_copy {
                         " (kept the earlier copy)"
                     } else {

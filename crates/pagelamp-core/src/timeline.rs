@@ -674,6 +674,7 @@ mod tests {
             content_hash: None,
             text_status: TextStatus::Pending,
             text_error: None,
+            download_blocked: None,
             updated_at: noon(date(2026, 9, 1)),
         }
     }

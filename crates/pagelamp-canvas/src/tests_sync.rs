@@ -978,6 +978,7 @@ async fn i_a_locked_file_keeps_its_earlier_copy() {
     let materials = f.store().list_materials(&course101(&f)).unwrap();
     let notes = material(&materials, "/file/502");
     assert_eq!(notes.text_status, TextStatus::Ok);
+    assert_eq!(notes.download_blocked, None, "it has a copy");
     assert!(
         notes
             .local_path
@@ -985,6 +986,49 @@ async fn i_a_locked_file_keeps_its_earlier_copy() {
             .is_some_and(|p| Path::new(p).is_file())
     );
     assert_eq!(f.store().search("stomata", None, 5).unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn files_that_cannot_be_downloaded_say_why_until_they_can() {
+    let f = Fixture::new().await;
+    let mut locked = f.file(502, "notes.txt", 20);
+    locked["url"] = Value::Null;
+    locked["locked_for_user"] = json!(true);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/files"))
+        .and(query_param("page", "2"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!([locked, f.file(503, "huge.txt", 5000)])),
+        )
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    f.standard().await;
+    f.sync(&f.options(false)).await.unwrap();
+    let materials = f.store().list_materials(&course101(&f)).unwrap();
+    let state = |id: &str| {
+        let m = material(&materials, id);
+        (m.text_status, m.download_blocked)
+    };
+    assert_eq!(state("/file/501"), (TextStatus::NotDownloaded, None));
+    assert_eq!(
+        state("/file/502"),
+        (TextStatus::NotDownloaded, Some(DownloadBlock::Locked))
+    );
+    assert_eq!(
+        state("/file/503"),
+        (TextStatus::NotDownloaded, Some(DownloadBlock::TooLarge))
+    );
+
+    // Unlocked later: the reason is cleared, the file can be downloaded on request.
+    f.canvas.reset().await;
+    f.standard().await;
+    f.sync(&f.options(false)).await.unwrap();
+    let materials = f.store().list_materials(&course101(&f)).unwrap();
+    let notes = material(&materials, "/file/502");
+    assert_eq!(notes.text_status, TextStatus::NotDownloaded);
+    assert_eq!(notes.download_blocked, None);
 }
 
 #[tokio::test]

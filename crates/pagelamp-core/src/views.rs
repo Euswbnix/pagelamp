@@ -98,6 +98,9 @@ pub struct MaterialView {
     pub url: Option<String>,
     pub text_status: TextStatus,
     pub text_error: Option<String>,
+    /// Why a `NotDownloaded` file cannot be downloaded on request (locked in the LMS, too
+    /// large); `None` when a download may work.
+    pub download_blocked: Option<DownloadBlock>,
     /// Number of text chunks (pages/slides/sections) available via `read_material`.
     pub chunk_count: u32,
 }
@@ -705,6 +708,7 @@ impl CourseData {
             url: material.url.clone(),
             text_status: material.text_status,
             text_error: material.text_error.clone(),
+            download_blocked: material.download_blocked,
             chunk_count: self.chunks_of(&material.id),
         }
     }

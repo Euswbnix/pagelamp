@@ -322,6 +322,25 @@ impl TextStatus {
     }
 }
 
+/// Why a file that is recorded `NotDownloaded` cannot be downloaded by asking again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadBlock {
+    /// The LMS locks the file for this student (e.g. not released yet).
+    Locked,
+    /// Larger than the download size limit.
+    TooLarge,
+}
+
+impl DownloadBlock {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DownloadBlock::Locked => "locked",
+            DownloadBlock::TooLarge => "too_large",
+        }
+    }
+}
+
 /// A material as produced by a source during sync. Index state (hash, text status) is owned
 /// by `ingest` and is preserved when an existing row is upserted.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -359,6 +378,8 @@ pub struct Material {
     pub content_hash: Option<String>,
     pub text_status: TextStatus,
     pub text_error: Option<String>,
+    /// Set (by the Canvas sync) when a `NotDownloaded` file cannot be downloaded on request.
+    pub download_blocked: Option<DownloadBlock>,
     pub updated_at: Timestamp,
 }
 

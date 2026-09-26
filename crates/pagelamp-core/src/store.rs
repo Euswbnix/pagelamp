@@ -151,9 +151,11 @@ CREATE TABLE study_plans (
 );
 "#;
 
-/// Version 2: `events.course_hint` (the course text a calendar feed gave, for relinking).
+/// Version 2: `events.course_hint` (the course text a calendar feed gave, for relinking) and
+/// `materials.download_blocked` (`DownloadBlock` or NULL).
 pub const SCHEMA_V2: &str = r#"
 ALTER TABLE events ADD COLUMN course_hint TEXT;
+ALTER TABLE materials ADD COLUMN download_blocked TEXT;
 "#;
 
 /// Schema migrations, in order: `MIGRATIONS[i]` upgrades a database from `user_version` `i`
@@ -199,7 +201,7 @@ const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
      url, ai_policy, ai_policy_note, ai_access, hidden, enrollment_active, updated_at";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
-     published_at, week_hint, content_hash, text_status, text_error, updated_at";
+     published_at, week_hint, content_hash, text_status, text_error, download_blocked, updated_at";
 const CHUNK_COLUMNS: &str = "material_id, ord, locator, text";
 const EVENT_COLUMNS: &str = "id, source_id, course_id, kind, title, starts_at, ends_at, due_at, url, \
                              updated_at, course_hint";
@@ -778,6 +780,19 @@ impl Store {
              SET text_status = ?2, text_error = ?3, content_hash = COALESCE(?4, content_hash)
              WHERE id = ?1",
             params![material_id, status.as_str(), error, content_hash],
+        )?;
+        expect_changed(changed, "material", material_id)
+    }
+
+    /// Record why a file cannot be downloaded on request (`None` clears it).
+    pub fn set_download_blocked(
+        &self,
+        material_id: &str,
+        blocked: Option<DownloadBlock>,
+    ) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE materials SET download_blocked = ?2 WHERE id = ?1",
+            params![material_id, blocked.map(DownloadBlock::as_str)],
         )?;
         expect_changed(changed, "material", material_id)
     }
@@ -1401,6 +1416,7 @@ fn material_from_row(row: &Row<'_>) -> rusqlite::Result<Material> {
         content_hash: row.get("content_hash")?,
         text_status: get_value(row, "text_status")?,
         text_error: row.get("text_error")?,
+        download_blocked: get_opt_value(row, "download_blocked")?,
         updated_at: get_value(row, "updated_at")?,
     })
 }
@@ -1560,6 +1576,13 @@ impl TextValue for TextStatus {
             TextStatus::Error,
         ];
         variant_named(text, &all, TextStatus::as_str)
+    }
+}
+
+impl TextValue for DownloadBlock {
+    fn parse_text(text: &str) -> Option<Self> {
+        let all = [DownloadBlock::Locked, DownloadBlock::TooLarge];
+        variant_named(text, &all, DownloadBlock::as_str)
     }
 }
 
@@ -1740,6 +1763,10 @@ mod tests {
             ],
             SourceErrorKind::as_str,
         );
+        round_trip(
+            &[DownloadBlock::Locked, DownloadBlock::TooLarge],
+            DownloadBlock::as_str,
+        );
     }
 
     #[test]
@@ -1749,6 +1776,8 @@ mod tests {
         assert_eq!(json, MaterialKind::ExternalLink.as_str());
         let json = serde_json::to_value(TextStatus::NotDownloaded).unwrap();
         assert_eq!(json, TextStatus::NotDownloaded.as_str());
+        let json = serde_json::to_value(DownloadBlock::TooLarge).unwrap();
+        assert_eq!(json, DownloadBlock::TooLarge.as_str());
     }
 
     #[test]
