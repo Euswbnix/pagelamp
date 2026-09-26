@@ -25,10 +25,12 @@
 //! On top of that (see `Limits`): `.pptx`/`.docx` may list at most 10,000 zip entries; a
 //! PDF may list at most 5,000 pages, and PDF pages that would make `pdf-extract` recurse
 //! endlessly (which aborts the process) are skipped. `lopdf` inflates PDF streams without
-//! any size limit, so before it sees a PDF, `pdf_inflate` inflates every `FlateDecode`
-//! stream with a cap (64 MB per stream, 256 MB together) and refuses the file above that.
-//! That check is a heuristic with known gaps (image-labelled streams, other filters,
-//! encrypted streams; see `pdf_inflate`); closing them needs extraction in a child process.
+//! any size limit, so before it sees a PDF, `pdf_inflate` decodes every stream with
+//! `FlateDecode` in its filter chain with a cap (64 MB per stream and 256 MB together; image
+//! streams 512 MB each, outside the total) and refuses the file above that, or when another
+//! filter precedes a `FlateDecode`. That check is a heuristic with known gaps (filters other
+//! than Flate/ASCII, encrypted streams; see `pdf_inflate`); closing them needs extraction in
+//! a child process.
 //!
 //! Where things live (for maintainers):
 //! - `format` — which extractor handles a file (MIME/extension rules);
@@ -153,6 +155,8 @@ pub(crate) struct Limits {
     pub(crate) max_pdf_stream_bytes: u64,
     /// PDF: most bytes all `FlateDecode` streams (images excepted) may inflate to together.
     pub(crate) max_pdf_inflated_bytes: u64,
+    /// PDF: most bytes one image stream may inflate to (images don't count to the total).
+    pub(crate) max_pdf_image_bytes: u64,
 }
 
 impl Limits {
@@ -165,6 +169,7 @@ impl Limits {
         max_pdf_pages: 5_000,
         max_pdf_stream_bytes: 64 * MB,
         max_pdf_inflated_bytes: 256 * MB,
+        max_pdf_image_bytes: 512 * MB,
     };
 }
 
@@ -188,8 +193,11 @@ fn extract_file_with_limits(
             let bytes = read_file(path, limits)?;
             pdf_inflate::check(
                 &bytes,
-                limits.max_pdf_stream_bytes,
-                limits.max_pdf_inflated_bytes,
+                pdf_inflate::Caps {
+                    per_stream: limits.max_pdf_stream_bytes,
+                    per_image: limits.max_pdf_image_bytes,
+                    total: limits.max_pdf_inflated_bytes,
+                },
             )?;
             pdf::extract(&bytes, limits.max_pdf_pages)?
         }
