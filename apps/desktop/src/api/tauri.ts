@@ -66,15 +66,25 @@ export function createTauriApi(): StudentOsApi {
 
     mcpClientConfigs: () => call("mcp_client_configs"),
 
+    // Plugin calls, like commands, reject only with an ApiError.
     pickFolder: async () => {
-      // Needs capability `dialog:allow-open` (src-tauri/capabilities/default.json).
-      const picked = await open({ directory: true, multiple: false });
-      return typeof picked === "string" ? picked : null;
+      try {
+        // Needs capability `dialog:allow-open` (src-tauri/capabilities/default.json).
+        const picked = await open({ directory: true, multiple: false });
+        return typeof picked === "string" ? picked : null;
+      } catch (error) {
+        throw toApiError(error);
+      }
     },
     openExternal: async (url) => {
       // The opener capability is scoped to http(s) too; this check gives a clearer error.
       if (!isHttpUrl(url)) throw new ApiError("invalid", "Only web links can be opened");
-      await openUrl(url);
+      try {
+        // Normalised (scheme/host lower-cased, spaces trimmed) so it matches the scope glob.
+        await openUrl(new URL(url.trim()).href);
+      } catch (error) {
+        throw toApiError(error);
+      }
     },
     revealDataDir: () => call("reveal_data_dir"),
   };

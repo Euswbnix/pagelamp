@@ -1,10 +1,10 @@
 import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useApi } from "@/api/context";
 import type { Course, CourseOverview } from "@/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
+import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ function Freshness({ overview }: { overview: CourseOverview }) {
 
 function OpenWebsiteButton({ url }: { url: string }) {
   const { t } = useTranslation("course");
-  const api = useApi();
+  const openExternal = useOpenExternal();
   return (
     <Button asChild variant="outline">
       <a
@@ -91,7 +91,7 @@ function OpenWebsiteButton({ url }: { url: string }) {
         onClick={(event) => {
           // The desktop webview never navigates away; the link opens in the browser.
           event.preventDefault();
-          void api.openExternal(url);
+          openExternal(url);
         }}
       >
         <ExternalLinkIcon aria-hidden />

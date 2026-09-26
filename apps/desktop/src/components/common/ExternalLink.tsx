@@ -1,8 +1,8 @@
 import { ExternalLink as ExternalIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { useApi } from "@/api/context";
 import { isHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
+import { useOpenExternal } from "./useOpenExternal";
 
 interface ExternalLinkProps {
   href: string;
@@ -17,7 +17,7 @@ interface ExternalLinkProps {
  * (file://, webcal:, …) renders as plain text: it is never opened.
  */
 export function ExternalLink({ href, children, className, showIcon = true }: ExternalLinkProps) {
-  const api = useApi();
+  const openExternal = useOpenExternal();
   if (!isHttpUrl(href)) return <span className={className}>{children}</span>;
   return (
     <a
@@ -30,7 +30,7 @@ export function ExternalLink({ href, children, className, showIcon = true }: Ext
       )}
       onClick={(event) => {
         event.preventDefault();
-        void api.openExternal(href);
+        openExternal(href);
       }}
     >
       {children}
