@@ -751,6 +751,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 && file.locked_for_user != Some(true)
                 && file.size.is_none_or(|s| s <= self.options.max_file_bytes);
             let link = file.url.as_deref().and_then(|u| url::Url::parse(u).ok());
+            let has_link = link.is_some();
             match (downloadable, link) {
                 (true, Some(url)) => {
                     let dest = course_dir.join(file_name(file));
@@ -794,10 +795,19 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         }
                         None => {
                             not_downloaded.push(id.clone());
-                            if file.locked_for_user == Some(true) {
-                                blocked.insert(id.clone(), DownloadBlock::Locked);
-                            } else if file.size.is_some_and(|s| s > self.options.max_file_bytes) {
-                                blocked.insert(id.clone(), DownloadBlock::TooLarge);
+                            let max = self.options.max_file_bytes;
+                            let block = if file.locked_for_user == Some(true) || !has_link {
+                                // Canvas gives no (usable) download link to this student.
+                                Some(DownloadBlock::Locked)
+                            } else if let Some(size) = file.size {
+                                (size > max).then_some(DownloadBlock::TooLarge)
+                            } else {
+                                // Size not listed: keep what an earlier download found out.
+                                old.and_then(|m| m.download_blocked)
+                                    .filter(|b| *b == DownloadBlock::TooLarge)
+                            };
+                            if let Some(block) = block {
+                                blocked.insert(id.clone(), block);
                             }
                         }
                     }

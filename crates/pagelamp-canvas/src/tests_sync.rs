@@ -1039,14 +1039,41 @@ async fn files_that_cannot_be_downloaded_say_why_until_they_can() {
         (TextStatus::NotDownloaded, Some(DownloadBlock::TooLarge))
     );
 
-    // Unlocked later: the reason is cleared, the file can be downloaded on request.
+    // Unlocked later: the reason is cleared, the file can be downloaded on request. The big
+    // file's size is no longer listed: it stays "too large". A file without a download link
+    // can't be downloaded either.
     f.canvas.reset().await;
+    let mut size_unknown = f.file(503, "huge.txt", 0);
+    size_unknown["size"] = Value::Null;
+    let mut no_link = f.file(504, "linkless.txt", 20);
+    no_link["url"] = json!("not a url");
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/files"))
+        .and(query_param("page", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            f.file(502, "notes.txt", 20),
+            size_unknown,
+            no_link
+        ])))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
     f.standard().await;
     f.sync(&f.options(false)).await.unwrap();
     let materials = f.store().list_materials(&course101(&f)).unwrap();
-    let notes = material(&materials, "/file/502");
-    assert_eq!(notes.text_status, TextStatus::NotDownloaded);
-    assert_eq!(notes.download_blocked, None);
+    let state = |id: &str| {
+        let m = material(&materials, id);
+        (m.text_status, m.download_blocked)
+    };
+    assert_eq!(state("/file/502"), (TextStatus::NotDownloaded, None));
+    assert_eq!(
+        state("/file/503"),
+        (TextStatus::NotDownloaded, Some(DownloadBlock::TooLarge))
+    );
+    assert_eq!(
+        state("/file/504"),
+        (TextStatus::NotDownloaded, Some(DownloadBlock::Locked))
+    );
 }
 
 #[tokio::test]
