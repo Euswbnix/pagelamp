@@ -200,6 +200,34 @@ describe("Downloading Canvas files", () => {
     expect(screen.queryByText("No new files to download")).toBeNull();
   });
 
+  it("doesn't count or offer files that can't be downloaded, and says why", async () => {
+    const { user } = await openCourse(DEMO205);
+    // Two files aren't downloaded, but the recording is over the size limit.
+    expect(
+      await screen.findByText("1 file here isn't downloaded yet, so your AI app can't read it."),
+    ).toBeInTheDocument();
+    const recording = (await screen.findByText("Unit C lecture recording")).closest("li");
+    if (!(recording instanceof HTMLElement)) throw new Error("no row for the recording");
+    expect(within(recording).getByText("Too large to download")).toBeInTheDocument();
+    expect(within(recording).queryByText("Not downloaded")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Download files…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Download this course's files?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Download" }));
+    expect(await screen.findByText("Downloaded 1 file")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "DEMO205: Unit C lecture recording skipped (larger than the download limit)",
+      ),
+    ).toBeInTheDocument();
+    // Only the blocked file is left, so there's nothing more to offer.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Download files…" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("never offers a download for folder courses", async () => {
     // DEMO101's week 4 has a "not downloaded" archive, but folder courses are local.
     await openCourse(DEMO101);

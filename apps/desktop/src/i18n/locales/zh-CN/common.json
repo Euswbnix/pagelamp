@@ -126,6 +126,10 @@
     "not_downloaded": "未下载",
     "error": "文字提取失败"
   },
+  "downloadBlock": {
+    "locked": "在 Canvas 中被锁定",
+    "too_large": "文件太大，无法下载"
+  },
   "materialKind": {
     "file": "文件",
     "page": "页面",

@@ -10,6 +10,7 @@ import type {
   CourseTimeline,
   CrashReport,
   Deadline,
+  DownloadBlock,
   EventKind,
   MaterialKind,
   MaterialView,
@@ -205,6 +206,8 @@ function material(
     module?: Module;
     error?: string;
     url?: string;
+    /** A Canvas file that can't be downloaded on request. */
+    blocked?: DownloadBlock;
   } = {},
 ): MaterialView {
   materialSeq += 1;
@@ -220,6 +223,7 @@ function material(
     url: opts.url ?? `https://canvas.demo.test/files/${materialSeq}`,
     text_status: opts.status ?? "ok",
     text_error: opts.error ?? null,
+    download_blocked: opts.blocked ?? null,
     chunk_count: (opts.status ?? "ok") === "ok" ? (opts.chunks ?? 8) : 0,
   };
 }
@@ -397,6 +401,12 @@ function demo205(now: Date): MockCourse {
     material(c.id, "Unit C worked examples", "file", 4, -3, now, {
       module: mc,
       status: "not_downloaded",
+    }),
+    // Over the download limit: listed, but asking for a download won't help.
+    material(c.id, "Unit C lecture recording", "file", 4, -3, now, {
+      module: mc,
+      status: "not_downloaded",
+      blocked: "too_large",
     }),
     material(c.id, "Course website", "external_link", null, -24, now, { status: "unsupported" }),
   ];

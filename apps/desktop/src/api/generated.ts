@@ -50,6 +50,13 @@ export type SourceKind = "canvas" | "folder" | "ical";
 export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
+ * Why a file that is recorded `NotDownloaded` cannot be downloaded by asking again.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DownloadBlock".
+ */
+export type DownloadBlock = "locked" | "too_large";
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "MaterialKind".
  */
@@ -370,6 +377,11 @@ export interface MaterialView {
    */
   chunk_count: number;
   course_id: string;
+  /**
+   * Why a `NotDownloaded` file cannot be downloaded on request (locked in the LMS, too
+   * large); `None` when a download may work.
+   */
+  download_blocked?: DownloadBlock | null;
   id: string;
   kind: MaterialKind;
   module_id?: string | null;

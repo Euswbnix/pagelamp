@@ -22,6 +22,7 @@ export type {
   CourseTimeline,
   CrashReport,
   Deadline,
+  DownloadBlock,
   EventKind,
   InstallKind,
   MaterialKind,

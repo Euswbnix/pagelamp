@@ -126,6 +126,10 @@
     "not_downloaded": "Not downloaded",
     "error": "Couldn't extract text"
   },
+  "downloadBlock": {
+    "locked": "Locked in Canvas",
+    "too_large": "Too large to download"
+  },
   "materialKind": {
     "file": "File",
     "page": "Page",

@@ -101,6 +101,11 @@ describe("mock API", () => {
     const result = await api.downloadCourseFiles(canvas, () => {});
     expect(result.files_downloaded).toBe(1);
     const after = (await api.weekMaterials(canvas, 4)).materials;
-    expect(after.some((m) => m.text_status === "not_downloaded")).toBe(false);
+    // Everything downloadable is downloaded; a too-large file stays, explained in a warning.
+    const left = after.filter((m) => m.text_status === "not_downloaded");
+    expect(left.map((m) => m.download_blocked)).toEqual(["too_large"]);
+    expect(result.warnings).toEqual([
+      "DEMO205: Unit C lecture recording skipped (larger than the download limit)",
+    ]);
   });
 });

@@ -424,16 +424,30 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const [result] = await runSync([source.id], onEvent);
       if (!result) throw new ApiError("internal", "Sync produced no result");
       let downloaded = 0;
+      const warnings = [...result.warnings];
       if (result.ok) {
         for (const m of c.materials) {
-          if (m.kind === "file" && m.text_status === "not_downloaded") {
-            m.text_status = "ok";
-            m.chunk_count = 6;
-            downloaded += 1;
+          if (m.kind !== "file" || m.text_status !== "not_downloaded") continue;
+          if (m.download_blocked) {
+            // Like the backend: skipped, and only explained in the run's warnings.
+            warnings.push(
+              m.download_blocked === "locked"
+                ? `${c.course.code}: ${m.title} skipped (locked in Canvas)`
+                : `${c.course.code}: ${m.title} skipped (larger than the download limit)`,
+            );
+            continue;
           }
+          m.text_status = "ok";
+          m.chunk_count = 6;
+          downloaded += 1;
         }
       }
-      return clone({ ...result, files_downloaded: downloaded, files_indexed: downloaded });
+      return clone({
+        ...result,
+        files_downloaded: downloaded,
+        files_indexed: downloaded,
+        warnings,
+      });
     },
 
     listCourses: () => respond(() => db.courses.map(summary)),

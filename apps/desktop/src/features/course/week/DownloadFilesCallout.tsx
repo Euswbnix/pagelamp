@@ -42,8 +42,9 @@ export function DownloadFilesCallout({
   const running = useSyncStore((s) => s.running);
 
   const isCanvas = sources.data?.find((s) => s.id === course.source_id)?.kind === "canvas";
+  // Locked or too-large files can't be downloaded by asking: don't count (and offer) them.
   const missing = materials.filter(
-    (m) => m.kind === "file" && m.text_status === "not_downloaded",
+    (m) => m.kind === "file" && m.text_status === "not_downloaded" && !m.download_blocked,
   ).length;
   if (!isCanvas || missing === 0) return null;
 

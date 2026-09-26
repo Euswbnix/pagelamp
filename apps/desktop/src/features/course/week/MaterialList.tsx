@@ -84,6 +84,7 @@ function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReada
           status={material.text_status}
           chunks={material.chunk_count}
           aiReadable={aiReadable}
+          blocked={material.download_blocked}
         />
         {material.text_error ? (
           <p lang="en" className="text-xs text-muted-foreground">

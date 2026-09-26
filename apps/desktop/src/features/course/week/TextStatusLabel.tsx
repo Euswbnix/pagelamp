@@ -3,11 +3,13 @@ import {
   CircleCheck,
   CircleSlash,
   CloudOff,
+  FileWarning,
   Hourglass,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { TextStatus } from "@/api/types";
+import type { DownloadBlock, TextStatus } from "@/api/types";
 import { cn } from "@/lib/utils";
 
 const STYLE: Record<TextStatus, { icon: LucideIcon; className: string }> = {
@@ -16,6 +18,11 @@ const STYLE: Record<TextStatus, { icon: LucideIcon; className: string }> = {
   unsupported: { icon: CircleSlash, className: "text-muted-foreground" },
   not_downloaded: { icon: CloudOff, className: "text-muted-foreground" },
   error: { icon: CircleAlert, className: "text-warning" },
+};
+
+const BLOCKED_ICON: Record<DownloadBlock, LucideIcon> = {
+  locked: Lock,
+  too_large: FileWarning,
 };
 
 /**
@@ -27,14 +34,26 @@ export function TextStatusLabel({
   status,
   chunks,
   aiReadable,
+  blocked,
 }: {
   status: TextStatus;
   chunks: number;
   aiReadable: boolean;
+  /** Why a not-downloaded file can't be downloaded on request (Canvas). */
+  blocked?: DownloadBlock | null;
 }) {
   const { t } = useTranslation("course");
   const { t: tc } = useTranslation();
   const { icon: Icon, className } = STYLE[status];
+  if (status === "not_downloaded" && blocked) {
+    const BlockedIcon = BLOCKED_ICON[blocked];
+    return (
+      <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}>
+        <BlockedIcon className="size-3.5 shrink-0" aria-hidden />
+        {tc(`downloadBlock.${blocked}`)}
+      </span>
+    );
+  }
   if (status === "ok" && !aiReadable) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
