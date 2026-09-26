@@ -123,6 +123,44 @@ your syllabus. Record each course's policy in Weekmark (`weekmark course policy 
 learning_aid`, or the course's *AI policy* tab). Your AI app sees it and adjusts; for courses marked
 `prohibited` ("No AI"), Weekmark doesn't share the course materials at all.
 
+## Troubleshooting and reporting problems
+
+**Desktop app:** *Settings → Help & feedback → Copy diagnostic report* shows you the report first;
+check it, then paste it into a [GitHub issue](https://github.com/Euswbnix/weekmark/issues/new/choose).
+If Weekmark closed unexpectedly, the next launch offers the same button.
+
+**Command line:** `weekmark doctor` checks your setup (data folder, database, keychain, sources,
+AI apps). `weekmark report --out weekmark-report.md` writes a report to attach to an issue — read
+it first. Reports contain your Weekmark version, OS, setup checks and recent log lines; course names
+are replaced by "Course 1", "Course 2", and tokens, calendar-feed links and course text are removed.
+
+**Logs** stay on your computer, in the `logs/` folder of your data folder (kept for 7 days).
+If your AI app can't reach Weekmark, also check the AI app's own logs — for Claude Desktop on macOS:
+`~/Library/Logs/Claude/mcp.log` and `~/Library/Logs/Claude/mcp-server-weekmark.log`.
+
+### Canvas sync
+
+If a Canvas sync fails or looks incomplete, run it again with diagnostics:
+
+```bash
+weekmark sync -v
+```
+
+(or set `WEEKMARK_LOG=debug`). You'll see one line per Canvas request — for example
+`GET /api/v1/courses/1234/modules → 200 (85 ms, rate limit remaining 690)` — plus Canvas's own error
+message when a request fails. At the end, a per-course summary shows what was read.
+
+- **"Canvas rejected the access token"** — the token expired or was revoked. Create a new one
+  (Canvas: Account → Settings → Approved Integrations → + New Access Token) and run
+  `weekmark sources update-secret <source id>` (see `weekmark sources`), or use *Replace token* in the
+  desktop app.
+- **"… not available (not available to you in Canvas)"** — that part of the course is hidden from
+  students (for example the Files tab). Weekmark uses what is visible and keeps what it already has.
+- **"Canvas kept throttling requests"** — wait a few minutes and sync again.
+
+**Never paste** your Canvas access token, your calendar feed link, or copies of course materials into
+an issue — even if something seems to be missing from the report.
+
 ## How it works
 
 ```

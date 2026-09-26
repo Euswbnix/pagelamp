@@ -43,6 +43,16 @@ that app. Weekmark tells your AI app to cite course sources, tutor rather than p
 and respect each course's AI policy — but you are responsible for following your course and
 university rules.
 
+## Logs and diagnostic reports
+
+Weekmark writes log files only on your computer, in the `logs/` folder of your data folder, and
+deletes them after 7 days. Logs record what Weekmark did (e.g. "synced 5 courses", request paths and
+status codes) — never tokens, calendar-feed links, signed download links or course text; your home
+folder is shown as `~`. A diagnostic report (*Copy diagnostic report* in the app, or
+`weekmark report`) is created only when you ask for it, shows you its full content first, and
+replaces course names with "Course 1", "Course 2". Nothing is ever sent automatically — you decide
+whether to share a report, e.g. in a GitHub issue.
+
 ## Questions
 
 Open an issue at https://github.com/Euswbnix/weekmark/issues (don't include personal data), or see

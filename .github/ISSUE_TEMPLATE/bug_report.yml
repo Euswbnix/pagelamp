@@ -40,6 +40,15 @@ body:
     validations:
       required: true
   - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report
+      description: |
+        Desktop app: Settings → Help & feedback → Copy diagnostic report.
+        Command line: `weekmark report --out weekmark-report.md` (attach the file).
+        Read it before pasting — it's already redacted, but it's your data.
+      render: markdown
+  - type: textarea
     id: logs
     attributes:
       label: Error messages or output
