@@ -1107,6 +1107,38 @@ fn relink_events_links_hinted_events_to_courses_created_later() {
     assert_eq!(by_id("ev-plain").course_id, None);
 }
 
+#[test]
+fn calendar_events_go_to_the_visible_course_when_a_hidden_one_has_the_same_code() {
+    let store = demo_store();
+    store
+        .upsert_source(&source(FEED, SourceKind::Ical, "Demo feed"))
+        .unwrap();
+    // Last year's DEMO101 (hidden) sorts after this year's; before, the last one won.
+    store
+        .upsert_course(&course(
+            "999",
+            Some("DEMO101"),
+            "Intro to Demo Studies (old)",
+        ))
+        .unwrap();
+    store.set_course_hidden(&course_id("999"), true).unwrap();
+    let courses = store.list_courses(true).unwrap();
+    assert_eq!(
+        course_for_hint("DEMO101 F LEC0101", &courses).map(|c| c.id.as_str()),
+        Some(course_id("101").as_str())
+    );
+
+    let mut quiz = event("ev-quiz", FEED, None, "Quiz 1");
+    quiz.due_at = Some(ts("2026-10-01T10:00:00Z"));
+    quiz.course_hint = Some("DEMO101 F LEC0101".into());
+    store.replace_events(FEED, &[quiz]).unwrap();
+    assert_eq!(store.relink_events().unwrap(), 1);
+    let events = store
+        .list_events(ts("2026-01-01T00:00:00Z"), ts("2027-01-01T00:00:00Z"), None)
+        .unwrap();
+    assert_eq!(events[0].course_id, Some(course_id("101")));
+}
+
 fn quiz_for(source_id: &str) -> Event {
     let mut quiz = event("ev-x", source_id, None, "Demo");
     quiz.due_at = Some(ts("2026-10-01T10:00:00Z"));

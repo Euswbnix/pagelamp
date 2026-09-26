@@ -447,7 +447,8 @@ pub struct Event {
 
 /// The course that a source's course text (e.g. the iCal "[DEMO101H1 F LEC0101]" suffix)
 /// refers to: the course whose code is a prefix of the text, case-insensitive with spaces
-/// ignored. The longest code wins ("DEMO1011" over "DEMO101").
+/// ignored. The longest code wins ("DEMO1011" over "DEMO101"); between equally long codes a
+/// visible course wins over a hidden one (e.g. last year's folder of the same course).
 pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Course> {
     fn squash(text: &str) -> String {
         text.chars()
@@ -462,7 +463,7 @@ pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Cour
             let code = squash(course.code.as_deref()?);
             (!code.is_empty() && target.starts_with(&code)).then_some((code.len(), course))
         })
-        .max_by_key(|(len, _)| *len)
+        .max_by_key(|(len, course)| (*len, !course.hidden))
         .map(|(_, course)| course)
 }
 
