@@ -36,10 +36,15 @@ pub(crate) fn sync_folder(
     default_term_start: Option<NaiveDate>,
     progress: ProgressFn<'_>,
 ) -> Result<FolderSyncReport, SourceError> {
+    // Only the folder's own name: this message is shown to the AI app by `sync_status`, and
+    // the full path would include the user name.
     let not_found = || {
+        let name = root
+            .file_name()
+            .map(|n| format!(" '{}'", n.to_string_lossy()))
+            .unwrap_or_default();
         SourceError::not_found(format!(
-            "The course folder {} does not exist or cannot be read.",
-            root.display()
+            "The course folder{name} does not exist or cannot be read."
         ))
     };
     if !root.is_dir() {

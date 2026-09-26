@@ -267,6 +267,10 @@ fn missing_root_is_not_found_and_changes_nothing() {
     )
     .unwrap_err();
     assert_eq!(err.kind, SourceErrorKind::NotFound);
+    assert_eq!(
+        err.message,
+        "The course folder 'gone' does not exist or cannot be read."
+    );
     assert_eq!(store.list_courses(true).unwrap().len(), 2, "nothing pruned");
 }
 

@@ -67,6 +67,7 @@ use std::time::Instant;
 
 use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
+use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
     AiMaterialsState, AiPolicy, Confidence, EventKind, MaterialKind, SourceErrorKind, SourceKind,
     StoreCounts, StudyPlan, TextStatus, Timestamp,
@@ -631,7 +632,9 @@ impl PageLampServer {
                         label: s.source.label.clone(),
                         kind: s.source.kind,
                         last_synced_at: s.source.last_synced_at,
-                        last_error: s.source.last_error.clone(),
+                        // Error texts can quote paths or server answers: never pass on the
+                        // home folder (user name) or anything secret-shaped.
+                        last_error: s.source.last_error.as_deref().map(redact),
                         last_error_kind: s.source.last_error_kind,
                         stale: s.stale,
                     })

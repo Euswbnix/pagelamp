@@ -694,7 +694,28 @@ async fn local_file_paths_never_reach_the_ai_app() {
         s.set_text_state(&mid("local-notes"), TextStatus::Ok, None, Some("h"))
             .unwrap();
     });
+    // An error text quoting a path in the home folder (an older version wrote those).
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap();
+    set(&db, |s| {
+        s.record_sync(
+            SOURCE,
+            Utc::now(),
+            Some((
+                SourceErrorKind::NotFound,
+                &format!("The course folder {home}/Courses does not exist or cannot be read."),
+            )),
+        )
+        .unwrap();
+    });
     let client = connect(db).await;
+    let status = text_of(&call(&client, "sync_status", json!({})).await);
+    assert!(
+        status.contains("folder ~/Courses does not exist"),
+        "{status}"
+    );
+    assert!(!status.contains(&home), "{status}");
     let outputs = [
         text_of(&call(&client, "week_materials", json!({"course": "DEMO101"})).await),
         text_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await),
