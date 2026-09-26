@@ -9,13 +9,16 @@
 //! `<course_material>` wrappers, the `guidance` string, output caps in characters) live in
 //! `studentos-mcp`.
 
-use chrono::{DateTime, Local, NaiveDate, Utc};
+use std::collections::{BTreeSet, HashMap};
+
+use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::Result;
 use crate::model::*;
 use crate::store::Store;
+use crate::timeline;
+use crate::{Error, Result};
 
 /// Window for "recent" materials/announcements in overviews.
 pub const RECENT_DAYS: u32 = 14;
@@ -158,20 +161,40 @@ pub enum WeekNoteKind {
 pub struct MaterialText {
     pub material: MaterialView,
     pub course_code: Option<String>,
+    /// Effective AI access for the material's course. When not `readable`, `chunks` is empty
+    /// (docs/ARCHITECTURE.md §3 rule 8).
+    pub ai_materials: AiMaterialsState,
     pub chunks: Vec<Chunk>,
     pub from_chunk: u32,
     /// Pass as `from_chunk` to continue; None when the end was reached.
     pub next_chunk: Option<u32>,
     pub total_chunks: u32,
+    /// True when the single chunk returned was longer than the limit and was cut.
+    pub truncated: bool,
 }
 
 /// An announcement with its text.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct Announcement {
     pub material: MaterialView,
+    /// Effective AI access for the course. When not `readable`, `text` is empty.
+    pub ai_materials: AiMaterialsState,
     pub text: String,
     /// True when `text` was cut to the caller's limit.
     pub truncated: bool,
+}
+
+/// Search results for an AI client: only courses whose material text is readable
+/// (docs/ARCHITECTURE.md §3 rule 8).
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct AiSearchResults {
+    pub hits: Vec<SearchHit>,
+    /// State of the requested course (only when a course filter was given). When it is not
+    /// `readable`, `hits` is empty.
+    pub course_ai_materials: Option<AiMaterialsState>,
+    /// Codes (or names, when a course has no code) of visible courses left out because their
+    /// material text is not readable (only when no course filter was given).
+    pub excluded_courses: Vec<String>,
 }
 
 /// A source with a freshness verdict.
@@ -179,7 +202,8 @@ pub struct Announcement {
 pub struct SourceStatus {
     #[serde(flatten)]
     pub source: SourceRecord,
-    /// Never synced, or last successful sync older than `STALE_AFTER_HOURS`.
+    /// Never synced, last successful sync older than `STALE_AFTER_HOURS`, or the last sync
+    /// failed.
     pub stale: bool,
 }
 
@@ -194,6 +218,10 @@ pub struct SyncStatus {
     pub stale: bool,
 }
 
+/// Bounds for `read_material`'s `max_chars` (smaller/larger requests are clamped).
+pub const MIN_READ_CHARS: usize = 200;
+pub const MAX_READ_CHARS: usize = 50_000;
+
 // ---------------------------------------------------------------------------------------------
 // View functions
 // ---------------------------------------------------------------------------------------------
@@ -201,49 +229,231 @@ pub struct SyncStatus {
 /// All courses (hidden ones included when `include_hidden`; the desktop app shows them with a
 /// toggle, the MCP server never does), ordered like `Store::list_courses`.
 pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec<CourseSummary>> {
-    let _ = (store, include_hidden, at);
-    todo!()
+    let sources = SourceIndex::load(store)?;
+    let upcoming = store.list_events(at.now, add_days(at.now, UPCOMING_DAYS), None)?;
+    let mut summaries = Vec::new();
+    for course in store.list_courses(include_hidden)? {
+        let data = CourseData::load(store, &course)?;
+        let timeline = data.timeline(&course, at);
+        let ai_materials = course.ai_materials();
+        let course_deadlines: Vec<&Event> = upcoming
+            .iter()
+            .filter(|event| event.course_id.as_deref() == Some(course.id.as_str()))
+            .collect();
+        let indexed = data
+            .materials
+            .iter()
+            .filter(|m| m.text_status == TextStatus::Ok && data.chunks_of(&m.id) > 0)
+            .count();
+        let counts = CourseCounts {
+            modules: count_u32(data.modules.len()),
+            materials: count_u32(data.materials.len()),
+            indexed_materials: if ai_materials.is_readable() {
+                count_u32(indexed)
+            } else {
+                0
+            },
+            upcoming_deadlines: count_u32(course_deadlines.len()),
+        };
+        let next_deadline = course_deadlines
+            .first()
+            .map(|event| deadline(event, Some(&course)));
+        let (source_label, last_synced_at) = sources.info(&course.source_id);
+        summaries.push(CourseSummary {
+            ai_materials,
+            timeline,
+            counts,
+            next_deadline,
+            source_label,
+            last_synced_at,
+            course,
+        });
+    }
+    Ok(summaries)
 }
 
-/// Timeline of one course from its modules/materials/events (see `timeline::infer_timeline`).
+/// Timeline of one course from its modules and materials (see `timeline::infer_timeline`).
 pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<CourseTimeline> {
-    let _ = (store, course, at);
-    todo!()
+    Ok(CourseData::load(store, course)?.timeline(course, at))
 }
 
-/// `course` is resolved with `Store::resolve_course` (hidden courses excluded).
-pub fn course_overview(store: &Store, course: &str, at: AsOf) -> Result<CourseOverview> {
-    let _ = (store, course, at);
-    todo!()
+/// "What's going on in this course right now". `course` is resolved with
+/// `Store::resolve_course_with(course, include_hidden)`: the desktop app passes `true` (a
+/// hidden course's page still works), the MCP server `false`.
+pub fn course_overview(
+    store: &Store,
+    course: &str,
+    include_hidden: bool,
+    at: AsOf,
+) -> Result<CourseOverview> {
+    let course = store.resolve_course_with(course, include_hidden)?;
+    let data = CourseData::load(store, &course)?;
+    let timeline = data.timeline(&course, at);
+    let current_modules = data
+        .modules
+        .iter()
+        .filter(|module| timeline.current_module_ids.contains(&module.id))
+        .cloned()
+        .collect();
+    let since = sub_days(at.now, RECENT_DAYS);
+    let recent = |announcements: bool| -> Vec<MaterialView> {
+        let mut recent: Vec<&Material> = data
+            .materials
+            .iter()
+            .filter(|m| (m.kind == MaterialKind::Announcement) == announcements)
+            .filter(|m| m.published_at.is_some_and(|p| p >= since && p <= at.now))
+            .collect();
+        recent.sort_by(|a, b| {
+            b.published_at
+                .cmp(&a.published_at)
+                .then(a.title.cmp(&b.title))
+        });
+        recent.into_iter().map(|m| data.view(m)).collect()
+    };
+    let upcoming_deadlines = store
+        .list_events(at.now, add_days(at.now, UPCOMING_DAYS), Some(&course.id))?
+        .iter()
+        .map(|event| deadline(event, Some(&course)))
+        .collect();
+    let (source_label, last_synced_at) = SourceIndex::load(store)?.info(&course.source_id);
+    Ok(CourseOverview {
+        ai_materials: course.ai_materials(),
+        timeline,
+        current_modules,
+        recent_materials: recent(false),
+        upcoming_deadlines,
+        recent_announcements: recent(true),
+        source_label,
+        last_synced_at,
+        course,
+    })
 }
 
 /// Materials of `week` (default: the inferred current week). A material belongs to week N
 /// when its `week_hint` is N; or it has no week_hint and its module's week_hint is N; or it
 /// has neither and the course term start is known and it was published during week N.
+/// Announcements are not week materials (see `course_overview` / `announcements`).
+///
+/// `course` is resolved with `include_hidden` like `course_overview`. When no week is given
+/// and the current week is unknown, the materials of the last `RECENT_DAYS` days are shown
+/// instead (`note_kind = CurrentWeekUnknown`).
 pub fn week_materials(
     store: &Store,
     course: &str,
     week: Option<u32>,
+    include_hidden: bool,
     at: AsOf,
 ) -> Result<WeekMaterials> {
-    let _ = (store, course, week, at);
-    todo!()
+    let course = store.resolve_course_with(course, include_hidden)?;
+    let data = CourseData::load(store, &course)?;
+    let timeline = data.timeline(&course, at);
+    let content: Vec<&Material> = data
+        .materials
+        .iter()
+        .filter(|m| m.kind != MaterialKind::Announcement)
+        .collect();
+
+    let mut weeks: BTreeSet<u32> = data.modules.iter().filter_map(|m| m.week_hint).collect();
+    weeks.extend(content.iter().filter_map(|m| data.week_of(&course, m)));
+    weeks.extend(timeline.current_week);
+    let available_weeks: Vec<u32> = weeks.into_iter().collect();
+
+    let (shown_week, modules, materials, note_kind) = match week.or(timeline.current_week) {
+        Some(n) => {
+            let modules: Vec<Module> = data
+                .modules
+                .iter()
+                .filter(|m| m.week_hint == Some(n))
+                .cloned()
+                .collect();
+            let materials: Vec<MaterialView> = content
+                .iter()
+                .filter(|m| data.week_of(&course, m) == Some(n))
+                .map(|m| data.view(m))
+                .collect();
+            let note_kind = if modules.is_empty() && materials.is_empty() {
+                Some(WeekNoteKind::NoMaterialsThisWeek)
+            } else if week.is_none() && timeline.outside_term {
+                Some(WeekNoteKind::OutsideTerm)
+            } else {
+                None
+            };
+            (Some(n), modules, materials, note_kind)
+        }
+        None => {
+            let since = sub_days(at.now, RECENT_DAYS);
+            let mut recent: Vec<&&Material> = content
+                .iter()
+                .filter(|m| m.published_at.is_some_and(|p| p >= since && p <= at.now))
+                .collect();
+            recent.sort_by(|a, b| {
+                b.published_at
+                    .cmp(&a.published_at)
+                    .then(a.title.cmp(&b.title))
+            });
+            let materials = recent.into_iter().map(|m| data.view(m)).collect();
+            (
+                None,
+                Vec::new(),
+                materials,
+                Some(WeekNoteKind::CurrentWeekUnknown),
+            )
+        }
+    };
+    let note = note_kind.map(|kind| week_note_text(kind, shown_week));
+    Ok(WeekMaterials {
+        ai_materials: course.ai_materials(),
+        week: shown_week,
+        requested_week: week,
+        timeline,
+        modules,
+        materials,
+        available_weeks,
+        note,
+        note_kind,
+        course,
+    })
 }
 
 /// Events with `when()` in [now - days_back, now + days_ahead], soonest first, optionally for
-/// one course. Events of hidden courses are excluded.
+/// one course. Without a course filter, events of hidden courses are excluded (events not
+/// linked to any course are kept). With a filter, `course` is resolved with
+/// `include_hidden` (desktop: `true`, MCP: `false`).
 pub fn deadlines(
     store: &Store,
     course: Option<&str>,
     days_ahead: u32,
     days_back: u32,
+    include_hidden: bool,
     at: AsOf,
 ) -> Result<Vec<Deadline>> {
-    let _ = (store, course, days_ahead, days_back, at);
-    todo!()
+    let from = sub_days(at.now, days_back);
+    let to = add_days(at.now, days_ahead);
+    if let Some(course) = course {
+        let course = store.resolve_course_with(course, include_hidden)?;
+        let events = store.list_events(from, to, Some(&course.id))?;
+        return Ok(events.iter().map(|e| deadline(e, Some(&course))).collect());
+    }
+    let courses: HashMap<String, Course> = store
+        .list_courses(true)?
+        .into_iter()
+        .map(|c| (c.id.clone(), c))
+        .collect();
+    let mut result = Vec::new();
+    for event in store.list_events(from, to, None)? {
+        let course = event.course_id.as_ref().and_then(|id| courses.get(id));
+        if course.is_some_and(|c| c.hidden) {
+            continue;
+        }
+        result.push(deadline(&event, course));
+    }
+    Ok(result)
 }
 
-/// Announcements of the last `days` days, newest first; each text capped at `max_chars`.
+/// Announcements of the last `days` days, newest first; each text capped at `max_chars`
+/// characters. `course` is resolved with `Store::resolve_course` (hidden excluded — this view
+/// serves the MCP server). For a course whose material text is not readable (rule 8) the
+/// announcements are listed with EMPTY text.
 pub fn announcements(
     store: &Store,
     course: &str,
@@ -251,34 +461,329 @@ pub fn announcements(
     max_chars: usize,
     at: AsOf,
 ) -> Result<Vec<Announcement>> {
-    let _ = (store, course, days, max_chars, at);
-    todo!()
+    let course = store.resolve_course(course)?;
+    let ai_materials = course.ai_materials();
+    let data = CourseData::load(store, &course)?;
+    let since = sub_days(at.now, days);
+    let mut items: Vec<&Material> = data
+        .materials
+        .iter()
+        .filter(|m| m.kind == MaterialKind::Announcement)
+        .filter(|m| m.published_at.is_some_and(|p| p >= since && p <= at.now))
+        .collect();
+    items.sort_by(|a, b| {
+        b.published_at
+            .cmp(&a.published_at)
+            .then(a.title.cmp(&b.title))
+    });
+    let mut result = Vec::new();
+    for item in items {
+        let (text, truncated) = if ai_materials.is_readable() {
+            let full: Vec<String> = store
+                .get_chunks(&item.id, 0, None)?
+                .into_iter()
+                .map(|c| c.text)
+                .collect();
+            truncate_chars(&full.join("\n\n"), max_chars)
+        } else {
+            (String::new(), false)
+        };
+        result.push(Announcement {
+            material: data.view(item),
+            ai_materials,
+            text,
+            truncated,
+        });
+    }
+    Ok(result)
 }
 
 /// Chunks starting at `from_chunk` until adding the next chunk would exceed `max_chars`
-/// (always at least one chunk when any remain). Materials of hidden courses → `NotFound`.
+/// (clamped to `MIN_READ_CHARS..=MAX_READ_CHARS`). When the first chunk alone is longer, it
+/// is returned cut to `max_chars` characters with `truncated = true`, so the limit always
+/// holds. Materials of hidden courses → `NotFound`. For a course whose material text is not
+/// readable (rule 8) no chunks are returned.
 pub fn read_material(
     store: &Store,
     material_id: &str,
     from_chunk: u32,
     max_chars: usize,
 ) -> Result<MaterialText> {
-    let _ = (store, material_id, from_chunk, max_chars);
-    todo!()
+    let not_found = || Error::NotFound(format!("material '{material_id}'"));
+    let material = store.get_material(material_id)?.ok_or_else(not_found)?;
+    let course = store
+        .get_course(&material.course_id)?
+        .filter(|c| !c.hidden)
+        .ok_or_else(not_found)?;
+    let data = CourseData::load(store, &course)?;
+    let ai_materials = course.ai_materials();
+    let total_chunks = data.chunks_of(&material.id);
+    let mut text = MaterialText {
+        material: data.view(&material),
+        course_code: course.code.clone(),
+        ai_materials,
+        chunks: Vec::new(),
+        from_chunk,
+        next_chunk: None,
+        total_chunks,
+        truncated: false,
+    };
+    if !ai_materials.is_readable() {
+        return Ok(text);
+    }
+
+    let budget = max_chars.clamp(MIN_READ_CHARS, MAX_READ_CHARS);
+    let mut used = 0usize;
+    let mut next = from_chunk;
+    'batches: loop {
+        let batch = store.get_chunks(&material.id, next, Some(READ_BATCH))?;
+        if batch.is_empty() {
+            break;
+        }
+        for mut chunk in batch {
+            let len = chunk.text.chars().count();
+            if text.chunks.is_empty() && len > budget {
+                chunk.text = truncate_chars(&chunk.text, budget).0;
+                text.truncated = true;
+            } else if used + len > budget {
+                break 'batches;
+            }
+            used += chunk.text.chars().count();
+            next = chunk.ord + 1;
+            text.chunks.push(chunk);
+            if text.truncated {
+                break 'batches;
+            }
+        }
+    }
+    text.next_chunk = (next < total_chunks && !text.chunks.is_empty()).then_some(next);
+    Ok(text)
 }
 
-/// Full-text search; `course` (optional) is resolved with `Store::resolve_course`.
+/// The student's own full-text search (desktop app): every non-hidden course, whatever its
+/// AI access. `course` (optional) is resolved with `Store::resolve_course`.
 pub fn search(
     store: &Store,
     query: &str,
     course: Option<&str>,
     limit: u32,
 ) -> Result<Vec<SearchHit>> {
-    let _ = (store, query, course, limit);
-    todo!()
+    let course_id = course
+        .map(|c| store.resolve_course(c).map(|c| c.id))
+        .transpose()?;
+    store.search(query, course_id.as_deref(), limit)
 }
 
+/// Search for an AI client: only courses whose material text is readable (rule 8). With a
+/// course filter on a non-readable course the hits are empty and `course_ai_materials` says
+/// why; without a filter, non-readable courses are excluded inside the SQL and listed in
+/// `excluded_courses`.
+pub fn search_for_ai(
+    store: &Store,
+    query: &str,
+    course: Option<&str>,
+    limit: u32,
+) -> Result<AiSearchResults> {
+    if let Some(course) = course {
+        let course = store.resolve_course(course)?;
+        let state = course.ai_materials();
+        let hits = if state.is_readable() {
+            store.search_ai_readable(query, Some(&course.id), limit)?
+        } else {
+            Vec::new()
+        };
+        return Ok(AiSearchResults {
+            hits,
+            course_ai_materials: Some(state),
+            excluded_courses: Vec::new(),
+        });
+    }
+    let excluded_courses = store
+        .list_courses(false)?
+        .into_iter()
+        .filter(|c| !c.ai_materials().is_readable())
+        .map(|c| c.code.unwrap_or(c.name))
+        .collect();
+    Ok(AiSearchResults {
+        hits: store.search_ai_readable(query, None, limit)?,
+        course_ai_materials: None,
+        excluded_courses,
+    })
+}
+
+/// Sources with freshness verdicts, store counts and the latest successful sync.
 pub fn sync_status(store: &Store, at: AsOf) -> Result<SyncStatus> {
-    let _ = (store, at);
-    todo!()
+    let stale_before = at.now - TimeDelta::hours(STALE_AFTER_HOURS);
+    let sources: Vec<SourceStatus> = store
+        .list_sources()?
+        .into_iter()
+        .map(|source| SourceStatus {
+            stale: source.last_error.is_some()
+                || source.last_synced_at.is_none_or(|at| at < stale_before),
+            source,
+        })
+        .collect();
+    let last_synced_at = sources.iter().filter_map(|s| s.source.last_synced_at).max();
+    let stale = sources.is_empty() || sources.iter().any(|s| s.stale);
+    Ok(SyncStatus {
+        counts: store.counts()?,
+        sources,
+        last_synced_at,
+        stale,
+    })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------------------------
+
+/// Chunks fetched per query by `read_material`.
+const READ_BATCH: u32 = 64;
+
+/// Everything one course view needs, loaded once.
+struct CourseData {
+    modules: Vec<Module>,
+    materials: Vec<Material>,
+    module_names: HashMap<String, String>,
+    module_weeks: HashMap<String, u32>,
+    chunk_counts: HashMap<String, u32>,
+}
+
+impl CourseData {
+    fn load(store: &Store, course: &Course) -> Result<Self> {
+        let modules = store.list_modules(&course.id)?;
+        let module_names = modules
+            .iter()
+            .map(|m| (m.id.clone(), m.name.clone()))
+            .collect();
+        let module_weeks = modules
+            .iter()
+            .filter_map(|m| Some((m.id.clone(), m.week_hint?)))
+            .collect();
+        Ok(CourseData {
+            materials: store.list_materials(&course.id)?,
+            chunk_counts: store.material_chunk_counts(&course.id)?,
+            modules,
+            module_names,
+            module_weeks,
+        })
+    }
+
+    /// Timeline inference ignores events in v0.1 (see `timeline` docs), so none are loaded.
+    fn timeline(&self, course: &Course, at: AsOf) -> CourseTimeline {
+        timeline::infer_timeline(course, &self.modules, &self.materials, &[], at.today)
+    }
+
+    fn chunks_of(&self, material_id: &str) -> u32 {
+        self.chunk_counts.get(material_id).copied().unwrap_or(0)
+    }
+
+    /// Teaching week of a material per the `week_materials` membership rule.
+    fn week_of(&self, course: &Course, material: &Material) -> Option<u32> {
+        material
+            .week_hint
+            .or_else(|| self.module_weeks.get(material.module_id.as_ref()?).copied())
+            .or_else(|| {
+                let published = material.published_at?.date_naive();
+                timeline::week_of(course.term_start?, published)
+            })
+    }
+
+    fn view(&self, material: &Material) -> MaterialView {
+        MaterialView {
+            id: material.id.clone(),
+            course_id: material.course_id.clone(),
+            title: material.title.clone(),
+            kind: material.kind,
+            module_id: material.module_id.clone(),
+            module_name: material
+                .module_id
+                .as_ref()
+                .and_then(|id| self.module_names.get(id).cloned()),
+            week_hint: material.week_hint,
+            published_at: material.published_at,
+            url: material.url.clone(),
+            text_status: material.text_status,
+            text_error: material.text_error.clone(),
+            chunk_count: self.chunks_of(&material.id),
+        }
+    }
+}
+
+/// Source labels and sync times by source id.
+struct SourceIndex(HashMap<String, SourceRecord>);
+
+impl SourceIndex {
+    fn load(store: &Store) -> Result<Self> {
+        Ok(SourceIndex(
+            store
+                .list_sources()?
+                .into_iter()
+                .map(|s| (s.id.clone(), s))
+                .collect(),
+        ))
+    }
+
+    fn info(&self, source_id: &str) -> (String, Option<Timestamp>) {
+        match self.0.get(source_id) {
+            Some(source) => (source.label.clone(), source.last_synced_at),
+            None => (source_id.to_string(), None),
+        }
+    }
+}
+
+fn deadline(event: &Event, course: Option<&Course>) -> Deadline {
+    Deadline {
+        event: event.clone(),
+        course_code: course.and_then(|c| c.code.clone()),
+        course_name: course.map(|c| c.name.clone()),
+    }
+}
+
+/// `n` days as a duration (u32 days always fit).
+fn days(n: u32) -> TimeDelta {
+    TimeDelta::days(i64::from(n))
+}
+
+/// `now + n days`, saturating at the largest representable instant (the store clamps
+/// out-of-range bounds, so huge windows simply mean "everything").
+fn add_days(now: Timestamp, n: u32) -> Timestamp {
+    now.checked_add_signed(days(n))
+        .unwrap_or(DateTime::<Utc>::MAX_UTC)
+}
+
+/// `now - n days`, saturating at the smallest representable instant.
+fn sub_days(now: Timestamp, n: u32) -> Timestamp {
+    now.checked_sub_signed(days(n))
+        .unwrap_or(DateTime::<Utc>::MIN_UTC)
+}
+
+fn count_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// First `max_chars` characters of `text` (never splits a UTF-8 character) and whether
+/// anything was cut.
+fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
+    match text.char_indices().nth(max_chars) {
+        Some((byte, _)) => (text[..byte].to_string(), true),
+        None => (text.to_string(), false),
+    }
+}
+
+/// English text for `WeekMaterials.note` (UIs localise from `note_kind`).
+fn week_note_text(kind: WeekNoteKind, week: Option<u32>) -> String {
+    match kind {
+        WeekNoteKind::CurrentWeekUnknown => format!(
+            "The current week could not be determined; showing materials published in the last {RECENT_DAYS} days."
+        ),
+        WeekNoteKind::OutsideTerm => match week {
+            Some(n) => format!("Today is outside the course's term; showing week {n}."),
+            None => "Today is outside the course's term.".to_string(),
+        },
+        WeekNoteKind::NoMaterialsThisWeek => match week {
+            Some(n) => format!("No modules or materials are assigned to week {n}."),
+            None => "No modules or materials found.".to_string(),
+        },
+    }
 }

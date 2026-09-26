@@ -804,6 +804,22 @@ impl Store {
         )
     }
 
+    /// Number of chunks of every material of a course, in one query (materials without
+    /// chunks map to 0).
+    pub fn material_chunk_counts(
+        &self,
+        course_id: &str,
+    ) -> Result<std::collections::HashMap<String, u32>> {
+        let pairs = self.query_list(
+            "SELECT m.id AS id, COUNT(ch.id) AS n
+             FROM materials m LEFT JOIN chunks ch ON ch.material_id = m.id
+             WHERE m.course_id = ?1
+             GROUP BY m.id",
+            [course_id],
+            |row| Ok((row.get::<_, String>("id")?, row.get::<_, u32>("n")?)),
+        )?;
+        Ok(pairs.into_iter().collect())
+    }
     pub fn chunk_count(&self, material_id: &str) -> Result<u32> {
         Ok(self.conn.query_row(
             "SELECT COUNT(*) FROM chunks WHERE material_id = ?1",
