@@ -24,17 +24,28 @@
 //! Every method returns `Result<T, AppError>`; `AppError` serialises as
 //! `{ "kind": "...", "message": "..." }` and its message never contains a secret.
 
+mod lock;
+mod mcp_config;
+mod sync;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use studentos_canvas::CanvasConfig;
 use studentos_core::model::{
     AiMaterialsState, AiPolicy, SearchHit, SourceErrorKind, SourceKind, SourceRecord, StoreCounts,
     StoredStudyPlan, TermSource, Timestamp,
 };
-use studentos_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
+use studentos_core::paths;
+use studentos_core::secrets::{KeychainSecrets, SecretBackend};
+use studentos_core::source::SourceError;
+use studentos_core::store::Store;
+use studentos_core::views::{self, AsOf, CourseOverview, CourseSummary, Deadline, WeekMaterials};
 
 // ---------------------------------------------------------------------------------------------
 // Errors
@@ -87,10 +98,33 @@ impl std::error::Error for AppError {}
 
 impl From<studentos_core::Error> for AppError {
     fn from(err: studentos_core::Error) -> Self {
-        let _ = err;
-        todo!(
-            "NotFound/NotInitialised → not_found, Ambiguous → ambiguous, Invalid → invalid, rest → internal"
-        )
+        use studentos_core::Error as E;
+        let kind = match &err {
+            E::NotFound(_) | E::NotInitialised(_) => AppErrorKind::NotFound,
+            E::Ambiguous { .. } => AppErrorKind::Ambiguous,
+            E::Invalid(_) => AppErrorKind::Invalid,
+            E::Db(_)
+            | E::Json(_)
+            | E::Io(_)
+            | E::SchemaTooNew { .. }
+            | E::NoDataDir
+            | E::Secret(_) => AppErrorKind::Internal,
+        };
+        // Core error messages never contain secrets (the store never sees them and
+        // `secrets` redacts keychain errors).
+        AppError::new(kind, err.to_string())
+    }
+}
+
+impl From<SourceError> for AppError {
+    fn from(err: SourceError) -> Self {
+        let kind = match err.kind {
+            SourceErrorKind::AuthExpiredOrRevoked => AppErrorKind::Auth,
+            SourceErrorKind::Network | SourceErrorKind::RateLimited => AppErrorKind::Network,
+            SourceErrorKind::NotFound => AppErrorKind::NotFound,
+            SourceErrorKind::Other => AppErrorKind::Internal,
+        };
+        AppError::new(kind, err.message)
     }
 }
 
@@ -122,7 +156,11 @@ pub struct AppStatus {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SyncRequest {
-    /// Download LMS files and index their text (Canvas). When false, files are listed only.
+    /// Download LMS (Canvas) files and index their text. Default FALSE: downloading a file
+    /// through Canvas counts as viewing it (it can complete "must view" module requirements
+    /// and shows up in instructor analytics), so files are listed as `not_downloaded` unless
+    /// the student explicitly asks — see `App::download_course_files`. Folder sources are
+    /// local and always indexed.
     pub download_files: bool,
     /// Skip LMS files larger than this many megabytes.
     pub max_file_mb: u32,
@@ -133,7 +171,7 @@ pub struct SyncRequest {
 impl Default for SyncRequest {
     fn default() -> Self {
         SyncRequest {
-            download_files: true,
+            download_files: false,
             max_file_mb: 50,
             only_courses: Vec::new(),
         }
@@ -277,23 +315,49 @@ pub enum McpNoteCode {
 // The facade
 // ---------------------------------------------------------------------------------------------
 
-/// Cheap to clone; holds only the data directory. Every call opens its own short-lived
-/// SQLite connection (see docs/ARCHITECTURE.md §4).
-#[derive(Clone, Debug)]
+/// Cheap to clone; holds the data directory and the secret backend. Every call opens its
+/// own short-lived SQLite connection (see docs/ARCHITECTURE.md §4), so one `App` can be shared
+/// by all threads/tasks without a mutex.
+#[derive(Clone)]
 pub struct App {
     data_dir: PathBuf,
+    secrets: Arc<dyn SecretBackend>,
+}
+
+impl std::fmt::Debug for App {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("App")
+            .field("data_dir", &self.data_dir)
+            .finish_non_exhaustive()
+    }
 }
 
 impl App {
     /// Default data dir (`STUDENTOS_HOME` respected). Creates it and migrates the DB.
     pub fn open() -> Result<App> {
-        todo!()
+        App::open_at(paths::data_dir()?)
     }
 
     /// Explicit data dir (tests, portable installs). Creates it and migrates the DB.
     pub fn open_at(data_dir: PathBuf) -> Result<App> {
-        let _ = data_dir;
-        todo!()
+        App::open_at_with_secrets(data_dir, Arc::new(KeychainSecrets))
+    }
+
+    /// Like `open_at`, with a custom secret backend — for tests and embedders
+    /// (`studentos_core::secrets::MemorySecrets` keeps everything in memory).
+    pub fn open_at_with_secrets(data_dir: PathBuf, secrets: Arc<dyn SecretBackend>) -> Result<App> {
+        paths::ensure_dirs_in(&data_dir).map_err(|err| {
+            AppError::new(
+                AppErrorKind::Internal,
+                format!(
+                    "could not create the data folder {}: {err}",
+                    data_dir.display()
+                ),
+            )
+        })?;
+        let app = App { data_dir, secrets };
+        Store::open(&app.db_path())?; // create + migrate, then close
+        Ok(app)
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -302,34 +366,109 @@ impl App {
 
     /// `<data_dir>/studentos.db`
     pub fn db_path(&self) -> PathBuf {
-        self.data_dir.join("studentos.db")
+        paths::db_path_in(&self.data_dir)
+    }
+
+    fn read_store(&self) -> Result<Store> {
+        Ok(Store::open_read_only(&self.db_path())?)
+    }
+
+    fn write_store(&self) -> Result<Store> {
+        Ok(Store::open(&self.db_path())?)
     }
 
     // ----- status & sources ----------------------------------------------------------------
 
     pub fn status(&self) -> Result<AppStatus> {
-        todo!()
+        let store = self.read_store()?;
+        let sources = store.list_sources()?;
+        Ok(AppStatus {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            data_dir: self.data_dir.display().to_string(),
+            db_path: self.db_path().display().to_string(),
+            last_synced_at: sources.iter().filter_map(|s| s.last_synced_at).max(),
+            counts: store.counts()?,
+            sources,
+            sync_in_progress: lock::is_locked(&paths::sync_lock_path_in(&self.data_dir)),
+        })
     }
 
     pub fn list_sources(&self) -> Result<Vec<SourceRecord>> {
-        todo!()
+        Ok(self.read_store()?.list_sources()?)
     }
 
     /// Validates the token (`GET /api/v1/users/self`), stores it in the keychain, creates the
     /// source `canvas:<host>`. Personal-use only — callers must show the notice.
     pub async fn add_canvas_source(&self, base_url: &str, token: &str) -> Result<SourceRecord> {
-        let _ = (base_url, token);
-        todo!()
+        let base_url = studentos_canvas::normalize_base_url(base_url)?;
+        let config = CanvasConfig {
+            base_url: base_url.clone(),
+            token: non_empty_secret(token, "Canvas access token")?,
+        };
+        studentos_canvas::check_token(&config).await?;
+        let id = studentos_canvas::source_id(&base_url);
+        let label = base_url
+            .split_once("://")
+            .map_or(base_url.as_str(), |(_, host)| host)
+            .to_string();
+        self.save_source_with_secret(
+            SourceRecord {
+                id,
+                kind: SourceKind::Canvas,
+                label,
+                config: json!({ "base_url": base_url }),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
+            },
+            &config.token,
+        )
     }
 
+    /// Adds a local course folder (`<root>/<COURSE>/…`). Adding the same folder again returns
+    /// the existing source (updating its label/term start when given).
     pub fn add_folder_source(
         &self,
         path: &Path,
         term_start: Option<NaiveDate>,
         label: Option<&str>,
     ) -> Result<SourceRecord> {
-        let _ = (path, term_start, label);
-        todo!()
+        let invalid = || {
+            AppError::new(
+                AppErrorKind::Invalid,
+                format!("'{}' is not a folder", path.display()),
+            )
+        };
+        if !path.is_dir() {
+            return Err(invalid());
+        }
+        let root = std::fs::canonicalize(path).map_err(|_| invalid())?;
+        let root_text = root.to_string_lossy().to_string();
+        let id = format!("folder:{}", short_hash(&root_text));
+        let store = self.write_store()?;
+        let existing = store.get_source(&id)?;
+        let mut config = existing
+            .as_ref()
+            .map_or_else(|| json!({}), |s| s.config.clone());
+        config["path"] = json!(root_text);
+        if let Some(start) = term_start {
+            config["term_start"] = json!(start.format("%Y-%m-%d").to_string());
+        }
+        let label = match (label.map(str::trim).filter(|l| !l.is_empty()), &existing) {
+            (Some(label), _) => label.to_string(),
+            (None, Some(existing)) => existing.label.clone(),
+            (None, None) => display_path(&root),
+        };
+        store.upsert_source(&SourceRecord {
+            id: id.clone(),
+            kind: SourceKind::Folder,
+            label,
+            config,
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })?;
+        Ok(store.get_source(&id)?.expect("source was just saved"))
     }
 
     /// Validates the feed by fetching it, stores the URL in the keychain.
@@ -338,14 +477,36 @@ impl App {
         feed_url: &str,
         label: Option<&str>,
     ) -> Result<SourceRecord> {
-        let _ = (feed_url, label);
-        todo!()
+        let feed_url = non_empty_secret(feed_url, "calendar feed URL")?;
+        studentos_local::fetch_ical(&feed_url).await?;
+        let label = label
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .unwrap_or("Calendar feed")
+            .to_string();
+        self.save_source_with_secret(
+            SourceRecord {
+                id: format!("ical:{}", short_hash(&feed_url)),
+                kind: SourceKind::Ical,
+                label,
+                config: json!({}),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
+            },
+            &feed_url,
+        )
     }
 
     /// Removes the source, everything synced from it, and its keychain secret.
     pub fn remove_source(&self, source_id: &str) -> Result<()> {
-        let _ = source_id;
-        todo!()
+        let store = self.write_store()?;
+        if store.get_source(source_id)?.is_none() {
+            return Err(unknown_source(source_id));
+        }
+        store.remove_source(source_id)?;
+        self.secrets.delete(source_id)?;
+        Ok(())
     }
 
     /// Replace an expired/revoked Canvas token or a changed feed URL without removing the
@@ -356,67 +517,113 @@ impl App {
         source_id: &str,
         secret: &str,
     ) -> Result<SourceRecord> {
-        let _ = (source_id, secret);
-        todo!()
+        let source = self
+            .read_store()?
+            .get_source(source_id)?
+            .ok_or_else(|| unknown_source(source_id))?;
+        let secret = non_empty_secret(secret, "secret")?;
+        match source.kind {
+            SourceKind::Folder => {
+                return Err(AppError::new(
+                    AppErrorKind::Invalid,
+                    "folder sources have no secret",
+                ));
+            }
+            SourceKind::Canvas => {
+                let base_url = canvas_base_url(&source)?;
+                studentos_canvas::check_token(&CanvasConfig {
+                    base_url,
+                    token: secret.clone(),
+                })
+                .await?;
+            }
+            SourceKind::Ical => {
+                studentos_local::fetch_ical(&secret).await?;
+            }
+        }
+        self.secrets.set(source_id, &secret)?;
+        let store = self.write_store()?;
+        store.clear_source_error(source_id)?;
+        store
+            .get_source(source_id)?
+            .ok_or_else(|| unknown_source(source_id))
     }
 
-    // ----- sync ------------------------------------------------------------------------------
-
-    /// Sync every source in order. Holds `sync.lock` for the whole run (`Busy` if taken).
-    pub async fn sync_all(
-        &self,
-        req: SyncRequest,
-        on_event: impl Fn(SyncEvent) + Send + Sync,
-    ) -> Result<SyncSummary> {
-        let _ = (req, on_event);
-        todo!()
-    }
-
-    pub async fn sync_source(
-        &self,
-        source_id: &str,
-        req: SyncRequest,
-        on_event: impl Fn(SyncEvent) + Send + Sync,
-    ) -> Result<SourceSyncResult> {
-        let _ = (source_id, req, on_event);
-        todo!()
+    /// Save `source` and its secret: secret first, and removed again if saving the source
+    /// fails, so a secret never exists without its source row.
+    fn save_source_with_secret(&self, source: SourceRecord, secret: &str) -> Result<SourceRecord> {
+        self.secrets.set(&source.id, secret)?;
+        let saved = self.write_store().and_then(|store| {
+            store.upsert_source(&source)?;
+            Ok(store
+                .get_source(&source.id)?
+                .expect("source was just saved"))
+        });
+        if saved.is_err() {
+            // Best effort; the original error is the one to report.
+            let _ = self.secrets.delete(&source.id);
+        }
+        saved
     }
 
     // ----- read views ------------------------------------------------------------------------
+    // Hidden courses are included/addressable here (the desktop app shows them behind a
+    // toggle); the MCP server calls the views with `include_hidden = false`.
 
-    /// All courses INCLUDING hidden ones (check `course.hidden`); the MCP server never lists
-    /// hidden courses.
+    /// All courses INCLUDING hidden ones (check `course.hidden`).
     pub fn list_courses(&self) -> Result<Vec<CourseSummary>> {
-        todo!()
+        Ok(views::list_courses(
+            &self.read_store()?,
+            true,
+            AsOf::now_local(),
+        )?)
     }
 
     pub fn course_overview(&self, course: &str) -> Result<CourseOverview> {
-        let _ = course;
-        todo!()
+        Ok(views::course_overview(
+            &self.read_store()?,
+            course,
+            true,
+            AsOf::now_local(),
+        )?)
     }
 
     pub fn week_materials(&self, course: &str, week: Option<u32>) -> Result<WeekMaterials> {
-        let _ = (course, week);
-        todo!()
+        Ok(views::week_materials(
+            &self.read_store()?,
+            course,
+            week,
+            true,
+            AsOf::now_local(),
+        )?)
     }
 
+    /// With a course: that course's events (hidden courses too). Without: every non-hidden
+    /// course's events plus events not linked to a course.
     pub fn list_deadlines(
         &self,
         course: Option<&str>,
         days_ahead: u32,
         days_back: u32,
     ) -> Result<Vec<Deadline>> {
-        let _ = (course, days_ahead, days_back);
-        todo!()
+        let store = self.read_store()?;
+        Ok(views::deadlines(
+            &store,
+            course,
+            days_ahead,
+            days_back,
+            true,
+            AsOf::now_local(),
+        )?)
     }
 
+    /// The student's own search over every non-hidden course (whatever its AI access).
     pub fn search(&self, query: &str, course: Option<&str>, limit: u32) -> Result<Vec<SearchHit>> {
-        let _ = (query, course, limit);
-        todo!()
+        Ok(views::search(&self.read_store()?, query, course, limit)?)
     }
 
     pub fn latest_study_plan(&self) -> Result<Option<StoredStudyPlan>> {
-        todo!()
+        Ok(self.read_store()?.latest_study_plan()?)
     }
 
     // ----- course settings (course = id or code; hidden courses are addressable) -------------
@@ -427,39 +634,132 @@ impl App {
         policy: AiPolicy,
         note: Option<&str>,
     ) -> Result<()> {
-        let _ = (course, policy, note);
-        todo!()
+        let store = self.write_store()?;
+        let course = store.resolve_course_with(course, true)?;
+        let note = note.map(str::trim).filter(|n| !n.is_empty());
+        Ok(store.set_course_policy(&course.id, policy, note)?)
     }
 
+    /// Set/clear the student's term override (`None, None` falls back to the synced dates).
     pub fn set_course_term(
         &self,
         course: &str,
         start: Option<NaiveDate>,
         end: Option<NaiveDate>,
     ) -> Result<()> {
-        let _ = (course, start, end);
-        todo!()
+        let store = self.write_store()?;
+        let course = store.resolve_course_with(course, true)?;
+        Ok(store.set_course_term(&course.id, start, end)?)
     }
 
     /// The per-course switch "Let my AI app read this course's materials" (docs/ARCHITECTURE.md
     /// §3 rule 8). A `prohibited` AI policy withholds text regardless of this switch.
     pub fn set_course_ai_access(&self, course: &str, allowed: bool) -> Result<()> {
-        let _ = (course, allowed);
-        todo!()
+        let store = self.write_store()?;
+        let course = store.resolve_course_with(course, true)?;
+        Ok(store.set_course_ai_access(&course.id, allowed)?)
     }
 
     pub fn set_course_hidden(&self, course: &str, hidden: bool) -> Result<()> {
-        let _ = (course, hidden);
-        todo!()
+        let store = self.write_store()?;
+        let course = store.resolve_course_with(course, true)?;
+        Ok(store.set_course_hidden(&course.id, hidden)?)
     }
 
     // ----- "connect your AI app" ------------------------------------------------------------
 
     /// One config per client (claude_desktop, claude_code, codex, generic) for launching
-    /// `<studentos_binary> mcp`.
+    /// `<studentos_binary> mcp`. `STUDENTOS_HOME` is included only when this App's data dir
+    /// is not the platform default.
     pub fn mcp_client_configs(&self, studentos_binary: &Path) -> Vec<McpClientConfig> {
-        let _ = studentos_binary;
-        todo!()
+        mcp_config::client_configs(
+            &self.mcp_launch(studentos_binary),
+            mcp_config::Shell::current(),
+            mcp_config::claude_desktop_config_hint(),
+        )
+    }
+
+    /// How an MCP client launches this App's server (the source of every snippet).
+    pub fn mcp_launch(&self, studentos_binary: &Path) -> McpLaunch {
+        let command = std::path::absolute(studentos_binary)
+            .unwrap_or_else(|_| studentos_binary.to_path_buf());
+        let mut env = BTreeMap::new();
+        if !same_dir(Some(&self.data_dir), paths::platform_data_dir().as_deref()) {
+            env.insert(
+                paths::HOME_ENV.to_string(),
+                self.data_dir.display().to_string(),
+            );
+        }
+        McpLaunch {
+            command: command.display().to_string(),
+            args: vec!["mcp".to_string()],
+            env,
+        }
+    }
+}
+
+// ----- facade helpers ---------------------------------------------------------------------------
+
+fn unknown_source(source_id: &str) -> AppError {
+    AppError::new(AppErrorKind::NotFound, format!("no source '{source_id}'"))
+}
+
+/// Trimmed secret, or `Invalid` when empty. The message names the field, never the value.
+fn non_empty_secret(secret: &str, what: &str) -> Result<String> {
+    let secret = secret.trim();
+    if secret.is_empty() {
+        return Err(AppError::new(
+            AppErrorKind::Invalid,
+            format!("the {what} is empty"),
+        ));
+    }
+    Ok(secret.to_string())
+}
+
+fn canvas_base_url(source: &SourceRecord) -> Result<String> {
+    source
+        .config
+        .get("base_url")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            AppError::new(
+                AppErrorKind::Internal,
+                format!("source '{}' has no base_url", source.id),
+            )
+        })
+}
+
+/// First 12 hex chars of SHA-256 — short, stable source ids that don't reveal the input
+/// (feed URLs are secrets).
+fn short_hash(text: &str) -> String {
+    studentos_core::ingest::sha256_hex(text.as_bytes())[..12].to_string()
+}
+
+/// `path` with the home directory shortened to `~` (labels only).
+fn display_path(path: &Path) -> String {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    match home
+        .as_deref()
+        .and_then(|home| path.strip_prefix(home).ok())
+    {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => path.display().to_string(),
+    }
+}
+
+/// Same directory, comparing canonical forms when they exist.
+fn same_dir(a: Option<&Path>, b: Option<&Path>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            a == b
+                || matches!(
+                    (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+                    (Ok(a), Ok(b)) if a == b
+                )
+        }
+        _ => false,
     }
 }
 
