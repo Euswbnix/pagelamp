@@ -147,8 +147,11 @@ default language and school-specific wording without touching screen code:
 2. Build with `VITE_BRAND=<id> pnpm tauri build`.
 3. For the installer's name and icons, add a Tauri config overlay, e.g.
    `src-tauri/tauri.<id>.conf.json` with `productName` and `bundle.icon`, and pass
-   `--config src-tauri/tauri.<id>.conf.json`. Keep `identifier` unchanged if existing users
-   should keep their data.
+   `--config src-tauri/tauri.<id>.conf.json`. The `identifier` doesn't decide where the data
+   lives: the data folder comes from the core (`ProjectDirs("dev", "PageLamp", "PageLamp")` in
+   `crates/pagelamp-core/src/paths.rs`), so every build shares it. Only the window's saved UI
+   preferences (theme, language, onboarding and disclosure flags) are kept per identifier, so
+   changing it makes existing users pick those again.
 
 ## Rules that are easy to break
 
