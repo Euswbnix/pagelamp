@@ -51,10 +51,16 @@ public struct StringTable: Sendable {
 public struct L10n: Sendable {
     public let locale: Locale
     public let table: StringTable
+    /// This locale's plain strings, resolved once (see `StringsCache`).
+    private let strings: [String: String]
+    /// This locale's .lproj as a bundle, for plural keys (Foundation caches its tables).
+    private let pluralBundle: Bundle?
 
     public init(locale: Locale, table: StringTable) {
         self.locale = locale
         self.table = table
+        self.strings = StringsCache.strings(for: table, locale: locale)
+        self.pluralBundle = StringsCache.localizationBundle(for: table, locale: locale)
     }
 
     /// The text of `key`, formatted with `arguments` if the key takes any.
@@ -87,7 +93,7 @@ public struct L10n: Sendable {
     // MARK: - Formatting
 
     private func format(_ key: String, arguments: [String: String], count: Int?) -> String {
-        let pattern = String(localized: resource(key))
+        let pattern = lookUp(key)
         let names = table.arguments[key] ?? []
         guard !names.isEmpty else { return pattern }
         let isPlural = table.plural.contains(key)
@@ -105,6 +111,21 @@ public struct L10n: Sendable {
         return String(format: pattern, locale: locale, arguments: values)
     }
 
+    /// The pattern for `key` in this locale. Plain keys come from the in-memory table
+    /// (`StringsCache`); plural keys, and any key the table lacks, go through Foundation so the
+    /// .stringsdict rules and the development-language fallback still apply.
+    private func lookUp(_ key: String) -> String {
+        check(key)
+        if !table.plural.contains(key) {
+            if let pattern = strings[key] { return pattern }
+        } else if let bundle = pluralBundle {
+            // The .stringsdict format: String(format:) picks the plural form for the count.
+            let pattern = bundle.localizedString(forKey: key, value: nil, table: table.tableName)
+            if pattern != key { return pattern }
+        }
+        return String(localized: resource(key))
+    }
+
     private func check(_ key: String) {
         assert(table.keys.contains(key), "Unknown string key \"\(key)\" (not in L10nKeys.all)")
     }
@@ -119,4 +140,46 @@ extension L10n {
     }
 
     private static let shared = Mutex<L10n?>(nil)
+}
+
+/// The generated .strings tables, loaded once per resource bundle, table and locale.
+///
+/// `String(localized:)` with a `.atURL` bundle reloads and re-parses the whole table on every
+/// call: a sampled page switch spent about half of the main thread's busy time there, and every
+/// page makes hundreds of lookups. This keeps each table in memory for the life of the process.
+enum StringsCache {
+    private static let tables = Mutex<[String: [String: String]]>([:])
+
+    private static let bundles = Mutex<[String: Bundle]>([:])
+
+    /// The localization of `table` that `locale` resolves to (e.g. "zh-Hans" for zh-CN).
+    static func localization(for table: StringTable, locale: Locale) -> String {
+        let available = Bundle(url: table.bundleURL)?.localizations ?? []
+        return Bundle.preferredLocalizations(from: available, forPreferences: [locale.identifier]).first ?? "en"
+    }
+
+    /// That localization's .lproj folder as a bundle (plural keys read its .stringsdict).
+    static func localizationBundle(for table: StringTable, locale: Locale) -> Bundle? {
+        let key = "\(table.bundleURL.path)|\(locale.identifier)"
+        if let cached = bundles.withLock({ $0[key] }) { return cached }
+        let localization = localization(for: table, locale: locale)
+        guard let url = Bundle(url: table.bundleURL)?.url(forResource: localization, withExtension: "lproj"),
+              let bundle = Bundle(url: url) else { return nil }
+        bundles.withLock { $0[key] = bundle }
+        return bundle
+    }
+
+    static func strings(for table: StringTable, locale: Locale) -> [String: String] {
+        let key = "\(table.bundleURL.path)|\(table.tableName)|\(locale.identifier)"
+        if let cached = tables.withLock({ $0[key] }) { return cached }
+        let bundle = Bundle(url: table.bundleURL)
+        let available = bundle?.localizations ?? []
+        let localization = Bundle.preferredLocalizations(from: available, forPreferences: [locale.identifier]).first ?? "en"
+        // Ask the bundle where the table is (a macOS resource bundle keeps it in Contents/Resources).
+        let url = bundle?.url(forResource: table.tableName, withExtension: "strings", subdirectory: nil, localization: localization)
+        let loaded = url.flatMap { NSDictionary(contentsOf: $0) as? [String: String] } ?? [:]
+        assert(!loaded.isEmpty, "No \(table.tableName).strings for \(localization) in \(table.bundleURL.path)")
+        tables.withLock { $0[key] = loaded }
+        return loaded
+    }
 }

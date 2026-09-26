@@ -45,18 +45,16 @@ struct LampBand<Content: View>: View {
 
     var body: some View {
         // Text: the reading column. Band: full-bleed.
-        ReadingMeasure {
-            VStack(alignment: .leading, spacing: PLSpace.s2) { content }
-                .padding(.leading, flat && lit ? PLSpace.s3 : 0)
-                .overlay(alignment: .leading) {
-                    if flat && lit {
-                        Rectangle().fill(PLColor.lampRule).frame(width: 3).accessibilityHidden(true)
-                    }
+        VStack(alignment: .leading, spacing: PLSpace.s2) { content }
+            .padding(.leading, flat && lit ? PLSpace.s3 : 0)
+            .overlay(alignment: .leading) {
+                if flat && lit {
+                    Rectangle().fill(PLColor.lampRule).frame(width: 3).accessibilityHidden(true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, PLSpace.s6)
-        .frame(maxWidth: .infinity)
+            }
+            .readingMeasure()
+            .padding(.vertical, PLSpace.s6)
+            .frame(maxWidth: .infinity)
             .background(alignment: .topLeading) {
                 LampWash(lit: lit && !flat)
                     .backgroundExtensionEffect(isEnabled: !flat)

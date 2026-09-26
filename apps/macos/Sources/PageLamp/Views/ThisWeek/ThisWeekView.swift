@@ -34,7 +34,6 @@ struct ThisWeekView: View {
         }
         .accessoryBar()
         .navigationTitle(l10n("mac.nav.thisWeek"))
-        .toolbar { ThisWeekToolbar() }
     }
 
     /// "Sep 26 – Oct 2": today and the next six days (rolling, so titled so).

@@ -111,7 +111,7 @@ struct CourseDeadlineList: View {
 struct CourseDeadlineRow: View {
     /// Below this list width the day and time move under the title (the 760 pt minimum window
     /// with the inspector open leaves a ~250 pt reading column).
-    static let compactBelow: CGFloat = 440
+    nonisolated static let compactBelow: CGFloat = 440
     /// The time column's minimum, so "11:59 PM" and "9:00 AM" right-align.
     private static let timeColumn: CGFloat = 64
 

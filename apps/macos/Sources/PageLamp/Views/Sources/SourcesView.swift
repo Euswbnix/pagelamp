@@ -33,7 +33,6 @@ struct SourcesView: View {
         .accessoryBar()
         .navigationTitle(l10n("mac.nav.sources"))
         .navigationSubtitle(l10n("sources.description"))
-        .toolbar { SourcesToolbar() }
         // Sync All, unless a Replace… this build can run outranks it (spec §3.0).
         .primaryActionCandidates(SourceRow.primaryActionCandidates(model.sourceRows))
     }

@@ -3,11 +3,9 @@
 
 import SwiftUI
 
-/// Lays its content out in the reading column of whatever width it is offered: at most
-/// `PLLayout.measure` wide, centred, with the gutter that width calls for. A layout (not a
-/// measured width in state), so the column is right in the first pass: offscreen renders and
-/// the first frame never show a column laid out for another width.
-struct ReadingMeasure: Layout {
+/// The reading column's geometry: at most `PLLayout.measure` wide, centred, with the gutter the
+/// detail column's width calls for. Views use it through `readingMeasure()`.
+nonisolated enum ReadingMeasure {
     /// The gutter for a detail column `width` wide.
     static func gutter(for width: CGFloat) -> CGFloat {
         width < PLLayout.measure ? PLLayout.gutterNarrow : PLLayout.gutter
@@ -17,28 +15,27 @@ struct ReadingMeasure: Layout {
     static func column(for width: CGFloat) -> CGFloat {
         max(0, min(PLLayout.measure, width - 2 * gutter(for: width)))
     }
+}
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        guard let content = subviews.first else { return .zero }
-        if let width = proposal.width {
-            let size = content.sizeThatFits(ProposedViewSize(width: Self.column(for: width), height: nil))
-            return CGSize(width: width, height: size.height)
-        }
-        // No width offered (ideal size): the content's own width, capped at the measure.
-        let ideal = content.sizeThatFits(.unspecified)
-        let column = min(ideal.width, PLLayout.measure)
-        let size = content.sizeThatFits(ProposedViewSize(width: column, height: nil))
-        return CGSize(width: column + 2 * PLLayout.gutter, height: size.height)
+extension View {
+    /// Lays the view out in the reading column: at most `PLLayout.measure` wide, centred, with
+    /// the gutter the detail column's width calls for. Plain frames and padding, which SwiftUI
+    /// sizes without measuring the content twice. (A custom `Layout` that asked its content for
+    /// an ideal size and then for the column size cost about 30% of the main thread on every
+    /// page switch; `containerRelativeFrame` in the page's scroll view looped with the scroller.)
+    func readingMeasure() -> some View {
+        modifier(ReadingMeasureModifier())
     }
+}
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        guard let content = subviews.first else { return }
-        let column = Self.column(for: bounds.width)
-        content.place(
-            at: CGPoint(x: bounds.minX + (bounds.width - column) / 2, y: bounds.minY),
-            anchor: .topLeading,
-            proposal: ProposedViewSize(width: column, height: bounds.height)
-        )
+private struct ReadingMeasureModifier: ViewModifier {
+    @Environment(\.detailColumnWidth) private var detailWidth
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: PLLayout.measure, alignment: .leading)
+            .padding(.horizontal, ReadingMeasure.gutter(for: detailWidth ?? .infinity))
+            .frame(maxWidth: .infinity)
     }
 }
 
@@ -53,10 +50,9 @@ struct ReadingColumn<Content: View>: View {
     }
 
     var body: some View {
-        ReadingMeasure {
-            VStack(alignment: .leading, spacing: spacing) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        // Lazy: only the sections on screen are built when a page appears (the rest as it scrolls).
+        LazyVStack(alignment: .leading, spacing: spacing) { content }
+            .readingMeasure()
     }
 }
 
@@ -78,7 +74,7 @@ struct ReadingPage<Band: View, Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
+        LazyVStack(alignment: .leading, spacing: spacing) {
             band
             content
         }
@@ -95,7 +91,37 @@ extension EnvironmentValues {
     @Entry package var detailColumnWidth: CGFloat? = nil
 }
 
-extension ReadingMeasure {
+/// The detail column's width as the pages need it: updated only when one of the layout
+/// decisions below would change. While the sidebar or the inspector animates, the raw width
+/// changes on every frame; publishing it re-evaluated the whole page and the toolbar on every
+/// frame. Every reader compares the width with one of these thresholds, so its decisions are
+/// the same as with the live width.
+nonisolated struct DetailWidth: Equatable, Sendable {
+    var width: CGFloat
+
+    /// Everything that reads `detailColumnWidth` (or the course page's width) and what it checks.
+    static func decisions(_ width: CGFloat) -> [Bool] {
+        [
+            width < PLLayout.measure,                                                         // reading-column gutter
+            width < WindowToolbar.compactBelow,                                               // course toolbar
+            ReadingMeasure.isColumn(of: width, narrowerThan: CourseDeadlineRow.compactBelow), // compact deadline rows
+            ReadingMeasure.isColumn(of: width, narrowerThan: CourseMaterialRow.compactBelow), // compact material rows
+        ]
+    }
+
+    static func == (lhs: DetailWidth, rhs: DetailWidth) -> Bool {
+        decisions(lhs.width) == decisions(rhs.width)
+    }
+}
+
+extension View {
+    /// Calls `action` with the view's width when a `DetailWidth` decision changes (and once at first).
+    func onDetailWidthChange(_ action: @escaping (CGFloat) -> Void) -> some View {
+        onGeometryChange(for: DetailWidth.self) { DetailWidth(width: $0.size.width) } action: { action($0.width) }
+    }
+}
+
+nonisolated extension ReadingMeasure {
     /// Whether the reading column of a detail column `detailWidth` wide is narrower than `limit`.
     static func isColumn(of detailWidth: CGFloat?, narrowerThan limit: CGFloat) -> Bool {
         guard let detailWidth else { return false }

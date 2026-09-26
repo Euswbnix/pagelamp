@@ -163,7 +163,7 @@ struct CourseAnnouncements: View {
                         .foregroundStyle(.secondary)
                         .padding(.top, PLSpace.s1)
                 } else {
-                    VStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(overview.recentAnnouncements.enumerated()), id: \.element.id) { index, item in
                             row(item)
                             if index < overview.recentAnnouncements.count - 1 {

@@ -22,90 +22,114 @@ struct SyncNowButton: View {
     }
 }
 
-/// This Week: Sync Now.
-struct ThisWeekToolbar: ToolbarContent {
+/// The window's one toolbar (spec §2.5), for every page: each item is always there and only
+/// hidden where it doesn't apply. Adding and removing items on every page, section or week
+/// switch made AppKit rebuild and re-tile the toolbar (with the inspector's split view, about
+/// 100 ms per course page); hiding keeps its structure.
+///
+/// - This Week: Sync Now.
+/// - A course: ‹ › (This Week section only) and "This Week" when away from now; Open Course
+///   Website and the inspector toggle on the trailing side. (Download Files… is M2.)
+/// - Sources & Sync: Sync All, prominent (glass) only when it wins the arbiter. (Add Source… is M2.)
+struct WindowToolbar: ToolbarContent {
+    /// Below this detail-column width a course drops the website item on macOS 26.0.
+    nonisolated static let compactBelow: CGFloat = 900
+
+    /// The detail column is narrower than `compactBelow`.
+    let compact: Bool
+
+    @Environment(AppModel.self) private var model
+
+    // Each item's content is a parameterless view that reads the model itself: this body runs on
+    // every page switch, and closures or strings passed in from here would make SwiftUI update
+    // every item (re-tiling the toolbar and rebuilding its overflow menu) instead of only the
+    // items whose `hidden` state changed.
     var body: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            SyncNowButton()
+        let courseId: String? = { if case .course(let id) = model.destination { id } else { nil } }()
+        let week = courseId.map { model.ui(for: $0).section == .week } ?? false
+        let awayFromNow = courseId.map { model.ui(for: $0).isAwayFromDefault } ?? false
+        let hasWebsite = courseId.flatMap { model.course(id: $0) }.flatMap { Links.web($0.course.url) } != nil
+        let prominent = model.destination == .sources
+            && model.primaryActionWinner(for: SourceRow.primaryActionCandidates(model.sourceRows)) == .page(.pagePrimary)
+
+        ToolbarItem(placement: .navigation) { WeekStepperControl() }
+            .hidden(!week)
+        ToolbarItem(placement: .navigation) { BackToCurrentWeekButton() }
+            .hidden(!(week && awayFromNow))
+        ToolbarItem(placement: .primaryAction) { SyncNowButton() }
+            .hidden(model.destination != .thisWeek)
+        if #available(macOS 26.1, *) {
+            ToolbarItem(placement: .primaryAction) { CourseWebsiteButton() }
+                .visibilityPriority(.low)
+                .hidden(!hasWebsite)
+        } else {
+            ToolbarItem(placement: .primaryAction) { CourseWebsiteButton() }
+                .hidden(!hasWebsite || compact)
+        }
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+            .hidden(courseId == nil)
+        ToolbarItem(placement: .primaryAction) { InspectorToggleButton() }
+            .hidden(courseId == nil)
+        ToolbarItem(placement: .primaryAction) { SyncAllToolbarButton(prominent: prominent) }
+            .sharedBackgroundVisibility(prominent ? .hidden : .automatic)
+            .hidden(model.destination != .sources)
+    }
+}
+
+/// ‹ › for the course's week (This Week section).
+private struct WeekStepperControl: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
+
+    var body: some View {
+        let ui: CourseUIState? = { if case .course(let id) = model.destination { model.ui(for: id) } else { nil } }()
+        ControlGroup {
+            Button {
+                model.stepWeek(by: -1)
+            } label: {
+                Label(l10n("mac.actions.previousWeek"), systemImage: "chevron.backward")
+            }
+            .disabled(ui?.previousWeek == nil)
+            .help(l10n("mac.actions.previousWeek"))
+            Button {
+                model.stepWeek(by: 1)
+            } label: {
+                Label(l10n("mac.actions.nextWeek"), systemImage: "chevron.forward")
+            }
+            .disabled(ui?.nextWeek == nil)
+            .help(l10n("mac.actions.nextWeek"))
         }
     }
 }
 
-/// A course: ‹ › (This Week section only) and "This Week" when away from now; Open Course
-/// Website and the inspector toggle on the trailing side. (Download Files… is M2.)
-struct CourseToolbar: ToolbarContent {
-    let courseId: String
-    /// The course website; only a web address (http/https) gets the toolbar item.
-    let website: URL?
-    /// The detail column is narrower than 900 pt (drops the website item on macOS 26.0).
-    let compact: Bool
+/// Back to now; with the current week unknown, back to "Recent materials".
+private struct BackToCurrentWeekButton: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
 
+    var body: some View {
+        let known: Bool = { if case .course(let id) = model.destination { model.ui(for: id).currentWeek != nil } else { true } }()
+        let title = known ? l10n("mac.toolbar.backToCurrentWeek") : l10n("mac.toolbar.showRecentMaterials")
+        Button {
+            model.showCurrentWeek()
+        } label: {
+            Label(title, systemImage: "arrow.uturn.backward")
+        }
+        .help(known ? l10n("mac.actions.currentWeek") : title)
+    }
+}
+
+/// Open Course Website: only a web address (http/https).
+private struct CourseWebsiteButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
     @Environment(\.openURL) private var openURL
 
-    var body: some ToolbarContent {
-        let ui = model.ui(for: courseId)
-        if ui.section == .week {
-            ToolbarItem(placement: .navigation) {
-                ControlGroup {
-                    Button {
-                        model.stepWeek(by: -1)
-                    } label: {
-                        Label(l10n("mac.actions.previousWeek"), systemImage: "chevron.backward")
-                    }
-                    .disabled(ui.previousWeek == nil)
-                    .help(l10n("mac.actions.previousWeek"))
-                    Button {
-                        model.stepWeek(by: 1)
-                    } label: {
-                        Label(l10n("mac.actions.nextWeek"), systemImage: "chevron.forward")
-                    }
-                    .disabled(ui.nextWeek == nil)
-                    .help(l10n("mac.actions.nextWeek"))
-                }
-            }
-        }
-        if ui.section == .week, ui.isAwayFromDefault {
-            // Back to now; with the current week unknown, back to "Recent materials".
-            let title = ui.currentWeek == nil
-                ? l10n("mac.toolbar.showRecentMaterials")
-                : l10n("mac.toolbar.backToCurrentWeek")
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    model.showCurrentWeek()
-                } label: {
-                    Label(title, systemImage: "arrow.uturn.backward")
-                }
-                .help(ui.currentWeek == nil ? title : l10n("mac.actions.currentWeek"))
-            }
-        }
-        if let website, ["http", "https"].contains(website.scheme?.lowercased() ?? "") {
-            if #available(macOS 26.1, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    websiteButton(website)
-                }
-                .visibilityPriority(.low)
-            } else if !compact {
-                ToolbarItem(placement: .primaryAction) {
-                    websiteButton(website)
-                }
-            }
-        }
-        ToolbarSpacer(.fixed, placement: .primaryAction)
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                model.inspectorShown.toggle()
-            } label: {
-                Label(l10n("mac.toolbar.inspector"), systemImage: "sidebar.trailing")
-            }
-            .help(l10n("mac.toolbar.inspector"))
-        }
-    }
-
-    private func websiteButton(_ url: URL) -> some View {
+    var body: some View {
         Button {
-            openURL(url)
+            if case .course(let id) = model.destination, let url = model.course(id: id).flatMap({ Links.web($0.course.url) }) {
+                openURL(url)
+            }
         } label: {
             Label(l10n("mac.actions.openCourseWebsite"), systemImage: "safari")
         }
@@ -113,26 +137,37 @@ struct CourseToolbar: ToolbarContent {
     }
 }
 
-/// Sources & Sync: Sync All, prominent (glass) only when it wins the arbiter. (Add Source… is M2.)
-struct SourcesToolbar: ToolbarContent {
+/// Shows or hides the course inspector (⌃⌘I in the View menu).
+private struct InspectorToggleButton: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
-    @Environment(\.primaryActionWinner) private var winner
 
-    var body: some ToolbarContent {
-        let prominent = winner == .page(.pagePrimary)
-        ToolbarItem(placement: .primaryAction) {
-            ProminentToolbarButton(
-                title: l10n("mac.actions.syncAll"),
-                systemImage: "arrow.triangle.2.circlepath",
-                prominent: prominent
-            ) {
-                Task { await model.syncAll() }
-            }
-            .disabled(!model.canSync)
-            .help(model.externalSyncRunning ? l10n("common.sync.busy") : l10n("mac.actions.syncAll"))
+    var body: some View {
+        Button {
+            model.inspectorShown.toggle()
+        } label: {
+            Label(l10n("mac.toolbar.inspector"), systemImage: "sidebar.trailing")
         }
-        .sharedBackgroundVisibility(prominent ? .hidden : .automatic)
+        .help(l10n("mac.toolbar.inspector"))
+    }
+}
+
+/// Sync All: prominent (glass) only when it is the window's one tinted action.
+private struct SyncAllToolbarButton: View {
+    let prominent: Bool
+    @Environment(AppModel.self) private var model
+    @Environment(\.l10n) private var l10n
+
+    var body: some View {
+        ProminentToolbarButton(
+            title: l10n("mac.actions.syncAll"),
+            systemImage: "arrow.triangle.2.circlepath",
+            prominent: prominent
+        ) {
+            Task { await model.syncAll() }
+        }
+        .disabled(!model.canSync)
+        .help(model.externalSyncRunning ? l10n("common.sync.busy") : l10n("mac.actions.syncAll"))
     }
 }
 

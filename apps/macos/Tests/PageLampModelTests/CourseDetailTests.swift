@@ -3,9 +3,11 @@
 // mock. Nothing here touches the real data folder, the keychain or the network.
 
 import Foundation
+import Observation
 @testable import PageLamp
 import PageLampKit
 import PageLampModel
+import Synchronization
 import Testing
 
 @MainActor
@@ -293,6 +295,34 @@ struct CourseDetailModelTests {
         #expect(detail.week.value?.materials.map(\.title) == [
             "Week 2 slides — Placeholder Data", "Reading: Chapter 2, Making Up Numbers Responsibly",
         ])
+    }
+
+    @Test("reloading the week on screen changes nothing: going back to a course renders it once")
+    func quietReload() async throws {
+        let (model, _) = makeModel(scenario: .demo)
+        await model.refresh()
+        let summary = try demo101(model)
+        let detail = CourseDetailModel(courseId: summary.course.id)
+        await detail.loadAll(using: model)
+        let ui = model.ui(for: summary.course.id)
+        let changed = Mutex<[String]>([])
+        func track(_ name: String, _ read: @escaping () -> Void) {
+            withObservationTracking(read) { changed.withLock { $0.append(name) } }
+        }
+        track("week") { _ = detail.week }
+        track("isLoadingWeek") { _ = detail.isLoadingWeek }
+        track("overview") { _ = detail.overview }
+        track("deadlines") { _ = detail.deadlines }
+        track("weeks") { _ = ui.availableWeeks; _ = ui.currentWeek }
+        await detail.loadAll(using: model)
+        #expect(changed.withLock { $0 } == [])
+
+        // Stepping to another week still dims the week while it loads (the trackers are armed).
+        ui.step(by: -1)
+        await detail.loadWeek(using: model)
+        #expect(changed.withLock { $0 }.contains("isLoadingWeek"))
+        #expect(changed.withLock { $0 }.contains("week"))
+        #expect(!detail.isLoadingWeek)
     }
 
     @Test("a failing part fails alone (S14)")

@@ -9,14 +9,15 @@ import PageLampModel
 
 struct CourseDetailView: View {
     let courseId: String
+    /// This course's model, from the window's store (DetailColumn), shared with the inspector.
+    let detail: CourseDetailModel
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
-    @State private var detail: CourseDetailModel
     @State private var width: CGFloat = PLSize.windowMainWidth
 
-    init(courseId: String) {
+    init(courseId: String, detail: CourseDetailModel) {
         self.courseId = courseId
-        _detail = State(initialValue: CourseDetailModel(courseId: courseId))
+        self.detail = detail
     }
 
     var body: some View {
@@ -29,26 +30,26 @@ struct CourseDetailView: View {
                 CourseDetailPage(summary: summary, detail: detail)
                     .environment(\.detailColumnWidth, width)
             }
+            // A new course starts at the top with fresh content; the inspector, its split view and
+            // the window toolbar stay (rebuilding them on every course switch cost ~200 ms).
+            .id(courseId)
             .scrollEdgeEffectStyle(.soft, for: .bottom)
             .accessoryBar()
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            // .inspector hosts the page and the inspector in their own NSHostingViews, which ask
+            // their content for a minimum size on every frame of a sidebar/inspector animation.
+            .minimumSizeShield()
             .inspector(isPresented: $bindable.inspectorShown) {
                 CourseInspector(summary: summary, detail: detail)
+                    .minimumSizeShield()
                     .inspectorColumnWidth(min: PLSize.inspectorMin, ideal: PLSize.inspectorIdeal, max: PLSize.inspectorMax)
             }
+            .onDetailWidthChange { width = $0 }
             .focusedSceneValue(\.courseCommands, CourseCommands(
                 website: website,
                 showAIPolicy: { detail.showInspector(.aiPolicy, in: model) },
                 showTermDates: { detail.showInspector(.termDates, in: model) }
             ))
             .navigationTitle(summary.course.code ?? summary.course.name)
-            .toolbar {
-                CourseToolbar(
-                    courseId: courseId,
-                    website: website,
-                    compact: width < 900
-                )
-            }
             // The overview and deadlines reload when the course's data changes (after a sync,
             // on activation); the week also when the student steps to another week.
             .task(id: summary) {
@@ -171,5 +172,19 @@ struct CourseSourceAlert: View {
                     .buttonStyle(.bordered)
             }
         }
+    }
+}
+
+/// The course detail models of the courses shown in this window, created on first use.
+/// Not observable itself: each model is, and looking one up never changes what a view shows.
+@MainActor
+final class CourseDetailStore {
+    private var models: [String: CourseDetailModel] = [:]
+
+    func model(for courseId: String) -> CourseDetailModel {
+        if let model = models[courseId] { return model }
+        let model = CourseDetailModel(courseId: courseId)
+        models[courseId] = model
+        return model
     }
 }

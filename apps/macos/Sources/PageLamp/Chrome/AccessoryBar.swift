@@ -19,7 +19,11 @@ struct AccessoryBar: View {
 extension View {
     /// Pins the accessory bar to the bottom of a page's scroll view (`safeAreaBar`, so content
     /// scrolls under it with the soft edge effect). Every main-window page applies it once.
+    ///
+    /// The bar's inset layout asks the page for its minimum height on every layout pass, and a
+    /// scroll view answers by laying out all of its content; the shield answers it directly.
     func accessoryBar() -> some View {
-        safeAreaBar(edge: .bottom) { AccessoryBar() }
+        minimumSizeShield()
+            .safeAreaBar(edge: .bottom) { AccessoryBar() }
     }
 }

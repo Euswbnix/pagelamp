@@ -21,7 +21,7 @@ struct CourseMaterialList: View {
     @FocusState private var listFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(materials.enumerated()), id: \.element.id) { index, material in
                 CourseMaterialRow(
                     material: material,
@@ -111,7 +111,7 @@ struct CourseMaterialList: View {
 /// the system focus ring while the list has keyboard focus; hover: `.fill.quaternary`.
 struct CourseMaterialRow: View {
     /// Below this list width the status moves under the title (narrow window, inspector open).
-    static let compactBelow: CGFloat = 400
+    nonisolated static let compactBelow: CGFloat = 400
 
     let material: MaterialView
     let status: CourseMaterialStatus

@@ -21,6 +21,7 @@ swift run PageLampSnapshots /tmp/snaps # PNGs of every page and state: light/dar
 cd ../..
 apps/macos/scripts/build-app.sh        # → apps/macos/dist/PageLamp Preview.app (ad-hoc signed)
 apps/macos/scripts/lint.sh             # glass only in Chrome/, generated files current, string keys exist
+apps/macos/scripts/perf-probe.sh all   # frame timing of the panel animations and page switches (opens a window, ~1 min)
 ```
 
 - **build-app.sh** rebuilds the Rust core when the xcframework is missing or older than any crate
@@ -53,12 +54,13 @@ a student build drops it.
 |---|---|---|
 | `PageLampKit` | `Sources/PageLampKit` | UniFFI bindings (generated) + `SyncEventStream` (sync callbacks → `AsyncStream`) |
 | `PageLampModel` | `Sources/PageLampModel` | `PageLampService` (the calls M1 needs; typed `throws(PageLampFailure)`), `LiveService`, `UnavailableService` (S2: diagnostics only), `MockService` + `FixtureService` (snapshots/tests: the mock with answers replaced); `AppModel` (`@Observable @MainActor`: shell data, navigation, sync + capsule, data mode, language); `L10n` + code → words helpers (`L10n+Formatting`); per screen the logic without views: `ThisWeek/` (`ThisWeekDigest`, the port of Tauri `thisWeek.ts` and M1 stand-in for `this_week`; sections, text), `Course/` (page model, presentation), `Setup/` (source rows, Connect steps and snippets, settings); `PrimaryActionArbiter` |
-| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, sidebar, commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`ReadingMeasure` layout), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
+| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, sidebar, commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`readingMeasure()`), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
 | `PageLampApp` | `Sources/PageLampApp` | `@main`: owns the `AppModel` and the app delegate. Executable name `PageLampApp` (never `pagelamp`: the sidecar is `Contents/MacOS/pagelamp` on a case-insensitive disk) |
 | `PageLampSnapshots` | `Sources/PageLampSnapshots` | the snapshot catalogue (`SnapshotCatalog.pages`, one file per screen) and the PNG writer (`SnapshotRenderer`, `ImageRenderer`): `swift run PageLampSnapshots <dir> [name-prefix …]`. Never linked into the app; the tests import it |
 
 **Writing a screen.** A screen is `Views/<Screen>/<Screen>View.swift` (the `ScrollView` with
-`.accessoryBar()`, title and toolbar) plus a `<Screen>Page` document view (a `ReadingPage`: the
+`.accessoryBar()` and its title; its toolbar items are in the one `WindowToolbar`, shown per page
+with `.hidden(_:)`) plus a `<Screen>Page` document view (a `ReadingPage`: the
 `LampBand` first, then `ReadingColumn`). Read shell data from `@Environment(AppModel.self)`
 (`courses`, `sources`, `thisWeek`, `capsule`, …), load screen data through `model.service`
 (course detail: `model.weekMaterials(for:)` also feeds Go ▸ Previous/Next Week), and strings from
@@ -86,6 +88,14 @@ for states the demo data lacks) and loads its data in `make` (`.task` never runs
   `.primaryActionCandidates([...])` + `.arbitratedButtonStyle(_:)` (§3.0).
 - **Honour the system**: Reduce Motion (`PLMotion.reduced` / no animation), Reduce Transparency and
   Increase Contrast (LampBand's rule, Callout borders), `appearsActive` (capsule dims).
+- **No jank** (M1 Macs included). Measure layout changes with `scripts/perf-probe.sh` before and
+  after (hitch time < 5 ms/s on the sidebar and inspector animations). What cost us frames:
+  a content root hosted in its own `NSHostingView` (the detail column, both sides of `.inspector`,
+  the page under `.accessoryBar()`) without `.minimumSizeShield()` lays out all of its text at
+  zero width on every animation frame; `.id` or a per-page `.toolbar` above the inspector rebuilds
+  the split view and toolbar on every page switch; a custom `Layout` around a whole page measures
+  it twice; `String(localized:)` with a bundle re-reads the table (L10n caches it); a model write
+  that only flashes a loading state renders the page again.
 - Swift 6 language mode, strict concurrency, warnings are errors. No Swift package dependencies.
 - **Tests never touch the real data folder, keychain or preferences**: models use
   `InMemorySettingsStore`, a private `NotificationCenter`, `MockService`, or `LiveService` over

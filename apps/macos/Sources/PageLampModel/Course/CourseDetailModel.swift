@@ -82,7 +82,10 @@ public final class CourseDetailModel {
     public func loadWeek(using model: AppModel) async {
         weekGeneration += 1
         let generation = weekGeneration
-        isLoadingWeek = true
+        // Only another week dims the one on screen. The page reloads each time it appears; dimming
+        // for a reload of the same week re-rendered the page twice for nothing.
+        let requested = model.ui(for: courseId).selectedWeek
+        if week.value?.requestedWeek != requested || week.value == nil { isLoadingWeek = true }
         let result: CourseLoadable<WeekMaterials>
         do throws(PageLampFailure) {
             result = .loaded(try await model.weekMaterials(for: courseId))

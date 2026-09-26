@@ -24,6 +24,7 @@ public struct RootView: View {
         @Bindable var model = model
         NavigationSplitView(columnVisibility: $columns) {
             SidebarList()
+                .minimumSizeShield()
                 .navigationSplitViewColumnWidth(min: PLSize.sidebarMin, ideal: PLSize.sidebarIdeal, max: PLSize.sidebarMax)
         } detail: {
             DetailColumn()
@@ -43,6 +44,7 @@ public struct RootView: View {
         .task {
             restore()
             await model.start()
+            await PerfProbe.runIfRequested(model: model)  // no-op unless PAGELAMP_PERF_PROBE is set
         }
         .onChange(of: model.phase, initial: true) { _, phase in
             // S2: the whole window explains the problem; the sidebar would only show nothing.
@@ -64,6 +66,9 @@ public struct RootView: View {
             if restored { storedInspector = shown }
         }
         .appAppearance(model.appearance)
+        .onReceive(NotificationCenter.default.publisher(for: PerfProbe.toggleSidebar)) { _ in  // performance probe only
+            withAnimation { columns = columns == .detailOnly ? .all : .detailOnly }
+        }
     }
 
     /// The first main window of the run restores where the student was; a reopened one (a menu
@@ -97,6 +102,9 @@ public struct RootView: View {
 struct DetailColumn: View {
     @Environment(AppModel.self) private var model
     @State private var width: CGFloat?
+    /// One detail model per course visited in this window (the course page and its inspector
+    /// share them; going back to a course shows its data at once).
+    @State private var details = CourseDetailStore()
 
     var body: some View {
         Group {
@@ -108,13 +116,43 @@ struct DetailColumn: View {
             case .ready:
                 switch model.destination {
                 case .thisWeek: ThisWeekView()
-                case .course(let id): CourseDetailView(courseId: id).id(id)
+                case .course(let id): CourseDetailView(courseId: id, detail: details.model(for: id))
                 case .sources: SourcesView()
                 case .connect: ConnectView()
                 }
             }
         }
         .environment(\.detailColumnWidth, width)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onDetailWidthChange { width = $0 }
+        .minimumSizeShield()
+        .toolbar { WindowToolbar(compact: (width ?? .infinity) < WindowToolbar.compactBelow) }
+    }
+}
+
+/// Answers a minimum-size query (a zero proposal) without laying out the content.
+///
+/// The window asks its content for a minimum size on every layout pass, which is every frame
+/// while the sidebar or the inspector animates. A page's scroll view answered it by laying out
+/// all of its text at zero width (one word per line): about a third of the main thread during
+/// those animations. The window's real minimum comes from RootView's explicit frame.
+struct MinimumSizeShield: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        if proposal.width == 0 || proposal.height == 0 {
+            return CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+        }
+        return content.sizeThatFits(proposal)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+extension View {
+    /// See `MinimumSizeShield`. Use it on every content root hosted in its own NSHostingView
+    /// (the detail column, and both sides of an `.inspector`, which SwiftUI hosts separately).
+    func minimumSizeShield() -> some View {
+        MinimumSizeShield { self }
     }
 }
