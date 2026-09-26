@@ -39,8 +39,10 @@ or Intel), `.msi`/`.exe` for Windows, `.AppImage`/`.deb` for Linux. The desktop 
 `studentos` command-line tool your AI app needs.
 
 The beta is **not code-signed yet**:
-- **macOS:** the first time, right-click StudentOS.app → **Open** → **Open**. If your AI app later
-  can't start StudentOS, run once: `xattr -dr com.apple.quarantine /Applications/StudentOS.app`
+- **macOS:** open StudentOS once; when macOS says it can't verify the developer, go to
+  **System Settings → Privacy & Security** and click **Open Anyway**. If that option doesn't appear, or
+  your AI app later can't start StudentOS, run once:
+  `xattr -dr com.apple.quarantine /Applications/StudentOS.app`
 - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
 
 ### Command-line tool only
@@ -156,7 +158,7 @@ StudentOS 把你的课程——每门课讲到第几周、本周材料、截止�
 不替你写作业；会提醒 AI 标注出处、以辅导为主，并遵守每门课的 AI 政策。
 
 **安装**：从 [Releases](https://github.com/Euswbnix/studentos/releases) 下载对应系统的安装包。
-测试版还没有代码签名：macOS 首次打开请右键 StudentOS.app →「打开」；Windows 出现 SmartScreen 时点「更多信息 → 仍要运行」。
+测试版还没有代码签名：macOS 首次打开被拦后，到「系统设置 → 隐私与安全性」点「仍要打开」（不行再在终端运行 `xattr -dr com.apple.quarantine /Applications/StudentOS.app`）；Windows 出现 SmartScreen 时点「更多信息 → 仍要运行」。
 
 **上手**：
 1. 把课件放进一个文件夹，每门课一个子文件夹，里面可以按「Week 1」「Week 2」分周；

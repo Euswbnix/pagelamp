@@ -155,3 +155,21 @@ jobs:
           fi
           if command -v sha256sum >/dev/null; then sha256sum "$archive" > "$archive.sha256"; else shasum -a 256 "$archive" > "$archive.sha256"; fi
           gh release upload "$TAG" "$archive" "$archive.sha256" --clobber
+
+  # One SHA256SUMS file covering every asset (installers + CLI archives), so testers can verify
+  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`.
+  checksums:
+    needs: [create-release, app, cli]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Compute and upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$TAG"
+          rm -f SHA256SUMS ./*.sha256
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber
