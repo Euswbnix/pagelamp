@@ -325,13 +325,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     addCanvasSource: async (baseUrl, token) => {
       await sleep(latency + 500);
       const url = parseHttpUrl(baseUrl);
-      // Like the backend: just the address, so a pasted course link isn't reinterpreted.
-      const onlyAddress =
-        url?.pathname === "/" && !url.search && !url.hash && !url.username && !url.password;
-      if (url?.protocol !== "https:" || !onlyAddress) {
+      // Like the backend (pagelamp-canvas normalize_base_url): just the address, so a pasted
+      // course link isn't reinterpreted. Its messages never repeat the input; at most the host.
+      if (url?.protocol !== "https:" || url.username || url.password) {
         throw new ApiError(
           "invalid",
-          `'${baseUrl.trim()}' is not a Canvas address. Enter just the address, like https://canvas.example.edu`,
+          "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
+        );
+      }
+      if (url.pathname !== "/" || url.search || url.hash) {
+        throw new ApiError(
+          "invalid",
+          `That is a link to a page, not a Canvas address. Enter just the address, like https://${url.host}`,
         );
       }
       if (!url || url.hostname.includes("offline")) {

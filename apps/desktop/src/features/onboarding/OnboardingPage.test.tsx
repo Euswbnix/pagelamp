@@ -302,7 +302,13 @@ describe("OnboardingPage", () => {
     await user.type(screen.getByLabelText("Canvas address"), "canvas.demo.test/courses/1");
     await user.type(screen.getByLabelText("Access token"), CANVAS_TOKEN);
     await user.click(screen.getByRole("button", { name: "Add and continue" }));
-    expect(await screen.findByText(/is not a Canvas address/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "That is a link to a page, not a Canvas address. Enter just the address, like https://canvas.demo.test",
+      ),
+    ).toBeInTheDocument();
+    // The message names the host, never the whole pasted link.
+    expect(screen.queryByText(/courses\/1/)).toBeNull();
     expect(screen.getByLabelText("Canvas address")).toHaveFocus();
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
   });
