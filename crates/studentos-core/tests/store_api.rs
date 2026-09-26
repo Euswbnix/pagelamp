@@ -1775,3 +1775,57 @@ fn ai_readable_search_excludes_turned_off_and_prohibited_courses() {
         ["DEMO101", "DEMO202"]
     );
 }
+
+#[test]
+fn enrollment_is_marked_without_deleting_anything() {
+    let store = demo_store();
+    store
+        .upsert_course(&course("202", Some("DEMO202"), "Advanced Demo Studies"))
+        .unwrap();
+    assert!(
+        store
+            .get_course(&course_id("202"))
+            .unwrap()
+            .unwrap()
+            .enrollment_active
+    );
+
+    store
+        .mark_enrollment_active(SOURCE, &[course_id("101")])
+        .unwrap();
+    let ended = store.get_course(&course_id("202")).unwrap().unwrap();
+    assert!(
+        !ended.enrollment_active,
+        "no longer listed → inactive, but kept"
+    );
+    assert!(
+        store
+            .get_course(&course_id("101"))
+            .unwrap()
+            .unwrap()
+            .enrollment_active
+    );
+
+    // A re-sync that lists it again (e.g. a new term) makes it active again, and upserts
+    // never touch the flag.
+    store
+        .upsert_course(&course("202", Some("DEMO202"), "Advanced Demo Studies"))
+        .unwrap();
+    assert!(
+        !store
+            .get_course(&course_id("202"))
+            .unwrap()
+            .unwrap()
+            .enrollment_active
+    );
+    store
+        .mark_enrollment_active(SOURCE, &[course_id("101"), course_id("202")])
+        .unwrap();
+    assert!(
+        store
+            .get_course(&course_id("202"))
+            .unwrap()
+            .unwrap()
+            .enrollment_active
+    );
+}

@@ -10,8 +10,9 @@
 //!   completely (all pages, every item understood). A hidden tab, a 403, a failed fetch or a
 //!   cut-off pagination keeps the existing materials of that kind. Announcements older than
 //!   the synced window are kept.
-//! - Courses are pruned only after a complete, unfiltered course list; date-restricted
-//!   courses (Canvas returns a stub) are kept, with the student's settings.
+//! - Courses are NEVER deleted by a Canvas sync: one that leaves the active list (term ended,
+//!   enrollment concluded) keeps all its data and is marked `enrollment_active = false`.
+//!   Removing old courses is the student's decision.
 //! - Events are replaced only for what was re-read completely: a course's assignments, and
 //!   planner items of the synced courses (plus personal notes).
 //! - A file's new version date is recorded only after its new text was indexed, so an
@@ -280,22 +281,18 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             }
         };
 
-        // Courses Canvas still lists (date-restricted stubs included) are kept; the rest are
-        // pruned — but only after a complete, unfiltered course list.
-        let prune_courses = self.options.only_courses.is_empty() && listing.complete();
-        let listed: HashSet<String> = listing
+        // Courses are never deleted here (a course that left Canvas's active list — term
+        // ended, enrollment concluded — is what a student needs during exams). After a
+        // complete course list, record which ones are still active; `listed` includes
+        // date-restricted stubs, which are still enrolled.
+        let listed: Vec<String> = listing
             .items
             .iter()
             .map(|c| self.ids().course(&c.id))
             .collect();
+        let mark_enrollment = listing.complete();
         let planner_prefix = format!("{}/planner/", self.source_id);
         let kept = existing_events.into_iter().filter(|event| {
-            if let Some(course) = &event.course_id
-                && prune_courses
-                && !listed.contains(course)
-            {
-                return false; // its course is being removed
-            }
             if event.id.starts_with(&planner_prefix) {
                 let refreshed_here = match &event.course_id {
                     None => true,
@@ -316,30 +313,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         report.events = events.len();
 
         let source_id = self.source_id.to_string();
-        let keep_courses: Vec<String> = listed.into_iter().collect();
-        let removed = with_store(self.db, move |store| {
+        with_store(self.db, move |store| {
             store.replace_events(&source_id, &events)?;
-            if !prune_courses {
-                return Ok(Vec::new());
+            if mark_enrollment {
+                store.mark_enrollment_active(&source_id, &listed)?;
             }
-            let removed: Vec<(Option<String>, String)> = store
-                .list_courses(true)?
-                .into_iter()
-                .filter(|c| c.source_id == source_id && !keep_courses.contains(&c.id))
-                .map(|c| (c.code, c.external_id))
-                .collect();
-            store.prune_courses(&source_id, &keep_courses)?;
-            Ok(removed)
+            Ok(())
         })
         .await?;
-        // Their downloaded copies go too.
-        for (code, external_id) in removed {
-            let dir = self
-                .options
-                .files_dir
-                .join(course_dir_name(code.as_deref(), &external_id));
-            let _ = tokio::fs::remove_dir_all(dir).await;
-        }
         Ok(report)
     }
 

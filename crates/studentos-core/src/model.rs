@@ -190,6 +190,9 @@ pub struct Course {
     /// Use `ai_materials()` for the effective state — a `prohibited` policy wins over it.
     pub ai_access: bool,
     pub hidden: bool,
+    /// False when the LMS no longer lists the course as active (e.g. the term ended). Such
+    /// courses are kept with all their data; only the student removes them.
+    pub enrollment_active: bool,
     pub updated_at: Timestamp,
 }
 

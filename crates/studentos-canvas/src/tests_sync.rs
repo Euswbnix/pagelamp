@@ -557,7 +557,7 @@ async fn foreign_next_links_are_never_followed() {
 }
 
 #[tokio::test]
-async fn dropped_courses_are_pruned_and_only_courses_limits_the_sync() {
+async fn ended_courses_are_kept_and_only_courses_limits_the_sync() {
     let f = Fixture::new().await;
     f.standard().await;
     f.sync(&f.options(false)).await.unwrap();
@@ -575,7 +575,11 @@ async fn dropped_courses_are_pruned_and_only_courses_limits_the_sync() {
             .any(|e| e.title == "Problem Set 1")
     );
 
-    // DEMO202 is dropped in Canvas → removed with everything it had.
+    // DEMO202 leaves Canvas's active list (term over) → kept with its data, marked inactive.
+    let c202 = format!("{}/course/202", f.source);
+    f.store()
+        .set_course_policy(&c202, AiPolicy::LearningAid, None)
+        .unwrap();
     f.canvas.reset().await;
     f.standard().await;
     Mock::given(method("GET"))
@@ -587,16 +591,21 @@ async fn dropped_courses_are_pruned_and_only_courses_limits_the_sync() {
         .mount(&f.canvas)
         .await;
     f.sync(&f.options(false)).await.unwrap();
-    let codes: Vec<_> = f
-        .store()
-        .list_courses(true)
+    let store = f.store();
+    let old = store
+        .get_course(&c202)
         .unwrap()
-        .into_iter()
-        .filter_map(|c| c.code)
-        .collect();
-    assert_eq!(codes, ["DEMO101"]);
+        .expect("never deleted by a Canvas sync");
+    assert!(!old.enrollment_active);
+    assert_eq!(old.ai_policy, AiPolicy::LearningAid);
+    assert!(
+        store
+            .get_course(&format!("{}/course/101", f.source))
+            .unwrap()
+            .unwrap()
+            .enrollment_active
+    );
 }
-
 #[tokio::test]
 async fn every_request_is_an_allow_listed_get() {
     let f = Fixture::new().await;

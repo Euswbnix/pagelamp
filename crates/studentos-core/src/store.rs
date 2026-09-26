@@ -70,6 +70,7 @@ CREATE TABLE courses (
     ai_policy_note   TEXT,
     ai_access        INTEGER NOT NULL DEFAULT 1, -- student's "AI may read materials" switch
     hidden           INTEGER NOT NULL DEFAULT 0,
+    enrollment_active INTEGER NOT NULL DEFAULT 1, -- 0: no longer in the LMS's active list
     updated_at       TEXT NOT NULL
 );
 CREATE INDEX courses_source ON courses(source_id);
@@ -190,7 +191,7 @@ const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
      CASE WHEN user_term_start IS NOT NULL OR user_term_end IS NOT NULL THEN 'user' \
           WHEN term_start IS NOT NULL OR term_end IS NOT NULL THEN 'synced' \
           ELSE 'none' END AS term_source, \
-     url, ai_policy, ai_policy_note, ai_access, hidden, updated_at";
+     url, ai_policy, ai_policy_note, ai_access, hidden, enrollment_active, updated_at";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, updated_at";
@@ -528,6 +529,19 @@ impl Store {
         Err(course_not_found(query, &courses))
     }
 
+    /// Record which courses of `source_id` the LMS still lists as active: those in `active`
+    /// get `enrollment_active = 1`, the others 0. Nothing is deleted — a course that ended is
+    /// exactly what a student needs during exams (v0.2 can offer "Remove old courses").
+    pub fn mark_enrollment_active(&self, source_id: &str, active: &[String]) -> Result<()> {
+        let active = serde_json::to_string(active)?;
+        self.conn.execute(
+            "UPDATE courses SET enrollment_active =
+                 CASE WHEN id IN (SELECT value FROM json_each(?2)) THEN 1 ELSE 0 END
+             WHERE source_id = ?1",
+            params![source_id, active],
+        )?;
+        Ok(())
+    }
     /// Delete courses of `source_id` whose id is not in `keep` (course dropped/ended).
     /// Returns the number of deleted courses (their modules/materials/chunks cascade).
     pub fn prune_courses(&self, source_id: &str, keep: &[String]) -> Result<usize> {
@@ -1306,6 +1320,7 @@ fn course_from_row(row: &Row<'_>) -> rusqlite::Result<Course> {
         ai_policy: get_value(row, "ai_policy")?,
         ai_policy_note: row.get("ai_policy_note")?,
         ai_access: row.get("ai_access")?,
+        enrollment_active: row.get("enrollment_active")?,
         hidden: row.get("hidden")?,
         updated_at: get_value(row, "updated_at")?,
     })
