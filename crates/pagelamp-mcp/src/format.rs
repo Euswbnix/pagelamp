@@ -52,6 +52,20 @@ pub fn neutralise(body: &str) -> String {
     WRAPPER_TAG.replace_all(body, "&lt;$1").into_owned()
 }
 
+/// `<study_plan` / `</study_plan` in any case and spacing (see `wrap_plan`).
+static PLAN_TAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)<(\s*/?\s*study_plan)").expect("valid regex"));
+
+/// Wrap a saved study plan (JSON an AI app wrote earlier) in `<study_plan>` … `</study_plan>`
+/// after a line saying it is data: like course text, it must never be read as instructions.
+/// Wrapper tags inside the plan are neutralised so it cannot end its own wrapper.
+pub fn wrap_plan(preface: &str, json: &str) -> String {
+    format!(
+        "{preface}\n<study_plan>\n{}\n</study_plan>",
+        PLAN_TAG.replace_all(json, "&lt;$1")
+    )
+}
+
 /// Keep at most `max` items; returns them and how many were dropped.
 pub fn cap_list<T>(mut items: Vec<T>, max: usize) -> (Vec<T>, usize) {
     let omitted = items.len().saturating_sub(max);
