@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    studentos_desktop_lib::run()
+    weekmark_desktop_lib::run()
 }

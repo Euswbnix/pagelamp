@@ -1,0 +1,25 @@
+[package]
+name = "weekmark-app"
+description = "Weekmark application services: the single facade used by both the CLI and the desktop app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+weekmark-core.workspace = true
+weekmark-extract.workspace = true
+weekmark-canvas.workspace = true
+weekmark-local.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock = "0.6"
+tokio.workspace = true

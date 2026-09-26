@@ -1,13 +1,13 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/studentos-core",
-    "crates/studentos-extract",
-    "crates/studentos-canvas",
-    "crates/studentos-local",
-    "crates/studentos-mcp",
-    "crates/studentos-app",
-    "apps/studentos-cli",
+    "crates/weekmark-core",
+    "crates/weekmark-extract",
+    "crates/weekmark-canvas",
+    "crates/weekmark-local",
+    "crates/weekmark-mcp",
+    "crates/weekmark-app",
+    "apps/weekmark-cli",
     "apps/desktop/src-tauri",
 ]
 
@@ -16,15 +16,15 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
-repository = "https://github.com/Euswbnix/studentos"
+repository = "https://github.com/Euswbnix/weekmark"
 
 [workspace.dependencies]
-studentos-core = { path = "crates/studentos-core" }
-studentos-extract = { path = "crates/studentos-extract" }
-studentos-canvas = { path = "crates/studentos-canvas" }
-studentos-local = { path = "crates/studentos-local" }
-studentos-mcp = { path = "crates/studentos-mcp" }
-studentos-app = { path = "crates/studentos-app" }
+weekmark-core = { path = "crates/weekmark-core" }
+weekmark-extract = { path = "crates/weekmark-extract" }
+weekmark-canvas = { path = "crates/weekmark-canvas" }
+weekmark-local = { path = "crates/weekmark-local" }
+weekmark-mcp = { path = "crates/weekmark-mcp" }
+weekmark-app = { path = "crates/weekmark-app" }
 
 anyhow = "1.0"
 thiserror = "2.0"

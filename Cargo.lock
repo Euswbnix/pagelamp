@@ -4610,155 +4610,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
-name = "studentos-app"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "schemars 1.2.2",
- "serde",
- "serde_json",
- "studentos-canvas",
- "studentos-core",
- "studentos-extract",
- "studentos-local",
- "tempfile",
- "tokio",
- "tracing",
- "wiremock",
-]
-
-[[package]]
-name = "studentos-canvas"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "studentos-core",
- "studentos-extract",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "url",
- "wiremock",
-]
-
-[[package]]
-name = "studentos-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "rpassword",
- "serde",
- "serde_json",
- "studentos-app",
- "studentos-core",
- "studentos-mcp",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "studentos-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "directories",
- "hex",
- "keyring",
- "regex",
- "rusqlite",
- "schemars 1.2.2",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "studentos-extract",
- "tempfile",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "studentos-desktop"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "studentos-app",
- "studentos-core",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
-]
-
-[[package]]
-name = "studentos-extract"
-version = "0.1.0"
-dependencies = [
- "html2text",
- "lopdf",
- "pdf-extract",
- "quick-xml",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "zip",
-]
-
-[[package]]
-name = "studentos-local"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "icalendar",
- "mime_guess",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "studentos-core",
- "studentos-extract",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "tracing",
- "url",
- "walkdir",
- "wiremock",
-]
-
-[[package]]
-name = "studentos-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "regex",
- "rmcp",
- "schemars 1.2.2",
- "serde",
- "serde_json",
- "studentos-core",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6073,6 +5924,155 @@ dependencies = [
  "thiserror 2.0.21",
  "windows",
  "windows-core 0.61.2",
+]
+
+[[package]]
+name = "weekmark-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "weekmark-canvas",
+ "weekmark-core",
+ "weekmark-extract",
+ "weekmark-local",
+ "wiremock",
+]
+
+[[package]]
+name = "weekmark-canvas"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "url",
+ "weekmark-core",
+ "weekmark-extract",
+ "wiremock",
+]
+
+[[package]]
+name = "weekmark-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "rpassword",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "weekmark-app",
+ "weekmark-core",
+ "weekmark-mcp",
+]
+
+[[package]]
+name = "weekmark-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "directories",
+ "hex",
+ "keyring",
+ "regex",
+ "rusqlite",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.21",
+ "weekmark-extract",
+]
+
+[[package]]
+name = "weekmark-desktop"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "weekmark-app",
+ "weekmark-core",
+]
+
+[[package]]
+name = "weekmark-extract"
+version = "0.1.0"
+dependencies = [
+ "html2text",
+ "lopdf",
+ "pdf-extract",
+ "quick-xml",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "zip",
+]
+
+[[package]]
+name = "weekmark-local"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "icalendar",
+ "mime_guess",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "url",
+ "walkdir",
+ "weekmark-core",
+ "weekmark-extract",
+ "wiremock",
+]
+
+[[package]]
+name = "weekmark-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "regex",
+ "rmcp",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "weekmark-core",
 ]
 
 [[package]]

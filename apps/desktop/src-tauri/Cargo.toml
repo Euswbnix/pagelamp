@@ -1,6 +1,6 @@
 [package]
-name = "studentos-desktop"
-description = "StudentOS desktop app: a Tauri shell whose commands are thin wrappers over studentos-app"
+name = "weekmark-desktop"
+description = "Weekmark desktop app: a Tauri shell whose commands are thin wrappers over weekmark-app"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,15 @@ license.workspace = true
 publish = false
 
 [lib]
-name = "studentos_desktop_lib"
+name = "weekmark_desktop_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
-studentos-app.workspace = true
-studentos-core.workspace = true
+weekmark-app.workspace = true
+weekmark-core.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -27,6 +27,6 @@ tauri-plugin-opener = "2.5"
 [dev-dependencies]
 # `test` enables tauri::test (mock runtime) for the IPC contract test.
 tauri = { version = "2.11", features = ["test"] }
-studentos-core.workspace = true
+weekmark-core.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

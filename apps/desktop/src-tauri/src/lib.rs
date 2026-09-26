@@ -1,10 +1,10 @@
-//! StudentOS desktop shell.
+//! Weekmark desktop shell.
 //!
 //! ─── Tauri boundary ──────────────────────────────────────────────────────────────────────────
 //! The React UI (apps/desktop/src) calls the commands in `commands.rs` through
-//! `src/api/tauri.ts`. Each command is a thin wrapper over one `studentos_app::App` method —
+//! `src/api/tauri.ts`. Each command is a thin wrapper over one `weekmark_app::App` method —
 //! NO business logic lives here (docs/ARCHITECTURE.md §6). If the UI needs something new, it
-//! is added to the facade in crates/studentos-app first.
+//! is added to the facade in crates/weekmark-app first.
 //!
 //! Permissions granted to the webview are in `capabilities/default.json`: the folder picker
 //! (`dialog:allow-open`) and opening http(s) links. No shell and no filesystem access.
@@ -51,5 +51,5 @@ pub fn run() {
         .manage(Backend::open());
     with_commands(builder)
         .run(tauri::generate_context!())
-        .expect("error while running the StudentOS desktop app");
+        .expect("error while running the Weekmark desktop app");
 }

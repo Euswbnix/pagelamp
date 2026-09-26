@@ -1,0 +1,28 @@
+[package]
+name = "weekmark-cli"
+description = "The `weekmark` command: sync your courses and serve them to your AI app over MCP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "weekmark"
+path = "src/main.rs"
+
+[dependencies]
+weekmark-core.workspace = true
+weekmark-app.workspace = true
+weekmark-mcp.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+chrono.workspace = true
+serde.workspace = true
+rpassword = "7"
+
+[dev-dependencies]
+tempfile.workspace = true

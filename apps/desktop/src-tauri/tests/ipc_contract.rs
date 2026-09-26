@@ -10,12 +10,12 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use studentos_app::App;
-use studentos_core::secrets::MemorySecrets;
-use studentos_desktop_lib::{Backend, with_commands};
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
 use tauri::webview::InvokeRequest;
+use weekmark_app::App;
+use weekmark_core::secrets::MemorySecrets;
+use weekmark_desktop_lib::{Backend, with_commands};
 
 /// Commands with real side effects on the machine running the tests.
 const SKIPPED: &[&str] = &["reveal_data_dir"];
