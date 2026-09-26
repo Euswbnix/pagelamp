@@ -18,6 +18,8 @@ weekmark-extract.workspace = true
 sha2.workspace = true
 hex.workspace = true
 regex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 directories = "6.0"
 keyring = "4.2"
 

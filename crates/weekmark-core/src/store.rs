@@ -1050,6 +1050,13 @@ impl Store {
 
     // ----- statistics ----------------------------------------------------------------------
 
+    /// `PRAGMA user_version` of this database (see `SCHEMA_VERSION`).
+    pub fn schema_version(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))?)
+    }
+
     /// Row counts (see `StoreCounts` for what each number means).
     pub fn counts(&self) -> Result<StoreCounts> {
         let sql = "SELECT

@@ -145,6 +145,11 @@ fn describe_keyring_error(err: &keyring::Error) -> String {
 /// Where the App keeps source secrets. Production uses `KeychainSecrets`; tests and
 /// embedders can inject `MemorySecrets` so nothing touches the real OS keychain.
 pub trait SecretBackend: Send + Sync {
+    /// Whether the backend can be used at all (for `weekmark doctor`); the error is a
+    /// user-presentable reason. Never reads or reveals a real secret.
+    fn check(&self) -> std::result::Result<(), String> {
+        Ok(())
+    }
     /// `Ok(None)` when absent.
     fn get(&self, source_id: &str) -> Result<Option<String>>;
     fn set(&self, source_id: &str, secret: &str) -> Result<()>;
@@ -157,6 +162,14 @@ pub trait SecretBackend: Send + Sync {
 pub struct KeychainSecrets;
 
 impl SecretBackend for KeychainSecrets {
+    /// Probes a fixed, never-used account: "not found" means the keychain works.
+    fn check(&self) -> std::result::Result<(), String> {
+        let entry = keychain_entry("__weekmark_doctor_probe__").map_err(|e| e.to_string())?;
+        match entry.get_password() {
+            Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(err) => Err(describe_keyring_error(&err)),
+        }
+    }
     fn get(&self, source_id: &str) -> Result<Option<String>> {
         get_secret(source_id)
     }

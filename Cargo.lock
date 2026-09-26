@@ -5959,6 +5959,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
  "weekmark-core",
  "weekmark-extract",
@@ -5978,7 +5979,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "weekmark-app",
  "weekmark-core",
  "weekmark-mcp",
@@ -6001,6 +6001,8 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
  "weekmark-extract",
 ]
 

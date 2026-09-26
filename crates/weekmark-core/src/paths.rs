@@ -22,6 +22,9 @@ use crate::{Error, Result};
 
 pub const HOME_ENV: &str = "WEEKMARK_HOME";
 
+/// Log level of Weekmark's own diagnostics (`debug` = what `weekmark sync -v` prints).
+pub const LOG_ENV: &str = "WEEKMARK_LOG";
+
 const DB_FILE: &str = "weekmark.db";
 const FILES_DIR: &str = "files";
 const SYNC_LOCK_FILE: &str = "sync.lock";

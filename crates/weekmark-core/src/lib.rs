@@ -7,12 +7,14 @@
 //! - `ingest`   — sync-time extract → chunk → FTS index (heavy work never runs in MCP calls).
 //! - `timeline` — pure functions that infer "which week is this course in" with evidence.
 //! - `views`    — read views shared by the App facade and the MCP server.
+//! - `diagnostics` — local log files, redaction, crash capture (logs never leave the device).
 //! - `brand`    — product naming for user-facing text (edited by distributions).
 //! - `paths`    — where data lives on disk (`WEEKMARK_HOME` overrides everything).
 //! - `source`   — error type + progress callback shared by the sync sources.
 //! - `secrets`  — OS keychain access for Canvas tokens / calendar-feed URLs. Never used by MCP.
 
 pub mod brand;
+pub mod diagnostics;
 pub mod error;
 pub mod ingest;
 pub mod model;

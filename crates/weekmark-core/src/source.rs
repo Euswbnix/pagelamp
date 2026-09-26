@@ -9,7 +9,24 @@
 //! Messages are shown to the student as-is: make them actionable and NEVER include a secret
 //! (token, feed URL) — not even inside a URL.
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::model::SourceErrorKind;
+
+/// What one sync did for one course (the `weekmark sync` summary; desktop status screens).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CourseSyncSummary {
+    /// Course code, or name when it has no code.
+    pub course: String,
+    pub modules: u32,
+    pub pages: u32,
+    /// Files listed (downloaded or not).
+    pub files: u32,
+    /// Deadlines/events read for this course.
+    pub events: u32,
+    pub warnings: u32,
+}
 
 /// Why a source failed to sync (or failed validation when being added).
 #[derive(Clone, Debug, PartialEq, Eq)]
