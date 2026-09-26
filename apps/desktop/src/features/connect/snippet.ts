@@ -37,3 +37,21 @@ export function mcpServersKey(content: string): string | null {
   const record = servers(content);
   return record ? `"mcpServers": ${JSON.stringify(record, null, 2)}` : null;
 }
+
+/** The table a TOML snippet defines, e.g. "mcp_servers.pagelamp" from its first `[…]` line. */
+export function tomlTable(content: string): string | null {
+  return /^\[([^\]\s]+)\]\s*$/m.exec(content)?.[1] ?? null;
+}
+
+/**
+ * The command that removes what a `claude mcp add … <name> -- <command>` snippet added, with
+ * the same scope: re-running `add` fails while a server with that name exists.
+ */
+export function claudeMcpRemove(content: string): string | null {
+  const [head] = content.split(" -- ");
+  if (!head?.startsWith("claude mcp add ") || head === content) return null;
+  const name = head.trim().split(/\s+/).pop();
+  if (!name || name.startsWith("-")) return null;
+  const scope = /--scope\s+(\S+)/.exec(head)?.[1];
+  return `claude mcp remove${scope ? ` --scope ${scope}` : ""} ${name}`;
+}

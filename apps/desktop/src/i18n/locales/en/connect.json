@@ -37,7 +37,7 @@
     "openJsonNoPath": "Open the app's configuration file.",
     "openToml": "Open this TOML file. Create it if it isn't there yet.",
     "openTomlNoPath": "Open the app's TOML configuration file.",
-    "pasteJson": "If the file is new or empty, paste in this snippet.",
+    "pasteJson": "If the file is new, empty or only {}, replace its content with this snippet.",
     "pasteJsonEntry": "If it already has an \"mcpServers\" section, add only this entry inside it (with a comma after the entry before it). If there's already a \"{{name}}\" entry, replace it:",
     "pasteJsonKey": "If it has other settings (such as \"preferences\") but no \"mcpServers\", add this as a new top-level entry: put it right after the opening {, and add a comma after it (before the next setting):",
     "pasteJsonMerge": "Paste in this snippet. If the file already has settings, merge the two.",
@@ -45,10 +45,12 @@
     "genericAdd": "Add a local (stdio) server with this command, arguments and environment. The exact format depends on the app.",
     "saveAndReopen": "Save the file, then open {{app}} again.",
     "pasteToml": "Add these lines to the file.",
+    "replaceToml": "Set up before (for example before moving {{product}})? If the file already has a [{{table}}] section (and [{{table}}.env]), replace those lines instead of adding them again.",
     "restart": "Save the file, then fully quit the app and open it again.",
     "restartCodex": "Save the file, then restart the app, or start a new Codex session.",
     "openTerminal": "Open a terminal.",
     "runCommand": "Run this command.",
+    "removeFirst": "Added before (for example before moving {{product}})? Then this command fails: first run this, then the command above again.",
     "claudeCodeAfter": "New Claude Code sessions have {{product}} after you run this once."
   },
   "copyPath": "Copy {{app}} file path",
@@ -56,6 +58,7 @@
   "copyEntry": "Copy {{app}} entry only",
   "copyKey": "Copy {{app}} mcpServers section",
   "copyCommand": "Copy {{app}} command",
+  "copyRemoveCommand": "Copy {{app}} remove command",
   "notes": {
     "title": "Good to know"
   },

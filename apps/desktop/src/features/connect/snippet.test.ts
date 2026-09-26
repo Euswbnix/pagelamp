@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mcpServerEntry, mcpServerName, mcpServersKey } from "./snippet";
+import {
+  claudeMcpRemove,
+  mcpServerEntry,
+  mcpServerName,
+  mcpServersKey,
+  tomlTable,
+} from "./snippet";
 
 describe("mcpServerEntry", () => {
   it("extracts the one server entry, ready to paste into an existing mcpServers", () => {
@@ -45,5 +51,31 @@ describe("mcpServerName", () => {
   it("names the one server, or nothing", () => {
     expect(mcpServerName(JSON.stringify({ mcpServers: { pagelamp: {} } }))).toBe("pagelamp");
     expect(mcpServerName(JSON.stringify({ command: "x" }))).toBeNull();
+  });
+});
+
+describe("tomlTable", () => {
+  it("names the table the snippet defines", () => {
+    const content =
+      '[mcp_servers.pagelamp]\ncommand = "/x/pagelamp"\nargs = ["mcp"]\n\n[mcp_servers.pagelamp.env]\nPAGELAMP_HOME = "/d"\n';
+    expect(tomlTable(content)).toBe("mcp_servers.pagelamp");
+    expect(tomlTable("no table here")).toBeNull();
+  });
+});
+
+describe("claudeMcpRemove", () => {
+  it("removes the server the add command adds, with the same scope", () => {
+    // The backend's shape, with a data-folder override and an explicit transport.
+    const add =
+      "claude mcp add --scope user --env PAGELAMP_HOME='/Users/demo/My Data' --transport stdio pagelamp -- '/Applications/PageLamp.app/Contents/MacOS/pagelamp' mcp";
+    expect(claudeMcpRemove(add)).toBe("claude mcp remove --scope user pagelamp");
+    expect(claudeMcpRemove("claude mcp add pagelamp -- /x/pagelamp mcp")).toBe(
+      "claude mcp remove pagelamp",
+    );
+  });
+
+  it("gives up on anything else", () => {
+    expect(claudeMcpRemove("npx something")).toBeNull();
+    expect(claudeMcpRemove("claude mcp add --scope user pagelamp")).toBeNull();
   });
 });

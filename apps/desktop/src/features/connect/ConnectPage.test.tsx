@@ -210,6 +210,30 @@ describe("ConnectPage", () => {
     expect(screen.queryByText(/Quit and reopen the app after changing/)).toBeNull();
   });
 
+  it("tells students who set an app up before how to redo it without duplicates", async () => {
+    const { user } = renderRoute("/connect");
+    // Codex: a second [mcp_servers.pagelamp] table would be invalid TOML.
+    const codex = await card(config("codex").title);
+    expect(
+      within(codex).getByText(
+        /already has a \[mcp_servers\.pagelamp\] section \(and \[mcp_servers\.pagelamp\.env\]\), replace those lines/,
+      ),
+    ).toBeVisible();
+    // Claude Code: `claude mcp add` fails while the server exists.
+    const code = await card("Claude Code");
+    expect(within(code).getByText(/Then this command fails: first run this/)).toBeVisible();
+    const writeText = spyOnClipboard();
+    await user.click(within(code).getByRole("button", { name: "Copy Claude Code remove command" }));
+    expect(writeText).toHaveBeenCalledWith("claude mcp remove --scope user pagelamp");
+    // Claude Desktop: a file holding only {} is the "new or empty" case.
+    const desktop = await card("Claude Desktop");
+    expect(
+      within(desktop).getByText(
+        "If the file is new, empty or only {}, replace its content with this snippet.",
+      ),
+    ).toBeVisible();
+  });
+
   it("says to replace an existing pagelamp entry instead of adding a second one", async () => {
     renderRoute("/connect");
     const desktop = await card("Claude Desktop");

@@ -4,7 +4,13 @@ import { useTranslation } from "react-i18next";
 import type { McpClientConfig } from "@/api/types";
 import { CodeBlock } from "@/components/common/CodeBlock";
 import { CopyButton } from "@/components/common/CopyButton";
-import { mcpServerEntry, mcpServerName, mcpServersKey } from "./snippet";
+import {
+  claudeMcpRemove,
+  mcpServerEntry,
+  mcpServerName,
+  mcpServersKey,
+  tomlTable,
+} from "./snippet";
 
 interface Step {
   key: string;
@@ -94,7 +100,16 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
     case "toml_snippet":
       return [
         { key: "open", text: path ? t("steps.openToml") : t("steps.openTomlNoPath"), extra: path },
-        { key: "paste", text: t("steps.pasteToml"), extra: snippet },
+        {
+          key: "paste",
+          text: t("steps.pasteToml"),
+          extra: (
+            <>
+              {snippet}
+              <ReplaceTomlTable content={config.content} />
+            </>
+          ),
+        },
         {
           key: "restart",
           text: config.client === "codex" ? t("steps.restartCodex") : t("steps.restart"),
@@ -103,7 +118,16 @@ function stepsFor(config: McpClientConfig, t: TFunction<"connect">): Step[] {
     case "shell_command":
       return [
         { key: "terminal", text: t("steps.openTerminal") },
-        { key: "run", text: t("steps.runCommand"), extra: snippet },
+        {
+          key: "run",
+          text: t("steps.runCommand"),
+          extra: (
+            <>
+              {snippet}
+              <RemoveFirst config={config} />
+            </>
+          ),
+        },
         ...(config.client === "claude_code"
           ? [{ key: "after", text: t("steps.claudeCodeAfter") }]
           : []),
@@ -136,6 +160,29 @@ function ExistingFile({ config }: { config: McpClientConfig }) {
         </div>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Set up once already (e.g. before moving the app)? Adding the lines again would define the
+ * table twice, which is invalid TOML: replace the existing lines instead.
+ */
+function ReplaceTomlTable({ content }: { content: string }) {
+  const { t } = useTranslation("connect");
+  const table = tomlTable(content);
+  return table ? <p className="pt-1">{t("steps.replaceToml", { table })}</p> : null;
+}
+
+/** `claude mcp add` fails when the server exists already: remove it first, then add again. */
+function RemoveFirst({ config }: { config: McpClientConfig }) {
+  const { t } = useTranslation("connect");
+  const remove = claudeMcpRemove(config.content);
+  if (!remove) return null;
+  return (
+    <div className="space-y-2 pt-1">
+      <p>{t("steps.removeFirst")}</p>
+      <CodeBlock code={remove} copyLabel={t("copyRemoveCommand", { app: config.title })} />
+    </div>
   );
 }
 
