@@ -110,6 +110,7 @@ impl From<pagelamp_core::Error> for AppError {
             | E::Json(_)
             | E::Io(_)
             | E::SchemaTooNew { .. }
+            | E::SchemaTooOld { .. }
             | E::NoDataDir
             | E::Secret(_) => AppErrorKind::Internal,
         };

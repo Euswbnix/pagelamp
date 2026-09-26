@@ -113,7 +113,10 @@ fn a_version_1_database_is_migrated_by_open_and_keeps_its_events() {
     // a sync, or `upgrade_existing` (which the MCP server runs at startup).
     assert!(matches!(
         Store::open_read_only(&path),
-        Err(Error::NotInitialised(_))
+        Err(Error::SchemaTooOld {
+            found: 1,
+            supported: SCHEMA_VERSION
+        })
     ));
     assert_eq!(Store::upgrade_existing(&path).unwrap(), Some(1));
     assert_eq!(Store::upgrade_existing(&path).unwrap(), None, "only once");

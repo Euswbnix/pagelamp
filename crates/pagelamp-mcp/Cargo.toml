@@ -20,4 +20,6 @@ rmcp = { version = "3.4", features = ["server", "macros", "schemars", "transport
 
 [dev-dependencies]
 tempfile.workspace = true
+# Builds an old-schema database in a test.
+rusqlite.workspace = true
 rmcp = { version = "3.4", features = ["client", "transport-async-rw"] }

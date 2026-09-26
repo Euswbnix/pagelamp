@@ -22,6 +22,14 @@ pub enum Error {
     )]
     SchemaTooNew { found: i64, supported: i64 },
 
+    /// The database was written by an older PageLamp and must be migrated by a read-write
+    /// open (the app or any CLI command) before it can be read (e.g. by the MCP server, when
+    /// its own migration attempt failed).
+    #[error(
+        "the {PRODUCT_NAME} database (schema {found}) needs updating to schema {supported}; open the {PRODUCT_NAME} app once or run `{CLI_NAME} status`"
+    )]
+    SchemaTooOld { found: i64, supported: i64 },
+
     /// The database has not been initialised yet (read-only open of a missing/empty DB).
     #[error("{PRODUCT_NAME} has no data yet at {0}; run `{CLI_NAME} sync` first")]
     NotInitialised(String),

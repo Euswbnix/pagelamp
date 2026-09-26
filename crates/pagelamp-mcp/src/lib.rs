@@ -238,9 +238,15 @@ async fn upgrade_database(db_path: &std::path::Path) {
             pagelamp_core::store::SCHEMA_VERSION
         ),
         Ok(Ok(None)) => {}
-        Ok(Err(err)) => {
-            tracing::warn!(target: LOG_TARGET, "could not migrate the database: {err}");
-        }
+        Ok(Err(pagelamp_core::Error::SchemaTooNew { found, supported })) => tracing::warn!(
+            target: LOG_TARGET,
+            "the database is from a newer version (schema {found}; this one reads {supported})"
+        ),
+        Ok(Err(err)) => tracing::warn!(
+            target: LOG_TARGET,
+            "could not update the database to schema {}; tools will ask to open the app: {err}",
+            pagelamp_core::store::SCHEMA_VERSION
+        ),
         Err(_) => tracing::warn!(target: LOG_TARGET, "could not migrate the database"),
     }
 }
@@ -270,13 +276,23 @@ fn handshake_failure(err: &rmcp::service::ServerInitializeError) -> String {
 /// Log target of this crate (`-v` / `PAGELAMP_LOG=debug` raise `pagelamp*` targets).
 const LOG_TARGET: &str = "pagelamp::mcp";
 
-/// Client-supplied text for the log: at most 64 characters, control characters (line
-/// breaks, tabs, escapes) replaced by '?' so it can't fake log lines or hide a secret from
-/// the redaction filter.
+/// Client-supplied text for the log: redacted first (so clipping can't cut a secret out of
+/// the filter's reach), then control characters (line breaks, tabs) and Unicode line
+/// separators become spaces, bidirectional overrides are dropped (they could disguise the
+/// line), and at most 64 characters are kept.
 fn clip(text: &str) -> String {
-    text.chars()
+    let bidi = |c: char| matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}');
+    redact(text)
+        .chars()
+        .filter(|&c| !bidi(c))
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                ' '
+            } else {
+                c
+            }
+        })
         .take(64)
-        .map(|c| if c.is_control() { '?' } else { c })
         .collect()
 }
 
@@ -938,7 +954,9 @@ impl PageLampServer {
         .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
         match found {
             Ok(course) => Ok(course),
-            Err(pagelamp_core::Error::NotInitialised(_)) => Ok(PromptCourse {
+            Err(
+                pagelamp_core::Error::NotInitialised(_) | pagelamp_core::Error::SchemaTooOld { .. },
+            ) => Ok(PromptCourse {
                 label: course.to_string(),
                 reference: course.to_string(),
                 state: AiMaterialsState::Readable,
@@ -963,6 +981,20 @@ impl PageLampServer {
 
 // ----- helpers --------------------------------------------------------------------------------
 
+#[cfg(test)]
+mod tests {
+    use super::clip;
+
+    #[test]
+    fn client_text_is_redacted_flattened_and_clipped() {
+        assert_eq!(
+            clip("demo\u{202E}\tBearer\txyzSECRET\u{2028}next\nline"),
+            "demo Bearer <redacted> next line"
+        );
+        assert_eq!(clip(&"x".repeat(100)).chars().count(), 64);
+    }
+}
+
 /// A course as a prompt names it.
 struct PromptCourse {
     /// For the prose ("DEMO101 — Intro to Demo Studies").
@@ -977,6 +1009,7 @@ fn core_error(err: pagelamp_core::Error) -> CallToolResult {
     use pagelamp_core::Error as E;
     match err {
         E::NotInitialised(_) => error_result(text::not_initialised()),
+        E::SchemaTooOld { .. } => error_result(text::needs_database_update()),
         E::NotFound(what) => error_result(format!("Not found: {what}")),
         E::Invalid(what) => error_result(format!("Invalid input: {what}")),
         err @ E::Ambiguous { .. } => error_result(err.to_string()),

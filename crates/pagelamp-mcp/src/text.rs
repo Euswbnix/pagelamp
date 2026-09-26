@@ -140,6 +140,13 @@ pub fn not_initialised() -> String {
     )
 }
 
+pub fn needs_database_update() -> String {
+    format!(
+        "{PRODUCT_NAME} was updated and needs to update its database first. Ask the student to \
+         open the {PRODUCT_NAME} app once (or run `{CLI_NAME} status`), then try again."
+    )
+}
+
 pub fn stale_hint() -> String {
     format!(
         "Some data may be out of date. Ask the student to press Sync in the {PRODUCT_NAME} \

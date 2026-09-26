@@ -324,7 +324,9 @@ fn levels(verbose: bool) -> (String, String) {
     if let Ok(developer) = std::env::var("RUST_LOG")
         && !developer.trim().is_empty()
     {
-        return (developer.clone(), developer);
+        // Even then rmcp stays at error in the FILE (reports read it): some AI apps pass the
+        // user's shell environment on, and rmcp's debug lines contain queries and course text.
+        return (rmcp_errors_only(&developer), developer);
     }
     let requested = std::env::var(paths::LOG_ENV)
         .ok()
@@ -342,6 +344,17 @@ fn levels(verbose: bool) -> (String, String) {
         format!("warn,rmcp=error,pagelamp={file}"),
         format!("warn,rmcp=error,pagelamp={stderr}"),
     )
+}
+
+/// `directives` (an `EnvFilter` string) with any `rmcp` directive replaced by `rmcp=error`.
+fn rmcp_errors_only(directives: &str) -> String {
+    directives
+        .split(',')
+        .map(str::trim)
+        .filter(|d| !d.is_empty() && !d.starts_with("rmcp"))
+        .chain(["rmcp=error"])
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Set up logging (log files under `<data_dir>/logs` when a data dir is known, redacted
@@ -647,6 +660,15 @@ mod tests {
         assert_eq!(
             redact("icon@2x.png logo@3x.webp"),
             "icon@2x.png logo@3x.webp"
+        );
+    }
+
+    #[test]
+    fn rmcp_stays_at_error_in_the_file_whatever_rust_log_says() {
+        assert_eq!(rmcp_errors_only("debug"), "debug,rmcp=error");
+        assert_eq!(
+            rmcp_errors_only("info, rmcp=trace ,pagelamp=debug"),
+            "info,pagelamp=debug,rmcp=error"
         );
     }
 

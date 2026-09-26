@@ -511,7 +511,7 @@ fn mcp_sessions_are_logged_without_arguments_or_output() {
         "{log}"
     );
     assert!(
-        log.contains(r#"client "demo-client?<redacted-token>" "9.9", protocol "2025-06-18""#),
+        log.contains(r#"client "demo-client <redacted-token>" "9.9", protocol "2025-06-18""#),
         "{log}"
     );
     assert!(log.contains(r#"tool "search_materials": ok"#), "{log}");

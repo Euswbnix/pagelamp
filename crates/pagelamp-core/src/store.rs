@@ -11,8 +11,9 @@
 //!   There is intentionally no connection pool and no global mutex.
 //!
 //! Schema versioning: `PRAGMA user_version`. `open` migrates forward; `open_read_only`
-//! refuses a DB whose version is newer than `SCHEMA_VERSION` (`Error::SchemaTooNew`) and
-//! returns `Error::NotInitialised` for a missing file or version 0.
+//! refuses a DB whose version is newer than `SCHEMA_VERSION` (`Error::SchemaTooNew`) or older
+//! (`Error::SchemaTooOld`, until a read-write `open` migrated it) and returns
+//! `Error::NotInitialised` for a missing file or version 0.
 //!
 //! How values are stored as TEXT (each direction goes through exactly one helper, see the
 //! "text encodings" section at the bottom of this file):
@@ -246,12 +247,11 @@ impl Store {
 
     /// Open read-only (`SQLITE_OPEN_READ_ONLY`), `busy_timeout=5000`, `query_only=ON`.
     /// Errors: `NotInitialised` if the file is missing or `user_version == 0`;
-    /// `SchemaTooNew` if `user_version > SCHEMA_VERSION`.
+    /// `SchemaTooOld` for an older, non-zero version (it needs a read-write `open` to migrate
+    /// first); `SchemaTooNew` if `user_version > SCHEMA_VERSION`.
     ///
     /// Never creates the database file. (SQLite may create the `-wal`/`-shm` side files
-    /// next to it, which is how WAL readers coordinate with the writer.) A DB with an older,
-    /// non-zero schema version is also reported as `NotInitialised`: it needs a read-write
-    /// `open` (i.e. a sync) to migrate before it can be read.
+    /// next to it, which is how WAL readers coordinate with the writer.)
     pub fn open_read_only(path: &Path) -> Result<Self> {
         if !path.is_file() {
             return Err(Error::NotInitialised(path.display().to_string()));
@@ -261,10 +261,14 @@ impl Store {
         conn.busy_timeout(BUSY_TIMEOUT)?;
         conn.pragma_update(None, "query_only", true)?;
         let store = Store { conn };
-        if store.checked_user_version()? < SCHEMA_VERSION {
-            return Err(Error::NotInitialised(path.display().to_string()));
+        match store.checked_user_version()? {
+            0 => Err(Error::NotInitialised(path.display().to_string())),
+            found if found < SCHEMA_VERSION => Err(Error::SchemaTooOld {
+                found,
+                supported: SCHEMA_VERSION,
+            }),
+            _ => Ok(store),
         }
-        Ok(store)
     }
 
     /// Migrate an existing database written by an older version (0 < `user_version` <

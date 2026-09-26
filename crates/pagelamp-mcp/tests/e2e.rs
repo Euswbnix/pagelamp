@@ -722,6 +722,24 @@ async fn the_course_a_prompt_names_is_accepted_by_the_tools_it_names() {
 }
 
 #[tokio::test]
+async fn an_old_database_that_could_not_be_updated_asks_to_open_the_app() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = temp.path().join("pagelamp.db");
+    let plain = rusqlite::Connection::open(&db).unwrap();
+    plain
+        .execute_batch(pagelamp_core::store::SCHEMA_V1)
+        .unwrap();
+    plain.pragma_update(None, "user_version", 1).unwrap();
+    drop(plain);
+    // (The server itself would migrate it at startup; here that failed or never ran.)
+    let client = connect(db).await;
+    let result = call(&client, "list_courses", json!({})).await;
+    assert!(is_error(&result));
+    assert_eq!(text_of(&result), text::needs_database_update());
+    client.cancel().await.unwrap();
+}
+
+#[tokio::test]
 async fn a_database_without_sources_asks_for_one_not_for_a_sync() {
     let temp = tempfile::tempdir().unwrap();
     let db = temp.path().join("pagelamp.db");
