@@ -162,10 +162,10 @@ impl TokenTransport {
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(30))
             .read_timeout(Duration::from_secs(60))
-            .user_agent(concat!(
-                "PageLamp/",
-                env!("CARGO_PKG_VERSION"),
-                " (read-only)"
+            .user_agent(format!(
+                "{}/{} (read-only)",
+                pagelamp_core::brand::PRODUCT_NAME,
+                env!("CARGO_PKG_VERSION")
             ))
             .build()
             .map_err(network_error)?;

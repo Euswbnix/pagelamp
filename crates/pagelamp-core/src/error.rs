@@ -1,5 +1,8 @@
 use thiserror::Error;
 
+use crate::brand::{CLI_NAME, PRODUCT_NAME};
+use crate::paths::HOME_ENV;
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Error)]
@@ -15,16 +18,16 @@ pub enum Error {
 
     /// The database was created by a newer PageLamp than this binary understands.
     #[error(
-        "database schema version {found} is newer than supported version {supported}; please update PageLamp"
+        "database schema version {found} is newer than supported version {supported}; please update {PRODUCT_NAME}"
     )]
     SchemaTooNew { found: i64, supported: i64 },
 
     /// The database has not been initialised yet (read-only open of a missing/empty DB).
-    #[error("PageLamp has no data yet at {0}; run `pagelamp sync` first")]
+    #[error("{PRODUCT_NAME} has no data yet at {0}; run `{CLI_NAME} sync` first")]
     NotInitialised(String),
 
     /// Neither `PAGELAMP_HOME` nor a platform data directory is available (no home dir).
-    #[error("Could not determine a data directory; set PAGELAMP_HOME")]
+    #[error("Could not determine a data directory; set {HOME_ENV}")]
     NoDataDir,
 
     #[error("not found: {0}")]

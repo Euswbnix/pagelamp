@@ -88,7 +88,11 @@ pub(crate) async fn fetch_ical(feed_url: &str) -> Result<String, SourceError> {
         .timeout(FETCH_TIMEOUT)
         .redirect(redirect_policy())
         .referer(false)
-        .user_agent(concat!("PageLamp/", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!(
+            "{}/{}",
+            pagelamp_core::brand::PRODUCT_NAME,
+            env!("CARGO_PKG_VERSION")
+        ))
         .build()
         .map_err(|err| {
             SourceError::other(format!(
