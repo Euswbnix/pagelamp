@@ -60,5 +60,10 @@ pub fn run() {
         .manage(Backend::open());
     with_commands(builder)
         .run(tauri::generate_context!())
-        .expect("error while running the PageLamp desktop app");
+        .unwrap_or_else(|err| {
+            panic!(
+                "error while running the {} desktop app: {err}",
+                pagelamp_core::brand::PRODUCT_NAME
+            )
+        });
 }

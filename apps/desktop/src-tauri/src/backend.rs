@@ -7,6 +7,7 @@ use std::sync::Mutex;
 
 use pagelamp_app::diagnostics::{expect_panics, expect_panics_in};
 use pagelamp_app::{App, AppError, AppErrorKind};
+use pagelamp_core::brand;
 
 /// Managed Tauri state. If the core fails to open (e.g. the data folder isn't writable yet),
 /// the window still starts and every command returns that error, so the UI can explain it. A
@@ -102,7 +103,8 @@ impl Backend {
 fn open_guarded(open: fn() -> Result<App, AppError>) -> Result<App, AppError> {
     expect_panics(|| panic::catch_unwind(open)).unwrap_or_else(|payload| {
         Err(internal(format!(
-            "PageLamp core failed to start: {}",
+            "{} core failed to start: {}",
+            brand::PRODUCT_NAME,
             panic_message(&*payload)
         )))
     })
@@ -125,7 +127,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 /// (`scripts/build-sidecar.mjs`, macOS: `PageLamp.app/Contents/MacOS/pagelamp`); in development
 /// it is the workspace build in `target/debug` (`cargo build -p pagelamp-cli`).
 pub fn pagelamp_binary() -> PathBuf {
-    let name = format!("pagelamp{}", std::env::consts::EXE_SUFFIX);
+    let name = format!("{}{}", brand::CLI_NAME, std::env::consts::EXE_SUFFIX);
     std::env::current_exe()
         .map(|exe| exe.with_file_name(&name))
         .unwrap_or_else(|_| PathBuf::from(name))
@@ -137,7 +139,7 @@ mod tests {
 
     use pagelamp_app::{App, AppError, AppErrorKind};
 
-    use super::{Backend, pagelamp_binary};
+    use super::{Backend, brand, pagelamp_binary};
 
     #[test]
     fn a_failed_open_is_retried_and_success_is_kept() {
@@ -158,7 +160,7 @@ mod tests {
         let backend = Backend::open_with(flaky_open);
         assert_eq!(
             backend.app().unwrap_err().message,
-            "PageLamp core failed to start: core crashed"
+            format!("{} core failed to start: core crashed", brand::PRODUCT_NAME)
         );
         assert!(backend.app().is_ok(), "third attempt opens");
         assert!(backend.app().is_ok());
@@ -201,6 +203,9 @@ mod tests {
             .expect("file name")
             .to_string_lossy()
             .into_owned();
-        assert_eq!(name, format!("pagelamp{}", std::env::consts::EXE_SUFFIX));
+        assert_eq!(
+            name,
+            format!("{}{}", brand::CLI_NAME, std::env::consts::EXE_SUFFIX)
+        );
     }
 }
