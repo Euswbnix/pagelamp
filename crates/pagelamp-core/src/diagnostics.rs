@@ -78,36 +78,54 @@ pub fn logs_dir_in(data_dir: &Path) -> PathBuf {
 // Redaction
 // ---------------------------------------------------------------------------------------------
 
+// No leading `\b` in these patterns: in escaped text ("\\n1234~…", "\\nhttps://…") a secret
+// follows a word character, and a word boundary would let it through.
 static BEARER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]+").expect("valid regex"));
+/// `Authorization: Basic|Bearer|token <value>` (header, assignment or JSON key).
+static AUTHORIZATION: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)(authorization["']?\s*[:=]\s*["']?)(?:(?:basic|bearer|token)\s+)?[^\s"',;]+"#)
+        .expect("valid regex")
+});
 /// Canvas access tokens look like `1234~AbCd…` (numeric id, tilde — maybe URL-encoded as
 /// `%7E` — and a random part). Short random parts count too (test and sandbox tokens); an
 /// all-digit part is a sharded Canvas id (`1234~5678`), not a token (see `redact`).
 static CANVAS_TOKEN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b\d{1,8}(?:~|%7[Ee])([A-Za-z0-9]{6,})").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"\d{1,8}(?:~|%7[Ee])([A-Za-z0-9]{6,})").expect("valid regex"));
 static SECRET_QUERY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\b(access_token|authtoken|verifier|sig|signature|token|key|pwd|x-amz-[a-z0-9-]+|key-pair-id|policy|client_secret)=[^&\s'<>]+",
+        r#"(?i)(access_token|authtoken|verifier|sig|signature|token|key|pwd|x-amz-[a-z0-9-]+|key-pair-id|policy|client_secret)=[^&\s'"<>]+"#,
     )
     .expect("valid regex")
 });
-/// Any `webcal://` URL is a calendar subscription, whose path or query is the secret.
+/// `"token": "…"` and friends in JSON.
+static JSON_SECRET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)("(?:access_token|authtoken|token|password|secret|client_secret|api_?key)"\s*:\s*")[^"]*""#,
+    )
+    .expect("valid regex")
+});
+/// Any `webcal://` / `webcals://` URL is a calendar subscription, whose path or query is the
+/// secret.
 static WEBCAL_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\bwebcal://([^/?#\s"'<>]+)[^\s"'<>]*"#).expect("valid regex")
+    Regex::new(r#"(?i)webcals?://([^/?#\s"'<>]+)[^\s"'<>]*"#).expect("valid regex")
 });
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b")
+    Regex::new(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})\b")
         .expect("valid regex")
 });
+/// Image-density suffixes (`icon@2x.png`) look like email addresses but are not.
+static DENSITY_SUFFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\d+(?:\.\d+)?x\.").expect("valid regex"));
 static SECRET_ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(password|secret|api[_-]?key|authorization)\s*[:=]\s*["']?[^\s"',;]+"#)
+    Regex::new(r#"(?i)(password|secret|api[_-]?key)\s*[:=]\s*["']?[^\s"',;]+"#)
         .expect("valid regex")
 });
 /// Calendar feed URLs embed a private token in the path or query (Canvas `/feeds/…ics`,
 /// Moodle `/calendar/export_execute.php?…&authtoken=…`, iCloud `/published/…`): keep the
 /// host only.
 static FEED_URL: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(?:webcal|https?)://([^/\s"'<>]+)(?:/[^\s"'<>]*)?(?:\.ics|/feeds?/|/calendar|/published/)[^\s"'<>]*"#)
+    Regex::new(r#"(?i)(?:webcals?|https?)://([^/\s"'<>]+)(?:/[^\s"'<>]*)?(?:\.ics|/feeds?/|/calendar|/published/)[^\s"'<>]*"#)
         .expect("valid regex")
 });
 
@@ -115,6 +133,7 @@ static FEED_URL: LazyLock<Regex> = LazyLock::new(|| {
 /// should never have been logged in the first place, and shortens the home dir to `~`.
 pub fn redact(text: &str) -> String {
     let text = BEARER.replace_all(text, "Bearer <redacted>");
+    let text = AUTHORIZATION.replace_all(&text, "$1<redacted>");
     let text = CANVAS_TOKEN.replace_all(&text, |caps: &regex::Captures<'_>| {
         if caps[1].bytes().all(|b| b.is_ascii_digit()) {
             caps[0].to_string() // a sharded id like 1234~5678
@@ -125,8 +144,15 @@ pub fn redact(text: &str) -> String {
     let text = FEED_URL.replace_all(&text, "https://$1/…");
     let text = WEBCAL_URL.replace_all(&text, "webcal://$1/…");
     let text = SECRET_QUERY.replace_all(&text, "$1=<redacted>");
+    let text = JSON_SECRET.replace_all(&text, "$1<redacted>\"");
     let text = SECRET_ASSIGNMENT.replace_all(&text, "$1=<redacted>");
-    let text = EMAIL.replace_all(&text, "<email>");
+    let text = EMAIL.replace_all(&text, |caps: &regex::Captures<'_>| {
+        if DENSITY_SUFFIX.is_match(&caps[1]) {
+            caps[0].to_string()
+        } else {
+            "<email>".to_string()
+        }
+    });
     shorten_home(&text)
 }
 
@@ -294,9 +320,11 @@ fn levels(verbose: bool) -> (String, String) {
         (_, Some(level)) => (level, "warn"),
         (false, None) => ("info", "warn"),
     };
+    // rmcp logs failed requests at warn with their arguments (course names, queries): only
+    // its errors are kept.
     (
-        format!("warn,pagelamp={file}"),
-        format!("warn,pagelamp={stderr}"),
+        format!("warn,rmcp=error,pagelamp={file}"),
+        format!("warn,rmcp=error,pagelamp={stderr}"),
     )
 }
 
@@ -554,6 +582,17 @@ mod tests {
             ("GET /api?access=1234%7EAbCdEfGhIjKlMnOp", "AbCdEfGh"),
             ("sandbox token 1~sh0rtT", "sh0rtT"),
             ("student demo.student@example.edu wrote", "demo.student@"),
+            // Escaped text: the secret follows a word character (`\n`).
+            ("client \\n1234~AbCdEfGhIjKl", "AbCdEfGh"),
+            (
+                "client \\nhttps://calendar.example.edu/feeds/calendars/user_Esc4ped.ics",
+                "Esc4ped",
+            ),
+            ("feed webcals://example.edu/cal/S3cureCal", "S3cureCal"),
+            ("Authorization: Basic ZGVtbzpodW50ZXIy", "ZGVtbzpodW50ZXIy"),
+            ("authorization=token Tok3nValue", "Tok3nValue"),
+            (r#"{"token": "JsonT0ken", "page": 2}"#, "JsonT0ken"),
+            (r#"{"password":"JsonPassw0rd"}"#, "JsonPassw0rd"),
         ];
         for (line, secret) in planted {
             let redacted = redact(line);
@@ -568,6 +607,15 @@ mod tests {
         assert_eq!(
             redact("course 1234~567890 synced"),
             "course 1234~567890 synced"
+        );
+        // A query value stops before a closing quote; image names are not emails.
+        assert_eq!(
+            redact(r#"url="https://x.example.edu/a?token=abc""#),
+            r#"url="https://x.example.edu/a?token=<redacted>""#
+        );
+        assert_eq!(
+            redact("icon@2x.png logo@3x.webp"),
+            "icon@2x.png logo@3x.webp"
         );
     }
 
