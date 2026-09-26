@@ -127,6 +127,28 @@ describe("OnboardingPage", () => {
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
   });
 
+  it("warns before connecting when PageLamp runs from the disk image", async () => {
+    const api = createMockApi({ scenario: "empty", latencyMs: 0, syncStepMs: 0 });
+    const real = await api.mcpClientConfigs();
+    api.mcpClientConfigs = async () =>
+      real.map((c) => ({
+        ...c,
+        launch: { ...c.launch, command: "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp" },
+        note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
+        notes: ["temporary", ...c.notes],
+      }));
+    const { user } = renderRoute("/welcome", { api });
+    await goToSourceStep(user);
+    await user.type(screen.getByLabelText("Folder path"), "/Users/demo/Courses");
+    await user.click(screen.getByRole("button", { name: "Add and continue" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Your courses are ready" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Move PageLamp to Applications before connecting"),
+    ).toBeInTheDocument();
+  });
+
   it("lets the student leave a long first sync running in the background", async () => {
     const { user } = renderRoute("/welcome", { scenario: "empty", syncStepMs: 60 });
     await goToSourceStep(user);

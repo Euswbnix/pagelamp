@@ -111,7 +111,8 @@ export type McpNoteCode =
   | "free_go_undocumented"
   | "restart_client_after_change"
   | "custom_data_dir"
-  | "generic_stdio_client";
+  | "generic_stdio_client"
+  | "run_from_temporary_location";
 /**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *

@@ -15,6 +15,9 @@ const KNOWN_CODES: readonly McpNoteCode[] = [
   "generic_stdio_client",
 ];
 
+// Shown once, prominently, at the top of the page (TemporaryLocationWarning), not per app.
+const PAGE_LEVEL: readonly McpNoteCode[] = ["run_from_temporary_location"];
+
 /**
  * The backend's notes for one AI app (plan availability, restart hints…), shown prominently.
  * Each note is localised from its code (`note_codes[i]` belongs to `notes[i]`); a note whose
@@ -28,8 +31,12 @@ export function ClientNotes({
   codes: readonly McpNoteCode[];
 }) {
   const { t } = useTranslation("connect");
-  if (notes.length === 0) return null;
   const paired = codes.length === notes.length;
+  const shown = notes.flatMap((note, index) => {
+    const code = paired ? codes[index] : undefined;
+    return code && PAGE_LEVEL.includes(code) ? [] : [{ note, code }];
+  });
+  if (shown.length === 0) return null;
   return (
     // role="note" instead of Alert's default role="alert": this is static advice, not an
     // urgent message, so screen readers shouldn't interrupt with it on page load.
@@ -38,8 +45,7 @@ export function ClientNotes({
       <AlertTitle>{t("notes.title")}</AlertTitle>
       <AlertDescription className="text-foreground">
         <ul className="mt-1 list-disc space-y-1 pl-4">
-          {notes.map((note, index) => {
-            const code = paired ? codes[index] : undefined;
+          {shown.map(({ note, code }) => {
             const key = `${code ?? ""}:${note}`;
             return code && KNOWN_CODES.includes(code) ? (
               <li key={key}>{t(`noteCodes.${code}`)}</li>

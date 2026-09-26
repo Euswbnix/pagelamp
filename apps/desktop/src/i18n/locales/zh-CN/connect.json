@@ -1,6 +1,16 @@
 {
   "title": "连接 AI 应用",
   "description": "{{product}} 直接在你常用的 AI 应用里使用。只需添加一次，之后就能像平时聊天一样询问课程情况。",
+  "temporaryLocation": {
+    "mac": {
+      "title": "连接之前，先把 {{product}} 移到“应用程序”文件夹",
+      "body": "{{product}} 目前是从磁盘映像或临时副本里运行的，下面的设置会指向一个之后会消失的位置，到时 AI 应用就找不到 {{product}} 了。请退出 {{product}}，把它拖进“应用程序”文件夹，从那里重新打开，再回到这个页面。"
+    },
+    "appimage": {
+      "title": "请为 AI 应用使用安装版",
+      "body": "AppImage 每次启动都会挂载到新的位置，所以下面的设置之后会失效。请安装 .deb 或 .rpm 包，或使用命令行压缩包，再从那里复制设置。"
+    }
+  },
   "howItWorks": {
     "title": "工作方式",
     "background": "AI 应用会在需要时自动在后台启动 {{product}}，你不用一直开着它。",
@@ -59,7 +69,8 @@
     "free_go_undocumented": "官方文档没有说明免费版和 Go 套餐是否支持。",
     "restart_client_after_change": "改完配置后，请彻底退出并重新打开该应用。",
     "custom_data_dir": "由于 {{product}} 使用了自定义数据文件夹，这段配置里包含 PAGELAMP_HOME。",
-    "generic_stdio_client": "其他支持本地（stdio）MCP 服务器的 AI 应用也可以用：按它的配置格式填写命令、参数和环境变量。"
+    "generic_stdio_client": "其他支持本地（stdio）MCP 服务器的 AI 应用也可以用：按它的配置格式填写命令、参数和环境变量。",
+    "run_from_temporary_location": "{{product}} 正在从临时位置运行。请把它移到“应用程序”文件夹，从那里打开后再复制这段设置。"
   },
   "quarantine": {
     "title": "如果 macOS 拦截了 {{product}}",

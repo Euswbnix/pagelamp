@@ -20,6 +20,7 @@ import { ConnectSkeleton } from "./ConnectSkeleton";
 import { HowItWorks } from "./HowItWorks";
 import { sortClientConfigs } from "./order";
 import { QuarantineHint } from "./QuarantineHint";
+import { TemporaryLocationWarning } from "./TemporaryLocationWarning";
 import { TryItCard } from "./TryItCard";
 
 /** "Connect your AI app": one setup card per supported AI app, built from the backend's configs. */
@@ -31,6 +32,7 @@ export function ConnectPage() {
     <>
       <PageHeader title={t("title")} description={t("description")} />
       <div className="space-y-6">
+        <TemporaryLocationWarning />
         <AiDisclosure />
         <HowItWorks />
         {configs.isPending ? (

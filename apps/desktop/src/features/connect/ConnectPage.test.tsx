@@ -165,6 +165,47 @@ describe("ConnectPage", () => {
     );
   });
 
+  it("warns at the top when PageLamp runs from the disk image, not in every card", async () => {
+    const temp = "/Volumes/PageLamp/PageLamp.app/Contents/MacOS/pagelamp";
+    const configs = mcpClientConfigs(temp).map((c) => ({
+      ...c,
+      notes: ["PageLamp is running from a temporary location.", ...c.notes],
+      note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
+    }));
+    renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
+
+    const title = await screen.findByText("Move PageLamp to Applications before connecting");
+    expect(title.closest("[data-slot=alert]")).toHaveTextContent(
+      /drag it into your Applications folder, open it from there/,
+    );
+    // Above everything else on the page, including the AI disclosure.
+    const disclosure = screen.getByText(i18n.t("disclosure.full"));
+    expect(
+      title.compareDocumentPosition(disclosure) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // Said once, prominently, not again in each app's "Good to know".
+    expect(screen.queryByText("PageLamp is running from a temporary location.")).toBeNull();
+    expect(screen.getAllByText(/temporary location|Move PageLamp to Applications/)).toHaveLength(1);
+  });
+
+  it("tells AppImage users to use an installed build instead", async () => {
+    const configs = mcpClientConfigs("/tmp/.mount_PageLaXyZ/usr/bin/pagelamp").map((c) => ({
+      ...c,
+      notes: ["moves every launch", ...c.notes],
+      note_codes: ["run_from_temporary_location" as const, ...c.note_codes],
+    }));
+    renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
+    expect(
+      await screen.findByText("Use the installed version for your AI app"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no location warning for an installed app", async () => {
+    renderRoute("/connect");
+    await card("Claude Desktop");
+    expect(screen.queryByText(/before connecting|installed version for your AI app/)).toBeNull();
+  });
+
   it("gives the TOML card its own file path and three steps", async () => {
     const { user } = renderRoute("/connect");
     const codex = await card(config("codex").title);

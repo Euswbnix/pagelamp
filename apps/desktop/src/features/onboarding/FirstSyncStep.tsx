@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { SyncSummary } from "@/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
+import { TemporaryLocationWarning } from "@/features/connect/TemporaryLocationWarning";
 import { SyncProgressPanel } from "@/features/sources/SyncProgressPanel";
 import { useSyncOutcome } from "@/features/sources/useSyncOutcome";
 import { paths } from "@/lib/routes";
@@ -69,6 +70,9 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
         {(view === "done" || view === "doneWithErrors") && summary ? (
           <SummaryStats summary={summary} />
         ) : null}
+
+        {/* Before "Connect your AI app": a setup copied from here would break later. */}
+        {view === "running" ? null : <TemporaryLocationWarning />}
 
         {canvasSynced ? (
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
