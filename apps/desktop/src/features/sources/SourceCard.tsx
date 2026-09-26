@@ -118,8 +118,8 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
           </Button>
         ) : null}
         <span className="flex-1" />
-        {/* Not while any sync runs: it may be about to sync this source. */}
-        <RemoveSourceButton source={source} disabled={running} />
+        {/* Not while any sync runs, here or from the CLI: it may be syncing this source. */}
+        <RemoveSourceButton source={source} disabled={busy} />
       </CardFooter>
     </Card>
   );

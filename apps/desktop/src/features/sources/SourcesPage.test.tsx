@@ -407,5 +407,7 @@ describe("SourcesPage", () => {
       screen.queryByRole("heading", { level: 2, name: "Sync failed" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Another sync is running")).toBeInTheDocument();
+    // Removing a source the other process may be syncing isn't offered either.
+    expect(screen.getByRole("button", { name: "Remove Demo Canvas" })).toBeDisabled();
   });
 });
