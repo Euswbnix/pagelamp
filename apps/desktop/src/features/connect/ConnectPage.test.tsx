@@ -210,19 +210,28 @@ describe("ConnectPage", () => {
     expect(screen.queryByText(/Quit and reopen the app after changing/)).toBeNull();
   });
 
+  it("says to replace an existing pagelamp entry instead of adding a second one", async () => {
+    renderRoute("/connect");
+    const desktop = await card("Claude Desktop");
+    expect(
+      within(desktop).getByText(/If there's already a "pagelamp" entry, replace it:/),
+    ).toBeVisible();
+  });
+
   it("adds an mcpServers key to a Claude Desktop file that has other settings", async () => {
     const { user } = renderRoute("/connect");
     const desktop = await card("Claude Desktop");
     expect(
-      within(desktop).getByText(/but no "mcpServers", add this inside the outer/),
+      within(desktop).getByText(/put it right after the opening \{, and add a comma after it/),
     ).toBeVisible();
     const writeText = spyOnClipboard();
     await user.click(
       within(desktop).getByRole("button", { name: "Copy Claude Desktop mcpServers section" }),
     );
     const key = writeText.mock.calls[0]?.[0] ?? "";
-    // Claude Desktop writes "preferences" itself; the copied key goes next to it.
-    const merged = JSON.parse(`{"preferences": {"sidebarMode": "chat"}, ${key}}`);
+    // Claude Desktop writes "preferences" itself. Following the step literally: right after
+    // the opening {, then a comma before the next setting.
+    const merged = JSON.parse(`{${key}, "preferences": {"sidebarMode": "chat"}}`);
     expect(merged.mcpServers).toEqual(JSON.parse(config("claude_desktop").content).mcpServers);
   });
 
@@ -278,7 +287,7 @@ describe("ConnectPage", () => {
     renderRoute("/connect", { api: mockApi({ mcpClientConfigs: async () => configs }) });
     const title = await screen.findByText("Move PageLamp to Applications before connecting");
     expect(title.closest("[data-slot=alert]")).toHaveTextContent(
-      /hasn't been moved out of the folder you downloaded it to/,
+      /opened from the disk image or from the folder you downloaded it to/,
     );
   });
 

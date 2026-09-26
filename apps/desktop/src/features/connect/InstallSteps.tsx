@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { McpClientConfig } from "@/api/types";
 import { CodeBlock } from "@/components/common/CodeBlock";
 import { CopyButton } from "@/components/common/CopyButton";
-import { mcpServerEntry, mcpServersKey } from "./snippet";
+import { mcpServerEntry, mcpServerName, mcpServersKey } from "./snippet";
 
 interface Step {
   key: string;
@@ -120,11 +120,12 @@ function ExistingFile({ config }: { config: McpClientConfig }) {
   const { t } = useTranslation("connect");
   const entry = mcpServerEntry(config.content);
   const key = mcpServersKey(config.content);
+  const name = mcpServerName(config.content);
   return (
     <>
       {entry ? (
         <div className="space-y-2 pt-1">
-          <p>{t("steps.pasteJsonEntry")}</p>
+          <p>{t("steps.pasteJsonEntry", { name })}</p>
           <CodeBlock code={entry} copyLabel={t("copyEntry", { app: config.title })} />
         </div>
       ) : null}

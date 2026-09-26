@@ -8,7 +8,7 @@
     },
     "translocated": {
       "title": "Move {{product}} to Applications before connecting",
-      "body": "macOS is running a temporary copy of {{product}} because it hasn't been moved out of the folder you downloaded it to, so the setup below would stop working later. Quit {{product}}, drag it into your Applications folder, open it from there, then come back to this page."
+      "body": "macOS is running a temporary copy of {{product}} because it was opened from the disk image or from the folder you downloaded it to, so the setup below would stop working later. Quit {{product}}, drag it to your Applications folder first, open it from there, then come back to this page."
     },
     "appimage": {
       "title": "Use the installed version for your AI app",
@@ -38,8 +38,8 @@
     "openToml": "Open this TOML file. Create it if it isn't there yet.",
     "openTomlNoPath": "Open the app's TOML configuration file.",
     "pasteJson": "If the file is new or empty, paste in this snippet.",
-    "pasteJsonEntry": "If it already has an \"mcpServers\" section, add only this entry inside it (with a comma after the entry before it):",
-    "pasteJsonKey": "If it has other settings (such as \"preferences\") but no \"mcpServers\", add this inside the outer { } instead, with a comma after the setting before it:",
+    "pasteJsonEntry": "If it already has an \"mcpServers\" section, add only this entry inside it (with a comma after the entry before it). If there's already a \"{{name}}\" entry, replace it:",
+    "pasteJsonKey": "If it has other settings (such as \"preferences\") but no \"mcpServers\", add this as a new top-level entry: put it right after the opening {, and add a comma after it (before the next setting):",
     "pasteJsonMerge": "Paste in this snippet. If the file already has settings, merge the two.",
     "genericOpen": "Open your AI app's settings for MCP servers (or its configuration file).",
     "genericAdd": "Add a local (stdio) server with this command, arguments and environment. The exact format depends on the app.",

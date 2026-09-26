@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcpServerEntry, mcpServersKey } from "./snippet";
+import { mcpServerEntry, mcpServerName, mcpServersKey } from "./snippet";
 
 describe("mcpServerEntry", () => {
   it("extracts the one server entry, ready to paste into an existing mcpServers", () => {
@@ -38,5 +38,12 @@ describe("mcpServersKey", () => {
 
   it("gives up on a bare server definition", () => {
     expect(mcpServersKey(JSON.stringify({ command: "x", args: ["mcp"] }))).toBeNull();
+  });
+});
+
+describe("mcpServerName", () => {
+  it("names the one server, or nothing", () => {
+    expect(mcpServerName(JSON.stringify({ mcpServers: { pagelamp: {} } }))).toBe("pagelamp");
+    expect(mcpServerName(JSON.stringify({ command: "x" }))).toBeNull();
   });
 });

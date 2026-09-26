@@ -23,6 +23,12 @@ export function mcpServerEntry(content: string): string | null {
   return `${JSON.stringify(key)}: ${JSON.stringify(value, null, 2)}`;
 }
 
+/** The server's key in a `{ "mcpServers": { "<key>": … } }` snippet ("pagelamp"). */
+export function mcpServerName(content: string): string | null {
+  const record = servers(content);
+  return record ? (Object.keys(record)[0] ?? null) : null;
+}
+
 /**
  * `"mcpServers": { "<key>": { … } }` — what to add as a top-level key when the config file has
  * other settings (Claude Desktop writes "preferences" itself) but no `mcpServers` yet.
