@@ -19,6 +19,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:types": "node scripts/gen-types.mjs",
+    "smoke": "node scripts/smoke-setup.mjs",
+    "smoke:clean": "node scripts/smoke-setup.mjs --clean",
     "tauri": "tauri"
   },
   "dependencies": {

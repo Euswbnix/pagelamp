@@ -27,6 +27,16 @@ pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build
 
 `pnpm run format` fixes formatting and import order.
 
+## Smoke test against the real backend
+
+```bash
+pnpm run smoke        # creates synthetic data in <temp>/studentos-smoke, prints the steps, runs `pnpm tauri dev`
+pnpm run smoke:clean  # deletes <temp>/studentos-smoke
+```
+
+It points `STUDENTOS_HOME` at a scratch folder (never your real data) and creates a synthetic
+course folder with two DEMO courses. The printed steps say what to click and what to expect.
+
 ## Mock mode
 
 `pnpm run dev:mock` (or any build with `VITE_API=mock`) swaps the Rust backend for an in-memory
