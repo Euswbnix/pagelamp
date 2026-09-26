@@ -3272,7 +3272,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-app"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3291,7 +3291,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-canvas"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-cli"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3330,7 +3330,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-core"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3352,7 +3352,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-desktop"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "chrono",
  "pagelamp-app",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-extract"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "html2text",
  "lopdf",
@@ -3382,7 +3382,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-local"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3406,7 +3406,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-mcp"
-version = "0.1.0"
+version = "0.1.0-beta.1"
 dependencies = [
  "anyhow",
  "chrono",

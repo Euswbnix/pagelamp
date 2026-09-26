@@ -178,7 +178,10 @@ enum CourseCommand {
 enum PolicyArg {
     Unknown,
     Prohibited,
+    // The stored/JSON spelling (`learning_aid`) works too.
+    #[value(alias = "learning_aid")]
     LearningAid,
+    #[value(alias = "allowed_with_citation")]
     AllowedWithCitation,
     Unrestricted,
 }

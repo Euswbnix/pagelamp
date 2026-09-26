@@ -156,11 +156,21 @@ fn course_settings_commands() {
             "syllabus §2",
         ],
     ));
+    // The JSON spelling of a policy is accepted as well as the kebab-case one.
+    ok(&pagelamp(
+        &home,
+        &["course", "policy", "DEMO101", "learning_aid"],
+    ));
+    ok(&pagelamp(
+        &home,
+        &["course", "policy", "DEMO101", "allowed-with-citation"],
+    ));
     ok(&pagelamp(
         &home,
         &["course", "term", "DEMO101", "--start", "2026-09-08"],
     ));
     let list = json_out(&pagelamp(&home, &["--json", "courses"]));
+    assert_eq!(list[0]["course"]["ai_policy"], "allowed_with_citation");
     assert_eq!(list[0]["ai_materials"], "turned_off");
     assert_eq!(list[0]["course"]["term_source"], "user");
     assert_eq!(list[1]["ai_materials"], "withheld_by_policy");
