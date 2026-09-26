@@ -717,7 +717,19 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
         secrets.get(&source.id).unwrap().as_deref(),
         Some("demo-good-token")
     );
-    app.update_source_secret(&source.id, "demo-good-token")
+    // A token of another account updates "Connected as …".
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .and(header("authorization", "Bearer demo-other-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"name": "Other Demo Student"})),
+        )
+        .mount(&canvas)
+        .await;
+    let updated = app
+        .update_source_secret(&source.id, "demo-other-token")
         .await
         .unwrap();
+    assert_eq!(updated.config["account_name"], json!("Other Demo Student"));
+    assert_eq!(updated.config["base_url"], json!(canvas.uri()));
 }

@@ -534,6 +534,7 @@ impl App {
             .get_source(source_id)?
             .ok_or_else(|| unknown_source(source_id))?;
         let mut secret = non_empty_secret(secret, "secret")?;
+        let mut account_name = None;
         match source.kind {
             SourceKind::Folder => {
                 return Err(AppError::new(
@@ -543,11 +544,14 @@ impl App {
             }
             SourceKind::Canvas => {
                 let base_url = canvas_base_url(&source)?;
-                weekmark_canvas::check_token(&CanvasConfig {
-                    base_url,
-                    token: secret.clone(),
-                })
-                .await?;
+                // The new token may belong to another account: refresh "Connected as …".
+                account_name = Some(
+                    weekmark_canvas::check_token(&CanvasConfig {
+                        base_url,
+                        token: secret.clone(),
+                    })
+                    .await?,
+                );
             }
             SourceKind::Ical => {
                 secret = normalized_feed_url(&secret)?;
@@ -556,6 +560,11 @@ impl App {
         }
         self.secrets.set(source_id, &secret)?;
         let store = self.write_store()?;
+        if let Some(name) = account_name {
+            let mut updated = source;
+            updated.config["account_name"] = json!(name);
+            store.upsert_source(&updated)?; // label/config only; sync state untouched
+        }
         store.clear_source_error(source_id)?;
         store
             .get_source(source_id)?
