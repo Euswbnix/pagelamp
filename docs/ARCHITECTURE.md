@@ -224,11 +224,18 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 All sessions share ONE working tree and ONE local `main`. The repo is public.
 - **Commit** each finished logical change yourself (small, focused commits). Before committing,
   the checks of your area must pass (DoD above, scoped to what you changed at minimum).
-- **Stage only your own paths, explicitly**: backend `git add crates/ apps/studentos-cli/`
-  (+ `Cargo.lock` only when you changed dependencies); frontend `git add apps/desktop/`
-  (+ `Cargo.lock` only when src-tauri dependencies changed); leader: root files, `docs/`, `spikes/`.
-  Never `git add -A`, `git add .`, `git commit -a`, or staging someone else's files. Check
-  `git diff --cached --stat` before every commit.
+- **Commit with a pathspec, never a bare `git commit`** (the index is shared; a bare commit takes
+  whatever anyone staged — this happened once in 810e415). Owned paths: backend `crates/
+  apps/studentos-cli/`; frontend `apps/desktop/`; leader: root files, `docs/`, `spikes/`.
+  Recipe: `git add -N <new files in your paths>` (intent-to-add, so pathspec commits see them),
+  then `git commit -F msg -- <your paths>`. A pathspec commit records only those paths (their
+  working-tree content) and leaves anything else in the index untouched. Don't leave files staged.
+  Never `git add -A`, `git add .`, `git commit -a`. Verify with `git show --stat HEAD` right after.
+- **`Cargo.lock` is committed by whoever's manifest change caused the lock change, in the same
+  pathspec commit** (`git commit -- crates/… Cargo.lock` or `-- apps/desktop/ Cargo.lock`), so no
+  commit has a manifest/lock mismatch. Before including it, check `git diff Cargo.lock` contains
+  only your change; if it also has the other side's uncommitted entries, message them and agree who
+  commits first.
 - **Push when ≥ 5 local commits are ahead**: `git fetch origin && git rev-list --count origin/main..main`;
   if ≥ 5 → run the full DoD for your area once more, scan staged history for secrets, then
   `git push origin main`. Whoever makes the 5th commit pushes (including others' commits — they
