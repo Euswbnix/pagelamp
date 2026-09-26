@@ -88,22 +88,62 @@ pub struct SyncReport {
 }
 
 /// Validate and normalise a user-entered Canvas URL to `scheme://host[:port]` (no path,
-/// no trailing slash). https only, except http for localhost/127.0.0.1 (tests).
+/// no trailing slash). https only, except http for localhost/127.0.0.1 (tests). A missing
+/// scheme means https ("lms.example.edu" → "https://lms.example.edu").
 pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
-    let _ = input;
-    todo!()
+    let invalid = || {
+        SourceError::other(format!(
+            "'{}' is not a Canvas address (expected something like https://lms.example.edu)",
+            input.trim()
+        ))
+    };
+    let trimmed = input.trim();
+    let with_scheme = if trimmed.contains("://") {
+        trimmed.to_string()
+    } else {
+        format!("https://{trimmed}")
+    };
+    let url = url::Url::parse(&with_scheme).map_err(|_| invalid())?;
+    let host = url
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .ok_or_else(invalid)?;
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(invalid());
+    }
+    let local = matches!(host, "localhost" | "127.0.0.1" | "[::1]");
+    match url.scheme() {
+        "https" => {}
+        "http" if local => {}
+        _ => return Err(invalid()),
+    }
+    Ok(match url.port() {
+        Some(port) => format!("{}://{host}:{port}", url.scheme()),
+        None => format!("{}://{host}", url.scheme()),
+    })
 }
 
 /// Source id for a (normalised) Canvas base URL: `canvas:<host>` (plus `:<port>` if any).
 pub fn source_id(base_url: &str) -> String {
-    let _ = base_url;
-    todo!()
+    let rest = base_url
+        .split_once("://")
+        .map_or(base_url, |(_, rest)| rest);
+    let authority = rest.split('/').next().unwrap_or(rest);
+    format!("canvas:{}", authority.to_ascii_lowercase())
+}
+
+/// Canvas sync is being built (milestone M-F); until then these fail cleanly instead of
+/// panicking, before any secret is stored.
+fn not_available() -> SourceError {
+    SourceError::other(
+        "Canvas sync isn't available in this build yet — use `studentos folder add` + `studentos ical add`.",
+    )
 }
 
 /// Validate a token by calling `GET /api/v1/users/self`; returns the user's display name.
 pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
     let _ = config;
-    todo!()
+    Err(not_available())
 }
 
 /// Full sync of the active courses into the store at `db_path`. The source row must already
@@ -117,5 +157,45 @@ pub async fn sync(
     progress: ProgressFn<'_>,
 ) -> Result<SyncReport, SourceError> {
     let _ = (db_path, config, options, progress);
-    todo!()
+    Err(not_available())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_urls_are_normalised() {
+        let ok = |input: &str| normalize_base_url(input).unwrap();
+        assert_eq!(ok("lms.example.edu"), "https://lms.example.edu");
+        assert_eq!(ok(" https://lms.example.edu/ "), "https://lms.example.edu");
+        assert_eq!(
+            ok("https://LMS.Example.edu/courses/1?x=y"),
+            "https://lms.example.edu"
+        );
+        assert_eq!(
+            ok("https://lms.example.edu:8443/"),
+            "https://lms.example.edu:8443"
+        );
+        assert_eq!(ok("http://127.0.0.1:9999"), "http://127.0.0.1:9999");
+        for bad in [
+            "",
+            "http://lms.example.edu",
+            "ftp://lms.example.edu",
+            "https://user:pass@lms.example.edu",
+            "https://",
+            "not a url at all",
+        ] {
+            assert!(normalize_base_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn source_ids_keep_host_and_port() {
+        assert_eq!(
+            source_id("https://lms.example.edu"),
+            "canvas:lms.example.edu"
+        );
+        assert_eq!(source_id("http://127.0.0.1:9999"), "canvas:127.0.0.1:9999");
+    }
 }

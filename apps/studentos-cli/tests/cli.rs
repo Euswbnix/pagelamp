@@ -287,3 +287,34 @@ fn mcp_speaks_json_rpc_on_stdout_only() {
     std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
     assert!(stderr.is_empty(), "no log noise: {stderr}");
 }
+
+#[test]
+fn canvas_add_fails_cleanly_and_stores_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let bad_url = studentos_with_stdin(
+        &home,
+        &["canvas", "add", "--base-url", "ftp://lms.example.edu"],
+        "demo-not-a-real-token\n",
+    );
+    assert!(!bad_url.status.success());
+    let output = studentos_with_stdin(
+        &home,
+        &["canvas", "add", "--base-url", "https://lms.example.edu"],
+        "demo-not-a-real-token\n",
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert!(
+        stderr.contains("personal use only") && stderr.contains("Approved Integrations"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("demo-not-a-real-token"));
+    assert!(
+        json_out(&studentos(&home, &["--json", "sources"]))
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}

@@ -400,7 +400,8 @@ impl App {
     /// Validates the token (`GET /api/v1/users/self`), stores it in the keychain, creates the
     /// source `canvas:<host>`. Personal-use only — callers must show the notice.
     pub async fn add_canvas_source(&self, base_url: &str, token: &str) -> Result<SourceRecord> {
-        let base_url = studentos_canvas::normalize_base_url(base_url)?;
+        let base_url = studentos_canvas::normalize_base_url(base_url)
+            .map_err(|err| AppError::new(AppErrorKind::Invalid, err.message))?;
         let config = CanvasConfig {
             base_url: base_url.clone(),
             token: non_empty_secret(token, "Canvas access token")?,
