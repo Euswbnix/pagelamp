@@ -727,6 +727,14 @@ async fn ical_source_is_validated_saved_synced_and_its_url_replaced() {
         .respond_with(ResponseTemplate::new(403))
         .mount(&server)
         .await;
+    Mock::given(method("GET"))
+        .and(path("/downgrade.ics"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", "http://calendar.example.edu/x.ics"),
+        )
+        .mount(&server)
+        .await;
 
     let temp = tempfile::tempdir().unwrap();
     let (app, secrets) = app_in(temp.path());
@@ -739,6 +747,17 @@ async fn ical_source_is_validated_saved_synced_and_its_url_replaced() {
         .await
         .unwrap_err();
     assert_eq!(revoked.kind, AppErrorKind::Auth);
+    // A feed that redirects to plain http can't be used: invalid input, not an internal error.
+    let downgrade = app
+        .add_ical_source(&format!("{}/downgrade.ics", server.uri()), None)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        downgrade.kind,
+        AppErrorKind::Invalid,
+        "{}",
+        downgrade.message
+    );
     assert!(
         app.list_sources().unwrap().is_empty(),
         "nothing saved on failure"

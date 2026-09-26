@@ -121,6 +121,9 @@ impl From<pagelamp_core::Error> for AppError {
 
 impl From<SourceError> for AppError {
     fn from(err: SourceError) -> Self {
+        if err.invalid_input {
+            return AppError::new(AppErrorKind::Invalid, err.message);
+        }
         let kind = match err.kind {
             SourceErrorKind::AuthExpiredOrRevoked => AppErrorKind::Auth,
             SourceErrorKind::Network | SourceErrorKind::RateLimited => AppErrorKind::Network,

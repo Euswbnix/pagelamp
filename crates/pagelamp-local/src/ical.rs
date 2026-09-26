@@ -49,7 +49,7 @@ pub(crate) fn normalize_feed_url(input: &str) -> Result<String, SourceError> {
         )
     };
     let url = url::Url::parse(&rewritten).map_err(|_| invalid())?;
-    let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    let local = is_loopback(&url);
     match url.scheme() {
         "https" => {}
         "http" if local => {}
@@ -64,20 +64,54 @@ pub(crate) fn normalize_feed_url(input: &str) -> Result<String, SourceError> {
 /// Redirects to follow at most.
 const MAX_REDIRECTS: usize = 5;
 
-/// Follow at most `MAX_REDIRECTS` redirects, and only to https (http only on this computer):
-/// a feed must not be downgraded to plain http on its way. The feed URL is a secret, so no
-/// `Referer` is ever sent (reqwest would copy the full previous URL into it).
+/// Why a redirect of the feed was not followed (carried inside reqwest's error, see
+/// `request_error`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RedirectRefusal {
+    TooMany,
+    Insecure,
+}
+
+impl std::fmt::Display for RedirectRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            RedirectRefusal::TooMany => "too many redirects",
+            RedirectRefusal::Insecure => "redirect to an insecure address",
+        })
+    }
+}
+
+impl std::error::Error for RedirectRefusal {}
+
+/// Only this computer may be reached over plain http (tests); exact host names only.
+fn is_loopback(url: &url::Url) -> bool {
+    matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
+}
+
+/// Whether the feed may be redirected to `next`, given the URLs requested so far (the
+/// original first): at most `MAX_REDIRECTS` redirects, always to https — except from plain
+/// http on this computer to plain http on this computer (tests), so https never steps down.
+pub(crate) fn redirect_refusal(next: &url::Url, previous: &[url::Url]) -> Option<RedirectRefusal> {
+    if previous.len() > MAX_REDIRECTS {
+        return Some(RedirectRefusal::TooMany);
+    }
+    let from_local_http = previous
+        .last()
+        .is_some_and(|p| p.scheme() == "http" && is_loopback(p));
+    match next.scheme() {
+        "https" => None,
+        "http" if is_loopback(next) && from_local_http => None,
+        _ => Some(RedirectRefusal::Insecure),
+    }
+}
+
+/// Follow redirects per `redirect_refusal`. The feed URL is a secret, so no `Referer` is ever
+/// sent either (reqwest would copy the full previous URL into it; see `fetch_ical`).
 fn redirect_policy() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
-        if attempt.previous().len() > MAX_REDIRECTS {
-            return attempt.error("too many redirects");
-        }
-        let url = attempt.url();
-        let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-        match url.scheme() {
-            "https" => attempt.follow(),
-            "http" if local => attempt.follow(),
-            _ => attempt.error("refused a redirect away from https"),
+        match redirect_refusal(attempt.url(), attempt.previous()) {
+            None => attempt.follow(),
+            Some(refusal) => attempt.error(refusal),
         }
     })
 }
@@ -150,6 +184,20 @@ pub(crate) async fn fetch_ical(feed_url: &str) -> Result<String, SourceError> {
 
 /// Classify a reqwest failure without ever including the URL.
 fn request_error(err: reqwest::Error) -> SourceError {
+    // A refused redirect: fixed texts (the error would name the URL), and the entered URL
+    // is unusable rather than the server unreachable.
+    let mut source = std::error::Error::source(&err);
+    while let Some(inner) = source {
+        if let Some(refusal) = inner.downcast_ref::<RedirectRefusal>() {
+            return SourceError::invalid_input(match refusal {
+                RedirectRefusal::TooMany => "The calendar feed redirected too many times.",
+                RedirectRefusal::Insecure => {
+                    "The calendar feed redirected to an insecure (http) address."
+                }
+            });
+        }
+        source = inner.source();
+    }
     let network = err.is_timeout() || err.is_connect() || err.is_request();
     let detail = err.without_url().to_string();
     if network {
@@ -542,6 +590,48 @@ mod tests {
         assert!(parse_with(SOURCE, "not a calendar", &[], &toronto()).is_err());
         let parsed = parse_with(SOURCE, &ics(""), &[], &toronto()).unwrap();
         assert!(parsed.events.is_empty());
+    }
+
+    #[test]
+    fn redirects_stay_on_https_and_stop_after_five() {
+        let url = |text: &str| url::Url::parse(text).unwrap();
+        let https = [url("https://calendar.example.edu/feed.ics")];
+        let local_http = [url("http://127.0.0.1:8080/feed.ics")];
+        let allowed =
+            |next: &str, previous: &[url::Url]| redirect_refusal(&url(next), previous).is_none();
+        assert!(allowed("https://cdn.example.net/x.ics", &https));
+        assert!(allowed("https://cdn.example.net/x.ics", &local_http));
+        assert!(allowed("http://localhost:9/x.ics", &local_http));
+        assert!(allowed("http://[::1]:9/x.ics", &local_http));
+        for (next, previous) in [
+            ("http://calendar.example.edu/x.ics", &https[..]),
+            ("http://127.0.0.1:9/x.ics", &https[..]), // https never steps down
+            ("http://calendar.example.edu/x.ics", &local_http[..]),
+            ("http://127.0.0.2/x.ics", &local_http[..]),
+            ("http://0.0.0.0/x.ics", &local_http[..]),
+            ("http://localhost.evil.com/x.ics", &local_http[..]),
+            ("webcal://calendar.example.edu/x.ics", &https[..]),
+            ("ftp://calendar.example.edu/x.ics", &https[..]),
+            ("file:///etc/passwd", &https[..]),
+        ] {
+            assert_eq!(
+                redirect_refusal(&url(next), previous),
+                Some(RedirectRefusal::Insecure),
+                "{next}"
+            );
+        }
+        let chain: Vec<url::Url> = (0..6)
+            .map(|i| url(&format!("https://calendar.example.edu/{i}.ics")))
+            .collect();
+        assert!(
+            allowed("https://calendar.example.edu/x.ics", &chain[..5]),
+            "5th hop"
+        );
+        assert_eq!(
+            redirect_refusal(&url("https://calendar.example.edu/x.ics"), &chain),
+            Some(RedirectRefusal::TooMany),
+            "6th hop"
+        );
     }
 
     #[test]

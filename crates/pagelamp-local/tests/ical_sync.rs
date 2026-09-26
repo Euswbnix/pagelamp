@@ -196,16 +196,21 @@ async fn redirects_never_send_the_feed_url_as_referer_and_stay_on_https() {
         assert!(!request.headers.contains_key("referer"), "{request:?}");
     }
 
-    for bad in ["downgrade.ics", "loop.ics"] {
+    for (bad, message) in [
+        (
+            "downgrade.ics",
+            "The calendar feed redirected to an insecure (http) address.",
+        ),
+        ("loop.ics", "The calendar feed redirected too many times."),
+    ] {
         let err = fetch_ical(&format!("{}/feed/{bad}", feed_host.uri()))
             .await
             .unwrap_err();
-        assert!(!err.message.contains("/feed/"), "{}", err.message);
-        assert!(
-            !err.message.contains("calendar.example.edu"),
-            "{}",
-            err.message
-        );
+        // Refused by the policy, not failed on the network (a regressed policy would try
+        // to reach calendar.example.edu and fail with a DNS error instead).
+        assert_eq!(err.kind, SourceErrorKind::Other, "{}", err.message);
+        assert!(err.invalid_input, "{}", err.message);
+        assert_eq!(err.message, message);
     }
     let loops = feed_host
         .received_requests()

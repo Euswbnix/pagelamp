@@ -34,6 +34,9 @@ pub struct SourceError {
     pub kind: SourceErrorKind,
     /// User-presentable, secret-free.
     pub message: String,
+    /// The entered address itself can't be used (e.g. its server redirects to plain http);
+    /// UIs report that as invalid input rather than a failure. `kind` stays `Other`.
+    pub invalid_input: bool,
 }
 
 impl SourceError {
@@ -41,6 +44,14 @@ impl SourceError {
         SourceError {
             kind,
             message: message.into(),
+            invalid_input: false,
+        }
+    }
+    /// See `invalid_input`.
+    pub fn invalid_input(message: impl Into<String>) -> Self {
+        SourceError {
+            invalid_input: true,
+            ..Self::other(message)
         }
     }
     pub fn auth(message: impl Into<String>) -> Self {
