@@ -1,3 +1,48 @@
 {
-  "title": "连接 AI 应用"
+  "title": "连接 AI 应用",
+  "description": "{{product}} 直接在你常用的 AI 应用里使用。只需添加一次，之后就能像平时聊天一样询问课程情况。",
+  "howItWorks": {
+    "title": "工作方式",
+    "background": "AI 应用会在需要时自动在后台启动 {{product}}，你不用一直开着它。",
+    "local": "你的数据一直保存在这台电脑上，只有在 AI 应用回答你的问题时才会被读取。",
+    "once": "每个应用只需设置一次。"
+  },
+  "clients": {
+    "recommended": "最容易上手"
+  },
+  "installKind": {
+    "json_snippet": "添加到配置文件",
+    "toml_snippet": "添加到配置文件",
+    "shell_command": "在终端中运行"
+  },
+  "steps": {
+    "label": "{{app}} 的设置步骤",
+    "openJson": "打开下面这个位置的配置文件；如果文件还不存在，就新建一个。",
+    "openJsonNoPath": "打开该应用的配置文件。",
+    "openToml": "打开下面这个 TOML 文件；如果文件还不存在，就新建一个。",
+    "openTomlNoPath": "打开该应用的 TOML 配置文件。",
+    "pasteJson": "把下面这段配置粘贴进去；如果文件里已经有其他设置，就把两者合并。",
+    "pasteToml": "把下面几行添加到文件中。",
+    "restart": "保存文件，然后彻底退出该应用，再重新打开。",
+    "openTerminal": "打开终端。",
+    "runCommand": "运行下面这条命令。"
+  },
+  "copyPath": "复制 {{app}} 配置文件路径",
+  "copyConfig": "复制 {{app}} 配置",
+  "copyCommand": "复制 {{app}} 命令",
+  "notes": {
+    "title": "注意事项"
+  },
+  "tryIt": {
+    "title": "试一试",
+    "thenAsk": "设置好后，可以这样问：",
+    "promptWeek": "我这周各门课都有什么安排？",
+    "or": "或者：",
+    "promptPlan": "帮我做一份接下来两周的学习计划。"
+  },
+  "empty": {
+    "title": "暂时没有可用的设置步骤",
+    "description": "{{product}} 没能生成 AI 应用的设置步骤，请稍后重试。"
+  },
+  "errorTitle": "设置步骤加载失败"
 }

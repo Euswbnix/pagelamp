@@ -1,8 +1,60 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useCourses } from "@/api/queries";
+import { ErrorState } from "@/components/common/ErrorState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { CourseList } from "./CourseList";
+import { CoursesEmpty } from "./CoursesEmpty";
+import { CoursesPageSkeleton } from "./Skeletons";
+import { SourceProblems } from "./SourceProblems";
+import { StudyPlanCard } from "./StudyPlanCard";
+import { SyncBanner } from "./SyncBanner";
+import { SyncNowButton } from "./SyncNowButton";
+import { ThisWeek } from "./ThisWeek";
 
-// Placeholder — replaced by the real screen.
+/**
+ * Home screen: this week's deadlines, the latest study plan and every course with where it is
+ * this week. Everything is read-only here; course settings live on the course page.
+ */
 export function CoursesPage() {
   const { t } = useTranslation("courses");
-  return <PageHeader title={t("title")} />;
+  const courses = useCourses();
+  const noCourses = courses.isSuccess && courses.data.length === 0;
+
+  let body: ReactNode;
+  if (courses.isPending) {
+    body = <CoursesPageSkeleton />;
+  } else if (courses.isError) {
+    body = (
+      <ErrorState
+        error={courses.error}
+        title={t("list.errorTitle")}
+        onRetry={() => void courses.refetch()}
+      />
+    );
+  } else if (noCourses) {
+    body = <CoursesEmpty />;
+  } else {
+    body = (
+      <div className="space-y-6">
+        <ThisWeek />
+        <StudyPlanCard />
+        <CourseList courses={courses.data} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        title={t("title")}
+        description={t("description")}
+        // The empty state has its own "Sync now"; don't show two.
+        actions={noCourses ? null : <SyncNowButton />}
+      />
+      <SyncBanner />
+      <SourceProblems />
+      {body}
+    </>
+  );
 }

@@ -1,3 +1,57 @@
 {
-  "title": "Settings"
+  "title": "Settings",
+  "appearance": {
+    "title": "Appearance",
+    "theme": "Theme",
+    "themeHint": "System follows your computer's light or dark setting.",
+    "themeOption": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "language": "Language"
+  },
+  "reminders": {
+    "title": "Reminders",
+    "weekly": "Weekly reminders",
+    "description": "Deadline reminders and a Monday summary of your week, generated on this computer.",
+    "comingSoon": "Coming soon"
+  },
+  "data": {
+    "title": "Your data",
+    "description": "Everything {{product}} syncs is stored in this folder on your computer.",
+    "folder": "Data folder",
+    "database": "Database file",
+    "copyFolder": "Copy data folder path",
+    "copyDatabase": "Copy database file path",
+    "reveal": "Show folder",
+    "revealFailed": "Couldn't open the folder",
+    "countsTitle": "What's stored",
+    "counts": {
+      "courses": "Courses",
+      "hiddenCourses": "Hidden courses",
+      "materials": "Materials",
+      "readable": "Readable by your AI app",
+      "events": "Deadlines and events",
+      "studyPlans": "Study plans"
+    },
+    "nothingYet": "Nothing synced yet.",
+    "addSource": "Add a source"
+  },
+  "privacy": {
+    "title": "Privacy",
+    "keychain": "Your Canvas token and calendar feed addresses are kept in your system keychain, never in {{product}}'s database.",
+    "readOnly": "{{product}} only reads from Canvas. It never posts, submits or changes anything there.",
+    "aiProvider": "Course text reaches an AI provider only when your AI app reads it to answer you."
+  },
+  "about": {
+    "title": "About",
+    "version": "Version",
+    "license": "License",
+    "links": "Links",
+    "homepage": "Website",
+    "help": "Help",
+    "issues": "Report a problem",
+    "unavailable": "Unavailable"
+  }
 }

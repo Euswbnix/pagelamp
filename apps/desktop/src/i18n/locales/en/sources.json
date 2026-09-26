@@ -1,3 +1,168 @@
 {
-  "title": "Sources & sync"
+  "title": "Sources & sync",
+  "description": "Where {{product}} gets your course data",
+  "actions": {
+    "add": "Add source",
+    "addFirst": "Add your first source",
+    "syncAll": "Sync all",
+    "sync": "Sync",
+    "syncSource": "Sync {{label}}",
+    "remove": "Remove",
+    "removeSource": "Remove {{label}}",
+    "replaceToken": "Replace token",
+    "replaceFeed": "Replace feed address",
+    "replaceTokenFor": "Replace token for {{label}}",
+    "replaceFeedFor": "Replace feed address for {{label}}"
+  },
+  "list": {
+    "loading": "Loading your sources…"
+  },
+  "empty": {
+    "title": "No sources yet",
+    "description": "Add your course folder, your calendar feed or Canvas, and {{product}} will keep a copy of your courses on this computer."
+  },
+  "busy": {
+    "title": "Another sync is running",
+    "checkAgain": "Check again"
+  },
+  "card": {
+    "canvasAddress": "Canvas address",
+    "folderPath": "Folder",
+    "termStart": "Term starts",
+    "feed": "Feed address",
+    "feedPrivate": "Private feed address (stored in your keychain)",
+    "lastSynced": "Last synced"
+  },
+  "status": {
+    "label": "Status",
+    "ok": "OK",
+    "syncing": "Syncing",
+    "new": "New"
+  },
+  "problem": {
+    "title": "The last sync didn't work",
+    "expiredTitle": "Access expired",
+    "expiredCanvas": "Student tokens last at most 30 days. Create a new token in Canvas (Account → Settings → New access token) and replace it here.",
+    "expiredFeed": "The calendar no longer accepts this feed address. Copy the address again from your LMS and replace it here."
+  },
+  "replace": {
+    "titleToken": "Replace token",
+    "titleFeed": "Replace feed address",
+    "descriptionToken": "Create a new token in Canvas (Account → Settings → New access token) and paste it here. {{label}} and its courses stay as they are.",
+    "descriptionFeed": "Copy the calendar feed address again from your LMS and paste it here. {{label}} and its events stay as they are.",
+    "tokenLabel": "New access token",
+    "feedLabel": "New calendar feed address",
+    "requiredToken": "Paste the new token first.",
+    "requiredFeed": "Paste the new feed address first.",
+    "submit": "Replace",
+    "submitting": "Checking…",
+    "doneToken": "Token replaced for {{label}}",
+    "doneFeed": "Feed address replaced for {{label}}",
+    "syncHint": "Sync now to catch up."
+  },
+  "remove": {
+    "title": "Remove {{label}}?",
+    "description": {
+      "folder": "This removes the source and everything synced from it: its courses, and your AI-policy and term settings for those courses. The files in your folder aren't touched.",
+      "canvas": "This removes the source and everything synced from it: its courses, your AI-policy and term settings for those courses, and its stored access token. Nothing in Canvas changes.",
+      "ical": "This removes the source and everything synced from it: its deadlines, events and courses (with your settings for those courses), and its stored feed address. Your LMS calendar doesn't change."
+    },
+    "confirm": "Remove source",
+    "removing": "Removing…",
+    "done": "Removed {{label}}"
+  },
+  "addDialog": {
+    "title": "Add a source",
+    "description": "Your new source starts syncing as soon as it's added.",
+    "submit": "Add source",
+    "done": "Source added. Syncing now…",
+    "doneLater": "Source added. It will be included in the next sync."
+  },
+  "chooser": {
+    "label": "Source type",
+    "folderFeed": {
+      "title": "Course folder + calendar feed",
+      "badge": "Recommended · works with any LMS",
+      "description": "Your course files on this computer plus your LMS calendar. Works at any school, and it's fine to recommend to classmates."
+    },
+    "canvas": {
+      "title": "Canvas access token",
+      "badge": "Personal use",
+      "description": "Syncs straight from Canvas with a token you create for yourself."
+    }
+  },
+  "folderFeed": {
+    "folderLegend": "Course folder",
+    "folderHint": "Pick the folder that holds one sub-folder per course. Week folders inside a course (like “Week 3”) help {{product}} tell which week it is.",
+    "pathLabel": "Folder path",
+    "pathPlaceholder": "/Users/you/Documents/Courses",
+    "choose": "Choose folder…",
+    "termStartLabel": "Term start (optional)",
+    "termStartHint": "Helps work out the current week.",
+    "nameLabel": "Name (optional)",
+    "namePlaceholder": "e.g. Fall term",
+    "nameHint": "What {{product}} calls this folder. Leave it empty to use the folder's own name.",
+    "feedLegend": "Calendar feed",
+    "feedHint": "Brings in your deadlines and class times.",
+    "feedLabel": "Calendar feed address (optional)",
+    "feedPlaceholder": "https://…/calendar.ics",
+    "feedWhere": "Canvas: Calendar → Calendar Feed. Other LMSs: look for 'export calendar' / iCal.",
+    "feedPrivate": "This address is private — {{product}} stores it in your system keychain.",
+    "missing": "Choose a folder or paste a calendar feed address — or both.",
+    "folderAdded": "Folder added",
+    "feedAdded": "Calendar feed added",
+    "submitting": "Adding…"
+  },
+  "canvasForm": {
+    "noticeTitle": "For your own use",
+    "shareHint": "Helping classmates set up? Point them to the course folder + calendar feed option instead.",
+    "urlLabel": "Canvas address",
+    "urlPlaceholder": "https://canvas.example.edu",
+    "urlHint": "The address you open Canvas at in your browser.",
+    "httpWarning": "Canvas addresses use https. Check that yours starts with https://.",
+    "tokenLabel": "Access token",
+    "tokenHowTo": "In Canvas: Account → Settings → New access token.",
+    "tokenPrivate": "{{product}} checks the token with Canvas, then stores it in your system keychain.",
+    "missingUrl": "Enter your Canvas address.",
+    "missingToken": "Paste your access token.",
+    "submitting": "Checking your token…"
+  },
+  "addErrors": {
+    "folder": {
+      "invalid": "Check the folder path.",
+      "not_found": "We couldn't find that folder. Choose it again or check the path.",
+      "network": "Couldn't read that folder. If it's on a network drive, check that it's connected.",
+      "auth": "{{product}} isn't allowed to read that folder. Check its permissions."
+    },
+    "feed": {
+      "invalid": "That doesn't look like a calendar feed address. Paste the full address, starting with https:// or webcal://.",
+      "not_found": "Nothing was found at that address. Copy the feed address from your LMS again.",
+      "network": "Couldn't reach that address. Check your internet connection and try again.",
+      "auth": "The calendar rejected this address. It may have been reset — copy a fresh one from your LMS."
+    },
+    "canvas": {
+      "invalid": "Check the Canvas address and the token.",
+      "not_found": "There's no Canvas at that address. Compare it with the address bar when you open Canvas.",
+      "network": "Couldn't reach that Canvas address. Check the address and your internet connection.",
+      "auth": "Canvas didn't accept this token. It may have expired or been revoked — create a new one and try again."
+    },
+    "token": {
+      "invalid": "That doesn't look like a Canvas access token. Copy it again from Canvas and paste it here.",
+      "not_found": "Canvas can no longer be found at this source's address. Remove the source and add it again with the current address.",
+      "network": "Couldn't reach Canvas. Check your internet connection and try again.",
+      "auth": "Canvas didn't accept this token. It may have expired or been revoked — create a new one and try again."
+    }
+  },
+  "progress": {
+    "dismiss": "Hide",
+    "dismissLabel": "Hide sync results",
+    "starting": "Starting…",
+    "barLabel": "{{label}} progress",
+    "steps": "{{current}} of {{total}}",
+    "running": "Syncing…",
+    "ok": "Done",
+    "warnings": "Warnings ({{n}})",
+    "expiredHint": "Access expired. Replace the token or feed address to sync this source again.",
+    "fixOnSources": "Fix on Sources & sync"
+  }
 }

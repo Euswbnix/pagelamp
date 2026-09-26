@@ -1,3 +1,38 @@
 {
-  "title": "欢迎"
+  "steps": {
+    "label": "设置步骤",
+    "progress": "第 {{step}} 步，共 {{total}} 步",
+    "welcome": "欢迎",
+    "source": "添加数据来源",
+    "sync": "首次同步",
+    "done": "（已完成）"
+  },
+  "welcome": {
+    "title": "欢迎使用 {{product}}",
+    "body": "{{product}} 会把你的课程资料、每周安排和截止日期保存在你自己的电脑上，交给你正在用的 AI 应用（比如 Claude 或 ChatGPT）读取。你可以让 AI 帮你规划这周的学习、讲解本周内容，或者帮你把落下的课补上。{{product}} 不会替你写作业，也不会替你提交任何东西。",
+    "start": "开始设置",
+    "skip": "暂时跳过"
+  },
+  "source": {
+    "title": "你的课程在哪里？",
+    "description": "选择 {{product}} 获取课程数据的方式。之后还可以添加更多数据来源。",
+    "submit": "添加并继续"
+  },
+  "sync": {
+    "title": "正在同步你的课程",
+    "description": "{{product}} 正在把课程复制到这台电脑上，第一次同步可能需要一两分钟。",
+    "doneTitle": "课程已经准备好了",
+    "doneDescription": "所有内容都已保存在这台电脑上。下一步，连接你正在用的 AI 应用，让它能读取你的课程。",
+    "problemsTitle": "就差一点了",
+    "problemsDescription": "有些数据来源没有同步成功。你可以先继续，之后再到“数据来源与同步”里处理。",
+    "failedTitle": "这次没能同步",
+    "failedDescription": "你可以现在重试，也可以先继续，之后在“数据来源与同步”里再同步。",
+    "summaryLabel": "{{product}} 找到的内容",
+    "courses": "课程",
+    "materials": "资料",
+    "events": "截止日期和日程",
+    "noCourses": "还没有找到课程。如果你添加的是文件夹，请确认里面每门课都有一个单独的子文件夹。之后随时可以在“数据来源与同步”里修改。",
+    "connect": "连接 AI 应用",
+    "goToCourses": "查看我的课程"
+  }
 }

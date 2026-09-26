@@ -1,3 +1,117 @@
 {
-  "title": "课程详情"
+  "backToCourses": "全部课程",
+  "loading": "正在加载课程…",
+  "loadError": "无法加载这门课程",
+  "notFound": {
+    "title": "找不到这门课程",
+    "description": "这门课程可能已随数据来源一起被移除，也可能还没有同步。",
+    "action": "返回课程列表"
+  },
+  "header": {
+    "statusLabel": "课程状态",
+    "freshness": "数据来源：{{source}} · {{when}}同步",
+    "freshnessNever": "数据来源：{{source}} · 尚未同步",
+    "syncing": "正在同步…",
+    "openWebsite": "打开课程网站",
+    "hidden": "已隐藏",
+    "showInList": "在课程列表中显示"
+  },
+  "sourceAlert": {
+    "expiredTitle": "访问令牌已过期",
+    "expiredBody": "这门课程目前无法更新。请到“数据来源与同步”中更换令牌，才能获取新的资料和截止日期。",
+    "failedTitle": "这门课程的数据来源上次同步失败：{{reason}}",
+    "failedBody": "这里的内容可能不是最新的，详情请查看“数据来源与同步”。",
+    "action": "打开“数据来源与同步”"
+  },
+  "tabs": {
+    "label": "课程内容",
+    "week": "本周",
+    "timeline": "教学进度",
+    "deadlines": "截止日期",
+    "policy": "AI 使用规定",
+    "settings": "设置"
+  },
+  "week": {
+    "switcherLabel": "选择周次",
+    "previous": "上一周",
+    "next": "下一周",
+    "thisWeek": "（本周）",
+    "recent": "近期资料",
+    "goToThisWeek": "回到本周",
+    "showRecent": "查看近期资料",
+    "setTermDates": "设置学期日期",
+    "modules": "模块",
+    "materials": "课程资料",
+    "summary": "共 {{total}} 份资料，你的 AI 应用能读取其中 {{readable}} 份",
+    "sections_one": "{{count}} 个部分",
+    "sections_other": "{{count}} 个部分",
+    "readableSections_one": "AI 应用可以读取，共 {{count}} 个部分",
+    "readableSections_other": "AI 应用可以读取，共 {{count}} 个部分",
+    "published": "发布于 {{date}}",
+    "loadError": "无法加载这一周的资料",
+    "empty": {
+      "title": "第 {{week}} 周没有找到资料",
+      "titleRecent": "近期没有新资料",
+      "description": "同步后，放在对应周次模块或文件夹里的资料会显示在这里。",
+      "action": "打开“数据来源与同步”"
+    },
+    "announcements": {
+      "title": "近期公告",
+      "empty": "最近两周没有公告。"
+    }
+  },
+  "timeline": {
+    "title": "课程当前进度",
+    "confidence": {
+      "high": "基本可以确定，判断依据见下方。",
+      "medium": "这是比较可靠的估计，但最好确认一下是否正确。",
+      "low": "暂时没法准确判断现在是第几周。在下方设置学期日期就能解决。"
+    },
+    "evidenceTitle": "判断依据",
+    "evidenceEmpty": "还没有任何线索。请同步这门课程，或设置学期日期。",
+    "outsideTerm": "今天不在这门课的学期范围内。如果这门课还在上，请检查下方的日期。"
+  },
+  "term": {
+    "title": "周次不对？设置这门课的学期日期",
+    "description": "{{product}} 会从学期第一天开始计算教学周。",
+    "breaksNote": "目前暂不考虑阅读周和假期。",
+    "start": "学期开始日期",
+    "end": "学期结束日期（可选）",
+    "save": "保存日期",
+    "useSynced": "改用同步的日期",
+    "saved": "学期日期已保存",
+    "usedSynced": "已改回同步的学期日期",
+    "invalid": "日期有误，请确认结束日期晚于开始日期。"
+  },
+  "deadlines": {
+    "note": "这里只有标题和日期。{{product}} 不会下载作业要求，更不会用它们替你做作业。",
+    "upcomingTitle": "即将截止",
+    "upcomingDescription": "未来 {{days}} 天内截止",
+    "pastTitle": "最近已截止",
+    "pastDescription": "过去 {{days}} 天内截止",
+    "pastEmpty": "过去 {{days}} 天没有截止的任务。",
+    "loadError": "无法加载截止日期",
+    "empty": {
+      "title": "未来 {{days}} 天没有要截止的任务",
+      "description": "截止日期来自 Canvas 或你的日历订阅。如果有遗漏，请检查数据来源。",
+      "action": "打开“数据来源与同步”"
+    }
+  },
+  "policy": {
+    "title": "这门课可以怎样使用 AI？",
+    "explanation": "你的 AI 应用会看到这项设置，并据此调整帮助你的方式：设为“{{prohibited}}”或“{{unknown}}”时，它只会讲解课程概念。",
+    "noteLabel": "粘贴课程大纲里的相关规定（可选）",
+    "noteHelp": "你的 AI 应用也会看到这段文字，并按原文要求来帮你。",
+    "unsaved": "有未保存的更改",
+    "save": "保存 AI 使用规定",
+    "discard": "放弃更改",
+    "saved": "AI 使用规定已保存"
+  },
+  "settings": {
+    "title": "课程设置",
+    "hideLabel": "隐藏这门课程",
+    "hideDescription": "隐藏的课程不会出现在课程列表里，你的 AI 应用也看不到它。",
+    "hiddenToast": "已隐藏 {{course}}，你的 AI 应用不会再看到它。",
+    "shownToast": "{{course}} 已重新显示在课程列表中。"
+  }
 }

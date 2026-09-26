@@ -1,3 +1,38 @@
 {
-  "title": "Welcome"
+  "steps": {
+    "label": "Setup steps",
+    "progress": "Step {{step}} of {{total}}",
+    "welcome": "Welcome",
+    "source": "Add a source",
+    "sync": "First sync",
+    "done": "(done)"
+  },
+  "welcome": {
+    "title": "Welcome to {{product}}",
+    "body": "{{product}} keeps your courses — materials, weekly structure and deadlines — on your computer, and serves them to the AI app you already use, like Claude or ChatGPT. Ask your AI app to plan your week, explain this week's material or help you catch up. {{product}} never solves or submits assignments for you.",
+    "start": "Get started",
+    "skip": "Skip for now"
+  },
+  "source": {
+    "title": "Where are your courses?",
+    "description": "Choose how {{product}} gets your course data. You can add more sources later.",
+    "submit": "Add and continue"
+  },
+  "sync": {
+    "title": "Syncing your courses",
+    "description": "{{product}} is copying your courses to this computer. The first sync can take a minute.",
+    "doneTitle": "Your courses are ready",
+    "doneDescription": "Everything is on this computer now. Next, connect the AI app you already use so it can read your courses.",
+    "problemsTitle": "Almost there",
+    "problemsDescription": "Some sources didn't sync. You can carry on and fix them later on Sources & sync.",
+    "failedTitle": "The sync didn't run",
+    "failedDescription": "You can try again now, or carry on and sync later from Sources & sync.",
+    "summaryLabel": "What {{product}} found",
+    "courses": "Courses",
+    "materials": "Materials",
+    "events": "Deadlines and events",
+    "noCourses": "No courses found yet. If you added a folder, check that it has one sub-folder per course. You can change your sources at any time on Sources & sync.",
+    "connect": "Connect your AI app",
+    "goToCourses": "Go to my courses"
+  }
 }

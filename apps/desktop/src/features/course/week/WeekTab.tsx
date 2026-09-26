@@ -1,0 +1,181 @@
+import { FolderOpen, Info, Layers } from "lucide-react";
+import { type ReactNode, useId } from "react";
+import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
+import { useWeekMaterials } from "@/api/queries";
+import type { CourseOverview, WeekMaterials } from "@/api/types";
+import { ErrorState } from "@/components/common/ErrorState";
+import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { paths } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import { useSelectedWeek } from "../useCourseParams";
+import { AnnouncementList } from "./AnnouncementList";
+import { MaterialList } from "./MaterialList";
+import { WeekSwitcher } from "./WeekSwitcher";
+
+/** "This week": a week switcher, that week's modules and materials, recent announcements. */
+export function WeekTab({
+  overview,
+  onSetTermDates,
+}: {
+  overview: CourseOverview;
+  /** Opens the Timeline tab, where the term dates are set. */
+  onSetTermDates: () => void;
+}) {
+  const { t } = useTranslation("course");
+  const [selectedWeek, setSelectedWeek] = useSelectedWeek();
+  const query = useWeekMaterials(overview.course.id, selectedWeek);
+  const currentWeek = overview.timeline.current_week ?? null;
+
+  // Selecting the current week clears ?week=, so the URL and cache stay canonical.
+  const selectWeek = (week: number | null) => setSelectedWeek(week === currentWeek ? null : week);
+
+  let body: ReactNode;
+  if (query.isError) {
+    body = (
+      <ErrorState
+        error={query.error}
+        title={t("week.loadError")}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  } else if (query.data) {
+    body = (
+      <WeekView
+        data={query.data}
+        onSelectWeek={selectWeek}
+        onSetTermDates={onSetTermDates}
+        // Previous week's list stays visible (dimmed) while the next one loads.
+        stale={query.isPlaceholderData}
+      />
+    );
+  } else {
+    body = <WeekSkeleton />;
+  }
+
+  return (
+    <div className="space-y-10">
+      {body}
+      <AnnouncementList announcements={overview.recent_announcements} />
+    </div>
+  );
+}
+
+function WeekView({
+  data,
+  onSelectWeek,
+  onSetTermDates,
+  stale,
+}: {
+  data: WeekMaterials;
+  onSelectWeek: (week: number | null) => void;
+  onSetTermDates: () => void;
+  stale: boolean;
+}) {
+  const { t } = useTranslation("course");
+  const week = data.week ?? null;
+  return (
+    <div className={cn("space-y-6 transition-opacity", stale && "opacity-60")} aria-busy={stale}>
+      <WeekSwitcher
+        week={week}
+        currentWeek={data.timeline.current_week ?? null}
+        availableWeeks={data.available_weeks}
+        onSelect={onSelectWeek}
+      />
+      {data.note ? (
+        <Alert role="status">
+          <Info aria-hidden />
+          <AlertDescription>{data.note}</AlertDescription>
+          {week === null ? (
+            <AlertAction>
+              <Button size="xs" variant="outline" onClick={onSetTermDates}>
+                {t("week.setTermDates")}
+              </Button>
+            </AlertAction>
+          ) : null}
+        </Alert>
+      ) : null}
+      {data.modules.length > 0 ? <ModuleList modules={data.modules} /> : null}
+      {data.materials.length > 0 ? (
+        <MaterialList materials={data.materials} />
+      ) : (
+        <EmptyWeek week={week} />
+      )}
+    </div>
+  );
+}
+
+function ModuleList({ modules }: { modules: WeekMaterials["modules"] }) {
+  const { t } = useTranslation("course");
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId} className="space-y-2">
+      <h3 id={headingId} className="text-sm font-medium text-muted-foreground">
+        {t("week.modules")}
+      </h3>
+      <ul className="flex flex-wrap gap-2">
+        {modules.map((module) => (
+          <li
+            key={module.id}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-sm"
+          >
+            <Layers className="size-4 text-muted-foreground" aria-hidden />
+            {module.name}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function EmptyWeek({ week }: { week: number | null }) {
+  const { t } = useTranslation("course");
+  return (
+    <Empty className="border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <FolderOpen aria-hidden />
+        </EmptyMedia>
+        <EmptyTitle>
+          {week !== null ? t("week.empty.title", { week }) : t("week.empty.titleRecent")}
+        </EmptyTitle>
+        <EmptyDescription>{t("week.empty.description")}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button asChild variant="outline">
+          <Link to={paths.sources}>{t("week.empty.action")}</Link>
+        </Button>
+      </EmptyContent>
+    </Empty>
+  );
+}
+
+const ROWS = ["a", "b", "c", "d"];
+
+function WeekSkeleton() {
+  const { t: tc } = useTranslation();
+  return (
+    <div className="space-y-4" aria-busy="true">
+      <span className="sr-only" role="status">
+        {tc("states.loading")}
+      </span>
+      <Skeleton className="h-8 w-56" />
+      <Skeleton className="h-7 w-72" />
+      <div className="space-y-px overflow-hidden rounded-lg border">
+        {ROWS.map((row) => (
+          <Skeleton key={row} className="h-16 w-full rounded-none" />
+        ))}
+      </div>
+    </div>
+  );
+}

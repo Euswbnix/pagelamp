@@ -1,3 +1,168 @@
 {
-  "title": "数据来源与同步"
+  "title": "数据来源与同步",
+  "description": "{{product}} 从这些地方获取你的课程数据",
+  "actions": {
+    "add": "添加数据来源",
+    "addFirst": "添加第一个数据来源",
+    "syncAll": "全部同步",
+    "sync": "同步",
+    "syncSource": "同步 {{label}}",
+    "remove": "移除",
+    "removeSource": "移除 {{label}}",
+    "replaceToken": "更换令牌",
+    "replaceFeed": "更换订阅地址",
+    "replaceTokenFor": "更换令牌（{{label}}）",
+    "replaceFeedFor": "更换订阅地址（{{label}}）"
+  },
+  "list": {
+    "loading": "正在加载数据来源…"
+  },
+  "empty": {
+    "title": "还没有数据来源",
+    "description": "添加课程文件夹、日历订阅或 Canvas 之后，{{product}} 会在这台电脑上保存一份你的课程。"
+  },
+  "busy": {
+    "title": "已有其他同步在进行",
+    "checkAgain": "重新检查"
+  },
+  "card": {
+    "canvasAddress": "Canvas 地址",
+    "folderPath": "文件夹",
+    "termStart": "学期开始日期",
+    "feed": "订阅地址",
+    "feedPrivate": "私密订阅地址（保存在系统钥匙串中）",
+    "lastSynced": "上次同步"
+  },
+  "status": {
+    "label": "状态",
+    "ok": "正常",
+    "syncing": "同步中",
+    "new": "新添加"
+  },
+  "problem": {
+    "title": "上次同步没有成功",
+    "expiredTitle": "访问权限已过期",
+    "expiredCanvas": "学生令牌最长只能用 30 天。请在 Canvas 中新建一个令牌（Account → Settings → New access token），然后在这里更换。",
+    "expiredFeed": "这个订阅地址已经失效。请从教学平台重新复制订阅地址，然后在这里更换。"
+  },
+  "replace": {
+    "titleToken": "更换令牌",
+    "titleFeed": "更换订阅地址",
+    "descriptionToken": "在 Canvas 中新建一个令牌（Account → Settings → New access token），然后粘贴到这里。{{label}} 和它的课程都会保留。",
+    "descriptionFeed": "从教学平台重新复制日历订阅地址，然后粘贴到这里。{{label}} 和它的日程都会保留。",
+    "tokenLabel": "新的访问令牌",
+    "feedLabel": "新的日历订阅地址",
+    "requiredToken": "请先粘贴新的令牌。",
+    "requiredFeed": "请先粘贴新的订阅地址。",
+    "submit": "更换",
+    "submitting": "正在验证…",
+    "doneToken": "已更换 {{label}} 的令牌",
+    "doneFeed": "已更换 {{label}} 的订阅地址",
+    "syncHint": "现在同步一下，把这段时间的内容补上。"
+  },
+  "remove": {
+    "title": "移除 {{label}}？",
+    "description": {
+      "folder": "这会移除这个来源以及从它同步的所有内容：它的课程，以及你为这些课程设置的 AI 使用规定和学期信息。文件夹里的文件不会受影响。",
+      "canvas": "这会移除这个来源以及从它同步的所有内容：它的课程、你为这些课程设置的 AI 使用规定和学期信息，以及保存的访问令牌。Canvas 上的内容不会有任何改动。",
+      "ical": "这会移除这个来源以及从它同步的所有内容：它的截止日期、日程和课程（包括你为这些课程做的设置），以及保存的订阅地址。教学平台上的日历不会有任何改动。"
+    },
+    "confirm": "移除来源",
+    "removing": "正在移除…",
+    "done": "已移除 {{label}}"
+  },
+  "addDialog": {
+    "title": "添加数据来源",
+    "description": "添加后会马上开始同步。",
+    "submit": "添加",
+    "done": "已添加，正在同步…",
+    "doneLater": "已添加，会在下一次同步时一起更新。"
+  },
+  "chooser": {
+    "label": "数据来源类型",
+    "folderFeed": {
+      "title": "课程文件夹 + 日历订阅",
+      "badge": "推荐 · 适用于任何教学平台",
+      "description": "用你电脑上的课程文件，再加上教学平台的日历。任何学校都能用，也可以放心推荐给同学。"
+    },
+    "canvas": {
+      "title": "Canvas 访问令牌",
+      "badge": "仅限个人使用",
+      "description": "用你自己创建的令牌，直接从 Canvas 同步。"
+    }
+  },
+  "folderFeed": {
+    "folderLegend": "课程文件夹",
+    "folderHint": "选择存放课程的文件夹，里面每门课一个子文件夹。如果课程文件夹里按周分了子文件夹（比如“Week 3”），{{product}} 就能判断现在是第几周。",
+    "pathLabel": "文件夹路径",
+    "pathPlaceholder": "/Users/你的用户名/Documents/Courses",
+    "choose": "选择文件夹…",
+    "termStartLabel": "学期开始日期（选填）",
+    "termStartHint": "用来推算现在是第几周。",
+    "nameLabel": "名称（选填）",
+    "namePlaceholder": "例如：秋季学期",
+    "nameHint": "在 {{product}} 里显示的名称。不填就用文件夹本身的名字。",
+    "feedLegend": "日历订阅",
+    "feedHint": "导入截止日期和上课时间。",
+    "feedLabel": "日历订阅地址（选填）",
+    "feedPlaceholder": "https://…/calendar.ics",
+    "feedWhere": "Canvas：日历 → 日历订阅（Calendar Feed）。其他教学平台：找“导出日历”或 iCal。",
+    "feedPrivate": "这个地址是私密的——{{product}} 会把它保存在系统钥匙串中。",
+    "missing": "请选择一个文件夹，或粘贴日历订阅地址（两个都填也可以）。",
+    "folderAdded": "文件夹已添加",
+    "feedAdded": "日历订阅已添加",
+    "submitting": "正在添加…"
+  },
+  "canvasForm": {
+    "noticeTitle": "仅供本人使用",
+    "shareHint": "想帮同学设置？请让他们使用“课程文件夹 + 日历订阅”方式。",
+    "urlLabel": "Canvas 地址",
+    "urlPlaceholder": "https://canvas.example.edu",
+    "urlHint": "就是你在浏览器里打开 Canvas 时的网址。",
+    "httpWarning": "Canvas 地址都是 https 开头的，请确认一下是不是 https://。",
+    "tokenLabel": "访问令牌",
+    "tokenHowTo": "在 Canvas 中：Account → Settings → New access token。",
+    "tokenPrivate": "{{product}} 会先向 Canvas 验证令牌，再把它保存在系统钥匙串中。",
+    "missingUrl": "请输入 Canvas 地址。",
+    "missingToken": "请粘贴访问令牌。",
+    "submitting": "正在验证令牌…"
+  },
+  "addErrors": {
+    "folder": {
+      "invalid": "请检查文件夹路径。",
+      "not_found": "找不到这个文件夹。请重新选择，或检查路径是否正确。",
+      "network": "读取不了这个文件夹。如果它在网络硬盘上，请确认已经连接。",
+      "auth": "{{product}} 没有权限读取这个文件夹，请检查文件夹的权限设置。"
+    },
+    "feed": {
+      "invalid": "这看起来不是日历订阅地址。请粘贴完整的地址，以 https:// 或 webcal:// 开头。",
+      "not_found": "这个地址上什么也没有找到。请从教学平台重新复制订阅地址。",
+      "network": "连不上这个地址。请检查网络连接后重试。",
+      "auth": "日历拒绝了这个地址，它可能已经被重置。请从教学平台复制一个新的地址。"
+    },
+    "canvas": {
+      "invalid": "请检查 Canvas 地址和令牌。",
+      "not_found": "这个地址上没有找到 Canvas。请对照你打开 Canvas 时浏览器地址栏里的网址。",
+      "network": "连不上这个 Canvas 地址。请检查地址和网络连接。",
+      "auth": "Canvas 没有接受这个令牌，它可能已过期或被撤销。请新建一个令牌后再试。"
+    },
+    "token": {
+      "invalid": "这看起来不是 Canvas 访问令牌。请从 Canvas 重新复制，再粘贴到这里。",
+      "not_found": "这个来源的地址上已经找不到 Canvas 了。请移除这个来源，再用现在的地址重新添加。",
+      "network": "连不上 Canvas。请检查网络连接后重试。",
+      "auth": "Canvas 没有接受这个令牌，它可能已过期或被撤销。请新建一个令牌后再试。"
+    }
+  },
+  "progress": {
+    "dismiss": "隐藏",
+    "dismissLabel": "隐藏同步结果",
+    "starting": "正在准备…",
+    "barLabel": "{{label}} 的同步进度",
+    "steps": "{{current}}/{{total}}",
+    "running": "正在同步…",
+    "ok": "已完成",
+    "warnings": "提示（{{n}} 条）",
+    "expiredHint": "访问权限已过期。更换令牌或订阅地址后，才能继续同步这个来源。",
+    "fixOnSources": "去“数据来源与同步”处理"
+  }
 }

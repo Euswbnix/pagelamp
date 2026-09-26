@@ -1,3 +1,57 @@
 {
-  "title": "设置"
+  "title": "设置",
+  "appearance": {
+    "title": "外观",
+    "theme": "主题",
+    "themeHint": "“跟随系统”会根据电脑的浅色或深色设置自动切换。",
+    "themeOption": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "language": "语言"
+  },
+  "reminders": {
+    "title": "提醒",
+    "weekly": "每周提醒",
+    "description": "截止日期提醒和每周一的本周概览，全部在这台电脑上生成。",
+    "comingSoon": "即将推出"
+  },
+  "data": {
+    "title": "你的数据",
+    "description": "{{product}} 同步的所有内容都保存在你电脑上的这个文件夹里。",
+    "folder": "数据文件夹",
+    "database": "数据库文件",
+    "copyFolder": "复制数据文件夹路径",
+    "copyDatabase": "复制数据库文件路径",
+    "reveal": "打开文件夹",
+    "revealFailed": "无法打开文件夹",
+    "countsTitle": "已保存的内容",
+    "counts": {
+      "courses": "课程",
+      "hiddenCourses": "已隐藏的课程",
+      "materials": "课程资料",
+      "readable": "AI 应用可读取的资料",
+      "events": "截止日期和日程",
+      "studyPlans": "学习计划"
+    },
+    "nothingYet": "还没有同步任何内容。",
+    "addSource": "添加数据来源"
+  },
+  "privacy": {
+    "title": "隐私",
+    "keychain": "你的 Canvas 令牌和日历订阅地址保存在系统钥匙串中，不会写入 {{product}} 的数据库。",
+    "readOnly": "{{product}} 只从 Canvas 读取数据，从不在上面发帖、提交或修改任何内容。",
+    "aiProvider": "只有当 AI 应用为了回答你的问题而读取课程内容时，这些内容才会发送给 AI 服务商。"
+  },
+  "about": {
+    "title": "关于",
+    "version": "版本",
+    "license": "许可证",
+    "links": "链接",
+    "homepage": "项目主页",
+    "help": "帮助",
+    "issues": "反馈问题",
+    "unavailable": "暂不可用"
+  }
 }

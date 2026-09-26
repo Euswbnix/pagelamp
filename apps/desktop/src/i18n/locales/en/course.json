@@ -1,3 +1,117 @@
 {
-  "title": "Course"
+  "backToCourses": "All courses",
+  "loading": "Loading course…",
+  "loadError": "Couldn't load this course",
+  "notFound": {
+    "title": "Course not found",
+    "description": "It may have been removed together with its source, or it hasn't synced yet.",
+    "action": "Back to courses"
+  },
+  "header": {
+    "statusLabel": "Course status",
+    "freshness": "Data from {{source}} · synced {{when}}",
+    "freshnessNever": "Data from {{source}} · not synced yet",
+    "syncing": "Syncing now…",
+    "openWebsite": "Open course website",
+    "hidden": "Hidden",
+    "showInList": "Show in course list"
+  },
+  "sourceAlert": {
+    "expiredTitle": "Your access token has expired",
+    "expiredBody": "This course isn't updating. Replace the token in Sources & sync to get new materials and deadlines.",
+    "failedTitle": "This course's source didn't sync last time: {{reason}}",
+    "failedBody": "What you see here may be out of date. Sources & sync has the details.",
+    "action": "Open Sources & sync"
+  },
+  "tabs": {
+    "label": "Course sections",
+    "week": "This week",
+    "timeline": "Timeline",
+    "deadlines": "Deadlines",
+    "policy": "AI policy",
+    "settings": "Settings"
+  },
+  "week": {
+    "switcherLabel": "Choose a week",
+    "previous": "Previous week",
+    "next": "Next week",
+    "thisWeek": "(this week)",
+    "recent": "Recent materials",
+    "goToThisWeek": "Go to this week",
+    "showRecent": "Show recent materials",
+    "setTermDates": "Set term dates",
+    "modules": "Modules",
+    "materials": "Materials",
+    "summary": "{{readable}} of {{total}} readable by your AI app",
+    "sections_one": "{{count}} section",
+    "sections_other": "{{count}} sections",
+    "readableSections_one": "Readable by your AI app, {{count}} section",
+    "readableSections_other": "Readable by your AI app, {{count}} sections",
+    "published": "Published {{date}}",
+    "loadError": "Couldn't load this week's materials",
+    "empty": {
+      "title": "No materials found for week {{week}}",
+      "titleRecent": "No recent materials",
+      "description": "Materials show up here after a sync when they're in a module or folder for that week.",
+      "action": "Open Sources & sync"
+    },
+    "announcements": {
+      "title": "Recent announcements",
+      "empty": "No announcements in the last two weeks."
+    }
+  },
+  "timeline": {
+    "title": "Where this course is now",
+    "confidence": {
+      "high": "This is very likely right. The clues are listed below.",
+      "medium": "This is a good estimate, but check that it looks right.",
+      "low": "We couldn't work this out reliably. Setting the term dates below fixes that."
+    },
+    "evidenceTitle": "How we worked this out",
+    "evidenceEmpty": "No clues yet. Sync this course or set its term dates.",
+    "outsideTerm": "Today is outside this course's term dates. If the term is running, check the dates below."
+  },
+  "term": {
+    "title": "Wrong week? Set this course's term dates",
+    "description": "{{product}} counts teaching weeks from the first day of term.",
+    "breaksNote": "Reading weeks and breaks aren't taken into account yet.",
+    "start": "First day of term",
+    "end": "Last day of term (optional)",
+    "save": "Save dates",
+    "useSynced": "Use synced dates",
+    "saved": "Term dates saved",
+    "usedSynced": "Back to the synced term dates",
+    "invalid": "These dates don't work. Check that the term ends after it starts."
+  },
+  "deadlines": {
+    "note": "These are titles and dates only. {{product}} never downloads assignment instructions to solve them.",
+    "upcomingTitle": "Coming up",
+    "upcomingDescription": "Due in the next {{days}} days",
+    "pastTitle": "Recently past",
+    "pastDescription": "Due in the last {{days}} days",
+    "pastEmpty": "Nothing was due in the last {{days}} days.",
+    "loadError": "Couldn't load deadlines",
+    "empty": {
+      "title": "Nothing due in the next {{days}} days",
+      "description": "Deadlines come from Canvas or your calendar feed. If something is missing, check your sources.",
+      "action": "Open Sources & sync"
+    }
+  },
+  "policy": {
+    "title": "How can you use AI in this course?",
+    "explanation": "Your AI app sees this setting and adjusts how it helps: with “{{prohibited}}” or “{{unknown}}”, it sticks to explaining course concepts.",
+    "noteLabel": "Paste the rule from your syllabus (optional)",
+    "noteHelp": "Your AI app sees this note too, so it can follow the exact wording.",
+    "unsaved": "Unsaved changes",
+    "save": "Save AI policy",
+    "discard": "Discard changes",
+    "saved": "AI policy saved"
+  },
+  "settings": {
+    "title": "Course settings",
+    "hideLabel": "Hide this course",
+    "hideDescription": "Hidden courses are skipped in your course list and never shown to your AI app.",
+    "hiddenToast": "{{course}} is hidden. Your AI app won't see it.",
+    "shownToast": "{{course}} is back in your course list."
+  }
 }

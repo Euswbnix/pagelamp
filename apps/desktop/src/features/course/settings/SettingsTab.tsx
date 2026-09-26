@@ -1,0 +1,38 @@
+import { useId } from "react";
+import { useTranslation } from "react-i18next";
+import type { Course } from "@/api/types";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { useCourseHidden } from "../useCourseHidden";
+
+/** Per-course settings. For now: hide the course from the list and from the AI app. */
+export function SettingsTab({ course }: { course: Course }) {
+  const { t } = useTranslation("course");
+  const ids = { heading: useId(), hide: useId(), hideHelp: useId() };
+  const { setHidden, isPending, pendingValue } = useCourseHidden(course);
+
+  return (
+    <section aria-labelledby={ids.heading} className="max-w-2xl space-y-4">
+      <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
+        {t("settings.title")}
+      </h2>
+      <div className="flex items-start justify-between gap-6 rounded-lg border bg-card p-4">
+        <div className="grid gap-1">
+          <Label htmlFor={ids.hide}>{t("settings.hideLabel")}</Label>
+          <p id={ids.hideHelp} className="text-sm text-muted-foreground">
+            {t("settings.hideDescription")}
+          </p>
+        </div>
+        <Switch
+          id={ids.hide}
+          checked={pendingValue ?? course.hidden}
+          // Not disabled while saving, so keyboard focus stays on the switch.
+          onCheckedChange={(checked) => {
+            if (!isPending) void setHidden(checked);
+          }}
+          aria-describedby={ids.hideHelp}
+        />
+      </div>
+    </section>
+  );
+}

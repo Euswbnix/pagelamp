@@ -1,3 +1,48 @@
 {
-  "title": "Connect your AI app"
+  "title": "Connect your AI app",
+  "description": "{{product}} works inside the AI app you already use. Add it once, then ask about your courses in plain language.",
+  "howItWorks": {
+    "title": "How it works",
+    "background": "Your AI app starts {{product}} in the background when it needs it. There's nothing to keep open.",
+    "local": "Your data stays on this computer until your AI app reads it to answer your question.",
+    "once": "You only need to set this up once for each app."
+  },
+  "clients": {
+    "recommended": "Easiest to start with"
+  },
+  "installKind": {
+    "json_snippet": "Add to a config file",
+    "toml_snippet": "Add to a config file",
+    "shell_command": "Run in a terminal"
+  },
+  "steps": {
+    "label": "Steps for {{app}}",
+    "openJson": "Open the configuration file at this location. Create it if it isn't there yet.",
+    "openJsonNoPath": "Open the app's configuration file.",
+    "openToml": "Open this TOML file. Create it if it isn't there yet.",
+    "openTomlNoPath": "Open the app's TOML configuration file.",
+    "pasteJson": "Paste in this snippet. If the file already has settings, merge the two.",
+    "pasteToml": "Add these lines to the file.",
+    "restart": "Save the file, then fully quit the app and open it again.",
+    "openTerminal": "Open a terminal.",
+    "runCommand": "Run this command."
+  },
+  "copyPath": "Copy {{app}} file path",
+  "copyConfig": "Copy {{app}} configuration",
+  "copyCommand": "Copy {{app}} command",
+  "notes": {
+    "title": "Good to know"
+  },
+  "tryIt": {
+    "title": "Try it",
+    "thenAsk": "Then ask:",
+    "promptWeek": "What's happening in my courses this week?",
+    "or": "Or:",
+    "promptPlan": "Make me a study plan for the next two weeks."
+  },
+  "empty": {
+    "title": "No setup steps available",
+    "description": "{{product}} couldn't prepare the setup steps for your AI app. Try again in a moment."
+  },
+  "errorTitle": "Couldn't load the setup steps"
 }

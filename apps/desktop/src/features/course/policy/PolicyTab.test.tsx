@@ -1,0 +1,100 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/api/errors";
+import { createMockApi } from "@/api/mock";
+import { brand, localized } from "@/brand";
+import { DEMO101, DEMO205, openCourse } from "../testing";
+
+const NOTE = "Syllabus section 4: AI may be used to review material only.";
+
+function headerStatus() {
+  return screen.getByRole("list", { name: "Course status" });
+}
+
+describe("AI policy tab", () => {
+  it("lists all five policies with descriptions and the brand hint", async () => {
+    await openCourse(DEMO205, { query: "tab=policy" });
+
+    const group = screen.getByRole("radiogroup", { name: "How can you use AI in this course?" });
+    expect(within(group).getAllByRole("radio")).toHaveLength(5);
+    expect(within(group).getByRole("radio", { name: "Not set" })).toBeChecked();
+    expect(within(group).getByRole("radio", { name: "No AI" })).toHaveAccessibleDescription(
+      "No generative AI for this course's assessed work.",
+    );
+    expect(screen.getByText(localized(brand.aiPolicyHint, "en"))).toBeInTheDocument();
+    expect(screen.getByText(/it sticks to explaining course concepts/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save AI policy" })).toBeDisabled();
+  });
+
+  it("saves a new policy with a note and updates the header badge", async () => {
+    const { user, api } = await openCourse(DEMO205, { query: "tab=policy" });
+    const setPolicy = vi.spyOn(api, "setCoursePolicy");
+    expect(within(headerStatus()).getByText("Not set")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "Learning aid only" }));
+    await user.type(screen.getByLabelText("Paste the rule from your syllabus (optional)"), NOTE);
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save AI policy" }));
+
+    expect(setPolicy).toHaveBeenCalledWith(DEMO205, "learning_aid", NOTE);
+    expect(await screen.findByText("AI policy saved")).toBeInTheDocument();
+    expect(await within(headerStatus()).findByText("Learning aid only")).toBeInTheDocument();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Learning aid only" })).toBeChecked();
+    expect(screen.getByLabelText("Paste the rule from your syllabus (optional)")).toHaveValue(NOTE);
+    expect(screen.getByRole("button", { name: "Save AI policy" })).toBeDisabled();
+  });
+
+  it("can be changed with the keyboard and discarded", async () => {
+    const { user } = await openCourse(DEMO101, { query: "tab=policy" });
+    const current = screen.getByRole("radio", { name: "Learning aid only" });
+    expect(current).toBeChecked();
+
+    current.focus();
+    // Radix moves focus on a timer and selects while the arrow key is held, like a real press.
+    await user.keyboard("{ArrowDown>}");
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Allowed with citation" })).toBeChecked(),
+    );
+    await user.keyboard("{/ArrowDown}");
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.getByRole("radio", { name: "Learning aid only" })).toBeChecked();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
+  it("keeps unsaved changes when switching tabs", async () => {
+    const { user } = await openCourse(DEMO205, { query: "tab=policy" });
+    await user.click(screen.getByRole("radio", { name: "No AI" }));
+
+    await user.click(screen.getByRole("tab", { name: "Deadlines" }));
+    await user.click(screen.getByRole("tab", { name: "AI policy" }));
+
+    expect(screen.getByRole("radio", { name: "No AI" })).toBeChecked();
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("explains a failed save by error kind", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    vi.spyOn(api, "setCoursePolicy").mockRejectedValueOnce(
+      new ApiError("busy", "Another StudentOS process is already syncing."),
+    );
+    const { user } = await openCourse(DEMO205, { api, query: "tab=policy" });
+
+    await user.click(screen.getByRole("radio", { name: "No restrictions" }));
+    await user.click(screen.getByRole("button", { name: "Save AI policy" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "A sync is already running. Try again when it finishes.",
+    );
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+
+    // Editing again clears the old message; a retry then saves.
+    await user.click(screen.getByRole("radio", { name: "Allowed with citation" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save AI policy" }));
+    expect(await screen.findByText("AI policy saved")).toBeInTheDocument();
+  });
+});

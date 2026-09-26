@@ -1,0 +1,119 @@
+import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useApi } from "@/api/context";
+import type { Course, CourseOverview } from "@/api/types";
+import { PageHeader } from "@/components/common/PageHeader";
+import { PolicyBadge } from "@/components/common/PolicyBadge";
+import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
+import { WeekLabel } from "@/components/common/WeekLabel";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { isHttpUrl } from "@/lib/url";
+import { useSyncStore } from "@/stores/sync";
+import { BackToCourses } from "../BackToCourses";
+import { useCourseHidden } from "../useCourseHidden";
+import { SourceAlert } from "./SourceAlert";
+
+/** Back link, code + name (the page's h1), freshness, policy/week badges, source problems. */
+export function CourseHeader({ overview }: { overview: CourseOverview }) {
+  const { t } = useTranslation("course");
+  const { course, timeline } = overview;
+  return (
+    <div className="pb-6">
+      <BackToCourses />
+      <PageHeader
+        eyebrow={course.code ?? undefined}
+        title={course.name}
+        description={<Freshness overview={overview} />}
+        actions={isHttpUrl(course.url) ? <OpenWebsiteButton url={course.url} /> : undefined}
+      />
+      <ul
+        aria-label={t("header.statusLabel")}
+        className="-mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm"
+      >
+        <li>
+          <PolicyBadge policy={course.ai_policy} />
+        </li>
+        <li>
+          <WeekLabel timeline={timeline} />
+        </li>
+        {course.hidden ? (
+          <li className="flex items-center gap-2">
+            <HiddenNotice course={course} />
+          </li>
+        ) : null}
+      </ul>
+      <SourceAlert sourceId={course.source_id} />
+    </div>
+  );
+}
+
+/** "Data from Course folder · synced 2 hours ago", plus "Syncing now…" while its source syncs. */
+function Freshness({ overview }: { overview: CourseOverview }) {
+  const { t } = useTranslation("course");
+  const sourceId = overview.course.source_id;
+  const syncing = useSyncStore((s) => {
+    const progress = s.bySource[sourceId];
+    return s.running && !!progress && !progress.result;
+  });
+  const source = overview.source_label;
+  return (
+    <>
+      {overview.last_synced_at ? (
+        <SentenceWithTime
+          text={t("header.freshness", { source, when: WHEN })}
+          iso={overview.last_synced_at}
+        />
+      ) : (
+        t("header.freshnessNever", { source })
+      )}
+      <span aria-live="polite">
+        {syncing ? (
+          <span className="ml-2 inline-flex items-center gap-1 text-foreground">
+            <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+            {t("header.syncing")}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+}
+
+function OpenWebsiteButton({ url }: { url: string }) {
+  const { t } = useTranslation("course");
+  const api = useApi();
+  return (
+    <Button asChild variant="outline">
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer noopener"
+        onClick={(event) => {
+          // The desktop webview never navigates away; the link opens in the browser.
+          event.preventDefault();
+          void api.openExternal(url);
+        }}
+      >
+        <ExternalLinkIcon aria-hidden />
+        {t("header.openWebsite")}
+      </a>
+    </Button>
+  );
+}
+
+function HiddenNotice({ course }: { course: Course }) {
+  const { t } = useTranslation("course");
+  const { setHidden, isPending } = useCourseHidden(course);
+  return (
+    <>
+      <Badge variant="secondary">
+        <EyeOff aria-hidden />
+        {t("header.hidden")}
+      </Badge>
+      <Button size="xs" variant="outline" disabled={isPending} onClick={() => setHidden(false)}>
+        <Eye aria-hidden />
+        {t("header.showInList")}
+      </Button>
+    </>
+  );
+}

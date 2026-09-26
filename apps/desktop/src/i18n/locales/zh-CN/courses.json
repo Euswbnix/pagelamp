@@ -1,3 +1,75 @@
 {
-  "title": "课程"
+  "title": "课程",
+  "description": "看看每门课这周上到哪儿了，接下来有什么要交。",
+  "banner": {
+    "runningHint": "同步完成后，课程信息会自动更新。",
+    "sourceProgress": "{{source}}：{{message}}",
+    "externalTitle": "已有另一个同步在进行",
+    "externalHint": "可能是从命令行启动的。等它结束后，点“重新检查”刷新一下。",
+    "checkAgain": "重新检查"
+  },
+  "problems": {
+    "tokenExpiredTitle": "{{source}} 的 Canvas 令牌已失效",
+    "tokenExpired": "令牌可能已过期（学生令牌最长 30 天有效）或已被撤销。换上新令牌后，这些课程才能继续更新。",
+    "feedRejectedTitle": "{{source}} 的订阅地址已失效",
+    "feedRejected": "订阅可能已被重置或关闭。粘贴最新的订阅地址后，截止日期才能继续更新。",
+    "failedTitle": "{{source}} 同步失败：{{reason}}",
+    "failedTitleGeneric": "{{source}} 同步失败",
+    "failed": "这个数据来源的课程信息可能已经过时。",
+    "replaceToken": "更换令牌",
+    "replaceFeed": "更新订阅地址",
+    "open": "前往“数据来源与同步”"
+  },
+  "thisWeek": {
+    "title": "本周",
+    "summary_one": "未来 7 天有 {{count}} 个截止日期",
+    "summary_other": "未来 7 天有 {{count}} 个截止日期",
+    "nothingDue": "未来 7 天没有截止日期",
+    "emptyHint": "课程和日历订阅里的截止日期会显示在这里。",
+    "errorTitle": "本周的截止日期加载失败"
+  },
+  "plan": {
+    "title": "我的学习计划",
+    "madeBy": "{{when}}由你的 AI 应用生成 · 覆盖 {{start}} 至 {{end}}",
+    "stale": "这份计划可能已经过时了，让你的 AI 应用重新做一份吧。",
+    "notesLabel": "AI 应用的备注",
+    "minutes": "{{count}} 分钟",
+    "done": "已完成",
+    "notDone": "未完成",
+    "showFull": "查看完整计划",
+    "showLess": "收起",
+    "nothingSoon": "今天和接下来两天没有安排。",
+    "noItems": "这份计划里还没有任务。",
+    "readOnly": "这里仅供查看。想调整计划，直接跟你的 AI 应用说就行。",
+    "emptyTitle": "还没有学习计划",
+    "emptyDescription": "试着对你的 AI 应用说：“{{prompt}}”计划生成后会显示在这里。",
+    "prompt": "帮我做一份接下来两周的学习计划。",
+    "copyPrompt": "复制这句话",
+    "connect": "连接 AI 应用",
+    "errorTitle": "学习计划加载失败"
+  },
+  "list": {
+    "title": "我的课程",
+    "showHidden": "显示已隐藏的课程（{{count}}）",
+    "allHidden": "所有课程都已隐藏。打开“显示已隐藏的课程”即可查看。",
+    "errorTitle": "课程加载失败"
+  },
+  "card": {
+    "next": "下一项：{{title}} · {{when}}",
+    "noDeadlines": "近期没有截止日期",
+    "readable_one": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
+    "readable_other": "共 {{count}} 份资料，AI 应用可读取 {{indexed}} 份",
+    "noFiles": "还没有资料",
+    "setPolicy": "去设置",
+    "setTerm": "设置开学日期后就能确定周次",
+    "synced": "{{source}} · {{when}}同步",
+    "notSynced": "{{source}} · 还没有同步过",
+    "hidden": "已隐藏"
+  },
+  "empty": {
+    "title": "还没有课程",
+    "description": "添加一个数据来源，{{product}} 就能找到你的课程。",
+    "descriptionHasSources": "还没有从你的数据来源同步到任何课程。可以现在同步，或者再添加一个数据来源。",
+    "addSource": "添加数据来源"
+  }
 }
