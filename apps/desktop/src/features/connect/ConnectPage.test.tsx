@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_BINARY_PATH, mcpClientConfigs } from "@/api/mock/fixtures";
-import type { McpClientConfig } from "@/api/types";
+import type { McpClientConfig, McpNoteCode } from "@/api/types";
 import i18n from "@/i18n";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
@@ -104,7 +104,9 @@ describe("ConnectPage", () => {
     ).toBeInTheDocument();
     for (const c of CONFIGS) {
       for (const code of c.note_codes) {
-        expect(screen.getAllByText(i18n.t(`connect:noteCodes.${code}`)).length).toBeGreaterThan(0);
+        // The page-level temporary-location code has no per-card text (and isn't in the mock).
+        const known = code as Exclude<McpNoteCode, "run_from_temporary_location">;
+        expect(screen.getAllByText(i18n.t(`connect:noteCodes.${known}`)).length).toBeGreaterThan(0);
       }
     }
   });

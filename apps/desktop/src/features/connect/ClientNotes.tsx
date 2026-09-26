@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import type { McpClient, McpNoteCode } from "@/api/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const KNOWN_CODES: readonly McpNoteCode[] = [
+// Codes this build has a translation for (connect.json → noteCodes). Anything else, e.g. a
+// code newer than this build, is shown as the backend's English text.
+const KNOWN_CODES = [
   "works_on_all_claude_plans",
   "admins_may_disable_extensions",
   "needs_paid_claude_plan",
@@ -13,7 +15,12 @@ const KNOWN_CODES: readonly McpNoteCode[] = [
   "restart_client_after_change",
   "custom_data_dir",
   "generic_stdio_client",
-];
+] as const satisfies readonly McpNoteCode[];
+type KnownCode = (typeof KNOWN_CODES)[number];
+
+function isKnown(code: McpNoteCode | undefined): code is KnownCode {
+  return code !== undefined && (KNOWN_CODES as readonly string[]).includes(code);
+}
 
 // Shown once, prominently, at the top of the page (TemporaryLocationWarning), not per app.
 const PAGE_LEVEL: readonly McpNoteCode[] = ["run_from_temporary_location"];
@@ -58,7 +65,7 @@ export function ClientNotes({
         <ul className="mt-1 list-disc space-y-1 pl-4">
           {shown.map(({ note, code }) => {
             const key = `${code ?? ""}:${note}`;
-            return code && KNOWN_CODES.includes(code) ? (
+            return isKnown(code) ? (
               <li key={key}>{t(`noteCodes.${code}`)}</li>
             ) : (
               <li key={key} lang="en">

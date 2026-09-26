@@ -74,8 +74,7 @@
     "free_go_undocumented": "官方文档没有说明免费版和 Go 套餐是否支持。",
     "restart_client_after_change": "改完配置后，请彻底退出并重新打开该应用。",
     "custom_data_dir": "由于 {{product}} 使用了自定义数据文件夹，这段配置里包含 PAGELAMP_HOME。",
-    "generic_stdio_client": "其他支持本地（stdio）MCP 服务器的 AI 应用也可以用：按它的配置格式填写命令、参数和环境变量。",
-    "run_from_temporary_location": "{{product}} 正在从临时位置运行。请把它移到“应用程序”文件夹，从那里打开后再复制这段设置。"
+    "generic_stdio_client": "其他支持本地（stdio）MCP 服务器的 AI 应用也可以用：按它的配置格式填写命令、参数和环境变量。"
   },
   "quarantine": {
     "title": "如果 macOS 拦截了 {{product}}",
