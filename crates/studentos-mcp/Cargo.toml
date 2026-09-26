@@ -15,6 +15,7 @@ serde_json.workspace = true
 schemars.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+regex.workspace = true
 rmcp = { version = "3.4", features = ["server", "macros", "schemars", "transport-io"] }
 
 [dev-dependencies]

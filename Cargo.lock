@@ -4720,6 +4720,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "regex",
  "rmcp",
  "schemars 1.2.2",
  "serde",
