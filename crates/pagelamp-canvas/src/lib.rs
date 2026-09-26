@@ -113,6 +113,8 @@ pub struct SyncReport {
 /// most the host name is shown.
 pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
     let trimmed = input.trim();
+    // A pasted token ("7~AbC…") is not an address: never look it up as a host name.
+    let token_shaped = trimmed.contains('~');
     let invalid = || {
         SourceError::other(
             "That is not a Canvas address. Enter just the address, like https://lms.example.edu",
@@ -123,11 +125,20 @@ pub fn normalize_base_url(input: &str) -> Result<String, SourceError> {
     } else {
         format!("https://{trimmed}")
     };
+    if token_shaped {
+        return Err(invalid());
+    }
     let url = url::Url::parse(&with_scheme).map_err(|_| invalid())?;
     let host = url
         .host_str()
         .filter(|h| !h.is_empty())
         .ok_or_else(invalid)?;
+    // A school's Canvas has a full domain name; a single word ("canvas", "7") is a typo or
+    // something pasted into the wrong field, and would only cause a pointless DNS lookup.
+    let single_label = !host.contains('.') && !host.contains(':') && host != "localhost";
+    if single_label {
+        return Err(invalid());
+    }
     let only_address =
         matches!(url.path(), "" | "/") && url.query().is_none() && url.fragment().is_none();
     if !url.username().is_empty() || url.password().is_some() {
@@ -306,6 +317,15 @@ mod tests {
                 "{}",
                 err.message
             );
+        }
+        for bad in [
+            "7~AbCdEfGhIjKlMnOpQrStUvWxYz",
+            "https://7~AbCdEfGhIjKl",
+            "canvas",
+            "https://intranet/",
+        ] {
+            let err = normalize_base_url(bad).unwrap_err();
+            assert!(!err.message.contains("AbCdEf"), "{}", err.message);
         }
         let err = normalize_base_url("https://q.example.edu/courses/1").unwrap_err();
         assert!(
