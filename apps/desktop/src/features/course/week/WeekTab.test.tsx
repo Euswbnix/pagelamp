@@ -153,7 +153,7 @@ describe("Downloading Canvas files", () => {
     const { user, api } = await openCourse(DEMO205);
     const download = vi.spyOn(api, "downloadCourseFiles");
     const callout = await screen.findByText(
-      "1 file here isn't downloaded yet, so your AI app can't read it.",
+      /^1 file here isn't downloaded yet, so your AI app can't read it\. “Download files…” at the top/,
     );
     expect(callout).toBeInTheDocument();
 
@@ -204,7 +204,7 @@ describe("Downloading Canvas files", () => {
     const { user } = await openCourse(DEMO205);
     // Two files aren't downloaded, but the recording is over the size limit.
     expect(
-      await screen.findByText("1 file here isn't downloaded yet, so your AI app can't read it."),
+      await screen.findByText(/^1 file here isn't downloaded yet, so your AI app can't read it\./),
     ).toBeInTheDocument();
     const recording = (await screen.findByText("Unit C lecture recording")).closest("li");
     if (!(recording instanceof HTMLElement)) throw new Error("no row for the recording");
@@ -226,6 +226,15 @@ describe("Downloading Canvas files", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Download files…" })).not.toBeInTheDocument(),
     );
+  });
+
+  it("offers the course-wide download in the header on any tab", async () => {
+    const { api } = await openCourse(DEMO205, { query: "tab=deadlines" });
+    const overview = await api.courseOverview(DEMO205);
+    expect(overview.downloadable_files).toBe(1);
+    // No week callout on this tab, but the header still offers it.
+    expect(screen.queryByText(/isn't downloaded yet/)).toBeNull();
+    expect(await screen.findByRole("button", { name: "Download files…" })).toBeInTheDocument();
   });
 
   it("never offers a download for folder courses", async () => {

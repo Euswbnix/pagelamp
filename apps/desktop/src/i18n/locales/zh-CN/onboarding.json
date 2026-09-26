@@ -34,7 +34,7 @@
     "materials": "资料",
     "events": "截止日期和日程",
     "noCourses": "还没有找到课程。如果你添加的是文件夹，请确认里面每门课都有一个单独的子文件夹。之后随时可以在“数据来源与同步”里修改。",
-    "canvasFilesNote": "Canvas 上的文件不会自动下载，因为 Canvas 可能会把下载算作“已查看”。如果想加入某门课的文件，打开这门课，在“本周”标签页里点“下载文件…”。",
+    "canvasFilesNote": "Canvas 上的文件不会自动下载，因为 Canvas 可能会把下载算作“已查看”。如果想加入某门课的文件，打开这门课，点页面顶部的“下载文件…”。",
     "connect": "连接 AI 应用",
     "goToCourses": "查看我的课程",
     "continueInBackground": "在后台继续",

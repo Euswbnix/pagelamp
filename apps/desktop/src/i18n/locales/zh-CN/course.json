@@ -133,6 +133,7 @@
   "download": {
     "callout_one": "这里有 {{count}} 个文件还没下载，AI 应用暂时读不到。",
     "callout_other": "这里有 {{count}} 个文件还没下载，AI 应用暂时读不到。",
+    "calloutHint": "页面顶部的“下载文件…”会下载这门课的全部文件。",
     "action": "下载文件…",
     "running": "正在下载…",
     "dialogTitle": "要下载这门课的文件吗？",

@@ -342,7 +342,7 @@ describe("OnboardingPage", () => {
     // Canvas files aren't downloaded by a sync: don't claim everything is on this computer.
     expect(screen.queryByText(/Everything is on this computer now/)).toBeNull();
     expect(screen.getByText(/Canvas files aren't downloaded automatically/)).toHaveTextContent(
-      "“Download files…” on its “This week” tab",
+      "“Download files…” at the top of its page",
     );
     await expectSecretNotKept(CANVAS_TOKEN, queryClient);
   });

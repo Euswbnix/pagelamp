@@ -1,5 +1,6 @@
 import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSources } from "@/api/queries";
 import type { Course, CourseOverview } from "@/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PastCourseBadge } from "@/components/common/PastCourseBadge";
@@ -13,6 +14,7 @@ import { focusPageHeading } from "@/lib/focus";
 import { isHttpUrl } from "@/lib/url";
 import { useSyncStore } from "@/stores/sync";
 import { BackToCourses } from "../BackToCourses";
+import { DownloadCourseFilesButton } from "../DownloadCourseFilesButton";
 import { useCourseHidden } from "../useCourseHidden";
 import { SourceAlert } from "./SourceAlert";
 
@@ -27,7 +29,12 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
         eyebrow={course.code ?? undefined}
         title={course.name}
         description={<Freshness overview={overview} />}
-        actions={isHttpUrl(course.url) ? <OpenWebsiteButton url={course.url} /> : undefined}
+        actions={
+          <>
+            <DownloadAction overview={overview} />
+            {isHttpUrl(course.url) ? <OpenWebsiteButton url={course.url} /> : null}
+          </>
+        }
       />
       <ul
         aria-label={t("header.statusLabel")}
@@ -84,6 +91,18 @@ function Freshness({ overview }: { overview: CourseOverview }) {
       </span>
     </>
   );
+}
+
+/**
+ * Canvas files are listed but downloaded only when the student asks (a download can count as
+ * viewing them). Offered here, for the whole course, whenever any file could be downloaded,
+ * whichever week or tab is on screen.
+ */
+function DownloadAction({ overview }: { overview: CourseOverview }) {
+  const sources = useSources();
+  const isCanvas = sources.data?.find((s) => s.id === overview.course.source_id)?.kind === "canvas";
+  if (!isCanvas || overview.downloadable_files === 0) return null;
+  return <DownloadCourseFilesButton course={overview.course} size="default" />;
 }
 
 function OpenWebsiteButton({ url }: { url: string }) {
