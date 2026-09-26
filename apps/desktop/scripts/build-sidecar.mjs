@@ -55,7 +55,9 @@ function build(target) {
     run("cargo", ["build", "-p", "pagelamp-cli"]);
     return join(targetDir, "debug", `pagelamp${exe}`);
   }
-  run("cargo", ["build", "--release", "-p", "pagelamp-cli", "--target", target]);
+  // --locked: a release bundles exactly the dependency versions in Cargo.lock (fails instead of
+  // updating it). Dev builds stay unlocked so a local Cargo.toml change doesn't block `tauri dev`.
+  run("cargo", ["build", "--release", "--locked", "-p", "pagelamp-cli", "--target", target]);
   return join(targetDir, target, "release", `pagelamp${exe}`);
 }
 
