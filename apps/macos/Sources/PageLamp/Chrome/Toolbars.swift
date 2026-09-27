@@ -47,10 +47,10 @@ struct WindowToolbar: ToolbarContent {
     // every item (re-tiling the toolbar and rebuilding its overflow menu) instead of only the
     // items whose `hidden` state changed.
     var body: some ToolbarContent {
-        let courseId: String? = { if case .course(let id) = model.destination { id } else { nil } }()
+        let courseId: String? = { if case .course(let id) = model.pageDestination { id } else { nil } }()
         let awayFromNow = courseId.map { model.ui(for: $0).isAwayFromDefault } ?? false
         let hasWebsite = courseId.flatMap { model.course(id: $0) }.flatMap { Links.web($0.course.url) } != nil
-        let prominent = model.destination == .sources
+        let prominent = model.pageDestination == .sources
             && model.primaryActionWinner(for: SourceRow.primaryActionCandidates(model.sourceRows)) == .page(.pagePrimary)
 
         // Never reads the course section: the items disable themselves outside This Week.
@@ -59,7 +59,7 @@ struct WindowToolbar: ToolbarContent {
         ToolbarItem(placement: .navigation) { BackToCurrentWeekButton() }
             .hidden(!awayFromNow)
         ToolbarItem(placement: .primaryAction) { SyncNowButton() }
-            .hidden(model.destination != .thisWeek)
+            .hidden(model.pageDestination != .thisWeek)
         if #available(macOS 26.1, *) {
             ToolbarItem(placement: .primaryAction) { CourseWebsiteButton() }
                 .visibilityPriority(.low)
@@ -74,7 +74,7 @@ struct WindowToolbar: ToolbarContent {
             .hidden(courseId == nil)
         ToolbarItem(placement: .primaryAction) { SyncAllToolbarButton(prominent: prominent) }
             .sharedBackgroundVisibility(prominent ? .hidden : .automatic)
-            .hidden(model.destination != .sources)
+            .hidden(model.pageDestination != .sources)
     }
 }
 
@@ -84,7 +84,7 @@ private struct WeekStepperControl: View {
     @Environment(\.l10n) private var l10n
 
     var body: some View {
-        let ui: CourseUIState? = { if case .course(let id) = model.destination { model.ui(for: id) } else { nil } }()
+        let ui: CourseUIState? = { if case .course(let id) = model.pageDestination { model.ui(for: id) } else { nil } }()
         ControlGroup {
             Button {
                 model.stepWeek(by: -1)
@@ -110,7 +110,7 @@ private struct BackToCurrentWeekButton: View {
     @Environment(\.l10n) private var l10n
 
     var body: some View {
-        let ui: CourseUIState? = { if case .course(let id) = model.destination { model.ui(for: id) } else { nil } }()
+        let ui: CourseUIState? = { if case .course(let id) = model.pageDestination { model.ui(for: id) } else { nil } }()
         let known = ui.map { $0.currentWeek != nil } ?? true
         let title = known ? l10n("mac.toolbar.backToCurrentWeek") : l10n("mac.toolbar.showRecentMaterials")
         Button {
@@ -131,7 +131,7 @@ private struct CourseWebsiteButton: View {
 
     var body: some View {
         Button {
-            if case .course(let id) = model.destination, let url = model.course(id: id).flatMap({ Links.web($0.course.url) }) {
+            if case .course(let id) = model.pageDestination, let url = model.course(id: id).flatMap({ Links.web($0.course.url) }) {
                 openURL(url)
             }
         } label: {

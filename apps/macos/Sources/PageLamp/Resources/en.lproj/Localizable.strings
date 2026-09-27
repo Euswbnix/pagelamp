@@ -454,6 +454,7 @@
 "mac.course.week.relative.nextWeek" = "Next week";
 "mac.course.week.relative.thisWeek" = "This week";
 "mac.courses.thisWeek.next7" = "Next 7 days";
+"mac.debug.capsuleLeads" = "Sidebar Capsule Moves Before the Page";
 "mac.debug.dataSource" = "Data Source";
 "mac.debug.live.confirm" = "Use Real Data";
 "mac.debug.live.message" = "This preview will open the same data folder and keychain items as the installed PageLamp app and its command-line tool. Syncing here changes that data. Opening the folder may also update the format of its database; an older installed PageLamp would then ask to be updated before it opens your data again.";

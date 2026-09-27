@@ -72,7 +72,7 @@ final class PerfProbe: NSObject {
             // the screen shows (the analysis interpolates it).
             let committed = abs(host.lastSlideFrame - link.timestamp) > 0.001
             capsuleSamples?.append(CapsuleSample(
-                frame: link.timestamp, read: CACurrentMediaTime(), y: y, committed: committed, destination: model.destination
+                frame: link.timestamp, read: CACurrentMediaTime(), y: y, committed: committed, destination: model.pageDestination
             ))
         }
     }

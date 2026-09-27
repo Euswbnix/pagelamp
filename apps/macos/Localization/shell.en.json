@@ -40,6 +40,7 @@
     },
     "runMockSync": "Run Mock Sync",
     "runMockSyncRejected": "Run Mock Sync with a Rejected Token",
+    "capsuleLeads": "Sidebar Capsule Moves Before the Page",
     "live": {
       "title": "Use your real {{product}} data?",
       "message": "This preview will open the same data folder and keychain items as the installed {{product}} app and its command-line tool. Syncing here changes that data. Opening the folder may also update the format of its database; an older installed {{product}} would then ask to be updated before it opens your data again.",

@@ -479,6 +479,7 @@ nonisolated enum L10nKeys {
         "mac.course.week.relative.thisWeek",
         "mac.course.week.relative.weeksAgo",
         "mac.courses.thisWeek.next7",
+        "mac.debug.capsuleLeads",
         "mac.debug.dataSource",
         "mac.debug.live.confirm",
         "mac.debug.live.message",

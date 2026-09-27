@@ -28,6 +28,7 @@ struct SidebarList: View {
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilityShowBorders) private var showBorders
     @Environment(\.appearsActive) private var appearsActive
+    @AppStorage(DebugPreferences.sidebarCapsuleLeads) private var capsuleLeads = false
 
     /// The navigation and the capsule handle, outside the view graph: a type-select keystroke
     /// or a drawn frame renders nothing unless the highlight or the focus ring changes.
@@ -55,8 +56,9 @@ struct SidebarList: View {
                         target: layout.frame(of: highlighted).map {
                             SidebarCapsuleTarget(destination: highlighted, top: $0.top, height: $0.height)
                         },
-                        committed: model.destination,
+                        committed: model.pageDestination,
                         animates: !reduceMotion && model.restoredWindowState,
+                        leadsPage: capsuleLeads,
                         style: SidebarCapsuleStyle(focusRing: showsFocusRing && focused && appearsActive, border: showBorders),
                         handle: state.capsule,
                         onPageDrawn: { apply(.pageDrawn, layout, proxy) },

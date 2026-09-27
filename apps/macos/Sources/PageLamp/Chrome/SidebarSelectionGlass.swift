@@ -52,6 +52,9 @@ struct SidebarSelectionGlass: NSViewRepresentable {
     var committed: Destination
     /// False under Reduce Motion and until the window has restored its destination.
     var animates: Bool
+    /// Debug (`DebugPreferences.sidebarCapsuleLeads`): slide in the frame of the choice instead of
+    /// after the new page is drawn.
+    var leadsPage = false
     var style: SidebarCapsuleStyle
     var handle: SidebarCapsuleHandle
     /// The first frame after a page switch was drawn (`SidebarEvent.pageDrawn`).
@@ -71,7 +74,7 @@ struct SidebarSelectionGlass: NSViewRepresentable {
         view.onPreviewSettled = onPreviewSettled
         view.update(
             target: target, committed: committed,
-            animates: animates && !context.transaction.disablesAnimations, style: style
+            animates: animates && !context.transaction.disablesAnimations, leadsPage: leadsPage, style: style
         )
     }
 
@@ -127,7 +130,7 @@ final class SidebarCapsuleHostView: NSView {
     var capsuleLayer: CALayer? { capsule.layer }
     private(set) var lastSlideFrame: CFTimeInterval = 0
 
-    func update(target new: SidebarCapsuleTarget?, committed: Destination, animates: Bool, style: SidebarCapsuleStyle) {
+    func update(target new: SidebarCapsuleTarget?, committed: Destination, animates: Bool, leadsPage: Bool, style: SidebarCapsuleStyle) {
         // Slides need animation in this update and the last: the update that restores the
         // destination at launch (the one that turns `animates` on) jumps.
         let canAnimate = animates && animatedBefore && window != nil
@@ -154,6 +157,9 @@ final class SidebarCapsuleHostView: NSView {
             // came back before its slide started, or Reduce Motion: follow at once.
             gate.cancelSlide()
             if placed != new { snap(to: new) }
+        } else if leadsPage {
+            gate.cancelSlide()
+            slide(to: new)
         } else {
             gate.armSlide(at: CACurrentMediaTime())
             wake()

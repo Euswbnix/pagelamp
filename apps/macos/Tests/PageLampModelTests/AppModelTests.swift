@@ -176,6 +176,16 @@ struct AppModelTests {
         #expect(!model.canShowCurrentWeek)
     }
 
+    @Test("the page follows the destination when the detail column says so")
+    func pageDestination() {
+        let (model, _) = makeModel(scenario: .demo)
+        #expect(model.pageDestination == .thisWeek)
+        model.destination = .sources
+        #expect(model.pageDestination == .thisWeek)
+        model.showDestinationPage()
+        #expect(model.pageDestination == .sources)
+    }
+
     @Test("switching the mock scenario reloads everything")
     func dataMode() async {
         let (model, _) = makeModel(scenario: .demo)

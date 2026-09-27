@@ -105,6 +105,8 @@ struct DetailColumn: View {
     /// One detail model per course visited in this window (the course page and its inspector
     /// share them; going back to a course shows its data at once).
     @State private var details = CourseDetailStore()
+    @State private var nextFrame = NextFrame()
+    @AppStorage(DebugPreferences.sidebarCapsuleLeads) private var capsuleLeads = false
 
     var body: some View {
         Group {
@@ -114,7 +116,7 @@ struct DetailColumn: View {
             case .unavailable(let failure):
                 BackendUnavailableView(failure: failure)
             case .ready:
-                switch model.destination {
+                switch model.pageDestination {
                 case .thisWeek: ThisWeekView()
                 case .course(let id): CourseDetailView(courseId: id, detail: details.model(for: id))
                 case .sources: SourcesView()
@@ -126,6 +128,54 @@ struct DetailColumn: View {
         .onDetailWidthChange { width = $0 }
         .minimumSizeShield()
         .toolbar { WindowToolbar(compact: (width ?? .infinity) < WindowToolbar.compactBelow) }
+        // The page and its toolbar follow the choice at once, or (Debug: the capsule leads) two
+        // display frames later, once the capsule's slide is with the render server.
+        .onChange(of: model.destination) { _, _ in
+            if capsuleLeads {
+                nextFrame.run(afterFrames: 2) { model.showDestinationPage() }
+            } else {
+                model.showDestinationPage()
+            }
+        }
+        .onAppear { model.showDestinationPage() }
+    }
+}
+
+/// Runs work a few display frames from now, after the current update has been committed. One
+/// frame is not enough to separate two commits: the update cycle can flush the current changes
+/// together with the next frame's. The latest request wins; it runs once.
+@MainActor
+final class NextFrame: NSObject {
+    private var link: CADisplayLink?
+    private var work: (() -> Void)?
+    private var ticks = 0
+    private var frames = 1
+
+    func run(afterFrames frames: Int, _ work: @escaping () -> Void) {
+        self.work = work
+        self.frames = frames
+        guard link == nil else { return }
+        guard let screen = NSScreen.main else {
+            DispatchQueue.main.async { self.fire() }
+            return
+        }
+        let link = screen.displayLink(target: self, selector: #selector(tick(_:)))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    @objc private func tick(_ link: CADisplayLink) {
+        ticks += 1
+        if ticks >= frames { fire() }
+    }
+
+    private func fire() {
+        link?.invalidate()
+        link = nil
+        ticks = 0
+        let work = self.work
+        self.work = nil
+        work?()
     }
 }
 

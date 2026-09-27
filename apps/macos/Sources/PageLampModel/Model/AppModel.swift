@@ -152,12 +152,21 @@ public final class AppModel {
     // MARK: Navigation (spec §2.4)
 
     public var destination: Destination = .thisWeek
+    /// The destination whose page (and toolbar) the detail column shows. DetailColumn moves it to
+    /// `destination` at once, or two display frames later while the sidebar capsule leads (a
+    /// Debug comparison, spec §2.3 "Motion order").
+    public private(set) var pageDestination: Destination = .thisWeek
     public var inspectorShown = false
     /// Whether a main window restored its stored destination and inspector in this run. Only the
     /// first one does: a window reopened later (say by ⌘2 with only Settings open) shows where
     /// the model is now, which the command just set, not what an older window stored.
     @ObservationIgnored public var restoredWindowState = false
     @ObservationIgnored private var courseStates: [String: CourseUIState] = [:]
+
+    /// The detail column caught up with `destination`.
+    public func showDestinationPage() {
+        if pageDestination != destination { pageDestination = destination }
+    }
 
     // MARK: Sync and the capsule (spec §6.2)
 

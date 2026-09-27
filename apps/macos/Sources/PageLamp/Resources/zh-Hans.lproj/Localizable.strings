@@ -454,6 +454,7 @@
 "mac.course.week.relative.nextWeek" = "下周";
 "mac.course.week.relative.thisWeek" = "本周";
 "mac.courses.thisWeek.next7" = "未来 7 天";
+"mac.debug.capsuleLeads" = "侧边栏胶囊先于页面移动";
 "mac.debug.dataSource" = "数据来源";
 "mac.debug.live.confirm" = "使用真实数据";
 "mac.debug.live.message" = "这个预览版会打开与已安装的 PageLamp 应用及其命令行工具相同的数据文件夹和钥匙串项目。在这里同步会更改这些数据。打开这个文件夹时，还可能更新其中数据库的格式；之后，较旧版本的 PageLamp 会先要求你更新，才能再次打开你的数据。";

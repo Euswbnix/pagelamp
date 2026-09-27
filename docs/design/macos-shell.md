@@ -121,6 +121,7 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 - Selections made while a page is building are coalesced: the latest wins, and at most one page waits.
 - Holding ↑/↓, or dragging, glides the capsule without building pages; release commits once the capsule is within 1 pt, at most 0.2 s.
 - Retargets add to the running spring (the velocity carries over). Reduce Motion: the capsule jumps. `scripts/perf-probe.sh capsule` measures it with real input events.
+- **Open question, decided on device** (Preview builds: Debug ▸ Sidebar Capsule Moves Before the Page): whether the capsule should lead instead. Measured with the capsule probe at 60 Hz, the default starts the capsule ~150 ms after the input (the page appears at ~115 ms); leading starts it at ~50 ms and the page follows two display frames later (~150 ms; one frame is not enough, the update cycle can flush both together). While it leads, the slide overlaps the page build: the render server draws the Core Animation spring, but a main-thread probe cannot see those frames, so only eyes can judge it. The page and the toolbar follow `AppModel.pageDestination` in both modes. The losing variant is removed after the decision.
 
 **Metrics** (measured on 27.2, except the small row height: see below the table; x from the sidebar edge; W = column width):
 

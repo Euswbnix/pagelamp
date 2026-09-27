@@ -99,6 +99,7 @@ struct CourseMenuCommands: Commands {
 struct DebugCommands: Commands {
     let model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(DebugPreferences.sidebarCapsuleLeads) private var capsuleLeads = false
 
     var body: some Commands {
         let l10n = model.menuL10n
@@ -126,6 +127,8 @@ struct DebugCommands: Commands {
                 Task { await model.runMockSyncWithRejectedToken() }
             }
             .disabled(!isMock || !model.canSync)
+            Divider()
+            Toggle(l10n("mac.debug.capsuleLeads"), isOn: $capsuleLeads)
         }
     }
 
