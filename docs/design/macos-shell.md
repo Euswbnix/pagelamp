@@ -202,7 +202,7 @@ enum CourseSection: String, CaseIterable, Codable { case week, deadlines, timeli
 | Screen | Leading (`.navigation`) | Title / subtitle | Trailing (`.primaryAction`) |
 |---|---|---|---|
 | This Week [M1] | — | "This Week" / rolling "Sep 26 – Oct 2" (`Date.IntervalFormatStyle`) | **Sync Now** (`arrow.triangle.2.circlepath`, untinted, ⌘R) |
-| Course [M1] | `ControlGroup { Previous Week; Next Week }` (This Week section only) · **This Week** (`arrow.uturn.backward`, own item, only when away from now) | course code | **Download Files…** (`square.and.arrow.down`, icon-only, Canvas with `downloadable_files > 0`) [M2] · **Open Course Website** (`safari`, icon-only, `.visibilityPriority(.low)` [26.1]) · `ToolbarSpacer(.fixed)` · **Inspector** (`sidebar.trailing`) |
+| Course [M1] | `ControlGroup { Previous Week; Next Week }` (every section, enabled in This Week only: hiding it re-tiled the toolbar on each section switch and made the picker's thumb stutter) · **This Week** (`arrow.uturn.backward`, own item, only when away from now; enabled in This Week only) | course code | **Download Files…** (`square.and.arrow.down`, icon-only, Canvas with `downloadable_files > 0`) [M2] · **Open Course Website** (`safari`, icon-only, `.visibilityPriority(.low)` [26.1]) · `ToolbarSpacer(.fixed)` · **Inspector** (`sidebar.trailing`) |
 | Sources & Sync [M1] | — | "Sources & Sync" / "Where PageLamp gets your course data" | **Add Source…** (`plus`) [M2] · `ToolbarSpacer(.fixed)` · **Sync All** (`.glassProminent` + `.sharedBackgroundVisibility(.hidden)` when it wins §3.0, else a default toolbar button) |
 | Connect [M1] | — | "Connect AI App" | — |
 

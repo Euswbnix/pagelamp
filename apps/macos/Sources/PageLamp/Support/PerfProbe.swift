@@ -13,6 +13,11 @@
 // selection capsule's on-screen position on every display frame (one layer read per frame), to
 // check that every change slides, smoothly, after the new page's first frame (spec §2.3 "Motion
 // order"), and that page switches never queue up.
+//
+// PAGELAMP_PERF_PROBE=segment clicks the course section picker (the system segmented control)
+// with real events (PAGELAMP_PERF_PRESS ms between down and up, default 50) and records its
+// thumb's x on every frame: a smooth slide steps ~8 px per 120 Hz frame; page work landing during
+// the slide shows up as large steps. (A 0 ms press skips the slide in the system control itself.)
 
 import AppKit
 import QuartzCore
@@ -33,6 +38,9 @@ final class PerfProbe: NSObject {
     private var link: CADisplayLink?
     /// The capsule mode's per-frame record while a change is measured (nil otherwise).
     private var capsuleSamples: [CapsuleSample]?
+    /// The segment mode's thumb layer and its x per frame while a click is measured.
+    private var thumb: CALayer?
+    private var thumbXs: [Double] = []
     private var trackedModel: AppModel?
 
     /// The capsule host registers itself when it enters a window; kept only for the capsule mode.
@@ -42,7 +50,7 @@ final class PerfProbe: NSObject {
     }
 
     static func runIfRequested(model: AppModel) async {
-        guard let mode = ProcessInfo.processInfo.environment["PAGELAMP_PERF_PROBE"], ["inspector", "navigate", "sidebar", "courses", "enter", "capsule", "all"].contains(mode) else { return }
+        guard let mode = ProcessInfo.processInfo.environment["PAGELAMP_PERF_PROBE"], ["inspector", "navigate", "sidebar", "courses", "enter", "capsule", "segment", "all"].contains(mode) else { return }
         let probe = PerfProbe()
         await probe.run(model: model)
     }
@@ -56,6 +64,7 @@ final class PerfProbe: NSObject {
         cpuStamps.append((CACurrentMediaTime(), Self.threadCPUms()))
         let frame = link.targetTimestamp - link.timestamp
         if frame > 0 { interval = frame }
+        if let thumb { thumbXs.append(Double((thumb.presentation() ?? thumb).frame.origin.x)) }
         // The capsule mode: one layer read per frame (walking the window would distort the timing).
         if capsuleSamples != nil, let host = Self.capsuleHost, let layer = host.capsuleLayer, let model = trackedModel {
             let y = Double((layer.presentation() ?? layer).position.y)
@@ -143,6 +152,9 @@ final class PerfProbe: NSObject {
         if mode == "capsule" {
             report["capsule"] = await runCapsule(model: model, view: view)
         }
+        if mode == "segment" {
+            report["segment"] = await runSegment(model: model, view: view, courseId: course.course.id, clicks: toggles * 3)
+        }
         if mode == "navigate" || mode == "all" {
             model.inspectorShown = false
             let stops: [Destination] = [.thisWeek, .course(course.course.id), .sources, .connect]
@@ -209,6 +221,62 @@ final class PerfProbe: NSObject {
         return ["medCpuFirstMs": median("cpuFirstMs"), "medCpuTotalMs": median("cpuTotalMs"), "medFirstFrameMs": median("firstFrameMs"), "medMaxGapMs": median("maxGapMs"), "medHitchMsPerS": median("hitchMsPerS"),
                 "meanHitchMsPerS": mean("hitchMsPerS"), "meanMaxGapMs": mean("maxGapMs"), "worstMaxGapMs": worst("maxGapMs"),
                 "meanFirstFrameMs": mean("firstFrameMs"), "meanSyncMs": mean("syncMs"), "n": Double(r.count)]
+    }
+
+    /// Clicks the course section picker and measures its thumb's slide (the segment mode).
+    private func runSegment(model: AppModel, view: NSView, courseId: String, clicks: Int) async -> [String: Any] {
+        model.destination = .course(courseId)
+        model.ui(for: courseId).section = .week
+        await sleep(1.5)
+        guard let control = Self.sectionPicker(in: view), let thumb = Self.thumbLayer(of: control) else { return ["error": "no section picker thumb"] }
+        let press = Double(ProcessInfo.processInfo.environment["PAGELAMP_PERF_PRESS"] ?? "") ?? 50
+        var steps: [Double] = []
+        var gaps: [Double] = []
+        var skipped = 0
+        for i in 0..<clicks {
+            thumbXs.removeAll()
+            self.thumb = thumb
+            let r = await measure { Self.click(control, segment: [1, 2, 0][i % 3], pressMs: press) }
+            self.thumb = nil
+            var positions: [Double] = []
+            for x in thumbXs where positions.last.map({ abs($0 - x) > 0.25 }) ?? true { positions.append(x) }
+            if positions.count <= 3 { skipped += 1 }
+            steps.append(zip(positions.dropFirst(), positions).map { abs($0 - $1) }.max() ?? 0)
+            gaps.append(r["maxGapMs"] ?? 0)
+        }
+        func median(_ v: [Double]) -> Double { v.sorted()[v.count / 2] }
+        return ["pressMs": press, "clicks": clicks, "skipped": skipped, "medStepPx": median(steps), "maxStepPx": steps.max() ?? 0, "medMaxGapMs": median(gaps), "maxGapsMs": gaps]
+    }
+
+    private static func sectionPicker(in view: NSView) -> NSSegmentedControl? {
+        if let control = view as? NSSegmentedControl, control.segmentCount == 3, control.window != nil { return control }
+        return view.subviews.lazy.compactMap { sectionPicker(in: $0) }.first
+    }
+
+    /// The selected segment's glass: the sublayer about one segment wide (layer tree of 27.2).
+    private static func thumbLayer(of control: NSSegmentedControl) -> CALayer? {
+        let segment = control.bounds.width / CGFloat(control.segmentCount)
+        func search(_ layer: CALayer, _ depth: Int) -> CALayer? {
+            if depth > 0, layer.frame.width > segment * 0.7, layer.frame.width < segment * 1.05, layer.frame.height > control.bounds.height * 0.6 { return layer }
+            guard depth < 3 else { return nil }
+            return (layer.sublayers ?? []).lazy.compactMap { search($0, depth + 1) }.first
+        }
+        return control.layer.flatMap { search($0, 0) }
+    }
+
+    /// A real click through the event queue: mouse down now, mouse up `pressMs` later.
+    private static func click(_ control: NSSegmentedControl, segment: Int, pressMs: Double) {
+        guard let window = control.window else { return }
+        let width = control.bounds.width / CGFloat(control.segmentCount)
+        let point = control.convert(CGPoint(x: width * (CGFloat(segment) + 0.5), y: control.bounds.midY), to: nil)
+        func post(_ type: NSEvent.EventType) {
+            if let event = NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
+            ) { NSApp.postEvent(event, atStart: false) }
+        }
+        post(.leftMouseDown)
+        DispatchQueue.main.asyncAfter(deadline: .now() + pressMs / 1000) { post(.leftMouseUp) }
     }
 
     private static func name(_ d: Destination) -> String {

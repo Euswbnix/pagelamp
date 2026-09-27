@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Measure UI jank on a release build with the in-app performance probe (Support/PerfProbe.swift).
 #
-#   scripts/perf-probe.sh [inspector|sidebar|navigate|courses|enter|capsule|all] [repeats]
+#   scripts/perf-probe.sh [inspector|sidebar|navigate|courses|enter|capsule|segment|all] [repeats]
 #
 # courses = course to course, enter = This Week to a course, capsule = the sidebar's selection
 # capsule driven by real clicks and keys (not part of all; its JSON judges every change). Opens a

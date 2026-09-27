@@ -28,8 +28,10 @@ struct SyncNowButton: View {
 /// 100 ms per course page); hiding keeps its structure.
 ///
 /// - This Week: Sync Now.
-/// - A course: ‹ › (This Week section only) and "This Week" when away from now; Open Course
-///   Website and the inspector toggle on the trailing side. (Download Files… is M2.)
+/// - A course: ‹ › and "This Week" when away from now, disabled outside the This Week section
+///   (hidden, they re-tiled the toolbar on every section switch, mid-way through the picker's
+///   thumb slide); Open Course Website and the inspector toggle on the trailing side. (Download
+///   Files… is M2.)
 /// - Sources & Sync: Sync All, prominent (glass) only when it wins the arbiter. (Add Source… is M2.)
 struct WindowToolbar: ToolbarContent {
     /// Below this detail-column width a course drops the website item on macOS 26.0.
@@ -46,16 +48,16 @@ struct WindowToolbar: ToolbarContent {
     // items whose `hidden` state changed.
     var body: some ToolbarContent {
         let courseId: String? = { if case .course(let id) = model.destination { id } else { nil } }()
-        let week = courseId.map { model.ui(for: $0).section == .week } ?? false
         let awayFromNow = courseId.map { model.ui(for: $0).isAwayFromDefault } ?? false
         let hasWebsite = courseId.flatMap { model.course(id: $0) }.flatMap { Links.web($0.course.url) } != nil
         let prominent = model.destination == .sources
             && model.primaryActionWinner(for: SourceRow.primaryActionCandidates(model.sourceRows)) == .page(.pagePrimary)
 
+        // Never reads the course section: the items disable themselves outside This Week.
         ToolbarItem(placement: .navigation) { WeekStepperControl() }
-            .hidden(!week)
+            .hidden(courseId == nil)
         ToolbarItem(placement: .navigation) { BackToCurrentWeekButton() }
-            .hidden(!(week && awayFromNow))
+            .hidden(!awayFromNow)
         ToolbarItem(placement: .primaryAction) { SyncNowButton() }
             .hidden(model.destination != .thisWeek)
         if #available(macOS 26.1, *) {
@@ -76,7 +78,7 @@ struct WindowToolbar: ToolbarContent {
     }
 }
 
-/// ‹ › for the course's week (This Week section).
+/// ‹ › for the course's week (enabled in the This Week section).
 private struct WeekStepperControl: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
@@ -89,14 +91,14 @@ private struct WeekStepperControl: View {
             } label: {
                 Label(l10n("mac.actions.previousWeek"), systemImage: "chevron.backward")
             }
-            .disabled(ui?.previousWeek == nil)
+            .disabled(ui?.section != .week || ui?.previousWeek == nil)
             .help(l10n("mac.actions.previousWeek"))
             Button {
                 model.stepWeek(by: 1)
             } label: {
                 Label(l10n("mac.actions.nextWeek"), systemImage: "chevron.forward")
             }
-            .disabled(ui?.nextWeek == nil)
+            .disabled(ui?.section != .week || ui?.nextWeek == nil)
             .help(l10n("mac.actions.nextWeek"))
         }
     }
@@ -108,7 +110,8 @@ private struct BackToCurrentWeekButton: View {
     @Environment(\.l10n) private var l10n
 
     var body: some View {
-        let known: Bool = { if case .course(let id) = model.destination { model.ui(for: id).currentWeek != nil } else { true } }()
+        let ui: CourseUIState? = { if case .course(let id) = model.destination { model.ui(for: id) } else { nil } }()
+        let known = ui.map { $0.currentWeek != nil } ?? true
         let title = known ? l10n("mac.toolbar.backToCurrentWeek") : l10n("mac.toolbar.showRecentMaterials")
         Button {
             model.showCurrentWeek()
@@ -116,6 +119,7 @@ private struct BackToCurrentWeekButton: View {
             Label(title, systemImage: "arrow.uturn.backward")
         }
         .help(known ? l10n("mac.actions.currentWeek") : title)
+        .disabled(ui?.section != .week)
     }
 }
 
