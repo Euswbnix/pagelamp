@@ -167,6 +167,10 @@
     "needsFeed": "{{source}} needs a new feed address"
   },
   "a11y": {
+    "sidebar": "Sidebar",
+    "sidebarRowAnnouncement": "{{label}}, {{value}}",
+    "sidebarSourcesFailing_one": "{{count}} source needs attention",
+    "sidebarSourcesFailing_other": "{{count}} sources need attention",
     "sidebarCourse": "{{code}}, {{name}}, {{week}}",
     "sidebarCourseNoAI": "{{code}}, {{name}}, {{week}}, No AI",
     "sidebarCourseAttention": "{{code}}, {{name}}, {{week}}, source needs attention",

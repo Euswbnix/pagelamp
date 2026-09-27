@@ -1,8 +1,8 @@
 // Renders pages of the snapshot catalogue headless with ImageRenderer.
 //
-// Always (plain `swift test`): a small subset (This Week, a course page, Sources, the component
-// gallery) in two variants, into a temporary folder that is removed afterwards. In debug builds
-// an unknown string key or a missing argument trips an assertion, so this also proves those
+// Always (plain `swift test`): a small subset (This Week, a course page, Sources, the sidebar, the
+// component gallery) in two variants, into a temporary folder that is removed afterwards. In debug
+// builds an unknown string key or a missing argument trips an assertion, so this also proves those
 // pages' strings exist in both languages.
 //
 // The whole catalogue (every page, light/dark × en/zh-Hans) only when asked:
@@ -26,7 +26,7 @@ struct SnapshotRenderTests {
         .split(separator: ",").map(String.init) ?? []
 
     /// The pages every `swift test` renders: one per kind of screen.
-    static let subset = ["this-week-default", "course-DEMO101-week", "sources-expired", "components"]
+    static let subset = ["this-week-default", "course-DEMO101-week", "sources-expired", "sidebar", "components"]
 
     @Test("a few pages render in English light and Chinese dark")
     func renderSubset() async throws {

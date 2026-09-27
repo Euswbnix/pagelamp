@@ -359,10 +359,12 @@
 "mac.a11y.deadlineRow" = "%1$@. %2$@, %3$@. Due %4$@.";
 "mac.a11y.deadlineRowCountdown" = "%1$@. %2$@, %3$@. Due %4$@, %5$@.";
 "mac.a11y.planItem" = "%1$@, %2$@, %3$@, %4$@";
+"mac.a11y.sidebar" = "Sidebar";
 "mac.a11y.sidebarCourse" = "%1$@, %2$@, %3$@";
 "mac.a11y.sidebarCourseAttention" = "%1$@, %2$@, %3$@, source needs attention";
 "mac.a11y.sidebarCourseNoAI" = "%1$@, %2$@, %3$@, No AI";
 "mac.a11y.sidebarCourseNoAIAttention" = "%1$@, %2$@, %3$@, No AI, source needs attention";
+"mac.a11y.sidebarRowAnnouncement" = "%1$@, %2$@";
 "mac.a11y.syncStarted" = "Sync started";
 "mac.about.tagline" = "A reading lamp for your courses.";
 "mac.actions.addASource" = "Add a Source…";

@@ -264,23 +264,48 @@ nonisolated enum PLType {
 
 /// Animations (spec §5, §10.4). Under Reduce Motion use PLMotion.reduced or no animation.
 nonisolated enum PLMotion {
+    /// A spring token as Core Animation takes it: the SwiftUI spring's perceptual duration and
+    /// bounce (`CASpringAnimation(perceptualDuration:bounce:)` moves like the SwiftUI spring).
+    struct Spring: Sendable {
+        let duration: Double
+        let bounce: Double
+    }
+
     /// `motion.calm`
     static let calm: Animation = .smooth(duration: 0.45)
+
+    /// `motion.calm` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let calmSpring = Spring(duration: 0.45, bounce: 0)
 
     /// `motion.quick`
     static let quick: Animation = .snappy(duration: 0.3)
 
+    /// `motion.quick` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let quickSpring = Spring(duration: 0.3, bounce: 0.15)
+
     /// `motion.lively` — Only the one "Sync finished" bounce.
     static let lively: Animation = .bouncy
+
+    /// `motion.lively` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let livelySpring = Spring(duration: 0.5, bounce: 0.3)
 
     /// `motion.week`
     static let week: Animation = .smooth(duration: 0.35)
 
+    /// `motion.week` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let weekSpring = Spring(duration: 0.35, bounce: 0)
+
     /// `motion.section`
     static let section: Animation = .smooth(duration: 0.25)
 
+    /// `motion.section` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let sectionSpring = Spring(duration: 0.25, bounce: 0)
+
     /// `motion.step`
     static let step: Animation = .smooth(duration: 0.4)
+
+    /// `motion.step` for Core Animation: `CASpringAnimation(perceptualDuration:bounce:)`.
+    static let stepSpring = Spring(duration: 0.4, bounce: 0)
 
     /// `motion.hover` — Row hover fill; none under Reduce Highlighting Effects.
     static let hover: Animation = .easeOut(duration: 0.15)

@@ -167,6 +167,10 @@
     "needsFeed": "{{source}} 需要新的日历订阅地址"
   },
   "a11y": {
+    "sidebar": "边栏",
+    "sidebarRowAnnouncement": "{{label}}，{{value}}",
+    "sidebarSourcesFailing_one": "{{count}} 个数据来源需要处理",
+    "sidebarSourcesFailing_other": "{{count}} 个数据来源需要处理",
     "sidebarCourse": "{{code}}，{{name}}，{{week}}",
     "sidebarCourseNoAI": "{{code}}，{{name}}，{{week}}，禁止使用 AI",
     "sidebarCourseAttention": "{{code}}，{{name}}，{{week}}，数据来源需要处理",

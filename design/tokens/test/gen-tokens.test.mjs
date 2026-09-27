@@ -218,6 +218,7 @@ describe("Swift", () => {
     assert.ok(!swift.includes("textPrimary"), "text colours are the system's on the Mac");
     assert.match(swift, /static let lampWashOpacityDark: Double = 0\.17/);
     assert.match(swift, /static let calm: Animation = \.smooth\(duration: 0\.45\)/);
+    assert.match(swift, /static let quickSpring = Spring\(duration: 0\.3, bounce: 0\.15\)/);
     assert.match(swift, /static let weekButtonMin: CGFloat = 26/);
   });
 

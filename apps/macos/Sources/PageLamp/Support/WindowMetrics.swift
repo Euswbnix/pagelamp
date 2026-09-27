@@ -12,4 +12,7 @@ package enum WindowMetrics {
     package static let inspectorIdeal = PLSize.inspectorIdeal
     package static let inspectorMin = PLSize.inspectorMin
     package static let settingsWidth = PLSize.settingsWidth
+    /// The toolbar area the sidebar's first row starts below (its top safe area, measured on
+    /// 27.2); the sidebar snapshot pads by it.
+    package static let toolbarInset: CGFloat = 52
 }

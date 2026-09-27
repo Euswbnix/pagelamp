@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Lint for the Mac app (CI and before every commit):
-#   1. glass only in Sources/PageLamp/Chrome/ (spec §1.3): glassEffect*, GlassEffectContainer and
-#      the glass button styles appear nowhere else;
+#   1. glass only in Sources/PageLamp/Chrome/ (spec §1.3): glassEffect*, GlassEffectContainer,
+#      AppKit's NSGlassEffectView / NSGlassEffectContainerView and the glass button styles appear
+#      nowhere else;
 #   2. the generated tokens and strings are up to date (gen-tokens / gen-strings --check);
 #   3. every string key used in Swift exists, and no UI text is hard-coded
 #      (scripts/check-swift-strings.mjs).
@@ -23,7 +24,7 @@ failed() {
 }
 
 step "glass only in Sources/PageLamp/Chrome/"
-GLASS='glassEffect|GlassEffectContainer|buttonStyle\([[:space:]]*\.glass|\.glassProminent|GlassButtonStyle|GlassProminentButtonStyle'
+GLASS='glassEffect|GlassEffectContainer|NSGlassEffect|buttonStyle\([[:space:]]*\.glass|\.glassProminent|GlassButtonStyle|GlassProminentButtonStyle'
 glass_hits="$(grep -rnE --include='*.swift' "$GLASS" "$MACOS_DIR/Sources" \
   | grep -v "^$MACOS_DIR/Sources/PageLamp/Chrome/" || true)"
 if [[ -n "$glass_hits" ]]; then

@@ -943,7 +943,13 @@ function swiftMember(t, appearances) {
       return [];
     case "transition": {
       const s = t.ext.spring;
-      if (s) return [decl(target.name, `: Animation = .${s.preset}${s.duration === 0.5 ? "" : `(duration: ${swiftNum(s.duration)})`}`)];
+      if (s) {
+        return [
+          decl(target.name, `: Animation = .${s.preset}${s.duration === 0.5 ? "" : `(duration: ${swiftNum(s.duration)})`}`),
+          // The same spring for Core Animation (motion the render server runs, spec §5).
+          `    /// \`${t.name}\` for Core Animation: \`CASpringAnimation(perceptualDuration:bounce:)\`.\n    static let ${target.name}Spring = Spring(duration: ${swiftNum(s.duration)}, bounce: ${swiftNum(s.bounce)})`,
+        ];
+      }
       return [decl(target.name, `: Animation = .${t.ext.curve}(duration: ${swiftNum(ms(t.value.duration) / 1000)})`)];
     }
   }
@@ -971,6 +977,12 @@ function renderSwift(loaded) {
     members.get(target.enum).push(...swiftMember(t, appearances));
   }
   const before = {
+    PLMotion: `    /// A spring token as Core Animation takes it: the SwiftUI spring's perceptual duration and
+    /// bounce (\`CASpringAnimation(perceptualDuration:bounce:)\` moves like the SwiftUI spring).
+    struct Spring: Sendable {
+        let duration: Double
+        let bounce: Double
+    }`,
     PLType: `    /// A HIG macOS text style with the size, line height and weight PageLamp uses it at.
     struct Style: Sendable {
         let textStyle: Font.TextStyle

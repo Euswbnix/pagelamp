@@ -1,9 +1,11 @@
 #!/bin/zsh
 # Measure UI jank on a release build with the in-app performance probe (Support/PerfProbe.swift).
 #
-#   scripts/perf-probe.sh [inspector|sidebar|navigate|courses|enter|all] [repeats]
+#   scripts/perf-probe.sh [inspector|sidebar|navigate|courses|enter|capsule|all] [repeats]
 #
-# courses = course to course, enter = This Week to a course. Opens a window for up to a minute (don't touch it; an inactive app may be capped at 60 fps) and prints
+# courses = course to course, enter = This Week to a course, capsule = the sidebar's selection
+# capsule driven by real clicks and keys (not part of all; its JSON judges every change). Opens a
+# window for up to a minute (don't touch it; an inactive app may be capped at 60 fps) and prints
 # one JSON line: per scenario the median first-frame delay, longest frame and hitch time per
 # second (Apple: < 5 ms/s good, > 10 ms/s bad), the main thread's CPU time, and where the long
 # frames were.

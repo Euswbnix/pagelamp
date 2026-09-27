@@ -115,6 +115,20 @@
 			<string>%1$ld 分钟</string>
 		</dict>
 	</dict>
+	<key>mac.a11y.sidebarSourcesFailing</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 个数据来源需要处理</string>
+		</dict>
+	</dict>
 	<key>mac.countdown.hours</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

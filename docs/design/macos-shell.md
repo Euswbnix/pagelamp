@@ -28,7 +28,7 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 1. **Paper below, glass above.** Glass only on navigation, toolbars, floating controls and presentations; content never calls `glassEffect` (HIG Materials).
 2. **One light.** The lamp wash marks only "now", once per screen, always beside a word ("Today", "This week"); never a text or glyph colour.
 3. **Type before boxes.** HIG macOS text styles, whitespace, 0.5 pt hairlines; boxes only for callouts, code and choice tiles.
-4. **One floating group.** The main window's only custom glass is the bottom accessory bar (§6.2).
+4. **One floating group.** The main window's custom glass is the bottom accessory bar (§6.2) and the sidebar's selection capsule (§2.3, user decision 2026-09-26).
 5. **One tinted action per screen, often none** (This Week has none). §3.0 arbitrates.
 6. **Honest by default.** No streaks, engagement badges, red countdowns or pre-ticked opt-ins; compliance text is never collapsed, truncated or colour-only; **AI policies are never colour-coded**, so a student's own "No AI" never looks like an error.
 7. **Native first.** System controls, text colours, separators, radii, and the student's own accent colour.
@@ -37,15 +37,15 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 
 | Window | System glass (automatic) | Custom glass (ours) |
 |---|---|---|
-| Main | toolbar and items, search, sidebar, inspector column, sheets, popovers, menus | one bottom `safeAreaBar` with **one** `GlassEffectContainer`: status capsule + a fused neutral bubble *or* a separate tinted fix bubble; on a course's This Week section also the week scrubber + its return capsule. **≤ 4 shapes**, typically 0–1 |
+| Main | toolbar and items, search, sidebar, inspector column, sheets, popovers, menus | one bottom `safeAreaBar` with **one** `GlassEffectContainer`: status capsule + a fused neutral bubble *or* a separate tinted fix bubble; on a course's This Week section also the week scrubber + its return capsule. **≤ 4 shapes**, typically 0–1; plus the sidebar selection capsule (one `NSGlassEffectView`, §2.3) |
 | Welcome | title-bar area | step-bar buttons (`.glass` / `.glassProminent`), siblings in one container, **no slab behind them** |
 | Settings, sheets, popovers, dialogs, MenuBarExtra | the window/presentation itself | **none**: contents use fills and standard `.bordered` / `.borderedProminent` buttons |
 
 - `.regular` only; `.clear` is never used (text-heavy UI).
 - Tint (`.regular.tint(.accentColor)`, `.glassProminent`) only on the single primary action.
-- No glass on glass: nothing glass inside sheets, popovers or the menu bar window; nearby custom glass shares one container.
+- No glass on glass: nothing glass inside sheets, popovers or the menu bar window; nearby custom glass shares one container. Exception: the sidebar selection capsule sits on the system sidebar glass, as a selected segment sits in a toolbar control (user decision 2026-09-26); it is alone in its column, so it has no container.
 - `glassEffectID` / `glassEffectUnion` / `glassEffectTransition` only on views that carry their own `.glassEffect(…)`, never on `.buttonStyle(.glass)` buttons or system toolbar items (their glass is not addressable).
-- Only `Sources/PageLamp/Chrome/` may use `glassEffect` or glass button styles; CI greps for `glassEffect|buttonStyle\(\.glass` elsewhere.
+- Only `Sources/PageLamp/Chrome/` may use `glassEffect` or glass button styles; CI greps for `glassEffect|buttonStyle\(\.glass|NSGlassEffect` elsewhere.
 
 ## 2. Information architecture
 
@@ -88,18 +88,103 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 - **Refresh** on `NSApplication.didBecomeActiveNotification`, after each sync/download, and every 5 s while `status().sync_in_progress` is true for another process (S17). If `status()` fails: S2, sidebar collapsed.
 - **Threading:** every facade call goes through the UniFFI `PageLamp` object as `async` + `spawn_blocking`; `SyncEvent`s arrive on `pagelamp-rt` threads and reach `@MainActor` through an `AsyncStream` (bridge research §2.3–2.4).
 
-### 2.3 Sidebar [M1] (`List(selection:)`, `.navigationSplitViewColumnWidth(min: 200, ideal: 232, max: 300)`)
+### 2.3 Sidebar [M1] (custom source list: `ScrollView` + `LazyVStack` in the system sidebar column; `.navigationSplitViewColumnWidth(min: 200, ideal: 232, max: 300)`)
 
 | Section | Rows |
 |---|---|
 | — | **This Week** / 本周 · `lamp.desk` |
-| **Courses** / 课程 | visible, active courses by code: icon `book.closed` (`hand.raised` for No AI, neutral); title = code (or name); trailing `HStack` (not `.badge`, which means a count): `exclamationmark.triangle` if its source is failing, then "Wk 4" / "第 4 周" (*new* `common.week.compact`) or "—"; full name in `.help` and VoiceOver |
+| **Courses** / 课程 | visible, active courses by code: icon `book.closed` (`hand.raised` for No AI, neutral); title = code (or name); trailing `HStack` (not `.badge`, which means a count): `exclamationmark.triangle` if its source is failing, then "Wk 4" / "第 4 周" (*new* `common.week.compact`) or "—"; full name in the `.help` tooltip and in the VoiceOver label (not as an accessibility help, which would say it twice) |
 | **Hidden** / 已隐藏 [M2] | only with View ▸ Show Hidden Courses; `eye.slash`, `.secondary` |
 | **Past Courses** / 往期课程 [M2] | `Section(isExpanded:)`, collapsed; `enrollment_active == false` |
-| **Setup** / 配置 | **Sources & Sync** / 数据来源与同步 · `folder.badge.gearshape`, `.badge(n)` only for n failing sources; **Connect AI App** / 连接 AI 应用 · `cable.connector`, warning glyph while `temporary_location` is set |
+| **Setup** / 配置 | **Sources & Sync** / 数据来源与同步 · `folder.badge.gearshape`, trailing count (callout, `.secondary`), only for n failing sources; VoiceOver value "{{count}} source(s) need attention"; **Connect AI App** / 连接 AI 应用 · `cable.connector`, warning glyph while `temporary_location` is set |
 | footer (`.safeAreaInset(edge: .bottom)`) | plain text button → Sources, **Subheadline 11 pt**, never glass: "Synced 2 h ago" / "2 小时前同步", "Syncing…" / "正在同步…", "Offline · synced 3 h ago" / "离线 · 3 小时前同步", "Needs attention" / "需要处理", "Not synced yet" / "还没有同步过" (glyph + words) |
 
-**Status roles** (fixes the "status in three places" finding): the footer is the persistent low-emphasis state and never shows counts; the capsule is the transient event channel (progress, results, fixes) on the current page; the toolbar's Sync Now is an action. Critical problems also appear in content callouts, the Sources badge and the capsule, never only at the sidebar bottom. On 27 the system colours sidebar icons with the accent and bolds the selection: don't override. No Settings row: ⌘, opens the Settings scene.
+**Status roles** (fixes the "status in three places" finding): the footer is the persistent low-emphasis state and never shows counts; the capsule is the transient event channel (progress, results, fixes) on the current page; the toolbar's Sync Now is an action. Critical problems also appear in content callouts, the Sources badge and the capsule, never only at the sidebar bottom. The list itself colours icons with the accent (`.tint`) while the window is active and `.secondary` when it is inactive, and makes the highlighted title Semibold (27's accent sidebar icons, reproduced). No Settings row: ⌘, opens the Settings scene.
+
+**Selection: one glass capsule (user decision, 2026-09-26, final).**
+
+- The highlighted row sits on one Liquid Glass capsule that looks like the selected segment of the system segmented control: light, translucent, specular rim, soft depth, untinted; not the system's solid accent fill.
+- It slides to the new row whenever the selection changes: click (tap-to-click included), keyboard, type-select, ⌘1/2/3, the status capsule's fix button, any programmatic navigation.
+- The sidebar's own glass stays system-drawn (the split view's sidebar column).
+- Implementation: one `NSGlassEffectView` (`.regular`, radius h/2) in `Chrome/SidebarSelectionGlass.swift`, moved by an additive `CASpringAnimation` = `motion.quick` (`PLMotion.quickSpring`).
+
+**Why the system List selection is replaced.**
+
+- On 27, `List(selection:)` draws its selection per row as an `NSVisualEffectView` (material `.selection`, radius 8). Whenever the list has focus in a key window it becomes a solid `controlAccentColor` fill with a white Semibold title, and it jumps from row to row.
+- The 27 SDK has no API to restyle it: `listRowBackground` sits above it, but the title still turns white; `selectionDisabled` only removes selectability; a `List` without `selection:` loses the highlight and keyboard selection; setting the private `NSOutlineView`'s `selectionHighlightStyle` is fragile.
+- So the rows are custom and reproduce the source list's geometry, keys, pointer and VoiceOver behaviour as measured on 27.2. `SidebarLayout` and `SidebarNavigation` live in PageLampModel with tests.
+
+**Motion order (no jank).**
+
+- The page switch goes first: a selection sets `AppModel.destination` at once, and the bold title moves with it.
+- The capsule starts only after the page's first frame has been drawn and the main thread has been free for a whole display frame, detected with a display link (`SidebarMotionGate`), with a cap of 0.25 s. (SwiftUI animations and the segmented control's thumb are advanced on the main thread; a slide that shares frames with a 60–126 ms page build steps 30–90 px per frame.)
+- Selections made while a page is building are coalesced: the latest wins, and at most one page waits.
+- Holding ↑/↓, or dragging, glides the capsule without building pages; release commits once the capsule is within 1 pt, at most 0.2 s.
+- Retargets add to the running spring (the velocity carries over). Reduce Motion: the capsule jumps. `scripts/perf-probe.sh capsule` measures it with real input events.
+
+**Metrics** (measured on 27.2, except the small row height: see below the table; x from the sidebar edge; W = column width):
+
+| | Small | Medium | Large |
+|---|---|---|---|
+| Row height = capsule height (radius h/2) | 24 | 32 | 40 |
+| Title (Regular; Semibold when highlighted) | 11 | 13 | 15 |
+| Title x | 42 | 46 | 48 (native; if the wide `folder.badge.gearshape` glyph touches the title on device, match a native list at large) |
+| Icon (Medium, `imageScale(.large)`, `.tint` / `.secondary`) | 11 | 13 | 15 |
+| Icon column from x 16 (centre) | 22 (27) | 26 (29, measured) | 28 (30) |
+
+Small row height: 24 is the source-list table's `rowHeight` at the small size; medium and large match the system's SwiftUI sidebar exactly. At small that list uses automatic row heights and sizes each row to its content, about 5 pt above and below the tallest glyph (25–27 pt with these icons, so its rows sit up to 7.5 pt lower by Connect). The custom list keeps a uniform 24 on purpose: the one capsule keeps its height as it slides from row to row, like a segmented control's thumb.
+
+Every size: trailing items callout 12, ending at W − 16; headers 19 pt tall with a 13 pt gap above (none as the first item), 11 pt Semibold `.secondary` at x 14, vertically centred; capsule x 10, width W − 20; focus ring 3 pt, 0–3 pt outside the capsule, `keyboardFocusIndicatorColor`; Show Borders 1 pt `separatorColor` inside. Row 0 sits at the toolbar safe area (y 52), no extra padding; medium row tops in the window 52, 97, 116, 148, 180, 225, 244, 276. The one source of these numbers is `SidebarMetrics`.
+
+**States:**
+
+| State | Capsule | Title / icon |
+|---|---|---|
+| Rest, window active | regular glass, untinted | Semibold `.primary` / `.tint` (accent) |
+| Focused by Tab, ⌃F6 or any sidebar key (window key) | + focus ring | same |
+| Focused by a click | no ring (the first key shows it) | same |
+| Window inactive | unchanged, no ring | Semibold / icons `.secondary` |
+| Hover | none (native sidebars have none) | none |
+| Pressing, dragging, holding ↑/↓ | glides to the previewed row | bold on the previewed row |
+| Page still building | waits (≤ 0.25 s), then slides | bold already moved |
+| Selection not in the list (hidden course) | hidden; fades in when the row returns | no bold row |
+| Reduce Motion | jumps, no fade | same |
+| Reduce Transparency / Increase Contrast / 27 glass slider | system glass (frosted, high contrast) [verify] | same |
+| Show Borders | + 1 pt outline | same |
+| Snapshots | flat `.quaternary` capsule with a `.separator` stroke | same |
+
+**Keyboard** (sidebar focused):
+
+| Key | Action |
+|---|---|
+| Tab / ⇧Tab, ⌃F6 | into and out of the list: one stop, with or without Full Keyboard Access (`.focusable(interactions: .edit)`) |
+| ↑ / ↓ key-down, also with ⇧ ⌃ ⌘ | previous / next row, page at once, no wrap, headers skipped |
+| ↑ / ↓ held | preview glide; the page commits on release |
+| ⌥↑ / ⌥↓ | first / last row |
+| Home / End | scroll to top / bottom; the selection does not change |
+| Page Up / Page Down | passed on (the system list ignores them) |
+| letters, digits, symbols without ⌘ or ⌃ | type-select: searches after the highlighted row and wraps; more letters within 2 × (key-repeat delay + interval) (1.167 s by default) extend the prefix; case, diacritics and width ignored; headers never match; no match changes nothing |
+| Space | extends an active search; otherwise passed on |
+| Return, Esc, ←, → | passed on (Esc still dismisses the status capsule's attention) |
+| menu shortcuts (⌘1/2/3, Go, ⌘R …) | handled by menus first; the capsule follows after the page |
+
+**Pointer:** a press selects on mouse-down, like `NSTableView`; a drag previews and commits on release, a cancel reverts; clicks on headers or gaps only focus the list; control-click selects in M1 (M2: the context menu must not select, as in native lists).
+
+**VoiceOver:**
+
+```
+AXScrollArea
+  list "Sidebar"                      (LazyVStack + .contain + label; roleDescription "list")
+    AXStaticText "This Week"          selected, press
+    AXHeading "Courses"
+    AXStaticText "DEMO205, Foundations of Sample Data, Week 4, source needs attention"   (the label has the full name)
+    AXHeading "Setup"
+    AXStaticText "Sources & Sync"     value "1 source needs attention"
+    AXStaticText "Connect AI App"     value <temporary-location title, when set>
+AXButton footer status (after the list)
+```
+
+Row modifier order (measured): `.accessibilityElement(children: .ignore)`, label, value, `.isSelected` (committed row only), `.accessibilityAction`, `.accessibilityRemoveTraits(.isButton)`, `.accessibilityAddTraits(.isStaticText)`; before them `.contentShape(.accessibility, .rect)`, so VoiceOver's outline covers the whole row the capsule marks, not only icon and text. The capsule is hidden from VoiceOver. Keyboard commits post an announcement ("label, value"); pointer, menu and VoiceOver-press changes do not. The list reports no selected child (the system's outline does), so when the keyboard brings focus to it (Tab, ⌃F6: the focus ring shows) the highlighted row is announced too; a click is not. The course tooltip is not an accessibility help (the label already has the full name). Headers are `.isHeader`.
 
 ### 2.4 Navigation model [M1]
 
@@ -810,6 +895,7 @@ S15 temporary location + quarantine · S16 offline · S17 busy
 | Sync All | `.glassProminent` + `.sharedBackgroundVisibility(.hidden)` | only when it wins §3.0 | 1 |
 | status capsule · neutral bubble | `.glassEffect(.regular.interactive(), in: .capsule)`; bubble joins `glassEffectUnion(id: "status")` in notice states | none | 1 · 2 |
 | fix bubble | `.glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)`, never unioned | **tinted** | 1 |
+| sidebar selection capsule | `NSGlassEffectView` `.regular`, radius h/2, Core Animation spring (§2.3, §5) | none | 1 |
 | week scrubber · return capsule | `.glassEffect(.regular.interactive(), in: .capsule)`, IDs `"scrubber"`, `"return"` | none | 2 |
 | welcome step bar | sibling `.buttonStyle(.glass)` / `.glassProminent` in one container, no slab | primary | 2 |
 | menu bar extra | `.menuBarExtraStyle(.window)`; nothing inside is glass | system | 3 |
@@ -881,7 +967,8 @@ Presets (§10.4): **calm** `.smooth(duration: 0.45)` · **quick** `.snappy(durat
 | week change · section · step | `.push(from: .trailing/.leading)` 0.35 s + `.numericText(value:)` numeral · crossfade 0.25 s · `.push(from: .trailing)` 0.4 s |
 | first-sync pool · row hover | opacity follows progress (calm) · `.easeOut(duration: 0.15)`, none under Reduce Highlighting Effects |
 | copied · sync finished · ignite | `.symbolEffect(.replace)` 2 s · `.symbolEffect(.bounce, value:)` once · `PhaseAnimator` (§6.6) |
-| glass press, sidebar, inspector, sheets | system (27 adds a click bounce to interactive glass) |
+| sidebar selection | additive `CASpringAnimation(perceptualDuration: 0.3, bounce: 0.15)` (`PLMotion.quickSpring`), started after the page's first drawn frame (§2.3); Reduce Motion: jump |
+| glass press, sidebar column, inspector, sheets | system (27 adds a click bounce to interactive glass) |
 
 Never animated: blur radius, the minute countdown, compliance text; no idle loops.
 
@@ -1030,25 +1117,25 @@ Once, on first appearance; skipped under Reduce Motion; a content gradient, not 
 
 ### 7.1 VoiceOver and keyboard
 
-- **Contents row** (combined): "DEMO101, Intro to Demo Studies. Week 4, this week. Next: Quiz 3, Saturday 9 AM. AI policy: Learning aid only. 12 of 14 materials readable by your AI app." **Sidebar course row:** "DEMO099, Orientation Placeholder, week 2, No AI" (+ ", source needs attention"). **Deadline row:** full date — "Problem Set 2, questions 1 to 3. DEMO205, Assignment. Due today at 11:59 PM, in 58 minutes."
+- **Contents row** (combined): "DEMO101, Intro to Demo Studies. Week 4, this week. Next: Quiz 3, Saturday 9 AM. AI policy: Learning aid only. 12 of 14 materials readable by your AI app." **Sidebar course row:** "DEMO099, Orientation Placeholder, week 2, No AI" (+ ", source needs attention"). **Sidebar:** "Sidebar, list"; rows are static text with "selected" on the current destination, headers are headings, Sources & Sync's value "1 source needs attention"; ↑/↓ and type-select announce the new row (pointer, menu and VoiceOver presses don't), and so does keyboard focus entering the list; the capsule is hidden (§2.3). **Deadline row:** full date — "Problem Set 2, questions 1 to 3. DEMO205, Assignment. Due today at 11:59 PM, in 58 minutes."
 - **Capsule:** "Sync status: syncing 2 of 3, Canvas", hint "Shows details"; `AccessibilityNotification.Announcement` on start, finish, new problems and "Copied" only. **Week line [M2]:** adjustable, announces the new week. Every icon-only toolbar item is labelled.
 - Section and day headings `.isHeader`; rotors **Deadlines** (This Week) and **Materials** (course); lamp wash, leaders and ribbon dots `.accessibilityHidden(true)`; plan items static ("…, 30 minutes, not done yet"); the disabled No AI switch's note is visible text and its hint.
 
 **Mixed languages [verify]:** backend English (evidence, progress, warnings) is an `AttributedString` with `languageIdentifier = "en"`, mirroring Tauri's `lang="en"`. It is unverified that SwiftUI `Text` passes this to VoiceOver; test in zh-CN, and if the voice does not switch, render those strings through an `NSViewRepresentable` whose attributed string carries AppKit's accessibility language attribute (`NSAccessibilityLanguageTextAttribute`; [verify the Swift spelling]).
 
-**Keyboard:** everything reachable with Full Keyboard Access (each scrubber week, the capsule's buttons after the content); Tab/⌃F6 cycle panes; lists ↑/↓, Return, Space [M3], ⌘C; sheets `.defaultFocus` on the first field, Return default, Esc cancel, destructive dialogs default to Cancel; Esc dismisses the capsule's attention state.
+**Keyboard:** everything reachable with Full Keyboard Access (each scrubber week, the capsule's buttons after the content); Tab/⌃F6 cycle panes; sidebar: one stop; ↑/↓ (⇧⌃⌘ alike), ⌥↑/↓ first/last, Home/End scroll, type-select, holding ↑/↓ previews (§2.3); lists ↑/↓, Return, Space [M3], ⌘C; sheets `.defaultFocus` on the first field, Return default, Esc cancel, destructive dialogs default to Cancel; Esc dismisses the capsule's attention state.
 
 ### 7.2 System settings honoured
 
 | Setting | Effect |
 |---|---|
-| Reduce Transparency | system glass frosts itself; lamp → 3 pt rule + label; `backgroundExtensionEffect(isEnabled: false)` |
-| Increase Contrast | system glass goes black/white; dynamic colours use IC variants; full-strength separators; callouts get 1 pt borders; lamp → rule |
-| Show Borders (`\.accessibilityShowBorders`, honoured on 27) | borderless content buttons → `.bordered`; callouts, footer, plain rows get 1 pt `.separator` outlines |
-| Reduce Motion | §5; `\.accessibilityPrefersCrossFadeTransitions` [26.4] where available |
+| Reduce Transparency | system glass frosts itself (the sidebar capsule too: system glass); lamp → 3 pt rule + label; `backgroundExtensionEffect(isEnabled: false)` |
+| Increase Contrast | system glass goes black/white (the sidebar capsule's edge from system glass [verify]); dynamic colours use IC variants; full-strength separators; callouts get 1 pt borders; lamp → rule |
+| Show Borders (`\.accessibilityShowBorders`, honoured on 27) | borderless content buttons → `.bordered`; callouts, footer, plain rows get 1 pt `.separator` outlines; the sidebar capsule gets a 1 pt outline |
+| Reduce Motion | §5; `\.accessibilityPrefersCrossFadeTransitions` [26.4] where available; the sidebar capsule jumps |
 | Reduce Highlighting Effects (`\.accessibilityReduceHighlightingEffects` [26.4], gated) [M2] | no hover fills; focus rings and selection remain |
 | Differentiate Without Color | already met (glyph + words everywhere; the lamp has a label) |
-| Inactive window | `@Environment(\.appearsActive)`: the accessory bar dims to 60 % |
+| Inactive window | `@Environment(\.appearsActive)`: the accessory bar dims to 60 %; sidebar icons `.secondary`, no focus ring |
 
 ### 7.3 Localization
 
@@ -1056,7 +1143,7 @@ Once, on first appearance; skipped under Reduce Motion; a content gradient, not 
 - **`mac.*` namespace** in the same files for Mac-only strings and HIG title-case English actions ("Sync Now", "Add Source…", "Replace Token…", "Save AI Policy", "Show in Finder"); the existing `i18n.test.ts` parity test covers them. Tauri keeps sentence case; zh-CN is identical in both.
 - Swift maps codes (`SourceErrorKind`, `AppErrorKind`, `McpNoteCode`, `WeekNoteKind`, `AiMaterialsState`, `TextStatus`, `EventKind`), never English. Backend English is shown verbatim only where Tauri shows it, tagged English.
 - Dates via `Date.FormatStyle` / `IntervalFormatStyle` / `RelativeFormatStyle` in the active locale and calendar ("9月26日 星期五", 24-hour where the locale uses it, "58分钟后"). Full-sentence keys only, never fragments; "·" is safe in both languages; zh uses full-width "：" "，".
-- No uppercase, small caps, italics or tracking. Nothing below 11 pt. No fixed text widths: sidebar 200 pt fits "数据来源与同步" + badge; compliance text wraps (`.fixedSize(horizontal: false, vertical: true)`), never truncates.
+- No uppercase, small caps, italics or tracking. Nothing below 11 pt. No fixed text widths: sidebar 200 pt fits "数据来源与同步" + its count, and trailing text never wraps (the title truncates first); compliance text wraps (`.fixedSize(horizontal: false, vertical: true)`), never truncates.
 - IME: search on committed text only; test search and token fields with Pinyin.
 - **Language switching, stated accurately:** view content switches live; SwiftUI commands, standard menus, system dialogs and the menu bar extra follow `AppleLanguages` and switch after **Reopen Now**.
 
@@ -1161,6 +1248,9 @@ X1 · Windows 11 (build ≥ 22621, Mica), Tauri build, This Week
 | Spill does not render | first-view, full-bleed band ignoring the top safe area; [verify]; fallback §6.1; the design reads without it |
 | Union / matched-geometry differ on 26 vs 27 | only same-Glass capsules unioned; fallback: one capsule with an inline button |
 | Custom material rows miss `List` behaviour | §3.2 (MaterialRow) spec + UI tests (focus, ↑/↓, Return, double-click, Space, context menu, rotor) |
+| Sidebar capsule: glass on the sidebar glass looks faint | on-device review light/dark and with several accents; fallback: a neutral tint (white 25 %, dark 8 %), never the accent |
+| Custom sidebar misses list behaviour | `SidebarNavigation` tests (the rules measured on the 27.2 list) + the on-device list in `apps/macos/README.md` |
+| Capsule motion under load | `SidebarMotionGate` (page first, slide on an idle frame), coalesced page switches, `perf-probe.sh capsule` |
 | Lamp read as warning | hue 78 vs 55, wash vs glyph channels, always a word; colour-blind and night-time dark-mode tests |
 | Closed inspector hides compliance | AI status line, Course menu, Privacy table, Connect popover; hallway test "turn off AI reading for DEMO205" |
 | zh toolbar crowding | `visibilityPriority` [26.1]; 26.0 drops the website item < 900 pt |
@@ -1245,6 +1335,8 @@ Contrast (WCAG 2; composites in gamma-encoded sRGB like browsers), light / dark 
 | `motion.step` | `.smooth(duration: 0.4)` | 0.40 | 0 | 246.74 | 31.42 | 636 ms |
 | `motion.hover` · `motion.reduced` | `.easeOut(duration: 0.15)` · `.easeInOut(duration: 0.2)` | — | — | — | — | 150 ms ease-out · 200 ms ease-in-out |
 
+Each spring token is also `PLMotion.<name>Spring` (duration, bounce) for `CASpringAnimation(perceptualDuration:bounce:)` (motion the render server runs: the sidebar capsule).
+
 ### 10.5 Glass levels
 
 | Token | macOS | Web normal | Web Mica mode | Web reduced · IC · forced colours |
@@ -1253,7 +1345,7 @@ Contrast (WCAG 2; composites in gamma-encoded sRGB like browsers), light / dark 
 | `glass.interactive` | `.regular.interactive()` | hover tint +4 %, `:active` `scale(.98)` with quick | same | no scale under reduced motion |
 | `glass.prominent` | `.regular.tint(.accentColor).interactive()` / `.glassProminent` | `color-mix(in oklab, accent 88%, transparent)` + blur, `on-accent` text | accent 96 % | solid accent |
 | `glass.container.spacing` · `glass.gap` | 12 · 14 | — · 14 | — · 14 | — |
-| `glass.budget` | 1 container, ≤ 4 shapes per window | ≤ 3 glass surfaces visible | same | same |
+| `glass.budget` | 1 container, ≤ 4 shapes per window, plus the sidebar selection capsule | ≤ 3 glass surfaces visible | same | same |
 | `glass.clear` | not used | not used | — | — |
 
 Swift output: each colour becomes `Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]) … })` with the four hex values; the prototype's `PLTokens.Glass` group is not emitted to Swift (it would shadow SwiftUI's `Glass`).
@@ -1265,7 +1357,7 @@ Mac code in `apps/macos/Sources/PageLamp/` (glass only in `Chrome/`); web in `ap
 | Component (M) | SwiftUI sketch | Web counterpart |
 |---|---|---|
 | `RootView` (1) | `NavigationSplitView(columnVisibility:)` + `.searchable(placement: .toolbar)`; S2 gate | `AppShell` |
-| `SidebarList`, `SidebarCourseRow`, `SidebarFooterStatus` (1) | `List(selection:)`, `Section`s, trailing `HStack`, footer in `.safeAreaInset(edge: .bottom)` | `Sidebar`, `SyncPill` as a text row |
+| `SidebarList`, `SidebarRows`/`SidebarRow`, `SidebarSelectionGlass` (Chrome), `SidebarFooterStatus` (1) | custom `LazyVStack` source list (`SidebarLayout`, `SidebarNavigation`, `SidebarMotionGate` in PageLampModel), `NSGlassEffectView` capsule moved by Core Animation, footer in `.safeAreaInset(edge: .bottom)` | `Sidebar`, `SyncPill` as a text row |
 | `PageLampCommands`, toolbar sets (1) | `CommandMenu` + `@FocusedValue`; `ToolbarItem`, `ControlGroup`, `ToolbarSpacer`, `.visibilityPriority` [26.1] | key handler, in-page toolbar row |
 | `AccessoryBar`, `StatusCapsule`, `SyncDetailsPopover` (1; fuse 2) | §6.2; `.popover` with plain rows | `.pl-accessory`, `StatusCapsule.tsx`, `Popover` |
 | `WeekScrubber` (2) | §6.3 | sticky `WeekScrubber.tsx` |
@@ -1313,9 +1405,9 @@ Not needed: `VERSION` — use `AppStatus.version` (`DoctorReport.version` when t
 
 ## Appendix A. API availability
 
-- **26.0 (target, no gate):** `glassEffect`, `Glass.regular/.tint/.interactive`, `GlassEffectContainer`, `glassEffectID`, `glassEffectUnion`, `glassEffectTransition`, `.buttonStyle(.glass/.glassProminent)`, `backgroundExtensionEffect`, `safeAreaBar`, `scrollEdgeEffectStyle`, `ConcentricRectangle`, `ToolbarSpacer`, `sharedBackgroundVisibility`, `dropDestination(for:isEnabled:action:)` + `DropSession`.
+- **26.0 (target, no gate):** `NSGlassEffectView`, `glassEffect`, `Glass.regular/.tint/.interactive`, `GlassEffectContainer`, `glassEffectID`, `glassEffectUnion`, `glassEffectTransition`, `.buttonStyle(.glass/.glassProminent)`, `backgroundExtensionEffect`, `safeAreaBar`, `scrollEdgeEffectStyle`, `ConcentricRectangle`, `ToolbarSpacer`, `sharedBackgroundVisibility`, `dropDestination(for:isEnabled:action:)` + `DropSession`.
 - **26.1:** `ToolbarItem.visibilityPriority`. **26.4:** `\.accessibilityReduceHighlightingEffects`, `\.accessibilityPrefersCrossFadeTransitions`. **27:** `.pickerStyle(.tabs)` (else `.segmented`), `NSViewCornerConfiguration`; automatic on 27: interactive bounce, accent sidebar icons, edge-to-edge sidebar, tighter corners, hidden menu icons, Show Borders honoured. All gated with `#available`.
-- **≤ 15, no gate:** `Window`, `Settings`, `MenuBarExtra(isInserted:)`, `.menuBarExtraStyle(.window)`, `SMAppService` (13); `.inspector`, `InspectorCommands`, `SettingsLink`, `@Observable`, `.onKeyPress`, `.focusable`, `PhaseAnimator`, `ContentUnavailableView`, `.fill` styles, `NSApp.activate()` (14); `defaultLaunchBehavior`, `restorationBehavior`, `windowBackgroundDragBehavior` (scene modifiers), `Tab`, `searchFocused` (15); `quickLookPreview`, `\.accessibilityShowBorders` (11); `\.appearsActive`, `NSColor(name:dynamicProvider:)`, `NWPathMonitor`, `UNCalendarNotificationTrigger`, `NSWorkspace` APIs (≤ 10.15).
+- **≤ 15, no gate:** `Window`, `Settings`, `MenuBarExtra(isInserted:)`, `.menuBarExtraStyle(.window)`, `SMAppService` (13); `.inspector`, `InspectorCommands`, `SettingsLink`, `@Observable`, `.onKeyPress` (`onKeyPress(keys:phases:)` with `.repeat` / `.up`), `.focusable`, `PhaseAnimator`, `ContentUnavailableView`, `.fill` styles, `NSApp.activate()`, `CASpringAnimation(perceptualDuration:bounce:)`, `NSView.displayLink(target:selector:)`, `AccessibilityNotification.Announcement` (14); `defaultLaunchBehavior`, `restorationBehavior`, `windowBackgroundDragBehavior` (scene modifiers), `Tab`, `searchFocused` (15); `\.sidebarRowSize` (13); `quickLookPreview`, `\.accessibilityShowBorders`, `ScrollViewReader` (11); `\.appearsActive`, `NSColor(name:dynamicProvider:)`, `NWPathMonitor`, `UNCalendarNotificationTrigger`, `NSWorkspace` APIs (≤ 10.15).
 - **Not used:** `Glass.clear` (policy); iOS-only `tabViewBottomAccessory`, `ToolbarOverflowMenu`, `toolbarMinimizeBehavior`, `.topBarPinnedTrailing`, `SearchToolbarBehavior.minimize`.
 
 ## Appendix B. Verification log (2026-09-26)
@@ -1324,7 +1416,8 @@ Not needed: `VERSION` — use `AppStatus.version` (`DoctorReport.version` when t
 - Every SF Symbol named here resolves via `NSImage(systemSymbolName:)` on macOS 27.2; every lucide name (and `LucideProvider`) exists in the repo's lucide-react 1.48.0.
 - Contrast from OKLCH → sRGB (CSS Color 4) and WCAG 2; springs from the SwiftUI preset formulas (the 0.5 s presets reproduce the research's 796 / 742 ms).
 - Facade facts checked in `crates/pagelamp-app/src/{lib,sync,diagnostics}.rs` and `crates/pagelamp-core/src/{model,views}.rs`; copy from `apps/desktop/src/i18n/locales/{en,zh-CN}`.
-- Still **[verify] on device:** the spill under sidebar/inspector; union and matched-geometry looks on 26 vs 27; Cancel as default in Remove; VoiceOver language switching; Reopen Now; the Claude Desktop bundle id; the menu bar extra's container shape; login items on ad-hoc builds; WebView accelerator suppression.
+- Sidebar probes (macOS 27.2 only; a native `List(selection:)` sidebar and a source-list `NSTableView` side by side): rows 32 / 40 pt at the medium / large Sidebar icon size; at small the table's `rowHeight` is 24 but the SwiftUI list uses automatic row heights, so its rows are 25–27 pt (about 5 pt above and below the tallest glyph; the custom list keeps 24, §2.3); titles 11 / 13 / 15 pt at x 42 / 46 / 48, section headers 19 pt tall with a 13 pt gap, 11 pt Semibold at x 14, row 0 at the 52 pt toolbar safe area; the selection is a per-row `NSVisualEffectView` (material `.selection`, radius 8) that turns solid `controlAccentColor` with a white title when the list has focus in a key window; the segmented control's selected thumb is a glass SDF + `glassBackground` layer stack (what `NSGlassEffectView` draws); keys: ↑/↓ with ⇧ ⌃ ⌘ alike, ⌥↑/↓ first/last, Home/End scroll only, Page Up/Down ignored; type-select resets after 1.15 s < t ≤ 1.2 s (2 × (key-repeat delay + interval)); VoiceOver reads a lazy stack with `.contain` and a label as "list".
+- Still **[verify] on device:** the sidebar capsule's look on the sidebar glass (light, dark, accents, Reduce Transparency, Increase Contrast, the 27 glass slider) and the other items listed in `apps/macos/README.md`; the spill under sidebar/inspector; union and matched-geometry looks on 26 vs 27; Cancel as default in Remove; VoiceOver language switching; Reopen Now; the Claude Desktop bundle id; the menu bar extra's container shape; login items on ad-hoc builds; WebView accelerator suppression.
 
 ## Appendix C. Review findings → resolution
 

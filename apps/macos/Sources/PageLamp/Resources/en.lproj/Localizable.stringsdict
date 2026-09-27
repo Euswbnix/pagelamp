@@ -131,6 +131,22 @@
 			<string>%1$ld minutes</string>
 		</dict>
 	</dict>
+	<key>mac.a11y.sidebarSourcesFailing</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld source needs attention</string>
+			<key>other</key>
+			<string>%1$ld sources need attention</string>
+		</dict>
+	</dict>
 	<key>mac.countdown.hours</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

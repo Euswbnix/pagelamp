@@ -359,10 +359,12 @@
 "mac.a11y.deadlineRow" = "%1$@。%2$@，%3$@。%4$@截止。";
 "mac.a11y.deadlineRowCountdown" = "%1$@。%2$@，%3$@。%4$@截止，%5$@。";
 "mac.a11y.planItem" = "%1$@，%2$@，%3$@，%4$@";
+"mac.a11y.sidebar" = "边栏";
 "mac.a11y.sidebarCourse" = "%1$@，%2$@，%3$@";
 "mac.a11y.sidebarCourseAttention" = "%1$@，%2$@，%3$@，数据来源需要处理";
 "mac.a11y.sidebarCourseNoAI" = "%1$@，%2$@，%3$@，禁止使用 AI";
 "mac.a11y.sidebarCourseNoAIAttention" = "%1$@，%2$@，%3$@，禁止使用 AI，数据来源需要处理";
+"mac.a11y.sidebarRowAnnouncement" = "%1$@，%2$@";
 "mac.a11y.syncStarted" = "开始同步";
 "mac.about.tagline" = "为每门课点一盏读书灯。";
 "mac.actions.addASource" = "添加数据来源…";
