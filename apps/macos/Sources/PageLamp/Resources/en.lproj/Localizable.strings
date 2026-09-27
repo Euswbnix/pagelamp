@@ -470,6 +470,7 @@
 "mac.debug.scenario.empty" = "No Sources";
 "mac.debug.scenario.error" = "Missing Course Folder";
 "mac.debug.scenario.expired" = "Expired Canvas Token";
+"mac.debug.systemSectionPicker" = "Course Pages Use the System Section Picker";
 "mac.diagnostics.previewTitle" = "Diagnostic Report";
 "mac.errors.panic" = "PageLamp ran into a bug. Try again, or restart PageLamp.";
 "mac.errors.schema" = "This data was saved by a newer version of PageLamp. Update PageLamp to open it.";

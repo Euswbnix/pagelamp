@@ -23,6 +23,9 @@ public enum CourseSection: String, CaseIterable, Codable, Sendable {
 @Observable @MainActor
 public final class CourseUIState {
     public var section: CourseSection = .week
+    /// Where the section picker's thumb last stood; a new page's thumb starts here and slides to
+    /// `section` (a cross-link that opens the course at Deadlines). Only the picker writes it.
+    @ObservationIgnored public var pickerSection: CourseSection = .week
     /// The week the student stepped to; nil = *now* (the current week).
     public var selectedWeek: UInt32? {
         didSet {

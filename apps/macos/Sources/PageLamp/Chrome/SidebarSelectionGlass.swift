@@ -2,13 +2,11 @@
 // behind the highlighted row, like the selected segment of a segmented control, that slides to a
 // newly selected row.
 //
-// AppKit glass (`NSGlassEffectView`: the same SDF + glassBackground stack as the segmented
-// control's thumb) moved by a Core Animation spring, not SwiftUI glass: a committed CA animation
-// is rendered by the render server, while a SwiftUI animation is advanced frame by frame on the
-// main thread and stutters whenever a page is built. The slide still starts only on an idle main
-// thread, after the new page's first frame (`SidebarMotionGate`, driven by a display link that
-// runs only while the gate has something to wait for). Chrome/ is the only folder with glass
-// (spec §1.3; lint also greps NSGlassEffect).
+// The glass and its spring are the shared glass thumb (GlassThumb.swift: `NSGlassEffectView`
+// moved by an additive Core Animation spring that the render server draws). Here the slide starts
+// only on an idle main thread, after the new page's first frame (`SidebarMotionGate`, driven by a
+// display link that runs only while the gate has something to wait for). Chrome/ is the only
+// folder with glass (spec §1.3; lint also greps NSGlassEffect).
 
 import AppKit
 import QuartzCore
@@ -90,7 +88,15 @@ final class SidebarCapsuleHostView: NSView {
     var onPageDrawn: (() -> Void)?
     var onPreviewSettled: (() -> Void)?
 
-    private let capsule = SidebarCapsuleView()
+    /// Off: the glass is untinted, like the segmented control's selected segment. If on-device
+    /// review finds it too faint on the sidebar glass in light mode, a neutral tint (never the
+    /// accent) is the fallback (spec §9): white at 25 %, 8 % in dark mode.
+    private static let usesNeutralTint = false
+
+    private let mover = GlassThumbMover(
+        view: GlassThumbView(shape: .capsule, outline: true, ring: true, neutralTint: SidebarCapsuleHostView.usesNeutralTint)
+    )
+    private var capsule: GlassThumbView { mover.view }
     private var gate = SidebarMotionGate()
     private var link: CADisplayLink?
     /// The latest target (a slide always goes to it, however often it changed while waiting).
@@ -104,7 +110,6 @@ final class SidebarCapsuleHostView: NSView {
     /// that restores a course whose row doesn't exist yet (no motion there), and it appears
     /// without a fade once the courses have loaded.
     private var fadesInWhenShown = false
-    private var slideCount = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -127,7 +132,7 @@ final class SidebarCapsuleHostView: NSView {
     /// For the performance probe: the one layer it reads per frame, and the display frame in
     /// which the last slide was added (the probe's read in that same frame sees the new position
     /// before its animation is committed).
-    var capsuleLayer: CALayer? { capsule.layer }
+    var capsuleLayer: CALayer? { mover.layer }
     private(set) var lastSlideFrame: CFTimeInterval = 0
 
     func update(target new: SidebarCapsuleTarget?, committed: Destination, animates: Bool, leadsPage: Bool, style: SidebarCapsuleStyle) {
@@ -246,10 +251,8 @@ final class SidebarCapsuleHostView: NSView {
     /// How far the capsule on screen still is from the target row. One layer read per frame,
     /// never a tree walk; a slide that hasn't started counts its whole way.
     private func capsuleOffset() -> Double {
-        guard let layer = capsule.layer else { return 0 }
-        let shown = layer.presentation()?.position ?? layer.position
         let waiting = (target?.top ?? 0) - (placed?.top ?? 0)
-        return Double(hypot(shown.x - layer.position.x, shown.y - layer.position.y) + abs(waiting))
+        return Double(mover.onScreenOffset() + abs(waiting))
     }
 
     // MARK: Placement
@@ -261,7 +264,7 @@ final class SidebarCapsuleHostView: NSView {
         guard let placed else { return }
         let frame = frame(for: placed)
         if capsule.frame.size.width != frame.width {
-            setFrame(NSRect(origin: capsule.frame.origin, size: frame.size))
+            mover.resize(width: frame.width)
         }
     }
 
@@ -272,171 +275,31 @@ final class SidebarCapsuleHostView: NSView {
         )
     }
 
-    private func setFrame(_ frame: NSRect) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        capsule.frame = frame
-        CATransaction.commit()
-    }
-
     private func show(at target: SidebarCapsuleTarget, fading: Bool) {
         gate.cancelSlide()
-        removeSlides()
-        setFrame(frame(for: target))
+        mover.show(frame(for: target), fadeIn: fading ? PLMotion.quickSpring.duration : nil)
         placed = target
-        capsule.isHidden = false
-        guard fading, let layer = capsule.layer else { return }
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0
-        fade.toValue = 1
-        fade.duration = PLMotion.quickSpring.duration
-        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        layer.add(fade, forKey: "fade")
     }
 
     private func hide() {
         gate.cancelSlide()
-        removeSlides()
-        capsule.isHidden = true
+        mover.hide()
         placed = nil
     }
 
     private func snap(to target: SidebarCapsuleTarget) {
-        removeSlides()
-        setFrame(frame(for: target))
+        mover.place(frame(for: target))
         placed = target
     }
 
-    /// Additive: a slide still running keeps going and adds up, so a new target bends the path
-    /// and the velocity carries over (no restart from the on-screen position).
+    /// Additive (GlassThumbMover): a slide still running keeps going and adds up.
     private func slide(to target: SidebarCapsuleTarget) {
-        guard let layer = capsule.layer else { return }
-        let before = layer.position
-        setFrame(frame(for: target))
+        mover.slide(to: frame(for: target), spring: PLMotion.quickSpring)
         placed = target
-        // Read back: right whatever AppKit's flipping and anchor are.
-        let after = layer.position
-        guard before != after else { return }
-        let spring = CASpringAnimation(perceptualDuration: PLMotion.quickSpring.duration, bounce: PLMotion.quickSpring.bounce)
-        spring.keyPath = "position"
-        spring.isAdditive = true
-        spring.fromValue = NSValue(point: NSPoint(x: before.x - after.x, y: before.y - after.y))
-        spring.toValue = NSValue(point: .zero)
-        spring.duration = spring.settlingDuration
-        slideCount &+= 1
-        layer.add(spring, forKey: "slide.\(slideCount)")
-    }
-
-    private func removeSlides() {
-        guard let layer = capsule.layer else { return }
-        for key in layer.animationKeys() ?? [] where key.hasPrefix("slide.") {
-            layer.removeAnimation(forKey: key)
-        }
     }
 
     /// The accent (focus ring) or the separator changed in System Settings.
     @objc private func systemColorsChanged() {
         capsule.colorsChanged()
-    }
-}
-
-/// The capsule: the glass, the outline and the focus ring. Outline and ring are siblings of the
-/// glass, never inside it (`NSGlassEffectView` guarantees the z-order of its contentView only).
-final class SidebarCapsuleView: NSView {
-    /// Off: the glass is untinted, like the segmented control's selected segment. If on-device
-    /// review finds it too faint on the sidebar glass in light mode, a neutral tint (never the
-    /// accent) is the fallback (spec §9): white at 25 %, 8 % in dark mode.
-    private static let usesNeutralTint = false
-    private static let ringOutset: CGFloat = 3
-
-    private let glass = NSGlassEffectView()
-    private let outline = CapsuleStroke(lineWidth: 1, color: .separatorColor)
-    private let ring = CapsuleStroke(lineWidth: 3, color: .keyboardFocusIndicatorColor)
-
-    var showsRing = false {
-        didSet { if showsRing != oldValue { ring.isHidden = !showsRing } }
-    }
-
-    var showsOutline = false {
-        didSet { if showsOutline != oldValue { outline.isHidden = !showsOutline } }
-    }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        glass.style = .regular  // never .clear (spec §1.3), never the accent (not a primary action)
-        glass.tintColor = nil
-        outline.isHidden = true
-        ring.isHidden = true
-        addSubview(glass)
-        addSubview(outline)
-        addSubview(ring)
-        setAccessibilityElement(false)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    /// A new size (row height, column width): the glass, its radius and the strokes follow at once.
-    override func setFrameSize(_ newSize: NSSize) {
-        let changed = newSize != frame.size
-        super.setFrameSize(newSize)
-        if changed { layoutParts() }
-    }
-
-    override func layout() {
-        super.layout()
-        layoutParts()
-    }
-
-    private func layoutParts() {
-        glass.frame = bounds
-        glass.cornerRadius = bounds.height / 2
-        outline.frame = bounds
-        ring.frame = bounds.insetBy(dx: -Self.ringOutset, dy: -Self.ringOutset)
-        outline.needsDisplay = true
-        ring.needsDisplay = true
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        guard Self.usesNeutralTint else { return }
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        glass.tintColor = NSColor.white.withAlphaComponent(dark ? 0.08 : 0.25)
-    }
-
-    func colorsChanged() {
-        outline.needsDisplay = true
-        ring.needsDisplay = true
-    }
-}
-
-/// A capsule outline drawn by its layer in the view's appearance (`updateLayer` runs again when
-/// the appearance, Increase Contrast or a system colour changes).
-private final class CapsuleStroke: NSView {
-    private let lineWidth: CGFloat
-    private let color: NSColor
-
-    init(lineWidth: CGFloat, color: NSColor) {
-        self.lineWidth = lineWidth
-        self.color = color
-        super.init(frame: .zero)
-        wantsLayer = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
-
-    override var wantsUpdateLayer: Bool { true }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func updateLayer() {
-        guard let layer else { return }
-        layer.borderWidth = lineWidth
-        layer.borderColor = color.cgColor
-        layer.cornerRadius = bounds.height / 2
-        layer.cornerCurve = .circular
     }
 }

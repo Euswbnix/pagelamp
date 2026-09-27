@@ -28,7 +28,7 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 1. **Paper below, glass above.** Glass only on navigation, toolbars, floating controls and presentations; content never calls `glassEffect` (HIG Materials).
 2. **One light.** The lamp wash marks only "now", once per screen, always beside a word ("Today", "This week"); never a text or glyph colour.
 3. **Type before boxes.** HIG macOS text styles, whitespace, 0.5 pt hairlines; boxes only for callouts, code and choice tiles.
-4. **One floating group.** The main window's custom glass is the bottom accessory bar (§6.2) and the sidebar's selection capsule (§2.3, user decision 2026-09-26).
+4. **One floating group.** The main window's custom glass is the bottom accessory bar (§6.2), the sidebar's selection capsule (§2.3, user decision 2026-09-26) and the course section picker's thumb (§3.2.1, user decision 2026-09-27).
 5. **One tinted action per screen, often none** (This Week has none). §3.0 arbitrates.
 6. **Honest by default.** No streaks, engagement badges, red countdowns or pre-ticked opt-ins; compliance text is never collapsed, truncated or colour-only; **AI policies are never colour-coded**, so a student's own "No AI" never looks like an error.
 7. **Native first.** System controls, text colours, separators, radii, and the student's own accent colour.
@@ -37,13 +37,14 @@ Students open PageLamp for twenty seconds at a time, often late, one lamp on: wh
 
 | Window | System glass (automatic) | Custom glass (ours) |
 |---|---|---|
-| Main | toolbar and items, search, sidebar, inspector column, sheets, popovers, menus | one bottom `safeAreaBar` with **one** `GlassEffectContainer`: status capsule + a fused neutral bubble *or* a separate tinted fix bubble; on a course's This Week section also the week scrubber + its return capsule. **≤ 4 shapes**, typically 0–1; plus the sidebar selection capsule (one `NSGlassEffectView`, §2.3) |
+| Main | toolbar and items, search, sidebar, inspector column, sheets, popovers, menus | one bottom `safeAreaBar` with **one** `GlassEffectContainer`: status capsule + a fused neutral bubble *or* a separate tinted fix bubble; on a course's This Week section also the week scrubber + its return capsule. **≤ 4 shapes**, typically 0–1; plus the sidebar selection capsule (one `NSGlassEffectView`, §2.3) and the course section picker's thumb (one `NSGlassEffectView`, §3.2.1) |
 | Welcome | title-bar area | step-bar buttons (`.glass` / `.glassProminent`), siblings in one container, **no slab behind them** |
 | Settings, sheets, popovers, dialogs, MenuBarExtra | the window/presentation itself | **none**: contents use fills and standard `.bordered` / `.borderedProminent` buttons |
 
 - `.regular` only; `.clear` is never used (text-heavy UI).
 - Tint (`.regular.tint(.accentColor)`, `.glassProminent`) only on the single primary action.
 - No glass on glass: nothing glass inside sheets, popovers or the menu bar window; nearby custom glass shares one container. Exception: the sidebar selection capsule sits on the system sidebar glass, as a selected segment sits in a toolbar control (user decision 2026-09-26); it is alone in its column, so it has no container.
+- Exception: the course section picker's selected segment is one `NSGlassEffectView` on the lamp band, as the system's 27 segmented control draws its own thumb with glass (user decision 2026-09-27); alone, no container.
 - `glassEffectID` / `glassEffectUnion` / `glassEffectTransition` only on views that carry their own `.glassEffect(…)`, never on `.buttonStyle(.glass)` buttons or system toolbar items (their glass is not addressable).
 - Only `Sources/PageLamp/Chrome/` may use `glassEffect` or glass button styles; CI greps for `glassEffect|buttonStyle\(\.glass|NSGlassEffect` elsewhere.
 
@@ -320,7 +321,7 @@ W2 · Course detail, This Week section, current week, inspector open
 │ ▪ This Week        ░░│░░ DEMO205 · Canvas · synced 2 h ago                │ AI Policy                    │  ← C eyebrow · G inspector (system)
 │                     ░│░░ Foundations of Sample Data                       │ How can you use AI in        │
 │ Courses              │░░ ▪ Learning aid only · ▪ 12 of 14 readable        │ this course?                 │  ← C AI status line → inspector
-│  ▪ DEMO101    Wk 4   │░░ [ This Week │ Deadlines │ Timeline ]             │ ( ) Not set                  │  ← .tabs [27] / .segmented
+│  ▪ DEMO101    Wk 4   │░░ [ This Week │ Deadlines │ Timeline ]             │ ( ) Not set                  │  ← custom glass segmented control (§3.2.1)
 │ [▪ DEMO205    Wk 4 ] │░░ Week 4 · Sep 22 – 28         This week           │ ( ) No AI                    │  ← C week line (adjustable); lit = now
 │  ▪ DEMO310  ▪ Wk 5   │                                                    │ (•) Learning aid only        │
 │  ▪ DEMO099    Wk 2   │   Modules  ▪ Week 4: Sampling  ▪ Lab 3             │     AI can help you under-   │
@@ -344,7 +345,7 @@ W2 · Course detail, This Week section, current week, inspector open
 ```swift
 ScrollView {
   VStack(alignment: .leading, spacing: 32) {
-    LampBand(lit: ui.showsCurrentWeek) { CourseEyebrow(); CourseTitle(); AIStatusLine(); SectionPicker(selection: $ui.section); WeekLine() }
+    LampBand(lit: ui.showsCurrentWeek) { CourseEyebrow(); CourseTitle(); AIStatusLine(); CourseSectionPicker(ui: ui); WeekLine() }
     ReadingColumn {
       SourceAlert()
       switch ui.section { case .week: WeekSection(); case .deadlines: DeadlinesSection(); case .timeline: TimelineSection() }
@@ -360,7 +361,7 @@ ScrollView {
 **Header band.**
 - Eyebrow "DEMO205 · Canvas · synced 2 h ago" (*new* `mac.course.eyebrow`; + " · Syncing now…" / " · 正在同步…"). Title: course name, Large Title Semibold, always sans.
 - **AI status line:** one plain Button → inspector at AI Policy; neutral glyph + ink text, **never colour-coded**: `questionmark.circle` "AI policy not set · Set…" / "尚未设置 AI 使用规定 · 去设置…" (*new* `course.aiStatus.notSet`) · `hand.raised` No AI / 禁止使用 AI · `lightbulb` Learning aid only / 仅限辅助学习 · `quote.opening` Allowed with citation / 注明后可用 · `checkmark.circle` No restrictions / 没有限制; then `common.aiMaterials.*` ("12 of 14 readable by your AI app" / "共 14 份资料，AI 应用可读取 12 份" · "AI access to materials is off" / "已关闭 AI 读取资料" · "Materials not shared (No AI course)" / "资料不共享（禁止使用 AI 的课程）"), plus Past course / 往期课程 and Hidden / 已隐藏.
-- **Section picker:** This Week · Deadlines · Timeline / 本周 · 截止日期 · 教学进度; `.pickerStyle(.tabs)` [27], else `.segmented`.
+- **Section picker:** This Week · Deadlines · Timeline / 本周 · 截止日期 · 教学进度: a custom segmented control that reads as the system's 27 tabs control, whose selected segment is one glass thumb that slides on every change (§3.2.1); where the band is narrower than its natural width (273 pt English, 243 Chinese), the system pop-up menu (`.pickerStyle(.menu)`).
 - **Week line:** "Week 4 · Sep 22 – 28" (Title 1, mono digits, `.numericText(value:)`) + a word tag: This week / 本周 · Last week / 上周 · Next week / 下周 · In 2 weeks / 2 周后 · 2 weeks ago / 2 周前 (*new* `course.week.relative.*`). "Week 4 of 12" / "第 4 周（共 12 周）" (*new* `common.week.ofTotal`) needs §13 #3; the date range needs §13 #4 (else omitted). One adjustable VoiceOver element (§6.3).
 - **Lit** when the line shows the current week and today is inside the term (This Week section: displayed week = `timeline.current_week`; other sections always show the current week). Away from now (week 6): band unlit, tag "In 2 weeks", toolbar **This Week**, and the scrubber's "↩ This Week" capsule splits off. Unknown: "Week unknown" / 周次未知, no pool (S11).
 
@@ -407,6 +408,118 @@ W3b · Timeline section
 - **Course Materials** / 课程资料: `Toggle(.switch)` "Let my AI app read this course's materials" / "允许 AI 应用读取这门课的资料", immediate, undoable; note `aiAccess.note.*`. **No AI:** shown off and `.disabled(true)`, stored `ai_access` kept (rule 8), note `withheld_by_policy` as text and hint. Capsule `aiAccess.nowOn` / `nowOff`.
 - **Term Dates** / 学期日期: `term.description`, `breaksNote`; first day `DatePicker(.field)`; a "Set a last day" checkbox reveals the optional second picker; source "Set by you" / 由你设置 · "From Canvas" / 来自 Canvas · "No dates yet" / 还没有日期 (*new* `course.term.source.*`); **Save Dates**, **Use Synced Dates** (`set_course_term(nil, nil)`); `term.invalid` inline; undoable.
 - **Course** / 课程: source + freshness; **Hide this course** + `settings.hideDescription` → capsule "DEMO099 is hidden. Your AI app won't see it." + fused **Undo ⌘Z** (6 s; Edit ▸ Undo keeps working); Open Course Website; Download Files…; `pastCourse.hint`.
+
+#### 3.2.1 Section picker: one glass thumb (user decision 2026-09-27, final)
+
+**Decision.**
+
+- The picker reads as the system's 27 tabs control (`NSSegmentedControl`, role `.tabs`, `.fillEqually`): the same track, thumb inset and radius, label type and colour, heights and spacing, measured on 27.2 (`SegmentedMetrics`).
+- Its selected segment is the shared glass thumb (`Chrome/GlassThumb.swift`, also the sidebar capsule's): one `NSGlassEffectView` (`.regular`, radius 4) moved by an additive Core Animation spring, `PLMotion.sectionSpring`, drawn by the render server.
+- It slides on **every** change: a click (a trackpad tap too), Space, VoiceOver's press, a model change (Go menu, ⇧⌘T), and a cross-link that opens a course at a section (`ThisWeekNavigation.open(courseId:section:)`). The new section's build (~20 ms of main thread) never makes it stutter.
+- Narrow: the system pop-up menu, unchanged. macOS 26: the same custom control (the 26 system control, `.segmented` with an accent fill, is not kept).
+- Keyboard and VoiceOver stay as good as the system control's: parity measured against it (below); Preview builds compare on device with Debug ▸ Course Pages Use the System Section Picker (removed after sign-off).
+
+**Why AppKit, not SwiftUI with `.accessibilityRepresentation`.**
+
+- `GlassSegmentedControl` subclasses `NSControl`, so it keeps AppKit's own focus rules of the system control (`acceptsFirstResponder` true, `canBecomeKeyView` and `needsPanelToBecomeKey` false with Full Keyboard Access off: no Tab stop; with it on, a Tab stop at the system control's place), first mouse, key routing and the automatic focus ring (`drawFocusRingMask` around the key segment). A click never takes focus, with Full Keyboard Access off or on, as with the system control (its `mouseDown` doesn't call `NSControl`'s).
+- Its accessibility is written by hand: the control is the tab group, three `NSAccessibilityElement`s are the tabs (`GlassSegmentedAccessibility.swift`), so VoiceOver's focus can sit on one segment like the system control's.
+- Pointer events arrive directly: a mouse-down and mouse-up in the same run-loop pass still select (the system control ignores them).
+- An `NSControl` answers AppKit's legacy accessibility queries from its cell (it has none here), so in-process legacy reads say `AXUnknown`; what VoiceOver reads is SwiftUI's node for the view, which reflects the modern overrides. Verify out of process (below).
+
+**Metrics** (`SegmentedMetrics`, `SegmentedLayout`; English / Chinese course labels):
+
+| | Value |
+|---|---|
+| Control | 273 × 24 / 243 × 24: each segment wants its text + 24 rounded up to 0.5, + 4 (tabs style), + 1 before every segment but the first; every slot takes the widest (91 / 81); checked against AppKit's `intrinsicContentSize` in the tests |
+| Track | radius 6 continuous; ink (black light, white dark) 4.7 % + a 3.0 % sheen; Increase Contrast 14.9 %; Show Borders 1 pt ink 12.5 %, plus-darker / plus-lighter, track only |
+| Thumb | inset 2, height 20, radius 4 continuous: 87 / 86 / 86 at x 2 / 94 / 185 (77 / 76 / 76 at 2 / 84 / 165) |
+| Labels | system 13 Regular in every state, `labelColor` (84.7 %), 100 % with Increase Contrast; boxes 16 tall at y 4, their text width rounded up, centred on the thumb (x 14 / 107 / 202.5); baseline 17 pt from the top: each title's line fragment drawn at its box's top-left (`NSString.draw(at:)`), as SwiftUI lays out the system control's labels (a 13 pt line 16 tall, baseline at 13) |
+| VoiceOver frames | the slots: 91 wide at x 0 / 91 / 182 (81), full height, as VoiceOver reads the system control's segments |
+
+**States:**
+
+| State | Track | Thumb | Labels | Ring / input |
+|---|---|---|---|---|
+| Rest, light or dark | 4.7 % + 3.0 % | glass at the selection | `labelColor` | none |
+| Focused (Tab with Full Keyboard Access, VoiceOver focus, forced) | same | same | same | AppKit ring around the key segment's thumb, 3 pt out, focus colour, zoom-in |
+| Clicked, Full Keyboard Access off | — | — | — | takes no focus, no ring |
+| Pressed or dragging | same | at the pressed segment / following the pointer | same | selection unchanged until mouse-up |
+| Window inactive | same | system inactive glass | same | no ring |
+| Disabled | same | same (the system `.tabs` control doesn't change either) | same | no pointer, keys, press or VoiceOver focus; `AXEnabled` 0 |
+| Reduce Motion | same | jumps | same | same |
+| Reduce Transparency / Increase Contrast / 27 glass slider | 14.9 % with Increase Contrast | system glass [verify] | 100 % with Increase Contrast | same |
+| Show Borders | + 1 pt outline | no outline | same | same |
+| Hover | none | none | none | no tracking areas |
+| Snapshots | real track | flat `.fill.quaternary` + 1 pt `.separator` | SwiftUI text | — |
+
+**Pointer:** mouse-down starts the thumb toward the pressed segment in the same event; drags retarget it to follow the pointer (widths snap, ≤ 1 pt); mouse-up commits the segment under the pointer, clamped (a release far outside still commits; no cancel), a release on the selection only brings the thumb back; a lost mouse-up (a new press, leaving the window) reverts; the first click in an inactive window activates it and selects. Not reproduced: the system's press lens (the thumb grows to 101 × 32 and magnifies the labels): no public API.
+
+**Keyboard** (the control first responder; measured identical to the system control with Full Keyboard Access off and on, the latter per process):
+
+| Key | Action |
+|---|---|
+| Tab / ⇧Tab | not a stop with Full Keyboard Access off (AppKit's `NSControl` rule); with it on, a stop in both directions at the system control's place (7th of 13, between the AI status button and Open Sources & Sync), the key segment kept [U1 on device]; ⌃Tab leaves |
+| ← / →, also with ⌘ ⌥ ⇧ ⌃, key repeat | move the key segment and wrap; the selection stays; the ring and VoiceOver's focus follow |
+| Space (no modifiers) | selects the key segment (it slides); ⇧ ⌃ ⌥ ⌘ Space go on |
+| ↓ (any modifiers) | taken, nothing happens (the system control would open a segment's menu) |
+| ↑, Return, Enter, Home, End, Page Up / Down, letters, Esc | go on, as from the system control (the same keys reach the window unhandled: ↑ Return Enter Home End and a modified Space beep, the others pass silently) |
+| menu shortcuts (⌘[ ⌘] ⇧⌘T) | menus; the thumb slides when `section` changes |
+
+The key segment survives focus changes; a click moves it to the clicked segment. One difference, kept on purpose: the system control's key segment snaps back to the selection whenever SwiftUI updates the picker for any reason (the Esc that closes the capsule's warning, an environment change); ours moves only on keys, clicks, VoiceOver and selection changes.
+
+**VoiceOver** (after the AI status button, before the week line; out of process, as VoiceOver reads it):
+
+```
+AXTabGroup "Course sections"   value = selected tab; no actions of its own (SwiftUI adds AXScrollToVisible); nothing settable
+  AXRadioButton/AXTabButton "This Week"   role description "tab", value 1/0, AXFocused settable (not while disabled), AXPress
+  AXRadioButton/AXTabButton "Deadlines"
+  AXRadioButton/AXTabButton "Timeline"
+```
+
+The title is the description (no AXTitle, no AXSelected). Focus is on a segment, never the group: the key segment while the control is first responder (setting AXFocused on a segment makes the control first responder at that segment). Press selects and slides, focus unchanged; pressing while disabled does nothing. Notifications, as the system control posts them (measured out of process with an `AXObserver`, the way VoiceOver listens): **no value-changed notification** for any selection change; focused-element-changed on the key segment when it moves while the control is first responder and when a focused control selects (Space, also on the selected segment, a click, VoiceOver's press); nothing when a click or press selects on an unfocused control. When focus arrives (Tab, ⇧Tab, VoiceOver focus), AppKit posts the one focused-element notification for the key segment itself (the control adds none), and SwiftUI posts one for its own node of the view, which reads the SwiftUI label: `.accessibilityLabel` on the representable ("Course sections"), as the system Picker's label reaches it. "1 of 3" is VoiceOver's count of the children [verify U3].
+
+**Motion** (`perf-probe.sh segment`): one additive `CASpringAnimation` on `position` (`sectionSpring`, 0.25 s, bounce 0; the system click slide, ω 26.4, ζ 1.05), started in the input's own handler; the control writes the selection to the model on the next run-loop turn, so this turn's commit carries the slide to the render server before the new section builds (a forced `CATransaction.flush()` did the same but stalled the content's crossfade on back-to-back switches). The new frame and its spring are committed in one transaction (`GlassThumbMover.slide`): outside an event (VoiceOver's press) no implicit transaction is open, and committed apart the thumb would show at its destination until the spring arrived with the next commit, after the section build; a model change starts in the SwiftUI update that carries it (with that update's commit); a cross-link's new control starts at `CourseUIState.pickerSection` (where the thumb last stood) and slides once in the page's first frame; later visits start in place. Retargets add up (the velocity carries over). Reduce Motion: jumps.
+
+**Parity with the system control** (HEAD 3dca928 and the Debug switch, same machine, 27.2, 60 Hz):
+
+| # | Aspect | System control | Custom | Status |
+|---|---|---|---|---|
+| 1 | Size | 273×24 / 243×24 | same (AppKit cross-check test) | match |
+| 2 | Slot | the band's leading edge, 16 below the AI line, 8 above the week line | same frame in the window | match |
+| 3 | Track | 4.7 % + 3.0 %, radius 6; IC 14.9 %; Show Borders 1 pt 12.5 % plus-darker / plus-lighter | same (SwiftUI) | match |
+| 4 | Thumb frames | 87/86/86 at 2/94/185; 77/76/76 at 2/84/165; height 20, radius 4 | same | match |
+| 5 | Thumb material | SDF glass | `NSGlassEffectView`: same values + a ring shadow (0.06), frosted fill, white vibrancy underlay | justified: slightly frostier, no public API |
+| 6 | Press lens | 101×32, magnified labels | none | justified: no public API |
+| 7 | Labels | 13 Regular, `labelColor` in every state, IC 100 %; baseline 17.0, ink rows 7.0–17.5 (English) / 6.5–18.5 (Chinese) at 2× | same; ink centroid within 0.002 pt, light and dark, English and Chinese | match |
+| 8 | Disabled look | unchanged | unchanged | match |
+| 9 | Focus ring | AppKit ring at the key segment + 3 pt: ink (−1, −1, 93, 26), accent 50 %, zoom-in, hidden when inactive | AppKit ring, same ink and colour | match |
+| 10 | Hover | none | none | match |
+| 11 | Click slide | main-thread spring ω 26.4; stutters (34–41 ms frames) | render-server `sectionSpring`: every read within 0.4 pt of the ideal curve | better (requested) |
+| 12 | First movement | 50–75 ms after mouse-down | the spring starts 2–7 ms after the input is handled (committed before the new section builds) | better |
+| 13 | Space slide | ω 18.8 (≈ 0.33 s) | 0.25 s | justified: one motion per control |
+| 14 | Drag follow | lens spring ω 18.2 | the 0.25 s spring retargets | justified |
+| 15 | Model change / cross-link | jumps / appears in place | slides | requested |
+| 16 | Down + up in one pass | ignored | selects | justified |
+| 17 | Reduce Motion | still slides on a click, Space and VoiceOver's press (measured with Reduce Motion reported on); a model change and a cross-link jump / appear in place as always | jumps on every trigger | better (per decision); U5 |
+| 18 | Selection timing | on mouse-up | on mouse-up | match |
+| 19 | Drag and release | follows x, release commits, no cancel | same | match |
+| 20 | First click, inactive window | `acceptsFirstMouse` true | true | match |
+| 21 | Click focus | none, with Full Keyboard Access off or on (the window / sidebar keeps focus) | same | match |
+| 22 | Tab, Full Keyboard Access off | not a stop (14 Tabs) | same | match |
+| 23 | Tab, Full Keyboard Access on | a stop, 7th of 13 (after "AI policy not set", before "Open Sources & Sync"), both directions, the key segment kept | same | match (measured per process); U1 on device |
+| 24 | ← / → (plain, ⌘ ⌥ ⇧ ⌃, repeat) | move the key segment, wrap | same | match |
+| 25 | Space | plain Space selects; ⇧ ⌃ ⌥ ⌘ Space go on | same | match |
+| 26 | Other keys | ↓ taken; ↑ Return Enter Home End and a modified Space beep; Page Up/Down, letters, Esc pass silently; page scroll unchanged. The key segment snaps back to the selection on any SwiftUI update of the picker (the Esc that closes the capsule's warning, an environment change) | same keys, beeps and scroll offset; the key segment stays | match; the snap-back is not copied (justified: focus shouldn't move on an unrelated update) |
+| 27 | Accessibility focus | follows the key segment | same | match |
+| 28 | Group | tab group "Course sections" (also `AXAttributedDescription`), value, SwiftUI's 275×26 frame, no actions, nothing settable; SwiftUI's node for the focused view labelled "Course sections" | same (pressing the group anyway: an error from the system control, success with no effect from ours) | match |
+| 29 | Segments | tab button, description, value 1/0, no `AXSelected`, `AXFocused` settable (not when disabled), `AXPress` | same | match (the system control also lists nil AXHelp / AXIdentifier / AXUserInputLabels) |
+| 30 | Frames | segments 91/91/91 at 0/91/182 (81) | same | match |
+| 31 | Accessibility press | selects, slides, no focus change; no notification when unfocused; on the focused control it moves the focus (focused-element on the pressed segment, also when that segment is already selected) | same | match |
+| 32 | Disabled accessibility | `AXEnabled` 0, press and focus ignored | same | match |
+| 33 | VoiceOver speech | inferred | same tree | U3 |
+| 34 | Narrow | system menu; switches at ≤ 852 (en) / ≤ 822 (zh) with the inspector open | unchanged; same widths; widening doesn't slide | match |
+| 35 | macOS 26 | `.segmented` accent fill | custom | intentional; U8 |
+| 36 | Notifications (out of process, `AXObserver`) | never value-changed; focused-element on the key segment when it moves while focused, when a focused control selects (Space 2×, also on the selected segment; press 3×) and when focus arrives (1×, plus SwiftUI's labelled node); re-posts on SwiftUI updates of the picker (the window resigning key; a click on the picker while the sidebar has focus re-posts the sidebar) | the same notifications, each once (Space 1×, press 2×); no re-posts on unrelated updates | match (a repeat on the same element tells VoiceOver nothing new; speech: U3) |
 
 ### 3.3 Sources & Sync [M1 list, sync, progress · M2 add, replace, remove, drop]
 
@@ -897,11 +1010,12 @@ S15 temporary location + quarantine · S16 offline · S17 busy
 | status capsule · neutral bubble | `.glassEffect(.regular.interactive(), in: .capsule)`; bubble joins `glassEffectUnion(id: "status")` in notice states | none | 1 · 2 |
 | fix bubble | `.glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)`, never unioned | **tinted** | 1 |
 | sidebar selection capsule | `NSGlassEffectView` `.regular`, radius h/2, Core Animation spring (§2.3, §5) | none | 1 |
+| section picker thumb | `NSGlassEffectView` `.regular`, radius 4, Core Animation `sectionSpring` (§3.2.1, §5) | none | 1 |
 | week scrubber · return capsule | `.glassEffect(.regular.interactive(), in: .capsule)`, IDs `"scrubber"`, `"return"` | none | 2 |
 | welcome step bar | sibling `.buttonStyle(.glass)` / `.glassProminent` in one container, no slab | primary | 2 |
 | menu bar extra | `.menuBarExtraStyle(.window)`; nothing inside is glass | system | 3 |
 
-Capsule, bubbles, scrubber and return capsule share **one** `GlassEffectContainer` (`AccessoryBar`). **Never glass:** lamp band, headers, callouts, code, rows, Contents, tiles, forms, tables, empty states, term strip, day ribbon.
+Capsule, bubbles, scrubber and return capsule share **one** `GlassEffectContainer` (`AccessoryBar`). **Never glass:** lamp band, headers, callouts, code, rows, Contents, tiles, forms, tables, empty states, term strip, day ribbon (the one exception on content: the section picker's thumb on the lamp band, as the system segmented control draws its own thumb with glass, §3.2.1).
 
 ### 4.2 Colour (roles; values in §10.1)
 
@@ -969,6 +1083,7 @@ Presets (§10.4): **calm** `.smooth(duration: 0.45)` · **quick** `.snappy(durat
 | first-sync pool · row hover | opacity follows progress (calm) · `.easeOut(duration: 0.15)`, none under Reduce Highlighting Effects |
 | copied · sync finished · ignite | `.symbolEffect(.replace)` 2 s · `.symbolEffect(.bounce, value:)` once · `PhaseAnimator` (§6.6) |
 | sidebar selection | additive `CASpringAnimation(perceptualDuration: 0.3, bounce: 0.15)` (`PLMotion.quickSpring`), started after the page's first drawn frame (§2.3); Reduce Motion: jump |
+| section picker thumb | additive `CASpringAnimation(perceptualDuration: 0.25, bounce: 0)` (`PLMotion.sectionSpring`), started in the input's own handler (a model change: its update; a cross-link: the new page's first frame), no gate (§3.2.1); Reduce Motion: jump |
 | glass press, sidebar column, inspector, sheets | system (27 adds a click bounce to interactive glass) |
 
 Never animated: blur radius, the minute countdown, compliance text; no idle loops.
@@ -1119,21 +1234,22 @@ Once, on first appearance; skipped under Reduce Motion; a content gradient, not 
 ### 7.1 VoiceOver and keyboard
 
 - **Contents row** (combined): "DEMO101, Intro to Demo Studies. Week 4, this week. Next: Quiz 3, Saturday 9 AM. AI policy: Learning aid only. 12 of 14 materials readable by your AI app." **Sidebar course row:** "DEMO099, Orientation Placeholder, week 2, No AI" (+ ", source needs attention"). **Sidebar:** "Sidebar, list"; rows are static text with "selected" on the current destination, headers are headings, Sources & Sync's value "1 source needs attention"; ↑/↓ and type-select announce the new row (pointer, menu and VoiceOver presses don't), and so does keyboard focus entering the list; the capsule is hidden (§2.3). **Deadline row:** full date — "Problem Set 2, questions 1 to 3. DEMO205, Assignment. Due today at 11:59 PM, in 58 minutes."
+- **Section picker** (§3.2.1): "Course sections", a tab group of three tabs ("This Week, selected, tab, 1 of 3"); focus on the key segment, VO-Space selects; the glass thumb is not an element.
 - **Capsule:** "Sync status: syncing 2 of 3, Canvas", hint "Shows details"; `AccessibilityNotification.Announcement` on start, finish, new problems and "Copied" only. **Week line [M2]:** adjustable, announces the new week. Every icon-only toolbar item is labelled.
 - Section and day headings `.isHeader`; rotors **Deadlines** (This Week) and **Materials** (course); lamp wash, leaders and ribbon dots `.accessibilityHidden(true)`; plan items static ("…, 30 minutes, not done yet"); the disabled No AI switch's note is visible text and its hint.
 
 **Mixed languages [verify]:** backend English (evidence, progress, warnings) is an `AttributedString` with `languageIdentifier = "en"`, mirroring Tauri's `lang="en"`. It is unverified that SwiftUI `Text` passes this to VoiceOver; test in zh-CN, and if the voice does not switch, render those strings through an `NSViewRepresentable` whose attributed string carries AppKit's accessibility language attribute (`NSAccessibilityLanguageTextAttribute`; [verify the Swift spelling]).
 
-**Keyboard:** everything reachable with Full Keyboard Access (each scrubber week, the capsule's buttons after the content); Tab/⌃F6 cycle panes; sidebar: one stop; ↑/↓ (⇧⌃⌘ alike), ⌥↑/↓ first/last, Home/End scroll, type-select, holding ↑/↓ previews (§2.3); lists ↑/↓, Return, Space [M3], ⌘C; sheets `.defaultFocus` on the first field, Return default, Esc cancel, destructive dialogs default to Cancel; Esc dismisses the capsule's attention state.
+**Keyboard:** everything reachable with Full Keyboard Access (each scrubber week, the capsule's buttons after the content); Tab/⌃F6 cycle panes; sidebar: one stop; ↑/↓ (⇧⌃⌘ alike), ⌥↑/↓ first/last, Home/End scroll, type-select, holding ↑/↓ previews (§2.3); section picker: a stop only with Full Keyboard Access on (AppKit's `NSControl` rule), ←/→ move the key segment (wrap), Space selects (§3.2.1); lists ↑/↓, Return, Space [M3], ⌘C; sheets `.defaultFocus` on the first field, Return default, Esc cancel, destructive dialogs default to Cancel; Esc dismisses the capsule's attention state.
 
 ### 7.2 System settings honoured
 
 | Setting | Effect |
 |---|---|
-| Reduce Transparency | system glass frosts itself (the sidebar capsule too: system glass); lamp → 3 pt rule + label; `backgroundExtensionEffect(isEnabled: false)` |
-| Increase Contrast | system glass goes black/white (the sidebar capsule's edge from system glass [verify]); dynamic colours use IC variants; full-strength separators; callouts get 1 pt borders; lamp → rule |
-| Show Borders (`\.accessibilityShowBorders`, honoured on 27) | borderless content buttons → `.bordered`; callouts, footer, plain rows get 1 pt `.separator` outlines; the sidebar capsule gets a 1 pt outline |
-| Reduce Motion | §5; `\.accessibilityPrefersCrossFadeTransitions` [26.4] where available; the sidebar capsule jumps |
+| Reduce Transparency | system glass frosts itself (the sidebar capsule and the section picker's thumb too: system glass); lamp → 3 pt rule + label; `backgroundExtensionEffect(isEnabled: false)` |
+| Increase Contrast | system glass goes black/white (the sidebar capsule's edge from system glass [verify]); the section picker's track 14.9 % and labels 100 % ink; dynamic colours use IC variants; full-strength separators; callouts get 1 pt borders; lamp → rule |
+| Show Borders (`\.accessibilityShowBorders`, honoured on 27) | borderless content buttons → `.bordered`; callouts, footer, plain rows get 1 pt `.separator` outlines; the sidebar capsule gets a 1 pt outline; the section picker's track (not its thumb) a 1 pt 12.5 % ink outline |
+| Reduce Motion | §5; `\.accessibilityPrefersCrossFadeTransitions` [26.4] where available; the sidebar capsule and the section picker's thumb jump |
 | Reduce Highlighting Effects (`\.accessibilityReduceHighlightingEffects` [26.4], gated) [M2] | no hover fills; focus rings and selection remain |
 | Differentiate Without Color | already met (glyph + words everywhere; the lamp has a label) |
 | Inactive window | `@Environment(\.appearsActive)`: the accessory bar dims to 60 %; sidebar icons `.secondary`, no focus ring |
@@ -1251,6 +1367,7 @@ X1 · Windows 11 (build ≥ 22621, Mica), Tauri build, This Week
 | Custom material rows miss `List` behaviour | §3.2 (MaterialRow) spec + UI tests (focus, ↑/↓, Return, double-click, Space, context menu, rotor) |
 | Sidebar capsule: glass on the sidebar glass looks faint | on-device review light/dark and with several accents; fallback: a neutral tint (white 25 %, dark 8 %), never the accent |
 | Custom sidebar misses list behaviour | `SidebarNavigation` tests (the rules measured on the 27.2 list) + the on-device list in `apps/macos/README.md` |
+| Custom section picker misses the system control's keyboard or VoiceOver behaviour | parity measured against the system control (§3.2.1 table: keys, focus, the tree VoiceOver reads), `SegmentedNavigation` tests, the user checks U1–U8 in `apps/macos/README.md`; fallback: Debug ▸ Course Pages Use the System Section Picker, then a revert |
 | Capsule motion under load | `SidebarMotionGate` (page first, slide on an idle frame), coalesced page switches, `perf-probe.sh capsule` |
 | Lamp read as warning | hue 78 vs 55, wash vs glyph channels, always a word; colour-blind and night-time dark-mode tests |
 | Closed inspector hides compliance | AI status line, Course menu, Privacy table, Connect popover; hallway test "turn off AI reading for DEMO205" |
@@ -1336,7 +1453,7 @@ Contrast (WCAG 2; composites in gamma-encoded sRGB like browsers), light / dark 
 | `motion.step` | `.smooth(duration: 0.4)` | 0.40 | 0 | 246.74 | 31.42 | 636 ms |
 | `motion.hover` · `motion.reduced` | `.easeOut(duration: 0.15)` · `.easeInOut(duration: 0.2)` | — | — | — | — | 150 ms ease-out · 200 ms ease-in-out |
 
-Each spring token is also `PLMotion.<name>Spring` (duration, bounce) for `CASpringAnimation(perceptualDuration:bounce:)` (motion the render server runs: the sidebar capsule).
+Each spring token is also `PLMotion.<name>Spring` (duration, bounce) for `CASpringAnimation(perceptualDuration:bounce:)` (motion the render server runs: the sidebar capsule and the section picker's thumb).
 
 ### 10.5 Glass levels
 
@@ -1346,7 +1463,7 @@ Each spring token is also `PLMotion.<name>Spring` (duration, bounce) for `CASpri
 | `glass.interactive` | `.regular.interactive()` | hover tint +4 %, `:active` `scale(.98)` with quick | same | no scale under reduced motion |
 | `glass.prominent` | `.regular.tint(.accentColor).interactive()` / `.glassProminent` | `color-mix(in oklab, accent 88%, transparent)` + blur, `on-accent` text | accent 96 % | solid accent |
 | `glass.container.spacing` · `glass.gap` | 12 · 14 | — · 14 | — · 14 | — |
-| `glass.budget` | 1 container, ≤ 4 shapes per window, plus the sidebar selection capsule | ≤ 3 glass surfaces visible | same | same |
+| `glass.budget` | 1 container, ≤ 4 shapes per window, plus the sidebar selection capsule and the section picker's thumb | ≤ 3 glass surfaces visible | same | same |
 | `glass.clear` | not used | not used | — | — |
 
 Swift output: each colour becomes `Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua]) … })` with the four hex values; the prototype's `PLTokens.Glass` group is not emitted to Swift (it would shadow SwiftUI's `Glass`).
@@ -1366,7 +1483,7 @@ Mac code in `apps/macos/Sources/PageLamp/` (glass only in `Chrome/`); web in `ap
 | `PageHeader`, `SectionHeader`, `Callout`, `CodeBlock` (1) | `Text` styles + `.isHeader`; fills in `.rect(cornerRadius: 12)` + `.containerShape`; selectable mono text + copy | `Section`, `Notice`, `CodeBlock` |
 | `NextUpLine` (1), `DayRibbon` (3) | `TimelineView(.everyMinute)`; plain buttons + `ScrollViewReader` | `NextUp`, `DayRibbon` |
 | `Next7DaysSection`, `StudyPlanSection`, `ContentsSection` (1) | `Grid` + rotor; `DisclosureGroup`; plain-button rows + `Path` leader | `ThisWeek`, `StudyPlanCard`, `CourseList` |
-| `CourseHeader`, `AIStatusLine`, `WeekLine`, `SectionPicker` (1) | inside `LampBand`; `.accessibilityAdjustableAction`; `.tabs` [27] / `.segmented` | `CourseHeader`, `Tabs` |
+| `CourseHeader`, `AIStatusLine`, `WeekLine`, `CourseSectionPicker` + `GlassSegmentedControl` (Chrome) (1) | inside `LampBand`; `.accessibilityAdjustableAction`; a custom `NSControl` with the shared glass thumb over a SwiftUI track (`SegmentedLayout`, `SegmentedNavigation` in PageLampModel), the system pop-up menu when narrow | `CourseHeader`, `Tabs` |
 | `MaterialList`, `MaterialRow` (1; Space 3) | `.focusable`, `@FocusState`, `.onMoveCommand`, `.onKeyPress`, `.onTapGesture(count: 2)`, `.contextMenu`, `.quickLookPreview` | `MaterialList` |
 | `TermStrip` (2), `EvidenceList` (1) | plain buttons; `AttributedString` + `languageIdentifier` [verify] | `TermStrip`, `lang="en"` list |
 | `CourseInspector` (1 read-only; 2) | `Form(.grouped)`: `Picker(.radioGroup)`, `TextEditor`, `Toggle(.switch)`, `DatePicker(.field)` | right panel / `Sheet` |
@@ -1418,7 +1535,8 @@ Not needed: `VERSION` — use `AppStatus.version` (`DoctorReport.version` when t
 - Contrast from OKLCH → sRGB (CSS Color 4) and WCAG 2; springs from the SwiftUI preset formulas (the 0.5 s presets reproduce the research's 796 / 742 ms).
 - Facade facts checked in `crates/pagelamp-app/src/{lib,sync,diagnostics}.rs` and `crates/pagelamp-core/src/{model,views}.rs`; copy from `apps/desktop/src/i18n/locales/{en,zh-CN}`.
 - Sidebar probes (macOS 27.2 only; a native `List(selection:)` sidebar and a source-list `NSTableView` side by side): rows 32 / 40 pt at the medium / large Sidebar icon size; at small the table's `rowHeight` is 24 but the SwiftUI list uses automatic row heights, so its rows are 25–27 pt (about 5 pt above and below the tallest glyph; the custom list keeps 24, §2.3); titles 11 / 13 / 15 pt at x 42 / 46 / 48, section headers 19 pt tall with a 13 pt gap, 11 pt Semibold at x 14, row 0 at the 52 pt toolbar safe area; the selection is a per-row `NSVisualEffectView` (material `.selection`, radius 8) that turns solid `controlAccentColor` with a white title when the list has focus in a key window; the segmented control's selected thumb is a glass SDF + `glassBackground` layer stack (what `NSGlassEffectView` draws); keys: ↑/↓ with ⇧ ⌃ ⌘ alike, ⌥↑/↓ first/last, Home/End scroll only, Page Up/Down ignored; type-select resets after 1.15 s < t ≤ 1.2 s (2 × (key-repeat delay + interval)); VoiceOver reads a lazy stack with `.contain` and a label as "list".
-- Still **[verify] on device:** the sidebar capsule's look on the sidebar glass (light, dark, accents, Reduce Transparency, Increase Contrast, the 27 glass slider) and the other items listed in `apps/macos/README.md`; the spill under sidebar/inspector; union and matched-geometry looks on 26 vs 27; Cancel as default in Remove; VoiceOver language switching; Reopen Now; the Claude Desktop bundle id; the menu bar extra's container shape; login items on ad-hoc builds; WebView accelerator suppression.
+- Section picker probes (2026-09-27, macOS 27.2, 60 Hz; the system control at HEAD 3dca928 and behind the Debug switch, same binary, window 1400 × 900, DEMO205, mock data): geometry, label ink and colour (light, dark, simulated Increase Contrast, Reduce Transparency and Show Borders, disabled, inactive; ink read from upright `cacheDisplay` renders: `CALayer.render(in:)` draws SwiftUI's label layers upside down, which once made the labels look 0.5 pt low and led to drawing them 0.5 pt high), the focus ring's ink and colour, and every recorded keyboard state (Tab × 14, clicks with and without focus elsewhere, ←/→ with each modifier, Space and modified Space, ↓ and the keys that go on, counted by `NSWindow.noResponder(for:)`, the page's scroll offset, focus away and back, an inactive window) are identical to the system control's (§3.2.1 table), with Full Keyboard Access off and on (on per process: a `DYLD_INSERT_LIBRARIES` library answering `AppleKeyboardUIMode` = 2 to CFPreferences, as AppKit 27.2 ignores the `-AppleKeyboardUIMode 2` launch argument); the one difference is the system control's key-segment snap-back on SwiftUI updates (row 26). The notifications VoiceOver listens to were recorded out of process with an `AXObserver` (row 36). The accessibility tree was read out of process with the AX API, as VoiceOver reads it: same position, roles, descriptions, values, frames (the segments are the slots, 91 / 81; an in-process legacy read of the system control gives 91.5 / 92 / 91.5), actions, settable attributes, hit tests, press, focus and disabled behaviour; in-process legacy reads of an `NSControl` subclass without a cell say `AXUnknown` and are not what VoiceOver sees. ViewThatFits switches to the menu at the same widths (≤ 852 English, ≤ 822 Chinese, inspector open) and widening doesn't slide. `perf-probe.sh segment`: every change slides, the spring starting 2–7 ms after the input is handled (a model change: with its update's commit), each read within 0.4 pt of the ideal `sectionSpring` curve; with simulated Reduce Motion every trigger jumps. Resizing 1400 → 760 in one step while opening the inspector raises AppKit's "more Update Constraints passes" exception with either picker (pre-existing).
+- Still **[verify] on device:** the sidebar capsule's look on the sidebar glass (light, dark, accents, Reduce Transparency, Increase Contrast, the 27 glass slider), the section picker's user checks U1–U8 (§3.2.1, `apps/macos/README.md`) and the other items listed in `apps/macos/README.md`; the spill under sidebar/inspector; union and matched-geometry looks on 26 vs 27; Cancel as default in Remove; VoiceOver language switching; Reopen Now; the Claude Desktop bundle id; the menu bar extra's container shape; login items on ad-hoc builds; WebView accelerator suppression.
 
 ## Appendix C. Review findings → resolution
 

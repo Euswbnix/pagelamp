@@ -14,10 +14,13 @@
 // check that every change slides, smoothly, after the new page's first frame (spec §2.3 "Motion
 // order"), and that page switches never queue up.
 //
-// PAGELAMP_PERF_PROBE=segment clicks the course section picker (the system segmented control)
-// with real events (PAGELAMP_PERF_PRESS ms between down and up, default 50) and records its
-// thumb's x on every frame: a smooth slide steps ~8 px per 120 Hz frame; page work landing during
-// the slide shows up as large steps. (A 0 ms press skips the slide in the system control itself.)
+// PAGELAMP_PERF_PROBE=segment drives the course section picker's glass thumb (spec §3.2.1) through
+// every kind of change (real clicks with a 50 and a 0 ms press, or only PAGELAMP_PERF_PRESS ms;
+// down and up in one pass; a held press; a drag; → and Space; VoiceOver's press; the model; Go ▸
+// Current Week; a retarget; a cross-link and a second one) and records the thumb's on-screen x on
+// every display frame (one layer read per frame), to check that every change slides, from the
+// frame after the input, smoothly per unit of time (the render server draws the spring while the
+// section builds), and that the selection changes only on mouse-up.
 
 import AppKit
 import QuartzCore
@@ -31,6 +34,9 @@ final class PerfProbe: NSObject {
     static let focusSidebar = Notification.Name("PerfProbe.focusSidebar")
     /// The sidebar's capsule host while the capsule mode runs (`register(capsuleHost:)`).
     private static weak var capsuleHost: SidebarCapsuleHostView?
+    /// The course section picker while the segment mode runs (`register(segmentedControl:)`; the
+    /// latest wins: a cross-link builds a new one).
+    private static weak var segmentedControl: GlassSegmentedControl?
     private static let requestedMode = ProcessInfo.processInfo.environment["PAGELAMP_PERF_PROBE"]
     static var longFrames: [[Double]] = []
     private var stamps: [CFTimeInterval] = []
@@ -38,15 +44,20 @@ final class PerfProbe: NSObject {
     private var link: CADisplayLink?
     /// The capsule mode's per-frame record while a change is measured (nil otherwise).
     private var capsuleSamples: [CapsuleSample]?
-    /// The segment mode's thumb layer and its x per frame while a click is measured.
-    private var thumb: CALayer?
-    private var thumbXs: [Double] = []
+    /// The segment mode's per-frame record while a change is measured (nil otherwise).
+    private var segmentSamples: [SegmentSample]?
     private var trackedModel: AppModel?
 
     /// The capsule host registers itself when it enters a window; kept only for the capsule mode.
     static func register(capsuleHost host: SidebarCapsuleHostView) {
         guard requestedMode == "capsule" else { return }
         capsuleHost = host
+    }
+
+    /// The section picker registers itself when it enters a window; kept only for the segment mode.
+    static func register(segmentedControl control: GlassSegmentedControl) {
+        guard requestedMode == "segment" else { return }
+        segmentedControl = control
     }
 
     static func runIfRequested(model: AppModel) async {
@@ -64,7 +75,17 @@ final class PerfProbe: NSObject {
         cpuStamps.append((CACurrentMediaTime(), Self.threadCPUms()))
         let frame = link.targetTimestamp - link.timestamp
         if frame > 0 { interval = frame }
-        if let thumb { thumbXs.append(Double((thumb.presentation() ?? thumb).frame.origin.x)) }
+        // The segment mode: one layer read per frame.
+        if segmentSamples != nil, let control = Self.segmentedControl, let layer = control.thumbLayer, let model = trackedModel {
+            let read = CACurrentMediaTime()
+            // A slide added after this frame began and before this read may not be committed yet.
+            let committed = !(control.lastSlideTime > link.timestamp && control.lastSlideTime <= read)
+            segmentSamples?.append(SegmentSample(
+                frame: link.timestamp, read: read, x: Double((layer.presentation() ?? layer).frame.origin.x),
+                committed: committed, control: ObjectIdentifier(control),
+                section: model.selectedCourseId.map { model.ui(for: $0).section }
+            ))
+        }
         // The capsule mode: one layer read per frame (walking the window would distort the timing).
         if capsuleSamples != nil, let host = Self.capsuleHost, let layer = host.capsuleLayer, let model = trackedModel {
             let y = Double((layer.presentation() ?? layer).position.y)
@@ -153,7 +174,9 @@ final class PerfProbe: NSObject {
             report["capsule"] = await runCapsule(model: model, view: view)
         }
         if mode == "segment" {
-            report["segment"] = await runSegment(model: model, view: view, courseId: course.course.id, clicks: toggles * 3)
+            // A course whose current week is known (Go ▸ Current Week works from Deadlines).
+            let segmentCourse = env["PAGELAMP_PERF_COURSE"] == nil ? model.courses.first { $0.course.code == "DEMO205" } ?? course : course
+            report["segment"] = await runSegment(model: model, view: view, courseId: segmentCourse.course.id, clicks: toggles)
         }
         if mode == "navigate" || mode == "all" {
             model.inspectorShown = false
@@ -221,62 +244,6 @@ final class PerfProbe: NSObject {
         return ["medCpuFirstMs": median("cpuFirstMs"), "medCpuTotalMs": median("cpuTotalMs"), "medFirstFrameMs": median("firstFrameMs"), "medMaxGapMs": median("maxGapMs"), "medHitchMsPerS": median("hitchMsPerS"),
                 "meanHitchMsPerS": mean("hitchMsPerS"), "meanMaxGapMs": mean("maxGapMs"), "worstMaxGapMs": worst("maxGapMs"),
                 "meanFirstFrameMs": mean("firstFrameMs"), "meanSyncMs": mean("syncMs"), "n": Double(r.count)]
-    }
-
-    /// Clicks the course section picker and measures its thumb's slide (the segment mode).
-    private func runSegment(model: AppModel, view: NSView, courseId: String, clicks: Int) async -> [String: Any] {
-        model.destination = .course(courseId)
-        model.ui(for: courseId).section = .week
-        await sleep(1.5)
-        guard let control = Self.sectionPicker(in: view), let thumb = Self.thumbLayer(of: control) else { return ["error": "no section picker thumb"] }
-        let press = Double(ProcessInfo.processInfo.environment["PAGELAMP_PERF_PRESS"] ?? "") ?? 50
-        var steps: [Double] = []
-        var gaps: [Double] = []
-        var skipped = 0
-        for i in 0..<clicks {
-            thumbXs.removeAll()
-            self.thumb = thumb
-            let r = await measure { Self.click(control, segment: [1, 2, 0][i % 3], pressMs: press) }
-            self.thumb = nil
-            var positions: [Double] = []
-            for x in thumbXs where positions.last.map({ abs($0 - x) > 0.25 }) ?? true { positions.append(x) }
-            if positions.count <= 3 { skipped += 1 }
-            steps.append(zip(positions.dropFirst(), positions).map { abs($0 - $1) }.max() ?? 0)
-            gaps.append(r["maxGapMs"] ?? 0)
-        }
-        func median(_ v: [Double]) -> Double { v.sorted()[v.count / 2] }
-        return ["pressMs": press, "clicks": clicks, "skipped": skipped, "medStepPx": median(steps), "maxStepPx": steps.max() ?? 0, "medMaxGapMs": median(gaps), "maxGapsMs": gaps]
-    }
-
-    private static func sectionPicker(in view: NSView) -> NSSegmentedControl? {
-        if let control = view as? NSSegmentedControl, control.segmentCount == 3, control.window != nil { return control }
-        return view.subviews.lazy.compactMap { sectionPicker(in: $0) }.first
-    }
-
-    /// The selected segment's glass: the sublayer about one segment wide (layer tree of 27.2).
-    private static func thumbLayer(of control: NSSegmentedControl) -> CALayer? {
-        let segment = control.bounds.width / CGFloat(control.segmentCount)
-        func search(_ layer: CALayer, _ depth: Int) -> CALayer? {
-            if depth > 0, layer.frame.width > segment * 0.7, layer.frame.width < segment * 1.05, layer.frame.height > control.bounds.height * 0.6 { return layer }
-            guard depth < 3 else { return nil }
-            return (layer.sublayers ?? []).lazy.compactMap { search($0, depth + 1) }.first
-        }
-        return control.layer.flatMap { search($0, 0) }
-    }
-
-    /// A real click through the event queue: mouse down now, mouse up `pressMs` later.
-    private static func click(_ control: NSSegmentedControl, segment: Int, pressMs: Double) {
-        guard let window = control.window else { return }
-        let width = control.bounds.width / CGFloat(control.segmentCount)
-        let point = control.convert(CGPoint(x: width * (CGFloat(segment) + 0.5), y: control.bounds.midY), to: nil)
-        func post(_ type: NSEvent.EventType) {
-            if let event = NSEvent.mouseEvent(
-                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
-            ) { NSApp.postEvent(event, atStart: false) }
-        }
-        post(.leftMouseDown)
-        DispatchQueue.main.asyncAfter(deadline: .now() + pressMs / 1000) { post(.leftMouseUp) }
     }
 
     private static func name(_ d: Destination) -> String {
@@ -543,14 +510,18 @@ extension PerfProbe {
         return sorted.count % 2 == 1 ? sorted[sorted.count / 2] : (sorted[sorted.count / 2 - 1] + sorted[sorted.count / 2]) / 2
     }
 
-    /// Largest step ÷ median step (steps ≥ 0.25 pt) of the ideal `motion.quick` spring over
-    /// `travel` points, sampled once per display frame: the reference for "smooth".
-    private static func idealStepRatio(travel: Double, interval: Double) -> Double {
-        let (duration, bounce) = (PLMotion.quickSpring.duration, PLMotion.quickSpring.bounce)
+    /// Largest step ÷ median step (steps ≥ 0.25 pt) of the ideal spring (`motion.quick`, the
+    /// capsule's) over `travel` points, sampled once per display frame: the reference for "smooth".
+    private static func idealStepRatio(travel: Double, interval: Double, spring: PLMotion.Spring = PLMotion.quickSpring) -> Double {
+        let (duration, bounce) = (spring.duration, spring.bounce)
         let stiffness = pow(2 * Double.pi / duration, 2)
         let damping = 4 * Double.pi * (1 - bounce) / duration
         let w0 = stiffness.squareRoot(), zeta = damping / (2 * w0), wd = w0 * (1 - zeta * zeta).squareRoot()
-        func remaining(_ t: Double) -> Double { exp(-zeta * w0 * t) * (cos(wd * t) + zeta * w0 / wd * sin(wd * t)) }
+        func remaining(_ t: Double) -> Double {
+            // Bounce 0 (`motion.section`) is critically damped.
+            guard zeta < 1 else { return exp(-w0 * t) * (1 + w0 * t) }
+            return exp(-zeta * w0 * t) * (cos(wd * t) + zeta * w0 / wd * sin(wd * t))
+        }
         var steps: [Double] = []
         var previous = travel
         var t = interval
@@ -601,5 +572,370 @@ extension PerfProbe {
         ) else { return }
         NSApp.postEvent(event, atStart: false)
         lastPostedAt = CACurrentMediaTime()
+    }
+}
+
+// MARK: - Segment mode
+
+extension PerfProbe {
+    /// One display frame: its timestamp, when it was read, where the thumb was (its layer's
+    /// presentation x), whether that read shows committed state, which control it was (a
+    /// cross-link builds a new one) and the course's section at that moment.
+    fileprivate struct SegmentSample {
+        let frame: CFTimeInterval
+        let read: CFTimeInterval
+        let x: Double
+        let committed: Bool
+        let control: ObjectIdentifier
+        let section: CourseSection?
+    }
+
+    /// How a change should move the thumb.
+    private enum SegmentMotion {
+        /// One slide from rest: every read must lie on the ideal `motion.section` spring.
+        case slide
+        /// A slide retargeted mid-way in the same direction: it must never step back.
+        case retarget
+        /// Following the pointer: no step out of line with its neighbours.
+        case follow
+        /// Nothing may move (a second cross-link).
+        case still
+    }
+
+    /// One measured change: an unmeasured reset to a section first, then the input.
+    private struct SegmentStep {
+        let name: String
+        var reset: CourseSection?
+        var motion = SegmentMotion.slide
+        /// A pointer change: the selection may change only after the (first) mouse-up.
+        var pointer = false
+        /// A change from the model (the slide is added in the SwiftUI update that also builds the
+        /// new section, so it starts with that update's commit, not in the next frame).
+        var programmatic = false
+        let input: () async -> Void
+    }
+
+    private func runSegment(model: AppModel, view: NSView, courseId: String, clicks: Int) async -> [String: Any] {
+        guard let window = view.window else { return ["error": "no window"] }
+        let ui = model.ui(for: courseId)
+        model.inspectorShown = false
+        ui.section = .week
+        model.destination = .course(courseId)
+        await sleep(1.5)
+        guard let first = Self.segmentedControl, first.window != nil else { return ["error": "no glass section picker"] }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        await sleep(0.3)
+        let activeAtStart = NSApp.isActive
+        /// The control on screen now (a cross-link replaces it).
+        func control() -> GlassSegmentedControl? { Self.segmentedControl }
+        func point(_ segment: Int) -> NSPoint { control()?.segmentCenter(segment) ?? .zero }
+        /// When the step's first mouse-up was posted (the selection may change from then).
+        var upPostedAt: CFTimeInterval = 0
+        func postUp(at point: NSPoint) {
+            if upPostedAt == 0 { upPostedAt = CACurrentMediaTime() }
+            Self.post(mouse: .leftMouseUp, at: point, window: window)
+        }
+        func click(_ segment: Int, pressMs: Double) async {
+            Self.post(mouse: .mouseMoved, at: point(segment), window: window)
+            Self.post(mouse: .leftMouseDown, at: point(segment), window: window)
+            if pressMs > 0 {
+                await sleep(pressMs / 1000)
+            } else {
+                // A trackpad tap: the up follows in the next run-loop turn.
+                await Task.yield()
+            }
+            postUp(at: point(segment))
+        }
+        func key(_ character: String, code: UInt16) {
+            let modifiers: NSEvent.ModifierFlags = character == " " ? [] : [.numericPad, .function]
+            Self.post(key: character, keyCode: code, modifiers: modifiers, phase: .keyDown, window: window)
+            Self.post(key: character, keyCode: code, modifiers: modifiers, phase: .keyUp, window: window)
+        }
+        let rightArrow = String(UnicodeScalar(0xF703) ?? " ")
+        let env = ProcessInfo.processInfo.environment
+        let presses: [Double] = env["PAGELAMP_PERF_PRESS"].flatMap { Double($0) }.map { [$0] } ?? [50, 0]
+        let order = [1, 2, 0]
+        var steps: [SegmentStep] = []
+        for press in presses {
+            steps += (0..<clicks).map { i in
+                SegmentStep(name: "click \(order[(i + 2) % 3])>\(order[i % 3]) \(Int(press))ms", pointer: true) {
+                    await click(order[i % 3], pressMs: press)
+                }
+            }
+        }
+        steps += [
+            SegmentStep(name: "down+up one pass 0>1", reset: .week, pointer: true) {
+                Self.post(mouse: .leftMouseDown, at: point(1), window: window)
+                postUp(at: point(1))
+            },
+            SegmentStep(name: "hold 400ms 0>2", reset: .week, pointer: true) {
+                await click(2, pressMs: 400)
+            },
+            SegmentStep(name: "drag 0>2", reset: .week, motion: .follow, pointer: true) {
+                let (from, to) = (point(0), point(2))
+                Self.post(mouse: .mouseMoved, at: from, window: window)
+                Self.post(mouse: .leftMouseDown, at: from, window: window)
+                for i in 1...12 {
+                    await self.sleep(0.025)
+                    Self.post(mouse: .leftMouseDragged, at: NSPoint(x: from.x + (to.x - from.x) * Double(i) / 12, y: from.y), window: window)
+                }
+                await self.sleep(0.05)
+                postUp(at: to)
+            },
+            SegmentStep(name: "focus, right, space 0>1", reset: .week) {
+                if let control = control() { window.makeFirstResponder(control) }
+                key(rightArrow, code: 124)
+                await self.sleep(0.1)
+                key(" ", code: 49)
+            },
+            SegmentStep(name: "accessibility press 1>2", reset: .deadlines) {
+                window.makeFirstResponder(nil)
+                _ = control()?.elements[2].accessibilityPerformPress()
+            },
+            SegmentStep(name: "model 2>0", reset: .timeline, programmatic: true) { ui.section = .week },
+            SegmentStep(name: "current week 1>0", reset: .deadlines, programmatic: true) { model.showCurrentWeek() },
+            SegmentStep(name: "retarget 0>1>2", reset: .week, motion: .retarget, pointer: true) {
+                await click(1, pressMs: 0)
+                await self.sleep(0.08)
+                await click(2, pressMs: 0)
+            },
+            // The picker has shown This Week (pickerSection); This Week then opens the course at
+            // Deadlines: the new page's thumb slides from This Week once.
+            SegmentStep(name: "cross-link 0>1", reset: .week, programmatic: true) {
+                model.destination = .thisWeek
+                await self.sleep(0.7)
+                ThisWeekNavigation.open(courseId: courseId, section: .deadlines, model: model)
+            },
+            SegmentStep(name: "second cross-link 1>1", motion: .still) {
+                model.destination = .thisWeek
+                await self.sleep(0.7)
+                ThisWeekNavigation.open(courseId: courseId, section: .deadlines, model: model)
+            },
+        ]
+
+        trackedModel = model
+        var results: [[String: Any]] = []
+        for step in steps {
+            if let reset = step.reset, ui.section != reset || model.destination != .course(courseId) {
+                model.destination = .course(courseId)
+                ui.section = reset
+                await sleep(0.7)
+            }
+            let before = ui.section
+            // Where the thumb stands before the input (the first read may come only after the
+            // section build, already on its way).
+            let startX = control().map { Double($0.segmentLayout.thumbFrame(CourseSection.allCases.firstIndex(of: before) ?? 0).minX) }
+            let slidesBefore = control()?.lastSlideTime ?? 0
+            let controlBefore = control().map(ObjectIdentifier.init)
+            upPostedAt = 0
+            segmentSamples = []
+            let start = CACurrentMediaTime()
+            await step.input()
+            await sleep(0.7)
+            var samples = segmentSamples ?? []
+            segmentSamples = nil
+            if let startX, let first = samples.first {
+                samples.insert(SegmentSample(frame: start, read: start, x: startX, committed: true, control: first.control, section: before), at: 0)
+            }
+            // The input was handled when its slide was added (a new control: in its first frame).
+            let latest = control()
+            let handledAt = latest.flatMap { control in
+                control.lastSlideTime > slidesBefore || ObjectIdentifier(control) != controlBefore ? control.lastSlideTime : nil
+            }
+            var result = Self.analyseSegment(
+                samples, start: start, handledAt: handledAt, interval: interval, motion: step.motion, programmatic: step.programmatic
+            )
+            result["name"] = step.name
+            result["end"] = ui.section.rawValue
+            if env["PAGELAMP_PERF_TRACE"] != nil {
+                // Every read: ms after the input, x, committed.
+                result["trace"] = samples.map { [(($0.read - start) * 10000).rounded() / 10, ($0.x * 100).rounded() / 100, $0.committed ? 1 : 0] }
+            }
+            if step.pointer {
+                // The selection changes on mouse-up only (never while the press is down).
+                let changed = samples.first { $0.section != nil && $0.section != before }
+                result["selectionAtMouseUpOnly"] = changed.map { $0.read >= upPostedAt } ?? (ui.section != before)
+            }
+            results.append(result)
+        }
+        trackedModel = nil
+        return [
+            "changes": results,
+            "judged": results.count,
+            "passed": results.filter { $0["pass"] as? Bool == true && $0["selectionAtMouseUpOnly"] as? Bool != false }.count,
+            "failed": results.filter { $0["pass"] as? Bool != true || $0["selectionAtMouseUpOnly"] as? Bool == false }
+                .compactMap { $0["name"] as? String },
+            // Changes that should slide but jumped or stood still.
+            "skipped": results.filter { $0["expectsSlide"] as? Bool == true && ($0["distinct"] as? Int ?? 0) <= 3 }.count,
+            "appActiveAtStart": activeAtStart,
+            "presses": presses,
+        ]
+    }
+
+    /// The thumb check for one change (x per display frame of the latest control). Every change
+    /// but a `.still` one slides (18 distinct positions at 120 Hz, 10 at 60 Hz; a retarget 14 / 8,
+    /// as its window holds two section builds, when the main thread takes no reads) and starts
+    /// promptly: a single slide's fitted spring starts at most one frame after the input was handled
+    /// (`springLagMs`), a change from the model with the commit of the update that carried it (its
+    /// spring has started by the first frame the main thread serves after it, + 1 frame:
+    /// `startsWithUpdate`), a retarget or a drag is visibly moving at most one frame after the
+    /// input was handled (`firstMoveFrames`). Smoothness, judged per unit of time because the render
+    /// server keeps drawing while the section builds: a single slide's reads all lie within 1 pt of
+    /// the ideal `motion.section` spring (its start time fitted); a retarget never steps back; a
+    /// drag has no step (per unit of time) over 1.5× (1.7× at 60 Hz) the median of its ±3
+    /// neighbours. The capsule mode's largest-step ratio (`rateMaxOverMedian`) and the main-thread
+    /// gaps while it moves (`mainMaxGapMs`) are reported, not judged: main-thread reads are uneven
+    /// (the ideal spring sampled at the same read times fails that ratio just as often).
+    ///
+    /// Reads are taken as they are: one that may predate its slide's commit (`committed` false: a
+    /// late display-link tick can look like one) is left out of the spring fit but never rewritten,
+    /// and the fit drops a first displaced read that comes before the spring it fits best without it
+    /// (a read during the commit of a new page's first frame).
+    private static func analyseSegment(
+        _ all: [SegmentSample], start: CFTimeInterval, handledAt: CFTimeInterval?, interval: Double, motion: SegmentMotion,
+        programmatic: Bool
+    ) -> [String: Any] {
+        let expectsSlide = motion != .still
+        var result: [String: Any] = ["expectsSlide": expectsSlide]
+        // The first sample is where the thumb stood before the input (`runSegment`): a new control
+        // (a cross-link) starts there too.
+        guard let latest = all.last?.control else {
+            result["error"] = "no frames"
+            result["pass"] = false
+            return result
+        }
+        let samples = all.enumerated().filter { $0.offset == 0 || $0.element.control == latest }.map(\.element)
+        guard samples.count > 2 else {
+            result["error"] = "no frames"
+            result["pass"] = false
+            return result
+        }
+        let is120 = interval < 1.0 / 90
+        // The spring fit uses the reads as taken, less the ones that may predate their slide's commit.
+        let reads = samples.filter(\.committed)
+        result["frames"] = samples.count
+        result["uncommittedReads"] = samples.dropFirst().filter { !$0.committed }.count
+        var steps: [(index: Int, size: Double)] = []
+        for i in 1..<samples.count {
+            let size = samples[i].x - samples[i - 1].x
+            if abs(size) >= 0.25 { steps.append((i, size)) }
+        }
+        var distinct = [samples[0].x]
+        for sample in samples where abs(sample.x - (distinct.last ?? sample.x)) > 0.25 { distinct.append(sample.x) }
+        let (x0, x1) = (samples[0].x, samples[samples.count - 1].x)
+        result["distinct"] = distinct.count
+        result["travel"] = ((x1 - x0) * 10).rounded() / 10
+        guard let firstMove = steps.first?.index, let lastMove = steps.last?.index else {
+            result["slides"] = false
+            result["pass"] = !expectsSlide
+            return result
+        }
+        let slides = distinct.count >= (motion == .retarget ? (is120 ? 14 : 8) : (is120 ? 18 : 10))
+        result["slides"] = slides
+        result["firstMoveMs"] = ((samples[firstMove].read - start) * 1000).rounded()
+        var firstMoveFrames: Int?
+        var mainFreeAt: CFTimeInterval?
+        if let handledAt, let handled = samples.firstIndex(where: { $0.read >= handledAt }) {
+            firstMoveFrames = max(firstMove - handled, 0)
+            mainFreeAt = samples[handled].read
+            result["handledMs"] = ((handledAt - start) * 1000).rounded()
+            result["mainFreeMs"] = ((samples[handled].read - start) * 1000).rounded()
+        }
+        result["firstMoveFrames"] = firstMoveFrames ?? -1
+        var maxGap = 0.0
+        // Between real reads (the first sample is the start position, not a frame).
+        for i in max(firstMove, 2)...max(lastMove, 2) where i < samples.count {
+            maxGap = max(maxGap, samples[i].frame - samples[i - 1].frame)
+        }
+        result["mainMaxGapMs"] = (maxGap * 10000).rounded() / 10
+        let sizes = steps.map { abs($0.size) }
+        let rates = steps.map { step in
+            abs(step.size) * interval / max(samples[step.index].read - samples[step.index - 1].read, interval * 0.5)
+        }
+        var maxLocalRate = 0.0
+        for j in rates.indices {
+            let neighbours = (max(0, j - 3)...min(rates.count - 1, j + 3)).filter { $0 != j }.map { rates[$0] }
+            if let median = median(neighbours), median > 0 { maxLocalRate = max(maxLocalRate, rates[j] / median) }
+        }
+        let ideal = idealStepRatio(travel: sizes.reduce(0, +), interval: interval, spring: PLMotion.sectionSpring)
+        result["maxLocalRateRatio"] = (maxLocalRate * 100).rounded() / 100
+        result["rateMaxOverMedian"] = ((rates.max() ?? 0) / (median(rates) ?? 1) * 100).rounded() / 100
+        result["idealMaxOverMedian"] = (ideal * 100).rounded() / 100
+        let smooth: Bool
+        var prompt = (firstMoveFrames ?? 99) <= 1
+        switch motion {
+        case .slide:
+            let fit = springFit(reads, from: x0, to: x1, spring: PLMotion.sectionSpring)
+            result["springStartMs"] = ((fit.start - start) * 1000).rounded()
+            result["springMaxErrorPt"] = (fit.maxError * 100).rounded() / 100
+            if fit.droppedEarlyRead { result["droppedEarlyRead"] = true }
+            smooth = fit.maxError <= 1
+            if programmatic, let mainFreeAt {
+                let withUpdate = fit.start <= mainFreeAt + interval
+                result["startsWithUpdate"] = withUpdate
+                prompt = withUpdate
+            } else if let handledAt {
+                // The spring the reads lie on starts within a frame of the input's handling: a 60 Hz
+                // frame at most, so a 120 Hz display doesn't fail a one-frame scheduling hiccup.
+                let lag = fit.start - handledAt
+                result["springLagMs"] = (lag * 10000).rounded() / 10
+                prompt = lag <= max(interval, 1.0 / 60)
+            }
+        case .retarget:
+            let direction = (x1 - x0).sign
+            let backward = steps.contains { $0.size.sign != direction }
+            result["backward"] = backward
+            smooth = !backward
+        case .follow:
+            smooth = maxLocalRate <= (is120 ? 1.5 : 1.7)
+        case .still:
+            smooth = false
+        }
+        result["passPerTime"] = smooth
+        result["pass"] = expectsSlide && slides && prompt && smooth
+        return result
+    }
+
+    /// The ideal spring from `x0` to `x1` that best fits the reads (its start searched in 0.5 ms
+    /// steps), and the largest distance of any read from it. A render-server spring lies on it
+    /// whatever the main thread did; a thumb stepped by the main thread doesn't. The first read off
+    /// `x0` is dropped when the spring fitted without it starts after that read and fits better:
+    /// the read was taken before the slide's commit (`droppedEarlyRead`).
+    private static func springFit(
+        _ samples: [SegmentSample], from x0: Double, to x1: Double, spring: PLMotion.Spring
+    ) -> (start: CFTimeInterval, maxError: Double, droppedEarlyRead: Bool) {
+        let fit = bestSpring(samples, from: x0, to: x1, spring: spring)
+        guard let early = samples.firstIndex(where: { abs($0.x - x0) > 0.25 }) else { return (fit.start, fit.maxError, false) }
+        var rest = samples
+        rest.remove(at: early)
+        let refit = bestSpring(rest, from: x0, to: x1, spring: spring)
+        if refit.start > samples[early].read, refit.maxError < fit.maxError { return (refit.start, refit.maxError, true) }
+        return (fit.start, fit.maxError, false)
+    }
+
+    private static func bestSpring(
+        _ samples: [SegmentSample], from x0: Double, to x1: Double, spring: PLMotion.Spring
+    ) -> (start: CFTimeInterval, maxError: Double) {
+        let w0 = 2 * Double.pi / spring.duration
+        let zeta = 1 - spring.bounce
+        let wd = w0 * max(1 - zeta * zeta, 0).squareRoot()
+        func x(at t: Double, from start: Double) -> Double {
+            let tau = t - start
+            guard tau > 0 else { return x0 }
+            let remaining = zeta < 1
+                ? exp(-zeta * w0 * tau) * (cos(wd * tau) + zeta * w0 / wd * sin(wd * tau))
+                : exp(-w0 * tau) * (1 + w0 * tau)
+            return x1 + (x0 - x1) * remaining
+        }
+        guard let first = samples.first?.read, let last = samples.last?.read else { return (0, .infinity) }
+        var best = (start: first, maxError: Double.infinity)
+        var start = first - 0.05
+        while start < last {
+            let error = samples.map { abs($0.x - x(at: $0.read, from: start)) }.max() ?? .infinity
+            if error < best.maxError { best = (start, error) }
+            start += 0.0005
+        }
+        return best
     }
 }

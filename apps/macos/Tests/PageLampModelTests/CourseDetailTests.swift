@@ -95,6 +95,33 @@ struct CourseWeekLineTests {
     }
 }
 
+@Suite("Section picker's starting point") @MainActor
+struct CoursePickerSectionTests {
+    @Test("a new page's thumb starts at This Week until the picker has shown another section")
+    func defaults() {
+        let ui = CourseUIState()
+        #expect(ui.pickerSection == .week)
+        ui.section = .deadlines
+        // Only the picker moves it (it follows `section` once it shows it).
+        #expect(ui.pickerSection == .week)
+    }
+
+    @Test("stepping weeks and Current Week change the section, never where the thumb starts")
+    func untouchedByWeekCommands() {
+        let ui = CourseUIState()
+        ui.update(availableWeeks: [1, 2, 3], currentWeek: 3)
+        ui.pickerSection = .timeline
+        ui.section = .timeline
+        ui.step(by: -1)
+        #expect(ui.section == .week)
+        #expect(ui.pickerSection == .timeline)
+        ui.section = .deadlines
+        ui.showCurrentWeek()
+        #expect(ui.section == .week)
+        #expect(ui.pickerSection == .timeline)
+    }
+}
+
 @Suite("Course material status") @MainActor
 struct CourseMaterialStatusTests {
     @Test("readable courses show the extraction status")

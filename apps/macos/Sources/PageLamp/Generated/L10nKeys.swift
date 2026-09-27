@@ -495,6 +495,7 @@ nonisolated enum L10nKeys {
         "mac.debug.scenario.empty",
         "mac.debug.scenario.error",
         "mac.debug.scenario.expired",
+        "mac.debug.systemSectionPicker",
         "mac.diagnostics.previewTitle",
         "mac.errors.panic",
         "mac.errors.schema",

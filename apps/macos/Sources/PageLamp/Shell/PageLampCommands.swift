@@ -100,6 +100,7 @@ struct DebugCommands: Commands {
     let model: AppModel
     @Environment(\.openWindow) private var openWindow
     @AppStorage(DebugPreferences.sidebarCapsuleLeads) private var capsuleLeads = false
+    @AppStorage(DebugPreferences.systemSectionPicker) private var systemSectionPicker = false
 
     var body: some Commands {
         let l10n = model.menuL10n
@@ -129,6 +130,7 @@ struct DebugCommands: Commands {
             .disabled(!isMock || !model.canSync)
             Divider()
             Toggle(l10n("mac.debug.capsuleLeads"), isOn: $capsuleLeads)
+            Toggle(l10n("mac.debug.systemSectionPicker"), isOn: $systemSectionPicker)
         }
     }
 

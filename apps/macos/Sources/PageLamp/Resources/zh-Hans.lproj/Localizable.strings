@@ -470,6 +470,7 @@
 "mac.debug.scenario.empty" = "没有数据来源";
 "mac.debug.scenario.error" = "课程文件夹不见了";
 "mac.debug.scenario.expired" = "Canvas 访问令牌已过期";
+"mac.debug.systemSectionPicker" = "课程页面使用系统的分段选择器";
 "mac.diagnostics.previewTitle" = "诊断报告";
 "mac.errors.panic" = "PageLamp 遇到了一个错误。请重试，或重新打开 PageLamp。";
 "mac.errors.schema" = "这些数据是由更新版本的 PageLamp 保存的。请先更新 PageLamp，再打开它们。";

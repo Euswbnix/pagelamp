@@ -7,4 +7,7 @@ enum DebugPreferences {
     /// true: the capsule starts in the frame of the choice and the page follows two display
     /// frames later (the render server keeps the slide moving while the main thread builds it).
     static let sidebarCapsuleLeads = "debug.sidebarCapsuleLeads"
+    /// Course pages show the system section picker (the tabs control of before the glass thumb,
+    /// spec §3.2.1) instead of the custom one, to compare on device.
+    static let systemSectionPicker = "debug.systemSectionPicker"
 }

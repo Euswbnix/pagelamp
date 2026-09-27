@@ -41,6 +41,7 @@
     "runMockSync": "运行模拟同步",
     "runMockSyncRejected": "运行模拟同步（访问令牌被拒绝）",
     "capsuleLeads": "侧边栏胶囊先于页面移动",
+    "systemSectionPicker": "课程页面使用系统的分段选择器",
     "live": {
       "title": "要使用你真实的 {{product}} 数据吗？",
       "message": "这个预览版会打开与已安装的 {{product}} 应用及其命令行工具相同的数据文件夹和钥匙串项目。在这里同步会更改这些数据。打开这个文件夹时，还可能更新其中数据库的格式；之后，较旧版本的 {{product}} 会先要求你更新，才能再次打开你的数据。",

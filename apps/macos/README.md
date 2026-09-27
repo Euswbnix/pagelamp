@@ -23,6 +23,7 @@ apps/macos/scripts/build-app.sh        # → apps/macos/dist/PageLamp Preview.ap
 apps/macos/scripts/lint.sh             # glass only in Chrome/, generated files current, string keys exist
 apps/macos/scripts/perf-probe.sh all   # frame timing of the panel animations and page switches (opens a window, ~1 min)
 apps/macos/scripts/perf-probe.sh capsule  # the sidebar's selection capsule under real clicks and keys (see No jank)
+PAGELAMP_PERF_PRESS=0 apps/macos/scripts/perf-probe.sh segment  # the section picker's glass thumb on every kind of change (0 or 50 ms clicks; unset: both)
 ```
 
 - **build-app.sh** rebuilds the Rust core when the xcframework is missing or older than any crate
@@ -54,8 +55,8 @@ a student build drops it.
 | Target | Folder | What |
 |---|---|---|
 | `PageLampKit` | `Sources/PageLampKit` | UniFFI bindings (generated) + `SyncEventStream` (sync callbacks → `AsyncStream`) |
-| `PageLampModel` | `Sources/PageLampModel` | `PageLampService` (the calls M1 needs; typed `throws(PageLampFailure)`), `LiveService`, `UnavailableService` (S2: diagnostics only), `MockService` + `FixtureService` (snapshots/tests: the mock with answers replaced); `AppModel` (`@Observable @MainActor`: shell data, navigation, sync + capsule, data mode, language); `L10n` + code → words helpers (`L10n+Formatting`); `Model/SidebarLayout`, `SidebarNavigation`, `SidebarMotionGate` (the sidebar's geometry, list behaviour and motion order, §2.3); per screen the logic without views: `ThisWeek/` (`ThisWeekDigest`, the port of Tauri `thisWeek.ts` and M1 stand-in for `this_week`; sections, text), `Course/` (page model, presentation), `Setup/` (source rows, Connect steps and snippets, settings); `PrimaryActionArbiter` |
-| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, the custom sidebar (§2.3), commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars, the sidebar's selection capsule — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`readingMeasure()`), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
+| `PageLampModel` | `Sources/PageLampModel` | `PageLampService` (the calls M1 needs; typed `throws(PageLampFailure)`), `LiveService`, `UnavailableService` (S2: diagnostics only), `MockService` + `FixtureService` (snapshots/tests: the mock with answers replaced); `AppModel` (`@Observable @MainActor`: shell data, navigation, sync + capsule, data mode, language); `L10n` + code → words helpers (`L10n+Formatting`); `Model/SidebarLayout`, `SidebarNavigation`, `SidebarMotionGate` (the sidebar's geometry, list behaviour and motion order, §2.3); `Model/SegmentedLayout`, `SegmentedNavigation` (the course section picker's geometry and its pointer, key and VoiceOver rules, §3.2.1); per screen the logic without views: `ThisWeek/` (`ThisWeekDigest`, the port of Tauri `thisWeek.ts` and M1 stand-in for `this_week`; sections, text), `Course/` (page model, presentation), `Setup/` (source rows, Connect steps and snippets, settings); `PrimaryActionArbiter` |
+| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, the custom sidebar (§2.3), commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars, the shared glass thumb (`GlassThumb`: `NSGlassEffectView` + an additive Core Animation spring) that is the sidebar's selection capsule and the course section picker's thumb (`GlassSegmentedControl`, `NSControl`, its VoiceOver tree in `GlassSegmentedAccessibility`) — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`readingMeasure()`), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
 | `PageLampApp` | `Sources/PageLampApp` | `@main`: owns the `AppModel` and the app delegate. Executable name `PageLampApp` (never `pagelamp`: the sidecar is `Contents/MacOS/pagelamp` on a case-insensitive disk) |
 | `PageLampSnapshots` | `Sources/PageLampSnapshots` | the snapshot catalogue (`SnapshotCatalog.pages`, one file per screen) and the PNG writer (`SnapshotRenderer`, `ImageRenderer`): `swift run PageLampSnapshots <dir> [name-prefix …]`. Never linked into the app; the tests import it |
 
@@ -85,7 +86,8 @@ for states the demo data lacks) and loads its data in `make` (`.task` never runs
   switches live.
 - **Tokens, not numbers**: `PLColor` (lamp wash/rule and status glyphs only; everything else is a
   system colour), `PLSpace`, `PLLayout`, `PLSize`, `PLRadius`, `PLType`, `PLMotion`. `SidebarMetrics`
-  is the one place for sidebar geometry (it mirrors the system source list).
+  is the one place for sidebar geometry (it mirrors the system source list), `SegmentedMetrics` for
+  the section picker's (it mirrors the system's 27 tabs control).
 - **One light, one tinted action**: `LampBand(lit:)` only for *now*; prominence through
   `.primaryActionCandidates([...])` + `.arbitratedButtonStyle(_:)` (§3.0).
 - **Honour the system**: Reduce Motion (`PLMotion.reduced` / no animation), Reduce Transparency and
@@ -101,7 +103,12 @@ for states the demo data lacks) and loads its data in `make` (`.task` never runs
   that only flashes a loading state renders the page again. Chrome motion never shares frames with a
   page switch (SwiftUI animations are advanced on the main thread and stutter while a page builds):
   set the model first; start Core Animation motion (`PLMotion.<token>Spring`) after the page's first
-  drawn frame (`SidebarMotionGate`); measure with `perf-probe.sh capsule`.
+  drawn frame (`SidebarMotionGate`); measure with `perf-probe.sh capsule`. One exception: the course
+  section picker's thumb starts in the input's own handler (a model change: in the update that carries
+  it), with no gate, because it slides within the page and the render server keeps drawing it while
+  the new section builds (~20 ms); the control writes the model on the next run-loop turn, so the slide
+  is committed before that build (never `CATransaction.flush()`: it stalls the content's crossfade on
+  back-to-back switches); measure with `perf-probe.sh segment`.
 - Swift 6 language mode, strict concurrency, warnings are errors. No Swift package dependencies.
 - **Tests never touch the real data folder, keychain or preferences**: models use
   `InMemorySettingsStore`, a private `NotificationCenter`, `MockService`, or `LiveService` over
@@ -120,10 +127,11 @@ states), the sidebar (6 states) and the component gallery — 59 pages, 236 PNGs
 renders a small subset (This Week, a course page, Sources, the sidebar, the gallery; English light and
 Chinese dark) into a temporary folder. `ImageRenderer` has limits: AppKit-backed controls (segmented/tabs pickers, borderless
 buttons, progress bars) draw as yellow placeholders, except the course section picker, which draws a
-stand-in of about the real size (`\.drawsControlStandIns`) so the narrow fallback to a pop-up menu
-shows; `Form` draws blank (Settings and the inspector render a stand-in of the grouped style); and
-window chrome (sidebar column, toolbar, inspector column, glass capsule) is not drawn; the sidebar's
-glass selection capsule draws as a flat stand-in.
+stand-in (`\.drawsControlStandIns`): its real track, geometry and labels (`SegmentedLayout`, so the
+narrow fallback to a pop-up menu shows at the app's widths) with a flat thumb for the glass; `Form`
+draws blank (Settings and the inspector render a stand-in of the grouped style); and window chrome
+(sidebar column, toolbar, inspector column, glass capsule) is not drawn; the sidebar's glass selection
+capsule draws as a flat stand-in.
 
 ## Known limits (M1)
 
@@ -163,5 +171,16 @@ glass selection capsule draws as a flat stand-in.
   mid-slide or mid-preview (keys still switch pages at once afterwards); macOS 26.x (floating
   sidebar); `perf-probe.sh capsule` on a quiet machine with the app frontmost (clicks only register
   while it is active) and on an M1.
+- **Section picker (custom glass control, §3.2.1), on device, each beside the system control (Preview
+  builds: Debug ▸ Course Pages Use the System Section Picker; removed after sign-off):** U1 Keyboard
+  navigation on: Tab / ⇧Tab reach the picker, ←/→/Space, a click doesn't focus it (all measured per
+  process like the system control's; AppKit 27.2 ignores the `-AppleKeyboardUIMode 2` launch
+  argument, as it reads the preference with `CFPreferencesCopyValue`, so a probe needs a
+  `DYLD_INSERT_LIBRARIES` library that answers 2 for that key); U2 the focus ring's look; U3 VoiceOver in English and Chinese ("Course sections, tab group", "This Week,
+  selected, tab, 1 of 3", VO-arrows, VO-Space, ←/→ speech, no double speech after Space or when focus
+  arrives); U4 real Increase Contrast, Reduce Transparency and Show Borders; U5 real Reduce Motion (the
+  thumb jumps); U6 the glass thumb beside the system one in light, dark and an inactive window, on the
+  lamp band, with the 27 glass slider (Clear / Tinted); U7 120 Hz smoothness; U8 macOS 26, where the
+  custom control replaces the accent-filled `.segmented` one.
 - The xcframework and bindings are git-ignored, so a fresh checkout runs `build-ffi.sh` (or
   `build-app.sh`) before `swift build`.
