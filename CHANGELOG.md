@@ -3,9 +3,9 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
-## [0.1.0-beta.1] — unreleased
+## [0.1.0] — 2026-09-28
 
-First public beta.
+First public release.
 
 ### Added
 - Local course knowledge base (SQLite + full-text search) with text extraction for PDF, PowerPoint
@@ -36,7 +36,14 @@ First public beta.
 - On Windows, SmartScreen may still warn about a new release until the signing certificate has
   built up reputation (see the README). Linux builds are not code-signed; check downloads against
   `SHA256SUMS`.
-- No reminders/notifications yet (planned for v0.2).
+- Canvas can report a course's term much wider than its classes (University of Toronto's Fall term,
+  for example, runs from May to January), so PageLamp may show the wrong week, such as "Week 22"
+  in late September. Fix it in the course's **Timeline** tab (*Wrong week? Set this course's term
+  dates*). v0.3 will work the week out from the syllabus, the schedule and the published notes.
+- Courses from past terms keep syncing when their instructor never closed them in Canvas. Hide them
+  (course → *Settings* → *Hide this course*): hidden courses stay hidden after each sync and are never
+  shown to your AI app. Removing finished courses is planned for v0.3.
+- No reminders/notifications yet (planned for v0.3).
 - Canvas access uses a personal token until an institution-approved sign-in is available.
 - On macOS and Windows the desktop app doesn't put `pagelamp` on your PATH (use the full path shown
   in *Connect your AI app*); the Linux `.AppImage` can't serve your AI app — use the `.deb`/`.rpm`.

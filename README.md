@@ -205,9 +205,10 @@ pagelamp mcp  ──reads──▶  pagelamp.db (on your computer)  ◀──wri
 
 ## Roadmap
 
-v0.1 MCP-first core · v0.2 reminders, one-click Claude Desktop extension, signed releases ·
-v0.3 PageLamp generates plans and explanations itself (bring your ChatGPT/Claude subscription,
-an API key, or a local model). Details: [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md).
+v0.1 MCP-first core, signed releases · v0.3 automatic updates, reminders, and PageLamp generates
+plans and explanations itself (bring your ChatGPT/Claude subscription, an API key, or a local
+model); it also reads the syllabus to work out each course's week. Details:
+[docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md).
 
 ## Contributing
 
