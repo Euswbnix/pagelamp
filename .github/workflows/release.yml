@@ -10,23 +10,44 @@ name: Release
 # the GitHub environment `release`: secrets APPLE_CERTIFICATE (base64 of the .p12),
 # APPLE_CERTIFICATE_PASSWORD, APPLE_API_ISSUER, APPLE_API_KEY (the Key ID) and APPLE_API_KEY_P8 (the
 # .p8 file's text), and the variable APPLE_SIGNING_IDENTITY ("Developer ID Application: <name>
-# (<team>)"). Only the two macOS jobs use that environment, and each secret goes only to the steps
-# that need it. If anything is missing those jobs fail, so macOS builds are never released
-# unsigned. Nothing is uploaded until every signature, Gatekeeper verdict and stapled ticket has
-# been checked (.github/scripts/macos-signing.sh). Only tag pushes and manual runs start this
-# workflow, never pull requests, so forks can't reach the secrets. The signing jobs restore no
-# caches, so nothing another run wrote can end up in them.
+# (<team>)"). Each secret goes only to the steps that need it. If anything is missing those jobs
+# fail, so macOS builds are never released unsigned. Nothing is uploaded until every signature,
+# Gatekeeper verdict and stapled ticket has been checked (.github/scripts/macos-signing.sh).
+#
+# Windows builds are signed with Azure Artifact Signing (Public Trust, the owner's validated
+# identity): the NSIS installer (-setup.exe) and its uninstaller, the .msi, the app executable and
+# its `pagelamp.exe` sidecar inside both, and the standalone `pagelamp.exe`. There is no Windows
+# secret: those jobs sign in to Azure with their GitHub OIDC token (azure/login). The Entra app
+# that holds the "Artifact Signing Certificate Profile Signer" role on the account trusts that
+# token through a federated credential for the environment `release` (this repo was created after
+# 2026-07-15, so GitHub's subject carries the owner and repo IDs:
+# repo:Euswbnix@187366146/pagelamp@1388331836:environment:release). The environment has only
+# variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+# AZURE_ARTIFACT_SIGNING_ENDPOINT, AZURE_ARTIFACT_SIGNING_ACCOUNT, AZURE_ARTIFACT_SIGNING_PROFILE
+# and AZURE_ARTIFACT_SIGNING_PUBLISHER (the certificate's CN, which every signature must carry).
+# Tauri signs through its own hook (bundle.windows.signCommand, from a config file written on the
+# runner, so tauri.conf.json stays as it is). If anything is missing those jobs fail, so Windows
+# builds are never released unsigned; nothing is uploaded until the installers and every file
+# they install have a valid, timestamped signature from that publisher
+# (.github/scripts/windows-signing.ps1). Linux builds are not code-signed; SHA256SUMS covers them.
+#
+# Only the four signing jobs (app-macos, cli-macos, app-windows, cli-windows) use the environment
+# `release`, and only the two Windows jobs may request an OIDC token. Only tag pushes and manual
+# runs start this workflow, never pull requests, so forks can't reach the secrets or the Azure
+# role. The signing jobs restore no caches, so nothing another run wrote can end up in them.
+# The Linux jobs do restore caches and can upload to the release too, so `checksums` writes
+# SHA256SUMS only if the draft still holds exactly the signed files their jobs checked.
 # Environment settings: deployment tags `v*`, plus the branch a rehearsal runs from (`main` once
 # this is merged); required reviewer: the owner (recommended, with "Prevent self-review" off). The
 # branch and tag rules only limit which refs may use the secrets, not who can push those refs, and
 # the workflow that runs is the one in the pushed commit; a reviewer is the only check by a person.
-# Windows and Linux builds are not code-signed yet (Windows: SmartScreen "More info → Run anyway").
 #
 # Rehearsal (no release): Actions → Release → Run workflow → pick the branch or tag under "Use
 # workflow from", leave "tag" empty, tick "rehearsal". It builds that commit's macOS app and CLI
-# (Apple silicon and Intel), signs, notarizes, staples and checks them exactly as a release does,
-# and keeps them as workflow artifacts for 7 days (the repo is public, so anyone signed in to GitHub
-# can download them; their names say "rehearsal"). It never creates, edits or uploads to a release.
+# (Apple silicon and Intel) and Windows installers and CLI, signs them (and notarizes and staples
+# the macOS ones) and checks them exactly as a release does, and keeps them as workflow artifacts
+# for 7 days (the repo is public, so anyone signed in to GitHub can download them; their names say
+# "rehearsal"). It never creates, edits or uploads to a release. Linux isn't built.
 # "Re-run failed jobs" works for a release and a rehearsal: artifact names can't repeat within a
 # run, so every name carries the attempt number.
 #
@@ -44,7 +65,7 @@ on:
         required: false
         default: ''
       rehearsal:
-        description: 'Rehearsal: sign, notarize and check the macOS app and CLI of the branch picked above, as workflow artifacts. No release is created or changed.'
+        description: 'Rehearsal: sign and check the macOS and Windows app and CLI of the branch picked above (macOS also notarized), as workflow artifacts. No release is created or changed.'
         type: boolean
         default: false
 
@@ -67,7 +88,7 @@ env:
 
 jobs:
   create-release:
-    # Skipped in a rehearsal, and with it every job that needs it except the two macOS jobs.
+    # Skipped in a rehearsal, and with it every job that needs it except the four signing jobs.
     if: ${{ !inputs.rehearsal }}
     runs-on: ubuntu-22.04
     outputs:
@@ -78,7 +99,7 @@ jobs:
           case "$TAG" in
             v*) ;;
             *)
-              echo "::error::'$TAG' isn't a release tag. Enter an existing tag such as v0.1.0 (or pick it under 'Use workflow from'); to test macOS signing without a release, tick 'rehearsal'."
+              echo "::error::'$TAG' isn't a release tag. Enter an existing tag such as v0.1.0 (or pick it under 'Use workflow from'); to test signing without a release, tick 'rehearsal'."
               exit 1
               ;;
           esac
@@ -114,18 +135,16 @@ jobs:
           fi
           echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
 
-  # Windows (.msi/.exe) and Linux (.AppImage/.deb/.rpm) installers with the `pagelamp` CLI bundled
-  # as a Tauri sidecar (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE). Not code-signed
-  # yet; tauri-action uploads them straight to the draft release.
+  # Linux (.AppImage/.deb/.rpm) installers with the `pagelamp` CLI bundled as a Tauri sidecar
+  # (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE). Not code-signed (SHA256SUMS covers
+  # them); tauri-action uploads them straight to the draft release. macOS and Windows have their
+  # own signing jobs below.
   app:
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            args: ''
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             args: ''
@@ -180,6 +199,11 @@ jobs:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     runs-on: macos-latest
+    # "<sha256>  <file name>" of the .dmg as checked and uploaded (see `checksums`). One output
+    # per target: the legs of a matrix share the job's outputs.
+    outputs:
+      dmg_sum_aarch64: ${{ steps.sum.outputs.dmg_sum_aarch64 }}
+      dmg_sum_x86_64: ${{ steps.sum.outputs.dmg_sum_x86_64 }}
     env:
       # Public (it's in every signature); the checks make sure this team signed each file.
       DEVELOPER_TEAM_ID: CBU69BX7M8
@@ -237,7 +261,9 @@ jobs:
       # notarizes and staples the .app, then builds and signs the .dmg. APPLE_SIGNING_IDENTITY
       # overrides tauri.conf.json's `"signingIdentity": "-"` (ad hoc, for local builds). Without
       # notarization credentials Tauri would only print a warning, and it ignores a failed staple,
-      # hence the preflight above and the checks below.
+      # hence the preflight above and the checks below. Tauri waits for Apple in one `notarytool
+      # submit --wait` without retries (unlike macos-signing.sh for the .dmg and the CLI), so a
+      # network drop on the runner during a long wait fails this step: "Re-run failed jobs".
       - name: Bundle, sign and notarize the app (Tauri)
         working-directory: apps/desktop
         env:
@@ -262,7 +288,11 @@ jobs:
           fi
           echo "APP_PATH=$PWD/${apps[0]}" >> "$GITHUB_ENV"
           echo "DMG_PATH=$PWD/${dmgs[0]}" >> "$GITHUB_ENV"
+      # The script waits up to NOTARY_TIMEOUT_MINUTES (240 by default) for Apple, riding out network
+      # errors; this limit only stops a hung notarytool call (then the always() steps still run).
+      # A job can't run past 6 hours on GitHub's runners, whatever its timeout-minutes.
       - name: Notarize and staple the disk image
+        timeout-minutes: 260
         env:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -281,6 +311,15 @@ jobs:
         run: |
           bash .github/scripts/macos-signing.sh verify-app "$APP_PATH"
           bash .github/scripts/macos-signing.sh verify-dmg "$DMG_PATH"
+      # For `checksums`, as in `app-windows`.
+      - name: Record the disk image's hash
+        id: sum
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          sum="$(shasum -a 256 "$DMG_PATH" | cut -d ' ' -f 1)  $(basename "$DMG_PATH")"
+          echo "dmg_sum_${TARGET%%-*}=$sum" >> "$GITHUB_OUTPUT"
+          echo "$sum"
       # Same file name tauri-action would use; --clobber replaces the file from an earlier run.
       # Only the .dmg is published: the .app.tar.gz tauri-action used to add is only for an updater.
       - name: Upload the disk image to the draft release
@@ -317,16 +356,211 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Standalone CLI archives for people who only want `pagelamp` (MCP server + sync), Windows and
-  # Linux (not signed yet).
+  # The Windows installers, signed with Azure Artifact Signing. Tauri's own hook
+  # (bundle.windows.signCommand, from a config file written on the runner) signs the `pagelamp`
+  # sidecar, the app executable (once per installer), the NSIS plugins and uninstaller, the WiX
+  # extension DLLs it uses locally (not shipped), the -setup.exe and the .msi, and each signature
+  # is checked as it is made. Afterwards the installers are checked, the -setup.exe is installed on
+  # the runner and the .msi extracted, and every .exe and .dll in them must be signed too. Only
+  # then is anything uploaded (in a rehearsal they become workflow artifacts).
+  app-windows:
+    needs: create-release
+    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    environment: release
+    runs-on: windows-latest
+    # Replaces the workflow's permissions for this job: the release upload, and the OIDC token that
+    # azure/login exchanges for an Azure token (only the two Windows jobs may request one).
+    permissions:
+      contents: write
+      id-token: write
+    # "<sha256>  <file name>" of each installer as checked and uploaded (see `checksums`).
+    outputs:
+      setup_sum: ${{ steps.sums.outputs.setup_sum }}
+      msi_sum: ${{ steps.sums.outputs.msi_sum }}
+    env:
+      # Every signature must carry this CN (the owner's validated name; public in each signature).
+      AZURE_ARTIFACT_SIGNING_PUBLISHER: ${{ vars.AZURE_ARTIFACT_SIGNING_PUBLISHER }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A rehearsal builds exactly the commit it runs from, as in `app-macos`.
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      # Checks the variables (not secrets) by name and format; nothing is printed.
+      - name: Check signing setup
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 preflight
+      # Sign in once before the build, so a wrong federated credential, tenant or client ID fails
+      # within a minute instead of after the build, then sign out for the build. The real sign-in
+      # comes right before signing: the GitHub token azure/login exchanges is valid for minutes, and
+      # the build shouldn't run while this job holds an Azure token that can sign.
+      - name: Try the Azure sign-in
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0 (immutable release)
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Check the Azure sign-in
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
+      - name: Sign out of Azure for the build
+        if: ${{ always() }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
+      # No caches and pinned third-party actions, as in `app-macos`.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      # Compile (app and sidecar) first, signed out of Azure; `tauri bundle` below then packages
+      # and signs. As on macOS this limits exposure but isn't isolation: any step of this job could
+      # request the job's OIDC token, so the lockfiles and the actions above are trusted. (The fix,
+      # a build job without `id-token` for both Windows jobs, is in post-beta-followups.md.)
+      - name: Build the app (not signed yet)
+        working-directory: apps/desktop
+        run: pnpm tauri build --target x86_64-pc-windows-msvc --no-bundle
+      # SignTool and the Artifact Signing dlib from nuget.org, pinned and hash-checked;
+      # metadata.json (account, profile, endpoint); the Tauri config with the signCommand.
+      - name: Install the signing tools
+        env:
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          pwsh -NoProfile -File .github/scripts/windows-signing.ps1 install-tools
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File .github/scripts/windows-signing.ps1 tauri-config
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0 (immutable release)
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # Also puts the token for the signing service in the Azure CLI's cache while the GitHub
+      # token behind the sign-in is still valid; the dlib reads it from there.
+      - name: Check the Azure sign-in
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
+      # Signs the sidecar, the app executable (for each installer), the NSIS plugins and the
+      # uninstaller, and the installers, each through `windows-signing.ps1 sign`, which checks
+      # every signature it makes. Which installers are built is up to tauri.conf.json.
+      - name: Bundle and sign the installers (Tauri)
+        working-directory: apps/desktop
+        run: pnpm tauri bundle --target x86_64-pc-windows-msvc --config "$env:PAGELAMP_TAURI_SIGNING_CONFIG"
+      - name: Sign out of Azure
+        if: ${{ always() }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
+      # Tauri prints only "failed to run pwsh" when a signing command fails; the details are here.
+      - name: Show the signing log
+        if: ${{ failure() }}
+        run: |
+          $log = $env:PAGELAMP_SIGNING_LOG
+          if ($log -and (Test-Path -LiteralPath $log)) { Get-Content -LiteralPath $log } else { 'No signing log: the job failed before anything was signed.' }
+      - name: Find the installers
+        run: |
+          $bundle = 'target/x86_64-pc-windows-msvc/release/bundle'
+          $setup = @(Get-ChildItem -Path "$bundle/nsis" -Filter '*.exe' -File -ErrorAction SilentlyContinue)
+          $msi = @(Get-ChildItem -Path "$bundle/msi" -Filter '*.msi' -File -ErrorAction SilentlyContinue)
+          if ($setup.Count -ne 1 -or $msi.Count -gt 1) {
+            "::error::Expected one NSIS installer and at most one .msi under $bundle, found: $((@($setup) + @($msi)).Name -join ', ')"
+            exit 1
+          }
+          "SETUP_PATH=$($setup[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $msiPath = if ($msi.Count -eq 1) { $msi[0].FullName } else { '' }
+          "MSI_PATH=$msiPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+      # signtool verify /pa /all /tw (chain to Microsoft's Public Trust root) and
+      # Get-AuthenticodeSignature (Valid, publisher CN, timestamp) on each installer, then on every
+      # .exe/.dll the -setup.exe installs (the app, pagelamp.exe, uninstall.exe) and the .msi
+      # contains. The uninstaller is checked after a real install because makensis ignores a failed
+      # uninstaller signature.
+      - name: Check the installers and everything they install
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 verify-installers "$env:SETUP_PATH" "$env:MSI_PATH"
+      # For `checksums`, which makes sure the draft still holds exactly these files before it
+      # writes SHA256SUMS: the Linux jobs can upload to the release too, and they restore caches.
+      - name: Record the installers' hashes
+        id: sums
+        run: |
+          function Get-Sum([string] $Path) {
+            if (-not $Path) { return '' }
+            $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            return "$hash  $(Split-Path -Leaf $Path)"
+          }
+          $setup = Get-Sum $env:SETUP_PATH
+          $msi = Get-Sum $env:MSI_PATH
+          "setup_sum=$setup", "msi_sum=$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "$setup"
+          if ($msi) { "$msi" }
+      # Same file names tauri-action used; --clobber replaces files from an earlier run.
+      - name: Upload the installers to the draft release
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $files = @($env:SETUP_PATH)
+          if ($env:MSI_PATH) { $files += $env:MSI_PATH }
+          gh release upload $env:TAG @files --clobber
+      # As for the rehearsal .dmg: not a release name, and unique per attempt. Renaming doesn't
+      # touch the signature.
+      - name: Name the installers (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'rehearsal'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $suffix = "rehearsal-$($env:GITHUB_SHA.Substring(0, 7))-attempt$($env:GITHUB_RUN_ATTEMPT)"
+          $setup = Get-Item -LiteralPath $env:SETUP_PATH
+          $copy = Join-Path $dir "$($setup.BaseName)-$suffix$($setup.Extension)"
+          Copy-Item -LiteralPath $setup.FullName -Destination $copy
+          "REHEARSAL_SETUP=$copy" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $msiCopy = ''
+          if ($env:MSI_PATH) {
+            $msi = Get-Item -LiteralPath $env:MSI_PATH
+            $msiCopy = Join-Path $dir "$($msi.BaseName)-$suffix$($msi.Extension)"
+            Copy-Item -LiteralPath $msi.FullName -Destination $msiCopy
+          }
+          "REHEARSAL_MSI=$msiCopy" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Keep the NSIS installer (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.REHEARSAL_SETUP }}
+          archive: false
+          retention-days: 7
+          if-no-files-found: error
+      - name: Keep the MSI (rehearsal)
+        if: ${{ inputs.rehearsal && env.REHEARSAL_MSI != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.REHEARSAL_MSI }}
+          archive: false
+          retention-days: 7
+          if-no-files-found: error
+
+  # The standalone Linux CLI archive for people who only want `pagelamp` (MCP server + sync). Not
+  # code-signed (SHA256SUMS covers it). macOS and Windows have their own signing jobs.
   cli:
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
@@ -357,15 +591,9 @@ jobs:
           name="pagelamp-${TAG}-${{ matrix.target }}"
           mkdir -p "dist/$name"
           cp LICENSE README.md "dist/$name/"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/pagelamp.exe" "dist/$name/"
-            (cd dist && 7z a "$name.zip" "$name" >/dev/null)
-            archive="dist/$name.zip"
-          else
-            cp "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
-            tar -C dist -czf "dist/$name.tar.gz" "$name"
-            archive="dist/$name.tar.gz"
-          fi
+          cp "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          archive="dist/$name.tar.gz"
           # Hash from inside dist/ so the .sha256 names the bare file and `shasum -c` works
           # next to the download.
           file="$(basename "$archive")"
@@ -384,6 +612,10 @@ jobs:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     runs-on: macos-latest
+    # "<sha256>  <file name>" of the archive as uploaded, per target (see `checksums`).
+    outputs:
+      archive_sum_aarch64: ${{ steps.sum.outputs.archive_sum_aarch64 }}
+      archive_sum_x86_64: ${{ steps.sum.outputs.archive_sum_x86_64 }}
     env:
       # Public (it's in every signature); the checks make sure this team signed each file.
       DEVELOPER_TEAM_ID: CBU69BX7M8
@@ -425,8 +657,10 @@ jobs:
         run: |
           codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" \
             --keychain "$SIGNING_KEYCHAIN" "target/${{ matrix.target }}/release/pagelamp"
-      # The notary service takes a zip; the zip is only for the submission and isn't shipped.
+      # The notary service takes a zip; the zip is only for the submission and isn't shipped. The
+      # step's time limit is a backstop above the script's own (as in `app-macos`).
       - name: Notarize pagelamp
+        timeout-minutes: 260
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -461,6 +695,15 @@ jobs:
           # Hash from inside dist/ so the .sha256 names the bare file (as in the `cli` job).
           (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
           echo "ARCHIVE=$PWD/dist/$name.tar.gz" >> "$GITHUB_ENV"
+      # For `checksums`, as in `app-windows`.
+      - name: Record the archive's hash
+        id: sum
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          sum="$(cat "$ARCHIVE.sha256")"
+          echo "archive_sum_${TARGET%%-*}=$sum" >> "$GITHUB_OUTPUT"
+          echo "$sum"
       - name: Upload to the draft release
         if: ${{ !inputs.rehearsal }}
         env:
@@ -484,11 +727,136 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # The standalone Windows CLI, signed with Azure Artifact Signing by the same script as the app,
+  # and checked, before it is zipped. Also runs in a rehearsal.
+  cli-windows:
+    needs: create-release
+    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    environment: release
+    runs-on: windows-latest
+    # As in `app-windows`: the release upload, and the OIDC token for azure/login.
+    permissions:
+      contents: write
+      id-token: write
+    # "<sha256>  <file name>" of the zip as uploaded (see `checksums`).
+    outputs:
+      zip_sum: ${{ steps.package.outputs.zip_sum }}
+    env:
+      AZURE_ARTIFACT_SIGNING_PUBLISHER: ${{ vars.AZURE_ARTIFACT_SIGNING_PUBLISHER }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      - name: Check signing setup
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 preflight
+      # Fail fast on the Azure sign-in, then build signed out, as in `app-windows`.
+      - name: Try the Azure sign-in
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0 (immutable release)
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Check the Azure sign-in
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
+      - name: Sign out of Azure for the build
+        if: ${{ always() }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
+      # No caches and a pinned action, as in `app-windows`.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+      - name: Build
+        run: cargo build --release --locked -p pagelamp-cli --target x86_64-pc-windows-msvc
+      - name: Install the signing tools
+        env:
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 install-tools
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0 (immutable release)
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Check the Azure sign-in
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
+      - name: Sign pagelamp.exe
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign target/x86_64-pc-windows-msvc/release/pagelamp.exe
+      - name: Sign out of Azure
+        if: ${{ always() }}
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
+      - name: Show the signing log
+        if: ${{ failure() }}
+        run: |
+          $log = $env:PAGELAMP_SIGNING_LOG
+          if ($log -and (Test-Path -LiteralPath $log)) { Get-Content -LiteralPath $log } else { 'No signing log: the job failed before anything was signed.' }
+      # signtool verify /pa /all /tw (Public Trust root), Get-AuthenticodeSignature (Valid,
+      # publisher CN, timestamp), once more on the file that goes into the zip.
+      - name: Check the signature
+        run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 verify target/x86_64-pc-windows-msvc/release/pagelamp.exe
+      # The same zip layout as before (7-Zip), and a .sha256 with LF line ending so `sha256sum -c`
+      # works on any system.
+      - name: Package
+        id: package
+        run: |
+          $target = 'x86_64-pc-windows-msvc'
+          if ($env:REHEARSAL -eq 'true') {
+            # As for the rehearsal installers: not a release name, and unique per attempt.
+            $name = "pagelamp-rehearsal-$($env:GITHUB_SHA.Substring(0, 7))-attempt$($env:GITHUB_RUN_ATTEMPT)-$target"
+          } else {
+            $name = "pagelamp-$($env:TAG)-$target"
+          }
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
+          New-Item -ItemType Directory -Force -Path (Join-Path $dist $name) | Out-Null
+          Copy-Item -LiteralPath LICENSE, README.md, "target/$target/release/pagelamp.exe" -Destination (Join-Path $dist $name)
+          Push-Location $dist
+          7z a "$name.zip" $name | Out-Null
+          $code = $LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { "::error::7z exited with $code"; exit 1 }
+          $zip = Join-Path $dist "$name.zip"
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText("$zip.sha256", "$hash  $name.zip`n")
+          "ARCHIVE=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "zip_sum=$hash  $name.zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Upload to the draft release
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload $env:TAG $env:ARCHIVE "$env:ARCHIVE.sha256" --clobber
+      - name: Keep the archive (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.ARCHIVE }}
+          archive: false
+          retention-days: 7
+          if-no-files-found: error
+
   # One SHA256SUMS file covering every asset (installers + CLI archives), so testers can verify
-  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`. It runs after the macOS jobs
-  # have replaced their files with the notarized, stapled ones, so it hashes the final files.
+  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`. It runs after the signing
+  # jobs have uploaded their files (notarized and stapled on macOS, signed on Windows), so it hashes
+  # the final files. First it checks that the draft still holds exactly the signed files those jobs
+  # checked (they pass on each file's hash as a job output, which no other job can set): every job
+  # here can upload to the release, and the Linux ones restore caches, so one of them could have
+  # replaced a signed file in the meantime. Then SHA256SUMS would vouch for it; instead this fails.
   checksums:
-    needs: [create-release, app, app-macos, cli, cli-macos]
+    needs: [create-release, app, app-macos, app-windows, cli, cli-macos, cli-windows]
     runs-on: ubuntu-22.04
     steps:
       - name: Compute and upload SHA256SUMS
@@ -496,6 +864,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          # "<sha256>  <file name>", as the signing job checked and uploaded the file.
+          DMG_AARCH64: ${{ needs.app-macos.outputs.dmg_sum_aarch64 }}
+          DMG_X86_64: ${{ needs.app-macos.outputs.dmg_sum_x86_64 }}
+          CLI_MACOS_AARCH64: ${{ needs.cli-macos.outputs.archive_sum_aarch64 }}
+          CLI_MACOS_X86_64: ${{ needs.cli-macos.outputs.archive_sum_x86_64 }}
+          WINDOWS_SETUP: ${{ needs.app-windows.outputs.setup_sum }}
+          # Empty when tauri.conf.json builds no .msi.
+          WINDOWS_MSI: ${{ needs.app-windows.outputs.msi_sum }}
+          CLI_WINDOWS: ${{ needs.cli-windows.outputs.zip_sum }}
         run: |
           # tauri-action packs the macOS .app as .app.tar.gz when it uploads (earlier runs of this
           # workflow did); without an updater it only duplicates the .dmg and confuses testers, so
@@ -504,6 +881,29 @@ jobs:
             while read -r asset; do gh release delete-asset "$TAG" "$asset" --yes; done
           mkdir assets && cd assets
           gh release download "$TAG"
+          signed="$RUNNER_TEMP/signed-files.sha256"
+          : > "$signed"
+          for name in DMG_AARCH64 DMG_X86_64 CLI_MACOS_AARCH64 CLI_MACOS_X86_64 WINDOWS_SETUP CLI_WINDOWS; do
+            if [ -z "${!name}" ]; then
+              # e.g. GitHub drops a job output that contains a secret's value ("Skip output").
+              echo "::error::The signing job passed on no hash for $name, so the signed files can't be checked. Look for 'Skip output' in that job's log."
+              exit 1
+            fi
+            printf '%s\n' "${!name}" >> "$signed"
+          done
+          if [ -n "$WINDOWS_MSI" ]; then printf '%s\n' "$WINDOWS_MSI" >> "$signed"; fi
+          if ! sha256sum --strict --check "$signed"; then
+            echo "::error::A signed file in the draft release is missing or isn't the file its signing job checked (see above). Don't publish this draft, and find out from the run's logs which job uploaded over it before re-running anything."
+            exit 1
+          fi
+          # Each archive's .sha256 must match the archive too.
+          for f in ./*.sha256; do
+            [ -e "$f" ] || continue
+            if ! sha256sum --strict --check "$f"; then
+              echo "::error::$f doesn't match its archive. Don't publish this draft, and find out from the run's logs which job uploaded over it before re-running anything."
+              exit 1
+            fi
+          done
           rm -f SHA256SUMS ./*.sha256
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS

@@ -24,14 +24,18 @@ First public beta.
 - Signed and notarized macOS builds: the app (`.dmg`) and the standalone `pagelamp` binary are
   signed with a Developer ID and notarized by Apple (the ticket is stapled to the `.dmg` and the
   app), so they open without the System Settings → Privacy & Security steps.
+- Signed Windows builds: the installers (`-setup.exe` and `.msi`), the app with its `pagelamp.exe`,
+  the uninstaller and the standalone `pagelamp.exe` are signed with Azure Artifact Signing and
+  timestamped, so Windows shows a verified publisher instead of "Unknown publisher".
 
 ### Upgrading from an earlier build
 - After installing a new version, quit your AI app completely and open it again so it starts the new
   `pagelamp` (on macOS, open PageLamp once first so macOS lets the new build run).
 
 ### Known limitations
-- Windows and Linux builds are not code-signed yet (Windows signing is planned for a later
-  release; see the README for the SmartScreen step).
+- On Windows, SmartScreen may still warn about a new release until the signing certificate has
+  built up reputation (see the README). Linux builds are not code-signed; check downloads against
+  `SHA256SUMS`.
 - No reminders/notifications yet (planned for v0.2).
 - Canvas access uses a personal token until an institution-approved sign-in is available.
 - On macOS and Windows the desktop app doesn't put `pagelamp` on your PATH (use the full path shown
