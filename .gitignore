@@ -37,3 +37,10 @@ apps/desktop/src-tauri/gen/schemas/
 *.key
 *.p12
 *.p8
+
+# macOS app: outputs of apps/macos/scripts/build-ffi.sh and SwiftPM
+apps/macos/Sources/PageLampKit/Generated/
+apps/macos/Frameworks/
+apps/macos/.build/
+apps/macos/.swiftpm/
+apps/macos/dist/

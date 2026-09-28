@@ -1,0 +1,22 @@
+{
+  "actions": {
+    "copyEntryOnly": "Copy Entry Only",
+    "copyServersSection": "Copy mcpServers Section"
+  },
+  "sources": {
+    "fixUnavailable": "Coming in the next update of this preview.",
+    "problem": {
+      "expiredCanvasPreview": "Your Canvas token has expired or was revoked. Create a new one in Canvas (Account → Settings → Approved Integrations → + New Access Token). This preview can’t replace it yet: use Replace token in the PageLamp app, or run pagelamp sources update-secret {{id}} in Terminal.",
+      "expiredFeedPreview": "The calendar no longer accepts this feed address. Copy the address again from your LMS. This preview can’t replace it yet: use Replace feed address in the PageLamp app, or run pagelamp sources update-secret {{id}} in Terminal."
+    }
+  },
+  "connect": {
+    "existingFile": {
+      "hasServers": "It already has an \"mcpServers\" section",
+      "otherSettings": "It has other settings but no \"mcpServers\""
+    }
+  },
+  "about": {
+    "tagline": "A reading lamp for your courses."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$description": "Platform modifier, context \"windows\" (Tauri on Windows; data-platform=\"windows\"). Fluent geometry: 8 px containers, 4 px controls.",
+  "radius": {
+    "callout": { "$value": { "value": 8, "unit": "px" } },
+    "row": { "$value": { "value": 4, "unit": "px" } },
+    "inner-min": { "$value": { "value": 4, "unit": "px" } },
+    "control": { "$value": { "value": 4, "unit": "px" } },
+    "popover": { "$value": { "value": 8, "unit": "px" } },
+    "dialog": { "$value": { "value": 8, "unit": "px" } }
+  },
+  "font": {
+    "family": {
+      "sans": { "$value": ["Inter Variable", "Microsoft YaHei UI", "sans-serif"] },
+      "mono": { "$value": ["Cascadia Mono", "Consolas", "monospace"] }
+    }
+  }
+}

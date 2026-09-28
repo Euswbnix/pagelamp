@@ -1,0 +1,22 @@
+{
+  "actions": {
+    "copyEntryOnly": "仅复制这一项",
+    "copyServersSection": "复制 mcpServers 部分"
+  },
+  "sources": {
+    "fixUnavailable": "将在这个预览版的下一次更新中提供。",
+    "problem": {
+      "expiredCanvasPreview": "你的 Canvas 访问令牌已过期或被撤销。请在 Canvas 中新建一个（Account → Settings → Approved Integrations → + New Access Token）。这个预览版还不能直接更换：请在 PageLamp 应用中使用“更换访问令牌”，或在终端运行 pagelamp sources update-secret {{id}}。",
+      "expiredFeedPreview": "这个日历订阅地址已经失效。请从教学平台重新复制。这个预览版还不能直接更换：请在 PageLamp 应用中使用“更换日历订阅地址”，或在终端运行 pagelamp sources update-secret {{id}}。"
+    }
+  },
+  "connect": {
+    "existingFile": {
+      "hasServers": "文件里已经有 \"mcpServers\"",
+      "otherSettings": "文件里有其他设置，但没有 \"mcpServers\""
+    }
+  },
+  "about": {
+    "tagline": "为每门课点一盏读书灯。"
+  }
+}

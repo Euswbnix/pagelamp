@@ -100,6 +100,76 @@ jobs:
       - name: Test (desktop crate)
         run: cargo test -p pagelamp-desktop
 
+  # The native macOS app (apps/macos, preview): the Rust core as an xcframework, then the Swift
+  # package's build and tests (including a small headless snapshot render), the Mac lint (glass
+  # only in Chrome/, generated tokens and strings current, string keys exist) and the
+  # generators' tests. Needs an Apple silicon runner on macOS 26 or later with Xcode 27.
+  #
+  # Runner: GitHub's `xcode-27` image (arm64, public preview since 2026-09-10; `macos-latest` is
+  # still macOS 26 with an older Xcode, and the app needs the macOS 27 SDK to compile). The
+  # repository variable MACOS_APP_RUNNER overrides it, e.g. once Xcode 27 reaches a GA image. The
+  # first step picks Xcode 27 from the image (/Applications/Xcode_27.0.app, else the newest
+  # /Applications/Xcode_27*.app, else the selected Xcode if it is 27) and fails with the list of
+  # installed Xcodes when there is none, instead of building with an older toolchain.
+  macos-app:
+    name: macOS app
+    runs-on: ${{ vars.MACOS_APP_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode 27
+        run: |
+          os_version="$(sw_vers -productVersion)"
+          echo "Runner: macOS $os_version ($(uname -m)), image ${ImageOS:-unknown} ${ImageVersion:-}"
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "::error::The macOS app builds on Apple silicon only; this runner is $(uname -m)."
+            exit 1
+          fi
+          if (( ${os_version%%.*} < 26 )); then
+            echo "::error::The macOS app needs macOS 26 or later to build and run its tests; this runner has $os_version. Set the repository variable MACOS_APP_RUNNER to a newer image."
+            exit 1
+          fi
+          xcode=""
+          if [[ -d /Applications/Xcode_27.0.app ]]; then
+            xcode=/Applications/Xcode_27.0.app
+          else
+            xcode="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+          if [[ -z "$xcode" ]]; then
+            # The image's selected Xcode, if that one is 27.
+            selected="$(xcode-select -p 2>/dev/null || true)"
+            if [[ "$selected" == */Contents/Developer ]] \
+              && [[ "$(DEVELOPER_DIR="$selected" xcodebuild -version 2>/dev/null | awk 'NR == 1 { print $2 }')" == 27.* ]]; then
+              xcode="${selected%/Contents/Developer}"
+            fi
+          fi
+          if [[ -z "$xcode" ]]; then
+            installed="$(ls -d /Applications/Xcode*.app 2>/dev/null | xargs -n 1 basename | tr '\n' ' ')"
+            echo "::error::Xcode 27 is not installed on this runner (found: ${installed:-none}). Set the repository variable MACOS_APP_RUNNER to an image with Xcode 27."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >>"$GITHUB_ENV"
+          DEVELOPER_DIR="$xcode/Contents/Developer" xcodebuild -version
+          DEVELOPER_DIR="$xcode/Contents/Developer" swift --version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Rust core for Swift (xcframework + bindings)
+        run: apps/macos/scripts/build-ffi.sh
+      - name: Swift build
+        working-directory: apps/macos
+        run: swift build
+      - name: Swift test
+        working-directory: apps/macos
+        run: swift test
+      - name: Lint (glass, generated files, string keys)
+        run: apps/macos/scripts/lint.sh
+      - name: Generator tests (strings, tokens)
+        run: node --test apps/macos/scripts/test/*.test.mjs design/tokens/test/*.test.mjs
+
   # Dependency licences must stay compatible with Apache-2.0 (docs/ARCHITECTURE.md §7).
   licenses:
     name: Licences

@@ -1,0 +1,495 @@
+{
+  "$description": "PageLamp design tokens, base set: light theme, normal contrast, macOS platform, no backdrop, transparency auto. Spec: docs/design/macos-shell.md §10. Resolve with pagelamp.resolver.json; generate with gen-tokens.mjs. $value is what the web (Tauri) uses; $extensions[\"dev.pagelamp\"].macos is the native Mac value (\"system\" = the Mac uses the platform's own value and no Swift is emitted).",
+  "color": {
+    "$type": "color",
+    "accent": {
+      "$description": "Brand accent. The Mac uses the student's system accent; the brand colour reaches it only as the AccentColor asset (§4.2).",
+      "$value": { "colorSpace": "oklch", "components": [0.47, 0.08, 252], "hex": "#385d86" },
+      "$extensions": { "dev.pagelamp": { "macos": "asset" } }
+    },
+    "on-accent": {
+      "$value": { "colorSpace": "oklch", "components": [0.985, 0, 0], "hex": "#fafafa" },
+      "$extensions": { "dev.pagelamp": { "macos": "system" } }
+    },
+    "surface": {
+      "content": {
+        "$value": { "colorSpace": "oklch", "components": [0.99, 0.002, 85], "hex": "#fcfcfa" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "raised": {
+        "$description": "Callouts, cards. Increased contrast adds a 1 px rule border. Mac: .fill.tertiary.",
+        "$value": { "colorSpace": "oklch", "components": [0.965, 0.004, 85], "hex": "#f5f3f0" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "sidebar": {
+        "$description": "Opaque sidebar (Windows 10 / 21H2, Linux). Mac: system glass.",
+        "$value": { "colorSpace": "oklch", "components": [0.965, 0.004, 85], "hex": "#f5f3f0" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "popover": {
+        "$value": { "colorSpace": "oklch", "components": [0.995, 0, 0], "hex": "#fdfdfd" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "text": {
+      "primary": {
+        "$description": "Mac: .primary.",
+        "$value": { "colorSpace": "oklch", "components": [0.22, 0.012, 260], "hex": "#171b20" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "secondary": {
+        "$description": "Mac: .secondary. 5.83:1 on content, 5.21:1 on the lamp peak.",
+        "$value": { "colorSpace": "oklch", "components": [0.5, 0.012, 260], "hex": "#5f636a" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "tertiary": {
+        "$description": "Decorative only (3.02:1). Mac: .tertiary.",
+        "$value": { "colorSpace": "oklch", "components": [0.66, 0.01, 260], "hex": "#8f9298" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "rule": {
+      "$description": "Hairlines: text.primary at 10 %. Mac: .separator.",
+      "$value": { "colorSpace": "oklch", "components": [0.22, 0.012, 260], "alpha": 0.1, "hex": "#171b20" },
+      "$extensions": { "dev.pagelamp": { "macos": "system" } }
+    },
+    "lamp": {
+      "wash": {
+        "$description": "The one warm pool of light marking now (§6.1); peak opacity 28 % light / 17 % dark. Under increased contrast or reduced transparency the band shows lamp.rule instead. Swift gets the opaque colour plus the peak opacities (PLColor.lampWash.opacity(…)).",
+        "$value": { "colorSpace": "oklch", "components": [0.86, 0.1, 78], "alpha": 0.28, "hex": "#f5c984" },
+        "$extensions": { "dev.pagelamp": { "macos": { "opacity": "separate" } } }
+      },
+      "rule": {
+        "$description": "3 pt rule that replaces the wash under Reduce Transparency / Increase Contrast. Hue 78, apart from warning (55).",
+        "$value": { "colorSpace": "oklch", "components": [0.6, 0.12, 78], "hex": "#a77612" }
+      }
+    },
+    "status": {
+      "$description": "Glyphs only; words stay text.primary. Light warning (3.72:1) is never text.",
+      "success": {
+        "$value": { "colorSpace": "oklch", "components": [0.52, 0.11, 155], "hex": "#267b4c" },
+        "$extensions": { "dev.pagelamp": { "swift": { "name": "success" } } }
+      },
+      "warning": {
+        "$value": { "colorSpace": "oklch", "components": [0.62, 0.15, 55], "hex": "#c9690c" },
+        "$extensions": { "dev.pagelamp": { "swift": { "name": "warning" } } }
+      },
+      "danger": {
+        "$value": { "colorSpace": "oklch", "components": [0.56, 0.19, 27], "hex": "#cc3430" },
+        "$extensions": { "dev.pagelamp": { "swift": { "name": "danger" } } }
+      }
+    },
+    "glass": {
+      "$description": "Web glass imitation (§8, §10.5). Mac: system Liquid Glass.",
+      "tint": {
+        "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.62, "hex": "#ffffff" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "rim": {
+        "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.75, "hex": "#ffffff" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "edge": {
+        "$value": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.1, "hex": "#000000" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "mica": {
+      "layer-fill": {
+        "$description": "Windows 11 Mica: the inset content card (LayerFill, #80FFFFFF).",
+        "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "alpha": 0.502, "hex": "#ffffff" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    }
+  },
+  "palette": {
+    "$description": "Private, theme-dependent values that the contrast and backdrop contexts alias to (DTCG modifiers are orthogonal, so increased-contrast dark lives here and the dark theme overrides it). Never emitted.",
+    "$extensions": { "dev.pagelamp": { "private": true } },
+    "$type": "color",
+    "ic": {
+      "accent": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 252], "hex": "#104375" } },
+      "on-accent": { "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "hex": "#ffffff" } },
+      "surface": {
+        "content": { "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "hex": "#ffffff" } },
+        "raised": { "$value": { "colorSpace": "oklch", "components": [0.95, 0, 0], "hex": "#eeeeee" } },
+        "sidebar": { "$value": { "colorSpace": "oklch", "components": [0.97, 0, 0], "hex": "#f5f5f5" } },
+        "popover": { "$value": { "colorSpace": "oklch", "components": [1, 0, 0], "hex": "#ffffff" } }
+      },
+      "text": {
+        "primary": { "$value": { "colorSpace": "oklch", "components": [0.1, 0, 0], "hex": "#030303" } },
+        "secondary": { "$value": { "colorSpace": "oklch", "components": [0.36, 0.01, 260], "hex": "#3a3d42" } },
+        "tertiary": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.01, 260], "hex": "#606369" } }
+      },
+      "rule": { "$value": { "colorSpace": "oklch", "components": [0.1, 0, 0], "alpha": 0.35, "hex": "#030303" } },
+      "lamp-rule": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.1, 78], "hex": "#825b0c" } },
+      "success": { "$value": { "colorSpace": "oklch", "components": [0.42, 0.1, 155], "hex": "#095c34" } },
+      "warning": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.13, 50], "hex": "#9b4805" } },
+      "danger": { "$value": { "colorSpace": "oklch", "components": [0.46, 0.17, 27], "hex": "#a21a1b" } },
+      "mica-layer-fill": { "$value": { "colorSpace": "srgb", "components": [1, 1, 1], "hex": "#ffffff" } }
+    },
+    "mica": {
+      "glass-tint": {
+        "$value": { "colorSpace": "oklch", "components": [0.985, 0, 0], "alpha": 0.92, "hex": "#fafafa" }
+      }
+    }
+  },
+  "radius": {
+    "$type": "dimension",
+    "$description": "Window corners are always the system's and have no token. Concentric rule (§4.4): inner = max(inner-min, outer − padding).",
+    "callout": {
+      "$description": "Callouts, choice tiles, cards (.containerShape(.rect(cornerRadius: 12))).",
+      "$value": { "value": 12, "unit": "px" }
+    },
+    "row": { "$description": "Row hover/focus fills.", "$value": { "value": 8, "unit": "px" } },
+    "inner-min": {
+      "$description": "Minimum of a concentric inner shape (ConcentricRectangle(corners: .concentric(minimum: .fixed(6)))).",
+      "$value": { "value": 6, "unit": "px" }
+    },
+    "control": { "$value": { "value": 8, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": "system" } } },
+    "popover": { "$value": { "value": 12, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": "system" } } },
+    "dialog": { "$value": { "value": 14, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": "system" } } },
+    "mica-card": {
+      "$description": "Windows Mica mode: top-left radius of the inset content card.",
+      "$value": { "value": 8, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "macos": "system" } }
+    },
+    "capsule": {
+      "$description": "Mac: .capsule.",
+      "$value": { "value": 9999, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "macos": "system" } }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "$description": "4 pt grid: space.N = N × 4.",
+    "1": { "$value": { "value": 4, "unit": "px" } },
+    "2": { "$value": { "value": 8, "unit": "px" } },
+    "3": { "$value": { "value": 12, "unit": "px" } },
+    "4": { "$value": { "value": 16, "unit": "px" } },
+    "5": { "$value": { "value": 20, "unit": "px" } },
+    "6": { "$value": { "value": 24, "unit": "px" } },
+    "8": { "$value": { "value": 32, "unit": "px" } },
+    "10": { "$value": { "value": 40, "unit": "px" } },
+    "12": { "$value": { "value": 48, "unit": "px" } }
+  },
+  "layout": {
+    "$type": "dimension",
+    "measure": { "$description": "ReadingColumn max width.", "$value": { "value": 760, "unit": "px" } },
+    "gutter": { "$value": { "value": 40, "unit": "px" } },
+    "gutter-narrow": { "$description": "Gutter below a 760 pt detail column.", "$value": { "value": 24, "unit": "px" } },
+    "section-gap": { "$value": { "value": 40, "unit": "px" } },
+    "section-gap-course": { "$value": { "value": 32, "unit": "px" } },
+    "title-to-rule": { "$value": { "value": 12, "unit": "px" } },
+    "row-padding": { "$value": { "value": 8, "unit": "px" } },
+    "day-group-gap": { "$value": { "value": 20, "unit": "px" } },
+    "deadline-day-column": { "$value": { "value": 120, "unit": "px" } },
+    "sheet-inset": { "$value": { "value": 24, "unit": "px" } },
+    "welcome-column": {
+      "$value": { "value": 560, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "macos": 520 } }
+    },
+    "capsule-max": { "$description": "Status capsule max width.", "$value": { "value": 520, "unit": "px" } }
+  },
+  "size": {
+    "$type": "dimension",
+    "window": {
+      "main": {
+        "width": { "$value": { "value": 1200, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": 1180 } } },
+        "height": { "$value": { "value": 800, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": 760 } } },
+        "min-width": { "$value": { "value": 500, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": 760 } } },
+        "min-height": { "$value": { "value": 600, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": 520 } } }
+      },
+      "welcome": {
+        "width": { "$value": { "value": 680, "unit": "px" } },
+        "height": { "$value": { "value": 620, "unit": "px" } }
+      }
+    },
+    "sidebar": {
+      "min": { "$value": { "value": 200, "unit": "px" } },
+      "ideal": { "$description": "The web sidebar width.", "$value": { "value": 232, "unit": "px" } },
+      "max": { "$value": { "value": 300, "unit": "px" } },
+      "icons-below": {
+        "$description": "Web: the sidebar collapses to icons below this window width.",
+        "$value": { "value": 760, "unit": "px" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "inspector": {
+      "min": { "$value": { "value": 260, "unit": "px" } },
+      "ideal": { "$value": { "value": 300, "unit": "px" } },
+      "max": { "$value": { "value": 360, "unit": "px" } },
+      "open-at": {
+        "$description": "Mac: open the inspector on the first course visit at this window width. Web: right panel instead of a sheet from this width.",
+        "$value": { "value": 1100, "unit": "px" }
+      },
+      "panel": {
+        "$description": "Web right-panel width.",
+        "$value": { "value": 320, "unit": "px" },
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "settings": { "width": { "$value": { "value": 600, "unit": "px" } } },
+    "menubar": { "width": { "$value": { "value": 340, "unit": "px" } } },
+    "accessory": { "height": { "$value": { "value": 36, "unit": "px" } } },
+    "week-button": {
+      "min": { "$value": { "value": 28, "unit": "px" }, "$extensions": { "dev.pagelamp": { "macos": 26 } } }
+    },
+    "toolbar-row": {
+      "$description": "Web in-page toolbar row.",
+      "$value": { "value": 48, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "macos": "system" } }
+    },
+    "glyph": {
+      "empty": { "$description": "Empty-state SF Symbol / lucide icon.", "$value": { "value": 44, "unit": "px" } },
+      "lamp": { "$value": { "value": 56, "unit": "px" } }
+    },
+    "step-number": { "$value": { "value": 22, "unit": "px" } }
+  },
+  "font": {
+    "$description": "$value is the web ramp (min 12 px; Semibold, never Bold). macOS uses HIG text styles (no Dynamic Type), in $extensions. Footnote and Caption are never used.",
+    "family": {
+      "$type": "fontFamily",
+      "sans": {
+        "$description": "Tauri on macOS keeps system-ui. Mac native: SF Pro → PingFang SC.",
+        "$value": ["system-ui", "-apple-system", "PingFang SC", "sans-serif"],
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      },
+      "mono": {
+        "$description": "Mac native: SF Mono.",
+        "$value": ["ui-monospace", "SF Mono", "Menlo", "monospace"],
+        "$extensions": { "dev.pagelamp": { "macos": "system" } }
+      }
+    },
+    "large-title": {
+      "$type": "typography",
+      "$description": "Today's date, welcome title, course name (course name Semibold on the Mac).",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 28, "unit": "px" },
+        "fontWeight": 600,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.2857
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "largeTitle", "size": 26, "lineHeight": 32, "weight": "regular" } } }
+    },
+    "title-1": {
+      "$type": "typography",
+      "$description": "Week line, onboarding counts (Semibold when lit on the Mac).",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 20, "unit": "px" },
+        "fontWeight": 600,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.4
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "title", "size": 22, "lineHeight": 26, "weight": "regular" } } }
+    },
+    "title-2": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 18, "unit": "px" },
+        "fontWeight": 600,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.3333
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "title2", "size": 17, "lineHeight": 22, "weight": "regular" } } }
+    },
+    "title-3": {
+      "$type": "typography",
+      "$description": "Section titles (.isHeader); Contents week numbers use it Regular with monospaced digits.",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 16, "unit": "px" },
+        "fontWeight": 600,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.375
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "title3", "size": 15, "lineHeight": 20, "weight": "semibold" } } }
+    },
+    "headline": {
+      "$type": "typography",
+      "$description": "Callout titles, \"Next up\".",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 14, "unit": "px" },
+        "fontWeight": 600,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.4286
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "headline", "size": 13, "lineHeight": 16, "weight": "bold" } } }
+    },
+    "body": {
+      "$type": "typography",
+      "$description": "Body and row titles (Semibold when due today).",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 14, "unit": "px" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.4286
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "body", "size": 13, "lineHeight": 16, "weight": "regular" } } }
+    },
+    "callout": {
+      "$type": "typography",
+      "$description": "Meta lines (.secondary).",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 13, "unit": "px" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.3846
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "callout", "size": 12, "lineHeight": 15, "weight": "regular" } } }
+    },
+    "subheadline": {
+      "$type": "typography",
+      "$description": "Eyebrow (Semibold) and sidebar footer.",
+      "$value": {
+        "fontFamily": "{font.family.sans}",
+        "fontSize": { "value": 12, "unit": "px" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.3333
+      },
+      "$extensions": { "dev.pagelamp": { "macos": { "textStyle": "subheadline", "size": 11, "lineHeight": 14, "weight": "regular" } } }
+    },
+    "mono": {
+      "$type": "typography",
+      "$description": "Code and paths, selectable (.callout.monospaced() on the Mac).",
+      "$value": {
+        "fontFamily": "{font.family.mono}",
+        "fontSize": { "value": 13, "unit": "px" },
+        "fontWeight": 400,
+        "letterSpacing": { "value": 0, "unit": "px" },
+        "lineHeight": 1.3846
+      },
+      "$extensions": {
+        "dev.pagelamp": { "macos": { "textStyle": "callout", "size": 12, "lineHeight": 15, "weight": "regular", "design": "monospaced" } }
+      }
+    },
+    "design": {
+      "title": {
+        "$type": "fontFamily",
+        "$description": "[M3] Serif (New York) for today's date and the welcome title, Latin locales only; zh-CN and the web stay sans.",
+        "$value": "{font.family.sans}",
+        "$extensions": { "dev.pagelamp": { "macos": { "design": "serif" }, "swift": { "name": "titleDesign" } } }
+      }
+    },
+    "min": {
+      "$type": "dimension",
+      "$description": "Smallest text size (also the CJK floor).",
+      "$value": { "value": 12, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "macos": 11, "swift": { "name": "minimumSize" } } }
+    },
+    "cjk": {
+      "paragraph": {
+        "$type": "number",
+        "$description": "zh-CN multi-line paragraphs: web line-height; Mac .lineSpacing(2).",
+        "$value": 1.6,
+        "$extensions": { "dev.pagelamp": { "macos": { "lineSpacing": 2 }, "swift": { "name": "cjkLineSpacing" } } }
+      }
+    }
+  },
+  "motion": {
+    "$type": "transition",
+    "$description": "SwiftUI springs (§5, §10.4): stiffness = (2π/d)², damping = 4π(1 − bounce)/d, mass 1. $value.duration is the CSS settle time (|x − 1| < 5 × 10⁻⁴ from then on) and $value.timingFunction a fitted cubic-bezier fallback for other DTCG tools; the generator writes a CSS linear() curve from the spring itself.",
+    "calm": {
+      "$value": { "duration": { "value": 717, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.274, 0.564, 0.077, 1.065] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "smooth", "duration": 0.45, "bounce": 0, "stiffness": 194.96, "damping": 27.93, "settleMs": 717 } } }
+    },
+    "quick": {
+      "$value": { "duration": { "value": 446, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.324, 0.709, 0.065, 1.098] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "snappy", "duration": 0.3, "bounce": 0.15, "stiffness": 438.65, "damping": 35.6, "settleMs": 446 } } }
+    },
+    "lively": {
+      "$description": "Only the one \"Sync finished\" bounce.",
+      "$value": { "duration": { "value": 869, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.387, 1.296, 0.027, 1.002] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "bouncy", "duration": 0.5, "bounce": 0.3, "stiffness": 157.91, "damping": 17.59, "settleMs": 869 } } }
+    },
+    "week": {
+      "$value": { "duration": { "value": 557, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.274, 0.561, 0.077, 1.065] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "smooth", "duration": 0.35, "bounce": 0, "stiffness": 322.27, "damping": 35.9, "settleMs": 557 } } }
+    },
+    "section": {
+      "$value": { "duration": { "value": 398, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.274, 0.56, 0.076, 1.066] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "smooth", "duration": 0.25, "bounce": 0, "stiffness": 631.65, "damping": 50.27, "settleMs": 398 } } }
+    },
+    "step": {
+      "$value": { "duration": { "value": 637, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.274, 0.56, 0.076, 1.066] },
+      "$extensions": { "dev.pagelamp": { "spring": { "preset": "smooth", "duration": 0.4, "bounce": 0, "stiffness": 246.74, "damping": 31.42, "settleMs": 637 } } }
+    },
+    "hover": {
+      "$description": "Row hover fill; none under Reduce Highlighting Effects.",
+      "$value": { "duration": { "value": 150, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0, 0, 0.58, 1] },
+      "$extensions": { "dev.pagelamp": { "curve": "easeOut" } }
+    },
+    "reduced": {
+      "$description": "Everything under Reduce Motion: a crossfade (or instant).",
+      "$value": { "duration": { "value": 200, "unit": "ms" }, "delay": { "value": 0, "unit": "ms" }, "timingFunction": [0.42, 0, 0.58, 1] },
+      "$extensions": { "dev.pagelamp": { "curve": "easeInOut" } }
+    }
+  },
+  "glass": {
+    "$description": "Glass levels (§10.5) for the web imitation only. macOS uses SwiftUI Glass (.regular, .regular.interactive(), .regular.tint(.accentColor)); .clear is never used. Not emitted to Swift, except the accessory-bar spacing under PLLayout.",
+    "regular": {
+      "blur": { "$type": "dimension", "$value": { "value": 24, "unit": "px" } },
+      "saturate": { "$type": "number", "$value": 1.8 },
+      "shadow": {
+        "$type": "shadow",
+        "$value": {
+          "color": { "colorSpace": "oklch", "components": [0, 0, 0], "alpha": 0.22, "hex": "#000000" },
+          "offsetX": { "value": 0, "unit": "px" },
+          "offsetY": { "value": 10, "unit": "px" },
+          "blur": { "value": 30, "unit": "px" },
+          "spread": { "value": -12, "unit": "px" }
+        }
+      },
+      "sheen": {
+        "$type": "gradient",
+        "$description": "Top-down sheen under the text (CSS: linear-gradient to bottom).",
+        "$value": [
+          { "color": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0.28, "hex": "#ffffff" }, "position": 0 },
+          { "color": { "colorSpace": "oklch", "components": [1, 0, 0], "alpha": 0, "hex": "#ffffff" }, "position": 0.45 }
+        ]
+      }
+    },
+    "interactive": {
+      "hover-alpha": {
+        "$type": "number",
+        "$description": "Hover raises the tint's opacity by 4 points.",
+        "$value": 0.04
+      },
+      "press-scale": { "$type": "number", "$description": ":active scale (with motion.quick; none under reduced motion).", "$value": 0.98 }
+    },
+    "prominent": {
+      "accent-mix": {
+        "$type": "number",
+        "$description": "Tinted glass = color-mix(in oklab, accent <this>, transparent); solid accent when reduced / increased contrast.",
+        "$value": 0.88,
+        "$extensions": { "dev.pagelamp": { "cssUnit": "%" } }
+      }
+    },
+    "container-spacing": {
+      "$type": "dimension",
+      "$description": "Accessory bar: spacing of its one effect container (Mac: the container that holds the capsule and bubbles).",
+      "$value": { "value": 12, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "swift": { "enum": "PLLayout", "name": "accessoryContainerSpacing" } } }
+    },
+    "gap": {
+      "$type": "dimension",
+      "$description": "Resting gap between accessory-bar shapes (larger than the container spacing, so they stay separate unless unioned).",
+      "$value": { "value": 14, "unit": "px" },
+      "$extensions": { "dev.pagelamp": { "swift": { "enum": "PLLayout", "name": "accessoryGap" } } }
+    },
+    "budget": {
+      "$type": "number",
+      "$description": "Review limits, not styles (not emitted): Mac 1 container and ≤ 4 custom shapes per window; web ≤ 3 glass surfaces visible.",
+      "$extensions": { "dev.pagelamp": { "css": false, "macos": "system" } },
+      "mac-containers": { "$value": 1 },
+      "mac-shapes": { "$value": 4 },
+      "web-surfaces": { "$value": 3 }
+    }
+  }
+}

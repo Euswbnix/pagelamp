@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "schema": "This data was saved by a newer version of {{product}}. Update {{product}} to open it.",
+    "panic": "{{product}} ran into a bug. Try again, or restart {{product}}."
+  },
+  "capsule": {
+    "busy": "Another sync is running",
+    "offline": "Can't connect · check your internet"
+  },
+  "actions": {
+    "dismiss": "Dismiss"
+  },
+  "menu": {
+    "about": "About {{product}}"
+  },
+  "common": {
+    "week": {
+      "none": "—"
+    }
+  },
+  "syncDetails": {
+    "waiting": "Waiting",
+    "syncing": "Syncing",
+    "progress": "{{current}} of {{total}}",
+    "done": "Done",
+    "failed": "Didn't finish"
+  },
+  "debug": {
+    "menu": "Debug",
+    "dataSource": "Data Source",
+    "mockData": "Mock Data",
+    "liveData": "Live Data…",
+    "scenario": {
+      "demo": "Demo",
+      "empty": "No Sources",
+      "expired": "Expired Canvas Token",
+      "error": "Missing Course Folder",
+      "busy": "Another Sync Running",
+      "crashed": "Recovered from a Crash"
+    },
+    "runMockSync": "Run Mock Sync",
+    "runMockSyncRejected": "Run Mock Sync with a Rejected Token",
+    "capsuleLeads": "Sidebar Capsule Moves Before the Page",
+    "systemSectionPicker": "Course Pages Use the System Section Picker",
+    "live": {
+      "title": "Use your real {{product}} data?",
+      "message": "This preview will open the same data folder and keychain items as the installed {{product}} app and its command-line tool. Syncing here changes that data. Opening the folder may also update the format of its database; an older installed {{product}} would then ask to be updated before it opens your data again.",
+      "confirm": "Use Real Data"
+    }
+  }
+}

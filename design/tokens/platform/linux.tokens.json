@@ -1,0 +1,14 @@
+{
+  "$description": "Platform modifier, context \"linux\" (Tauri on Linux; data-platform=\"linux\"). libadwaita geometry: button 9, card 12, popover and dialog 15.",
+  "radius": {
+    "control": { "$value": { "value": 9, "unit": "px" } },
+    "popover": { "$value": { "value": 15, "unit": "px" } },
+    "dialog": { "$value": { "value": 15, "unit": "px" } }
+  },
+  "font": {
+    "family": {
+      "sans": { "$value": ["Inter Variable", "Noto Sans CJK SC", "sans-serif"] },
+      "mono": { "$value": ["DejaVu Sans Mono", "Noto Sans Mono", "monospace"] }
+    }
+  }
+}

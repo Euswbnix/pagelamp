@@ -1,0 +1,51 @@
+{
+  "errors": {
+    "schema": "这些数据是由更新版本的 {{product}} 保存的。请先更新 {{product}}，再打开它们。",
+    "panic": "{{product}} 遇到了一个错误。请重试，或重新打开 {{product}}。"
+  },
+  "capsule": {
+    "busy": "另一个同步正在进行",
+    "offline": "无法连接 · 请检查网络"
+  },
+  "actions": {
+    "dismiss": "关闭"
+  },
+  "menu": {
+    "about": "关于 {{product}}"
+  },
+  "common": {
+    "week": {
+      "none": "—"
+    }
+  },
+  "syncDetails": {
+    "waiting": "等待中",
+    "syncing": "正在同步",
+    "progress": "{{current}}/{{total}}",
+    "done": "完成",
+    "failed": "未完成"
+  },
+  "debug": {
+    "menu": "调试",
+    "dataSource": "数据来源",
+    "mockData": "模拟数据",
+    "liveData": "真实数据…",
+    "scenario": {
+      "demo": "演示",
+      "empty": "没有数据来源",
+      "expired": "Canvas 访问令牌已过期",
+      "error": "课程文件夹不见了",
+      "busy": "另一个同步正在进行",
+      "crashed": "刚从崩溃中恢复"
+    },
+    "runMockSync": "运行模拟同步",
+    "runMockSyncRejected": "运行模拟同步（访问令牌被拒绝）",
+    "capsuleLeads": "侧边栏胶囊先于页面移动",
+    "systemSectionPicker": "课程页面使用系统的分段选择器",
+    "live": {
+      "title": "要使用你真实的 {{product}} 数据吗？",
+      "message": "这个预览版会打开与已安装的 {{product}} 应用及其命令行工具相同的数据文件夹和钥匙串项目。在这里同步会更改这些数据。打开这个文件夹时，还可能更新其中数据库的格式；之后，较旧版本的 {{product}} 会先要求你更新，才能再次打开你的数据。",
+      "confirm": "使用真实数据"
+    }
+  }
+}

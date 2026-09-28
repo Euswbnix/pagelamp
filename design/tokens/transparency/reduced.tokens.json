@@ -1,0 +1,16 @@
+{
+  "$description": "Transparency modifier, context \"reduced\" (Reduce Transparency; web: data-transparency=\"reduced\" or prefers-reduced-transparency: reduce). Glass becomes the opaque popover surface; the lamp wash is replaced by lamp.rule (glass.css).",
+  "color": {
+    "glass": {
+      "tint": { "$value": "{color.surface.popover}" }
+    }
+  },
+  "glass": {
+    "regular": {
+      "blur": { "$value": { "value": 0, "unit": "px" } }
+    },
+    "prominent": {
+      "accent-mix": { "$value": 1 }
+    }
+  }
+}
