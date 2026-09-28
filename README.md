@@ -40,16 +40,17 @@ The desktop app includes the `pagelamp` command-line tool your AI app needs.
 
 - **macOS:** open the `.dmg` and **drag PageLamp into Applications**, then open it from there —
   your AI app is pointed at that location, so don't run PageLamp from the disk image or Downloads.
+  From v0.1.0 the app is signed with a Developer ID and notarized by Apple, so it opens like any
+  other app: the first time, macOS asks whether to open an app downloaded from the internet —
+  click **Open**.
+- **Windows:** from v0.1.0 the installers, the app and the `pagelamp.exe` inside it are signed
+  (Azure Artifact Signing), so Windows shows the maintainer as the verified publisher. SmartScreen
+  may still show "Windows protected your PC" for a new release until the signing certificate has
+  built up reputation: check that it names that publisher, then click **More info → Run anyway**.
+  The `-setup.exe` installs for your account only (no administrator rights needed).
 - **Linux:** the `.deb`/`.rpm` also install `pagelamp` as `/usr/bin/pagelamp`. The `.AppImage` runs
   the app, but in this beta your AI app can't use the `pagelamp` inside it — use the `.deb`/`.rpm`
   or the command-line archive for that.
-
-The beta is **not code-signed yet**:
-- **macOS:** open PageLamp once; when macOS says it can't verify the developer, go to
-  **System Settings → Privacy & Security** and click **Open Anyway**. If that option doesn't appear, or
-  your AI app later can't start PageLamp, run once:
-  `xattr -dr com.apple.quarantine /Applications/PageLamp.app`
-- **Windows:** if SmartScreen appears, click **More info → Run anyway**.
 
 On macOS and Windows the desktop app doesn't add `pagelamp` to your PATH. You don't need it to
 connect your AI app — *Connect your AI app* shows the full path. To run the `pagelamp …` commands
@@ -61,8 +62,9 @@ in this README on macOS, use the full path, for example
 **From a release.** Download the archive for your system from the
 [releases page](https://github.com/Euswbnix/pagelamp/releases), unpack it, and put `pagelamp`
 (`pagelamp.exe` on Windows) in a folder on your PATH (e.g. `~/.local/bin`). On macOS the binary
-isn't notarized yet; if macOS refuses to run it, run
-`xattr -d com.apple.quarantine /path/to/pagelamp` once. Check with `pagelamp --version`.
+is signed and notarized from v0.1.0; macOS checks that with Apple the first time it runs, so be
+online for that first run. On Windows `pagelamp.exe` is signed from v0.1.0. Check with
+`pagelamp --version`.
 
 **From source.** You need Rust 1.89 or newer ([rustup.rs](https://rustup.rs)) and a C compiler
 (Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows, `build-essential` on
@@ -220,7 +222,7 @@ PageLamp（"读书灯"：为每门课点一盏读书灯）把你的课程——�
 
 **安装**：从 [Releases](https://github.com/Euswbnix/pagelamp/releases) 下载对应系统的安装包。
 macOS 请先把 PageLamp **拖进「应用程序」文件夹**再打开（AI 应用会指向这个位置，不要直接在磁盘映像或「下载」里运行）。
-测试版还没有代码签名：macOS 首次打开被拦后，到「系统设置 → 隐私与安全性」点「仍要打开」（不行再在终端运行 `xattr -dr com.apple.quarantine /Applications/PageLamp.app`）；Windows 出现 SmartScreen 时点「更多信息 → 仍要运行」。
+从 v0.1.0 起，macOS 版已用 Developer ID 签名并经过 Apple 公证，可以直接打开（第一次打开时 macOS 会问是否打开从互联网下载的应用，点「打开」即可）；Windows 版的安装包、应用和其中的 `pagelamp.exe` 也从 v0.1.0 起签名（Azure Artifact Signing）。新版本刚发布时 SmartScreen 仍可能提示「Windows 已保护你的电脑」（签名证书还在积累信誉），确认发布者是维护者本人后点「更多信息 → 仍要运行」。
 
 **上手**：
 1. 把课件放进一个文件夹，每门课一个子文件夹，里面可以按「Week 1」「Week 2」分周（支持 PDF、.pptx、.docx、Markdown、文本等；旧版 .ppt/.doc 和扫描版 PDF 只列出、不能搜索）；
