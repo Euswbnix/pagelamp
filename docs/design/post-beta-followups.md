@@ -55,3 +55,18 @@ names where it lives; pick one, fix it with a test, and strike it through here.
 - Close confirmation while a sync runs (needs a manual GUI test; see the batch-1 discussion).
 - CI doesn't build the desktop app on Windows (release builds do).
 - The Tauri app build in `release.yml` isn't `--locked` (the sidecar is).
+
+## Release pipeline (from the macOS signing review, 2026-09-27)
+
+- **Split the macOS signing jobs.** `app-macos` and `cli-macos` build and sign on the same
+  runner, so a build script or npm package could leave a process running or change
+  `$GITHUB_PATH`/`$GITHUB_ENV` for the signing steps. Split each into a build job (no environment,
+  `contents: read`) that uploads the built app, sidecar and CLI as an artifact, and a signing job
+  (`environment: release`) that uses only first-party actions and the lockfile-pinned Tauri CLI.
+  `.github/workflows/release.yml`
+- **Pinned action commits.** The signing jobs pin `pnpm/action-setup` and `dtolnay/rust-toolchain`
+  to a commit, and nothing updates those pins; bump them by hand (the tag's current commit) or add
+  Dependabot for GitHub Actions.
+- **Windows signing.** The `.msi`, `-setup.exe` and `pagelamp.exe` are unsigned (SmartScreen
+  "More info → Run anyway"); Azure Artifact Signing is the plan. Linux packages stay unsigned and
+  are covered by `SHA256SUMS`.

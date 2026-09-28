@@ -2,9 +2,34 @@ name: Release
 
 # Push a tag like `v0.1.0` (or `v0.1.0-beta.1`) to build installers and CLI archives for every
 # platform into a DRAFT GitHub release. Review the draft, then publish it by hand.
-# Builds are unsigned for now (macOS: System Settings → Privacy & Security → Open Anyway the first
-# time; Windows: SmartScreen "More info → Run anyway"). Signing is added later via repository
-# secrets.
+#
+# macOS builds are signed with the owner's Developer ID and notarized by Apple, so they open
+# without System Settings → Privacy & Security: the app with its `pagelamp` sidecar, the .dmg (the
+# ticket is stapled to the .dmg and to the app inside it) and the standalone CLI (a bare binary
+# can't be stapled, so Gatekeeper looks its ticket up online). The signing material lives only in
+# the GitHub environment `release`: secrets APPLE_CERTIFICATE (base64 of the .p12),
+# APPLE_CERTIFICATE_PASSWORD, APPLE_API_ISSUER, APPLE_API_KEY (the Key ID) and APPLE_API_KEY_P8 (the
+# .p8 file's text), and the variable APPLE_SIGNING_IDENTITY ("Developer ID Application: <name>
+# (<team>)"). Only the two macOS jobs use that environment, and each secret goes only to the steps
+# that need it. If anything is missing those jobs fail, so macOS builds are never released
+# unsigned. Nothing is uploaded until every signature, Gatekeeper verdict and stapled ticket has
+# been checked (.github/scripts/macos-signing.sh). Only tag pushes and manual runs start this
+# workflow, never pull requests, so forks can't reach the secrets. The signing jobs restore no
+# caches, so nothing another run wrote can end up in them.
+# Environment settings: deployment tags `v*`, plus the branch a rehearsal runs from (`main` once
+# this is merged); required reviewer: the owner (recommended, with "Prevent self-review" off). The
+# branch and tag rules only limit which refs may use the secrets, not who can push those refs, and
+# the workflow that runs is the one in the pushed commit; a reviewer is the only check by a person.
+# Windows and Linux builds are not code-signed yet (Windows: SmartScreen "More info → Run anyway").
+#
+# Rehearsal (no release): Actions → Release → Run workflow → pick the branch or tag under "Use
+# workflow from", leave "tag" empty, tick "rehearsal". It builds that commit's macOS app and CLI
+# (Apple silicon and Intel), signs, notarizes, staples and checks them exactly as a release does,
+# and keeps them as workflow artifacts for 7 days (the repo is public, so anyone signed in to GitHub
+# can download them; their names say "rehearsal"). It never creates, edits or uploads to a release.
+# "Re-run failed jobs" works for a release and a rehearsal: artifact names can't repeat within a
+# run, so every name carries the attempt number.
+#
 # The tag must match `[workspace.package] version` (e.g. v0.1.0-beta.1 ↔ 0.1.0-beta.1), which is
 # what `pagelamp --version`, the About screen and diagnostic reports show. tauri.conf.json keeps
 # the numeric part only (0.1.0), because MSI rejects pre-release versions.
@@ -15,35 +40,58 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to build (e.g. v0.1.0-beta.1)'
-        required: true
+        description: 'Existing tag to build (e.g. v0.1.0). Leave empty to build the tag picked under "Use workflow from", and for a rehearsal.'
+        required: false
+        default: ''
+      rehearsal:
+        description: 'Rehearsal: sign, notarize and check the macOS app and CLI of the branch picked above, as workflow artifacts. No release is created or changed.'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 # One run per tag at a time, so a re-run can't upload installers after another run's SHA256SUMS.
+# Rehearsals have their own group, so they never wait for or hold up a release.
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: ${{ inputs.rehearsal && format('rehearsal-{0}', github.ref_name) || format('release-{0}', inputs.tag || github.ref_name) }}
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
   # aws-lc-sys (rustls backend) needs NASM on Windows; use its prebuilt objects instead.
   AWS_LC_SYS_PREBUILT_NASM: 1
-  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  TAG: ${{ inputs.tag || github.ref_name }}
+  # "true" only for a manual run with the rehearsal box ticked.
+  REHEARSAL: ${{ inputs.rehearsal == true }}
 
 jobs:
   create-release:
+    # Skipped in a rehearsal, and with it every job that needs it except the two macOS jobs.
+    if: ${{ !inputs.rehearsal }}
     runs-on: ubuntu-22.04
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
     steps:
+      - name: Check the tag
+        run: |
+          case "$TAG" in
+            v*) ;;
+            *)
+              echo "::error::'$TAG' isn't a release tag. Enter an existing tag such as v0.1.0 (or pick it under 'Use workflow from'); to test macOS signing without a release, tick 'rehearsal'."
+              exit 1
+              ;;
+          esac
+      # No job in this workflow runs git: gh and tauri-action get the token in their own step's
+      # env. So checkout leaves no write token on disk for later steps (build scripts included).
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       - id: create
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
           bundle=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
@@ -66,20 +114,15 @@ jobs:
           fi
           echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
 
-  # Desktop installers (.dmg/.app, .msi/.exe, .AppImage/.deb) with the `pagelamp` CLI bundled
-  # as a Tauri sidecar (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE).
+  # Windows (.msi/.exe) and Linux (.AppImage/.deb/.rpm) installers with the `pagelamp` CLI bundled
+  # as a Tauri sidecar (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE). Not code-signed
+  # yet; tauri-action uploads them straight to the draft release.
   app:
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             args: ''
@@ -91,6 +134,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v6
         with:
           package_json_file: apps/desktop/package.json
@@ -123,17 +167,164 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
-  # Standalone CLI archives for people who only want `pagelamp` (MCP server + sync).
+  # The macOS app (.dmg), one per architecture, signed and notarized. Tauri signs the sidecar and
+  # then the app with the hardened runtime, and notarizes and staples the .app, when the APPLE_*
+  # variables are set; it signs the .dmg but doesn't notarize it, so that happens here. The .dmg
+  # is uploaded only after every check has passed (in a rehearsal it becomes a workflow artifact).
+  app-macos:
+    needs: create-release
+    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-latest
+    env:
+      # Public (it's in every signature); the checks make sure this team signed each file.
+      DEVELOPER_TEAM_ID: CBU69BX7M8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A rehearsal builds exactly the commit it runs from, which the environment's branch
+          # and tag rules have already allowed.
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      # Sees only whether each secret is set, never its value.
+      - name: Check signing setup
+        env:
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+          HAS_APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: bash .github/scripts/macos-signing.sh preflight
+      # No caches in the signing jobs: any run on main can write a cache entry under any key, and
+      # restoring one would put that run's files (~/.cargo/bin, build outputs, the pnpm store)
+      # into the job that signs. Third-party actions are pinned to a commit here, so a moved tag
+      # can't bring new code into this job either.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      # Compile first, with no secret in the environment, so build scripts, proc macros and Vite
+      # plugins never have the signing material in their environment. That limits accidental
+      # exposure, but it isn't isolation: they run on the same runner as the signing steps below,
+      # so the lockfiles and the actions above are trusted. `tauri bundle` below then only
+      # packages, signs and notarizes (Tauri's documented build/bundle split).
+      - name: Build the app (not signed yet)
+        working-directory: apps/desktop
+        run: pnpm tauri build --target ${{ matrix.target }} --no-bundle
+      - name: Write the notary API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
+        run: bash .github/scripts/macos-signing.sh write-api-key
+      # Tauri imports the certificate into its own temporary keychain (deleted when it's done),
+      # signs Contents/MacOS/pagelamp and the app with the hardened runtime and no entitlements,
+      # notarizes and staples the .app, then builds and signs the .dmg. APPLE_SIGNING_IDENTITY
+      # overrides tauri.conf.json's `"signingIdentity": "-"` (ad hoc, for local builds). Without
+      # notarization credentials Tauri would only print a warning, and it ignores a failed staple,
+      # hence the preflight above and the checks below.
+      - name: Bundle, sign and notarize the app (Tauri)
+        working-directory: apps/desktop
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
+          # As tauri-action does: keep the .dmg window layout (Tauri skips it when CI=true).
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+        run: pnpm tauri bundle --target ${{ matrix.target }} --bundles app,dmg
+      - name: Find the app and the disk image
+        run: |
+          shopt -s nullglob
+          bundle="target/${{ matrix.target }}/release/bundle"
+          apps=("$bundle"/macos/*.app)
+          dmgs=("$bundle"/dmg/*.dmg)
+          if [ ${#apps[@]} -ne 1 ] || [ ${#dmgs[@]} -ne 1 ]; then
+            echo "::error::Expected one .app and one .dmg under $bundle, found: ${apps[*]} ${dmgs[*]}"
+            exit 1
+          fi
+          echo "APP_PATH=$PWD/${apps[0]}" >> "$GITHUB_ENV"
+          echo "DMG_PATH=$PWD/${dmgs[0]}" >> "$GITHUB_ENV"
+      - name: Notarize and staple the disk image
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
+        run: |
+          bash .github/scripts/macos-signing.sh notarize "$DMG_PATH" "$RUNNER_TEMP/notary-logs/dmg-${{ matrix.target }}.json"
+          bash .github/scripts/macos-signing.sh staple "$DMG_PATH"
+      - name: Remove signing material
+        if: ${{ always() }}
+        run: bash .github/scripts/macos-signing.sh cleanup
+      # codesign --verify --deep --strict; Developer ID of this team, secure timestamp and hardened
+      # runtime on the app, its executables and the sidecar; Gatekeeper says "Notarized Developer
+      # ID" for the app (execute) and the .dmg (open); tickets stapled to the .app, the .dmg and the
+      # app inside the mounted .dmg.
+      - name: Check signatures, Gatekeeper and tickets
+        run: |
+          bash .github/scripts/macos-signing.sh verify-app "$APP_PATH"
+          bash .github/scripts/macos-signing.sh verify-dmg "$DMG_PATH"
+      # Same file name tauri-action would use; --clobber replaces the file from an earlier run.
+      # Only the .dmg is published: the .app.tar.gz tauri-action used to add is only for an updater.
+      - name: Upload the disk image to the draft release
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$DMG_PATH" --clobber
+      # A name that can't pass for a release file, with the attempt number: artifact names can't
+      # repeat within a run, and a re-run is the same run. The stapled ticket is inside the file,
+      # so the copy is just as notarized.
+      - name: Name the disk image (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/rehearsal"
+          copy="$RUNNER_TEMP/rehearsal/$(basename "$DMG_PATH" .dmg)-rehearsal-${GITHUB_SHA:0:7}-attempt${GITHUB_RUN_ATTEMPT}.dmg"
+          cp "$DMG_PATH" "$copy"
+          echo "REHEARSAL_DMG=$copy" >> "$GITHUB_ENV"
+      - name: Keep the disk image (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.REHEARSAL_DMG }}
+          archive: false
+          retention-days: 7
+          if-no-files-found: error
+      # Apple's verdict and any warnings, for both a release and a rehearsal (no secrets inside).
+      - name: Keep the notary log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: notary-log-app-${{ matrix.target }}-attempt${{ github.run_attempt }}
+          path: ${{ runner.temp }}/notary-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Standalone CLI archives for people who only want `pagelamp` (MCP server + sync), Windows and
+  # Linux (not signed yet).
   cli:
     needs: create-release
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: macos-latest
-            target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
           - os: ubuntu-22.04
@@ -143,6 +334,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -160,6 +352,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           name="pagelamp-${TAG}-${{ matrix.target }}"
           mkdir -p "dist/$name"
@@ -180,10 +373,122 @@ jobs:
           (cd dist && $sum "$file" > "$file.sha256")
           gh release upload "$TAG" "$archive" "$archive.sha256" --clobber
 
+  # The standalone macOS CLI, signed and notarized. A bare binary can't carry a stapled ticket, so
+  # Gatekeeper checks it online the first time it runs. Also runs in a rehearsal.
+  cli-macos:
+    needs: create-release
+    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    runs-on: macos-latest
+    env:
+      # Public (it's in every signature); the checks make sure this team signed each file.
+      DEVELOPER_TEAM_ID: CBU69BX7M8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      # Sees only whether each secret is set, never its value.
+      - name: Check signing setup
+        env:
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+          HAS_APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: bash .github/scripts/macos-signing.sh preflight
+      # No caches and a pinned action, as in `app-macos`.
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --locked -p pagelamp-cli --target ${{ matrix.target }}
+      # Into a temporary keychain with a random password made on the runner (see the script).
+      - name: Import the signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: bash .github/scripts/macos-signing.sh import-certificate
+      # Hardened runtime and a secure timestamp, both required for notarization. No --identifier:
+      # the default ("pagelamp", from the file name) is what Tauri gives the sidecar in the app.
+      - name: Sign pagelamp
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+        run: |
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" \
+            --keychain "$SIGNING_KEYCHAIN" "target/${{ matrix.target }}/release/pagelamp"
+      # The notary service takes a zip; the zip is only for the submission and isn't shipped.
+      - name: Notarize pagelamp
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
+        run: |
+          bash .github/scripts/macos-signing.sh write-api-key
+          zip="$RUNNER_TEMP/pagelamp-signing/pagelamp.zip"
+          ditto -c -k --keepParent "target/${{ matrix.target }}/release/pagelamp" "$zip"
+          bash .github/scripts/macos-signing.sh notarize "$zip" "$RUNNER_TEMP/notary-logs/cli-${{ matrix.target }}.json"
+      - name: Remove signing material
+        if: ${{ always() }}
+        run: bash .github/scripts/macos-signing.sh cleanup
+      # codesign --verify --strict; Developer ID of this team, secure timestamp, hardened runtime,
+      # identifier; the notary log is Accepted and lists this binary's cdhash; Apple's online check.
+      - name: Check the signature and the notarization
+        run: >-
+          bash .github/scripts/macos-signing.sh verify-cli
+          "target/${{ matrix.target }}/release/pagelamp"
+          "$RUNNER_TEMP/notary-logs/cli-${{ matrix.target }}.json"
+      - name: Package
+        run: |
+          if [ "$REHEARSAL" = true ]; then
+            # As for the rehearsal .dmg: not a release name, and unique per attempt.
+            name="pagelamp-rehearsal-${GITHUB_SHA:0:7}-attempt${GITHUB_RUN_ATTEMPT}-${{ matrix.target }}"
+          else
+            name="pagelamp-${TAG}-${{ matrix.target }}"
+          fi
+          mkdir -p "dist/$name"
+          cp LICENSE README.md "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          # Hash from inside dist/ so the .sha256 names the bare file (as in the `cli` job).
+          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          echo "ARCHIVE=$PWD/dist/$name.tar.gz" >> "$GITHUB_ENV"
+      - name: Upload to the draft release
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
+      - name: Keep the archive (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.ARCHIVE }}
+          archive: false
+          retention-days: 7
+          if-no-files-found: error
+      - name: Keep the notary log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: notary-log-cli-${{ matrix.target }}-attempt${{ github.run_attempt }}
+          path: ${{ runner.temp }}/notary-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
   # One SHA256SUMS file covering every asset (installers + CLI archives), so testers can verify
-  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`.
+  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`. It runs after the macOS jobs
+  # have replaced their files with the notarized, stapled ones, so it hashes the final files.
   checksums:
-    needs: [create-release, app, cli]
+    needs: [create-release, app, app-macos, cli, cli-macos]
     runs-on: ubuntu-22.04
     steps:
       - name: Compute and upload SHA256SUMS
@@ -192,8 +497,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          # tauri-action uploads the macOS .app packed as .app.tar.gz; without an updater it only
-          # duplicates the .dmg and confuses testers, so drop it.
+          # tauri-action packs the macOS .app as .app.tar.gz when it uploads (earlier runs of this
+          # workflow did); without an updater it only duplicates the .dmg and confuses testers, so
+          # drop any that are left.
           gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".app.tar.gz"))' |
             while read -r asset; do gh release delete-asset "$TAG" "$asset" --yes; done
           mkdir assets && cd assets

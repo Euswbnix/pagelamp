@@ -21,13 +21,17 @@ First public beta.
 - Per-course AI policy and AI-access switch; material text is withheld for "No AI" courses.
 - `pagelamp` CLI and the desktop app (onboarding, sources & sync, courses, course detail,
   "Connect your AI app", settings), in English and 简体中文, light and dark.
+- Signed and notarized macOS builds: the app (`.dmg`) and the standalone `pagelamp` binary are
+  signed with a Developer ID and notarized by Apple (the ticket is stapled to the `.dmg` and the
+  app), so they open without the System Settings → Privacy & Security steps.
 
 ### Upgrading from an earlier build
 - After installing a new version, quit your AI app completely and open it again so it starts the new
   `pagelamp` (on macOS, open PageLamp once first so macOS lets the new build run).
 
 ### Known limitations
-- Builds are not code-signed yet (see the README for first-launch steps).
+- Windows and Linux builds are not code-signed yet (Windows signing is planned for a later
+  release; see the README for the SmartScreen step).
 - No reminders/notifications yet (planned for v0.2).
 - Canvas access uses a personal token until an institution-approved sign-in is available.
 - On macOS and Windows the desktop app doesn't put `pagelamp` on your PATH (use the full path shown
