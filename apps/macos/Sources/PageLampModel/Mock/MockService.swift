@@ -421,7 +421,9 @@ public actor MockService: PageLampService {
             events: status.counts.events,
             // Claude Code already has a PageLamp entry, so Connect can preselect it.
             mcpClients: McpClientPresence(claudeDesktop: false, claudeCode: true, codex: false),
-            lastCrash: db.lastCrash
+            lastCrash: db.lastCrash,
+            extractWorker: ExtractWorkerCheck(status: .ok, spawnMs: 25),
+            unreadableFiles: []
         )
     }
 
