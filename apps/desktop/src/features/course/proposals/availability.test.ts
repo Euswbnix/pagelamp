@@ -15,6 +15,15 @@ describe("the F3 switch", () => {
     expect(CALENDAR_UI).toBe(true);
   });
 
+  it("is off in the mock as the release ships it (?shipped)", () => {
+    expect(calendarUiEnabled({ VITE_API: "mock" }, "?shipped")).toBe(false);
+    expect(calendarUiEnabled({ VITE_API: "mock" }, "?scenario=demo&shipped=&platform=macos")).toBe(
+      false,
+    );
+    expect(calendarUiEnabled({ VITE_API: "mock", VITE_PAGELAMP_SHIPPED: "1" }, "")).toBe(false);
+    expect(calendarUiEnabled({ VITE_API: "mock" }, "?scenario=demo")).toBe(true);
+  });
+
   it("isn't turned on by any env file a real build reads", () => {
     const envFiles = readdirSync(desktopDir).filter((f) => f.startsWith(".env"));
     expect(envFiles).toContain(".env.mock");
