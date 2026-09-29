@@ -1,8 +1,8 @@
 # Release runbook
 
 How PageLamp releases are built, published and rolled back, from v0.3 on (the updater). The
-workflows are `.github/workflows/release.yml` (build, sign, draft release), `.github/workflows/
-channels.yml` (update channels on GitHub Pages) and the `release-config` job in `ci.yml`. The
+workflows, in `.github/workflows/`, are `release.yml` (build, sign, draft release),
+`channels.yml` (update channels on GitHub Pages) and the `release-config` job in `ci.yml`. The
 design is in `docs/design/v0.3-plan.md` (M0.1, M0.3, M0.4, M0.6, M0.7).
 
 ## What runs where
@@ -93,7 +93,8 @@ back (a red `deny` still marks the run failed). Nothing is created or changed in
 1. Push the tag of the commit that passed the rehearsal (`git tag v0.3.0-alpha.1 <commit>` then
    `git push origin v0.3.0-alpha.1`). Tags with a `-` (alpha, beta, rc) become pre-releases.
 2. Approve the `release` deployments. `preflight` and `deny` must pass before anything is built.
-3. Check the draft on GitHub → Releases. With the updater on it holds (`<v>` is the version):
+3. Check the draft on GitHub → Releases. With the updater on it holds (`<v>` is
+   `tauri.conf.json`'s version, e.g. `0.3.0` for `v0.3.0-alpha.1` while it stays numeric):
 
    | File | For |
    |---|---|
