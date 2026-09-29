@@ -29,6 +29,7 @@ pub mod ai;
 mod course;
 pub mod diagnostics;
 mod lock;
+mod material_file;
 mod mcp_config;
 mod sync;
 mod updates;
@@ -42,6 +43,7 @@ pub use course::removal::{
 pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
+pub use material_file::LocalFileUse;
 pub use updates::{
     StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
     WhatsNewTopic,
@@ -1260,6 +1262,7 @@ struct AppTypes {
     restore_outcome: RestoreOutcome,
     purge_report: PurgeReport,
     course_dates_input: CourseDatesInput,
+    local_file_use: LocalFileUse,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

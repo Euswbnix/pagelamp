@@ -39,7 +39,7 @@ use pagelamp_app::diagnostics::{
 };
 use pagelamp_app::{
     Activity, ActivityItem, ActivityKind, AppStatus, BackupInfo, BreakInput, CourseDatesInput,
-    CourseLifecycleEntry, InstallKind, LifecycleSummary, LostAfterPurge, McpClient,
+    CourseLifecycleEntry, InstallKind, LifecycleSummary, LocalFileUse, LostAfterPurge, McpClient,
     McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, RemovalPreview, RemovalPreviewItem,
     RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome,
     SegmentInput, SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary,
@@ -388,6 +388,8 @@ pub struct AiLabel {
     pub backend_label: String,
     pub model: String,
     pub created_at: Timestamp,
+    #[uniffi(default)]
+    pub on_device: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1716,4 +1718,11 @@ pub enum LoginEvent {
     },
     Waiting,
     Done,
+}
+
+/// What a shell will do with a material's local file (`material_local_file`).
+#[uniffi::remote(Enum)]
+pub enum LocalFileUse {
+    Open,
+    Reveal,
 }

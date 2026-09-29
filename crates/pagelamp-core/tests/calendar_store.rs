@@ -137,6 +137,7 @@ fn ai_proposal() -> NewCalendarRow {
             backend_label: "ChatGPT plan (through OpenAI Codex)".into(),
             model: "gpt-6-luna".into(),
             prompt_version: 1,
+            on_device: false,
         }),
     }
 }
@@ -168,7 +169,34 @@ fn a_proposal_changes_nothing_until_it_is_accepted() {
         (label.backend_label.as_str(), label.model.as_str()),
         ("ChatGPT plan (through OpenAI Codex)", "gpt-6-luna")
     );
+    assert!(!label.on_device);
     assert_eq!(timeline.current_week, Some(3));
+}
+
+#[test]
+fn an_on_device_reading_says_so_in_its_label() {
+    let (store, course) = demo_store();
+    let mut proposal = ai_proposal();
+    let provenance = proposal.provenance.as_mut().unwrap();
+    provenance.backend_label = "Ollama (this computer)".into();
+    provenance.on_device = true;
+    let id = store
+        .insert_calendar_proposal(&proposal, at("2026-09-23"))
+        .unwrap();
+    assert!(
+        store
+            .calendar_row(id)
+            .unwrap()
+            .unwrap()
+            .provenance
+            .unwrap()
+            .on_device
+    );
+    store
+        .accept_calendar_proposal(id, None, at("2026-09-24"))
+        .unwrap();
+    let timeline = views::course_timeline(&store, &course, as_of()).unwrap();
+    assert!(timeline.term.ai_label.unwrap().on_device);
 }
 
 #[test]

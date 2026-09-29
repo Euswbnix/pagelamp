@@ -557,6 +557,13 @@ export type GenNoticeCode =
  */
 export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
 /**
+ * What a shell will do with a material's local file.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalFileUse".
+ */
+export type LocalFileUse = "open" | "reveal";
+/**
  * `codex_login` progress.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -847,6 +854,7 @@ export interface PageLampAppTypes {
   gen_stage: GenStage;
   generation_meta: GenerationMeta;
   lifecycle_summary: LifecycleSummary;
+  local_file_use: LocalFileUse;
   local_server: LocalServer;
   local_server_kind: LocalServerKind;
   login_event: LoginEvent;
@@ -1575,6 +1583,10 @@ export interface AiLabel {
   backend_label: string;
   created_at: string;
   model: string;
+  /**
+   * The model ran on this computer ("on-device model — check the dates", §7.12).
+   */
+  on_device?: boolean;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema

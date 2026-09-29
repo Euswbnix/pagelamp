@@ -273,6 +273,7 @@ const MIRRORED: &[&str] = &[
     "RestoreOutcome",
     "PurgeReport",
     "CourseDatesInput",
+    "LocalFileUse",
     "BreakInput",
     "SegmentInput",
     // Carried as `PageLampError` (error.rs).

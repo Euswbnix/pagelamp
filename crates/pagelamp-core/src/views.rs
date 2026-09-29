@@ -755,6 +755,7 @@ fn calendar_in_force(
         backend_label: p.backend_label.clone(),
         model: p.model.clone(),
         created_at: row.created_at,
+        on_device: p.on_device,
     });
     let status = if stale {
         CalendarStatus::AcceptedStale

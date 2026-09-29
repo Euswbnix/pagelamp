@@ -103,6 +103,8 @@ pub struct CalendarProvenance {
     pub backend_label: String,
     pub model: String,
     pub prompt_version: u32,
+    /// The model ran on this computer (stored in `checks_json`, next to the checks).
+    pub on_device: bool,
 }
 
 /// A row to write.
@@ -156,9 +158,19 @@ fn from_json<T: serde::de::DeserializeOwned>(row: &Row<'_>, column: &str) -> rus
     })
 }
 
+/// `checks_json` as stored: the checks, plus whether the reading model ran on this computer.
+#[derive(Serialize, Deserialize)]
+struct StoredChecks {
+    #[serde(flatten)]
+    checks: CalendarChecks,
+    #[serde(default)]
+    on_device: bool,
+}
+
 fn calendar_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarRow> {
     let backend: Option<String> = row.get("backend")?;
     let model: Option<String> = row.get("model")?;
+    let stored: StoredChecks = from_json(row, "checks_json")?;
     let provenance = match (backend, model) {
         (Some(backend_label), Some(model)) => Some(CalendarProvenance {
             generation_id: row.get("generation_id")?,
@@ -167,6 +179,7 @@ fn calendar_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarRow> {
             prompt_version: row
                 .get::<_, Option<u32>>("prompt_version")?
                 .unwrap_or_default(),
+            on_device: stored.on_device,
         }),
         _ => None,
     };
@@ -177,7 +190,7 @@ fn calendar_from_row(row: &Row<'_>) -> rusqlite::Result<CalendarRow> {
         state: get_value(row, "state")?,
         calendar: from_json(row, "calendar_json")?,
         dates: from_json(row, "evidence_json")?,
-        checks: from_json(row, "checks_json")?,
+        checks: stored.checks,
         manifest: from_json(row, "manifest_json")?,
         fingerprint: row.get("fingerprint")?,
         provenance,
@@ -283,7 +296,10 @@ impl Store {
                 state.as_str(),
                 json(&row.calendar),
                 json(&row.dates),
-                json(&row.checks),
+                json(&StoredChecks {
+                    checks: row.checks.clone(),
+                    on_device: provenance.is_some_and(|p| p.on_device),
+                }),
                 json(&row.manifest),
                 row.fingerprint,
                 provenance.and_then(|p| p.generation_id.as_deref()),
@@ -554,6 +570,7 @@ mod tests {
                 backend_label: "ChatGPT plan (through OpenAI Codex)".into(),
                 model: "gpt-6-luna".into(),
                 prompt_version: 1,
+                on_device: false,
             }),
         }
     }
