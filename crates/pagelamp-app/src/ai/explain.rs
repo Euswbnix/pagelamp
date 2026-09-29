@@ -274,6 +274,9 @@ impl App {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
             let (profile, destination) = self.estimate_profile(&choice)?;
+            // From here a change to the course's AI settings stops this run
+            // (`stop_course_runs`); week_context_including reads them after that.
+            self.run_reads_course(generation_id, &course.id, Some(destination));
             let context = match week_context_including(
                 &store,
                 &course.id,
