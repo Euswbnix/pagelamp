@@ -152,7 +152,15 @@ fn add_material_with_chunks(store: &Store, id: &str, texts: &[&str]) {
         .enumerate()
         .map(|(ord, text)| chunk(id, ord as u32, text))
         .collect();
+    readable(store, id);
     store.replace_chunks(id, &chunks).unwrap();
+}
+
+/// Text only belongs to an `ok` material (`replace_chunks` refuses it otherwise).
+fn readable(store: &Store, id: &str) {
+    store
+        .set_text_state(id, TextStatus::Ok, None, None)
+        .unwrap();
 }
 
 /// Number of rows in the FTS index itself (not the content table).
@@ -919,6 +927,7 @@ fn prune_materials_only_touches_the_given_course() {
     store
         .upsert_material(&material("demo202-mat", &other, "Other slides"))
         .unwrap();
+    readable(&store, "demo202-mat");
     store
         .replace_chunks("demo202-mat", &[chunk("demo202-mat", 0, "omega demo")])
         .unwrap();
@@ -1413,6 +1422,7 @@ fn search_excludes_hidden_courses_and_filters_by_course() {
     store
         .upsert_material(&material("mat-202", &course_id("202"), "Other"))
         .unwrap();
+    readable(&store, "mat-202");
     store
         .replace_chunks("mat-202", &[chunk("mat-202", 0, "shared keyword too")])
         .unwrap();
@@ -1659,8 +1669,14 @@ fn counts_reflect_contents() {
     store
         .set_text_state("empty", TextStatus::Ok, Some("no extractable text"), None)
         .unwrap();
-    // Chunks but still pending → not indexed.
-    add_material_with_chunks(&store, "pending", &["three"]);
+    // Not read yet → not indexed (and no chunks: text only belongs to `ok` materials).
+    store
+        .upsert_material(&material("pending", &demo, "Pending"))
+        .unwrap();
+    assert!(matches!(
+        store.replace_chunks("pending", &[chunk("pending", 0, "three")]),
+        Err(Error::Invalid(_))
+    ));
     let mut due = event("ev-1", SOURCE, Some(&demo), "Demo quiz");
     due.due_at = Some(ts("2026-10-01T10:00:00Z"));
     store.replace_events(SOURCE, &[due]).unwrap();
@@ -1676,7 +1692,7 @@ fn counts_reflect_contents() {
             modules: 2,
             materials: 3,
             indexed_materials: 1,
-            chunks: 3,
+            chunks: 2,
             events: 1,
             study_plans: 1,
             removed_courses: 0,
@@ -1886,6 +1902,7 @@ fn ai_readable_search_excludes_turned_off_and_prohibited_courses() {
     store
         .upsert_material(&material("m202", &course_id("202"), "m202"))
         .unwrap();
+    readable(&store, "m202");
     store
         .replace_chunks(
             "m202",

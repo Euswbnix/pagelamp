@@ -1,8 +1,9 @@
 # The Codex runtime PageLamp installs for "Use my ChatGPT plan" (design §2.3, plan M2).
 #
 # Only the files listed here are ever installed: PageLamp trusts nothing but these SHA-256
-# values. The leader bumps the pin at least monthly, before every model retirement, and out of
-# cycle when a run fails with "requires a newer version of Codex"; the backend reviews.
+# values. The maintainers bump the pin at least monthly, before every model retirement, and out
+# of cycle when a run fails with "requires a newer version of Codex"; a second maintainer
+# reviews.
 #
 # Bumping: take `version` from github.com/openai/codex/releases (a stable `rust-v<version>`
 # release, never an alpha), then each asset's `size` and `digest` from

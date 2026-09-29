@@ -504,6 +504,10 @@ fn no_material_text_reaches_the_digest_or_reminders() {
                 week_hint: None,
             })
             .unwrap();
+        // Readable text (text only belongs to an `ok` material): still never in the digest.
+        store
+            .set_text_state(&material, TextStatus::Ok, None, Some("h"))
+            .unwrap();
         store
             .replace_chunks(
                 &material,

@@ -1044,7 +1044,7 @@ pub struct StartupTasks {
     pub removal_suggestions_total: u32,
 }
 
-// ----- reminders and the weekly digest (v0.3 M3; methods are wired by the leader) -------------
+// ----- reminders and the weekly digest (v0.3 M3) ----------------------------------------------
 
 #[uniffi::remote(Enum)]
 pub enum ReminderKind {
@@ -1123,7 +1123,7 @@ pub struct WeeklyDigest {
     pub plan: Option<DigestPlan>,
 }
 
-// ----- study plans (v0.3 M3; methods are wired by the leader) ------------------------------------
+// ----- study plans (v0.3 M3) ---------------------------------------------------------------------
 
 #[uniffi::remote(Record)]
 pub struct StudyPlanRequest {
@@ -1176,7 +1176,7 @@ pub struct GeneratedStudyPlan {
     pub warnings: Vec<PlanWarning>,
 }
 
-// ----- weekly explanations (v0.3 M3; methods are wired by the leader) ----------------------------
+// ----- weekly explanations (v0.3 M3) -------------------------------------------------------------
 
 #[uniffi::remote(Enum)]
 pub enum OutputLanguage {
