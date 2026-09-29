@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/common/PageHeader";
+import { AiModelsSection } from "@/features/ai/AiModelsSection";
+import { AI_SETUP_ENABLED } from "@/lib/features";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DataSection } from "./DataSection";
@@ -7,7 +9,7 @@ import { HelpSection } from "./HelpSection";
 import { PrivacySection } from "./PrivacySection";
 import { UpdatesSection } from "./UpdatesSection";
 
-/** Settings: appearance, data, privacy, updates, help & feedback and about. */
+/** Settings: appearance, data, privacy, AI models (M1), updates, help & feedback and about. */
 export function SettingsPage() {
   const { t } = useTranslation("settings");
   return (
@@ -17,6 +19,7 @@ export function SettingsPage() {
         <AppearanceSection />
         <DataSection />
         <PrivacySection />
+        {AI_SETUP_ENABLED ? <AiModelsSection /> : null}
         <UpdatesSection />
         <HelpSection />
         <AboutSection />

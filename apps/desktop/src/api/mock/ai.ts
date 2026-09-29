@@ -410,7 +410,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         throw new ApiError("model", `No model "${model}".`, { model_error: "model_not_found" });
       return {
         ok: true,
-        latency_ms: info.on_device ? 2_300 : 850,
+        latency_ms: info.on_device ? 2_300 : 900,
         structured_output_tier:
           provider.wire === "chat_completions" ? "json_object" : "native_schema",
         thinking_always_on: info.reasoning_always_on,

@@ -1,0 +1,315 @@
+{
+  "settings": {
+    "title": "AI models",
+    "description": "Let {{product}} write study plans and explanations with a model you choose. Nothing is sent to an AI service until you set one up and read what it receives.",
+    "empty": "No model set up yet. Add an API key, or use a model on this computer.",
+    "loadFailed": "Couldn't load the AI settings.",
+    "addKey": "Add an API key",
+    "backendsLabel": "Your models"
+  },
+  "local": {
+    "title": "Models on this computer",
+    "hint": "{{product}} looks for Ollama and LM Studio running on this computer. It never downloads a model for you.",
+    "detecting": "Looking for model servers on this computer…",
+    "detectFailed": "Couldn't check for model servers on this computer.",
+    "lookAgain": "Look again",
+    "server": {
+      "ollama": "Ollama",
+      "lm_studio": "LM Studio"
+    },
+    "running": "Running at {{address}}",
+    "notRunning": "Not running. Start it, then look again.",
+    "use": "Use {{name}}",
+    "inUse": "Added"
+  },
+  "backend": {
+    "kind": {
+      "api_key": "API key",
+      "local": "On this computer",
+      "codex": "ChatGPT plan",
+      "claude_code": "Claude plan"
+    },
+    "state": {
+      "ready": "Ready",
+      "needs_setup": "Needs setup",
+      "needs_disclosure": "Not turned on yet",
+      "unavailable": "Unavailable"
+    },
+    "problem": {
+      "key_missing": "The key is missing from your keychain. Replace it to use this service again.",
+      "server_not_running": "The model server isn't running.",
+      "model_missing": "A model you chose is no longer offered. Choose another below.",
+      "disclosure_changed": "What this service receives has changed since you last read it."
+    },
+    "keyEnds": "Key ending in {{last4}}",
+    "turnOn": "Review and turn on",
+    "whatsShared": "What's shared",
+    "replaceKey": "Replace key",
+    "remove": "Remove",
+    "removeTitle": "Remove {{name}}?",
+    "removeBody": "{{product}} deletes the key from your keychain and stops using {{name}} for every feature. Your usage history stays.",
+    "removed": "{{name}} removed"
+  },
+  "policy": {
+    "label": "Data policy",
+    "sentTo": "Sent to {{name}}",
+    "staysHere": "Stays on this computer",
+    "training": {
+      "no_training": "not used for training",
+      "may_train": "may be used for training (you can turn this off)",
+      "may_train_free_tier": "free tier: may be used for training",
+      "unknown": "training unknown: check the provider's terms"
+    },
+    "retention": {
+      "not_stored": "not stored",
+      "stored_days_one": "kept up to {{count}} day",
+      "stored_days_other": "kept up to {{count}} days",
+      "provider_terms": "kept per the provider's terms",
+      "on_device": "not stored elsewhere"
+    },
+    "age": "{{age}}+",
+    "ageGuardian": "{{age}}+ with a guardian's permission",
+    "cost": {
+      "api_billing": "billed to your API account",
+      "plan_credits": "counts toward your plan",
+      "free_on_device": "free",
+      "cloud_via_local": "runs in the cloud"
+    }
+  },
+  "disclosure": {
+    "title": "Before {{product}} uses {{name}}",
+    "intro": "This is what happens when {{product}} uses this service. If any of it changes, {{product}} asks you again.",
+    "changed": "This changed since you last read it.",
+    "gai": {
+      "heading": "{{product}} uses generative AI",
+      "body": "When you ask for a study plan or an explanation, {{product}} writes it with a generative AI model. Everything it writes is labelled AI-generated, with the service, the model and the date."
+    },
+    "sent": {
+      "heading": "What is sent, and to whom",
+      "structure": "Course structure: titles, dates, deadlines and week numbers.",
+      "material_text": "Text from your course materials (slides, notes), for explanations and course calendars, only from courses whose rules allow it.",
+      "cloud": "It goes to {{name}} and is handled under {{name}}'s terms.",
+      "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
+      "terms": "Read {{name}}'s terms"
+    },
+    "training": {
+      "heading": "Training and storage",
+      "no_training": "{{name}} doesn't use what {{product}} sends to train its models.",
+      "may_train": "{{name}} may use what's sent to train its models, depending on your account setting.",
+      "turnOff": "How to turn training off",
+      "may_train_free_tier": "On {{name}}'s free tier, what's sent may be used to improve its products, and people may review it. A key with billing turned on avoids this.",
+      "unknown": "{{product}} doesn't know whether this service trains on what's sent. Check its terms before you continue."
+    },
+    "retention": {
+      "not_stored": "{{name}} doesn't store what's sent.",
+      "stored_days_one": "{{name}} may keep what's sent for up to {{count}} day, for example to detect abuse.",
+      "stored_days_other": "{{name}} may keep what's sent for up to {{count}} days, for example to detect abuse.",
+      "provider_terms": "How long {{name}} keeps what's sent depends on its terms.",
+      "on_device": "Nothing is stored outside this computer."
+    },
+    "admin": {
+      "heading": "Who else can see it",
+      "body": "If your account belongs to a school or an employer, its administrators may be able to see what's sent."
+    },
+    "cost": {
+      "heading": "Cost",
+      "api_billing": "Each run is billed to your API account. {{product}} shows an estimate before each run and keeps to a monthly budget you set.",
+      "plan_credits": "Runs count toward your plan's usage limits. Past them, credits may be used.",
+      "free_on_device": "Runs on this computer are free. They use its memory and battery.",
+      "cloud_via_local": "This model runs in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply."
+    },
+    "age": {
+      "heading": "Age",
+      "body": "{{name}} requires you to be {{age}} or older.",
+      "guardian": "{{name}} requires you to be {{age}} or older, and under 18 you need a parent's or guardian's permission.",
+      "confirm": "I meet {{name}}'s age requirement."
+    },
+    "freeTier": {
+      "confirm": "I understand that on the free tier, what's sent may be used to improve {{name}}'s products and reviewed by people."
+    },
+    "limits": {
+      "heading": "Limitations and risks",
+      "body": "AI can be wrong, leave things out, or sound more certain than it should. Check what it writes against your slides and readings. It doesn't replace your instructor's rules: you remain responsible for following each course's AI policy."
+    },
+    "ownership": {
+      "heading": "Who owns the materials",
+      "body": "Your course materials, and anything derived from them, including what AI writes from them, remain your institution's and your instructors'."
+    },
+    "accept": "Turn on {{name}}",
+    "later": "Not now",
+    "close": "Close",
+    "accepted": "{{name}} is turned on"
+  },
+  "addKey": {
+    "title": "Add an API key",
+    "description": "Use your own key from an AI provider. {{product}} keeps it in your system's keychain and only ever shows its last 4 characters.",
+    "provider": "Provider",
+    "baseUrl": "Address",
+    "baseUrlHint": "The endpoint's base address, like https://llm.example.edu/v1",
+    "key": "API key",
+    "keyHint": "{{product}} checks it with a free call to the provider before saving it.",
+    "submit": "Check and add",
+    "checking": "Checking…",
+    "added": "{{name}} added",
+    "codingPlan": "{{product}} can't use this key: it's from a coding plan, which the provider allows only in its own coding tools.",
+    "vendorSays": "The provider's terms say:"
+  },
+  "replaceKey": {
+    "title": "Replace the key for {{name}}",
+    "submit": "Check and replace",
+    "done": "Key replaced"
+  },
+  "features": {
+    "title": "Which model does what",
+    "hint": "A small, cheap model is enough for plans and notes. Explanations read your materials and do better with a stronger one.",
+    "name": {
+      "study_plan": "Study plans",
+      "weekly_explanation": "Weekly explanations",
+      "weekly_note": "Weekly notes",
+      "course_calendar": "Reading course calendars"
+    },
+    "model": "Model for {{feature}}",
+    "effort": "Effort for {{feature}}",
+    "notSet": "Not set",
+    "effortName": {
+      "lowest": "Lowest",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "badge": {
+      "onDevice": "on this computer",
+      "cloud": "runs in the cloud",
+      "noPrice": "no price",
+      "suggested": "suggested"
+    },
+    "noPriceNote": "{{product}} has no price for {{model}}, so your budget can't be enforced for it. You'll be asked to confirm before its first run.",
+    "thinkingNote": "{{model}} always thinks before it answers, which costs more.",
+    "cloudNote": "{{model}} runs in the cloud, not on this computer.",
+    "turnOnFirst": "Turn on a model above to choose it here.",
+    "test": "Test",
+    "testing": "Testing…",
+    "testOk": "Works, answered in {{seconds}} s",
+    "modelsFailed": "Couldn't load the models from {{name}}.",
+    "saved": "Saved"
+  },
+  "budget": {
+    "title": "Monthly budget for API keys",
+    "hint": "{{product}} checks each run's estimate against it and asks before going over. It's a safety net, not a hard limit: also set a spending limit in your provider's dashboard.",
+    "amount": "Budget in US dollars",
+    "noLimit": "No budget",
+    "save": "Save budget",
+    "saved": "Budget saved",
+    "used": "{{spent}} of {{budget}} used this month",
+    "usedNoBudget": "{{spent}} used this month",
+    "progress": "Budget used this month",
+    "warn": "You've used {{percent}}% of this month's budget.",
+    "invalid": "Enter an amount like 5 or 2.50."
+  },
+  "removeAll": {
+    "button": "Remove all AI data",
+    "hint": "Deletes your keys, model choices, usage history and everything {{product}} wrote with AI.",
+    "title": "Remove all AI data?",
+    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and every plan and explanation {{product}} wrote. Your courses, their rules and your answers about sharing materials stay.",
+    "confirm": "Remove all",
+    "done": "All AI data removed"
+  },
+  "usage": {
+    "title": "AI usage",
+    "description": "Counted on this computer: runs, tokens and estimated cost. Only the counts are kept, never what was sent.",
+    "month": "Month",
+    "empty": "No AI runs in {{month}}.",
+    "caption": "AI usage in {{month}}",
+    "columns": {
+      "model": "Model",
+      "feature": "Feature",
+      "runs": "Runs",
+      "tokens": "Tokens",
+      "cost": "Cost"
+    },
+    "tokens": "{{input}} in, {{output}} out",
+    "free": "Free",
+    "noPrice": "No price",
+    "estimatedNote": "≈ includes estimates (for example, a cancelled run).",
+    "total": "Total"
+  },
+  "estimate": {
+    "label": "Estimated cost",
+    "upTo": "≈ {{amount}} at most",
+    "lessThan": "≈ less than {{amount}}",
+    "free": "Free, on this computer",
+    "noPrice": "No price for this model",
+    "cloudNoPrice": "Runs in the cloud; no cost estimate",
+    "details": "Up to {{input}} tokens in and {{output}} out",
+    "useUnpriced": "Use it anyway",
+    "useUnpricedHint": "Your budget isn't enforced for this model. Its runs are still counted in tokens.",
+    "overBudget": "This would go over this month's budget.",
+    "overrideBudget": "Go over the budget this time",
+    "generate": "Generate"
+  },
+  "blocked": {
+    "course_policy_prohibited": "This course's rules say no AI, so {{product}} won't send anything from it.",
+    "course_ai_turned_off": "You turned AI off for this course's materials.",
+    "course_hidden": "This course is hidden.",
+    "no_readable_materials": "This week has no materials {{product}} can read.",
+    "material_sharing_not_allowed": "You said this course's materials may not be shared with AI services, so nothing was sent.",
+    "coding_plan_key": "This key is from a coding plan, which {{product}} can't use.",
+    "disclosure_not_acknowledged": "Read what this service receives, then turn it on.",
+    "no_model_chosen": "Choose a model for this in Settings → AI models.",
+    "budget_reached": "This would go over this month's budget.",
+    "price_unknown_not_acknowledged": "{{product}} has no price for this model. Confirm to use it without a budget.",
+    "weekly_run_cap_reached": "You've reached this week's run limit.",
+    "backend_disabled_in_this_build": "This service isn't available in this version of {{product}}."
+  },
+  "modelError": {
+    "not_signed_in": "You're not signed in to this service.",
+    "auth_rejected": "The provider rejected the key. Check that you copied all of it, or replace it.",
+    "billing_or_quota": "The provider says your account is out of credit or over its quota.",
+    "usage_limit": "You've reached your plan's usage limit.",
+    "rate_limited": "The provider is limiting requests. Try again in a moment.",
+    "rate_limited_after": "The provider is limiting requests. Try again in {{seconds}} s.",
+    "overloaded": "The provider is overloaded right now. Try again later.",
+    "invalid_request": "The provider refused the request.",
+    "model_not_found": "The provider doesn't offer this model (any more).",
+    "context_too_long": "This is too much text for the model.",
+    "refused": "The model declined to answer.",
+    "content_filtered": "The provider's content filter stopped the answer.",
+    "network": "Couldn't reach the provider. Check your connection and the address.",
+    "timeout": "The model took too long to answer.",
+    "bad_output": "The model's answer didn't have the expected shape.",
+    "runtime_missing": "The program this service needs isn't installed.",
+    "runtime_verify_failed": "The program this service needs couldn't be verified.",
+    "runtime_outdated": "The program this service needs is too old. Update it.",
+    "unsupported": "This model can't do what {{product}} needs."
+  },
+  "sharing": {
+    "title": "Sharing materials with AI services",
+    "question": "Can this course's materials (slides, notes) be shared with an AI service?",
+    "hint": "Check your syllabus or ask your instructor. This is separate from whether AI use is allowed in the course.",
+    "option": {
+      "allowed": "Yes, it's allowed",
+      "not_sure": "Not sure",
+      "not_allowed": "No, it's not allowed"
+    },
+    "optionHint": {
+      "allowed": "{{product}} may send text from this course's materials to the AI service you chose.",
+      "not_sure": "{{product}} still sends material text; each result notes where it went.",
+      "not_allowed": "{{product}} never sends this course's materials to a cloud service. A model on this computer still works."
+    },
+    "unanswered": "Not answered yet. The first time {{product}} sends this course's materials to an AI service, it reminds you to check.",
+    "saved": "Answer saved",
+    "reminder": {
+      "title": "Check whether your instructor allows sharing course materials with AI services",
+      "body": "{{product}} sent text from {{course}}'s materials to {{service}}. If you're not sure it's allowed, check the syllabus or ask your instructor.",
+      "answer": "Is sharing this course's materials allowed?",
+      "dismiss": "Dismiss"
+    },
+    "notAllowed": {
+      "title": "Not sent to an AI service",
+      "body": "You said {{course}}'s materials may not be shared with AI services, so {{product}} sent nothing.",
+      "useLocal": "Use a model on this computer",
+      "structureOnly": "Get an overview from the course structure only",
+      "change": "Change the answer"
+    }
+  }
+}

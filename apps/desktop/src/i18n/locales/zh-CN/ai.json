@@ -1,0 +1,315 @@
+{
+  "settings": {
+    "title": "AI 模型",
+    "description": "让 {{product}} 用你选的模型来写学习计划和讲解。在你设置好一个模型、并看过它会收到哪些内容之前，不会有任何内容发给 AI 服务。",
+    "empty": "还没有设置模型。可以添加一个 API 密钥，或者使用这台电脑上的模型。",
+    "loadFailed": "无法加载 AI 设置。",
+    "addKey": "添加 API 密钥",
+    "backendsLabel": "你的模型"
+  },
+  "local": {
+    "title": "这台电脑上的模型",
+    "hint": "{{product}} 会查找这台电脑上正在运行的 Ollama 和 LM Studio，但不会替你下载任何模型。",
+    "detecting": "正在查找这台电脑上的模型服务…",
+    "detectFailed": "无法检查这台电脑上的模型服务。",
+    "lookAgain": "重新查找",
+    "server": {
+      "ollama": "Ollama",
+      "lm_studio": "LM Studio"
+    },
+    "running": "正在运行，地址 {{address}}",
+    "notRunning": "没有运行。启动它之后再重新查找。",
+    "use": "使用 {{name}}",
+    "inUse": "已添加"
+  },
+  "backend": {
+    "kind": {
+      "api_key": "API 密钥",
+      "local": "在这台电脑上",
+      "codex": "ChatGPT 订阅",
+      "claude_code": "Claude 订阅"
+    },
+    "state": {
+      "ready": "可以使用",
+      "needs_setup": "需要设置",
+      "needs_disclosure": "尚未启用",
+      "unavailable": "不可用"
+    },
+    "problem": {
+      "key_missing": "钥匙串里找不到这个密钥。重新填写密钥后才能继续使用这个服务。",
+      "server_not_running": "模型服务没有运行。",
+      "model_missing": "你选的某个模型已经不再提供，请在下面另选一个。",
+      "disclosure_changed": "自你上次查看以来，这个服务会收到的内容有了变化。"
+    },
+    "keyEnds": "密钥末尾为 {{last4}}",
+    "turnOn": "查看并启用",
+    "whatsShared": "会发送哪些内容",
+    "replaceKey": "更换密钥",
+    "remove": "移除",
+    "removeTitle": "移除 {{name}}？",
+    "removeBody": "{{product}} 会从钥匙串中删除这个密钥，所有功能都不再使用 {{name}}。使用记录会保留。",
+    "removed": "已移除 {{name}}"
+  },
+  "policy": {
+    "label": "数据政策",
+    "sentTo": "发送给 {{name}}",
+    "staysHere": "只留在这台电脑上",
+    "training": {
+      "no_training": "不用于训练",
+      "may_train": "可能用于训练（可以关闭）",
+      "may_train_free_tier": "免费档：可能用于训练",
+      "unknown": "是否用于训练未知：请查看服务商条款"
+    },
+    "retention": {
+      "not_stored": "不保存",
+      "stored_days_one": "最多保存 {{count}} 天",
+      "stored_days_other": "最多保存 {{count}} 天",
+      "provider_terms": "按服务商条款保存",
+      "on_device": "不会保存到别处"
+    },
+    "age": "{{age}} 岁以上",
+    "ageGuardian": "{{age}} 岁以上，需监护人同意",
+    "cost": {
+      "api_billing": "费用计入你的 API 账户",
+      "plan_credits": "计入你的订阅用量",
+      "free_on_device": "免费",
+      "cloud_via_local": "在云端运行"
+    }
+  },
+  "disclosure": {
+    "title": "{{product}} 使用 {{name}} 之前",
+    "intro": "下面是 {{product}} 使用这个服务时会发生的事。其中任何一项有变化，{{product}} 都会再问你一次。",
+    "changed": "自你上次查看以来，这里的内容有了变化。",
+    "gai": {
+      "heading": "{{product}} 使用生成式 AI",
+      "body": "当你让 {{product}} 做学习计划或讲解时，它会用生成式 AI 模型来写。它写出的每一样内容都会标注“AI 生成”，并注明服务、模型和日期。"
+    },
+    "sent": {
+      "heading": "发送什么，发给谁",
+      "structure": "课程结构：标题、日期、截止时间和周次。",
+      "material_text": "课程资料（课件、笔记）中的文字，用于讲解和课程日历，而且只来自规则允许的课程。",
+      "cloud": "这些内容会发给 {{name}}，按 {{name}} 的条款处理。",
+      "onDevice": "这些内容会发给这台电脑上的 {{name}}，不会离开这台电脑。",
+      "terms": "查看 {{name}} 的条款"
+    },
+    "training": {
+      "heading": "训练与保存",
+      "no_training": "{{name}} 不会用 {{product}} 发送的内容来训练模型。",
+      "may_train": "{{name}} 可能会用发送的内容来训练模型，取决于你的账户设置。",
+      "turnOff": "如何关闭训练",
+      "may_train_free_tier": "在 {{name}} 的免费档中，发送的内容可能被用于改进它的产品，也可能有人工审阅。使用已开通付费的密钥可以避免这一点。",
+      "unknown": "{{product}} 不清楚这个服务是否会用发送的内容做训练。继续之前请先查看它的条款。"
+    },
+    "retention": {
+      "not_stored": "{{name}} 不会保存发送的内容。",
+      "stored_days_one": "{{name}} 可能会把发送的内容保存最多 {{count}} 天，例如用于发现滥用。",
+      "stored_days_other": "{{name}} 可能会把发送的内容保存最多 {{count}} 天，例如用于发现滥用。",
+      "provider_terms": "{{name}} 保存发送内容的时长取决于它的条款。",
+      "on_device": "不会有任何内容保存到这台电脑以外的地方。"
+    },
+    "admin": {
+      "heading": "还有谁能看到",
+      "body": "如果你的账户属于学校或雇主，它的管理员可能看得到发送的内容。"
+    },
+    "cost": {
+      "heading": "费用",
+      "api_billing": "每次运行的费用都计入你的 API 账户。{{product}} 会在每次运行前显示预估费用，并遵守你设定的每月预算。",
+      "plan_credits": "每次运行都计入你订阅的用量限额；超出之后可能会消耗额度点数。",
+      "free_on_device": "在这台电脑上运行是免费的，但会占用它的内存和电量。",
+      "cloud_via_local": "这个模型通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。"
+    },
+    "age": {
+      "heading": "年龄",
+      "body": "{{name}} 要求使用者年满 {{age}} 岁。",
+      "guardian": "{{name}} 要求使用者年满 {{age}} 岁；未满 18 岁需要父母或监护人同意。",
+      "confirm": "我符合 {{name}} 的年龄要求。"
+    },
+    "freeTier": {
+      "confirm": "我知道在免费档中，发送的内容可能被用于改进 {{name}} 的产品，并可能有人工审阅。"
+    },
+    "limits": {
+      "heading": "局限与风险",
+      "body": "AI 可能出错、遗漏内容，或者说得比实际更肯定。请对照课件和阅读材料核对它写的内容。它不能代替老师的规定：遵守每门课的 AI 政策仍然是你自己的责任。"
+    },
+    "ownership": {
+      "heading": "资料归谁所有",
+      "body": "你的课程资料，以及由它们衍生的任何内容（包括 AI 根据它们写出的内容），仍然归你的学校和任课老师所有。"
+    },
+    "accept": "启用 {{name}}",
+    "later": "以后再说",
+    "close": "关闭",
+    "accepted": "已启用 {{name}}"
+  },
+  "addKey": {
+    "title": "添加 API 密钥",
+    "description": "使用你自己从 AI 服务商获得的密钥。{{product}} 会把它保存在系统钥匙串中，界面上只显示最后 4 个字符。",
+    "provider": "服务商",
+    "baseUrl": "地址",
+    "baseUrlHint": "接口的基础地址，例如 https://llm.example.edu/v1",
+    "key": "API 密钥",
+    "keyHint": "保存之前，{{product}} 会向服务商发一个免费请求来验证它。",
+    "submit": "验证并添加",
+    "checking": "正在验证…",
+    "added": "已添加 {{name}}",
+    "codingPlan": "{{product}} 不能使用这个密钥：它属于编程订阅，服务商只允许在它自己的编程工具里使用。",
+    "vendorSays": "服务商条款原文："
+  },
+  "replaceKey": {
+    "title": "更换 {{name}} 的密钥",
+    "submit": "验证并更换",
+    "done": "密钥已更换"
+  },
+  "features": {
+    "title": "各项功能用哪个模型",
+    "hint": "做计划和写周记，小而便宜的模型就够了。讲解要读你的课程资料，用更强的模型效果更好。",
+    "name": {
+      "study_plan": "学习计划",
+      "weekly_explanation": "每周讲解",
+      "weekly_note": "每周小结",
+      "course_calendar": "读取课程日历"
+    },
+    "model": "{{feature}}使用的模型",
+    "effort": "{{feature}}的思考强度",
+    "notSet": "未设置",
+    "effortName": {
+      "lowest": "最低",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "badge": {
+      "onDevice": "在这台电脑上",
+      "cloud": "在云端运行",
+      "noPrice": "无价格",
+      "suggested": "推荐"
+    },
+    "noPriceNote": "{{product}} 没有 {{model}} 的价格，所以无法对它执行预算。第一次使用它之前会请你确认。",
+    "thinkingNote": "{{model}} 每次回答前都会先思考，费用会更高。",
+    "cloudNote": "{{model}} 在云端运行，而不是在这台电脑上。",
+    "turnOnFirst": "先在上面启用一个模型，才能在这里选择。",
+    "test": "测试",
+    "testing": "正在测试…",
+    "testOk": "可以使用，{{seconds}} 秒内作答",
+    "modelsFailed": "无法从 {{name}} 获取模型列表。",
+    "saved": "已保存"
+  },
+  "budget": {
+    "title": "API 密钥的每月预算",
+    "hint": "{{product}} 会把每次运行的预估费用与预算比较，超出之前先问你。这只是一道保险，不是硬性上限：请同时在服务商的控制台里设置消费上限。",
+    "amount": "预算（美元）",
+    "noLimit": "不设预算",
+    "save": "保存预算",
+    "saved": "预算已保存",
+    "used": "本月已用 {{spent}}，预算 {{budget}}",
+    "usedNoBudget": "本月已用 {{spent}}",
+    "progress": "本月预算使用情况",
+    "warn": "本月预算已用掉 {{percent}}%。",
+    "invalid": "请输入金额，例如 5 或 2.50。"
+  },
+  "removeAll": {
+    "button": "删除所有 AI 数据",
+    "hint": "删除你的密钥、模型选择、使用记录，以及 {{product}} 用 AI 写出的所有内容。",
+    "title": "删除所有 AI 数据？",
+    "body": "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 {{product}} 写出的所有计划和讲解。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。",
+    "confirm": "全部删除",
+    "done": "已删除所有 AI 数据"
+  },
+  "usage": {
+    "title": "AI 用量",
+    "description": "在这台电脑上统计：运行次数、token 数和预估费用。只保存这些数字，从不保存发送的内容。",
+    "month": "月份",
+    "empty": "{{month}}没有 AI 运行记录。",
+    "caption": "{{month}}的 AI 用量",
+    "columns": {
+      "model": "模型",
+      "feature": "功能",
+      "runs": "次数",
+      "tokens": "Token",
+      "cost": "费用"
+    },
+    "tokens": "输入 {{input}}，输出 {{output}}",
+    "free": "免费",
+    "noPrice": "无价格",
+    "estimatedNote": "≈ 表示含有估算（例如被取消的运行）。",
+    "total": "合计"
+  },
+  "estimate": {
+    "label": "预估费用",
+    "upTo": "≈ 最多 {{amount}}",
+    "lessThan": "≈ 不到 {{amount}}",
+    "free": "免费，在这台电脑上运行",
+    "noPrice": "这个模型没有价格",
+    "cloudNoPrice": "在云端运行，无法预估费用",
+    "details": "最多输入 {{input}} 个 token，输出 {{output}} 个",
+    "useUnpriced": "仍然使用",
+    "useUnpricedHint": "对这个模型不执行预算，但它的运行仍会按 token 计数。",
+    "overBudget": "这次运行会超出本月预算。",
+    "overrideBudget": "这次允许超出预算",
+    "generate": "生成"
+  },
+  "blocked": {
+    "course_policy_prohibited": "这门课的规则是“禁止使用 AI”，所以 {{product}} 不会发送它的任何内容。",
+    "course_ai_turned_off": "你已经为这门课的资料关闭了 AI。",
+    "course_hidden": "这门课已被隐藏。",
+    "no_readable_materials": "这一周没有 {{product}} 能读取的资料。",
+    "material_sharing_not_allowed": "你表示这门课的资料不能分享给 AI 服务，所以没有发送任何内容。",
+    "coding_plan_key": "这个密钥属于编程订阅，{{product}} 不能使用。",
+    "disclosure_not_acknowledged": "先查看这个服务会收到哪些内容，然后启用它。",
+    "no_model_chosen": "请在“设置 → AI 模型”中为这项功能选择模型。",
+    "budget_reached": "这次运行会超出本月预算。",
+    "price_unknown_not_acknowledged": "{{product}} 没有这个模型的价格。确认后可在不执行预算的情况下使用。",
+    "weekly_run_cap_reached": "已达到本周的运行次数上限。",
+    "backend_disabled_in_this_build": "这个版本的 {{product}} 不提供这个服务。"
+  },
+  "modelError": {
+    "not_signed_in": "你还没有登录这个服务。",
+    "auth_rejected": "服务商拒绝了这个密钥。请检查是否完整复制，或者更换密钥。",
+    "billing_or_quota": "服务商提示你的账户余额不足或已超出配额。",
+    "usage_limit": "已达到你订阅的用量上限。",
+    "rate_limited": "服务商正在限制请求频率，请稍后再试。",
+    "rate_limited_after": "服务商正在限制请求频率，请在 {{seconds}} 秒后再试。",
+    "overloaded": "服务商目前负载过高，请稍后再试。",
+    "invalid_request": "服务商拒绝了这个请求。",
+    "model_not_found": "服务商没有（或已不再提供）这个模型。",
+    "context_too_long": "内容太多，超出了模型能处理的长度。",
+    "refused": "模型拒绝回答。",
+    "content_filtered": "服务商的内容过滤拦下了这次回答。",
+    "network": "连不上服务商。请检查网络连接和地址。",
+    "timeout": "模型回答超时。",
+    "bad_output": "模型的回答格式不符合要求。",
+    "runtime_missing": "这个服务所需的程序没有安装。",
+    "runtime_verify_failed": "无法验证这个服务所需的程序。",
+    "runtime_outdated": "这个服务所需的程序版本太旧，请更新。",
+    "unsupported": "这个模型做不到 {{product}} 需要的事。"
+  },
+  "sharing": {
+    "title": "与 AI 服务分享资料",
+    "question": "这门课的资料（课件、笔记）可以分享给 AI 服务吗？",
+    "hint": "请查看课程大纲或询问任课老师。这和“这门课是否允许使用 AI”是两个不同的问题。",
+    "option": {
+      "allowed": "可以",
+      "not_sure": "不确定",
+      "not_allowed": "不可以"
+    },
+    "optionHint": {
+      "allowed": "{{product}} 可以把这门课资料中的文字发送给你选择的 AI 服务。",
+      "not_sure": "{{product}} 仍会发送资料文字，每个结果都会注明发给了谁。",
+      "not_allowed": "{{product}} 绝不会把这门课的资料发给云端服务。这台电脑上的模型仍然可以用。"
+    },
+    "unanswered": "尚未回答。{{product}} 第一次把这门课的资料发给 AI 服务时，会提醒你确认。",
+    "saved": "回答已保存",
+    "reminder": {
+      "title": "请确认任课老师是否允许把课程资料分享给 AI 服务",
+      "body": "{{product}} 已把 {{course}} 资料中的文字发送给 {{service}}。如果你不确定是否允许，请查看课程大纲或询问任课老师。",
+      "answer": "这门课的资料可以分享吗？",
+      "dismiss": "知道了"
+    },
+    "notAllowed": {
+      "title": "没有发送给 AI 服务",
+      "body": "你表示 {{course}} 的资料不能分享给 AI 服务，所以 {{product}} 没有发送任何内容。",
+      "useLocal": "使用这台电脑上的模型",
+      "structureOnly": "只根据课程结构生成概览",
+      "change": "修改回答"
+    }
+  }
+}

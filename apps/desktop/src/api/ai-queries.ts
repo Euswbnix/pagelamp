@@ -2,7 +2,7 @@
 // readable. Same rules: screens read through these hooks, keys never hold a secret, and API keys
 // travel only as mutation variables with `gcTime: 0` (dropped as soon as the call settles).
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useApi } from "./context";
 import {
@@ -66,6 +66,19 @@ export function useModels(backend: BackendRef | null) {
     enabled: backend !== null,
     retry: false,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** The model lists of several backends at once (one query each, same cache as useModels). */
+export function useBackendModels(backends: BackendRef[]) {
+  const api = useApi();
+  return useQueries({
+    queries: backends.map((backend) => ({
+      queryKey: aiKeys.models(backend),
+      queryFn: () => api.listModels(backend),
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+    })),
   });
 }
 
