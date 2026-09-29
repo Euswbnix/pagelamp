@@ -270,21 +270,26 @@ impl Store {
     }
 
     /// The candidate signals schema 4 stores for a course: files the syllabus links to, the
-    /// front page (both sync-written) and the student's own adds and removes.
+    /// front page, the outline a folder's `course.toml` names (all sync-written) and the
+    /// student's own adds and removes.
     pub fn calendar_signals(&self, course_id: &str) -> Result<CandidateSignals> {
         let mut signals = CandidateSignals::default();
-        let flagged: Vec<(String, bool, bool)> = self.query_list(
-            "SELECT id, linked_from_syllabus, is_front_page FROM materials
-             WHERE course_id = ?1 AND (linked_from_syllabus = 1 OR is_front_page = 1)",
+        let flagged: Vec<(String, bool, bool, bool)> = self.query_list(
+            "SELECT id, linked_from_syllabus, is_front_page, named_outline FROM materials
+             WHERE course_id = ?1
+               AND (linked_from_syllabus = 1 OR is_front_page = 1 OR named_outline = 1)",
             [course_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
-        for (id, linked, front) in flagged {
+        for (id, linked, front, named) in flagged {
             if linked {
                 signals.linked_from_syllabus.insert(id.clone());
             }
             if front {
-                signals.front_page.insert(id);
+                signals.front_page.insert(id.clone());
+            }
+            if named {
+                signals.named_in_course_toml.insert(id);
             }
         }
         let stored: Option<String> = self

@@ -336,6 +336,46 @@ fn the_view_lists_candidates_and_why_ai_reading_cannot_run() {
     assert_eq!(wire["candidates"][2]["left_out"], "no_text");
 }
 
+#[tokio::test]
+async fn the_outline_a_folder_s_course_toml_names_is_a_candidate() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(MemorySecrets::new()))
+        .unwrap();
+    let course = temp.path().join("Courses").join("DEMO707 Field Methods");
+    std::fs::create_dir_all(course.join("Admin")).unwrap();
+    // A title no rule would pick: only course.toml says it is the outline.
+    std::fs::write(
+        course.join("Admin").join("info.md"),
+        format!(
+            "# Field Methods\n\n{}\n",
+            "Classes, fieldwork and the final exam. ".repeat(12)
+        ),
+    )
+    .unwrap();
+    std::fs::write(course.join("notes.md"), "# Notes\n\nSampling notes.\n").unwrap();
+    std::fs::write(course.join("course.toml"), "outline = \"Admin/info.md\"\n").unwrap();
+    let source = app
+        .add_folder_source(&temp.path().join("Courses"), None, None)
+        .unwrap();
+    app.sync_source(&source.id, pagelamp_app::SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    let candidates: Vec<(String, CandidateReason, bool)> = app
+        .calendar_candidates("DEMO707")
+        .unwrap()
+        .into_iter()
+        .map(|c| (c.title, c.reason, c.included))
+        .collect();
+    assert_eq!(
+        candidates,
+        [(
+            "info.md".to_string(),
+            CandidateReason::NamedInCourseToml,
+            true
+        )]
+    );
+}
+
 #[test]
 fn reading_offers_skip_hidden_withheld_and_empty_courses() {
     let temp = tempfile::tempdir().unwrap();
