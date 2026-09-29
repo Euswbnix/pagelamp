@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { AiModelsSection } from "@/features/ai/AiModelsSection";
 import { UsageSection } from "@/features/ai/UsageSection";
@@ -21,6 +23,7 @@ import { UpdatesSection } from "./UpdatesSection";
  */
 export function SettingsPage() {
   const { t } = useTranslation("settings");
+  useFocusLinkedSection();
   return (
     <div className="max-w-3xl">
       <PageHeader title={t("title")} />
@@ -43,4 +46,24 @@ export function SettingsPage() {
       </div>
     </div>
   );
+}
+
+/**
+ * `/settings#<section>` (onboarding's "Set up a model"): focus that section's heading, which
+ * scrolls it into view. After a frame, so the shell's scroll-to-top on navigation comes first.
+ */
+function useFocusLinkedSection() {
+  const { hash } = useLocation();
+  useEffect(() => {
+    const id = decodeURIComponent(hash.slice(1));
+    if (!id) return;
+    const frame = requestAnimationFrame(() => {
+      const heading = document.getElementById(id)?.querySelector<HTMLElement>("h2");
+      if (!heading) return;
+      heading.tabIndex = -1;
+      heading.classList.add("outline-none");
+      heading.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hash]);
 }

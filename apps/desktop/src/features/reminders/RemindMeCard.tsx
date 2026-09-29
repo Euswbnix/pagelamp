@@ -3,6 +3,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useFocusOnMount } from "@/lib/useFocusOnMount";
 import { useReminderSettings, useSetReminderSettings } from "./queries";
 
 /**
@@ -47,9 +48,7 @@ export function RemindMeCard() {
               </div>
             </>
           ) : (
-            <p role="status" className="text-sm text-muted-foreground">
-              {answer ? t("remind.onDone") : t("remind.offDone")}
-            </p>
+            <Answered text={answer ? t("remind.onDone") : t("remind.offDone")} />
           )}
           {save.isError ? (
             <p role="alert" className="text-sm text-destructive">
@@ -59,5 +58,15 @@ export function RemindMeCard() {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+/** Replaces the buttons, so it takes the focus. */
+function Answered({ text }: { text: string }) {
+  const ref = useFocusOnMount<HTMLParagraphElement>();
+  return (
+    <p ref={ref} tabIndex={-1} role="status" className="text-sm text-muted-foreground outline-none">
+      {text}
+    </p>
   );
 }

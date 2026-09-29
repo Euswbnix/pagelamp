@@ -109,9 +109,12 @@ describe("onboarding: Remind me", () => {
     const notice = vi.spyOn(api, "showRemindersOnNotice");
     const { user } = renderWithProviders(<RemindMeCard />, { api });
     await user.click(await screen.findByRole("button", { name: "Yes, remind me" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    const answered = await screen.findByRole("status");
+    expect(answered).toHaveTextContent(
       "PageLamp will remind you. You can change this in Settings → Reminders.",
     );
+    // It replaces the buttons, so it takes the focus.
+    expect(answered).toHaveFocus();
     expect((await api.reminderSettings()).run_in_background).toBe(true);
     expect(notice).toHaveBeenCalledTimes(1);
   });

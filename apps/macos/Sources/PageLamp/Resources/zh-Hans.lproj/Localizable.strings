@@ -1148,6 +1148,11 @@
 "mac.toolbar.backToCurrentWeek" = "回到本周";
 "mac.toolbar.inspector" = "检查器";
 "mac.toolbar.showRecentMaterials" = "查看近期资料";
+"onboarding.aiOffer.body" = "用你选的模型，PageLamp 可以帮你安排一周的学习，也可以讲解某一周的材料，并注明读过的页码。在你设置好一个模型、并看过它会收到哪些内容之前，不会有任何内容发给 AI 服务。";
+"onboarding.aiOffer.later" = "随时可以在「设置 → AI 模型」里设置。";
+"onboarding.aiOffer.notNow" = "暂不";
+"onboarding.aiOffer.setUp" = "设置模型";
+"onboarding.aiOffer.title" = "让 PageLamp 写学习计划和讲解";
 "onboarding.source.description" = "选择 PageLamp 获取课程数据的方式。之后还可以添加更多数据来源。";
 "onboarding.source.submit" = "添加并继续";
 "onboarding.source.title" = "你的课程在哪里？";

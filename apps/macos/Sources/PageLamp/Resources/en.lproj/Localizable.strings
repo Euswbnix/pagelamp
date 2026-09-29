@@ -1148,6 +1148,11 @@
 "mac.toolbar.backToCurrentWeek" = "This Week";
 "mac.toolbar.inspector" = "Inspector";
 "mac.toolbar.showRecentMaterials" = "Show Recent Materials";
+"onboarding.aiOffer.body" = "With a model you choose, PageLamp can plan your study week and explain a week's materials, citing the pages it read. Nothing is sent to an AI service until you set one up and read what it receives.";
+"onboarding.aiOffer.later" = "You can set one up any time in Settings → AI models.";
+"onboarding.aiOffer.notNow" = "Not now";
+"onboarding.aiOffer.setUp" = "Set up a model";
+"onboarding.aiOffer.title" = "Let PageLamp write plans and explanations";
 "onboarding.source.description" = "Choose how PageLamp gets your course data. You can add more sources later.";
 "onboarding.source.submit" = "Add and continue";
 "onboarding.source.title" = "Where are your courses?";
