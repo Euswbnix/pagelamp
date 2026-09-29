@@ -5,6 +5,9 @@
 //!   gate to its stored answer: one per generation id at a time (`busy` otherwise), listed in
 //!   `activity()` (an update doesn't restart the app under it), and `cancel_run` stops it: the
 //!   HTTP driver drops the request, Codex gets SIGINT and then a kill.
+//! - A run that reads a course's materials says so (`run_reads_course`), before its gate reads
+//!   the course's AI settings: a later change to them stops it (`stop_course_runs`), whichever
+//!   window or process made the change in this app.
 //! - Events: `started`, `stage waiting_for_model`, the JSON-fallback notice and the repair
 //!   stage, answer text (text answers only) and `usage`. The feature sends `finished` once it
 //!   has checked and stored the answer.
@@ -17,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use chrono::Utc;
-use pagelamp_core::ai::{AiFeature, BlockReason, UsageRecord};
+use pagelamp_core::ai::{AiFeature, BlockReason, Destination, UsageRecord};
 use pagelamp_core::ai_gate::RenderedPrompt;
 use pagelamp_llm::estimate::{cjk_tenths, count_tokens_upper, usage_cost};
 use pagelamp_llm::request::Notice;
@@ -32,7 +35,16 @@ use crate::{App, AppError, AppErrorKind, Result};
 /// courses") is a run too: its token is the parent of each course's run, so stopping the batch
 /// stops the course being read.
 #[derive(Default)]
-pub(crate) struct Runs(Mutex<HashMap<String, CancellationToken>>);
+pub(crate) struct Runs(Mutex<HashMap<String, Running>>);
+
+/// One run in progress.
+struct Running {
+    cancel: CancellationToken,
+    /// The course whose materials it reads, once resolved (`Runs::reads_course`).
+    course: Option<String>,
+    /// Where they go, once the model setup is known.
+    destination: Option<Destination>,
+}
 
 impl Runs {
     /// Register `id` (with a token of its own, or a child of `parent`'s); `busy` if a run with
@@ -53,7 +65,14 @@ impl Runs {
             Some(parent) => parent.child_token(),
             None => CancellationToken::new(),
         };
-        running.insert(id.to_string(), cancel.clone());
+        running.insert(
+            id.to_string(),
+            Running {
+                cancel: cancel.clone(),
+                course: None,
+                destination: None,
+            },
+        );
         Ok((
             Registration {
                 runs: self,
@@ -67,12 +86,35 @@ impl Runs {
     pub(crate) fn cancel(&self, id: &str) -> bool {
         let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
         match running.get(id) {
-            Some(cancel) => {
-                cancel.cancel();
+            Some(run) => {
+                run.cancel.cancel();
                 true
             }
             None => false,
         }
+    }
+
+    /// Run `id` reads `course_id`'s materials (for `destination`, when known).
+    pub(crate) fn reads_course(&self, id: &str, course_id: &str, destination: Option<Destination>) {
+        let mut running = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(run) = running.get_mut(id) {
+            run.course = Some(course_id.to_string());
+            if destination.is_some() {
+                run.destination = destination;
+            }
+        }
+    }
+
+    /// Stop the runs that read `course_id` (with `cloud_only`, those sending to the cloud);
+    /// returns how many.
+    pub(crate) fn cancel_course(&self, course_id: &str, cloud_only: bool) -> usize {
+        let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        running
+            .values()
+            .filter(|run| run.course.as_deref() == Some(course_id))
+            .filter(|run| !cloud_only || run.destination == Some(Destination::Cloud))
+            .inspect(|run| run.cancel.cancel())
+            .count()
     }
 }
 
@@ -183,6 +225,26 @@ impl App {
     /// Stop run `id` (a generation or a batch); false when nothing with that id runs.
     pub(crate) fn cancel_run(&self, id: &str) -> bool {
         self.state.runs.cancel(id)
+    }
+
+    /// Run `id` reads `course_id`'s materials, sent to `destination` once that is known. Call
+    /// it right after resolving the course and BEFORE the gate reads the course's settings:
+    /// a change committed before the gate reads them is blocked by the gate, one after is
+    /// stopped by `stop_course_runs`.
+    pub(crate) fn run_reads_course(
+        &self,
+        id: &str,
+        course_id: &str,
+        destination: Option<Destination>,
+    ) {
+        self.state.runs.reads_course(id, course_id, destination);
+    }
+
+    /// The course's AI settings changed (after the change is stored): stop this process's runs
+    /// that read it. `cloud_only` (question (b) became "not allowed"): only those sending to a
+    /// cloud model; a run whose destination isn't known yet meets the new answer at its gate.
+    pub(crate) fn stop_course_runs(&self, course_id: &str, cloud_only: bool) -> usize {
+        self.state.runs.cancel_course(course_id, cloud_only)
     }
 
     async fn http_run(
@@ -360,6 +422,41 @@ pub(crate) fn run_folder_name(generation_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_course_s_runs_stop_together_and_not_allowed_stops_only_cloud_runs() {
+        let runs = Runs::default();
+        let mut tokens = Vec::new();
+        let mut guards = Vec::new();
+        for (id, course, destination) in [
+            ("cloud", Some("A"), Some(Destination::Cloud)),
+            ("local", Some("A"), Some(Destination::OnDevice)),
+            ("gating", Some("A"), None),
+            ("other", Some("B"), Some(Destination::Cloud)),
+            ("unresolved", None, None),
+        ] {
+            let (guard, cancel) = runs.register(id, None).unwrap();
+            if let Some(course) = course {
+                runs.reads_course(id, course, destination);
+            }
+            guards.push(guard);
+            tokens.push((id, cancel));
+        }
+        let stopped = |tokens: &[(&str, CancellationToken)]| -> Vec<String> {
+            tokens
+                .iter()
+                .filter(|(_, cancel)| cancel.is_cancelled())
+                .map(|(id, _)| id.to_string())
+                .collect()
+        };
+        assert_eq!(runs.cancel_course("A", true), 1);
+        assert_eq!(stopped(&tokens), ["cloud"]);
+        assert_eq!(runs.cancel_course("A", false), 3);
+        assert_eq!(stopped(&tokens), ["cloud", "local", "gating"]);
+        assert_eq!(runs.cancel_course("C", false), 0);
+        drop(guards);
+        assert_eq!(runs.cancel_course("B", false), 0, "finished runs are gone");
+    }
 
     #[test]
     fn a_run_id_is_registered_once_and_cancelled_by_id() {

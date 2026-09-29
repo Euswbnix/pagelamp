@@ -1,6 +1,7 @@
 // Settings ▸ Help (spec §3.5 W8d, M1): Copy Diagnostic Report… (always the preview sheet first,
 // the same one as Help ▸ Copy Diagnostic Report…; works without the database), Open Logs Folder,
-// Report a Problem on GitHub, and About (tagline, version, licence, website).
+// Report a Problem on GitHub, the file reader's state when something is wrong (v0.3 M0.5), and
+// About (tagline, version, licence, website).
 
 import SwiftUI
 import PageLampModel
@@ -40,6 +41,26 @@ struct SettingsHelpTab: View {
                 Text(l10n("settings.help.description"))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let doctor = settings.doctor, let reader = FileReaderNotice(doctor) {
+                Section {
+                    if let warningKey = reader.warningKey {
+                        Label {
+                            Text(l10n(warningKey))
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(PLColor.warning)
+                        }
+                    }
+                    if let line = reader.unreadableLine(l10n: l10n) {
+                        Text(line)
+                            .font(PLType.callout.font)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
             Section(l10n("settings.about.title")) {

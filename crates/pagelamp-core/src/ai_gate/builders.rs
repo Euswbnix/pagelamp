@@ -202,6 +202,8 @@ pub fn week_context_including(
         let mut context = GatedContext::empty();
         let mut candidates = Vec::new();
         for view in &listed.materials {
+            // "Include" lifts only looks_like_assessment: `left_out` decides every other
+            // reason (no readable text first) before it.
             let reason = left_out(store, view)?.filter(|reason| {
                 !(*reason == LeftOutReason::LooksLikeAssessment && include.contains(&view.id))
             });
@@ -435,18 +437,21 @@ fn list_materials(
 }
 
 /// Why a week material is left out of an explanation, if it is.
+/// Why a week material stays out of an explanation, in this order: an external link, no
+/// readable text (not `ok`, or no chunks), then a title that looks like an assessment. Only the
+/// last one can be lifted ("include"), so an included material always has readable text.
 fn left_out(store: &Store, view: &MaterialView) -> crate::Result<Option<LeftOutReason>> {
     if view.kind == MaterialKind::ExternalLink {
         return Ok(Some(LeftOutReason::ExternalLink));
-    }
-    if looks_like_assessment(&view.title) {
-        return Ok(Some(LeftOutReason::LooksLikeAssessment));
     }
     let readable = store
         .get_material(&view.id)?
         .is_some_and(|m| m.text_status == TextStatus::Ok);
     if !readable || store.chunk_count(&view.id)? == 0 {
         return Ok(Some(LeftOutReason::NoText));
+    }
+    if looks_like_assessment(&view.title) {
+        return Ok(Some(LeftOutReason::LooksLikeAssessment));
     }
     Ok(None)
 }

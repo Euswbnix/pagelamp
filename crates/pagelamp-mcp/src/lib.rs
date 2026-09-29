@@ -764,7 +764,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::PROPOSE_COURSE_CALENDAR, annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false))]
+    #[tool(description = text::PROPOSE_COURSE_CALENDAR, annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = false))]
     async fn propose_course_calendar(
         &self,
         Parameters(args): Parameters<ProposeCalendarArgs>,
