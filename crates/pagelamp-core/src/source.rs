@@ -134,6 +134,29 @@ impl From<std::io::Error> for SourceError {
     }
 }
 
+/// What a sync step is doing, as a code the UIs translate (with `course`, `current` and `total`
+/// filled in); the step's English `message` stays for the CLI, logs and older clients.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStage {
+    /// Canvas: "Checking the Canvas token".
+    CheckingAccess,
+    /// Canvas: "Listing courses".
+    ListingCourses,
+    /// Canvas: "<course>: reading"; `current`/`total` count courses.
+    ReadingCourse,
+    /// Canvas: "<course>: downloading files"; `current`/`total` count files.
+    DownloadingFiles,
+    /// Folder: "<course>: scanning files".
+    ScanningFiles,
+    /// Folder: "<course>: indexing files"; `current`/`total` count files.
+    IndexingFiles,
+    /// Calendar feed: "Downloading the calendar feed".
+    DownloadingFeed,
+    /// Calendar feed: "Saving <total> calendar events".
+    SavingEvents,
+}
+
 /// A progress report from a running source sync. The App facade turns these into
 /// `SyncEvent::Progress` / `SyncEvent::Warning` for the UI.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,6 +166,10 @@ pub enum SyncProgress {
         message: String,
         current: Option<u32>,
         total: Option<u32>,
+        /// The same step as a code (`None` from sources that don't say).
+        stage: Option<SyncStage>,
+        /// The course the step is about (its code, else its name), as in `message`.
+        course: Option<String>,
     },
     /// A non-fatal problem, e.g. "DEMO101: Files tab hidden, used module items only".
     Warning(String),

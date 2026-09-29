@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_DEVICE_CODE } from "@/api/mock/codex";
 import { DEMO101 } from "@/features/course/testing";
@@ -22,13 +23,25 @@ describe("Use my ChatGPT plan (Codex)", () => {
     const { user } = renderRoute("/settings");
     const region = await card();
     expect(
-      await within(region).findByText(/about 71 MB, 250 MB once installed on this computer/),
+      await within(region).findByText(/≈70–80 MB, taking up to ≈330 MB once installed/),
     ).toBeInTheDocument();
     await user.click(within(region).getByRole("button", { name: "Download Codex" }));
     expect(await within(region).findByText("Codex 0.158.0 is installed.")).toBeInTheDocument();
     expect(
       within(region).getByRole("button", { name: "Sign in with ChatGPT" }),
     ).toBeInTheDocument();
+  });
+
+  it("says when another window is installing Codex (not a sync)", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    vi.spyOn(api, "installCodex").mockRejectedValue(new ApiError("busy", "Installing elsewhere."));
+    const { user } = renderRoute("/settings", { api });
+    const region = await card();
+    await user.click(await within(region).findByRole("button", { name: "Download Codex" }));
+    const alert = await within(region).findByRole("alert");
+    expect(alert).toHaveTextContent("Codex is being installed in another PageLamp window.");
+    expect(alert).not.toHaveTextContent(/sync/i);
+    expect(within(region).getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("cancels a download without calling it a failure", async () => {

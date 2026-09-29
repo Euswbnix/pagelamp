@@ -34,9 +34,11 @@ const WHATS_NEW_ACK_KEY: &str = "app.whats_new_acknowledged";
 const CHECK_INTERVAL: TimeDelta = TimeDelta::hours(24);
 
 /// This build's What's new topics, each with the version that introduced it. A student coming
-/// from an older version sees the topics introduced after that version. `CourseWeeks` is added
-/// here when the course lane's feature is in the build.
-const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[(WhatsNewTopic::UpdateCheck, "0.3.0-alpha.1")];
+/// from an older version sees the topics introduced after that version.
+const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[
+    (WhatsNewTopic::UpdateCheck, "0.3.0-alpha.1"),
+    (WhatsNewTopic::CourseWeeks, "0.3.0-alpha.1"),
+];
 
 /// Where updates come from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -298,8 +300,9 @@ mod tests {
 
     #[test]
     fn topics_are_the_ones_introduced_after_the_old_version() {
-        assert_eq!(topics_since(None), [WhatsNewTopic::UpdateCheck]);
-        assert_eq!(topics_since(Some("0.1.0")), [WhatsNewTopic::UpdateCheck]);
+        let alpha_1 = [WhatsNewTopic::UpdateCheck, WhatsNewTopic::CourseWeeks];
+        assert_eq!(topics_since(None), alpha_1);
+        assert_eq!(topics_since(Some("0.1.0")), alpha_1);
         assert!(topics_since(Some("0.3.0-alpha.1")).is_empty());
         assert!(topics_since(Some("0.3.0")).is_empty());
     }

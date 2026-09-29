@@ -15,6 +15,15 @@ use serde::{Deserialize, Serialize};
 
 pub type Timestamp = DateTime<Utc>;
 
+// Course calendar and lifecycle types live next to their logic; they are model types too.
+pub use crate::calendar::{CalendarWeek, CourseCalendar};
+pub use crate::lifecycle::{CourseGroup, CourseLifecycle, LifecycleState, SnoozeKind};
+pub use crate::term::evidence::{EvidenceCode, EvidenceItem, EvidenceParam, EvidenceSignal};
+pub use crate::term::{
+    AiLabel, BreakKind, CalendarBreak, CalendarOrigin, CalendarStatus, CoursePhase, DateSpan,
+    RejectReason, RejectedDates, TeachingSegment, TermAnchorSource, TermResolution,
+};
+
 // ---------------------------------------------------------------------------
 // Sources
 // ---------------------------------------------------------------------------
@@ -225,6 +234,13 @@ pub struct CourseTermData {
     pub keep_current_until: Option<NaiveDate>,
     /// "Not now" / "Keep" on the removal suggestion (student; `9999-12-31` = keep).
     pub removal_snoozed_until: Option<NaiveDate>,
+    /// The synced `term_start`/`term_end` (before the student's overrides): for Canvas the
+    /// "term first" merge of the LMS dates, for folders `course.toml` or the source's start.
+    pub synced_term_start: Option<NaiveDate>,
+    pub synced_term_end: Option<NaiveDate>,
+    /// The student's own overrides as saved (`Course.term_*` merges them field by field).
+    pub user_term_start: Option<NaiveDate>,
+    pub user_term_end: Option<NaiveDate>,
 }
 
 /// A course as read back from the store: synced fields + user overrides resolved.
@@ -636,13 +652,36 @@ pub enum Confidence {
 pub struct CourseTimeline {
     pub as_of: NaiveDate,
     pub current_week: Option<u32>,
+    /// Confidence of `current_week` (Low when it is None).
     pub confidence: Confidence,
-    /// Human-readable reasons, e.g. "module 'Week 4: Backprop' unlocked 2026-09-29".
+    /// Human-readable reasons, e.g. "module 'Week 4: Backprop' unlocked 2026-09-29". English,
+    /// for MCP and the CLI; UIs translate `evidence_items`. Never contains break labels, week
+    /// topics or quotes.
     pub evidence: Vec<String>,
     /// Modules considered current (most recently unlocked / matching current week).
     pub current_module_ids: Vec<String>,
-    /// True when the date is outside the known term (before start / after end).
+    /// True when the phase is `not_started` or `ended` (the exam period is not outside).
     pub outside_term: bool,
+    pub phase: CoursePhase,
+    pub phase_confidence: Confidence,
+    /// The day teaching starts, when known (a weekend first class → the next Monday), for
+    /// "Starts Jan 11"; surfaces show this instead of computing it.
+    pub starts_on: Option<NaiveDate>,
+    /// The week features and `week_materials` use by default: the current teaching week, the
+    /// week before an unnumbered break, None in the exam period and outside the term.
+    pub default_week: Option<u32>,
+    /// During a break that doesn't count in the numbering: the last teaching week before it.
+    pub break_after_week: Option<u32>,
+    /// During the exam period: the last teaching week ("Exams (after week 12)").
+    pub last_teaching_week: Option<u32>,
+    /// During a break: its kind.
+    pub current_break_kind: Option<BreakKind>,
+    /// How far the professor's (non-bulk) week-numbered materials have got.
+    pub notes_week: Option<u32>,
+    /// The dates that count the weeks, and the dates that were not used.
+    pub term: TermResolution,
+    pub calendar: CalendarStatus,
+    pub evidence_items: Vec<EvidenceItem>,
 }
 
 // ---------------------------------------------------------------------------

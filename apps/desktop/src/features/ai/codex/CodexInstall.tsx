@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import type { CodexStatus } from "@/api/provisional/codex";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
@@ -10,34 +9,20 @@ import {
   useInstallCodex,
 } from "@/stores/codex";
 
-/** Codex unpacks to about this much (design §2.3); the facade reports only the download. */
-const DISK_BYTES = 250_000_000;
-
-export function formatMegabytes(bytes: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: "unit",
-    unit: "megabyte",
-    maximumFractionDigits: 0,
-  }).format(bytes / 1_000_000);
-}
-
 /**
  * Not installed yet: what the download is (size, source, checked before installing) and the
  * button; while it runs, the progress with Cancel; if it failed, why and Try again.
  */
-export function CodexDownload({ status }: { status: CodexStatus }) {
-  const { t, i18n } = useTranslation("ai");
+export function CodexDownload() {
+  const { t } = useTranslation("ai");
   const install = useCodexStore((s) => s.install);
   const start = useInstallCodex();
   if (isInstalling(install)) return <CodexInstallProgress />;
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        {t("codex.download.size", {
-          download: formatMegabytes(status.runtime.download_bytes, i18n.language),
-          disk: formatMegabytes(DISK_BYTES, i18n.language),
-        })}
-      </p>
+      {/* The pinned 0.158.0 assets across platforms: 68–80 MB compressed, 240–324 MB unpacked,
+          Windows the largest (the leader's wording; D8's plan numbers were corrected). */}
+      <p className="text-sm text-muted-foreground">{t("codex.download.size")}</p>
       {install.phase === "failed" ? <InstallFailed /> : null}
       <Button type="button" onClick={() => void start()}>
         {install.phase === "failed" ? t("codex.download.tryAgain") : t("codex.download.button")}
@@ -54,7 +39,8 @@ function InstallFailed() {
   return (
     <div role="alert" className="space-y-1 text-sm text-destructive">
       <p className="font-medium">{t("codex.download.failed")}</p>
-      <p>{errorText(install.error)}</p>
+      {/* Busy here means another window is installing Codex, not a sync. */}
+      <p>{install.error.kind === "busy" ? t("codex.download.busy") : errorText(install.error)}</p>
     </div>
   );
 }

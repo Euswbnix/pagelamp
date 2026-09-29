@@ -114,7 +114,10 @@ fn an_upgrade_from_0_1_shows_whats_new_before_the_first_check() {
     let tasks = app.startup_tasks(now).unwrap();
     let whats_new = tasks.whats_new.expect("an upgrader sees What's new");
     assert_eq!(whats_new.since, None, "0.1 didn't record its version");
-    assert_eq!(whats_new.topics, [WhatsNewTopic::UpdateCheck]);
+    assert_eq!(
+        whats_new.topics,
+        [WhatsNewTopic::UpdateCheck, WhatsNewTopic::CourseWeeks]
+    );
     assert_eq!(tasks.updated_from, None);
     assert!(!tasks.update_check_due, "not while What's new waits");
 

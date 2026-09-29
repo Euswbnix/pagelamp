@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useCourses } from "@/api/queries";
 import { ErrorState } from "@/components/common/ErrorState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { REMOVAL_UI } from "@/features/course/removal/availability";
+import { LifecycleBanner } from "@/features/course/removal/LifecycleBanner";
 import { CourseList } from "./CourseList";
 import { CoursesEmpty } from "./CoursesEmpty";
 import { CoursesPageSkeleton } from "./Skeletons";
@@ -37,6 +39,7 @@ export function CoursesPage() {
   } else {
     body = (
       <div className="space-y-10">
+        {REMOVAL_UI ? <LifecycleBanner /> : null}
         <ThisWeek />
         <StudyPlanCard />
         <CourseList courses={courses.data} />

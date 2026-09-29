@@ -3,6 +3,34 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
+## [Unreleased]
+
+### Added
+- Course weeks that follow the real teaching dates: a Canvas term that is really an enrollment
+  window (for example the University of Toronto's May–January "Fall" term) is no longer used to
+  count weeks; PageLamp uses the course's own dates, the dates you set, and the week numbers in the
+  materials your instructor posts, and shows teaching, reading week, exams and ended.
+- Past courses: finished courses move to a collapsed "Past" group (in the app and in
+  `pagelamp courses`) and their deadlines stay listed; "I'm still taking this" undoes it. Dates
+  you set in v0.1 that match the synced term are cleared, and remaining ones ask you to check them
+  once.
+- Files are read in a separate, resource-limited process, so one bad PDF can't stop a sync; the
+  diagnostic report counts the files that can't be read, by reason.
+- A backup of the database before an update changes its format.
+
+### Changed
+- MCP: `course_overview` and `week_materials` report `course.term_start`/`term_end` as the dates
+  that count weeks (first class to exams end or last class), or null when none are known — never
+  an enrollment-window term — with the new `course.term_dates_source`. `week_materials` gains
+  `phase`; `course_overview` gains `lifecycle`, and its timeline gains the phase and its structure
+  (teaching segments, breaks, exams end, anchor). `list_courses` gains `phase`, `lifecycle` and
+  `outside_term`.
+- `pagelamp courses` groups courses into Current, Upcoming and Past; past courses (also in
+  `--json`) are listed with `--past` or `--all`. `pagelamp course term` dates mean the first and
+  last day of classes.
+- Releases: one universal macOS disk image for Apple silicon and Intel; Windows ships only the
+  per-user installer (no MSI).
+
 ## [0.1.0] — 2026-09-28
 
 First public release.

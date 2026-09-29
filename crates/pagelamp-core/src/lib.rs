@@ -5,6 +5,10 @@
 //! - `store`    — the SQLite store. The CLI/sync process is the only writer of synced data;
 //!   MCP server processes open it read-only (plus one tiny write path for study plans).
 //! - `ingest`   — sync-time extract → chunk → FTS index (heavy work never runs in MCP calls).
+//! - `dates`    — instants to course calendar dates (course time zone), Monday alignment.
+//! - `calendar` — course calendars the student accepted or typed (types, legacy overrides).
+//! - `term`     — which dates count a course's weeks (plausibility, anchors, phases).
+//! - `lifecycle` — upcoming / current / finishing / ended, and removal suggestions.
 //! - `timeline` — pure functions that infer "which week is this course in" with evidence.
 //! - `views`    — read views shared by the App facade and the MCP server.
 //! - `diagnostics` — local log files, redaction, crash capture (logs never leave the device).
@@ -21,15 +25,19 @@ pub mod ai;
 pub mod ai_gate;
 pub mod ai_rules;
 pub mod brand;
+pub mod calendar;
+pub mod dates;
 pub mod diagnostics;
 pub mod error;
 pub mod ingest;
+pub mod lifecycle;
 pub mod model;
 pub mod paths;
 pub mod planner;
 pub mod secrets;
 pub mod source;
 pub mod store;
+pub mod term;
 pub mod timeline;
 pub mod views;
 

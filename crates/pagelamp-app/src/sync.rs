@@ -451,11 +451,15 @@ fn progress_event(source_id: &str, progress: SyncProgress) -> SyncEvent {
             message,
             current,
             total,
+            stage,
+            course,
         } => SyncEvent::Progress {
             source_id: source_id.to_string(),
             message,
             current,
             total,
+            stage,
+            course,
         },
         SyncProgress::Warning(message) => SyncEvent::Warning {
             source_id: source_id.to_string(),

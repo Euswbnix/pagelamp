@@ -46,11 +46,11 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
         <li>
           <WeekLabel timeline={timeline} />
         </li>
-        {course.enrollment_active ? null : (
+        {overview.lifecycle.group === "past" ? (
           <li>
-            <PastCourseBadge />
+            <PastCourseBadge lifecycle={overview.lifecycle} />
           </li>
-        )}
+        ) : null}
         {course.hidden ? (
           <li className="flex items-center gap-2">
             <HiddenNotice course={course} />

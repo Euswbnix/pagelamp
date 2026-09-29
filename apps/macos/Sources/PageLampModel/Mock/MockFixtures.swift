@@ -54,6 +54,27 @@ struct MockCourse: Sendable {
     var deadlines: [Deadline]
 }
 
+/// The course calendar and lifecycle fields (M0.10) in neutral values: a course with a week is
+/// teaching, one without is in an unknown phase; the term is unresolved, there is no calendar, and
+/// every course is in the Current group.
+enum MockCalendar {
+    static var unresolvedTerm: TermResolution {
+        TermResolution(
+            weekOneMonday: nil, teaching: [], breaks: [], examsEnd: nil, anchor: .noAnchor,
+            anchorConfidence: .low, anchorOrigin: nil, aiLabel: nil, outerFrame: nil, notUsed: [],
+            studentStart: nil, studentEnd: nil
+        )
+    }
+
+    static func lifecycle(_ timeline: CourseTimeline) -> CourseLifecycle {
+        CourseLifecycle(
+            state: timeline.currentWeek == nil ? .unknown : .current, group: .current,
+            confidence: timeline.confidence, since: nil, startsOn: nil, lastActivity: nil,
+            nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: nil
+        )
+    }
+}
+
 struct MockDb: Sendable {
     var dataDir: String
     var sources: [MockSource]
@@ -192,7 +213,18 @@ struct MockFixtures {
             confidence: spec.confidence,
             evidence: spec.evidence,
             currentModuleIds: moduleIds,
-            outsideTerm: false
+            outsideTerm: false,
+            phase: spec.week == nil ? .unknown : .teaching,
+            phaseConfidence: spec.confidence,
+            startsOn: nil,
+            defaultWeek: spec.week,
+            breakAfterWeek: nil,
+            lastTeachingWeek: nil,
+            currentBreakKind: nil,
+            notesWeek: nil,
+            term: MockCalendar.unresolvedTerm,
+            calendar: .noCalendar,
+            evidenceItems: []
         )
     }
 
