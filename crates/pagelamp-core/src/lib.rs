@@ -12,7 +12,13 @@
 //! - `paths`    — where data lives on disk (`PAGELAMP_HOME` overrides everything).
 //! - `source`   — error type + progress callback shared by the sync sources.
 //! - `secrets`  — OS keychain access for Canvas tokens / calendar-feed URLs. Never used by MCP.
+//! - `ai`       — names of PageLamp's own model calls (block reasons, model errors, effort).
+//! - `ai_gate`  — the course AI policy gate: the only producer of prompt text (v0.3 M1).
+//! - `ai_rules` — the four core rules every AI is told (MCP server and PageLamp's own prompts).
 
+pub mod ai;
+pub mod ai_gate;
+pub mod ai_rules;
 pub mod brand;
 pub mod diagnostics;
 pub mod error;

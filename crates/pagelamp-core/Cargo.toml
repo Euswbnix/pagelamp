@@ -23,5 +23,10 @@ tracing-subscriber.workspace = true
 directories = "6.0"
 keyring = "4.2"
 
+[features]
+# `ai_gate::RenderedPrompt::for_tests`, for the model drivers' tests only. Enabled only by
+# dev-dependencies (pagelamp-app's crate-graph test checks it).
+test-support = []
+
 [dev-dependencies]
 tempfile.workspace = true
