@@ -1582,7 +1582,7 @@
 "updates.whatsNew.done" = "Got it";
 "updates.whatsNew.since" = "Since version %1$@";
 "updates.whatsNew.title" = "What's new in PageLamp";
-"updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to a “Past” group.";
+"updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to “Past courses”.";
 "updates.whatsNew.topics.course_weeks.title" = "Weeks and phases for every course";
 "updates.whatsNew.topics.update_check.body" = "Once a day it downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing anything.";
 "updates.whatsNew.topics.update_check.title" = "PageLamp now updates itself";
