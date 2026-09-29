@@ -432,7 +432,7 @@ pub struct StudyPlanArgs {
 
 #[tool_router]
 impl PageLampServer {
-    #[tool(description = text::LIST_COURSES, annotations(read_only_hint = true))]
+    #[tool(description = text::LIST_COURSES, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn list_courses(&self) -> CallToolResult {
         let result = self
             .read(|store| {
@@ -452,7 +452,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::COURSE_OVERVIEW, annotations(read_only_hint = true))]
+    #[tool(description = text::COURSE_OVERVIEW, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn course_overview(&self, Parameters(args): Parameters<CourseArgs>) -> CallToolResult {
         let result = self
             .read(move |store| {
@@ -502,7 +502,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::WEEK_MATERIALS, annotations(read_only_hint = true))]
+    #[tool(description = text::WEEK_MATERIALS, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn week_materials(&self, Parameters(args): Parameters<WeekArgs>) -> CallToolResult {
         let result = self
             .read(move |store| {
@@ -538,7 +538,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::READ_MATERIAL, annotations(read_only_hint = true))]
+    #[tool(description = text::READ_MATERIAL, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn read_material(&self, Parameters(args): Parameters<ReadArgs>) -> CallToolResult {
         let max_chars = args
             .max_chars
@@ -593,7 +593,7 @@ impl PageLampServer {
         text_result(out.join("\n"))
     }
 
-    #[tool(description = text::SEARCH_MATERIALS, annotations(read_only_hint = true))]
+    #[tool(description = text::SEARCH_MATERIALS, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn search_materials(&self, Parameters(args): Parameters<SearchArgs>) -> CallToolResult {
         let limit = args
             .limit
@@ -647,7 +647,7 @@ impl PageLampServer {
         text_result(out.join("\n"))
     }
 
-    #[tool(description = text::LIST_DEADLINES, annotations(read_only_hint = true))]
+    #[tool(description = text::LIST_DEADLINES, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn list_deadlines(&self, Parameters(args): Parameters<DeadlineArgs>) -> CallToolResult {
         let ahead = args
             .days_ahead
@@ -678,7 +678,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::GET_ANNOUNCEMENTS, annotations(read_only_hint = true))]
+    #[tool(description = text::GET_ANNOUNCEMENTS, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn get_announcements(
         &self,
         Parameters(args): Parameters<AnnouncementArgs>,
@@ -745,7 +745,7 @@ impl PageLampServer {
         text_result(out.join("\n"))
     }
 
-    #[tool(description = text::GET_STUDY_PLAN, annotations(read_only_hint = true))]
+    #[tool(description = text::GET_STUDY_PLAN, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn get_study_plan(&self) -> CallToolResult {
         match self.read(|store| store.latest_study_plan()).await {
             Ok(Some(plan)) => match serde_json::to_string(&plan) {
@@ -801,7 +801,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::SAVE_STUDY_PLAN, annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false))]
+    #[tool(description = text::SAVE_STUDY_PLAN, annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = false))]
     async fn save_study_plan(&self, Parameters(args): Parameters<SavePlanArgs>) -> CallToolResult {
         let db = Arc::clone(&self.db_path);
         let saved = tokio::task::spawn_blocking(move || {
@@ -826,7 +826,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::sync_status_description(), annotations(read_only_hint = true))]
+    #[tool(description = text::sync_status_description(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn sync_status(&self) -> CallToolResult {
         match self
             .read(|store| views::sync_status(store, AsOf::now_local()))
