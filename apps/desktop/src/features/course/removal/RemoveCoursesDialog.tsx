@@ -145,6 +145,8 @@ export function RemoveCoursesDialog({
   function announce(report: RemovalReport) {
     const count = report.removed.length;
     const course = report.removed[0]?.code ?? report.removed[0]?.name ?? "";
+    // The courses are removed either way; a backup that wouldn't go stays in the data folder.
+    if (report.backup_failed) toast.warning(t("toast.backupFailed"));
     if (report.purged_now) {
       // The data is gone either way; files the Trash refused wait in "Removed courses".
       if (report.removed.some((r) => r.files_pending))
@@ -233,6 +235,7 @@ export function RemoveCoursesDialog({
                   ? t("dialog.backupOld", { days: backup.age_days })
                   : t("dialog.backupRecent", { days: backup.age_days })
               }
+              note={t("dialog.backupWithData")}
             />
           ) : null}
         </fieldset>
@@ -410,11 +413,14 @@ function Option({
   onCheckedChange,
   label,
   hint,
+  note,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
   hint: string;
+  /** A second line under the hint, read with it. */
+  note?: string;
 }) {
   const id = useId();
   return (
@@ -423,7 +429,7 @@ function Option({
         id={id}
         checked={checked}
         onCheckedChange={(value) => onCheckedChange(value === true)}
-        aria-describedby={`${id}-hint`}
+        aria-describedby={note ? `${id}-hint ${id}-note` : `${id}-hint`}
         className="mt-0.5"
       />
       <div className="space-y-0.5">
@@ -431,6 +437,11 @@ function Option({
         <p id={`${id}-hint`} className="text-xs text-muted-foreground">
           {hint}
         </p>
+        {note ? (
+          <p id={`${id}-note`} className="text-xs text-muted-foreground">
+            {note}
+          </p>
+        ) : null}
       </div>
     </div>
   );

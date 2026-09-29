@@ -57,6 +57,8 @@ describe("the 'courses look finished' banner", () => {
     expect(
       within(dialog).getByText(/it's your way back if an update goes wrong/),
     ).toBeInTheDocument();
+    // It goes with the purge, not with the removal.
+    expect(backup).toHaveAccessibleDescription(/Undo keeps it\.$/);
 
     await user.click(within(dialog).getByRole("button", { name: "Remove 2 courses" }));
     expect(removeCourses).toHaveBeenCalledWith([ENDED, INACTIVE], {
@@ -207,7 +209,9 @@ describe("Removed courses in Settings", () => {
     expect(purged.getByRole("button", { name: /^Try again: move DEM236H5/ })).toBeInTheDocument();
     expect(purged.getByRole("button", { name: "Delete files permanently" })).toBeInTheDocument();
     expect(purged.getByRole("button", { name: "Restore" })).toBeInTheDocument();
-    expect(purged.getByRole("button", { name: "Forget" })).toBeInTheDocument();
+    // Forgetting waits until its files are in the Trash or deleted.
+    expect(purged.queryByRole("button", { name: "Forget" })).toBeNull();
+    expect(within(row("DEM150H5")).getByRole("button", { name: "Forget" })).toBeInTheDocument();
     // The data summary counts them.
     expect(screen.getAllByText("Removed courses").length).toBeGreaterThan(1);
   });
@@ -260,6 +264,39 @@ describe("Removed courses in Settings", () => {
     expect(await screen.findByText(/data was deleted$/)).toBeInTheDocument();
 
     expect(purge.mock.calls.map(([, permanent]) => permanent)).toEqual([false, false]);
+  });
+
+  it("offers Restore again for a restore that didn't finish", async () => {
+    const { user, row, api: mock } = await openRemoved();
+    const restore = vi.spyOn(mock, "restoreCourse");
+    const stuck = within(row("PHS150"));
+    expect(
+      stuck.getByText(
+        "The restore didn't finish. PageLamp sorts it out at the next sync, or you can restore it again.",
+      ),
+    ).toBeInTheDocument();
+    expect(stuck.queryByRole("button", { name: "Forget" })).toBeNull();
+    await user.click(stuck.getByRole("button", { name: "Restore again" }));
+    expect(await screen.findByText("PHS150 is back in your courses")).toBeInTheDocument();
+    expect(restore).toHaveBeenCalledWith("canvas:canvas.demo.test/course/PHS150");
+  });
+
+  it("says when the pre-update backup couldn't be deleted with the data", async () => {
+    const { user, row, api: mock } = await openRemoved();
+    vi.spyOn(mock, "purgeRemovedCourses").mockResolvedValue({
+      purged: ["x"],
+      files_pending: [],
+      backup_deleted: false,
+      backup_failed: true,
+    });
+    await user.click(within(row("DEM101H5")).getByRole("button", { name: "Delete now" }));
+    const confirm = await screen.findByRole("alertdialog", { name: /^Delete DEM101H5/ });
+    await user.click(within(confirm).getByRole("button", { name: "Delete now" }));
+    expect(
+      await screen.findByText(
+        "The pre-update backup couldn't be deleted. It's still in the data folder.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("undoes a pending removal", async () => {
