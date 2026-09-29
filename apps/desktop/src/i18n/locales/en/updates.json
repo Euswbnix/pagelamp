@@ -35,6 +35,7 @@
     "failed": "The update couldn't be installed.",
     "tryAgain": "Try again",
     "availableAfterSync": "Available when the sync finishes",
+    "availableAfterOtherSync": "Available when the other sync (from the command line or another window) finishes",
     "progressLabel": "Update progress"
   },
   "notice": {

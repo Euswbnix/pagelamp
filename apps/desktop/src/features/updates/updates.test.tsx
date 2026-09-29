@@ -139,6 +139,24 @@ describe("installing an update", () => {
     expect(install).not.toHaveBeenCalled();
   });
 
+  it("names the other process when the CLI (or another window) is syncing", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    const status = api.status.bind(api);
+    // Another process holds sync.lock: the status reports a sync this window didn't start.
+    api.status = async () => ({ ...(await status()), sync_in_progress: true });
+    const install = vi.spyOn(api, "installUpdate");
+    const { user } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    const button = within(dialog).getByRole("button", { name: "Install and restart" });
+    expect(button).toHaveAccessibleDescription(
+      "Available when the other sync (from the command line or another window) finishes",
+    );
+    await user.click(button);
+    expect(install).not.toHaveBeenCalled();
+  });
+
   it("hides the notice for this launch with Later", async () => {
     const { user } = renderRoute("/courses", { scenario: "update-available" });
     const notice = await screen.findByRole("region", { name: /is available\./ });

@@ -35,6 +35,7 @@
     "failed": "更新没能安装。",
     "tryAgain": "重试",
     "availableAfterSync": "同步结束后可用",
+    "availableAfterOtherSync": "另一个同步（来自命令行或另一个窗口）结束后可用",
     "progressLabel": "更新进度"
   },
   "notice": {

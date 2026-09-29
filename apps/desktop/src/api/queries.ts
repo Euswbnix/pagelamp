@@ -281,7 +281,11 @@ export function useLastUpdateCheck() {
   return useQuery({ queryKey: queryKeys.lastUpdateCheck(), queryFn: () => api.lastUpdateCheck() });
 }
 
-/** What to do at launch; asked once per launch (the facade decides, the UI only renders). */
+/**
+ * What to do now (the facade decides, the UI only renders): asked at launch, then hourly while
+ * PageLamp runs, even with the window hidden (it may live in the tray for days), and again after
+ * each acknowledgement.
+ */
 export function useStartupTasks() {
   const api = useApi();
   return useQuery({
@@ -289,6 +293,8 @@ export function useStartupTasks() {
     queryFn: () => api.startupTasks(),
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
+    refetchInterval: 60 * 60 * 1000,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 }
@@ -324,5 +330,9 @@ export function useAcknowledgeWhatsNew() {
 
 export function useAcknowledgeUpdateDisclosure() {
   const api = useApi();
-  return useMutation({ mutationFn: () => api.acknowledgeUpdateDisclosure() });
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.acknowledgeUpdateDisclosure(),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.startupTasks() }),
+  });
 }

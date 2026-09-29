@@ -36,7 +36,7 @@ export function InstallUpdateDialog({
   const status = useUpdaterStatus();
   const install = useUpdateStore((s) => s.install);
   const start = useInstallUpdate();
-  const { busy } = useSyncActivity();
+  const { busy, external } = useSyncActivity();
   const hintId = useId();
   const working =
     install.phase === "downloading" ||
@@ -63,7 +63,7 @@ export function InstallUpdateDialog({
         <AlertDialogFooter className="items-center">
           {busy && !working ? (
             <span id={hintId} className="text-xs text-muted-foreground sm:mr-auto">
-              {t("install.availableAfterSync")}
+              {external ? t("install.availableAfterOtherSync") : t("install.availableAfterSync")}
             </span>
           ) : null}
           <AlertDialogCancel disabled={working}>{tc("actions.cancel")}</AlertDialogCancel>

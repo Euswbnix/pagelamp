@@ -29,7 +29,11 @@ export interface WhatsNew {
   topics: WhatsNewTopic[];
 }
 
-/** What a surface should do at launch (the facade decides; the UI only renders). */
+/**
+ * What a surface should do now (the facade decides; the UI only renders). Only the launch
+ * classification is cached: `update_check_due` and `whats_new` are recomputed on every call, so
+ * the UI asks at launch, hourly while running, and after each acknowledgement.
+ */
 export interface StartupTasks {
   /** Upgraders only: shown once, before the first automatic update check. */
   whats_new?: WhatsNew | null;
@@ -39,12 +43,14 @@ export interface StartupTasks {
   updated_from?: string | null;
 }
 
+/** How a check ended (serde-tagged by `kind`). An error carries a short code, never a URL. */
+export type UpdateCheckOutcome =
+  | { kind: "up_to_date" }
+  | { kind: "available"; version: string }
+  | { kind: "error"; code: string };
+
 export interface UpdateCheckRecord {
   at: string;
   channel: UpdateChannel;
-  outcome: "up_to_date" | "available" | "error";
-  /** The version offered, when `outcome` is "available". */
-  version?: string | null;
-  /** A short code when `outcome` is "error" (never a URL or path). */
-  error_code?: string | null;
+  outcome: UpdateCheckOutcome;
 }

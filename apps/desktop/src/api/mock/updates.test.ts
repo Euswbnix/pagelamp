@@ -37,7 +37,7 @@ describe("mock updates", () => {
     await api.acknowledgeUpdateDisclosure();
     // Disclosed now, but the mock's last check was 2 h ago: the next one is due after a day.
     expect((await api.startupTasks()).update_check_due).toBe(false);
-    expect(await api.lastUpdateCheck()).toMatchObject({ outcome: "up_to_date" });
+    expect(await api.lastUpdateCheck()).toMatchObject({ outcome: { kind: "up_to_date" } });
   });
 
   it("offers an update, records the check, and installs it with progress", async () => {
@@ -47,8 +47,7 @@ describe("mock updates", () => {
     const update = await api.checkForUpdate();
     expect(update?.version).toBe(MOCK_UPDATE_VERSION);
     expect(await api.lastUpdateCheck()).toMatchObject({
-      outcome: "available",
-      version: MOCK_UPDATE_VERSION,
+      outcome: { kind: "available", version: MOCK_UPDATE_VERSION },
       channel: "beta",
     });
     const events: UpdateEvent[] = [];
@@ -67,7 +66,7 @@ describe("mock updates", () => {
   it("reports up to date otherwise", async () => {
     const api = createMockApi(fast);
     expect(await api.checkForUpdate()).toBeNull();
-    expect(await api.lastUpdateCheck()).toMatchObject({ outcome: "up_to_date" });
+    expect(await api.lastUpdateCheck()).toMatchObject({ outcome: { kind: "up_to_date" } });
     expect((await api.updaterStatus()).current_version).toBe(MOCK_APP_VERSION);
   });
 

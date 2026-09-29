@@ -142,7 +142,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       : {
           at: new Date(now().getTime() - 2 * 60 * 60 * 1000).toISOString(),
           channel: "beta",
-          outcome: "up_to_date",
+          outcome: { kind: "up_to_date" },
         }) as UpdateCheckRecord | null,
   };
   function effectiveChannel(): UpdateChannel {
@@ -741,10 +741,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const at = now().toISOString();
       const channel = effectiveChannel();
       if (offersUpdate) {
-        updates.lastCheck = { at, channel, outcome: "available", version: MOCK_UPDATE_VERSION };
+        updates.lastCheck = {
+          at,
+          channel,
+          outcome: { kind: "available", version: MOCK_UPDATE_VERSION },
+        };
         return clone(mockUpdate());
       }
-      updates.lastCheck = { at, channel, outcome: "up_to_date" };
+      updates.lastCheck = { at, channel, outcome: { kind: "up_to_date" } };
       return null;
     },
     installUpdate: async (onEvent) => {
