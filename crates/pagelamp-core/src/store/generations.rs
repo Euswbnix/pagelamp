@@ -166,6 +166,17 @@ impl Store {
         })
     }
 
+    /// How many kept runs failed, by error kind (`ModelErrorKind` codes), most first: counts
+    /// only, for the diagnostic report.
+    pub fn failed_generation_kinds(&self) -> Result<Vec<(String, u32)>> {
+        self.query_list(
+            "SELECT COALESCE(error_kind, 'unknown'), COUNT(*) FROM generations
+             WHERE status = 'failed' GROUP BY 1 ORDER BY 2 DESC, 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+    }
+
     /// A feature's runs with `status` for a course, of one week or (`None`) all, newest first.
     pub fn generations_of(
         &self,

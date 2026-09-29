@@ -58,21 +58,31 @@ struct Binary {
     source: CodexSource,
 }
 
+/// The local data folder of an app using `data_dir` (see `App::local_dir`).
+pub(crate) fn local_dir_for(data_dir: &std::path::Path) -> PathBuf {
+    match paths::platform_local_data_dir() {
+        Some(local) if crate::same_dir(Some(data_dir), paths::platform_data_dir().as_deref()) => {
+            local
+        }
+        _ => data_dir.to_path_buf(),
+    }
+}
+
+/// The Codex versions PageLamp installed for an app using `data_dir`, newest first (versions
+/// only, for the diagnostic report).
+pub(crate) fn installed_versions(data_dir: &std::path::Path) -> Vec<String> {
+    Runtime::new(paths::codex_runtime_dir_in(&local_dir_for(data_dir)))
+        .installed()
+        .into_iter()
+        .map(|installed| installed.version.to_string())
+        .collect()
+}
+
 impl App {
     /// Where large, non-roaming data goes (`paths::local_data_dir`): the platform's local folder
     /// when this app uses the default data folder, else the data folder itself.
     pub(crate) fn local_dir(&self) -> PathBuf {
-        match paths::platform_local_data_dir() {
-            Some(local)
-                if crate::same_dir(
-                    Some(self.data_dir()),
-                    paths::platform_data_dir().as_deref(),
-                ) =>
-            {
-                local
-            }
-            _ => self.data_dir().to_path_buf(),
-        }
+        local_dir_for(self.data_dir())
     }
 
     pub(crate) fn codex_home(&self) -> CodexHome {

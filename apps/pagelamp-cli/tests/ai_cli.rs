@@ -339,9 +339,44 @@ fn a_not_allowed_course_is_blocked_for_a_cloud_model_from_the_cli() {
     let body: Value = serde_json::from_str(&stdout(&output)).unwrap();
     assert_eq!(body["would_block"], "material_sharing_not_allowed");
     assert_eq!(body["input_tokens"], 0, "nothing would be sent");
+    // `explain` itself is refused before anything is sent (M3 DoD 1, the CLI entry point).
+    let refused = failed(&pagelamp(&home, &["explain", "DEMO101", "--week", "1"]));
+    assert!(
+        refused.contains("blocked: material_sharing_not_allowed"),
+        "{refused}"
+    );
     ok(&pagelamp(
         &home,
         &["course", "sharing", "DEMO101", "not-sure"],
     ));
     ok(&pagelamp(&home, &estimate));
+}
+
+#[test]
+fn remind_is_quiet_until_something_is_due_and_plan_needs_a_model() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    synced_demo_course(&home, &temp.path().join("Courses"));
+    // Nothing due (the digest's Monday reminder may be, so ask on a fresh week only when it
+    // isn't): `--digest` always prints the digest.
+    let digest = ok(&pagelamp(&home, &["remind", "--digest"]));
+    assert!(digest.contains("This week"), "{digest}");
+    assert!(digest.contains("DEMO101"), "{digest}");
+    let output = pagelamp(&home, &["--json", "remind", "--digest"]);
+    ok(&output);
+    let body = json_out(&output);
+    assert!(
+        body["due"].is_array() && body["digest"]["courses"].is_array(),
+        "{body}"
+    );
+    // Shown reminders don't come back.
+    let again = pagelamp(&home, &["--json", "remind"]);
+    ok(&again);
+    assert_eq!(json_out(&again)["due"], serde_json::json!([]));
+
+    let plan = failed(&pagelamp(&home, &["plan"]));
+    assert!(plan.contains("blocked: no_model_chosen"), "{plan}");
+    assert!(
+        ok(&pagelamp(&home, &["explain", "DEMO101", "--saved"])).contains("No saved explanations.")
+    );
 }
