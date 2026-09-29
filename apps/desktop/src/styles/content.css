@@ -80,3 +80,20 @@
     background: var(--pl-color-surface-raised);
   }
 }
+
+/* The contents page's dotted leader (§6.4): 1 px dots every 4 px in text.tertiary, on the baseline
+   between a course and its week. Decorative (aria-hidden). */
+.pl-leader {
+  height: 1px;
+  align-self: flex-end;
+  margin-bottom: 0.3em;
+  background-image: radial-gradient(circle, var(--pl-color-text-tertiary) 0.6px, transparent 0.8px);
+  background-size: 4px 1px;
+  background-repeat: repeat-x;
+}
+@media (forced-colors: active) {
+  .pl-leader {
+    background: none;
+    border-bottom: 1px dotted CanvasText;
+  }
+}

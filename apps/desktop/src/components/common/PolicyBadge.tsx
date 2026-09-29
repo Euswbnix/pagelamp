@@ -20,16 +20,29 @@ const TONE: Record<AiPolicy, string> = {
   unrestricted: "text-foreground",
 };
 
-/** AI-policy badge: icon + text, so it never relies on colour alone. */
-export function PolicyBadge({ policy, className }: { policy: AiPolicy; className?: string }) {
+/**
+ * AI-policy badge: icon + text, so it never relies on colour alone. `plain`: a neutral glyph and
+ * ink text, for lists (docs/design/macos-shell.md §3.2: the AI status line is never colour-coded).
+ */
+export function PolicyBadge({
+  policy,
+  className,
+  plain = false,
+}: {
+  policy: AiPolicy;
+  className?: string;
+  plain?: boolean;
+}) {
   const { t } = useTranslation();
   const Icon = POLICY_ICON[policy];
   const tone = TONE[policy];
   return (
     <span
       className={cn(
-        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap",
-        tone,
+        plain
+          ? "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap"
+          : "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium whitespace-nowrap",
+        !plain && tone,
         className,
       )}
     >

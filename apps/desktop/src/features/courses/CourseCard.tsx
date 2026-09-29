@@ -1,12 +1,5 @@
-import {
-  CalendarClock,
-  CalendarDays,
-  ChevronRight,
-  EyeOff,
-  type LucideIcon,
-  TriangleAlert,
-} from "lucide-react";
-import { type ReactNode, useRef } from "react";
+import { CalendarClock, ChevronRight, EyeOff, TriangleAlert } from "lucide-react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { CourseSummary, SourceErrorKind } from "@/api/types";
@@ -27,15 +20,16 @@ interface CourseCardProps {
   summary: CourseSummary;
   /** Why this course's source last failed to sync, if it did. */
   sourceError: SourceErrorKind | null;
-  /** h4 when the card sits under a group heading (Current, Upcoming, Past). */
+  /** h4 when the row sits under a group heading (Current, Upcoming, Past). */
   headingLevel?: "h3" | "h4";
 }
 
 /**
- * One course: where it is this week, what's next, its AI policy and how much of it the AI
- * app can read. The title link is stretched over the whole card ("stretched link"), so the
- * card is clickable while the page still has exactly one link per course and nothing
- * interactive nested inside it.
+ * One course as a line of a book's contents page (docs/design/macos-shell.md §6.4):
+ * "DEMO205  Foundations of Sample Data ········· Week 4", then what's next, the AI policy, how
+ * much of it the AI app can read and where the data comes from. The title link is stretched over
+ * the whole row, so the row is clickable while the page keeps one link per course; the few
+ * controls (show again, still taking this) sit above it.
  */
 export function CourseCard({ summary, sourceError, headingLevel = "h3" }: CourseCardProps) {
   const Heading = headingLevel;
@@ -51,77 +45,70 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
   return (
     <article
       className={cn(
-        "relative flex h-full flex-col gap-3 rounded-xl bg-card p-4 text-sm ring-1 ring-foreground/10 transition-colors",
-        "hover:bg-muted/40 has-[a:focus-visible]:ring-3 has-[a:focus-visible]:ring-ring/50",
-        course.hidden && "bg-muted/30",
+        "relative -mx-3 rounded-row px-3 py-3 text-sm transition-colors",
+        "hover:bg-muted has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring",
+        course.hidden && "text-muted-foreground",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <Heading className="min-w-0">
+      <div className="flex items-baseline gap-3">
+        <Heading className="min-w-0 shrink">
           <Link
             ref={linkRef}
             to={paths.course(course.id)}
             data-course-id={course.id}
-            className="outline-none after:absolute after:inset-0 after:rounded-xl"
+            className="flex min-w-0 items-baseline gap-2 outline-none after:absolute after:inset-0 after:rounded-row"
           >
-            <span className="block font-heading text-base font-semibold tracking-tight">
-              {course.code ?? course.name}
-            </span>{" "}
+            <span className="shrink-0 font-semibold">{course.code ?? course.name}</span>{" "}
             {course.code ? (
-              <span className="block text-muted-foreground">{course.name}</span>
+              <span className="min-w-0 truncate text-muted-foreground" title={course.name}>
+                {course.name}
+              </span>
             ) : null}
           </Link>
         </Heading>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <PolicyBadge policy={course.ai_policy} />
-          {course.ai_policy === "unknown" ? (
-            <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-              {t("card.setPolicy")}
-              <ChevronRight className="size-3" aria-hidden />
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <ul className="space-y-1.5">
-        <Fact icon={CalendarDays}>
+        <span aria-hidden className="pl-leader min-w-6 flex-1" />
+        <span className="shrink-0 text-right tabular-nums">
           {/* A past course's week doesn't matter; say what the lifecycle concluded instead. */}
           {past ? (
             <span className="text-muted-foreground">{tcal(`status.state.${lifecycle.state}`)}</span>
           ) : (
             <WeekLabel timeline={timeline} />
           )}
-          {weekUnknown ? (
-            <span className="block text-xs text-muted-foreground">{tcal("card.setDates")}</span>
-          ) : null}
-          {lifecycle.kept_current_until ? (
-            <span className="block text-xs text-muted-foreground">
-              {tcal("card.keptUntil", {
-                date: formatIsoDate(lifecycle.kept_current_until, i18n.language),
-              })}
-            </span>
-          ) : null}
-        </Fact>
-        <Fact icon={CalendarClock}>
+        </span>
+        <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground" aria-hidden />
+      </div>
+
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {weekUnknown ? <span>{tcal("card.setDates")}</span> : null}
+        {lifecycle.kept_current_until ? (
+          <span>
+            {tcal("card.keptUntil", {
+              date: formatIsoDate(lifecycle.kept_current_until, i18n.language),
+            })}
+          </span>
+        ) : null}
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarClock className="size-3.5 shrink-0" aria-hidden />
           {next && nextWhen ? (
             <SentenceWithTime
               text={t("card.next", { title: next.title, when: WHEN })}
               iso={nextWhen}
             />
           ) : (
-            <span className="text-muted-foreground">{t("card.noDeadlines")}</span>
+            t("card.noDeadlines")
           )}
-        </Fact>
-        <li>
-          <AiMaterialsStatus
-            state={summary.ai_materials}
-            indexed={counts.indexed_materials}
-            total={counts.materials}
-          />
-        </li>
-      </ul>
+        </span>
+        <PolicyBadge plain policy={course.ai_policy} />
+        {course.ai_policy === "unknown" ? <span>{t("card.setPolicy")}</span> : null}
+        <AiMaterialsStatus
+          state={summary.ai_materials}
+          indexed={counts.indexed_materials}
+          total={counts.materials}
+          className="items-center gap-1.5 [&>svg]:mt-0 [&>svg]:size-3.5"
+        />
+      </div>
 
-      <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>
           {summary.last_synced_at ? (
             <SentenceWithTime
@@ -139,8 +126,11 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
           </span>
         ) : null}
         <PastCourseBadge lifecycle={lifecycle} />
+        {/* Controls sit above the stretched link. */}
         {past ? (
-          <KeepCurrentCardButton courseId={course.id} courseName={course.code ?? course.name} />
+          <span className="relative z-10">
+            <KeepCurrentCardButton courseId={course.id} courseName={course.code ?? course.name} />
+          </span>
         ) : null}
         {course.hidden ? (
           <>
@@ -148,23 +138,16 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
               <EyeOff aria-hidden />
               {t("card.hidden")}
             </Badge>
-            <ShowInListButton
-              courseId={course.id}
-              courseName={course.code ?? course.name}
-              linkRef={linkRef}
-            />
+            <span className="relative z-10">
+              <ShowInListButton
+                courseId={course.id}
+                courseName={course.code ?? course.name}
+                linkRef={linkRef}
+              />
+            </span>
           </>
         ) : null}
       </div>
     </article>
-  );
-}
-
-function Fact({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
-  return (
-    <li className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="min-w-0">{children}</div>
-    </li>
   );
 }

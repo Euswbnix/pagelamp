@@ -45,6 +45,13 @@ const SCREENS = {
   sources: { hash: "#/sources", scenario: "demo" },
   connect: { hash: "#/connect", scenario: "demo" },
   settings: { hash: "#/settings", scenario: "demo" },
+  // The course list as a contents page (§6.4), with Current / Upcoming / Past groups.
+  contents: {
+    hash: "#/courses",
+    scenario: "phases",
+    act: `[...document.querySelectorAll("h2")].at(-1).scrollIntoView({ block: "start" });
+  document.querySelector("main").scrollTop -= 56; await wait(400);`,
+  },
   // The toolbar row once content scrolls under it (glass, and the title echo).
   scrolled: {
     hash: "#/sources",
