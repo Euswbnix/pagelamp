@@ -9,6 +9,7 @@ import { SettingsSection } from "@/features/settings/SettingsSection";
 import { ApiKeyDialog, type ApiKeyDialogMode } from "./ApiKeyDialog";
 import { BackendRow } from "./BackendRow";
 import { BudgetField } from "./BudgetField";
+import { ChatGptCard } from "./codex/ChatGptCard";
 import { DisclosureDialog } from "./DisclosureDialog";
 import { FeatureModels } from "./FeatureModels";
 import { LocalServers } from "./LocalServers";
@@ -31,9 +32,12 @@ export function AiModelsSection() {
     backend: BackendRef;
     added: boolean;
   } | null>(null);
-  const list = useRef<HTMLUListElement>(null);
+  const container = useRef<HTMLDivElement>(null);
 
   const backends = status.data?.backends ?? [];
+  // The ChatGPT plan has its own card; API keys and local models are listed below it.
+  const codex = backends.find((b) => b.backend.kind === "codex") ?? null;
+  const providerBackends = backends.filter((b) => b.backend.kind === "provider");
   const disclosed = disclosureFor
     ? backends.find((b) => backendKey(b.backend) === backendKey(disclosureFor.backend))
     : undefined;
@@ -41,9 +45,9 @@ export function AiModelsSection() {
     setDisclosureFor({ backend, added });
   const showAdded = (providerId: string) =>
     showDisclosure({ kind: "provider", provider_id: providerId }, true);
-  /** The row of a backend, e.g. to put focus on one just added. */
+  /** The row (or card) of a backend, e.g. to put focus on one just added. */
   const rowOf = (backend: BackendRef) =>
-    [...(list.current?.querySelectorAll<HTMLElement>("li[data-backend]") ?? [])].find(
+    [...(container.current?.querySelectorAll<HTMLElement>("[data-backend]") ?? [])].find(
       (row) => row.dataset.backend === backendKey(backend),
     ) ?? null;
 
@@ -56,12 +60,16 @@ export function AiModelsSection() {
           {t("settings.loadFailed")} {errorText(status.error)}
         </p>
       ) : (
-        <>
-          {backends.length === 0 ? (
+        <div ref={container} className="space-y-5">
+          <ChatGptCard
+            backend={codex}
+            onShowDisclosure={(signedIn) => showDisclosure({ kind: "codex" }, signedIn)}
+          />
+          {providerBackends.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("settings.empty")}</p>
           ) : (
-            <ul ref={list} aria-label={t("settings.backendsLabel")} className="space-y-3">
-              {backends.map((backend) => (
+            <ul aria-label={t("settings.backendsLabel")} className="space-y-3">
+              {providerBackends.map((backend) => (
                 <BackendRow
                   key={backendKey(backend.backend)}
                   status={backend}
@@ -89,7 +97,7 @@ export function AiModelsSection() {
             <BudgetField budget={status.data.budget} />
           ) : null}
           <RemoveAllAiData />
-        </>
+        </div>
       )}
 
       <ApiKeyDialog

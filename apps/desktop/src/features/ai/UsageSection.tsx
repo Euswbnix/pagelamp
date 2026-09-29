@@ -182,13 +182,25 @@ function Cost({ row }: { row: UsageRow }) {
 function BudgetLine({ summary }: { summary: UsageSummary }) {
   const { t, i18n } = useTranslation("ai");
   const { monthly_micro_usd: budget, spent_micro_usd: spent } = summary.budget;
-  if (budget === null || budget === undefined) return null;
+  const modeA = summary.mode_a ?? null;
   return (
-    <p className="text-sm">
-      {t("budget.used", {
-        spent: formatUsd(spent, i18n.language),
-        budget: formatUsd(budget, i18n.language),
-      })}
-    </p>
+    <>
+      {budget === null || budget === undefined ? null : (
+        <p className="text-sm">
+          {t("budget.used", {
+            spent: formatUsd(spent, i18n.language),
+            budget: formatUsd(budget, i18n.language),
+          })}
+        </p>
+      )}
+      {/* Mode A has no money budget; its runs per week are capped instead (M2). */}
+      {modeA ? (
+        <p className="text-sm">
+          {modeA.weekly_cap === null || modeA.weekly_cap === undefined
+            ? t("usage.modeANoCap", { runs: modeA.runs_this_week })
+            : t("usage.modeA", { runs: modeA.runs_this_week, cap: modeA.weekly_cap })}
+        </p>
+      ) : null}
+    </>
   );
 }

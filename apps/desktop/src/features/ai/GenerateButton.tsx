@@ -2,7 +2,12 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { type AiStatus, backendKey, type CostEstimate, type EstimateRequest } from "@/api/ai";
-import { useAcknowledgeUnpricedModel, useAiStatus, useCostEstimate } from "@/api/ai-queries";
+import {
+  useAcknowledgeUnpricedModel,
+  useAiStatus,
+  useCodexStatus,
+  useCostEstimate,
+} from "@/api/ai-queries";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -142,9 +147,21 @@ function CostLine({
   const backend = choice
     ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
     : undefined;
+  if (backend?.kind === "codex") return <CodexCostLine />;
   if (backend?.kind === "local") return <>{t("estimate.cloudNoPrice")}</>;
   if (backend?.kind === "api_key") return <>{t("estimate.noPrice")}</>;
   return null;
+}
+
+/** Mode A has no price: the plan, and this week's runs against the cap. */
+function CodexCostLine() {
+  const { t } = useTranslation("ai");
+  const codex = useCodexStatus();
+  const cap = codex.data?.weekly_cap ?? null;
+  if (codex.data && cap !== null) {
+    return <>{t("codex.costLineRuns", { runs: codex.data.runs_this_week, cap })}</>;
+  }
+  return <>{t("codex.costLine")}</>;
 }
 
 function UnpricedAcknowledgement({

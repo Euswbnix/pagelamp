@@ -71,7 +71,10 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
   const errorText = useAiErrorText();
   const acknowledge = useAcknowledgeAiDisclosure();
   const facts = status.disclosure;
+  // The title and button name the backend as the student set it up; the facts name who
+  // receives the data (e.g. "OpenAI" for the ChatGPT plan through Codex).
   const name = status.label;
+  const who = facts.recipient.name;
   const needsAge = !!facts.min_age;
   const needsFreeTier = facts.training.kind === "may_train_free_tier";
   const [ageOk, setAgeOk] = useState(false);
@@ -112,23 +115,25 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
           </ul>
           <p>
             {facts.on_device
-              ? t("disclosure.sent.onDevice", { name })
-              : t("disclosure.sent.cloud", { name })}
+              ? t("disclosure.sent.onDevice", { name: who })
+              : status.kind === "codex"
+                ? t("disclosure.sent.codex", { name: who })
+                : t("disclosure.sent.cloud", { name: who })}
           </p>
           {facts.recipient.terms_url ? (
             <p>
               <ExternalLink href={facts.recipient.terms_url}>
-                {t("disclosure.sent.terms", { name })}
+                {t("disclosure.sent.terms", { name: who })}
               </ExternalLink>
             </p>
           ) : null}
         </Item>
         <Item heading={t("disclosure.training.heading")}>
-          <Training facts={facts} name={name} />
+          <Training facts={facts} name={who} />
           <p>
             {facts.retention.kind === "stored_days"
-              ? t("disclosure.retention.stored_days", { name, count: facts.retention.days })
-              : t(`disclosure.retention.${facts.retention.kind}`, { name })}
+              ? t("disclosure.retention.stored_days", { name: who, count: facts.retention.days })
+              : t(`disclosure.retention.${facts.retention.kind}`, { name: who })}
           </p>
         </Item>
         {facts.admin_visibility ? (
@@ -137,14 +142,14 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
           </Item>
         ) : null}
         <Item heading={t("disclosure.cost.heading")}>
-          <p>{t(`disclosure.cost.${facts.cost}`, { name })}</p>
+          <p>{t(`disclosure.cost.${facts.cost}`, { name: who })}</p>
         </Item>
         {facts.min_age ? (
           <Item heading={t("disclosure.age.heading")}>
             <p>
               {facts.guardian_permission
-                ? t("disclosure.age.guardian", { name, age: facts.min_age })
-                : t("disclosure.age.body", { name, age: facts.min_age })}
+                ? t("disclosure.age.guardian", { name: who, age: facts.min_age })
+                : t("disclosure.age.body", { name: who, age: facts.min_age })}
             </p>
           </Item>
         ) : null}
@@ -166,7 +171,7 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
                 onCheckedChange={(v) => setAgeOk(v === true)}
               />
               <Label htmlFor={ids.age} className="leading-snug font-normal">
-                {t("disclosure.age.confirm", { name })}
+                {t("disclosure.age.confirm", { name: who })}
               </Label>
             </div>
           ) : null}
@@ -178,7 +183,7 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
                 onCheckedChange={(v) => setFreeTierOk(v === true)}
               />
               <Label htmlFor={ids.freeTier} className="leading-snug font-normal">
-                {t("disclosure.freeTier.confirm", { name })}
+                {t("disclosure.freeTier.confirm", { name: who })}
               </Label>
             </div>
           ) : null}
