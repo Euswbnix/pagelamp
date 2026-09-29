@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub type Timestamp = DateTime<Utc>;
 
 // Course calendar and lifecycle types live next to their logic; they are model types too.
+pub use crate::calendar::{CalendarWeek, CourseCalendar};
 pub use crate::lifecycle::{CourseGroup, CourseLifecycle, LifecycleState, SnoozeKind};
 pub use crate::term::evidence::{EvidenceCode, EvidenceItem, EvidenceParam, EvidenceSignal};
 pub use crate::term::{

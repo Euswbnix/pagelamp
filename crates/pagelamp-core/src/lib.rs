@@ -6,6 +6,7 @@
 //!   MCP server processes open it read-only (plus one tiny write path for study plans).
 //! - `ingest`   — sync-time extract → chunk → FTS index (heavy work never runs in MCP calls).
 //! - `dates`    — instants to course calendar dates (course time zone), Monday alignment.
+//! - `calendar` — course calendars the student accepted or typed (types, legacy overrides).
 //! - `term`     — which dates count a course's weeks (plausibility, anchors, phases).
 //! - `lifecycle` — upcoming / current / finishing / ended, and removal suggestions.
 //! - `timeline` — pure functions that infer "which week is this course in" with evidence.
@@ -17,6 +18,7 @@
 //! - `secrets`  — OS keychain access for Canvas tokens / calendar-feed URLs. Never used by MCP.
 
 pub mod brand;
+pub mod calendar;
 pub mod dates;
 pub mod diagnostics;
 pub mod error;
