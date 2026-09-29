@@ -40,7 +40,8 @@ export function MaterialList({
           className="text-sm text-muted-foreground"
         />
       </div>
-      <ul className="divide-y rounded-lg border bg-card">
+      {/* Two-line rows between hairlines, no card (docs/design/macos-shell.md §3.2). */}
+      <ul className="divide-y border-t">
         {materials.map((material) => (
           <MaterialRow
             key={material.id}
@@ -66,7 +67,7 @@ function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReada
   ].filter(Boolean);
 
   return (
-    <li className="flex items-start gap-3 px-4 py-3">
+    <li className="flex items-start gap-3 py-3">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
       <div className="min-w-0 flex-1 space-y-0.5">
         {/* Only http(s) links open; file:// URLs from course folders stay plain text. */}
