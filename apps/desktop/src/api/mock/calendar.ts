@@ -3,8 +3,7 @@
 // still taking this" and "These dates are right" behave plausibly in `pnpm dev:mock`. The real
 // rules live in pagelamp-core; nothing here is meant to match them beyond what the UI shows.
 
-import type { Confidence, CourseTimeline } from "../generated";
-import type { CourseDatesInput } from "../provisional/courseRemoval";
+import type { Confidence, CourseDatesInput, CourseTimeline } from "../generated";
 import type {
   CourseGroup,
   CourseLifecycle,

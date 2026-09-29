@@ -64,6 +64,11 @@ export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BreakKind".
+ */
+export type BreakKind = "reading_week" | "holiday" | "winter_break" | "other";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "Confidence".
  */
 export type Confidence = "high" | "medium" | "low";
@@ -107,11 +112,6 @@ export type TextStatus = "pending" | "ok" | "unsupported" | "not_downloaded" | "
  * via the `definition` "CalendarStatus".
  */
 export type CalendarStatus = ("proposed" | "accepted" | "accepted_stale") | "none";
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "BreakKind".
- */
-export type BreakKind = "reading_week" | "holiday" | "winter_break" | "other";
 /**
  * Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
  * (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
@@ -275,6 +275,35 @@ export type McpNoteCode =
   | "generic_stdio_client"
   | "run_from_temporary_location";
 /**
+ * What a later sync can't bring back once a course is purged (§8.3).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LostAfterPurge".
+ */
+export type LostAfterPurge =
+  "old_announcements" | "locked_files" | "whole_course" | "redownload_counts_as_viewing";
+/**
+ * Why a course was removed (display only).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemovalReason".
+ */
+export type RemovalReason = "ended" | "inactive" | "not_mine" | "other";
+/**
+ * Where a removed course is in the two stages.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TombstoneState".
+ */
+export type TombstoneState = "pending" | "purged" | "restoring";
+/**
+ * Why a purged course didn't come back.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RestoreFailure".
+ */
+export type RestoreFailure = ("offline" | "other") | "not_listed" | "access_restricted";
+/**
  * The answer to a removal suggestion.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -370,6 +399,7 @@ export interface PageLampAppTypes {
   ai_policy: AiPolicy;
   app_error: AppError;
   app_status: AppStatus;
+  course_dates_input: CourseDatesInput;
   course_overview: CourseOverview;
   course_summary: CourseSummary;
   course_sync_summary: CourseSyncSummary;
@@ -382,6 +412,11 @@ export interface PageLampAppTypes {
   lifecycle_summary: LifecycleSummary;
   mcp_client_config: McpClientConfig;
   process_kind: ProcessKind;
+  purge_report: PurgeReport;
+  removal_preview: RemovalPreview;
+  removal_report: RemovalReport;
+  remove_options: RemoveOptions;
+  restore_outcome: RestoreOutcome;
   search_hit: SearchHit;
   snooze_kind: SnoozeKind;
   source_error_kind: SourceErrorKind;
@@ -519,6 +554,49 @@ export interface SourceRecord {
    */
   last_error_kind?: SourceErrorKind | null;
   last_synced_at?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseDatesInput".
+ */
+export interface CourseDatesInput {
+  breaks: BreakInput[];
+  exams_end?: string | null;
+  first_class?: string | null;
+  last_class?: string | null;
+  /**
+   * The second half of a full-year course.
+   */
+  second_segment?: SegmentInput | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BreakInput".
+ */
+export interface BreakInput {
+  end: string;
+  kind: BreakKind;
+  /**
+   * Shown to the student only (never over MCP); at most 80 characters.
+   */
+  label?: string | null;
+  /**
+   * The break counts in the week numbering.
+   */
+  numbered: boolean;
+  start: string;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SegmentInput".
+ */
+export interface SegmentInput {
+  first_class: string;
+  last_class?: string | null;
+  /**
+   * True: this segment's first week is week 1; false: numbering continues.
+   */
+  restart_numbering: boolean;
 }
 /**
  * Everything needed to answer "what's going on in this course right now".
@@ -1144,6 +1222,145 @@ export interface McpLaunch {
    * with a `RunFromTemporaryLocation` note.
    */
   temporary_location?: TemporaryLocation | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "PurgeReport".
+ */
+export interface PurgeReport {
+  /**
+   * `removed_id`s whose files couldn't be moved to the Trash (kept; retried later).
+   */
+  files_pending: string[];
+  /**
+   * `removed_id`s purged now.
+   */
+  purged: string[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemovalPreview".
+ */
+export interface RemovalPreview {
+  backup?: BackupInfo | null;
+  items: RemovalPreviewItem[];
+}
+/**
+ * The pre-update backup (`pagelamp.db.v<N>.bak`) still holds the course's text.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BackupInfo".
+ */
+export interface BackupInfo {
+  age_days: number;
+  /**
+   * "Also delete the pre-update backup" is ticked by default when it is 14+ days old.
+   */
+  delete_by_default: boolean;
+  /**
+   * `backup_old` (safe to delete) or `backup_recent` (the way back from a bad update).
+   */
+  reason_code: string;
+}
+/**
+ * One course in the removal dialog.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemovalPreviewItem".
+ */
+export interface RemovalPreviewItem {
+  /**
+   * The LMS restricts the course by date, so it can't be synced again.
+   */
+  cannot_sync_again: boolean;
+  code?: string | null;
+  course_id: string;
+  /**
+   * The student changed the course's settings (AI policy, access, dates…).
+   */
+  custom_settings: boolean;
+  deadlines: number;
+  downloaded_bytes: number;
+  downloaded_files: number;
+  generated_items: number;
+  lifecycle: CourseLifecycle;
+  lost_after_purge: LostAfterPurge[];
+  materials: number;
+  name: string;
+  /**
+   * A folder course: its files are never touched.
+   */
+  own_folder_untouched: boolean;
+  source_kind: SourceKind;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemovalReport".
+ */
+export interface RemovalReport {
+  backup_deleted: boolean;
+  purged_now: boolean;
+  removed: RemovedCourse[];
+}
+/**
+ * A course in "Removed courses".
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemovedCourse".
+ */
+export interface RemovedCourse {
+  code?: string | null;
+  course_id: string;
+  external_id: string;
+  /**
+   * Moving the downloaded files to the Trash failed; retried later.
+   */
+  files_pending: boolean;
+  keep_files: boolean;
+  name: string;
+  /**
+   * When the local data will be deleted (pending only).
+   */
+  purge_after?: string | null;
+  /**
+   * Whole days until the purge ("deleted in 3 days"); None once purged.
+   */
+  purge_in_days?: number | null;
+  purged_at?: string | null;
+  reason: RemovalReason;
+  removed_at: string;
+  /**
+   * What `restore_course` / `forget_removed_course` take.
+   */
+  removed_id: string;
+  source_id: string;
+  source_kind: SourceKind;
+  state: TombstoneState;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemoveOptions".
+ */
+export interface RemoveOptions {
+  delete_pre_update_backup: boolean;
+  keep_downloaded_files: boolean;
+  /**
+   * Delete at once instead of in 7 days (no undo).
+   */
+  purge_now: boolean;
+  /**
+   * None: from each course's lifecycle (Ended → ended, Inactive → inactive, else other).
+   */
+  reason?: RemovalReason | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RestoreOutcome".
+ */
+export interface RestoreOutcome {
+  course_id?: string | null;
+  failure?: RestoreFailure | null;
+  restored: boolean;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema

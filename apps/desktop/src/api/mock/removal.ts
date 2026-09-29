@@ -37,6 +37,7 @@ type LifecycleApi = Pick<
 >;
 
 const KEEP_FOREVER = "9999-12-31";
+const DAY_MS = 86_400_000;
 /** Courses Canvas restricts access to (synthetic): a sync can't bring them back. */
 const ACCESS_RESTRICTED = ["DEM101", "DEM150"];
 const restricted = (code: string | null | undefined) =>
@@ -144,7 +145,8 @@ export function createLifecycleMock(deps: {
       reason,
       state: purgeNow ? "purged" : "pending",
       removed_at: at,
-      purge_after: purgeNow ? null : addDays(today(), 7),
+      // An instant, like the tombstone's (removed_at + 7 days).
+      purge_after: purgeNow ? null : new Date(now().getTime() + 7 * DAY_MS).toISOString(),
       purged_at: purgeNow ? at : null,
       purge_in_days: purgeNow ? null : 7,
       keep_files: keepFiles,
@@ -174,7 +176,7 @@ export function createLifecycleMock(deps: {
     if (a) {
       const r = removeOne(a, "ended", false, false);
       r.removed_at = new Date(now().getTime() - 4 * 86_400_000).toISOString();
-      r.purge_after = addDays(today(), 3);
+      r.purge_after = new Date(now().getTime() + 3 * DAY_MS).toISOString();
       r.purge_in_days = 3;
     }
     if (b) {
@@ -265,7 +267,8 @@ export function createLifecycleMock(deps: {
         const due = removed.filter((r) =>
           removedIds
             ? removedIds.includes(r.record.removed_id)
-            : r.record.state === "pending" && (r.record.purge_after ?? "") <= today(),
+            : r.record.state === "pending" &&
+              Date.parse(r.record.purge_after ?? "") <= now().getTime(),
         );
         const purged: string[] = [];
         const filesPending: string[] = [];
