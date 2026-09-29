@@ -43,10 +43,10 @@ pub enum ReminderKind {
     PlanToday,
 }
 
-/// The day of the weekly digest.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// A day of the week (the weekly digest's day, a study plan's days off).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum DigestDay {
+pub enum DayOfWeek {
     #[default]
     Monday,
     Tuesday,
@@ -57,16 +57,16 @@ pub enum DigestDay {
     Sunday,
 }
 
-impl DigestDay {
+impl DayOfWeek {
     pub fn weekday(self) -> Weekday {
         match self {
-            DigestDay::Monday => Weekday::Mon,
-            DigestDay::Tuesday => Weekday::Tue,
-            DigestDay::Wednesday => Weekday::Wed,
-            DigestDay::Thursday => Weekday::Thu,
-            DigestDay::Friday => Weekday::Fri,
-            DigestDay::Saturday => Weekday::Sat,
-            DigestDay::Sunday => Weekday::Sun,
+            DayOfWeek::Monday => Weekday::Mon,
+            DayOfWeek::Tuesday => Weekday::Tue,
+            DayOfWeek::Wednesday => Weekday::Wed,
+            DayOfWeek::Thursday => Weekday::Thu,
+            DayOfWeek::Friday => Weekday::Fri,
+            DayOfWeek::Saturday => Weekday::Sat,
+            DayOfWeek::Sunday => Weekday::Sun,
         }
     }
 }
@@ -78,7 +78,7 @@ impl DigestDay {
 pub struct ReminderSettings {
     pub deadline_soon: bool,
     pub weekly_digest: bool,
-    pub digest_day: DigestDay,
+    pub digest_day: DayOfWeek,
     pub digest_time: String,
     pub plan_today: bool,
     pub plan_today_time: String,
@@ -93,7 +93,7 @@ impl Default for ReminderSettings {
         ReminderSettings {
             deadline_soon: true,
             weekly_digest: true,
-            digest_day: DigestDay::Monday,
+            digest_day: DayOfWeek::Monday,
             digest_time: "09:00".to_string(),
             plan_today: false,
             plan_today_time: "08:00".to_string(),

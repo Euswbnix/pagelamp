@@ -1,11 +1,11 @@
 // Reminders (v0.3 M3; design §5.3): the facade's types (generated.ts) and the desktop shell's
 // (background.rs, reminders.rs).
 
-import type { DigestDay, ReminderSettings as StoredReminderSettings } from "./generated";
+import type { DayOfWeek, ReminderSettings as StoredReminderSettings } from "./generated";
 
 export type { Reminder, ReminderKind } from "./generated";
 
-export type Weekday = DigestDay;
+export type Weekday = DayOfWeek;
 export const WEEKDAYS: readonly Weekday[] = [
   "monday",
   "tuesday",

@@ -25,6 +25,7 @@ use crate::calendar::candidates::{
     CandidateLeftOut, CandidateSignals, candidates_in, extra_chunks, select_chunks,
 };
 use crate::dates::course_date;
+use crate::lifecycle::is_active;
 use crate::model::{AiMaterialsState, Chunk, Course, EventKind, MaterialKind, Module, TextStatus};
 use crate::store::Store;
 use crate::term::ResolvedTerm;
@@ -77,19 +78,28 @@ pub enum GateError {
 /// Which courses a study plan covers.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlanScope {
-    /// Course ids or codes; empty: every visible course.
+    /// Course ids or codes; empty: every visible, active course (lifecycle `is_active`,
+    /// calendar design §8.1).
     pub courses: Vec<String>,
     /// Days ahead the plan covers (deadlines in this window are listed).
     pub horizon_days: u32,
 }
 
 /// Structure only, for a study plan: the courses in scope with their week, this and next
-/// week's materials (titles and ids) and the deadlines in the horizon. Hidden courses are left
-/// out.
+/// week's materials (titles and ids) and the deadlines in the horizon. Hidden and removed
+/// courses are left out.
 pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedContext, GateError> {
     store
         .in_read_transaction(|store| {
-            let courses = scoped_courses(store, &scope.courses)?;
+            let courses = if scope.courses.is_empty() {
+                views::list_courses(store, false, at)?
+                    .into_iter()
+                    .filter(|summary| is_active(&summary.lifecycle, at.today))
+                    .map(|summary| summary.course)
+                    .collect()
+            } else {
+                scoped_courses(store, &scope.courses)?
+            };
             let mut context = GatedContext::empty();
             for course in &courses {
                 let text = course_structure(store, course, at, scope.horizon_days, &mut context)?;

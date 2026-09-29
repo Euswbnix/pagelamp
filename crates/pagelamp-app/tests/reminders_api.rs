@@ -346,7 +346,7 @@ fn settings_are_checked_and_ids_must_be_reminders() {
         .unwrap_err();
     assert_eq!(err.kind, AppErrorKind::Invalid);
     let chosen = ReminderSettings {
-        digest_day: pagelamp_app::DigestDay::Sunday,
+        digest_day: pagelamp_app::DayOfWeek::Sunday,
         digest_time: "18:30".into(),
         run_in_background: true,
         ..ReminderSettings::default()

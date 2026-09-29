@@ -4,8 +4,8 @@
 
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
-    ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, assemble, calendar_context,
-    note_context, plan_context, week_context,
+    ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote, assemble,
+    calendar_context, note_context, plan_context, week_context,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -335,9 +335,19 @@ pub(crate) fn request_shape(
     feature: AiFeature,
     context: &GatedContext,
 ) -> (RenderedPrompt, OutputSpec, u32) {
+    request_shape_with_note(feature, context, None)
+}
+
+/// `request_shape` with the student's own note (a study plan's "focus on the midterm"), sent
+/// as data.
+pub(crate) fn request_shape_with_note(
+    feature: AiFeature,
+    context: &GatedContext,
+    note: Option<&StudentNote>,
+) -> (RenderedPrompt, OutputSpec, u32) {
     match feature {
         AiFeature::StudyPlan => (
-            assemble(prompts::STUDY_PLAN, context, None),
+            assemble(prompts::STUDY_PLAN, context, note),
             OutputSpec::for_type::<PlanTasks>("study_plan_tasks").unwrap_or(OutputSpec::Text),
             PLAN_MAX_OUTPUT,
         ),

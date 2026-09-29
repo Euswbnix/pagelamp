@@ -489,7 +489,8 @@ struct MockFixtures {
                     item(8, c101, "Midterm review: weeks 1–2", 90),
                 ],
                 notes: "Front-load Problem Set 2, then shift to midterm review from next week."
-            )
+            ),
+            origin: .aiApp
         )
     }
 

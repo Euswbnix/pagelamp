@@ -548,12 +548,12 @@ export type EventKind =
  */
 export type ProcessKind = "app" | "mcp";
 /**
- * The day of the weekly digest.
+ * A day of the week (the weekly digest's day, a study plan's days off).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "DigestDay".
+ * via the `definition` "DayOfWeek".
  */
-export type DigestDay =
+export type DayOfWeek =
   "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -687,6 +687,19 @@ export type EvidenceSignal = ("module_unlock" | "recent_materials" | "latest_mat
  */
 export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
 /**
+ * Why a task isn't in the plan.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UnscheduledReason".
+ */
+export type UnscheduledReason =
+  "outside_horizon" | "no_study_days" | "no_time_before_latest" | "too_many_items";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "PlanWarningCode".
+ */
+export type PlanWarningCode = "graded_work_left_out" | "unknown_materials_dropped";
+/**
  * What a shell will do with a material's local file.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -761,6 +774,13 @@ export type McpNoteCode =
   | "custom_data_dir"
   | "generic_stdio_client"
   | "run_from_temporary_location";
+/**
+ * Who made a saved plan.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "PlanOrigin".
+ */
+export type PlanOrigin = "ai_app" | "pagelamp";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "StructuredOutputTier".
@@ -979,8 +999,8 @@ export interface PageLampAppTypes {
   course_sync_summary: CourseSyncSummary;
   course_timeline: CourseTimeline;
   crash_report: CrashReport;
+  day_of_week: DayOfWeek;
   deadline: Deadline;
-  digest_day: DigestDay;
   disclosure_facts: DisclosureFacts;
   doctor_report: DoctorReport;
   effort: Effort;
@@ -993,6 +1013,7 @@ export interface PageLampAppTypes {
   gen_event: GenEvent;
   gen_notice_code: GenNoticeCode;
   gen_stage: GenStage;
+  generated_study_plan: GeneratedStudyPlan;
   generation_meta: GenerationMeta;
   lifecycle_summary: LifecycleSummary;
   local_file_use: LocalFileUse;
@@ -1006,6 +1027,9 @@ export interface PageLampAppTypes {
   model_error_kind: ModelErrorKind;
   model_info: ModelInfo;
   model_provider_record: ModelProviderRecord;
+  plan_origin: PlanOrigin;
+  plan_warning: PlanWarning;
+  plan_warning_code: PlanWarningCode;
   probe_report: ProbeReport;
   process_kind: ProcessKind;
   provider_preset: ProviderPreset;
@@ -1032,6 +1056,7 @@ export interface PageLampAppTypes {
   startup_tasks: StartupTasks;
   stored_study_plan: StoredStudyPlan;
   structured_output_tier: StructuredOutputTier;
+  study_plan_request: StudyPlanRequest;
   syllabus_offer: SyllabusOffer;
   sync_event: SyncEvent;
   sync_request: SyncRequest;
@@ -1042,6 +1067,8 @@ export interface PageLampAppTypes {
   token_usage: TokenUsage;
   training_fact: TrainingFact;
   unreadable_files: UnreadableFiles;
+  unscheduled_reason: UnscheduledReason;
+  unscheduled_task: UnscheduledTask;
   update_channel: UpdateChannel;
   update_check_outcome: UpdateCheckOutcome;
   update_check_record: UpdateCheckRecord;
@@ -2385,6 +2412,21 @@ export interface UnreadableFiles {
   kind: TextErrorKind;
 }
 /**
+ * A draft plan: dates set by PageLamp's scheduler, waiting for `accept_study_plan`.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GeneratedStudyPlan".
+ */
+export interface GeneratedStudyPlan {
+  meta: GenerationMeta;
+  plan: StudyPlan;
+  /**
+   * Tasks the scheduler couldn't place, and why.
+   */
+  unscheduled: UnscheduledTask[];
+  warnings: PlanWarning[];
+}
+/**
  * Provenance of every generated result (the "AI-generated · backend · model · date" label).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -2446,6 +2488,54 @@ export interface LeftOutMaterial {
   material_id: string;
   reason: LeftOutReason;
   title: string;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "StudyPlan".
+ */
+export interface StudyPlan {
+  horizon_end: string;
+  horizon_start: string;
+  items: StudyPlanItem[];
+  notes?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "StudyPlanItem".
+ */
+export interface StudyPlanItem {
+  /**
+   * Course id (or code) this task belongs to, if any.
+   */
+  course_id?: string | null;
+  date: string;
+  description?: string | null;
+  done?: boolean;
+  /**
+   * Materials to study for this item (ids from `week_materials` / `search_materials`).
+   */
+  material_ids?: string[];
+  minutes?: number | null;
+  title: string;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UnscheduledTask".
+ */
+export interface UnscheduledTask {
+  course_id?: string | null;
+  reason: UnscheduledReason;
+  title: string;
+}
+/**
+ * Something PageLamp changed in the model's proposal.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "PlanWarning".
+ */
+export interface PlanWarning {
+  code: PlanWarningCode;
+  count: number;
 }
 /**
  * Every course's lifecycle, and whether the Courses page shows "N courses look finished".
@@ -2727,7 +2817,7 @@ export interface Reminder {
 export interface ReminderSettings {
   deadline_soon?: boolean;
   /**
-   * The day of the weekly digest.
+   * A day of the week (the weekly digest's day, a study plan's days off).
    */
   digest_day?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
   digest_time?: string;
@@ -2996,37 +3086,45 @@ export interface WhatsNew {
  */
 export interface StoredStudyPlan {
   created_at: string;
+  /**
+   * The PageLamp run it came from (`origin = pagelamp`), until "Remove all AI data".
+   */
+  generation_id?: string | null;
   id: number;
+  origin: PlanOrigin;
   plan: StudyPlan;
 }
 /**
+ * What to plan (design §5.1).
+ *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "StudyPlan".
+ * via the `definition` "StudyPlanRequest".
  */
-export interface StudyPlan {
-  horizon_end: string;
-  horizon_start: string;
-  items: StudyPlanItem[];
-  notes?: string | null;
-}
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "StudyPlanItem".
- */
-export interface StudyPlanItem {
+export interface StudyPlanRequest {
   /**
-   * Course id (or code) this task belongs to, if any.
+   * Course ids or codes; empty: every visible, active course.
    */
-  course_id?: string | null;
-  date: string;
-  description?: string | null;
-  done?: boolean;
+  courses?: string[];
   /**
-   * Materials to study for this item (ids from `week_materials` / `search_materials`).
+   * Weekdays without study.
    */
-  material_ids?: string[];
-  minutes?: number | null;
-  title: string;
+  days_off?: DayOfWeek[];
+  /**
+   * Days the plan covers, from today: 1–56; default 14.
+   */
+  horizon_days?: number | null;
+  /**
+   * Study hours per week: 1–80; default 10. A day holds at most 4 hours.
+   */
+  hours_per_week?: number | null;
+  /**
+   * The student's own note ("focus on the midterm"), cut to 500 characters, sent as data.
+   */
+  note?: string | null;
+  /**
+   * The student chose to go over the monthly budget for this run.
+   */
+  override_budget?: boolean;
 }
 /**
  * A course "Read syllabi for N courses" would read (the facade decides which).

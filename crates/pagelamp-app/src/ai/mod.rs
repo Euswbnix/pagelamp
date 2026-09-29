@@ -7,6 +7,7 @@
 
 pub(crate) mod codex;
 mod estimate;
+mod plan;
 pub mod prompts;
 mod providers;
 pub(crate) mod run;
@@ -15,7 +16,10 @@ mod types;
 mod usage;
 
 pub use codex::DEFAULT_WEEKLY_CAP;
-pub(crate) use estimate::{calendar_budget, feature_choice, request_shape};
+pub(crate) use estimate::{
+    calendar_budget, feature_choice, request_shape, request_shape_with_note,
+};
+pub use plan::{GeneratedStudyPlan, PlanWarning, PlanWarningCode, StudyPlanRequest};
 pub(crate) use settings::backend_key;
 pub use types::*;
 
