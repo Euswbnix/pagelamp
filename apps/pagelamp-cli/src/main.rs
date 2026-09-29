@@ -9,6 +9,7 @@
 //! stdin when piped (`echo "$URL" | pagelamp ical add`), never from command-line arguments
 //! (they would end up in shell history and process lists).
 
+mod ai;
 mod text;
 
 use std::io::{BufRead, IsTerminal, Write};
@@ -22,6 +23,7 @@ use pagelamp_app::{
     App, AppError, McpClient, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest,
     SyncSummary,
 };
+use pagelamp_core::ai::MaterialSharing;
 use pagelamp_core::brand;
 use pagelamp_core::model::{AiMaterialsState, AiPolicy, SourceKind, SourceRecord};
 use serde::Serialize;
@@ -79,6 +81,11 @@ enum Command {
     /// Change a course's settings.
     #[command(subcommand)]
     Course(CourseCommand),
+    /// Models PageLamp itself uses (API keys, local servers): setup, choices, cost and usage.
+    Ai {
+        #[command(subcommand)]
+        command: Option<ai::AiCommand>,
+    },
     /// Search your course materials.
     Search {
         /// Words to look for (any of them; best matches first).
@@ -217,6 +224,33 @@ enum CourseCommand {
         /// on: your AI app may read the material text; off: titles and dates only.
         access: OnOff,
     },
+    /// May this course's materials be shared with an AI service? (Only not-allowed keeps
+    /// material text from cloud models PageLamp runs; your own AI app is unaffected.)
+    Sharing {
+        /// The course's code, name or id.
+        course: String,
+        /// Your answer, e.g. from the syllabus.
+        answer: SharingArg,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum SharingArg {
+    Allowed,
+    #[value(alias = "not_sure")]
+    NotSure,
+    #[value(alias = "not_allowed")]
+    NotAllowed,
+}
+
+impl From<SharingArg> for MaterialSharing {
+    fn from(arg: SharingArg) -> Self {
+        match arg {
+            SharingArg::Allowed => MaterialSharing::Allowed,
+            SharingArg::NotSure => MaterialSharing::NotSure,
+            SharingArg::NotAllowed => MaterialSharing::NotAllowed,
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -566,6 +600,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::Ai { command } => {
+            let app = open_app()?;
+            ai::run(&app, command.unwrap_or(ai::AiCommand::Status), json).await
+        }
         Command::Course(command) => {
             let app = open_app()?;
             match command {
@@ -586,6 +624,12 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 CourseCommand::Show { course } => app.set_course_hidden(&course, false)?,
                 CourseCommand::AiAccess { course, access } => {
                     app.set_course_ai_access(&course, matches!(access, OnOff::On))?
+                }
+                CourseCommand::Sharing { course, answer } => {
+                    app.set_course_material_sharing(&course, answer.into())?;
+                    if matches!(answer, SharingArg::NotAllowed) && !json {
+                        eprintln!("{}", text::sharing_not_allowed_note());
+                    }
                 }
             }
             if json {
