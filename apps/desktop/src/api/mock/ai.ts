@@ -3,8 +3,6 @@
 // screens can be built and tested before the Rust side exists. Keys are validated and dropped:
 // only the last 4 characters are kept, as in the real facade.
 
-import type { PageLampApi } from "../client";
-import { ApiError } from "../errors";
 import {
   type AiBackendStatus,
   type AiFeature,
@@ -26,7 +24,9 @@ import {
   type ProviderPreset,
   type UsageRow,
   type UsageSummary,
-} from "../provisional/ai";
+} from "../ai";
+import type { PageLampApi } from "../client";
+import { ApiError } from "../errors";
 import { aiMaterialsState } from "../types";
 import {
   CODING_PLAN_HOSTS,
@@ -287,7 +287,6 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       kind: provider.on_device ? "local" : "api_key",
       state,
       problems,
-      provider,
       disclosure,
       disclosure_acknowledged: acked,
     };
@@ -377,6 +376,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
           codex.backendStatus(acknowledged.get("codex") ?? null),
           ...providers.map(backendStatus),
         ].filter((b): b is AiBackendStatus => b !== null),
+        providers,
         features: FEATURES.map((feature) => ({ feature, choice: features.get(feature) ?? null })),
         budget: budgetStatus(),
       });
@@ -481,8 +481,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       return {
         ok: true,
         latency_ms: info.on_device ? 2_300 : 900,
-        structured_output_tier:
-          provider.wire === "chat_completions" ? "json_object" : "native_schema",
+        structured_output_tier: provider.wire === "openai_chat" ? "json_object" : "native_schema",
         thinking_always_on: info.reasoning_always_on,
         error: null,
       };
@@ -553,7 +552,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       }
 
       const reasoning = Math.max(REASONING[choice.effort], info?.reasoning_always_on ? 8_000 : 0);
-      const repair = status.provider?.wire === "chat_completions";
+      const record =
+        choice.backend.kind === "provider" ? findProvider(choice.backend.provider_id) : null;
+      const repair = record?.wire === "openai_chat";
       const price = MOCK_PRICES[choice.model];
       let upper: number | null = null;
       if (onDevice) upper = 0;

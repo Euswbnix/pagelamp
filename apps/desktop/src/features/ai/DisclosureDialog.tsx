@@ -1,8 +1,8 @@
 import { type ReactNode, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { AiBackendStatus, DisclosureFacts } from "@/api/ai";
 import { useAcknowledgeAiDisclosure } from "@/api/ai-queries";
-import type { AiBackendStatus, DisclosureFacts } from "@/api/provisional/ai";
 import { ExternalLink } from "@/components/common/ExternalLink";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

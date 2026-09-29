@@ -2,8 +2,8 @@ import { CircleCheck, CircleDashed, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/ai";
 import { useRemoveModelProvider } from "@/api/ai-queries";
-import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/provisional/ai";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,16 +25,18 @@ import { useAiErrorText } from "./useAiErrorText";
  */
 export function BackendRow({
   status,
+  provider,
   onShowDisclosure,
   onReplaceKey,
 }: {
   status: AiBackendStatus;
+  /** The record behind an API-key or local backend (ai_status lists them apart). */
+  provider: ModelProviderRecord | null;
   onShowDisclosure: () => void;
   onReplaceKey: (provider: ModelProviderRecord) => void;
 }) {
   const { t } = useTranslation("ai");
   const headingId = useId();
-  const provider = status.provider ?? null;
   const StateIcon =
     status.state === "ready"
       ? CircleCheck

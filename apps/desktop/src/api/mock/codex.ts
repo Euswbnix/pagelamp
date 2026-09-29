@@ -6,17 +6,10 @@
 // PROVISIONAL until the owner's A7 tests (by 2026-10-18): what `codex login status` says about the
 // plan type, whether `codex exec` works on Free/Go (exec_available), and the credits wording.
 
+import type { AiBackendStatus, DisclosureFacts, ModelInfo, UsageRow } from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import type {
-  AiBackendStatus,
-  ChatGptPlanType,
-  CodexStatus,
-  DisclosureFacts,
-  ModeAUsage,
-  ModelInfo,
-  UsageRow,
-} from "../provisional/ai";
+import type { ChatGptPlanType, CodexStatus, ModeAUsage } from "../provisional/codex";
 import type { MockScenario } from "./fixtures";
 
 type CodexApi = Pick<
@@ -46,6 +39,7 @@ export const MOCK_CODEX_MODELS: ModelInfo[] = [
   {
     id: "gpt-6-luna",
     on_device: false,
+    runs_in_cloud: false,
     price_known: false,
     context_window: 400_000,
     reasoning_always_on: false,
@@ -54,6 +48,7 @@ export const MOCK_CODEX_MODELS: ModelInfo[] = [
   {
     id: "gpt-6-sol",
     on_device: false,
+    runs_in_cloud: false,
     price_known: false,
     context_window: 400_000,
     reasoning_always_on: false,

@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { type BackendRef, backendKey, providerOf } from "@/api/ai";
 import { useAiStatus } from "@/api/ai-queries";
-import { type BackendRef, backendKey } from "@/api/provisional/ai";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SettingsSection } from "@/features/settings/SettingsSection";
@@ -65,6 +65,7 @@ export function AiModelsSection() {
                 <BackendRow
                   key={backendKey(backend.backend)}
                   status={backend}
+                  provider={providerOf(status.data, backend)}
                   onShowDisclosure={() => showDisclosure(backend.backend)}
                   onReplaceKey={(provider) => setKeyDialog({ kind: "replace", provider })}
                 />
@@ -76,7 +77,10 @@ export function AiModelsSection() {
             {t("settings.addKey")}
           </Button>
 
-          <LocalServers backends={backends} onAdded={(record) => showAdded(record.provider_id)} />
+          <LocalServers
+            providers={status.data.providers}
+            onAdded={(record) => showAdded(record.provider_id)}
+          />
 
           {backends.length > 0 ? (
             <FeatureModels backends={backends} features={status.data.features} />

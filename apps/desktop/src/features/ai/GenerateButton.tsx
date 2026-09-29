@@ -1,13 +1,8 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { type AiStatus, backendKey, type CostEstimate, type EstimateRequest } from "@/api/ai";
 import { useAcknowledgeUnpricedModel, useAiStatus, useCostEstimate } from "@/api/ai-queries";
-import {
-  type AiStatus,
-  backendKey,
-  type CostEstimate,
-  type EstimateRequest,
-} from "@/api/provisional/ai";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";

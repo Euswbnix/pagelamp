@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { materialSharing } from "../provisional/ai";
+import { materialSharing } from "../ai";
 import { createMockApi } from ".";
 
 const fast = { latencyMs: 0, syncStepMs: 0 };

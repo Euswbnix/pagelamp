@@ -1,6 +1,5 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { useBackendModels, useSetFeatureModel, useTestModel } from "@/api/ai-queries";
 import {
   AI_FEATURES,
   type AiBackendStatus,
@@ -11,7 +10,8 @@ import {
   type FeatureRouting,
   type ModelChoice,
   type ModelInfo,
-} from "@/api/provisional/ai";
+} from "@/api/ai";
+import { useBackendModels, useSetFeatureModel, useTestModel } from "@/api/ai-queries";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -143,7 +143,7 @@ function FeatureRow({
       notes.push(t("features.noPriceNote", { model: choice.model }));
     }
     if (info.reasoning_always_on) notes.push(t("features.thinkingNote", { model: choice.model }));
-    if (!info.on_device && chosen?.status.kind === "local") {
+    if (info.runs_in_cloud) {
       notes.push(t("features.cloudNote", { model: choice.model }));
     }
   }
@@ -246,6 +246,7 @@ function withChosen(option: Option, choice: ModelChoice | null): ModelInfo[] {
     {
       id: choice.model,
       on_device: option.status.kind === "local",
+      runs_in_cloud: false,
       price_known: true,
       reasoning_always_on: false,
       suggested_for: [],
@@ -264,9 +265,8 @@ function ModelBadges({
 }) {
   const { t } = useTranslation("ai");
   const badges: string[] = [];
-  if (status.kind === "local") {
-    badges.push(model.on_device ? t("features.badge.onDevice") : t("features.badge.cloud"));
-  }
+  if (model.runs_in_cloud) badges.push(t("features.badge.cloud"));
+  else if (model.on_device) badges.push(t("features.badge.onDevice"));
   if (status.kind === "api_key" && !model.price_known) badges.push(t("features.badge.noPrice"));
   if (model.suggested_for.includes(feature)) badges.push(t("features.badge.suggested"));
   if (badges.length === 0) return null;

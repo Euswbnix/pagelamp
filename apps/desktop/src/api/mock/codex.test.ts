@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LoginEvent, RuntimeEvent } from "../provisional/ai";
+import type { LoginEvent, RuntimeEvent } from "../provisional/codex";
 import { createMockApi } from ".";
 import { MOCK_CODEX_PIN, MOCK_DEVICE_CODE } from "./codex";
 

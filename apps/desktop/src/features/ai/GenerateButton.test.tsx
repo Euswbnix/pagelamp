@@ -1,6 +1,6 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EstimateRequest } from "@/api/provisional/ai";
+import type { EstimateRequest } from "@/api/ai";
 import { DEMO101, DEMO205 } from "@/features/course/testing";
 import { renderWithProviders } from "@/test/render";
 import { GenerateButton } from "./GenerateButton";

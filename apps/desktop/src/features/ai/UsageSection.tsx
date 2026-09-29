@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { UsageRow, UsageSummary } from "@/api/ai";
 import { useUsageSummary } from "@/api/ai-queries";
-import type { UsageRow, UsageSummary } from "@/api/provisional/ai";
 import {
   Select,
   SelectContent,

@@ -2,13 +2,13 @@ import { CircleAlert } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { ModelProviderRecord, ProviderPreset } from "@/api/ai";
 import {
   useAddModelProvider,
   useModelProviderPresets,
   useUpdateModelProviderKey,
 } from "@/api/ai-queries";
 import { type ApiError, toApiError } from "@/api/errors";
-import type { ModelProviderRecord, ProviderPreset } from "@/api/provisional/ai";
 import { SecretInput } from "@/components/common/SecretInput";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";

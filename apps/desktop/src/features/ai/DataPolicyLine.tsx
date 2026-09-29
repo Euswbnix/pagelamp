@@ -1,6 +1,6 @@
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import type { DisclosureFacts } from "@/api/provisional/ai";
+import type { DisclosureFacts } from "@/api/ai";
 import { cn } from "@/lib/utils";
 
 /**

@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { type MaterialSharing, materialSharing } from "@/api/ai";
 import { useSetCourseMaterialSharing } from "@/api/ai-queries";
-import { type MaterialSharing, materialSharing } from "@/api/provisional/ai";
 import type { Course } from "@/api/types";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";

@@ -2,7 +2,7 @@
 // §3.7): no real courses, people, schools or tokens. Dates are relative to `now` so the demo
 // always looks "live" (a deadline in 2 days, week 4 of term, …).
 
-import type { CourseWithSharing, MaterialSharing } from "../provisional/ai";
+import type { CourseWithSharing, MaterialSharing } from "../ai";
 import type {
   AiPolicy,
   AppStatus,

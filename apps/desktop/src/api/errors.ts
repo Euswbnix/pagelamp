@@ -1,8 +1,8 @@
-import type { AiErrorKind, BlockReason, ModelErrorKind } from "./provisional/ai";
+import type { BlockReason, ModelErrorKind } from "./ai";
 import type { AppError, AppErrorKind } from "./types";
 
-/** PROVISIONAL (M1): `AppErrorKind` once the backend's generated types add the AI kinds. */
-export type ErrorKind = AppErrorKind | AiErrorKind;
+/** Every kind an API call can fail with (M1 added blocked, model and cancelled). */
+export type ErrorKind = AppErrorKind;
 
 /** The M1 fields of `AppError` (design §3.4), set only for their kinds. */
 export interface ApiErrorDetails {
@@ -48,7 +48,7 @@ export class ApiError extends Error implements ApiErrorDetails {
   }
 }
 
-type SerialisedError = Omit<AppError, "kind"> & { kind: ErrorKind } & ApiErrorDetails;
+type SerialisedError = AppError & ApiErrorDetails;
 
 function isAppError(value: unknown): value is SerialisedError {
   if (typeof value !== "object" || value === null) return false;

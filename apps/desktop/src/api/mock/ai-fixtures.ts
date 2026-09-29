@@ -2,13 +2,7 @@
 // everything else is made up: prices, model lists, versions, usage, keys. Terms links point at
 // *.demo.test, like every other mock link.
 
-import type {
-  AiFeature,
-  DisclosureFacts,
-  ModelInfo,
-  ProviderPreset,
-  UsageRow,
-} from "../provisional/ai";
+import type { AiFeature, DisclosureFacts, ModelInfo, ProviderPreset, UsageRow } from "../ai";
 import type { MockScenario } from "./fixtures";
 
 const CLOUD = ["structure", "material_text"] as const;
@@ -29,6 +23,7 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "openai",
     label: "OpenAI",
+    local: false,
     wire: "openai_responses",
     default_base_url: "https://api.openai.com/v1",
     needs_key: true,
@@ -47,6 +42,7 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "anthropic",
     label: "Anthropic",
+    local: false,
     wire: "anthropic_messages",
     default_base_url: "https://api.anthropic.com",
     needs_key: true,
@@ -64,7 +60,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "gemini",
     label: "Google Gemini",
-    wire: "chat_completions",
+    local: false,
+    wire: "openai_chat",
     default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
     needs_key: true,
     base_url_editable: false,
@@ -81,7 +78,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "openrouter",
     label: "OpenRouter",
-    wire: "chat_completions",
+    local: false,
+    wire: "openai_chat",
     default_base_url: "https://openrouter.ai/api/v1",
     needs_key: true,
     base_url_editable: false,
@@ -98,7 +96,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "ollama",
     label: "Ollama",
-    wire: "ollama",
+    local: true,
+    wire: "ollama_native",
     default_base_url: "http://127.0.0.1:11434",
     needs_key: false,
     base_url_editable: true,
@@ -115,7 +114,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "lm_studio",
     label: "LM Studio",
-    wire: "chat_completions",
+    local: true,
+    wire: "openai_chat",
     default_base_url: "http://127.0.0.1:1234/v1",
     needs_key: false,
     base_url_editable: true,
@@ -132,7 +132,8 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   {
     id: "custom",
     label: "Custom (OpenAI-compatible)",
-    wire: "chat_completions",
+    local: false,
+    wire: "openai_chat",
     default_base_url: null,
     needs_key: true,
     base_url_editable: true,
@@ -181,6 +182,7 @@ function model(id: string, extra: Partial<ModelInfo> = {}): ModelInfo {
     id,
     label: null,
     on_device: false,
+    runs_in_cloud: false,
     price_known: id in MOCK_PRICES,
     context_window: 200_000,
     reasoning_always_on: false,
@@ -215,7 +217,12 @@ export const MOCK_MODELS: Record<string, ModelInfo[]> = {
       suggested_for: ALL,
     }),
     model("gemma4:12b", { on_device: true, price_known: true, context_window: 32_768 }),
-    model("gpt-oss:120b-cloud", { on_device: false, price_known: false, context_window: 131_072 }),
+    model("gpt-oss:120b-cloud", {
+      on_device: false,
+      runs_in_cloud: true,
+      price_known: false,
+      context_window: 131_072,
+    }),
   ],
   lm_studio: [
     model("qwen3.5-4b", {

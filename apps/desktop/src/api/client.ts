@@ -2,22 +2,24 @@ import type {
   AiFeature,
   AiStatus,
   BackendRef,
-  CodexLoginMethod,
-  CodexSource,
-  CodexStatus,
   CostEstimate,
   EstimateRequest,
   LocalServer,
-  LoginEvent,
   MaterialSharing,
   ModelChoice,
   ModelInfo,
   ModelProviderRecord,
   ProbeReport,
   ProviderPreset,
-  RuntimeEvent,
   UsageSummary,
-} from "./provisional/ai";
+} from "./ai";
+import type {
+  CodexLoginMethod,
+  CodexSource,
+  CodexStatus,
+  LoginEvent,
+  RuntimeEvent,
+} from "./provisional/codex";
 import type {
   AiPolicy,
   AppStatus,

@@ -1,8 +1,8 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { LocalServer, ModelProviderRecord } from "@/api/ai";
 import { useAddModelProvider, useLocalServers } from "@/api/ai-queries";
-import type { AiBackendStatus, LocalServer, ModelProviderRecord } from "@/api/provisional/ai";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useAiErrorText } from "./useAiErrorText";
@@ -19,10 +19,10 @@ function sameAddress(a: string, b: string): boolean {
  * downloaded.
  */
 export function LocalServers({
-  backends,
+  providers,
   onAdded,
 }: {
-  backends: AiBackendStatus[];
+  providers: ModelProviderRecord[];
   onAdded: (record: ModelProviderRecord) => void;
 }) {
   const { t } = useTranslation("ai");
@@ -53,10 +53,8 @@ export function LocalServers({
             <ServerRow
               key={server.kind}
               server={server}
-              added={backends.some(
-                (b) =>
-                  b.provider?.preset === server.kind &&
-                  sameAddress(b.provider.base_url, server.base_url),
+              added={providers.some(
+                (p) => p.preset === server.kind && sameAddress(p.base_url, server.base_url),
               )}
               onAdded={onAdded}
             />
