@@ -56,7 +56,7 @@ a student build drops it.
 |---|---|---|
 | `PageLampKit` | `Sources/PageLampKit` | UniFFI bindings (generated) + `SyncEventStream` (sync callbacks → `AsyncStream`) |
 | `PageLampModel` | `Sources/PageLampModel` | `PageLampService` (the calls M1 needs; typed `throws(PageLampFailure)`), `LiveService`, `UnavailableService` (S2: diagnostics only), `MockService` + `FixtureService` (snapshots/tests: the mock with answers replaced); `AppModel` (`@Observable @MainActor`: shell data, navigation, sync + capsule, data mode, language); `L10n` + code → words helpers (`L10n+Formatting`); `Model/SidebarLayout`, `SidebarNavigation`, `SidebarMotionGate` (the sidebar's geometry, list behaviour and motion order, §2.3); `Model/SegmentedLayout`, `SegmentedNavigation` (the course section picker's geometry and its pointer, key and VoiceOver rules, §3.2.1); per screen the logic without views: `ThisWeek/` (`ThisWeekDigest`, the port of Tauri `thisWeek.ts` and M1 stand-in for `this_week`; sections, text), `Course/` (page model, presentation), `Setup/` (source rows, Connect steps and snippets, settings); `PrimaryActionArbiter` |
-| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, the custom sidebar (§2.3), commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars, the shared glass thumb (`GlassThumb`: `NSGlassEffectView` + an additive Core Animation spring) that is the sidebar's selection capsule and the course section picker's thumb (`GlassSegmentedControl`, `NSControl`, its VoiceOver tree in `GlassSegmentedAccessibility`) — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`readingMeasure()`), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
+| `PageLamp` | `Sources/PageLamp` | every view, MainActor by default. `Shell/` scenes, root split view, the custom sidebar (§2.3), commands, S1/S2 · `Chrome/` the functional layer: accessory bar, status capsule, toolbars, the shared glass thumb (`GlassThumb`: `NSGlassEffectView` + an additive Core Animation spring) that is the sidebar's selection capsule and the course section picker's thumb (`GlassSegmentedControl`, `NSControl`, its VoiceOver tree in `GlassSegmentedAccessibility`) — **the only folder with glass** · `Components/` the content layer: LampBand/LampWash, ReadingColumn/ReadingPage (`readingMeasure()`), PageHeader, SectionHeader, Callout/CalloutNote, CodeBlock/CopyButton, QuietState/SectionError, EmptyState, row and link button styles, arbiter styles, diagnostic preview, What's new, the component gallery (snapshots only) · `Support/` environment, strings, pasteboard and links, window metrics for the snapshots · `Views/<Screen>/` ThisWeek, Course, Sources, Connect, Settings · `Generated/`, `Resources/`. The page views the snapshots render are `package`, nothing else is |
 | `PageLampApp` | `Sources/PageLampApp` | `@main`: owns the `AppModel` and the app delegate. Executable name `PageLampApp` (never `pagelamp`: the sidecar is `Contents/MacOS/pagelamp` on a case-insensitive disk) |
 | `PageLampSnapshots` | `Sources/PageLampSnapshots` | the snapshot catalogue (`SnapshotCatalog.pages`, one file per screen) and the PNG writer (`SnapshotRenderer`, `ImageRenderer`): `swift run PageLampSnapshots <dir> [name-prefix …]`. Never linked into the app; the tests import it |
 
@@ -123,7 +123,7 @@ for states the demo data lacks) and loads its data in `make` (`.task` never runs
 optionally with `PAGELAMP_SNAPSHOT_FILTER=this-week,course-DEMO101`) renders every page of
 `SnapshotCatalog.pages` in light/dark × en/zh-Hans, on mock data at Friday 2026-09-25 10:00: This Week
 (11 states), course detail (16 states + 5 inspector views), Sources & Sync, Connect and Settings (20
-states), the sidebar (6 states) and the component gallery — 59 pages, 236 PNGs. A plain `swift test`
+states), the sidebar (6 states), What's new (2 states) and the component gallery — 61 pages, 244 PNGs. A plain `swift test`
 renders a small subset (This Week, a course page, Sources, the sidebar, the gallery; English light and
 Chinese dark) into a temporary folder. `ImageRenderer` has limits: AppKit-backed controls (segmented/tabs pickers, borderless
 buttons, progress bars) draw as yellow placeholders, except the course section picker, which draws a
@@ -144,7 +144,9 @@ capsule draws as a flat stand-in.
   popover, the Privacy table, Week starts on, Reduce Highlighting Effects, the menu bar extra, Quick
   Look. The disclosure acknowledgement is not recorded on the Mac before M2 (spec §13 #1), so Connect
   and Privacy say "You haven't confirmed this yet".
-- **Needs an on-device check** (offscreen snapshots can't show it; spec [verify]): the lamp's spill
+- **Needs an on-device check** (offscreen snapshots can't show it; spec [verify]): What's new
+  scrolling a long list (offscreen, its top part stands in for the scroll view) and VoiceOver starting
+  at its title; the lamp's spill
   under the toolbar, sidebar and inspector (§6.1), the capsule's glass and fix bubble (§6.2), `.tabs`
   pickers on 27, grouped forms (Settings tab heights, inspector scrolling to a section), material row
   focus/double-click/Return/⌘C, VoiceOver (rotors, the adjustable week line, English-tagged backend
