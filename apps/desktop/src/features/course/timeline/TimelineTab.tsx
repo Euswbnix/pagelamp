@@ -3,6 +3,7 @@ import type { Course, CourseLifecycle, CourseTimeline } from "@/api/types";
 import { Separator } from "@/components/ui/separator";
 import { CALENDAR_UI } from "../proposals/availability";
 import { ProposalsSection } from "../proposals/ProposalsSection";
+import { SyllabusSection } from "../proposals/SyllabusSection";
 import { REMOVAL_UI } from "../removal/availability";
 import { CheckDatesPrompt } from "./CheckDatesPrompt";
 import { CourseDatesForm } from "./CourseDatesForm";
@@ -51,6 +52,13 @@ export function TimelineTab({
         lifecycle={lifecycle}
         headingRef={headingRef}
       />
+
+      {CALENDAR_UI ? (
+        <>
+          <Separator />
+          <SyllabusSection course={course} />
+        </>
+      ) : null}
 
       <Separator />
 

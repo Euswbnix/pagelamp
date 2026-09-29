@@ -86,5 +86,49 @@
   "stale": {
     "title": "The syllabus changed on {{date}}",
     "body": "Some quoted words aren't in {{materials}} any more. The dates stay in force until you read it again or change them."
+  },
+  "sources": {
+    "title": "Materials to read dates from",
+    "description": "{{product}} picks the course outline and schedule pages. Add or remove materials if it picked the wrong ones.",
+    "listLabel": "Candidate materials",
+    "none": "No outline or schedule found yet.",
+    "reason": {
+      "syllabus": "Syllabus",
+      "linked_from_syllabus": "Linked from the syllabus",
+      "title_outline": "Looks like the course outline",
+      "title_schedule": "Looks like a schedule",
+      "title_info": "Course information",
+      "front_page": "Course home page",
+      "start_module": "In a “Start here” module",
+      "announcement": "Announcement",
+      "named_in_course_toml": "Named in course.toml",
+      "student_added": "Added by you"
+    },
+    "leftOut": {
+      "no_text": "No text to read yet",
+      "scanned": "Scanned: no text could be extracted",
+      "over_budget": "Too long to read in full",
+      "excluded_by_student": "Left out by you"
+    },
+    "download": "Download (counts as viewing in Canvas)",
+    "downloadLabel": "Download {{title}} (counts as viewing in Canvas)",
+    "downloading": "Downloading…",
+    "downloaded": "{{title}} downloaded",
+    "included": "Read by the scan and the AI",
+    "excluded": "{{title}} is left out",
+    "readded": "{{title}} is read again",
+    "blocked": {
+      "course_policy_prohibited": "This course is marked “No AI”, so AI doesn't read its syllabus. The scan and the dates form still work.",
+      "course_ai_turned_off": "AI access to this course's materials is off, so AI doesn't read its syllabus. The scan and the dates form still work.",
+      "course_hidden": "This course is hidden, so AI doesn't read its syllabus.",
+      "no_readable_materials": "There's no readable outline or schedule yet. Download the outline file, or tick a material below.",
+      "material_sharing_not_allowed": "You said this course doesn't allow sharing its materials with a cloud AI. A model on this computer, the scan and the dates form still work.",
+      "disclosure_not_acknowledged": "Confirm what AI reading sends and to whom in Settings → AI models first.",
+      "no_model_chosen": "Set up AI to read syllabi in Settings → AI models."
+    }
+  },
+  "reading": {
+    "title": "Read the dates from the syllabus",
+    "description": "The scan and AI can find this course's dates in its outline and schedule. Nothing changes until you accept what they propose."
   }
 }

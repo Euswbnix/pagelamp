@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { openCourse } from "../testing";
+import { DEMO310, openCourse } from "../testing";
 
 // Courses of the "proposals" mock scenario (src/api/mock/proposals.ts).
 const FITTED = "canvas:canvas.demo.test/course/332"; // AI proposal: alternatives + a conflict
@@ -118,5 +118,57 @@ describe("calendar proposal cards", () => {
         /^Some quoted words aren't in Course outline \(updated\) any more\./,
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("materials to read dates from", () => {
+  async function openSources(courseId: string, scenario: "proposals" | "demo" = "proposals") {
+    const result = await openCourse(courseId, { query: "tab=timeline", scenario });
+    const section = await screen.findByRole("region", { name: "Read the dates from the syllabus" });
+    return { ...result, section };
+  }
+
+  it("downloads one outline file only when asked, saying it counts as viewing", async () => {
+    const { user, api, section } = await openSources(UNLABELLED);
+    const download = vi.spyOn(api, "downloadMaterialFiles");
+    const list = within(section).getByRole("list", { name: "Candidate materials" });
+    expect(within(list).getByRole("checkbox", { name: "Syllabus.pdf" })).toBeDisabled();
+    expect(
+      within(list).getByText("Looks like the course outline · No text to read yet"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(list).getByRole("button", {
+        name: "Download Syllabus.pdf (counts as viewing in Canvas)",
+      }),
+    );
+    expect(download).toHaveBeenCalledWith(UNLABELLED, [expect.any(String)], expect.any(Function));
+    expect(download.mock.calls[0]?.[1]).toHaveLength(1);
+    expect(await screen.findByText("Syllabus.pdf downloaded")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(list).getByRole("checkbox", { name: "Syllabus.pdf" })).toBeChecked(),
+    );
+  });
+
+  it("leaves a candidate out at the student's request", async () => {
+    const { user, api, section } = await openSources(UNLABELLED);
+    const setSources = vi.spyOn(api, "setCalendarSources");
+    const list = within(section).getByRole("list", { name: "Candidate materials" });
+    await user.click(within(list).getByRole("checkbox", { name: "Course information" }));
+    expect(setSources).toHaveBeenCalledWith(UNLABELLED, [], [expect.any(String)]);
+    expect(await screen.findByText("Course information is left out")).toBeInTheDocument();
+    expect(
+      await within(list).findByText("Course information · Left out by you"),
+    ).toBeInTheDocument();
+  });
+
+  it("says why AI can't read a No-AI course's syllabus", async () => {
+    const { section } = await openSources(DEMO310, "demo");
+    expect(
+      within(section).getByText(
+        /^This course is marked “No AI”, so AI doesn't read its syllabus\./,
+      ),
+    ).toBeInTheDocument();
+    expect(within(section).getByText("No outline or schedule found yet.")).toBeInTheDocument();
   });
 });

@@ -86,5 +86,49 @@
   "stale": {
     "title": "教学大纲在 {{date}} 有改动",
     "body": "{{materials}} 里已经找不到部分引用的原文。在你重新读取或修改之前，这些日期仍然有效。"
+  },
+  "sources": {
+    "title": "从哪些资料读取日期",
+    "description": "{{product}} 会挑出课程大纲和课程安排页面。如果挑错了，可以增减资料。",
+    "listLabel": "候选资料",
+    "none": "还没找到课程大纲或课程安排。",
+    "reason": {
+      "syllabus": "教学大纲",
+      "linked_from_syllabus": "教学大纲里链接的文件",
+      "title_outline": "看起来是课程大纲",
+      "title_schedule": "看起来是课程安排",
+      "title_info": "课程信息",
+      "front_page": "课程主页",
+      "start_module": "在“从这里开始”模块里",
+      "announcement": "公告",
+      "named_in_course_toml": "在 course.toml 中指定",
+      "student_added": "由你添加"
+    },
+    "leftOut": {
+      "no_text": "暂时没有可读取的文本",
+      "scanned": "扫描件：无法提取文本",
+      "over_budget": "太长，无法完整读取",
+      "excluded_by_student": "已被你排除"
+    },
+    "download": "下载（在 Canvas 中算作查看）",
+    "downloadLabel": "下载 {{title}}（在 Canvas 中算作查看）",
+    "downloading": "正在下载…",
+    "downloaded": "{{title}} 已下载",
+    "included": "扫描和 AI 会读取",
+    "excluded": "已排除 {{title}}",
+    "readded": "会重新读取 {{title}}",
+    "blocked": {
+      "course_policy_prohibited": "这门课标记为“禁止 AI”，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。",
+      "course_ai_turned_off": "这门课的资料已关闭 AI 访问，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。",
+      "course_hidden": "这门课已隐藏，所以 AI 不会读取它的教学大纲。",
+      "no_readable_materials": "还没有可读取的课程大纲或课程安排。请下载大纲文件，或在下面勾选一份资料。",
+      "material_sharing_not_allowed": "你说过这门课不允许把资料分享给云端 AI。本机上的模型、扫描和日期表单仍然可用。",
+      "disclosure_not_acknowledged": "请先在“设置 → AI 模型”中确认 AI 读取会发送什么、发给谁。",
+      "no_model_chosen": "请在“设置 → AI 模型”中设置用于读取教学大纲的 AI。"
+    }
+  },
+  "reading": {
+    "title": "从教学大纲读取日期",
+    "description": "扫描和 AI 可以从课程大纲和课程安排中找出这门课的日期。在你接受提议之前，什么都不会改变。"
   }
 }
