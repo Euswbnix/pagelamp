@@ -48,7 +48,7 @@ mod migrate_v4;
 pub use ai::USAGE_KEEP_DAYS;
 pub use calendars::{
     CalendarChecks, CalendarProvenance, CalendarRow, CalendarState, KEEP_DISMISSED_DAYS,
-    KEEP_SUPERSEDED, NewCalendarRow,
+    KEEP_SUPERSEDED, NewCalendarRow, Staleness,
 };
 pub use migrate_v4::COURSE_DATES_CONFIRMED;
 

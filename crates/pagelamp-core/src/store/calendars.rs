@@ -21,6 +21,7 @@ use crate::Result;
 use crate::ai_gate::ManifestEntry;
 use crate::calendar::CourseCalendar;
 use crate::calendar::assemble::{CalendarConflict, ProposedDate};
+use crate::calendar::text::{find_quote, rebuild_parts};
 use crate::calendar::validate::DropCount;
 use crate::model::Timestamp;
 use crate::term::CalendarOrigin;
@@ -198,7 +199,57 @@ fn mirrored_span(
     (start, end)
 }
 
+/// Whether an accepted calendar's quotes are still in its materials (§7.8; computed when read,
+/// never stored).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Staleness {
+    /// A quoted material changed and some quote is no longer in it (or it is gone). The
+    /// calendar stays in force: it is still the best evidence.
+    pub stale: bool,
+    /// The quoted materials whose text changed, whether or not their quotes are still there.
+    pub changed_materials: Vec<String>,
+}
+
 impl Store {
+    /// §7.8 for `row`: a quoted material whose content hash changed is searched again for each
+    /// of its quotes. A calendar without quotes (the student's own, a legacy one) never goes
+    /// stale.
+    pub fn calendar_staleness(&self, row: &CalendarRow) -> Result<Staleness> {
+        let mut staleness = Staleness::default();
+        for entry in &row.manifest {
+            let current = self.get_material(&entry.material_id)?;
+            if current.as_ref().map(|m| &m.content_hash) == Some(&entry.content_hash) {
+                continue;
+            }
+            staleness.changed_materials.push(entry.material_id.clone());
+            let quotes: Vec<&str> = row
+                .dates
+                .iter()
+                .flat_map(|date| {
+                    date.evidence
+                        .iter()
+                        .chain(date.alternatives.iter().flat_map(|alt| &alt.evidence))
+                })
+                .filter(|evidence| evidence.material_id == entry.material_id)
+                .filter_map(|evidence| evidence.quote.as_deref())
+                .collect();
+            if quotes.is_empty() {
+                continue;
+            }
+            let parts = match current {
+                Some(_) => rebuild_parts(&self.get_chunks(&entry.material_id, 0, None)?),
+                None => Vec::new(),
+            };
+            if quotes
+                .iter()
+                .any(|quote| find_quote(&parts, quote).is_none())
+            {
+                staleness.stale = true;
+            }
+        }
+        Ok(staleness)
+    }
+
     /// Store a proposal (state `proposed`); a proposal from the same origin for the course is
     /// replaced. Returns its id.
     pub fn insert_calendar_proposal(&self, row: &NewCalendarRow, now: Timestamp) -> Result<i64> {
@@ -691,6 +742,112 @@ mod tests {
             !store
                 .calendar_fingerprint_dismissed(COURSE, CalendarOrigin::Scan, "f1")
                 .unwrap()
+        );
+    }
+
+    fn add_material(store: &Store, id: &str, hash: &str, text: &str) {
+        store
+            .upsert_material(&crate::model::MaterialUpsert {
+                id: id.into(),
+                course_id: COURSE.into(),
+                module_id: None,
+                kind: crate::model::MaterialKind::Syllabus,
+                title: "Syllabus".into(),
+                url: None,
+                local_path: None,
+                mime: None,
+                published_at: None,
+                week_hint: None,
+            })
+            .unwrap();
+        store
+            .set_text_state(id, crate::model::TextStatus::Ok, None, Some(hash))
+            .unwrap();
+        store
+            .replace_chunks(
+                id,
+                &[crate::model::Chunk {
+                    material_id: id.into(),
+                    ord: 0,
+                    locator: None,
+                    text: text.into(),
+                }],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn a_changed_syllabus_makes_the_calendar_stale_only_when_a_quote_is_gone() {
+        use crate::calendar::assemble::DateKind;
+        use crate::calendar::validate::DateEvidence;
+
+        let store = demo_store();
+        add_material(
+            &store,
+            "m1",
+            "h1",
+            "Welcome. Classes begin September 8, 2026.",
+        );
+        let mut row = proposal(CalendarOrigin::Scan, "2026-09-08", "f1");
+        row.dates = vec![ProposedDate {
+            kind: DateKind::FirstClass,
+            segment: 0,
+            date: date("2026-09-08"),
+            end: None,
+            label: String::new(),
+            evidence: vec![DateEvidence {
+                material_id: "m1".into(),
+                title: "Syllabus".into(),
+                locator: None,
+                quote: Some("Classes begin September 8, 2026.".into()),
+                url: None,
+                derived: false,
+            }],
+            alternatives: Vec::new(),
+            week: None,
+            break_kind: None,
+            numbered: None,
+        }];
+        let id = store
+            .insert_calendar_proposal(&row, at("2026-09-20"))
+            .unwrap();
+        let accepted = store
+            .accept_calendar_proposal(id, None, at("2026-09-21"))
+            .unwrap();
+        assert_eq!(
+            store.calendar_staleness(&accepted).unwrap(),
+            Staleness::default()
+        );
+
+        // The syllabus is edited but still says it: "updated, dates unchanged".
+        add_material(
+            &store,
+            "m1",
+            "h2",
+            "Welcome back! Classes begin September 8, 2026.",
+        );
+        let staleness = store.calendar_staleness(&accepted).unwrap();
+        assert_eq!(
+            (staleness.stale, staleness.changed_materials),
+            (false, vec!["m1".to_string()])
+        );
+        // The words are gone: stale (the calendar stays in force).
+        add_material(
+            &store,
+            "m1",
+            "h3",
+            "Welcome back! Classes begin September 9, 2026.",
+        );
+        assert!(store.calendar_staleness(&accepted).unwrap().stale);
+
+        // The student's own dates carry no quotes and never go stale.
+        let user = store
+            .set_student_calendar(COURSE, Some(&accepted.calendar), at("2026-09-22"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            store.calendar_staleness(&user).unwrap(),
+            Staleness::default()
         );
     }
 
