@@ -2025,6 +2025,10 @@ export interface CourseLifecycle {
   evidence_items: EvidenceItem[];
   group: CourseGroup;
   /**
+   * `is_active` on the day it was computed: the courses week-by-week features cover.
+   */
+  is_active: boolean;
+  /**
    * "I'm still taking this" until this date, when set.
    */
   kept_current_until?: string | null;
@@ -2285,6 +2289,10 @@ export interface CourseLifecycle1 {
   confidence: Confidence;
   evidence_items: EvidenceItem[];
   group: CourseGroup;
+  /**
+   * `is_active` on the day it was computed: the courses week-by-week features cover.
+   */
+  is_active: boolean;
   /**
    * "I'm still taking this" until this date, when set.
    */
@@ -3120,6 +3128,12 @@ export interface SourceSyncResult {
  */
 export interface StartupTasks {
   /**
+   * Courses whose syllabus PageLamp could read with AI (only offered, D47): at most
+   * `STARTUP_LIST_MAX`, empty while "Not now" covers them (`snooze_calendar_offers`).
+   */
+  calendar_offers: SyllabusOffer[];
+  calendar_offers_total: number;
+  /**
    * Reminders to show now (`due_reminders`); `mark_reminders_shown` once shown.
    */
   due_reminders: Reminder[];
@@ -3128,6 +3142,12 @@ export interface StartupTasks {
    * `purge_removed_courses(None)` (the app-start purge, calendar design §8.3).
    */
   purge_due: boolean;
+  /**
+   * Ids of the courses that look finished (`lifecycle_summary().suggested`): at most
+   * `STARTUP_LIST_MAX`, empty while the banner's "Not now" covers them.
+   */
+  removal_suggestions: string[];
+  removal_suggestions_total: number;
   /**
    * Removed courses whose downloaded files still wait for the Trash.
    */
@@ -3146,6 +3166,27 @@ export interface StartupTasks {
    * Show What's new (upgraders only) until `acknowledge_whats_new`.
    */
   whats_new?: WhatsNew | null;
+}
+/**
+ * A course "Read syllabi for N courses" would read (the facade decides which).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SyllabusOffer".
+ */
+export interface SyllabusOffer {
+  /**
+   * How many candidate materials it has.
+   */
+  candidates: number;
+  course_id: string;
+  /**
+   * Some candidate has text to read.
+   */
+  has_text: boolean;
+  /**
+   * Why it is offered: `no_calendar`.
+   */
+  reason_code: string;
 }
 /**
  * What's new since `since` (`None`: an update from 0.1, which didn't record its version).
@@ -3207,27 +3248,6 @@ export interface StudyPlanRequest {
    * The student chose to go over the monthly budget for this run.
    */
   override_budget?: boolean;
-}
-/**
- * A course "Read syllabi for N courses" would read (the facade decides which).
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "SyllabusOffer".
- */
-export interface SyllabusOffer {
-  /**
-   * How many candidate materials it has.
-   */
-  candidates: number;
-  course_id: string;
-  /**
-   * Some candidate has text to read.
-   */
-  has_text: boolean;
-  /**
-   * Why it is offered: `no_calendar`.
-   */
-  reason_code: string;
 }
 /**
  * Options for a sync run. All fields have defaults, so `{}` is a valid request.
@@ -3414,10 +3434,15 @@ export interface DigestCourse {
   code?: string | null;
   confidence: Confidence;
   course_id: string;
+  current_break_kind?: BreakKind | null;
   /**
    * Due in the next `DIGEST_DEADLINE_DAYS` days, soonest first.
    */
   deadlines: Deadline[];
+  /**
+   * During the exam period: the last teaching week.
+   */
+  last_teaching_week?: number | null;
   /**
    * This week's materials.
    */
@@ -3427,6 +3452,11 @@ export interface DigestCourse {
    */
   material_titles: string[];
   name: string;
+  /**
+   * Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
+   * (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
+   */
+  phase: "ended" | "not_started" | "teaching" | "break" | "exam_period" | "unknown";
   /**
    * The course's default week (`CourseTimeline::default_week`).
    */

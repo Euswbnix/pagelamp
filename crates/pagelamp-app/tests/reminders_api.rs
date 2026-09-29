@@ -9,6 +9,7 @@ use pagelamp_app::{App, AppErrorKind, ReminderKind, ReminderSettings, RemoveOpti
 use pagelamp_core::model::*;
 use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_core::store::Store;
+use pagelamp_core::term::CoursePhase;
 use serde_json::json;
 
 const SOURCE: &str = "canvas:lms.example.edu";
@@ -461,6 +462,11 @@ fn the_digest_lists_active_courses_by_week_and_others_only_for_deadlines() {
             (Some("DEMO202"), false, false, 1),
         ]
     );
+    // The phase line: codes the UIs word ("Week 3", "Reading week — catch up").
+    assert_eq!(
+        (digest.courses[0].phase, digest.courses[1].phase),
+        (CoursePhase::Teaching, CoursePhase::NotStarted)
+    );
 }
 
 /// Policy golden: a prohibited or turned-off course's material text never reaches the digest
@@ -519,4 +525,96 @@ fn no_material_text_reaches_the_digest_or_reminders() {
     for text in [digest, reminders] {
         assert!(!text.contains("Stomata"), "{text}");
     }
+}
+
+/// A current course whose syllabus PageLamp could read (an offer, D47).
+fn with_syllabus(app: &App, course_id: &str) {
+    let store = Store::open(&app.db_path()).unwrap();
+    let id = format!("{course_id}/syllabus");
+    store
+        .upsert_material(&MaterialUpsert {
+            id: id.clone(),
+            course_id: course_id.into(),
+            module_id: None,
+            kind: MaterialKind::Syllabus,
+            title: "Syllabus".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        })
+        .unwrap();
+    store
+        .set_text_state(&id, TextStatus::Ok, None, Some("h"))
+        .unwrap();
+    store
+        .replace_chunks(
+            &id,
+            &[Chunk {
+                material_id: id.clone(),
+                ord: 0,
+                locator: None,
+                text: "Classes begin in September. ".repeat(12),
+            }],
+        )
+        .unwrap();
+}
+
+/// Launch tasks offer syllabus readings and list finished courses: at most 20 of each with
+/// the totals, and silent while each list's "Not now" covers it (M3, calendar design §4).
+#[test]
+fn launch_tasks_list_offers_and_suggestions_until_not_now() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app(&temp);
+    let today = Utc::now().date_naive();
+    let current = course(
+        &app,
+        "101",
+        today - Duration::days(20),
+        today + Duration::days(60),
+    );
+    with_syllabus(&app, &current);
+    for n in 0..25 {
+        course(
+            &app,
+            &format!("9{n:02}"),
+            today - Duration::days(400),
+            today - Duration::days(300),
+        );
+    }
+    let tasks = app.startup_tasks(Utc::now()).unwrap();
+    assert_eq!(
+        tasks
+            .calendar_offers
+            .iter()
+            .map(|o| o.course_id.as_str())
+            .collect::<Vec<_>>(),
+        [current.as_str()]
+    );
+    assert_eq!(tasks.calendar_offers_total, 1);
+    assert_eq!(
+        (
+            tasks.removal_suggestions.len(),
+            tasks.removal_suggestions_total
+        ),
+        (20, 25)
+    );
+
+    app.snooze_calendar_offers().unwrap();
+    app.snooze_lifecycle_banner().unwrap();
+    let quiet = app.startup_tasks(Utc::now()).unwrap();
+    assert!(quiet.calendar_offers.is_empty() && quiet.removal_suggestions.is_empty());
+
+    // A course offered later brings the offers back, all of them.
+    let another = course(
+        &app,
+        "102",
+        today - Duration::days(20),
+        today + Duration::days(60),
+    );
+    with_syllabus(&app, &another);
+    let back = app.startup_tasks(Utc::now()).unwrap();
+    assert_eq!(back.calendar_offers_total, 2);
+    assert!(back.removal_suggestions.is_empty(), "still snoozed");
 }

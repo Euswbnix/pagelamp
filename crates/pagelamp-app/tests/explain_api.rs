@@ -542,3 +542,79 @@ async fn an_answer_citing_nothing_real_is_bad_output() {
             .is_empty()
     );
 }
+
+/// "Delete generated content per course" (design §8), then everything.
+#[tokio::test]
+async fn generated_content_is_deleted_per_course_or_all() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    for (course, id) in [
+        ("DEMO101", "e-101-a"),
+        ("DEMO101", "e-101-b"),
+        ("DEMO505", "e-505"),
+    ] {
+        app.explain_week(course, Some(3), id, ExplainOptions::default(), |_| {})
+            .await
+            .unwrap();
+    }
+    assert_eq!(app.delete_generated(Some("DEMO101")).unwrap(), 2);
+    assert!(app.saved_explanations("DEMO101", None).unwrap().is_empty());
+    assert_eq!(app.saved_explanations("DEMO505", None).unwrap().len(), 1);
+    assert_eq!(app.delete_generated(None).unwrap(), 1);
+    assert!(app.saved_explanations("DEMO505", None).unwrap().is_empty());
+    assert_eq!(
+        app.delete_generated(Some("NOPE999")).unwrap_err().kind,
+        AppErrorKind::NotFound
+    );
+}
+
+/// A calendar that moves the week makes a saved explanation stale (calendar design §7.8, B11),
+/// and one explanation can be deleted from the history.
+#[tokio::test]
+async fn a_moved_week_makes_explanations_stale_and_one_can_be_deleted() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    app.explain_week("DEMO101", Some(3), "e-1", ExplainOptions::default(), |_| {})
+        .await
+        .unwrap();
+    app.explain_week("DEMO101", Some(3), "e-2", ExplainOptions::default(), |_| {})
+        .await
+        .unwrap();
+    let store = Store::open(&app.db_path()).unwrap();
+    assert!(
+        store
+            .generation("e-1")
+            .unwrap()
+            .unwrap()
+            .week_starts_on
+            .is_some()
+    );
+    assert!(!app.saved_explanations("DEMO101", Some(3)).unwrap()[0].stale);
+    // The student's dates start the term a week earlier: week 3 is another week now.
+    app.set_course_term("DEMO101", Some(day(-21)), Some(day(90)))
+        .unwrap();
+    assert!(app.saved_explanations("DEMO101", Some(3)).unwrap()[0].stale);
+
+    app.delete_explanation("e-1").unwrap();
+    let left: Vec<String> = app
+        .saved_explanations("DEMO101", None)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.meta.generation_id)
+        .collect();
+    assert_eq!(left, ["e-2"]);
+    assert_eq!(
+        app.delete_explanation("e-1").unwrap_err().kind,
+        AppErrorKind::NotFound
+    );
+}

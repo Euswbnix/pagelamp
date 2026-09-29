@@ -969,6 +969,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           due_reminders: dueReminders(),
           purge_due: false,
           removed_files_waiting: 0,
+          calendar_offers: [],
+          calendar_offers_total: 0,
+          removal_suggestions: [],
+          removal_suggestions_total: 0,
         };
       }),
     acknowledgeWhatsNew: () =>

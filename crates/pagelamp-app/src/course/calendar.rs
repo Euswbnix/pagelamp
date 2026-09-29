@@ -512,6 +512,7 @@ impl App {
             })
             .ok(),
             error_kind: error_kind.map(str::to_string),
+            week_starts_on: None,
         };
         let run = match run {
             Ok(run) => run,

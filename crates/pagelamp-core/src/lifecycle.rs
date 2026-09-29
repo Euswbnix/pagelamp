@@ -101,6 +101,8 @@ pub struct CourseLifecycle {
     pub suggest_removal: bool,
     /// "I'm still taking this" until this date, when set.
     pub kept_current_until: Option<NaiveDate>,
+    /// `is_active` on the day it was computed: the courses week-by-week features cover.
+    pub is_active: bool,
 }
 
 impl CourseLifecycle {
@@ -117,6 +119,7 @@ impl CourseLifecycle {
             evidence_items: Vec::new(),
             suggest_removal: false,
             kept_current_until: None,
+            is_active: true,
         }
     }
 }
@@ -448,6 +451,7 @@ fn finish(
     );
     let snoozed = data.removal_snoozed_until.filter(|until| *until >= today);
     lifecycle.suggest_removal = over && snoozed.is_none();
+    lifecycle.is_active = is_active(&lifecycle, today);
     if over && let Some(until) = snoozed {
         let item = if until.year() >= 9999 {
             EvidenceItem::new(EvidenceCode::RemovalKept)
