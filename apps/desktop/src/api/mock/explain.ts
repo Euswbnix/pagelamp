@@ -62,6 +62,34 @@ export function looksLikeAssessment(title: string): boolean {
   return ASSESSMENT_WORDS.some(has) && !STUDY_WORDS.some(has);
 }
 
+/**
+ * What an explanation reads and leaves out, in pagelamp-core's order (left_out): no readable
+ * text first (whatever the title says), then what looks like graded work unless included;
+ * the first two readable materials fit the budget and the rest are left out for it, which
+ * `include` doesn't change.
+ */
+export function selectMaterials(
+  materials: MaterialView[],
+  include: string[],
+): { read: MaterialView[]; leftOut: LeftOutMaterial[] } {
+  const leftOut: LeftOutMaterial[] = [];
+  const readable: MaterialView[] = [];
+  for (const m of materials) {
+    if (m.text_status !== "ok") {
+      leftOut.push({ material_id: m.id, title: m.title, reason: "no_text" });
+    } else if (looksLikeAssessment(m.title) && !include.includes(m.id)) {
+      leftOut.push({ material_id: m.id, title: m.title, reason: INCLUDABLE_REASON });
+    } else {
+      readable.push(m);
+    }
+  }
+  const read = readable.slice(0, 2);
+  for (const m of readable.slice(2)) {
+    leftOut.push({ material_id: m.id, title: m.title, reason: "over_budget" });
+  }
+  return { read, leftOut };
+}
+
 export function createExplainMock(deps: {
   now: () => Date;
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
@@ -113,9 +141,8 @@ export function createExplainMock(deps: {
             return at >= since && at <= until;
           })
         : c.materials.filter((m) => m.week_hint === week);
-    const assessment = (m: MaterialView) => looksLikeAssessment(m.title) && !include.includes(m.id);
-    const readable = materials.filter((m) => m.text_status === "ok" && !assessment(m));
-    if (readable.length === 0) {
+    const { read, leftOut } = selectMaterials(materials, include);
+    if (read.length === 0) {
       throw new ApiError("blocked", "No readable materials this week.", {
         blocked: "no_readable_materials",
       });
@@ -128,20 +155,6 @@ export function createExplainMock(deps: {
       }
     };
 
-    // The first two readable materials fit the budget; the rest are left out for it, and
-    // `include` doesn't change that (only what looks like graded work comes back with it).
-    const read = readable.filter((_, i) => i < 2);
-    const leftOut: LeftOutMaterial[] = [
-      ...materials
-        .filter(assessment)
-        .map((m) => ({ material_id: m.id, title: m.title, reason: INCLUDABLE_REASON })),
-      ...readable
-        .filter((m) => !read.includes(m))
-        .map((m) => ({ material_id: m.id, title: m.title, reason: "over_budget" as const })),
-      ...materials
-        .filter((m) => m.text_status !== "ok" && !assessment(m))
-        .map((m) => ({ material_id: m.id, title: m.title, reason: "no_text" as const })),
-    ];
     onEvent({ type: "stage", stage: "building_context" });
     await deps.step();
     stop();
