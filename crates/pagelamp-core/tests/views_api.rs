@@ -101,12 +101,12 @@ fn add_material(
             text: (*text).into(),
         })
         .collect();
-    store.replace_chunks(&material_id, &chunks).unwrap();
     if !texts.is_empty() {
         store
             .set_text_state(&material_id, TextStatus::Ok, None, Some("hash"))
             .unwrap();
     }
+    store.replace_chunks(&material_id, &chunks).unwrap();
     material_id
 }
 

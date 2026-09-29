@@ -92,10 +92,10 @@ fn fixture(dir: &Path) -> PathBuf {
                     text: (*text).into(),
                 })
                 .collect();
-            store.replace_chunks(&mid(name), &chunks).unwrap();
             store
                 .set_text_state(&mid(name), TextStatus::Ok, None, Some("h"))
                 .unwrap();
+            store.replace_chunks(&mid(name), &chunks).unwrap();
         };
     material(
         "101",
@@ -796,6 +796,8 @@ async fn local_file_paths_never_reach_the_ai_app() {
             week_hint: Some(3),
         })
         .unwrap();
+        s.set_text_state(&mid("local-notes"), TextStatus::Ok, None, Some("h"))
+            .unwrap();
         s.replace_chunks(
             &mid("local-notes"),
             &[Chunk {
@@ -806,8 +808,6 @@ async fn local_file_paths_never_reach_the_ai_app() {
             }],
         )
         .unwrap();
-        s.set_text_state(&mid("local-notes"), TextStatus::Ok, None, Some("h"))
-            .unwrap();
     });
     // An error text quoting a path in the home folder (an older version wrote those).
     let home = std::env::var("HOME")
