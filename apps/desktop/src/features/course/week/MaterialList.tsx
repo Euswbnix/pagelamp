@@ -56,6 +56,7 @@ export function MaterialList({
 
 function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReadable: boolean }) {
   const { t, i18n } = useTranslation("course");
+  const english = (i18n.resolvedLanguage ?? i18n.language).startsWith("en");
   const { t: tc } = useTranslation();
   const Icon = MATERIAL_ICON[material.kind];
   const meta = [
@@ -87,10 +88,10 @@ function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReada
           aiReadable={aiReadable}
           blocked={material.download_blocked}
         />
-        {material.text_error ? (
-          <p lang="en" className="text-xs text-muted-foreground">
-            {material.text_error}
-          </p>
+        {/* The facade's reason is English free text until MaterialView.text_problem gives a
+            code to translate: only an English UI shows it. */}
+        {material.text_error && english ? (
+          <p className="text-xs text-muted-foreground">{material.text_error}</p>
         ) : null}
       </div>
     </li>
