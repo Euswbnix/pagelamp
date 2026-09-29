@@ -146,13 +146,23 @@ impl App {
         result
     }
 
-    /// The kept weekly notes, newest first.
+    /// The kept weekly notes, newest first. A stored note that can't be read is skipped, with
+    /// a warning that names its id (never its text).
     pub fn weekly_notes(&self) -> Result<Vec<WeeklyNote>> {
         let store = self.read_store()?;
         Ok(store
             .course_free_generations(AiFeature::WeeklyNote, Some(GenerationStatus::Accepted))?
             .into_iter()
-            .filter_map(|record| serde_json::from_str(record.output_json.as_deref()?).ok())
+            .filter_map(|record| {
+                let note = record
+                    .output_json
+                    .as_deref()
+                    .and_then(|json| serde_json::from_str(json).ok());
+                if note.is_none() {
+                    tracing::warn!(target: "pagelamp::ai", id = %record.id, "unreadable weekly note skipped");
+                }
+                note
+            })
             .collect())
     }
 
