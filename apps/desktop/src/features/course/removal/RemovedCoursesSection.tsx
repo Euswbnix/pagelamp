@@ -98,6 +98,7 @@ function RemovedRow({ course, onGone }: { course: RemovedCourse; onGone: () => v
       });
       if (report.files_pending.includes(course.removed_id)) toast.warning(stillPending);
       else toast.success(done);
+      if (report.backup_failed) toast.warning(t("toast.backupFailed"));
     } catch (error) {
       toast.error(errorText(error));
     }
@@ -113,9 +114,13 @@ function RemovedRow({ course, onGone }: { course: RemovedCourse; onGone: () => v
     }
   }
 
-  const status =
-    course.state === "restoring" || restore.isPending
-      ? t("removed.restoring")
+  // A restore that isn't running here and didn't finish (another window, the CLI, or an
+  // interrupted one): the next sync settles it, or the student restores it again.
+  const stuck = course.state === "restoring" && !restore.isPending;
+  const status = restore.isPending
+    ? t("removed.restoring")
+    : stuck
+      ? t("removed.restoreStuck")
       : course.state === "pending"
         ? t("removed.pending", {
             date: formatDate(course.removed_at, i18n.language),
@@ -204,20 +209,27 @@ function RemovedRow({ course, onGone }: { course: RemovedCourse; onGone: () => v
             <ActionButton onClick={() => void restoreIt()} busy={busy}>
               {t("removed.restore")}
             </ActionButton>
-            <ConfirmButton
-              label={t("removed.forget")}
-              title={t("removed.confirmForgetTitle", { course: name })}
-              body={t("removed.confirmForgetBody")}
-              busy={busy}
-              onConfirm={() =>
-                run(
-                  () => forget.mutateAsync({ removedId: course.removed_id }),
-                  t("removed.forgotten", { course: name }),
-                  true,
-                )
-              }
-            />
+            {/* Forgetting waits until the files are in the Trash or deleted (Invalid before). */}
+            {course.files_pending ? null : (
+              <ConfirmButton
+                label={t("removed.forget")}
+                title={t("removed.confirmForgetTitle", { course: name })}
+                body={t("removed.confirmForgetBody")}
+                busy={busy}
+                onConfirm={() =>
+                  run(
+                    () => forget.mutateAsync({ removedId: course.removed_id }),
+                    t("removed.forgotten", { course: name }),
+                    true,
+                  )
+                }
+              />
+            )}
           </>
+        ) : stuck ? (
+          <ActionButton onClick={() => void restoreIt()} busy={busy}>
+            {t("removed.restoreAgain")}
+          </ActionButton>
         ) : null}
       </div>
     </li>

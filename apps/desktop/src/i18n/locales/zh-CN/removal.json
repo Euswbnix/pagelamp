@@ -43,6 +43,7 @@
     "backup": "同时删除更新前的备份",
     "backupOld": "这份备份是 {{days}} 天前更新时做的，里面仍有这些课程的文本。",
     "backupRecent": "这份备份是 {{days}} 天前更新时做的；如果更新出了问题，要靠它恢复。",
+    "backupWithData": "勾选后，它会和课程数据一起删除：选了“立即删除”就马上删，否则 7 天后删。撤销会保留它。",
     "confirm_one": "移除 {{count}} 门课程",
     "confirm_other": "移除 {{count}} 门课程",
     "removing": "正在移除…",
@@ -61,7 +62,8 @@
     "undone": "已撤销移除",
     "deleted_one": "已删除 {{course}}。要恢复需要重新同步。",
     "deleted_other": "已删除 {{count}} 门课程。要恢复需要重新同步。",
-    "deletedFilesPending": "数据已删除，但有些文件没能移到废纸篓。可以在“设置 → 已移除的课程”里看到它们。"
+    "deletedFilesPending": "数据已删除，但有些文件没能移到废纸篓。可以在“设置 → 已移除的课程”里看到它们。",
+    "backupFailed": "更新前的备份没能删除，它还在数据文件夹里。"
   },
   "settings": {
     "title": "从 {{product}} 中移除",
@@ -78,6 +80,8 @@
     "pending_other": "{{date}} 移除 · {{count}} 天后删除数据",
     "purged": "数据已于 {{date}} 删除",
     "restoring": "正在恢复…",
+    "restoreStuck": "恢复没有完成。{{product}} 会在下次同步时处理，你也可以再恢复一次。",
+    "restoreAgain": "再次恢复",
     "filesPending": "它已下载的文件没能移到废纸篓。{{product}} 会在每次同步时再试。",
     "keptFiles": "已保留下载的文件",
     "undo": "撤销",

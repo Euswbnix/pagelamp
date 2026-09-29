@@ -43,6 +43,7 @@
     "backup": "Also delete the pre-update backup",
     "backupOld": "It's {{days}} days old and still holds these courses' text.",
     "backupRecent": "It's only {{days}} days old, and it's your way back if an update goes wrong.",
+    "backupWithData": "If ticked, it's deleted with the courses' data: now with “Delete now”, otherwise after 7 days. Undo keeps it.",
     "confirm_one": "Remove {{count}} course",
     "confirm_other": "Remove {{count}} courses",
     "removing": "Removing…",
@@ -61,7 +62,8 @@
     "undone": "Removal undone",
     "deleted_one": "{{course}} deleted. Restoring means syncing it again.",
     "deleted_other": "{{count}} courses deleted. Restoring means syncing them again.",
-    "deletedFilesPending": "The data was deleted, but some files couldn't be moved to the Trash. Settings → Removed courses lists them."
+    "deletedFilesPending": "The data was deleted, but some files couldn't be moved to the Trash. Settings → Removed courses lists them.",
+    "backupFailed": "The pre-update backup couldn't be deleted. It's still in the data folder."
   },
   "settings": {
     "title": "Remove from {{product}}",
@@ -78,6 +80,8 @@
     "pending_other": "Removed {{date}} · its data is deleted in {{count}} days",
     "purged": "Data deleted {{date}}",
     "restoring": "Restoring…",
+    "restoreStuck": "The restore didn't finish. {{product}} sorts it out at the next sync, or you can restore it again.",
+    "restoreAgain": "Restore again",
     "filesPending": "Its downloaded files couldn't be moved to the Trash. {{product}} tries again at each sync.",
     "keptFiles": "Downloaded files kept",
     "undo": "Undo",
