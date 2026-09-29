@@ -28,6 +28,10 @@ tauri-plugin-updater = "2.12"
 semver = "1"
 tracing.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+# The build number gates Mica (window.rs); already in the tree through Tauri.
+windows-version = "0.1"
+
 [dev-dependencies]
 # `test` enables tauri::test (mock runtime) for the IPC contract test.
 tauri = { version = "2.11", features = ["test"] }

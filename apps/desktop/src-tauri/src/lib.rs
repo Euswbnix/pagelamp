@@ -14,6 +14,7 @@
 pub mod backend;
 mod commands;
 pub mod updates;
+pub mod window;
 
 pub use backend::Backend;
 
@@ -90,6 +91,8 @@ pub fn run() {
         .plugin(updates::plugin())
         .setup(|app| {
             updates::manage(app.handle());
+            // Built here, not from the config, so Windows 11 can get Mica (window.rs).
+            window::create_main(app)?;
             Ok(())
         })
         .manage(Backend::open());
