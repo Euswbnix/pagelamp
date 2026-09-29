@@ -147,7 +147,7 @@ describe("crash notice", () => {
     const api = mockApi();
     const crash: CrashReport = {
       time: new Date(Date.now() - 3_600_000).toISOString(),
-      version: "0.1.0-mock",
+      version: "0.3.0-alpha.1",
       process: "mcp",
       message: "boom",
       location: null,

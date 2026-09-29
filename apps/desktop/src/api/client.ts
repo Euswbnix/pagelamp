@@ -1,3 +1,4 @@
+import type { StartupTasks, UpdateCheckRecord, UpdatePrefs, UpdatePrefsView } from "./provisional";
 import type {
   AiPolicy,
   AppStatus,
@@ -16,6 +17,35 @@ import type {
   SyncSummary,
   WeekMaterials,
 } from "./types";
+
+// ----- updater (desktop only: src-tauri's updates.rs, not the facade) -------------------------
+
+/** How this build updates: in the app, or (deb/rpm) only by downloading the new package. */
+export type UpdateInstallMode = "in_app" | "download_only";
+
+export interface UpdaterStatus {
+  /** The real version (CARGO_PKG_VERSION, e.g. "0.3.0-alpha.1"). */
+  current_version: string;
+  install: UpdateInstallMode;
+  platform: "macos" | "windows" | "linux";
+}
+
+export interface AvailableUpdate {
+  version: string;
+  /** RFC 3339 publication date, when the manifest has one. */
+  date?: string | null;
+  /** Release notes (plain text / Markdown from the manifest). */
+  notes?: string | null;
+  /** Release page for "download only" installs (deb/rpm). */
+  download_url?: string | null;
+}
+
+/** Progress of "Install and restart", streamed from Rust. */
+export type UpdateEvent =
+  | { type: "download_started"; total_bytes?: number | null }
+  | { type: "progress"; downloaded_bytes: number; total_bytes?: number | null }
+  | { type: "installing" }
+  | { type: "restarting" };
 
 /**
  * Everything the UI can ask of the backend. One method per facade method in
@@ -94,6 +124,16 @@ export interface PageLampApi {
   lastCrash(): Promise<CrashReport | null>;
   clearLastCrash(): Promise<void>;
 
+  // ----- updates (facade: preferences and what's due at launch; provisional types) ----------
+  updatePrefs(): Promise<UpdatePrefsView>;
+  setUpdatePrefs(prefs: UpdatePrefs): Promise<void>;
+  /** What to do at launch: the "What's new" sheet, an automatic check, the post-update banner. */
+  startupTasks(): Promise<StartupTasks>;
+  acknowledgeWhatsNew(): Promise<void>;
+  /** The student saw (in onboarding) that PageLamp checks for updates. */
+  acknowledgeUpdateDisclosure(): Promise<void>;
+  lastUpdateCheck(): Promise<UpdateCheckRecord | null>;
+
   // ----- desktop helpers (not part of the facade) --------------------------------------------
   /** Native folder picker. Resolves null when cancelled. */
   pickFolder(): Promise<string | null>;
@@ -113,4 +153,12 @@ export interface PageLampApi {
    * Never rejects — logging must not cause a second error.
    */
   logUiError(message: string, stack: string | null): Promise<void>;
+  updaterStatus(): Promise<UpdaterStatus>;
+  /** Checks the effective channel; the result is recorded (codes only) for diagnostics. */
+  checkForUpdate(): Promise<AvailableUpdate | null>;
+  /**
+   * Downloads, verifies and installs the update found by the last check, then restarts
+   * PageLamp (on Windows the installer closes it). Only ever called after the student asked.
+   */
+  installUpdate(onEvent: (event: UpdateEvent) => void): Promise<void>;
 }

@@ -24,8 +24,8 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   }
 }
 
-function eventChannel(onEvent: (event: SyncEvent) => void): Channel<SyncEvent> {
-  const channel = new Channel<SyncEvent>();
+function eventChannel<E = SyncEvent>(onEvent: (event: E) => void): Channel<E> {
+  const channel = new Channel<E>();
   channel.onmessage = onEvent;
   return channel;
 }
@@ -66,6 +66,13 @@ export function createTauriApi(): PageLampApi {
       call("set_course_ai_access", { course: courseId, allowed }),
 
     mcpClientConfigs: () => call("mcp_client_configs"),
+
+    updatePrefs: () => call("update_prefs"),
+    setUpdatePrefs: (prefs) => call("set_update_prefs", { prefs }),
+    startupTasks: () => call("startup_tasks"),
+    acknowledgeWhatsNew: () => call("acknowledge_whats_new"),
+    acknowledgeUpdateDisclosure: () => call("acknowledge_update_disclosure"),
+    lastUpdateCheck: () => call("last_update_check"),
 
     diagnosticReport: () => call("diagnostic_report"),
     lastCrash: () => call("last_crash"),
@@ -114,6 +121,9 @@ export function createTauriApi(): PageLampApi {
       };
     },
     revealLogsDir: () => call("reveal_logs_dir"),
+    updaterStatus: () => call("updates_status"),
+    checkForUpdate: () => call("updates_check"),
+    installUpdate: (onEvent) => call("updates_install", { onEvent: eventChannel(onEvent) }),
     logUiError: async (message, stack) => {
       try {
         await call("log_ui_error", { message, stack });

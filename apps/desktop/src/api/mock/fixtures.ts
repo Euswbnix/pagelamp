@@ -22,7 +22,19 @@ import type {
   TextStatus,
 } from "../types";
 
-export type MockScenario = "demo" | "empty" | "expired" | "error" | "busy" | "crashed";
+export type MockScenario =
+  | "demo"
+  | "empty"
+  | "expired"
+  | "error"
+  | "busy"
+  | "crashed"
+  // Updates (M0.4): an update is offered / an upgrader from 0.1 sees "What's new" / the first
+  // launch after an update / a deb or rpm install (download link only).
+  | "update-available"
+  | "upgrader"
+  | "updated"
+  | "deb";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -31,7 +43,16 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "error",
   "busy",
   "crashed",
+  "update-available",
+  "upgrader",
+  "updated",
+  "deb",
 ];
+
+/** The version mock mode reports (a pre-release, so its default update channel is beta). */
+export const MOCK_APP_VERSION = "0.3.0-alpha.1";
+/** The version mock mode offers as an update. */
+export const MOCK_UPDATE_VERSION = "0.3.0-alpha.2";
 
 /** One course with everything the views need. */
 export interface MockCourse {
@@ -664,7 +685,7 @@ export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
 function crash(now: Date): CrashReport {
   return {
     time: at(now, -1, 21, 14),
-    version: "0.1.0-mock",
+    version: MOCK_APP_VERSION,
     process: "app",
     message: "called `Option::unwrap()` on a `None` value",
     location: "crates/pagelamp-app/src/sync.rs:212:31",

@@ -4,13 +4,15 @@
 // the same AppError kinds, sync streams SyncEvents over time, and settings persist for the
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
-// Scenarios: demo (default) · empty · expired · error · busy · crashed.
+// Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
+// update-available · upgrader · updated · deb.
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
-import type { PageLampApi } from "../client";
+import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
+import type { UpdateChannel, UpdateCheckRecord } from "../provisional";
 import {
   type AppStatus,
   aiMaterialsState,
@@ -26,7 +28,9 @@ import {
 import {
   buildMockDb,
   diagnosticReport,
+  MOCK_APP_VERSION,
   MOCK_BINARY_PATH,
+  MOCK_UPDATE_VERSION,
   type MockCourse,
   type MockDb,
   type MockScenario,
@@ -126,6 +130,37 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   let syncing = false;
   let nextId = 1;
 
+  // Updates (M0.4). A fresh install ("empty") hasn't seen the update-check disclosure yet; an
+  // upgrader from 0.1 hasn't seen "What's new"; some scenarios have never checked.
+  const offersUpdate = scenario === "update-available" || scenario === "deb";
+  const updates = {
+    prefs: { auto_check: true, channel: null as UpdateChannel | null },
+    disclosureSeen: scenario !== "empty",
+    whatsNewSeen: scenario !== "upgrader",
+    lastCheck: (offersUpdate || scenario === "upgrader"
+      ? null
+      : {
+          at: new Date(now().getTime() - 2 * 60 * 60 * 1000).toISOString(),
+          channel: "beta",
+          outcome: "up_to_date",
+        }) as UpdateCheckRecord | null,
+  };
+  function effectiveChannel(): UpdateChannel {
+    return updates.prefs.channel ?? (MOCK_APP_VERSION.includes("-") ? "beta" : "stable");
+  }
+  function mockUpdate(): AvailableUpdate {
+    return {
+      version: MOCK_UPDATE_VERSION,
+      date: new Date(now().getTime() - DAY).toISOString(),
+      notes:
+        "- Every course shows its week and phase.\n- Finished courses move to a “Past” group.\n- Fixes for syncing large course folders.",
+      download_url:
+        scenario === "deb"
+          ? `https://github.com/Euswbnix/pagelamp/releases/tag/v${MOCK_UPDATE_VERSION}`
+          : null,
+    };
+  }
+
   async function respond<T>(value: T | (() => T), extraLatency = 0): Promise<T> {
     await sleep(latency + extraLatency);
     const result = typeof value === "function" ? (value as () => T)() : value;
@@ -201,7 +236,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       .filter((v): v is string => !!v)
       .sort();
     return {
-      version: "0.1.0-mock",
+      version: MOCK_APP_VERSION,
       data_dir: db.dataDir,
       db_path: `${db.dataDir}/pagelamp.db`,
       sources: db.sources,
@@ -645,6 +680,37 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
     mcpClientConfigs: () => respond(() => mcpClientConfigs(MOCK_BINARY_PATH)),
 
+    updatePrefs: () => respond(() => ({ ...updates.prefs, effective_channel: effectiveChannel() })),
+    setUpdatePrefs: (prefs) =>
+      respond(() => {
+        updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };
+      }),
+    startupTasks: () =>
+      respond(() => {
+        const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
+        return {
+          whats_new: updates.whatsNewSeen
+            ? null
+            : { since: "0.1.0", topics: ["update_check" as const, "course_weeks" as const] },
+          update_check_due:
+            updates.prefs.auto_check &&
+            updates.disclosureSeen &&
+            updates.whatsNewSeen &&
+            (last === null || last <= now().getTime() - DAY),
+          updated_from: scenario === "updated" || scenario === "upgrader" ? "0.1.0" : null,
+        };
+      }),
+    acknowledgeWhatsNew: () =>
+      respond(() => {
+        updates.whatsNewSeen = true;
+        updates.disclosureSeen = true;
+      }),
+    acknowledgeUpdateDisclosure: () =>
+      respond(() => {
+        updates.disclosureSeen = true;
+      }),
+    lastUpdateCheck: () => respond(() => updates.lastCheck),
+
     diagnosticReport: () => respond(() => diagnosticReport(status(), db.lastCrash, now())),
     lastCrash: () => respond(() => db.lastCrash),
     clearLastCrash: () =>
@@ -664,6 +730,44 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       return () => window.removeEventListener("focus", handler);
     },
     revealLogsDir: async () => {},
+    updaterStatus: () =>
+      respond(() => ({
+        current_version: MOCK_APP_VERSION,
+        install: scenario === "deb" ? ("download_only" as const) : ("in_app" as const),
+        platform: scenario === "deb" ? ("linux" as const) : ("macos" as const),
+      })),
+    checkForUpdate: async () => {
+      await sleep(latency + 300);
+      const at = now().toISOString();
+      const channel = effectiveChannel();
+      if (offersUpdate) {
+        updates.lastCheck = { at, channel, outcome: "available", version: MOCK_UPDATE_VERSION };
+        return clone(mockUpdate());
+      }
+      updates.lastCheck = { at, channel, outcome: "up_to_date" };
+      return null;
+    },
+    installUpdate: async (onEvent) => {
+      await sleep(latency);
+      if (scenario === "deb") {
+        throw new ApiError("invalid", "This install updates by downloading the new package.");
+      }
+      if (!offersUpdate) throw new ApiError("not_found", "No update to install.");
+      const total = 14_500_000;
+      onEvent({ type: "download_started", total_bytes: total });
+      for (const part of [0.25, 0.5, 0.75, 1]) {
+        await sleep(syncStep);
+        onEvent({
+          type: "progress",
+          downloaded_bytes: Math.round(total * part),
+          total_bytes: total,
+        });
+      }
+      onEvent({ type: "installing" });
+      await sleep(syncStep);
+      // The real app restarts here; mock mode stays on the "Restarting…" state.
+      onEvent({ type: "restarting" });
+    },
     logUiError: async () => {},
   };
 }

@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
+import type { StartupTasks, UpdatePrefs } from "./provisional";
 import type { AiPolicy, IsoDate } from "./types";
 
 export const queryKeys = {
@@ -22,6 +23,12 @@ export const queryKeys = {
   // Deliberately outside `all`: a sync finishing (which invalidates `all`) must not swap the
   // text the student is reviewing before they copy it.
   diagnosticReport: () => ["diagnostic-report"] as const,
+  updatePrefs: () => [...queryKeys.all, "update-prefs"] as const,
+  lastUpdateCheck: () => [...queryKeys.all, "last-update-check"] as const,
+  // Once per launch, outside `all`: a sync finishing must not bring back "What's new" or start
+  // another automatic check.
+  startupTasks: () => ["startup-tasks"] as const,
+  updaterStatus: () => ["updater-status"] as const,
 };
 
 // ----- reads ----------------------------------------------------------------------------------
@@ -251,4 +258,66 @@ export function useClearLastCrash() {
     mutationFn: () => api.clearLastCrash(),
     onSuccess: () => client.setQueryData(queryKeys.lastCrash(), null),
   });
+}
+
+// ----- updates (M0.4) ---------------------------------------------------------------------------
+
+export function useUpdatePrefs() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.updatePrefs(), queryFn: () => api.updatePrefs() });
+}
+
+export function useSetUpdatePrefs() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (prefs: UpdatePrefs) => api.setUpdatePrefs(prefs),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.updatePrefs() }),
+  });
+}
+
+export function useLastUpdateCheck() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.lastUpdateCheck(), queryFn: () => api.lastUpdateCheck() });
+}
+
+/** What to do at launch; asked once per launch (the facade decides, the UI only renders). */
+export function useStartupTasks() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.startupTasks(),
+    queryFn: () => api.startupTasks(),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+
+/** This build's version and how it updates; fixed for the whole launch. */
+export function useUpdaterStatus() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.updaterStatus(),
+    queryFn: () => api.updaterStatus(),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+
+/** The student has read "What's new": it's done for good (and so is the update disclosure). */
+export function useAcknowledgeWhatsNew() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.acknowledgeWhatsNew(),
+    onSuccess: () =>
+      client.setQueryData<StartupTasks>(queryKeys.startupTasks(), (tasks) =>
+        tasks ? { ...tasks, whats_new: null } : tasks,
+      ),
+  });
+}
+
+export function useAcknowledgeUpdateDisclosure() {
+  const api = useApi();
+  return useMutation({ mutationFn: () => api.acknowledgeUpdateDisclosure() });
 }

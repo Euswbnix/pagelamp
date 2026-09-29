@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
+import { MOCK_APP_VERSION } from "@/api/mock/fixtures";
 import { brand, localized } from "@/brand";
 import i18n from "@/i18n";
 import { useUiStore } from "@/stores/ui";
@@ -189,7 +190,7 @@ describe("SettingsPage", () => {
   it("shows the version, license, tagline and the homepage link", async () => {
     renderRoute("/settings");
     const about = await section("About");
-    expect(await within(about).findByText("0.1.0-mock")).toBeInTheDocument();
+    expect(await within(about).findByText(MOCK_APP_VERSION)).toBeInTheDocument();
     expect(within(about).getByText("Apache-2.0")).toBeInTheDocument();
     expect(within(about).getByText(brand.productName)).toBeInTheDocument();
     expect(within(about).getByText(localized(brand.tagline, "en"))).toBeInTheDocument();

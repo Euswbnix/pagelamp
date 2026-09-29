@@ -5,6 +5,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import i18n, { initI18n } from "@/i18n";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
+import { useUpdateStore } from "@/stores/updates";
 
 initI18n("en");
 
@@ -48,4 +49,5 @@ afterEach(() => {
   localStorage.clear();
   useUiStore.setState(initialUi, true);
   useSyncStore.getState().reset();
+  useUpdateStore.getState().reset();
 });
