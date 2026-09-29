@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
+use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
     EstimateRequest, LocalServer, LoginEvent, ModelChoice, ModelInfo, ModelProviderRecord,
@@ -576,6 +577,50 @@ pub async fn mcp_client_configs(backend: State<'_, Backend>) -> CmdResult<Vec<Mc
 
 /// Show the data directory in Finder / Explorer. Done here (not from JS) so the webview needs
 /// no filesystem-reveal permission at all.
+/// Open a course material's local file with the default app (calendar design §7.10: "Open file"
+/// on a quote from a file). The facade checks it and answers only for documents inside the
+/// source's folder; `false` when there's no such file. The path never reaches the webview, the
+/// logs or the error message.
+#[tauri::command]
+pub async fn open_material<R: tauri::Runtime>(
+    backend: State<'_, Backend>,
+    window: tauri::WebviewWindow<R>,
+    material_id: String,
+) -> CmdResult<bool> {
+    let path = backend
+        .blocking(move |app| app.material_local_file(&material_id, LocalFileUse::Open))
+        .await?;
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    window
+        .opener()
+        .open_path(path, None::<&str>)
+        .map_err(|_| internal("couldn't open the file with its default app"))?;
+    Ok(true)
+}
+
+/// Show a course material's local file in Finder / Explorer ("Show in folder"). Like
+/// `open_material`, but any file type inside the source's folder.
+#[tauri::command]
+pub async fn reveal_material<R: tauri::Runtime>(
+    backend: State<'_, Backend>,
+    window: tauri::WebviewWindow<R>,
+    material_id: String,
+) -> CmdResult<bool> {
+    let path = backend
+        .blocking(move |app| app.material_local_file(&material_id, LocalFileUse::Reveal))
+        .await?;
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    window
+        .opener()
+        .reveal_item_in_dir(path)
+        .map_err(|_| internal("couldn't show the file in its folder"))?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn reveal_data_dir<R: tauri::Runtime>(
     backend: State<'_, Backend>,
