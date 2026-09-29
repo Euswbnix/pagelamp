@@ -613,6 +613,49 @@ async fn a_batch_reads_course_by_course_and_can_be_stopped() {
 }
 
 #[tokio::test]
+async fn a_sync_scans_changed_outlines_into_proposals_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(MemorySecrets::new()))
+        .unwrap();
+    let root = temp.path().join("Courses");
+    let outline = root.join("DEMO707 Field Methods/Course outline.md");
+    std::fs::create_dir_all(outline.parent().unwrap()).unwrap();
+    let write = |extra: &str| {
+        std::fs::write(
+            &outline,
+            format!(
+                "# DEMO707 Course Outline\n\n{}\n{}\n{extra}\n",
+                first_class_words(),
+                last_class_words()
+            ),
+        )
+        .unwrap()
+    };
+    write("");
+    let source = app.add_folder_source(&root, None, None).unwrap();
+    let sync = || app.sync_source(&source.id, pagelamp_app::SyncRequest::default(), |_| {});
+    sync().await.unwrap();
+    let view = app.course_calendar("DEMO707").unwrap();
+    assert_eq!(view.proposals.len(), 1, "the sync scanned the outline");
+    let first = view.proposals[0].id;
+    assert_eq!(view.proposals[0].origin, CalendarOrigin::Scan);
+    // The same materials again: nothing new, no churn.
+    sync().await.unwrap();
+    let view = app.course_calendar("DEMO707").unwrap();
+    assert_eq!(
+        view.proposals.iter().map(|p| p.id).collect::<Vec<_>>(),
+        [first]
+    );
+    // Dismissed: not proposed again from the same text; a changed outline is.
+    app.dismiss_calendar_proposal(first).unwrap();
+    sync().await.unwrap();
+    assert!(app.course_calendar("DEMO707").unwrap().proposals.is_empty());
+    write("Office hours move to Thursdays.");
+    sync().await.unwrap();
+    assert_eq!(app.course_calendar("DEMO707").unwrap().proposals.len(), 1);
+}
+
+#[tokio::test]
 async fn stored_proposals_are_found_by_id_only() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_courses(temp.path());

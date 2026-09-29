@@ -251,6 +251,9 @@ impl App {
         };
         if matches!(source.kind, SourceKind::Folder | SourceKind::Canvas) {
             self.relink_events();
+            if outcome.is_ok() {
+                self.scan_after_sync(&source.id);
+            }
         }
         self.remember_course_names();
         let finished_at = Utc::now();

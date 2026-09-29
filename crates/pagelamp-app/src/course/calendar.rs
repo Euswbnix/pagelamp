@@ -185,29 +185,35 @@ impl App {
     pub fn scan_course_calendar(&self, course: &str) -> Result<Option<CalendarProposal>> {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
-        let at = AsOf::now_local();
-        let signals = store.calendar_signals(&course.id)?;
-        let inputs = reading_inputs(&store, &course, at, &signals)?;
-        let fingerprint = inputs.fingerprint();
-        if store.calendar_fingerprint_dismissed(&course.id, CalendarOrigin::Scan, &fingerprint)? {
-            return Ok(None);
+        scan_course(&store, &course, AsOf::now_local(), false)
+    }
+
+    /// S10: after a sync, scan the source's courses (hidden and withheld ones too: the scan
+    /// sends nothing anywhere) and propose what changed. Problems never fail the sync.
+    pub(crate) fn scan_after_sync(&self, source_id: &str) {
+        let result = (|| -> Result<usize> {
+            let store = self.write_store()?;
+            let at = AsOf::now_local();
+            let mut proposed = 0;
+            for course in store.list_courses(true)? {
+                if course.source_id == source_id
+                    && scan_course(&store, &course, at, true)?.is_some()
+                {
+                    proposed += 1;
+                }
+            }
+            Ok(proposed)
+        })();
+        match result {
+            Ok(n) => {
+                tracing::info!(target: "pagelamp::calendar", "scan after sync: {n} proposal(s)")
+            }
+            Err(err) => tracing::warn!(
+                target: "pagelamp::calendar",
+                "scan after sync failed: {:?}",
+                err.kind
+            ),
         }
-        let current = store.accepted_calendar(&course.id)?.map(|row| row.calendar);
-        let Some(assembled) = inputs.scan(current.as_ref()) else {
-            return Ok(None);
-        };
-        let row = NewCalendarRow {
-            course_id: course.id.clone(),
-            origin: CalendarOrigin::Scan,
-            dates: assembled.dates.clone(),
-            checks: checks_of(&assembled, false),
-            calendar: assembled.calendar,
-            manifest: inputs.manifest.clone(),
-            fingerprint,
-            provenance: None,
-        };
-        let id = store.insert_calendar_proposal(&row, Utc::now())?;
-        Ok(store.calendar_row(id)?.map(proposal_of))
     }
 
     /// The course dates form: `Some` puts the student's own calendar in force (the week
@@ -666,6 +672,60 @@ fn course_block(course: &Course) -> Option<BlockReason> {
         AiMaterialsState::TurnedOff => Some(BlockReason::CourseAiTurnedOff),
         AiMaterialsState::Readable => None,
     }
+}
+
+/// The deterministic scan of one course (§7.2). Nothing new → `None`: the student dismissed a
+/// scan of these materials, or the calendar in force came from them or says the same. The
+/// student's own "Scan" returns a waiting scan proposal of the same materials again;
+/// `automatic` (after a sync) doesn't.
+fn scan_course(
+    store: &Store,
+    course: &Course,
+    at: AsOf,
+    automatic: bool,
+) -> Result<Option<CalendarProposal>> {
+    let signals = store.calendar_signals(&course.id)?;
+    let inputs = reading_inputs(store, course, at, &signals)?;
+    if inputs.sources.is_empty() {
+        return Ok(None);
+    }
+    let fingerprint = inputs.fingerprint();
+    if store.calendar_fingerprint_dismissed(&course.id, CalendarOrigin::Scan, &fingerprint)? {
+        return Ok(None);
+    }
+    let waiting = store
+        .calendar_proposals(&course.id)?
+        .into_iter()
+        .find(|row| row.origin == CalendarOrigin::Scan && row.fingerprint == fingerprint);
+    if let Some(row) = waiting {
+        return Ok((!automatic).then(|| proposal_of(row)));
+    }
+    let current = store.accepted_calendar(&course.id)?;
+    if current
+        .as_ref()
+        .is_some_and(|row| row.fingerprint == fingerprint)
+    {
+        return Ok(None);
+    }
+    let current = current.map(|row| row.calendar);
+    let Some(assembled) = inputs.scan(current.as_ref()) else {
+        return Ok(None);
+    };
+    if current.as_ref() == Some(&assembled.calendar) {
+        return Ok(None);
+    }
+    let row = NewCalendarRow {
+        course_id: course.id.clone(),
+        origin: CalendarOrigin::Scan,
+        dates: assembled.dates.clone(),
+        checks: checks_of(&assembled, false),
+        calendar: assembled.calendar,
+        manifest: inputs.manifest.clone(),
+        fingerprint,
+        provenance: None,
+    };
+    let id = store.insert_calendar_proposal(&row, Utc::now())?;
+    Ok(store.calendar_row(id)?.map(proposal_of))
 }
 
 /// What a generation row keeps about what was sent (no text).

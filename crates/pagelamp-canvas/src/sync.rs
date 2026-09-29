@@ -744,6 +744,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 _ => {} // assignments, quizzes, discussions, headers: not course material
             }
         }
+        // S4: the front page, when the pages list says which one it is (None: it doesn't).
+        let mut front_page: Option<Option<String>> =
+            (pages_ok && pages.values().any(|p| p.front_page.is_some())).then_some(None);
         for (slug, listed) in &pages {
             let placement = placements.get(slug).cloned().unwrap_or_default();
             let unchanged = listed.page_id.as_ref().is_some_and(|id| {
@@ -777,6 +780,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 continue;
             };
             let material = map::page(ids, &api.base, &course_id, &page_id, source, &placement);
+            if listed.front_page == Some(true)
+                && let Some(front) = front_page.as_mut()
+            {
+                *front = Some(material.id.clone());
+            }
             if let Some(body) = page.and_then(|p| p.body) {
                 html_jobs.push(HtmlJob {
                     material_id: material.id.clone(),
@@ -958,6 +966,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .values()
             .filter(|m| m.kind == MaterialKind::File)
             .count();
+        // S5: files of this course the syllabus links to.
+        let linked: std::collections::BTreeSet<String> = canvas
+            .syllabus_body
+            .as_deref()
+            .map(|html| map::syllabus_file_links(ids, cid, html))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|id| materials.contains_key(id))
+            .collect();
         {
             let upsert = upsert.clone();
             let course_id = course_id.clone();
@@ -999,6 +1016,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         store.set_text_state(id, TextStatus::Unsupported, None, None)?;
                     }
                     store.prune_materials(&course_id, &keep)?;
+                    store.set_calendar_links(
+                        &course_id,
+                        Some(&linked),
+                        front_page.as_ref().map(|front| front.as_deref()),
+                    )?;
                     Ok(())
                 })
             })

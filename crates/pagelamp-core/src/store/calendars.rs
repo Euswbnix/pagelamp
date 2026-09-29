@@ -301,6 +301,33 @@ impl Store {
         Ok(signals)
     }
 
+    /// The sync's calendar signals for a course's materials (S4, S5): the files its syllabus
+    /// links to, and its front page. `None` leaves that flag as it is (the sync couldn't tell);
+    /// `Some(None)` for the front page: there is none.
+    pub fn set_calendar_links(
+        &self,
+        course_id: &str,
+        linked_from_syllabus: Option<&std::collections::BTreeSet<String>>,
+        front_page: Option<Option<&str>>,
+    ) -> Result<()> {
+        if let Some(linked) = linked_from_syllabus {
+            let ids = serde_json::to_string(linked).expect("ids serialise");
+            self.conn.execute(
+                "UPDATE materials SET linked_from_syllabus =
+                     (id IN (SELECT value FROM json_each(?2)))
+                 WHERE course_id = ?1",
+                params![course_id, ids],
+            )?;
+        }
+        if let Some(front) = front_page {
+            self.conn.execute(
+                "UPDATE materials SET is_front_page = (id IS ?2) WHERE course_id = ?1",
+                params![course_id, front],
+            )?;
+        }
+        Ok(())
+    }
+
     /// The student's adds (`true`) and removes (`false`) of candidate materials.
     pub fn set_calendar_sources(
         &self,
