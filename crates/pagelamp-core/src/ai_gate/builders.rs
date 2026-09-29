@@ -110,15 +110,34 @@ pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedC
         .map_err(GateError::from)
 }
 
-/// Structure and study-plan progress, for the weekly note: every visible course, deadlines in
-/// the next 7 days, and last week's and today's plan items.
+/// Structure and study-plan progress, for the weekly note: every visible, active course
+/// (lifecycle `is_active`; the calendar design §9.7 skips inactive ones) with its lifecycle
+/// and phase, deadlines in the next 7 days, and last week's and today's plan items. A break
+/// appears as its kind, never its label.
 pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> {
     store
         .in_read_transaction(|store| {
-            let courses = scoped_courses(store, &[])?;
+            let active: Vec<_> = views::list_courses(store, false, at)?
+                .into_iter()
+                .filter(|summary| is_active(&summary.lifecycle, at.today))
+                .collect();
             let mut context = GatedContext::empty();
-            for course in &courses {
-                let text = course_structure(store, course, at, 7, &mut context)?;
+            for summary in &active {
+                let mut text = course_structure(store, &summary.course, at, 7, &mut context)?;
+                let timeline = &summary.timeline;
+                let _ = write!(
+                    text,
+                    "Lifecycle: {}\nPhase: {}",
+                    summary.lifecycle.state.as_str(),
+                    timeline.phase.as_str()
+                );
+                if let Some(kind) = timeline.current_break_kind {
+                    let _ = write!(text, " ({})", kind.as_str());
+                }
+                if let Some(week) = timeline.last_teaching_week {
+                    let _ = write!(text, " (after week {week})");
+                }
+                text.push('\n');
                 context.blocks.push(Block::Structure(text));
             }
             if let Some(plan) = store.latest_study_plan()? {

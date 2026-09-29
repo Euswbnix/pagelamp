@@ -1049,6 +1049,7 @@ export interface PageLampAppTypes {
   model_error_kind: ModelErrorKind;
   model_info: ModelInfo;
   model_provider_record: ModelProviderRecord;
+  note_focus: NoteFocus;
   output_language: OutputLanguage;
   plan_origin: PlanOrigin;
   plan_warning: PlanWarning;
@@ -1101,6 +1102,9 @@ export interface PageLampAppTypes {
   week_materials: WeekMaterials;
   weekly_digest: WeeklyDigest;
   weekly_explanation: WeeklyExplanation;
+  weekly_note: WeeklyNote;
+  weekly_note_options: WeeklyNoteOptions;
+  weekly_note_settings: WeeklyNoteSettings;
   whats_new: WhatsNew;
   whats_new_topic: WhatsNewTopic;
 }
@@ -2760,6 +2764,19 @@ export interface ModelInfo {
   suggested_for: AiFeature[];
 }
 /**
+ * One thing to focus on.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "NoteFocus".
+ */
+export interface NoteFocus {
+  /**
+   * The course it is about, when it names one of the note's courses.
+   */
+  course_id?: string | null;
+  text: string;
+}
+/**
  * What "Test" found out.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -3144,6 +3161,13 @@ export interface StartupTasks {
    */
   due_reminders: Reminder[];
   /**
+   * Prepare the weekly note now (`write_weekly_note` with `automatic`): the student opted
+   * in, the note's model is an API key or a model on this computer (never the ChatGPT or
+   * Claude plan, plan D27), it is Monday in the reminder zone and no note was started yet
+   * today.
+   */
+  prepare_weekly_note: boolean;
+  /**
    * Removed courses wait for their purge (it is due, or a Trash move left files): run
    * `purge_removed_courses(None)` (the app-start purge, calendar design §8.3).
    */
@@ -3519,6 +3543,75 @@ export interface WeeklyExplanation {
    * The week explained; `None` when the course's weeks are unknown (recent materials).
    */
   week?: number | null;
+}
+/**
+ * A weekly note. `meta` is its AI label (backend, model, when, on this computer or not)
+ * and what was sent.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WeeklyNote".
+ */
+export interface WeeklyNote {
+  /**
+   * Prepared at launch on Monday (the opt-in), not by a click.
+   */
+  automatic: boolean;
+  /**
+   * The things to focus on this week, most important first (at most 3).
+   */
+  focus: NoteFocus[];
+  /**
+   * Focus items left out because they would produce graded work.
+   */
+  graded_work_left_out: number;
+  meta: GenerationMeta;
+  /**
+   * 3–5 sentences, plain text.
+   */
+  text: string;
+  /**
+   * The Monday of the week the note is for (the student's date).
+   */
+  week_of: string;
+}
+/**
+ * Options of one weekly note run.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WeeklyNoteOptions".
+ */
+export interface WeeklyNoteOptions {
+  /**
+   * Started because `startup_tasks().prepare_weekly_note` said so, not by a click: refused
+   * unless that still holds.
+   */
+  automatic?: boolean;
+  /**
+   * The student chose to go over the monthly budget for this run (never for `automatic`).
+   */
+  override_budget?: boolean;
+  /**
+   * The UI's language, e.g. "en" or "zh-CN" (English for any other).
+   */
+  ui_language?: string | null;
+}
+/**
+ * The weekly note's settings (Settings → AI).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WeeklyNoteSettings".
+ */
+export interface WeeklyNoteSettings {
+  /**
+   * "Prepare it when I open PageLamp on Monday", as the student set it.
+   */
+  prepare_on_monday: boolean;
+  /**
+   * The note's model allows it now: an API key or a model on this computer (modes C and
+   * D). False with the ChatGPT or Claude plan, or no model chosen: then nothing is
+   * prepared, whatever `prepare_on_monday` says.
+   */
+  prepare_on_monday_allowed: boolean;
 }
 /**
  * `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model

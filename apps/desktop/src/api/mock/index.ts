@@ -982,6 +982,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           calendar_offers_total: courseProposals.offersNow().length,
           removal_suggestions: [],
           removal_suggestions_total: 0,
+          // The weekly note's Monday opt-in: not in the mock yet.
+          prepare_weekly_note: false,
         };
       }),
     acknowledgeWhatsNew: () =>

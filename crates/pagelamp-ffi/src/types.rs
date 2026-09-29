@@ -1042,6 +1042,8 @@ pub struct StartupTasks {
     pub removal_suggestions: Vec<String>,
     #[uniffi(default)]
     pub removal_suggestions_total: u32,
+    #[uniffi(default)]
+    pub prepare_weekly_note: bool,
 }
 
 // ----- reminders and the weekly digest (v0.3 M3) ----------------------------------------------

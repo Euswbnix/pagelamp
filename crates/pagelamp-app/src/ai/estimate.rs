@@ -373,7 +373,7 @@ pub(crate) fn request_shape_with_note(
         ),
         AiFeature::WeeklyNote => (
             assemble(prompts::WEEKLY_NOTE, context, None),
-            OutputSpec::Text,
+            super::note::note_output(),
             NOTE_MAX_OUTPUT,
         ),
         AiFeature::CourseCalendar => (

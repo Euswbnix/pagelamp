@@ -8,6 +8,7 @@
 pub(crate) mod codex;
 mod estimate;
 mod explain;
+mod note;
 mod plan;
 pub mod prompts;
 mod providers;
@@ -24,6 +25,7 @@ pub use explain::{
     Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, OutputLanguage,
     WeeklyExplanation,
 };
+pub use note::{MAX_FOCUS_ITEMS, NoteFocus, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings};
 pub use plan::{GeneratedStudyPlan, PlanWarning, PlanWarningCode, StudyPlanRequest};
 pub(crate) use settings::backend_key;
 pub use types::*;
