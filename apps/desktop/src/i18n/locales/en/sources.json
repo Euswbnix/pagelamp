@@ -46,6 +46,12 @@
     "expiredCanvas": "Your Canvas token has expired or was revoked. Create a new one in Canvas (Account → Settings → Approved Integrations → + New Access Token) and replace it here.",
     "expiredFeed": "The calendar no longer accepts this feed address. Copy the address again from your LMS and replace it here."
   },
+  "technical": {
+    "title": "Technical details",
+    "titleFor": "Technical details for {{subject}}",
+    "note": "The original message, for a bug report.",
+    "copyFor": "Copy technical details for {{subject}}"
+  },
   "replace": {
     "titleToken": "Replace token",
     "titleFeed": "Replace feed address",
@@ -164,6 +170,8 @@
     "running": "Syncing…",
     "ok": "Done",
     "warnings": "Warnings ({{n}})",
+    "warningCount_one": "{{count}} warning",
+    "warningCount_other": "{{count}} warnings",
     "expiredHint": "Access expired. Replace the token or feed address to sync this source again.",
     "fixOnSources": "Fix on Sources & sync",
     "stopped": "Stopped",

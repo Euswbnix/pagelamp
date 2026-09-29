@@ -1,21 +1,13 @@
 import type { TFunction } from "i18next";
-import {
-  ChevronDown,
-  CircleAlert,
-  CircleCheck,
-  CircleMinus,
-  LoaderCircle,
-  TriangleAlert,
-} from "lucide-react";
+import { CircleAlert, CircleCheck, CircleMinus, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { SyncStage } from "@/api/types";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { translateWithText } from "@/features/course/timeline/evidence";
 import { paths } from "@/lib/routes";
 import type { SourceProgress } from "@/stores/sync";
+import { TechnicalDetails } from "./TechnicalDetails";
 
 /** One source in the sync panel: status, latest message, progress bar, warnings, failure. */
 export function SyncProgressRow({
@@ -59,6 +51,7 @@ export function SyncProgressRow({
     status = t("progress.stopped");
   }
   const inProgress = !result && !stopped;
+  const uniqueWarnings = [...new Set(warnings)];
 
   return (
     <li className="flex gap-3 py-3">
@@ -84,11 +77,6 @@ export function SyncProgressRow({
           />
         ) : null}
 
-        {result && !result.ok && result.error ? (
-          <p lang="en" className="text-xs text-destructive">
-            {result.error}
-          </p>
-        ) : null}
         {result?.errorKind === "auth_expired_or_revoked" ? (
           <p className="text-xs">
             {t("progress.expiredHint")}{" "}
@@ -100,36 +88,22 @@ export function SyncProgressRow({
           </p>
         ) : null}
 
-        {warnings.length > 0 ? <Warnings warnings={warnings} /> : null}
+        {uniqueWarnings.length > 0 ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <TriangleAlert className="size-3.5 shrink-0 text-warning" aria-hidden />
+            {t("progress.warningCount", { count: uniqueWarnings.length })}
+          </p>
+        ) : null}
+        {/* The error and the warnings as the backend wrote them, for a bug report. */}
+        <TechnicalDetails
+          lines={[
+            ...(result && !result.ok && result.error ? [result.error] : []),
+            ...uniqueWarnings,
+          ]}
+          subject={label}
+        />
       </div>
     </li>
-  );
-}
-
-/** Collapsed "Warnings (2)" list — skipped files and similar, not failures. */
-function Warnings({ warnings }: { warnings: string[] }) {
-  const { t } = useTranslation("sources");
-  const unique = [...new Set(warnings)];
-  return (
-    <Collapsible>
-      <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="xs" className="group -ml-2">
-          <TriangleAlert className="text-warning" aria-hidden />
-          {t("progress.warnings", { n: unique.length })}
-          <ChevronDown
-            className="transition-transform group-aria-expanded:rotate-180"
-            aria-hidden
-          />
-        </Button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <ul lang="en" className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-          {unique.map((warning) => (
-            <li key={warning}>{warning}</li>
-          ))}
-        </ul>
-      </CollapsibleContent>
-    </Collapsible>
   );
 }
 

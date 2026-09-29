@@ -46,6 +46,12 @@
     "expiredCanvas": "你的 Canvas 访问令牌已过期或被撤销。请在 Canvas 中新建一个（Account → Settings → Approved Integrations → + New Access Token），然后在这里更换。",
     "expiredFeed": "这个日历订阅地址已经失效。请从教学平台重新复制，然后在这里更换。"
   },
+  "technical": {
+    "title": "技术详情",
+    "titleFor": "技术详情：{{subject}}",
+    "note": "原始信息，可附在问题反馈里。",
+    "copyFor": "复制技术详情：{{subject}}"
+  },
   "replace": {
     "titleToken": "更换访问令牌",
     "titleFeed": "更换日历订阅地址",
@@ -164,6 +170,8 @@
     "running": "正在同步…",
     "ok": "已完成",
     "warnings": "提示（{{n}} 条）",
+    "warningCount_one": "{{count}} 条提示",
+    "warningCount_other": "{{count}} 条提示",
     "expiredHint": "访问权限已过期。更换访问令牌或日历订阅地址后，才能继续同步这个来源。",
     "fixOnSources": "去“数据来源与同步”处理",
     "stopped": "已中止",
