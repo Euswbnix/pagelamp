@@ -1,24 +1,24 @@
 {
-  "title": "讲解本周内容",
-  "hint": "{{product}} 会请模型按顺序讲解本周资料，每一段都注明出自哪份资料。请对照课件核对：AI 可能会出错。",
+  "title": "讲解某一周的内容",
+  "hint": "{{product}} 会请模型按顺序讲解这一周的资料，每一段都注明出自哪份资料。请对照课件核对：AI 可能会出错。",
   "week": "周次",
   "weekOption": "第 {{week}} 周",
   "thisWeek": "第 {{week}} 周（本周）",
   "generate": "讲解第 {{week}} 周",
   "blocked": {
     "withheld_by_policy": "这门课的 AI 政策不允许 AI 读取资料，所以无法讲解。",
-    "turned_off": "这门课的 AI 访问已关闭。在「AI 政策」标签页里打开后即可讲解。",
+    "turned_off": "这门课的 AI 访问已关闭。在「AI 使用规定」标签页里打开后即可讲解。",
     "course_hidden": "这门课已隐藏。重新显示后即可讲解。",
     "no_readable_materials": "这一周没有可读取文字的资料可供讲解。"
   },
-  "openPolicy": "打开「AI 政策」标签页",
+  "openPolicy": "打开「AI 使用规定」标签页",
   "running": {
     "starting": "正在开始…",
     "withModel": "正在用 {{backend}} · {{model}} 生成",
     "reading_one": "正在读取 {{count}} 份资料",
     "reading_other": "正在读取 {{count}} 份资料",
     "stage": {
-      "building_context": "正在整理本周资料",
+      "building_context": "正在整理这一周的资料",
       "waiting_for_model": "正在等待模型",
       "validating": "正在核对引用",
       "repairing": "正在修正结果格式",
@@ -44,7 +44,8 @@
       "looks_like_assessment": "看起来是计分作业",
       "over_budget": "超出长度上限"
     },
-    "includeAgain": "纳入这些资料并重新生成",
+    "includeAgain_one": "纳入 {{count}} 份看起来像作业的资料并重新生成",
+    "includeAgain_other": "纳入 {{count}} 份看起来像作业的资料并重新生成",
     "droppedCitations_one": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "droppedCitations_other": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "citeAiUse": "你的课程要求注明 AI 的使用：请说明你在哪里用到了这份讲解。",
@@ -57,7 +58,8 @@
     "deleteBody": "它会连同内容一起从 {{product}} 中删除，且无法撤销。",
     "deleteConfirm": "删除",
     "deleted": "讲解已删除。",
-    "deleteFailed": "没能删除这份讲解。"
+    "deleteFailed": "没能删除这份讲解。",
+    "regionLabelRecent": "最近资料的讲解"
   },
   "history": {
     "title": "以前的讲解",
@@ -69,5 +71,8 @@
     "description": "讲解可以使用 {{product}} 的界面语言，也可以使用课程资料的语言。",
     "ui": "{{product}} 的界面语言",
     "course": "课程资料的语言"
-  }
+  },
+  "generateRecent": "讲解最近的资料",
+  "recent": "最近的资料",
+  "weeksUnknown": "这门课的周次未知，PageLamp 会讲解最近 14 天的资料。"
 }

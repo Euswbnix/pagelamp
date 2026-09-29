@@ -52,8 +52,15 @@ export function PlanPage() {
                 },
               })
             }
-            // A new run: going over the budget was a choice for the last one only.
-            onRegenerate={() => start({ ...state.request, override_budget: false })}
+            regenerate={{
+              feature: "study_plan",
+              courses: state.request.courses ?? [],
+              horizon_days: state.request.horizon_days,
+            }}
+            // A new run: going over the budget is chosen again, next to its estimate.
+            onRegenerate={(overrideBudget) =>
+              start({ ...state.request, override_budget: overrideBudget })
+            }
             onDiscard={() => {
               run.discard();
               setDiscarded(true);

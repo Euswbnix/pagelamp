@@ -1,10 +1,12 @@
 import { TriangleAlert } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import type { EstimateRequest } from "@/api/ai";
 import type { GeneratedStudyPlan } from "@/api/plan";
 import { useCourses } from "@/api/queries";
 import { AiGeneratedLabel } from "@/components/common/AiGeneratedLabel";
 import { Button } from "@/components/ui/button";
+import { GenerateButton } from "@/features/ai/GenerateButton";
 import { courseLabelFor } from "@/features/courses/lib/courses";
 import { groupPlanByDate } from "@/features/courses/lib/plan";
 import { formatIsoDate, formatIsoDay } from "@/lib/format";
@@ -13,18 +15,22 @@ import { useFocusOnMount } from "@/lib/useFocusOnMount";
 /**
  * The draft to review (design §5.1, §7): by day and course, with what PageLamp left out and why,
  * which courses were planned from structure only, and the AI-generated line. Accept saves it as
- * the study plan; Write again runs the same request; Discard drops it.
+ * the study plan; Write again runs the same request, with its "≈ $x" like the first run; Discard
+ * drops it.
  */
 export function PlanDraft({
   draft,
+  regenerate,
   onAccept,
   onRegenerate,
   onDiscard,
   accepting,
 }: {
   draft: GeneratedStudyPlan;
+  /** What Write again would send, for its estimate. */
+  regenerate: EstimateRequest;
   onAccept: () => void;
-  onRegenerate: () => void;
+  onRegenerate: (overrideBudget: boolean) => void;
   onDiscard: () => void;
   accepting: boolean;
 }) {
@@ -169,16 +175,21 @@ export function PlanDraft({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={onAccept} disabled={accepting}>
-          {t("draft.accept")}
-        </Button>
-        <Button type="button" variant="outline" onClick={onRegenerate} disabled={accepting}>
-          {t("draft.regenerate")}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onDiscard} disabled={accepting}>
-          {t("draft.discard")}
-        </Button>
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={onAccept} disabled={accepting}>
+            {t("draft.accept")}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onDiscard} disabled={accepting}>
+            {t("draft.discard")}
+          </Button>
+        </div>
+        <GenerateButton
+          request={accepting ? null : regenerate}
+          label={t("draft.regenerate")}
+          variant="outline"
+          onGenerate={({ overrideBudget }) => onRegenerate(overrideBudget)}
+        />
       </div>
     </section>
   );

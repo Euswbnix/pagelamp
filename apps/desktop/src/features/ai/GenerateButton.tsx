@@ -52,6 +52,7 @@ export function GenerateButton({
   onGenerate,
   label,
   describedBy,
+  variant,
 }: {
   /** null = the form isn't complete yet. */
   request: EstimateRequest | null;
@@ -59,6 +60,8 @@ export function GenerateButton({
   label?: string;
   /** An element saying why the form isn't ready (added to the button's description). */
   describedBy?: string;
+  /** "outline" where another button on the screen is the main one (Plan's Write again). */
+  variant?: "default" | "outline";
 }) {
   const { t, i18n } = useTranslation("ai");
   const estimate = useCostEstimate(request);
@@ -77,6 +80,7 @@ export function GenerateButton({
       <div className="flex flex-wrap items-center gap-3">
         <Button
           type="button"
+          variant={variant}
           aria-disabled={disabled || undefined}
           aria-describedby={[block ? `${ids.line} ${ids.reason}` : ids.line, describedBy]
             .filter(Boolean)

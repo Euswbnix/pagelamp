@@ -900,6 +900,7 @@
 "courses.plan.showFull" = "查看完整计划";
 "courses.plan.showLess" = "收起";
 "courses.plan.stale" = "这份计划可能已经过时了，让你的 AI 应用重新做一份吧。";
+"courses.plan.stalePageLamp" = "这份计划可能已经过时，可以用 PageLamp 重新规划。";
 "courses.plan.tickFailed" = "没能勾选这项任务，请再试一次。";
 "courses.plan.tickHint" = "完成一项就勾掉一项。想调整计划，可以跟你的 AI 应用说，或者用 PageLamp 重新规划。";
 "courses.plan.title" = "我的学习计划";
@@ -920,10 +921,11 @@
 "courses.title" = "课程";
 "explain.blocked.course_hidden" = "这门课已隐藏。重新显示后即可讲解。";
 "explain.blocked.no_readable_materials" = "这一周没有可读取文字的资料可供讲解。";
-"explain.blocked.turned_off" = "这门课的 AI 访问已关闭。在「AI 政策」标签页里打开后即可讲解。";
+"explain.blocked.turned_off" = "这门课的 AI 访问已关闭。在「AI 使用规定」标签页里打开后即可讲解。";
 "explain.blocked.withheld_by_policy" = "这门课的 AI 政策不允许 AI 读取资料，所以无法讲解。";
 "explain.generate" = "讲解第 %1$@ 周";
-"explain.hint" = "PageLamp 会请模型按顺序讲解本周资料，每一段都注明出自哪份资料。请对照课件核对：AI 可能会出错。";
+"explain.generateRecent" = "讲解最近的资料";
+"explain.hint" = "PageLamp 会请模型按顺序讲解这一周的资料，每一段都注明出自哪份资料。请对照课件核对：AI 可能会出错。";
 "explain.history.show" = "显示";
 "explain.history.showing" = "正在显示";
 "explain.history.title" = "以前的讲解";
@@ -931,7 +933,8 @@
 "explain.language.description" = "讲解可以使用 PageLamp 的界面语言，也可以使用课程资料的语言。";
 "explain.language.title" = "AI 讲解使用的语言";
 "explain.language.ui" = "PageLamp 的界面语言";
-"explain.openPolicy" = "打开「AI 政策」标签页";
+"explain.openPolicy" = "打开「AI 使用规定」标签页";
+"explain.recent" = "最近的资料";
 "explain.result.citation" = "%1$@，%2$@";
 "explain.result.citeAiUse" = "你的课程要求注明 AI 的使用：请说明你在哪里用到了这份讲解。";
 "explain.result.copy" = "复制";
@@ -943,7 +946,6 @@
 "explain.result.deleted" = "讲解已删除。";
 "explain.result.done" = "讲解已生成。";
 "explain.result.failed" = "没能生成讲解。";
-"explain.result.includeAgain" = "纳入这些资料并重新生成";
 "explain.result.leftOut" = "这次没有读取";
 "explain.result.leftOutReason.external_link" = "指向其他网站的链接";
 "explain.result.leftOutReason.looks_like_assessment" = "看起来是计分作业";
@@ -953,11 +955,12 @@
 "explain.result.questions" = "检验一下理解";
 "explain.result.regenerate" = "重新生成";
 "explain.result.regionLabel" = "第 %1$@ 周的讲解";
+"explain.result.regionLabelRecent" = "最近资料的讲解";
 "explain.result.sourcesLabel" = "出处";
 "explain.result.stale" = "这份讲解生成之后，资料有了变化。";
 "explain.result.stopped" = "已停止，没有保存任何内容。";
 "explain.running.leaveHint" = "切换标签页不会中断；离开这门课程会停止生成，不会保存任何内容。";
-"explain.running.stage.building_context" = "正在整理本周资料";
+"explain.running.stage.building_context" = "正在整理这一周的资料";
 "explain.running.stage.repairing" = "正在修正结果格式";
 "explain.running.stage.scheduling" = "正在整理结果";
 "explain.running.stage.validating" = "正在核对引用";
@@ -968,9 +971,10 @@
 "explain.running.withModel" = "正在用 %1$@ · %2$@ 生成";
 "explain.running.writingNow" = "正在生成讲解";
 "explain.thisWeek" = "第 %1$@ 周（本周）";
-"explain.title" = "讲解本周内容";
+"explain.title" = "讲解某一周的内容";
 "explain.week" = "周次";
 "explain.weekOption" = "第 %1$@ 周";
+"explain.weeksUnknown" = "这门课的周次未知，PageLamp 会讲解最近 14 天的资料。";
 "mac.a11y.capsuleHint" = "显示详情";
 "mac.a11y.capsuleLabel" = "同步状态：%1$@";
 "mac.a11y.contentsRow" = "%1$@，%2$@。%3$@。%4$@。AI 使用规定：%5$@。%6$@。";

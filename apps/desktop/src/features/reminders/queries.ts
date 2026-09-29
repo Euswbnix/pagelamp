@@ -30,6 +30,8 @@ export function useSetReminderSettings() {
   const client = useQueryClient();
   const { t } = useTranslation("reminders");
   return useMutation({
+    // One save after another, in the order made (the shell applies them one at a time too).
+    scope: { id: "reminder-settings" },
     mutationFn: (settings: ReminderSettings) => api.setReminderSettings(settings),
     onMutate: async (settings) => {
       await client.cancelQueries({ queryKey: reminderKeys.settings() });

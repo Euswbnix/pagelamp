@@ -107,7 +107,7 @@ function PlanMeta({ stored }: { stored: StoredStudyPlan }) {
       {isPlanStale(stored) ? (
         <p className="flex items-center gap-1.5 text-foreground">
           <Clock className="size-4 shrink-0 text-warning" aria-hidden />
-          {t("plan.stale")}
+          {t(stored.origin === "pagelamp" ? "plan.stalePageLamp" : "plan.stale")}
         </p>
       ) : null}
     </div>

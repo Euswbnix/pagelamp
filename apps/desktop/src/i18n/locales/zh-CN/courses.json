@@ -31,6 +31,7 @@
     "madeBy": "{{when}}由你的 AI 应用生成 · 覆盖 {{start}} 至 {{end}}",
     "madeByPageLamp": "{{when}}由 {{product}} 生成 · 覆盖 {{start}} 至 {{end}}",
     "stale": "这份计划可能已经过时了，让你的 AI 应用重新做一份吧。",
+    "stalePageLamp": "这份计划可能已经过时，可以用 {{product}} 重新规划。",
     "notesLabel": "AI 应用的备注",
     "minutes": "{{count}} 分钟",
     "done": "已完成",

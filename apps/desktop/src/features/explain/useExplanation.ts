@@ -112,12 +112,16 @@ export function useExplanation(courseId: string) {
   return { state, start, stop };
 }
 
-/** The last 5 explanations of the course's week, newest first. */
+/**
+ * The last 5 explanations of the course's week, newest first. Not asked without a week: the
+ * facade reads null as every week's.
+ */
 export function useSavedExplanations(courseId: string, week: number | null) {
   const api = useApi();
   return useQuery({
     queryKey: explainKeys.saved(courseId, week),
     queryFn: () => api.savedExplanations(courseId, week),
+    enabled: week !== null,
   });
 }
 

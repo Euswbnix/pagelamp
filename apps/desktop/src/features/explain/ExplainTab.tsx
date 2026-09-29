@@ -16,7 +16,7 @@ import {
 import { GenerateButton } from "@/features/ai/GenerateButton";
 import { MaterialSharingReminder } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
-import { formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { useFocusOnMount } from "@/lib/useFocusOnMount";
 import { DeleteExplanation } from "./DeleteExplanation";
 import { ExplanationView } from "./ExplanationView";
@@ -57,7 +57,7 @@ export function ExplainTab({
   /** After the shown explanation changes or goes: its region, else the tab's heading. */
   const focusResult = () =>
     requestAnimationFrame(() => (resultRef.current ?? titleRef.current)?.focus());
-  const { state } = run;
+  const { state, stop } = run;
   // A run's explanation replaces its progress (and Stop): the focus goes to the result.
   useEffect(() => {
     if (state.phase === "done") resultRef.current?.focus();
@@ -68,6 +68,12 @@ export function ExplainTab({
     : overview.ai_materials !== "readable"
       ? overview.ai_materials
       : null;
+  // Hidden, or AI access turned off, while a run goes on (from another tab): the student's
+  // choice ends it; the blocked view below has no Stop.
+  const running = state.phase === "running";
+  useEffect(() => {
+    if (blocked && running) void stop();
+  }, [blocked, running, stop]);
   if (blocked) {
     return (
       <div className="space-y-3">
@@ -93,8 +99,10 @@ export function ExplainTab({
     (fresh && fresh.week === week ? fresh : null) ??
     list[0] ??
     null;
-  const request: EstimateRequest | null =
-    week === null ? null : { feature: "weekly_explanation", course: course.id, week };
+  const weekOptions = weeks.data?.available_weeks ?? (week ? [week] : []);
+  // No week (weeks unknown, before or after the teaching weeks): the facade explains the
+  // materials of the last 14 days.
+  const request: EstimateRequest = { feature: "weekly_explanation", course: course.id, week };
   const start = (include: string[], overrideBudget = false) => {
     setShownId(null);
     void run.start(week, { overrideBudget, include, uiLanguage: i18n.language });
@@ -109,7 +117,7 @@ export function ExplainTab({
           </h3>
           <p className="text-sm text-muted-foreground">{t("hint")}</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        {weekOptions.length > 0 ? (
           <div className="space-y-1">
             <p id={weekLabelId} className="text-xs font-medium">
               {t("week")}
@@ -123,10 +131,10 @@ export function ExplainTab({
               disabled={state.phase === "running"}
             >
               <SelectTrigger aria-labelledby={weekLabelId} className="w-48">
-                <SelectValue />
+                <SelectValue placeholder={t("recent")} />
               </SelectTrigger>
               <SelectContent>
-                {(weeks.data?.available_weeks ?? (week ? [week] : [])).map((w) => (
+                {weekOptions.map((w) => (
                   <SelectItem key={w} value={String(w)}>
                     {w === current ? t("thisWeek", { week: w }) : t("weekOption", { week: w })}
                   </SelectItem>
@@ -134,13 +142,15 @@ export function ExplainTab({
               </SelectContent>
             </Select>
           </div>
-        </div>
+        ) : weeks.isPending ? null : (
+          <p className="text-sm text-muted-foreground">{t("weeksUnknown")}</p>
+        )}
         {state.phase === "running" ? (
           <ExplainProgress state={state} onStop={() => void run.stop()} />
         ) : (
           <GenerateButton
             request={request}
-            label={week === null ? t("title") : t("generate", { week })}
+            label={week === null ? t("generateRecent") : t("generate", { week })}
             onGenerate={({ overrideBudget }) => start([], overrideBudget)}
           />
         )}
@@ -151,7 +161,11 @@ export function ExplainTab({
         <section
           ref={resultRef}
           tabIndex={-1}
-          aria-label={t("result.regionLabel", { week: shown.week ?? week ?? "" })}
+          aria-label={
+            shown.week === null || shown.week === undefined
+              ? t("result.regionLabelRecent")
+              : t("result.regionLabel", { week: shown.week })
+          }
           className="space-y-4 border-t pt-4 outline-none"
         >
           {shown.stale ? (
@@ -207,7 +221,7 @@ export function ExplainTab({
                   className="flex items-center justify-between gap-3 py-1.5"
                 >
                   <span>
-                    {formatDate(item.meta.created_at, i18n.language)}
+                    {formatDateTime(item.meta.created_at, i18n.language)}
                     <span className="text-muted-foreground"> · {item.meta.model}</span>
                   </span>
                   {isShown ? (
@@ -217,7 +231,7 @@ export function ExplainTab({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      aria-label={`${t("history.show")} ${formatDate(item.meta.created_at, i18n.language)}`}
+                      aria-label={`${t("history.show")} ${formatDateTime(item.meta.created_at, i18n.language)}`}
                       onClick={() => {
                         setShownId(item.meta.generation_id);
                         // "Show" becomes "Showing": the focus goes to what it shows.

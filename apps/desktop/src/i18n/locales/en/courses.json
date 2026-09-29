@@ -31,6 +31,7 @@
     "madeBy": "Made by your AI app {{when}} · covers {{start}} – {{end}}",
     "madeByPageLamp": "Made by {{product}} {{when}} · covers {{start}} – {{end}}",
     "stale": "This plan may be out of date — ask your AI app for a new one.",
+    "stalePageLamp": "This plan may be out of date — plan again with {{product}}.",
     "notesLabel": "Notes from your AI app",
     "minutes": "{{count}} min",
     "done": "Done",

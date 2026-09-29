@@ -900,6 +900,7 @@
 "courses.plan.showFull" = "Show full plan";
 "courses.plan.showLess" = "Show less";
 "courses.plan.stale" = "This plan may be out of date — ask your AI app for a new one.";
+"courses.plan.stalePageLamp" = "This plan may be out of date — plan again with PageLamp.";
 "courses.plan.tickFailed" = "That task couldn't be ticked off. Try again.";
 "courses.plan.tickHint" = "Tick tasks off as you finish them. To change the plan, ask your AI app or plan again with PageLamp.";
 "courses.plan.title" = "Your study plan";
@@ -923,6 +924,7 @@
 "explain.blocked.turned_off" = "AI access is off for this course. Turn it on in the AI policy tab to explain its weeks.";
 "explain.blocked.withheld_by_policy" = "This course's AI policy doesn't allow AI to read its materials, so its weeks can't be explained.";
 "explain.generate" = "Explain week %1$@";
+"explain.generateRecent" = "Explain the recent materials";
 "explain.hint" = "PageLamp asks your model to explain the week's materials in order, each paragraph citing the material it comes from. Check it against your slides: AI can be wrong.";
 "explain.history.show" = "Show";
 "explain.history.showing" = "Showing";
@@ -932,6 +934,7 @@
 "explain.language.title" = "Language of AI explanations";
 "explain.language.ui" = "PageLamp's language";
 "explain.openPolicy" = "Open the AI policy tab";
+"explain.recent" = "Recent materials";
 "explain.result.citation" = "%1$@, %2$@";
 "explain.result.citeAiUse" = "Your course asks you to cite AI use: say where you used this explanation.";
 "explain.result.copy" = "Copy";
@@ -943,7 +946,6 @@
 "explain.result.deleted" = "Explanation deleted.";
 "explain.result.done" = "The explanation is ready.";
 "explain.result.failed" = "The explanation couldn't be written.";
-"explain.result.includeAgain" = "Include them and write again";
 "explain.result.leftOut" = "Not read this time";
 "explain.result.leftOutReason.external_link" = "a link to another site";
 "explain.result.leftOutReason.looks_like_assessment" = "looks like graded work";
@@ -953,6 +955,7 @@
 "explain.result.questions" = "Check your understanding";
 "explain.result.regenerate" = "Write again";
 "explain.result.regionLabel" = "Explanation of week %1$@";
+"explain.result.regionLabelRecent" = "Explanation of the recent materials";
 "explain.result.sourcesLabel" = "Sources";
 "explain.result.stale" = "The materials changed since this was written.";
 "explain.result.stopped" = "Stopped. Nothing was saved.";
@@ -971,6 +974,7 @@
 "explain.title" = "Explain a week";
 "explain.week" = "Week";
 "explain.weekOption" = "Week %1$@";
+"explain.weeksUnknown" = "This course's weeks aren't known, so PageLamp explains its materials of the last 14 days.";
 "mac.a11y.capsuleHint" = "Shows details";
 "mac.a11y.capsuleLabel" = "Sync status: %1$@";
 "mac.a11y.contentsRow" = "%1$@, %2$@. %3$@. %4$@. AI policy: %5$@. %6$@.";

@@ -1,12 +1,14 @@
 // Weekly explanations in the mock (M3; design §5.2): the course's rules first (a course that isn't
 // readable is blocked with its reason), the AI gate, the run's events (no text before the end),
 // an explanation of the week's readable materials with every paragraph cited, and the last 5 kept
-// per course and week, newest first.
+// per course and week, newest first. Like the facade: `week: null` explains the week it resolves
+// to, else the materials of the last 14 days (weeks unknown); saved(null) is every week; what
+// looks like graded work is left out unless included, and nothing brings back one over budget.
 
 import { type GenEvent, materialSharing } from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import type { WeeklyExplanation } from "../explain";
+import { INCLUDABLE_REASON, type WeeklyExplanation } from "../explain";
 import type { LeftOutMaterial } from "../plan";
 import { aiMaterialsState, type MaterialView } from "../types";
 import type { MockActivity } from "./activity";
@@ -23,6 +25,42 @@ type ExplainApi = Pick<
 >;
 
 const KEEP = 5;
+const DAY = 24 * 60 * 60 * 1000;
+
+/** pagelamp-core's looks_like_assessment: an assessment word, and no study word. */
+export const ASSESSMENT_WORDS = [
+  "assignment",
+  "homework",
+  "hw",
+  "problem set",
+  "pset",
+  "quiz",
+  "exam",
+  "midterm",
+  "test",
+  "lab report",
+];
+export const STUDY_WORDS = [
+  "review",
+  "practice",
+  "solution",
+  "solutions",
+  "notes",
+  "lecture",
+  "slides",
+  "preparation",
+];
+
+export function looksLikeAssessment(title: string): boolean {
+  const words = title
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w !== "");
+  const joined = ` ${words.join(" ")} `;
+  const has = (phrase: string) =>
+    joined.includes(` ${phrase} `) || (phrase === "hw" && words.some((w) => /^hw\d+$/.test(w)));
+  return ASSESSMENT_WORDS.some(has) && !STUDY_WORDS.some(has);
+}
 
 export function createExplainMock(deps: {
   now: () => Date;
@@ -39,7 +77,7 @@ export function createExplainMock(deps: {
   const reminded = new Set<string>();
   let language: "ui" | "course" = "ui";
 
-  const key = (courseId: string, week: number | null) => `${courseId}#${week ?? "default"}`;
+  const key = (courseId: string, week: number | null) => `${courseId}#${week ?? "recent"}`;
 
   async function write(
     courseId: string,
@@ -64,9 +102,14 @@ export function createExplainMock(deps: {
         blocked: "course_ai_turned_off",
       });
     }
-    const week = requestedWeek ?? c.timeline.default_week ?? c.timeline.current_week ?? 1;
-    const materials = c.materials.filter((m) => m.week_hint === week);
-    const readable = materials.filter((m) => m.text_status === "ok");
+    const week = requestedWeek ?? c.timeline.default_week ?? c.timeline.current_week ?? null;
+    const since = now().getTime() - 14 * DAY;
+    const materials =
+      week === null
+        ? c.materials.filter((m) => !!m.published_at && Date.parse(m.published_at) >= since)
+        : c.materials.filter((m) => m.week_hint === week);
+    const assessment = (m: MaterialView) => looksLikeAssessment(m.title) && !include.includes(m.id);
+    const readable = materials.filter((m) => m.text_status === "ok" && !assessment(m));
     if (readable.length === 0) {
       throw new ApiError("blocked", "No readable materials this week.", {
         blocked: "no_readable_materials",
@@ -80,15 +123,18 @@ export function createExplainMock(deps: {
       }
     };
 
-    // The first two readable materials are read; the rest are left out for the budget, unless
-    // the student included them.
-    const read = readable.filter((m, i) => i < 2 || include.includes(m.id));
+    // The first two readable materials fit the budget; the rest are left out for it, and
+    // `include` doesn't change that (only what looks like graded work comes back with it).
+    const read = readable.filter((_, i) => i < 2);
     const leftOut: LeftOutMaterial[] = [
+      ...materials
+        .filter(assessment)
+        .map((m) => ({ material_id: m.id, title: m.title, reason: INCLUDABLE_REASON })),
       ...readable
         .filter((m) => !read.includes(m))
         .map((m) => ({ material_id: m.id, title: m.title, reason: "over_budget" as const })),
       ...materials
-        .filter((m) => m.text_status !== "ok")
+        .filter((m) => m.text_status !== "ok" && !assessment(m))
         .map((m) => ({ material_id: m.id, title: m.title, reason: "no_text" as const })),
     ];
     onEvent({ type: "stage", stage: "building_context" });
@@ -187,8 +233,12 @@ export function createExplainMock(deps: {
     savedExplanations: (courseId, week) =>
       respond(() => {
         const c = deps.findCourse(courseId);
-        const resolved = week ?? c.timeline.default_week ?? c.timeline.current_week ?? 1;
-        return saved.get(key(c.course.id, resolved)) ?? [];
+        if (week !== null && week !== undefined) return saved.get(key(c.course.id, week)) ?? [];
+        // Like the facade: every week, newest first.
+        return [...saved.entries()]
+          .filter(([k]) => k.startsWith(`${c.course.id}#`))
+          .flatMap(([, list]) => list)
+          .sort((a, b) => b.meta.created_at.localeCompare(a.meta.created_at));
       }),
     deleteExplanation: (generationId) =>
       respond(() => {

@@ -1,5 +1,5 @@
 import { BellRing, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useApi } from "@/api/context";
@@ -31,7 +31,13 @@ function CatchUp() {
   const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
   const titleId = useId();
   const titleRef = useRef<HTMLDivElement>(null);
-  if (settings.data?.run_in_background !== false) return null;
+  // Decided by the setting at launch: with reminders on then, what was due went out as
+  // notifications, and turning them off later mustn't bring those back here.
+  const [offAtLaunch, setOffAtLaunch] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (offAtLaunch === null && settings.data) setOffAtLaunch(!settings.data.run_in_background);
+  }, [offAtLaunch, settings.data]);
+  if (!offAtLaunch || settings.data?.run_in_background !== false) return null;
   const due = (tasks.data?.due_reminders ?? []).filter((r) => !seen.has(r.id));
   if (due.length === 0) return null;
 

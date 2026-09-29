@@ -496,7 +496,8 @@ function demo101(now: Date): MockCourse {
       module: m4,
       chunks: 18,
     }),
-    material(c.id, "Lab 4 notebook — Survey Simulation", "file", 4, -2, now, {
+    // Looks like graded work: left out of an explanation unless the student includes it.
+    material(c.id, "Assignment 4 — Survey Simulation", "file", 4, -2, now, {
       module: m4,
       chunks: 15,
     }),

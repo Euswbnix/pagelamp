@@ -138,6 +138,91 @@ describe("Course → Explain", () => {
   });
 });
 
+describe("Course → Explain: what the facade does", () => {
+  const DEMO101 = "folder:demo-courses/course/DEMO101"; // "ai-key": week 4 has one graded-looking
+
+  it("offers to include what looks like graded work, and sends only that", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    const explain = vi.spyOn(api, "explainWeek");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    const button = await screen.findByRole("button", { name: "Explain week 4" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    const article = await screen.findByRole("article");
+    expect(within(article).getByText(/Assignment 4 — Survey Simulation/)).toHaveTextContent(
+      "(looks like graded work)",
+    );
+    // Over the length limit stays out whatever include says: no button for it.
+    expect(within(article).getByText(/Week 4 practice questions/)).toHaveTextContent(
+      "(over the length limit)",
+    );
+    await user.click(
+      within(article).getByRole("button", {
+        name: "Include the 1 that looks like graded work and write again",
+      }),
+    );
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
+    const include = explain.mock.calls[1]?.[3].include ?? [];
+    expect(include).toHaveLength(1);
+    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
+      m.title.startsWith("Assignment 4"),
+    );
+    expect(include).toEqual([assignment?.id]);
+  });
+
+  it("stops a run when AI access is turned off from the policy tab", async () => {
+    const api = mockApi({ syncStepMs: 300 });
+    const cancel = vi.spyOn(api, "cancelGeneration");
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    await screen.findByRole("button", { name: "Stop" });
+    await user.click(screen.getByRole("tab", { name: "AI policy" }));
+    await user.click(
+      await screen.findByRole("switch", { name: "Let my AI app read this course's materials" }),
+    );
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
+  it("explains the recent materials when the course has no week now", async () => {
+    const api = mockApi();
+    const overview = api.courseOverview;
+    vi.spyOn(api, "courseOverview").mockImplementation(async (id) => {
+      const o = await overview(id);
+      return { ...o, timeline: { ...o.timeline, current_week: null, default_week: null } };
+    });
+    const saved = vi.spyOn(api, "savedExplanations");
+    const explain = vi.spyOn(api, "explainWeek");
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    const button = await screen.findByRole("button", { name: "Explain the recent materials" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    // null would be every week's explanations: never asked for.
+    expect(saved.mock.calls.filter(([, week]) => week === null)).toEqual([]);
+    await user.click(button);
+    await waitFor(() =>
+      expect(explain).toHaveBeenCalledWith(
+        READABLE,
+        null,
+        expect.any(String),
+        expect.anything(),
+        expect.any(Function),
+      ),
+    );
+  });
+
+  it("tells same-day explanations apart by their time", async () => {
+    let clock = new Date(2026, 8, 29, 10, 5);
+    const api = mockApi({ now: () => clock });
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    await screen.findByRole("region", { name: "Explanation of week 4" });
+    clock = new Date(2026, 8, 29, 14, 40);
+    await user.click(await explainButton());
+    await screen.findByText("The explanation is ready.");
+    const show = await screen.findByRole("button", { name: /^Show / });
+    expect(show.getAttribute("aria-label")).toMatch(/10:05/);
+  });
+});
+
 describe("Settings → Language of AI explanations", () => {
   it("switches to the course materials' language", async () => {
     const api = mockApi();

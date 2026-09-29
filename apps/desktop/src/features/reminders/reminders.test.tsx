@@ -229,6 +229,19 @@ describe("reminders while they're off: the catch-up card", () => {
     );
   });
 
+  it("isn't brought back by turning reminders off after a launch with them on", async () => {
+    const api = mockApi({ scenario: "reminders-due" });
+    await api.setReminderSettings({ ...(await api.reminderSettings()), run_in_background: true });
+    const { user } = renderRoute("/settings", { api });
+    const on = await screen.findByRole("switch", {
+      name: "Keep PageLamp in the tray and start it at login",
+    });
+    await waitFor(() => expect(on).toBeChecked());
+    await user.click(on);
+    await waitFor(() => expect(on).not.toBeChecked());
+    expect(screen.queryByRole("region", { name: "Since you last opened PageLamp" })).toBeNull();
+  });
+
   it("isn't shown when reminders come as notifications", async () => {
     const api = mockApi({ scenario: "reminders-due" });
     await api.setReminderSettings({ ...(await api.reminderSettings()), run_in_background: true });

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useApi } from "@/api/context";
-import type { Citation, WeeklyExplanation } from "@/api/explain";
+import { type Citation, INCLUDABLE_REASON, type WeeklyExplanation } from "@/api/explain";
 import { AiGeneratedLabel, aiGeneratedLabelText } from "@/components/common/AiGeneratedLabel";
 import { CopyButton } from "@/components/common/CopyButton";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
@@ -24,12 +24,12 @@ export function ExplanationView({
   explanation: WeeklyExplanation;
   /** More controls beside Copy (Delete). */
   actions?: ReactNode;
-  /** Write again with the left-out materials included (only those the student may add). */
+  /** Write again with the left-out materials included (only those the facade brings back). */
   onIncludeLeftOut?: (materialIds: string[]) => void;
 }) {
   const { t, i18n } = useTranslation("explain");
   const { t: tai } = useTranslation("ai");
-  const includable = explanation.left_out.filter((m) => m.reason === "over_budget");
+  const includable = explanation.left_out.filter((m) => m.reason === INCLUDABLE_REASON);
 
   return (
     <article className="space-y-5">
@@ -104,7 +104,7 @@ export function ExplanationView({
               variant="outline"
               onClick={() => onIncludeLeftOut(includable.map((m) => m.material_id))}
             >
-              {t("result.includeAgain")}
+              {t("result.includeAgain", { count: includable.length })}
             </Button>
           ) : null}
         </section>

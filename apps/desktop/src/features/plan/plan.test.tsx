@@ -77,8 +77,11 @@ describe("Plan your study", () => {
   it("keeps the focus where the run is: Stop while it runs, then the draft's heading", async () => {
     const { user } = renderRoute("/plan", { api: mockApi({ syncStepMs: 100 }) });
     await user.click(await planForm());
-    expect(await screen.findByRole("button", { name: "Stop" })).toHaveFocus();
-    expect(await screen.findByRole("heading", { level: 2, name: "Your draft plan" })).toHaveFocus();
+    // The focus moves in an effect after the render: wait for it, not just for the element.
+    const stop = await screen.findByRole("button", { name: "Stop" });
+    await waitFor(() => expect(stop).toHaveFocus());
+    const heading = await screen.findByRole("heading", { level: 2, name: "Your draft plan" });
+    await waitFor(() => expect(heading).toHaveFocus());
   });
 
   it("stops a run, and nothing is saved", async () => {
@@ -102,6 +105,19 @@ describe("Plan your study", () => {
     );
     await act(() => router.navigate("/courses"));
     await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows Write again's estimate before a second run", async () => {
+    const api = mockApi();
+    const generate = vi.spyOn(api, "generateStudyPlan");
+    const { user } = renderRoute("/plan", { api });
+    await user.click(await planForm());
+    await screen.findByRole("region", { name: "Your draft plan" });
+    const again = screen.getByRole("button", { name: "Write again" });
+    await waitFor(() => expect(again).not.toHaveAttribute("aria-disabled"));
+    expect(again).toHaveAccessibleDescription(/≈/);
+    await user.click(again);
+    await waitFor(() => expect(generate).toHaveBeenCalledTimes(2));
   });
 
   it("discards a draft back to the form", async () => {
