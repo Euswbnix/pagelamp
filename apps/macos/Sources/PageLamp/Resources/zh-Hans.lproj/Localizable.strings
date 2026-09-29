@@ -65,6 +65,7 @@
 "ai.disclosure.age.heading" = "年龄";
 "ai.disclosure.changed" = "自你上次查看以来，这里的内容有了变化。";
 "ai.disclosure.close" = "关闭";
+"ai.disclosure.confirmFirst" = "先勾选上面的确认项，才能启用。";
 "ai.disclosure.cost.api_billing" = "每次运行的费用都计入你的 API 账户。PageLamp 会在每次运行前显示预估费用，并遵守你设定的每月预算。";
 "ai.disclosure.cost.cloud_via_local" = "这个模型通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
 "ai.disclosure.cost.free_on_device" = "在这台电脑上运行是免费的，但会占用它的内存和电量。";

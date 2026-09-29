@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useSetCourseMaterialSharing } from "@/api/ai-queries";
@@ -15,9 +15,17 @@ export const SHARING_ANSWERS: readonly Exclude<MaterialSharing, "unanswered">[] 
   "not_allowed",
 ];
 
-function isAnswer(value: string): value is Exclude<MaterialSharing, "unanswered"> {
+type Answer = (typeof SHARING_ANSWERS)[number];
+
+function isAnswer(value: string): value is Answer {
   return (SHARING_ANSWERS as readonly string[]).includes(value);
 }
+
+/**
+ * Arrow keys move through a radio group and select as they go, so the answer is saved once the
+ * student settles on one, not on every option passed on the way.
+ */
+const SAVE_AFTER_MS = 600;
 
 /**
  * Question (b) (design §4.1, D37): may this course's materials be shared with an AI service?
@@ -29,17 +37,45 @@ export function MaterialSharingSection({ course }: { course: Course }) {
   const { t } = useTranslation("ai");
   const errorText = useAiErrorText();
   const save = useSetCourseMaterialSharing();
-  const answer = materialSharing(course);
+  const saved = materialSharing(course);
   const ids = { heading: useId(), question: useId(), options: useId(), note: useId() };
 
-  async function choose(value: string) {
-    if (!isAnswer(value) || value === answer || save.isPending) return;
-    try {
-      await save.mutateAsync({ courseId: course.id, answer: value });
-      toast.success(t("sharing.saved"));
-    } catch {
-      // Shown below (save.error).
-    }
+  // What the radios show: the saved answer, or the one about to be saved.
+  const [answer, setAnswer] = useState<MaterialSharing>(saved);
+  const pending = useRef<{ value: Answer; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const [lastSaved, setLastSaved] = useState(saved);
+  if (saved !== lastSaved) {
+    // Saved here or elsewhere: show it unless the student is mid-choice.
+    setLastSaved(saved);
+    if (!pending.current) setAnswer(saved);
+  }
+
+  // The latest values for the timer and the unmount flush.
+  const latest = useRef({ save, saved, courseId: course.id, t });
+  latest.current = { save, saved, courseId: course.id, t };
+
+  function flush() {
+    const next = pending.current;
+    pending.current = null;
+    if (!next) return;
+    clearTimeout(next.timer);
+    const { save, saved, courseId, t } = latest.current;
+    if (next.value === saved) return;
+    save.mutate(
+      { courseId, answer: next.value },
+      { onSuccess: () => toast.success(t("sharing.saved")) },
+    );
+  }
+
+  // Leaving the tab mid-choice still saves the last answer.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: flush reads refs only
+  useEffect(() => () => flush(), []);
+
+  function choose(value: string) {
+    if (!isAnswer(value)) return;
+    setAnswer(value);
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = { value, timer: setTimeout(flush, SAVE_AFTER_MS) };
   }
 
   return (
@@ -57,7 +93,7 @@ export function MaterialSharingSection({ course }: { course: Course }) {
         aria-labelledby={ids.question}
         aria-describedby={answer === "unanswered" ? ids.note : undefined}
         value={answer === "unanswered" ? "" : answer}
-        onValueChange={(value) => void choose(value)}
+        onValueChange={choose}
       >
         {SHARING_ANSWERS.map((option) => {
           const id = `${ids.options}-${option}`;

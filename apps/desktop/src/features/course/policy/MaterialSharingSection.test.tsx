@@ -15,10 +15,28 @@ describe("question (b): sharing materials with AI services", () => {
     expect(group).toHaveAccessibleDescription(/Not answered yet\. The first time PageLamp sends/);
 
     await user.click(within(group).getByRole("radio", { name: "Not sure" }));
-    expect(save).toHaveBeenCalledWith(DEMO101, "not_sure");
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith(DEMO101, "not_sure"));
     expect(await screen.findByText("Answer saved")).toBeInTheDocument();
     expect(await within(group).findByRole("radio", { name: "Not sure" })).toBeChecked();
     expect(screen.queryByText(/Not answered yet/)).toBeNull();
+  });
+
+  it("saves once when arrow keys pass through the options", async () => {
+    const { user, api } = await openCourse(DEMO101, { query: "tab=policy" });
+    const save = vi.spyOn(api, "setCourseMaterialSharing");
+    const group = await screen.findByRole("radiogroup", { name: QUESTION });
+    await user.click(within(group).getByRole("radio", { name: "Yes, it's allowed" }));
+    // Radix moves focus on a timer and selects while the arrow key is held, like a real press.
+    for (const next of ["Not sure", "No, it's not allowed"]) {
+      await user.keyboard("{ArrowDown>}");
+      await vi.waitFor(() =>
+        expect(within(group).getByRole("radio", { name: next })).toBeChecked(),
+      );
+      await user.keyboard("{/ArrowDown}");
+    }
+    await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(DEMO101, "not_allowed");
   });
 
   it("shows a saved answer with what it means, never styled as an error", async () => {

@@ -1,4 +1,4 @@
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useAcknowledgeAiDisclosure } from "@/api/ai-queries";
@@ -28,14 +28,37 @@ export function DisclosureDialog({
   status,
   open,
   onOpenChange,
+  returnFocus,
 }: {
   status: AiBackendStatus;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Where focus goes on close, when the element that opened the sheet is gone (e.g. the add
+   * dialog's submit button). Default: back to that element.
+   */
+  returnFocus?: () => HTMLElement | null;
 }) {
+  const content = useRef<HTMLDivElement>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent
+        ref={content}
+        className="max-h-[85vh] overflow-y-auto sm:max-w-xl"
+        // Start at the top (title, then every section) rather than on the first link, which
+        // would scroll the sheet past what it says first.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          content.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          const target = returnFocus?.();
+          if (target) {
+            event.preventDefault();
+            target.focus();
+          }
+        }}
+      >
         {/* Remounts on open, so the confirmations start unticked every time. */}
         <DisclosureBody status={status} onDone={() => onOpenChange(false)} />
       </DialogContent>
@@ -56,7 +79,7 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
   const acknowledged = status.disclosure_acknowledged === facts.version;
   const changed = status.problems.includes("disclosure_changed");
   const canAccept = (!needsAge || ageOk) && (!needsFreeTier || freeTierOk);
-  const ids = { age: useId(), freeTier: useId() };
+  const ids = { age: useId(), freeTier: useId(), confirmFirst: useId() };
 
   async function accept() {
     if (!canAccept || acknowledge.isPending) return;
@@ -159,6 +182,11 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
               </Label>
             </div>
           ) : null}
+          {canAccept ? null : (
+            <p id={ids.confirmFirst} className="text-sm text-muted-foreground">
+              {t("disclosure.confirmFirst")}
+            </p>
+          )}
           {acknowledge.error ? (
             <p role="alert" className="text-sm text-destructive">
               {errorText(acknowledge.error)}
@@ -175,6 +203,7 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
           <Button
             type="button"
             aria-disabled={!canAccept || acknowledge.isPending || undefined}
+            aria-describedby={canAccept ? undefined : ids.confirmFirst}
             className="aria-disabled:opacity-50"
             onClick={() => void accept()}
           >

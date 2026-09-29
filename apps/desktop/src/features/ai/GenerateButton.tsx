@@ -41,7 +41,7 @@ export function GenerateButton({
   const status = useAiStatus();
   const errorText = useAiErrorText();
   const [overrideBudget, setOverrideBudget] = useState(false);
-  const ids = { line: useId(), override: useId() };
+  const ids = { line: useId(), override: useId(), reason: useId() };
 
   const data = estimate.data ?? null;
   const block = data?.would_block ?? null;
@@ -54,7 +54,7 @@ export function GenerateButton({
         <Button
           type="button"
           aria-disabled={disabled || undefined}
-          aria-describedby={ids.line}
+          aria-describedby={block ? `${ids.line} ${ids.reason}` : ids.line}
           className="aria-disabled:opacity-50"
           onClick={() => {
             if (!disabled) onGenerate({ overrideBudget: block === "budget_reached" });
@@ -84,7 +84,9 @@ export function GenerateButton({
       ) : null}
       {block === "budget_reached" ? (
         <div className="space-y-1.5">
-          <p className="text-sm font-medium">{t("estimate.overBudget")}</p>
+          <p id={ids.reason} className="text-sm font-medium">
+            {t("estimate.overBudget")}
+          </p>
           <div className="flex items-center gap-2">
             <Checkbox
               id={ids.override}
@@ -98,10 +100,14 @@ export function GenerateButton({
         </div>
       ) : null}
       {block === "price_unknown_not_acknowledged" && request ? (
-        <UnpricedAcknowledgement status={status.data ?? null} feature={request.feature} />
+        <UnpricedAcknowledgement
+          status={status.data ?? null}
+          feature={request.feature}
+          hintId={ids.reason}
+        />
       ) : null}
       {block && block !== "budget_reached" && block !== "price_unknown_not_acknowledged" ? (
-        <p className="text-sm">
+        <p id={ids.reason} className="text-sm">
           {t(`blocked.${block}`)}{" "}
           {SETTINGS_BLOCKS.has(block) ? (
             <Link to={paths.settings} className="underline underline-offset-4">
@@ -149,9 +155,11 @@ function CostLine({
 function UnpricedAcknowledgement({
   status,
   feature,
+  hintId,
 }: {
   status: AiStatus | null;
   feature: EstimateRequest["feature"];
+  hintId: string;
 }) {
   const { t } = useTranslation("ai");
   const acknowledge = useAcknowledgeUnpricedModel();
@@ -160,7 +168,9 @@ function UnpricedAcknowledgement({
   if (!choice) return null;
   return (
     <div className="space-y-1.5">
-      <p className="text-sm">{t("estimate.useUnpricedHint")}</p>
+      <p id={hintId} className="text-sm">
+        {t("estimate.useUnpricedHint")}
+      </p>
       <Button
         type="button"
         size="sm"

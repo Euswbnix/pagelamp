@@ -136,6 +136,7 @@
       "body": "Your course materials, and anything derived from them, including what AI writes from them, remain your institution's and your instructors'."
     },
     "accept": "Turn on {{name}}",
+    "confirmFirst": "Tick the confirmation above to turn it on.",
     "later": "Not now",
     "close": "Close",
     "accepted": "{{name}} is turned on"

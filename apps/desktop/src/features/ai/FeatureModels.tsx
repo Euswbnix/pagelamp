@@ -110,6 +110,7 @@ function FeatureRow({
   const errorText = useAiErrorText();
   const name = t(`features.name.${feature}`);
   const resultId = useId();
+  const nameId = useId();
 
   const value = choice ? optionValue(backendKey(choice.backend), choice.model) : NONE;
   const chosen = choice
@@ -150,7 +151,9 @@ function FeatureRow({
   return (
     <li className="space-y-2 p-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="min-w-40 flex-1 text-sm font-medium">{name}</span>
+        <span id={nameId} className="min-w-40 flex-1 text-sm font-medium">
+          {name}
+        </span>
         <Select value={value} onValueChange={onModelChange}>
           <SelectTrigger className="w-64" aria-label={t("features.model", { feature: name })}>
             <SelectValue />
@@ -199,7 +202,7 @@ function FeatureRow({
           variant="outline"
           size="sm"
           disabled={!choice}
-          aria-describedby={resultId}
+          aria-describedby={`${nameId} ${resultId}`}
           onClick={() => choice && test.mutate({ backend: choice.backend, model: choice.model })}
         >
           {test.isPending ? <Spinner aria-hidden /> : null}

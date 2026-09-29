@@ -65,6 +65,7 @@
 "ai.disclosure.age.heading" = "Age";
 "ai.disclosure.changed" = "This changed since you last read it.";
 "ai.disclosure.close" = "Close";
+"ai.disclosure.confirmFirst" = "Tick the confirmation above to turn it on.";
 "ai.disclosure.cost.api_billing" = "Each run is billed to your API account. PageLamp shows an estimate before each run and keeps to a monthly budget you set.";
 "ai.disclosure.cost.cloud_via_local" = "This model runs in the cloud through %1$@, not on this computer. %1$@'s terms and limits apply.";
 "ai.disclosure.cost.free_on_device" = "Runs on this computer are free. They use its memory and battery.";

@@ -77,6 +77,7 @@ nonisolated enum L10nKeys {
         "ai.disclosure.age.heading",
         "ai.disclosure.changed",
         "ai.disclosure.close",
+        "ai.disclosure.confirmFirst",
         "ai.disclosure.cost.api_billing",
         "ai.disclosure.cost.cloud_via_local",
         "ai.disclosure.cost.free_on_device",

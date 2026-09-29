@@ -1,4 +1,5 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
@@ -13,6 +14,12 @@ async function aiSection() {
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+/** Press Tab until `target` has focus (fails after a bounded number of stops). */
+async function tabTo(user: UserEvent, target: HTMLElement) {
+  for (let i = 0; i < 20 && document.activeElement !== target; i++) await user.tab();
+  expect(target).toHaveFocus();
+}
 
 describe("Settings → AI models", () => {
   it("adds an API key, then asks to read the disclosure before turning it on", async () => {
@@ -59,6 +66,34 @@ describe("Settings → AI models", () => {
     if (!row) throw new Error("no OpenAI row");
     expect(await within(row).findByText("Ready")).toBeInTheDocument();
     expect(within(row).getByText("Key ending in 7Qx2")).toBeInTheDocument();
+  });
+
+  it("works from the keyboard alone, and the sheet is read from the top", async () => {
+    const { user } = renderRoute("/settings");
+    const section = await aiSection();
+    const add = await within(section).findByRole("button", { name: "Add an API key" });
+    add.focus();
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "Add an API key" });
+    await tabTo(user, within(dialog).getByLabelText("API key"));
+    await user.keyboard("sk-demo-keyboard-only-1234{Enter}");
+
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses OpenAI" });
+    await waitFor(() => expect(sheet).toHaveFocus());
+    const turnOn = within(sheet).getByRole("button", { name: "Turn on OpenAI" });
+    expect(turnOn).toHaveAccessibleDescription("Tick the confirmation above to turn it on.");
+    await tabTo(
+      user,
+      within(sheet).getByRole("checkbox", { name: "I meet OpenAI's age requirement." }),
+    );
+    await user.keyboard(" ");
+    await tabTo(user, turnOn);
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Focus lands on the new backend's row, which now says it's ready.
+    const row = within(section).getByRole("heading", { level: 3, name: "OpenAI" }).closest("li");
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(within(row as HTMLElement).getByText("Ready")).toBeInTheDocument();
   });
 
   it("never keeps the key in query keys or caches, stores, storage, logs or the page", async () => {

@@ -1,9 +1,9 @@
 import { CircleCheck, CircleDashed, TriangleAlert } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useRemoveModelProvider } from "@/api/ai-queries";
-import type { AiBackendStatus, ModelProviderRecord } from "@/api/provisional/ai";
+import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/provisional/ai";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +33,7 @@ export function BackendRow({
   onReplaceKey: (provider: ModelProviderRecord) => void;
 }) {
   const { t } = useTranslation("ai");
+  const headingId = useId();
   const provider = status.provider ?? null;
   const StateIcon =
     status.state === "ready"
@@ -41,9 +42,16 @@ export function BackendRow({
         ? CircleDashed
         : TriangleAlert;
   return (
-    <li className="space-y-2 rounded-lg border p-4">
+    // Focusable from code only: after a new backend is turned on, focus lands on its row.
+    <li
+      tabIndex={-1}
+      data-backend={backendKey(status.backend)}
+      className="space-y-2 rounded-lg border p-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className="font-medium">{status.label}</h3>
+        <h3 id={headingId} className="font-medium">
+          {status.label}
+        </h3>
         <Badge variant="outline">{t(`backend.kind.${status.kind}`)}</Badge>
         <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
           <StateIcon className="size-4" aria-hidden />
@@ -65,26 +73,44 @@ export function BackendRow({
       ) : null}
       <div className="flex flex-wrap gap-2 pt-1">
         {status.state === "needs_disclosure" ? (
-          <Button type="button" size="sm" onClick={onShowDisclosure}>
+          <Button type="button" size="sm" onClick={onShowDisclosure} aria-describedby={headingId}>
             {t("backend.turnOn")}
           </Button>
         ) : (
-          <Button type="button" size="sm" variant="outline" onClick={onShowDisclosure}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onShowDisclosure}
+            aria-describedby={headingId}
+          >
             {t("backend.whatsShared")}
           </Button>
         )}
         {provider && status.kind === "api_key" ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => onReplaceKey(provider)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onReplaceKey(provider)}
+            aria-describedby={headingId}
+          >
             {t("backend.replaceKey")}
           </Button>
         ) : null}
-        {provider ? <RemoveBackendButton provider={provider} /> : null}
+        {provider ? <RemoveBackendButton provider={provider} describedBy={headingId} /> : null}
       </div>
     </li>
   );
 }
 
-function RemoveBackendButton({ provider }: { provider: ModelProviderRecord }) {
+function RemoveBackendButton({
+  provider,
+  describedBy,
+}: {
+  provider: ModelProviderRecord;
+  describedBy: string;
+}) {
   const { t } = useTranslation("ai");
   const { t: tc } = useTranslation();
   const remove = useRemoveModelProvider();
@@ -104,7 +130,13 @@ function RemoveBackendButton({ provider }: { provider: ModelProviderRecord }) {
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={() => setOpen(true)}
+        aria-describedby={describedBy}
+      >
         {t("backend.remove")}
       </Button>
       <AlertDialogContent>

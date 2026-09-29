@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAiStatus } from "@/api/ai-queries";
 import { type BackendRef, backendKey } from "@/api/provisional/ai";
@@ -26,13 +26,26 @@ export function AiModelsSection() {
   const status = useAiStatus();
   const errorText = useAiErrorText();
   const [keyDialog, setKeyDialog] = useState<ApiKeyDialogMode | null>(null);
-  const [disclosureFor, setDisclosureFor] = useState<BackendRef | null>(null);
+  // The backend whose sheet is open; `added` = it was just added (focus goes to its row after).
+  const [disclosureFor, setDisclosureFor] = useState<{
+    backend: BackendRef;
+    added: boolean;
+  } | null>(null);
+  const list = useRef<HTMLUListElement>(null);
 
   const backends = status.data?.backends ?? [];
   const disclosed = disclosureFor
-    ? backends.find((b) => backendKey(b.backend) === backendKey(disclosureFor))
+    ? backends.find((b) => backendKey(b.backend) === backendKey(disclosureFor.backend))
     : undefined;
-  const showDisclosure = (backend: BackendRef) => setDisclosureFor(backend);
+  const showDisclosure = (backend: BackendRef, added = false) =>
+    setDisclosureFor({ backend, added });
+  const showAdded = (providerId: string) =>
+    showDisclosure({ kind: "provider", provider_id: providerId }, true);
+  /** The row of a backend, e.g. to put focus on one just added. */
+  const rowOf = (backend: BackendRef) =>
+    [...(list.current?.querySelectorAll<HTMLElement>("li[data-backend]") ?? [])].find(
+      (row) => row.dataset.backend === backendKey(backend),
+    ) ?? null;
 
   return (
     <SettingsSection title={t("settings.title")} description={t("settings.description")}>
@@ -47,7 +60,7 @@ export function AiModelsSection() {
           {backends.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("settings.empty")}</p>
           ) : (
-            <ul aria-label={t("settings.backendsLabel")} className="space-y-3">
+            <ul ref={list} aria-label={t("settings.backendsLabel")} className="space-y-3">
               {backends.map((backend) => (
                 <BackendRow
                   key={backendKey(backend.backend)}
@@ -63,12 +76,7 @@ export function AiModelsSection() {
             {t("settings.addKey")}
           </Button>
 
-          <LocalServers
-            backends={backends}
-            onAdded={(record) =>
-              showDisclosure({ kind: "provider", provider_id: record.provider_id })
-            }
-          />
+          <LocalServers backends={backends} onAdded={(record) => showAdded(record.provider_id)} />
 
           {backends.length > 0 ? (
             <FeatureModels backends={backends} features={status.data.features} />
@@ -83,7 +91,7 @@ export function AiModelsSection() {
       <ApiKeyDialog
         mode={keyDialog}
         onClose={() => setKeyDialog(null)}
-        onAdded={(record) => showDisclosure({ kind: "provider", provider_id: record.provider_id })}
+        onAdded={(record) => showAdded(record.provider_id)}
       />
       {disclosed ? (
         <DisclosureDialog
@@ -92,6 +100,7 @@ export function AiModelsSection() {
           onOpenChange={(open) => {
             if (!open) setDisclosureFor(null);
           }}
+          returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
         />
       ) : null}
     </SettingsSection>
