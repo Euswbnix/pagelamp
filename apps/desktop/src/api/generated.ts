@@ -255,6 +255,11 @@ export type EventKind =
  */
 export type ProcessKind = "app" | "mcp";
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalServerKind".
+ */
+export type LocalServerKind = "ollama" | "lm_studio";
+/**
  * Whether the extraction worker (`pagelamp extract-worker`, v0.3 M0.5) works.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -364,11 +369,6 @@ export type GenNoticeCode =
  * via the `definition` "LeftOutReason".
  */
 export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "LocalServerKind".
- */
-export type LocalServerKind = "ollama" | "lm_studio";
 /**
  * The student's answer to "May this course's materials be shared with an AI service?"
  * (design §4.1, question (b); `courses.material_sharing`, schema v4). Only `not_allowed` stops
@@ -1128,6 +1128,7 @@ export interface CrashReport {
  * via the `definition` "DoctorReport".
  */
 export interface DoctorReport {
+  ai?: AiDoctor;
   arch: string;
   courses: number;
   /**
@@ -1156,6 +1157,50 @@ export interface DoctorReport {
    */
   unreadable_files: UnreadableFiles[];
   version: string;
+}
+/**
+ * Models PageLamp calls itself: keys present (never the keys), local servers running.
+ */
+export interface AiDoctor {
+  /**
+   * Ollama and LM Studio at their usual addresses on this computer.
+   */
+  local_servers: LocalServer[];
+  /**
+   * The providers the student added.
+   */
+  providers: AiProviderCheck[];
+}
+/**
+ * A local model server found on this computer.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalServer".
+ */
+export interface LocalServer {
+  base_url: string;
+  kind: LocalServerKind;
+  running: boolean;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiProviderCheck".
+ */
+export interface AiProviderCheck {
+  /**
+   * Whether its key is in the keychain (`None`: it needs none).
+   */
+  key_present?: boolean | null;
+  on_device: boolean;
+  /**
+   * The kind of provider (`openai`, `ollama`, `custom`, …).
+   */
+  preset: string;
+  /**
+   * On this computer: whether its server accepts connections (`None`: not on this
+   * computer, so not contacted).
+   */
+  reachable?: boolean | null;
 }
 /**
  * `doctor`'s check of the extraction worker: it is started once.
@@ -1290,17 +1335,6 @@ export interface LeftOutMaterial {
   material_id: string;
   reason: LeftOutReason;
   title: string;
-}
-/**
- * A local model server found on this computer.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "LocalServer".
- */
-export interface LocalServer {
-  base_url: string;
-  kind: LocalServerKind;
-  running: boolean;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1741,4 +1775,22 @@ export interface WeekMaterials {
    * The week actually shown (None when no week could be determined; see `note`).
    */
   week?: number | null;
+}
+/**
+ * `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model
+ * servers on this computer answer. No provider address or id: doctor output is shared in
+ * issues, and an address can name a school's server.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiDoctor".
+ */
+export interface AiDoctor1 {
+  /**
+   * Ollama and LM Studio at their usual addresses on this computer.
+   */
+  local_servers: LocalServer[];
+  /**
+   * The providers the student added.
+   */
+  providers: AiProviderCheck[];
 }

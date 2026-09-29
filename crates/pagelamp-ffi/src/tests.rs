@@ -166,6 +166,8 @@ const MIRRORED: &[&str] = &[
     "ExtractWorkerStatus",
     "ExtractWorkerCheck",
     "UnreadableFiles",
+    "AiDoctor",
+    "AiProviderCheck",
     "UpdateChannel",
     "UpdatePrefs",
     "WhatsNewTopic",

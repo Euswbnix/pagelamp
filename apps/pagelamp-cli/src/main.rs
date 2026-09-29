@@ -862,6 +862,14 @@ fn print_doctor(doctor: &diagnostics::DoctorReport) {
             diagnostics::describe_unreadable(&doctor.unreadable_files)
         );
     }
+    println!(
+        "Model providers: {}",
+        diagnostics::describe_ai_providers(&doctor.ai)
+    );
+    println!(
+        "Local model servers: {}",
+        diagnostics::describe_local_servers(&doctor.ai)
+    );
     if let Some(crash) = &doctor.last_crash {
         println!(
             "Last crash: {} ({}); run `{} report` to include it in an issue",

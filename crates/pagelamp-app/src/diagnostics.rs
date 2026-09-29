@@ -113,6 +113,9 @@ pub struct DoctorReport {
     /// Files the extraction worker could not read, per reason (reasons without files left
     /// out; empty when the database can't be read).
     pub unreadable_files: Vec<UnreadableFiles>,
+    /// Models PageLamp calls itself: keys present (never the keys), local servers running.
+    #[serde(default)]
+    pub ai: crate::ai::AiDoctor,
 }
 
 fn data_dir() -> Result<PathBuf> {
@@ -199,6 +202,7 @@ pub(crate) fn doctor_in(
         last_crash: core_diag::last_crash(data_dir).ok().flatten(),
         extract_worker: check_extract_worker(worker),
         unreadable_files: Vec::new(),
+        ai: crate::ai::AiDoctor::default(),
     };
     let db = paths::db_path_in(data_dir);
     let read = Store::open_read_only(&db).and_then(|store| {
@@ -232,6 +236,7 @@ pub(crate) fn doctor_in(
         }
         Err(err) => report.database_error = Some(core_diag::redact(&err.to_string())),
     }
+    report.ai = crate::ai::doctor_checks(Store::open_read_only(&db).ok().as_ref(), secrets);
     report
 }
 
@@ -254,6 +259,59 @@ fn check_extract_worker(worker: Option<&Path>) -> ExtractWorkerCheck {
         Err(_) => (ExtractWorkerStatus::Failed, None),
     };
     ExtractWorkerCheck { status, spawn_ms }
+}
+
+/// "openai (key present), ollama (on this computer, running)": the providers in one line.
+pub fn describe_ai_providers(ai: &crate::ai::AiDoctor) -> String {
+    if ai.providers.is_empty() {
+        return "none".to_string();
+    }
+    ai.providers
+        .iter()
+        .map(|p| {
+            let mut facts = Vec::new();
+            match p.key_present {
+                Some(true) => facts.push("key present"),
+                Some(false) => facts.push("key MISSING"),
+                None => {}
+            }
+            if p.on_device {
+                facts.push("on this computer");
+            }
+            match p.reachable {
+                Some(true) => facts.push("running"),
+                Some(false) => facts.push("not running"),
+                None => {}
+            }
+            format!("{} ({})", p.preset, facts.join(", "))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// "Ollama running · LM Studio not running".
+pub fn describe_local_servers(ai: &crate::ai::AiDoctor) -> String {
+    if ai.local_servers.is_empty() {
+        return "not checked".to_string();
+    }
+    ai.local_servers
+        .iter()
+        .map(|server| {
+            format!(
+                "{} {}",
+                match server.kind {
+                    crate::ai::LocalServerKind::Ollama => "Ollama",
+                    crate::ai::LocalServerKind::LmStudio => "LM Studio",
+                },
+                if server.running {
+                    "running"
+                } else {
+                    "not running"
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// "ok (14 ms)", "could not start (spawn_failed; …)": the worker check in one line.
@@ -365,6 +423,11 @@ pub(crate) fn report_in(
             describe_unreadable(&doctor.unreadable_files)
         ));
     }
+    out.push_str(&format!(
+        "- AI providers: {}\n- Local model servers: {}\n",
+        describe_ai_providers(&doctor.ai),
+        describe_local_servers(&doctor.ai)
+    ));
     out.push_str(&format!(
         "- AI apps configured: Claude Desktop {} · Claude Code {} · Codex {}\n",
         yes(doctor.mcp_clients.claude_desktop),

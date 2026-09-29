@@ -201,7 +201,7 @@ fn provider_id_of(backend: &BackendRef) -> Result<&str> {
     }
 }
 
-fn profile_from_row(row: &ProviderRow) -> Result<ProviderProfile> {
+pub(crate) fn profile_from_row(row: &ProviderRow) -> Result<ProviderProfile> {
     let preset = profile::preset(&row.preset).ok_or_else(|| {
         AppError::new(
             AppErrorKind::Internal,

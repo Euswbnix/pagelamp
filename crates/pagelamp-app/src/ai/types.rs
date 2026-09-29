@@ -230,6 +230,29 @@ pub struct LocalServer {
     pub running: bool,
 }
 
+/// `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model
+/// servers on this computer answer. No provider address or id: doctor output is shared in
+/// issues, and an address can name a school's server.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AiDoctor {
+    /// The providers the student added.
+    pub providers: Vec<AiProviderCheck>,
+    /// Ollama and LM Studio at their usual addresses on this computer.
+    pub local_servers: Vec<LocalServer>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AiProviderCheck {
+    /// The kind of provider (`openai`, `ollama`, `custom`, …).
+    pub preset: String,
+    pub on_device: bool,
+    /// Whether its key is in the keychain (`None`: it needs none).
+    pub key_present: Option<bool>,
+    /// On this computer: whether its server accepts connections (`None`: not on this
+    /// computer, so not contacted).
+    pub reachable: Option<bool>,
+}
+
 /// A model a backend offers.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ModelInfo {

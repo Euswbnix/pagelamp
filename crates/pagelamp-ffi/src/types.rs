@@ -23,12 +23,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::SystemTime;
 
 use pagelamp_app::ai::{
-    AiBackendStatus, AiStatus, BackendKind, BackendProblem, BackendRef, BackendState, BudgetStatus,
-    CostBasis, CostEstimate, CostKind, DisclosureFacts, EstimateRequest, FeatureRouting, GenEvent,
-    GenNoticeCode, GenStage, GenerationMeta, LocalServer, LocalServerKind, ModelChoice, ModelInfo,
-    ModelProviderRecord, ProbeReport, ProviderPreset, ProviderWire, Recipient, RemoveAiDataReport,
-    RetentionFact, SentData, StructuredOutputTier, TokenUsage, TrainingFact, UsageRow,
-    UsageSummary,
+    AiBackendStatus, AiDoctor, AiProviderCheck, AiStatus, BackendKind, BackendProblem, BackendRef,
+    BackendState, BudgetStatus, CostBasis, CostEstimate, CostKind, DisclosureFacts,
+    EstimateRequest, FeatureRouting, GenEvent, GenNoticeCode, GenStage, GenerationMeta,
+    LocalServer, LocalServerKind, ModelChoice, ModelInfo, ModelProviderRecord, ProbeReport,
+    ProviderPreset, ProviderWire, Recipient, RemoveAiDataReport, RetentionFact, SentData,
+    StructuredOutputTier, TokenUsage, TrainingFact, UsageRow, UsageSummary,
 };
 use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, ExtractWorkerCheck, ExtractWorkerStatus,
@@ -625,6 +625,8 @@ pub struct DoctorReport {
     pub last_crash: Option<CrashReport>,
     pub extract_worker: ExtractWorkerCheck,
     pub unreadable_files: Vec<UnreadableFiles>,
+    #[uniffi(default)]
+    pub ai: AiDoctor,
 }
 
 /// Whether the extraction worker works (`spawn_failed`: blocked by antivirus or Smart App
@@ -648,6 +650,23 @@ pub struct ExtractWorkerCheck {
 pub struct UnreadableFiles {
     pub kind: TextErrorKind,
     pub count: u32,
+}
+
+/// `AiDoctor()` in Swift is the empty report (every field has a default).
+#[uniffi::remote(Record)]
+pub struct AiDoctor {
+    #[uniffi(default)]
+    pub providers: Vec<AiProviderCheck>,
+    #[uniffi(default)]
+    pub local_servers: Vec<LocalServer>,
+}
+
+#[uniffi::remote(Record)]
+pub struct AiProviderCheck {
+    pub preset: String,
+    pub on_device: bool,
+    pub key_present: Option<bool>,
+    pub reachable: Option<bool>,
 }
 
 // ----- updates and activity (v0.3 M0.4; methods are wired by the leader) ----------------------

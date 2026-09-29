@@ -386,6 +386,71 @@ pub(crate) fn provider_wire(wire: Wire) -> ProviderWire {
     }
 }
 
+/// `doctor`'s AI facts (`AiDoctor`). Local only: the keychain is asked whether each key is
+/// there, and servers on this computer whether they accept connections; nothing is sent.
+pub(crate) fn doctor_checks(
+    store: Option<&pagelamp_core::store::Store>,
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+) -> AiDoctor {
+    let rows = store
+        .and_then(|store| store.model_providers().ok())
+        .unwrap_or_default();
+    let providers = rows
+        .iter()
+        .map(|row| {
+            let profile = providers::profile_from_row(row).ok();
+            let on_device = profile.as_ref().is_some_and(ProviderProfile::on_device);
+            AiProviderCheck {
+                preset: row.preset.clone(),
+                on_device,
+                key_present: providers::uses_key(row)
+                    .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_)))),
+                reachable: profile
+                    .and_then(|profile| profile.base_url)
+                    .filter(|_| on_device)
+                    .map(|url| accepts_connections(&url)),
+            }
+        })
+        .collect();
+    let local_servers = [
+        ("ollama", LocalServerKind::Ollama),
+        ("lm_studio", LocalServerKind::LmStudio),
+    ]
+    .into_iter()
+    .filter_map(|(preset_id, kind)| {
+        let url = profile::preset(preset_id)?.base_url.clone()?;
+        Some(LocalServer {
+            kind,
+            base_url: url.as_str().trim_end_matches('/').to_string(),
+            running: accepts_connections(&url),
+        })
+    })
+    .collect();
+    AiDoctor {
+        providers,
+        local_servers,
+    }
+}
+
+/// Whether something on this computer accepts connections at `url`'s port (loopback
+/// addresses only; anything else is not contacted).
+fn accepts_connections(url: &url::Url) -> bool {
+    use std::net::{TcpStream, ToSocketAddrs};
+    if !pagelamp_llm::is_loopback(url) {
+        return false;
+    }
+    let (Some(host), Some(port)) = (url.host_str(), url.port_or_known_default()) else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    (host, port).to_socket_addrs().is_ok_and(|mut addrs| {
+        addrs.any(|addr| {
+            addr.ip().is_loopback()
+                && TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+        })
+    })
+}
+
 /// The disclosure facts of an API-key or local provider.
 pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
     let policy = &provider.data_policy;

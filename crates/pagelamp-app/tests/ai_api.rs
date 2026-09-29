@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use chrono::{SubsecRound, Utc};
 use pagelamp_app::ai::{
-    BackendProblem, BackendRef, BackendState, CostBasis, EstimateRequest, ModelChoice,
-    StructuredOutputTier,
+    BackendProblem, BackendRef, BackendState, CostBasis, EstimateRequest, LocalServerKind,
+    ModelChoice, StructuredOutputTier,
 };
 use pagelamp_app::{App, AppErrorKind};
 use pagelamp_core::ai::{
@@ -723,4 +723,102 @@ async fn a_local_app_on_another_computer_is_disclosed_as_leaving_this_one() {
             CostKind::SelfHosted
         )
     );
+}
+
+#[tokio::test]
+async fn doctor_says_which_keys_are_there_and_which_local_servers_answer_but_never_more() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    // A server on this computer that accepts connections, and a port where nothing listens.
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let open_port = listening.local_addr().unwrap().port();
+    let closed_port = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        probe.local_addr().unwrap().port()
+    };
+    let store = Store::open(&app.db_path()).unwrap();
+    for (id, preset, wire, url) in [
+        (
+            "openai",
+            "openai",
+            "openai_responses",
+            "https://api.openai.com/v1".to_string(),
+        ),
+        (
+            "anthropic",
+            "anthropic",
+            "anthropic_messages",
+            "https://api.anthropic.com".to_string(),
+        ),
+        (
+            "lm_studio-1",
+            "lm_studio",
+            "openai_chat",
+            format!("http://127.0.0.1:{open_port}/v1"),
+        ),
+        (
+            "ollama-1",
+            "ollama",
+            "ollama_native",
+            format!("http://127.0.0.1:{closed_port}"),
+        ),
+    ] {
+        store
+            .insert_model_provider(&ProviderRow {
+                id: id.into(),
+                preset: preset.into(),
+                label: id.into(),
+                wire: wire.into(),
+                base_url: url,
+                created_at: Utc::now().trunc_subsecs(0),
+                last_probe_json: None,
+            })
+            .unwrap();
+    }
+    secrets.set("llm:openai", KEY).unwrap();
+
+    let doctor = app.doctor().unwrap();
+    let check = |preset: &str| {
+        doctor
+            .ai
+            .providers
+            .iter()
+            .find(|p| p.preset == preset)
+            .unwrap()
+            .clone()
+    };
+    let openai = check("openai");
+    assert_eq!(
+        (openai.key_present, openai.on_device, openai.reachable),
+        (Some(true), false, None)
+    );
+    assert_eq!(check("anthropic").key_present, Some(false));
+    let lm_studio = check("lm_studio");
+    assert_eq!(
+        (
+            lm_studio.key_present,
+            lm_studio.on_device,
+            lm_studio.reachable
+        ),
+        (None, true, Some(true))
+    );
+    assert_eq!(check("ollama").reachable, Some(false));
+    // Whether the usual Ollama and LM Studio ports answer depends on this computer.
+    let kinds: Vec<_> = doctor.ai.local_servers.iter().map(|s| s.kind).collect();
+    assert_eq!(kinds, [LocalServerKind::Ollama, LocalServerKind::LmStudio]);
+
+    let report = app.diagnostic_report().unwrap();
+    assert!(report.contains("- AI providers: "), "{report}");
+    assert!(report.contains("openai (key present)"), "{report}");
+    assert!(report.contains("anthropic (key MISSING)"), "{report}");
+    assert!(
+        report.contains("lm_studio (on this computer, running)"),
+        "{report}"
+    );
+    for secret in ["canary7731", &open_port.to_string(), "lm_studio-1"] {
+        assert!(!report.contains(secret), "{secret} in the report");
+    }
+    let json = serde_json::to_string(&doctor).unwrap();
+    assert!(!json.contains("canary7731") && !json.contains(&format!(":{open_port}")));
+    drop(listening);
 }
