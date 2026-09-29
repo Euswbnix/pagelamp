@@ -817,7 +817,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const c = findCourse(courseId);
       if (dates === null) {
         clearStudentDates(c);
-        return;
+        return courseProposals.api.courseCalendar(courseId);
       }
       const inOrder = (...dates: (string | null | undefined)[]) => {
         const set = dates.filter((d): d is string => !!d);
@@ -843,6 +843,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       c.course.term_source = "user";
       c.timeline = next.timeline;
       c.lifecycle = next.lifecycle;
+      return courseProposals.api.courseCalendar(courseId);
     },
 
     setCourseAiAccess: async (courseId, allowed) => {

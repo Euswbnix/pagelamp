@@ -169,8 +169,9 @@ export interface PageLampApi {
   /**
    * The course dates form v2: first and last day of classes, end of exams, breaks and a second
    * part for full-year courses. null = clear the student's dates (the calendar in force).
+   * Returns the course's calendar view as it is now.
    */
-  setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<void>;
+  setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<CourseCalendarView>;
 
   // ----- course lifecycle and removal (calendar design §8) ---------------------------------
   /** Every course's lifecycle, which ones are suggested for removal, and the banner state. */
