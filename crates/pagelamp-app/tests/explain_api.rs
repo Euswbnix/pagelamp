@@ -699,3 +699,49 @@ async fn a_moved_week_makes_explanations_stale_and_one_can_be_deleted() {
         AppErrorKind::NotFound
     );
 }
+
+/// A failed read of the output language fails the explanation before anything is sent: never
+/// an answer in a language the student didn't choose. Another version's shape is the default.
+#[tokio::test]
+async fn a_failed_read_of_the_output_language_sends_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    app.set_ai_output_language(OutputLanguage::Course).unwrap();
+    let raw = rusqlite::Connection::open(app.db_path()).unwrap();
+
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert!(app.ai_output_language().is_err());
+    let result = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "explain-1",
+            ExplainOptions::default(),
+            |_| {},
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(server.received_requests().await.unwrap().is_empty());
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.ai_output_language().unwrap(), OutputLanguage::Course);
+
+    raw.execute(
+        "UPDATE settings SET value = '\"klingon\"' WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.ai_output_language().unwrap(), OutputLanguage::Ui);
+}

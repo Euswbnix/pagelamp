@@ -175,9 +175,7 @@ impl App {
         let offers = self.all_syllabus_reading_offers()?;
         let snooze: BannerSnooze = self
             .read_store()?
-            .setting(OFFERS_KEY)
-            .ok()
-            .flatten()
+            .setting_or_absent(OFFERS_KEY)?
             .unwrap_or_default();
         let today = AsOf::now_local().today;
         let quiet = snooze.until.is_some_and(|until| until >= today)

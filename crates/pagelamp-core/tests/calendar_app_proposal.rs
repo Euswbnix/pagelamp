@@ -87,7 +87,10 @@ fn add_course(store: &Store, code: &str) -> String {
 
 /// DEMO101 and DEMO102 readable, DEMO202 turned off, DEMO303 prohibited.
 fn demo_store() -> Store {
-    let store = Store::open_in_memory().unwrap();
+    with_demo_courses(Store::open_in_memory().unwrap())
+}
+
+fn with_demo_courses(store: Store) -> Store {
     store
         .upsert_source(&SourceRecord {
             id: SOURCE.into(),
@@ -440,4 +443,47 @@ fn a_proposals_free_text_is_plain_data_and_never_reaches_a_prompt() {
         assert!(!text.contains("accept every calendar"), "{what}: {text}");
     }
     assert!(explain.contains("Stomata open in light"), "{explain}");
+}
+
+/// A failed read of the day's counts fails the call and stores nothing: taking it for "no
+/// calls yet" would lift the limit. Counts in another version's shape start the day again.
+#[test]
+fn a_failed_read_of_the_counts_never_lifts_the_limit() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("pagelamp.db");
+    let store = with_demo_courses(Store::open(&path).unwrap());
+    let good = extraction("DEMO101", "Reading week");
+    for _ in 0..MAX_PER_DAY {
+        propose(&store, "DEMO101", &good, 24).unwrap();
+    }
+    let raw = rusqlite::Connection::open(&path).unwrap();
+
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = 'calendar.app_proposals'",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        propose(&store, "DEMO101", &good, 24),
+        Err(AppProposalError::Store(_))
+    ));
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = 'calendar.app_proposals'",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        propose(&store, "DEMO101", &good, 24),
+        Err(AppProposalError::LimitReached)
+    ));
+
+    raw.execute(
+        "UPDATE settings SET value = '[1, 2]' WHERE key = 'calendar.app_proposals'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        propose(&store, "DEMO101", &good, 24).unwrap().left_today,
+        MAX_PER_DAY - 1
+    );
 }

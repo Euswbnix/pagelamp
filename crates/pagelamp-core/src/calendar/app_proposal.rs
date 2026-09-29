@@ -92,8 +92,9 @@ pub fn propose_from_ai_app(
         }
     }
     store.in_transaction(|store| {
-        // Every call counts, also one that ends as bad output.
-        let mut day: DayCounts = store.setting(COUNTS_KEY).ok().flatten().unwrap_or_default();
+        // Every call counts, also one that ends as bad output. A failed read fails the call:
+        // taking it for "no calls yet" would lift the daily limit.
+        let mut day: DayCounts = store.setting_or_absent(COUNTS_KEY)?.unwrap_or_default();
         if day.date != Some(at.today) {
             day = DayCounts {
                 date: Some(at.today),
