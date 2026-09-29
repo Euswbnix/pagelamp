@@ -101,7 +101,7 @@ export function MaterialSharingSection({ course }: { course: Course }) {
           return (
             <div
               key={option}
-              className="relative flex items-start gap-3 rounded-row px-3 py-3 transition-colors hover:bg-muted has-data-checked:bg-muted"
+              className="relative flex items-start gap-3 rounded-row px-3 py-3 transition-colors hover:bg-muted has-data-checked:bg-ink/9"
             >
               <RadioGroupItem
                 id={id}

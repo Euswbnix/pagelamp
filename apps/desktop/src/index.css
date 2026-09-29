@@ -85,12 +85,21 @@
   /* Hover and selection fills: a wash of ink, so they work on any surface. */
   --accent: color-mix(in oklab, var(--pl-color-text-primary) 7%, transparent);
   --accent-foreground: var(--pl-color-text-primary);
-  --destructive: var(--pl-color-status-danger);
+  /* Error text reaches 4.5:1 on every surface: the danger colour a quarter of the way to ink
+     (darker in light, lighter in dark). Warning is for glyphs only (§4.2; words stay ink), a
+     tenth of the way to ink so it keeps 3:1 on a hovered callout on Mica. contrast.test.ts
+     models both mixes. */
+  --destructive: color-mix(
+    in oklab,
+    var(--pl-color-status-danger) 75%,
+    var(--pl-color-text-primary)
+  );
   --success: var(--pl-color-status-success);
-  --warning: var(--pl-color-status-warning);
+  --warning: color-mix(in oklab, var(--pl-color-status-warning) 90%, var(--pl-color-text-primary));
   --info: var(--pl-color-accent);
   --border: var(--pl-color-rule);
-  --input: color-mix(in oklab, var(--pl-color-text-primary) 22%, transparent);
+  /* Control boundaries (unchecked radios and checkboxes, switch tracks) at 3:1 (WCAG 1.4.11). */
+  --input: color-mix(in oklab, var(--pl-color-text-primary) 50%, transparent);
   --ring: var(--pl-color-accent);
   --radius: var(--pl-radius-control);
   --sidebar: var(--pl-color-surface-sidebar);
@@ -101,6 +110,16 @@
   --sidebar-accent-foreground: var(--pl-color-text-primary);
   --sidebar-border: var(--pl-color-rule);
   --sidebar-ring: var(--pl-color-accent);
+}
+
+/* Increased contrast: control boundaries in solid secondary ink ("text and borders darker"). */
+:root[data-contrast="more"] {
+  --input: var(--pl-color-text-secondary);
+}
+@media (prefers-contrast: more) {
+  :root {
+    --input: var(--pl-color-text-secondary);
+  }
 }
 
 .dark {

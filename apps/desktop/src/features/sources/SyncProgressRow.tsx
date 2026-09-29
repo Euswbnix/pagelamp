@@ -113,8 +113,8 @@ function Warnings({ warnings }: { warnings: string[] }) {
   return (
     <Collapsible>
       <CollapsibleTrigger asChild>
-        <Button variant="ghost" size="xs" className="group -ml-2 text-warning">
-          <TriangleAlert aria-hidden />
+        <Button variant="ghost" size="xs" className="group -ml-2">
+          <TriangleAlert className="text-warning" aria-hidden />
           {t("progress.warnings", { n: unique.length })}
           <ChevronDown
             className="transition-transform group-aria-expanded:rotate-180"

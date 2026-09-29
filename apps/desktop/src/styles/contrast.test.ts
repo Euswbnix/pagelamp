@@ -46,13 +46,36 @@ function resolve(ctx: Ctx): (name: string) => string {
 
 type Rgba = [number, number, number, number];
 
-/** CSS Color 4: oklch → OKLab → linear sRGB → sRGB (0…1), gamut-clipped. */
-function parse(color: string): Rgba {
+type Oklab = [number, number, number, number];
+
+/** An oklch() token as OKLab (L, a, b, alpha). */
+function oklab(color: string): Oklab {
   const oklch = /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/.exec(color);
-  if (oklch) {
-    const [L, C, h, a] = [Number(oklch[1]), Number(oklch[2]), Number(oklch[3]), oklch[4]];
-    const A = C * Math.cos((h * Math.PI) / 180);
-    const B = C * Math.sin((h * Math.PI) / 180);
+  if (!oklch) throw new Error(`not oklch: ${color}`);
+  const [L, C, h, a] = [Number(oklch[1]), Number(oklch[2]), Number(oklch[3]), oklch[4]];
+  return [
+    L,
+    C * Math.cos((h * Math.PI) / 180),
+    C * Math.sin((h * Math.PI) / 180),
+    a === undefined ? 1 : Number(a),
+  ];
+}
+
+/** color-mix(in oklab, a p%, b) for opaque colours. */
+function mixOklab(a: string, p: number, b: string): Rgba {
+  const [x, y] = [oklab(a), oklab(b)];
+  const w = p / 100;
+  return fromOklab([
+    x[0] * w + y[0] * (1 - w),
+    x[1] * w + y[1] * (1 - w),
+    x[2] * w + y[2] * (1 - w),
+    1,
+  ]);
+}
+
+/** CSS Color 4: OKLab → linear sRGB → sRGB (0…1), gamut-clipped. */
+function fromOklab([L, A, B, alpha]: Oklab): Rgba {
+  {
     const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
     const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
     const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
@@ -65,8 +88,13 @@ function parse(color: string): Rgba {
       const c = Math.min(1, Math.max(0, x));
       return c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
     };
-    return [enc(lin[0] ?? 0), enc(lin[1] ?? 0), enc(lin[2] ?? 0), a === undefined ? 1 : Number(a)];
+    return [enc(lin[0] ?? 0), enc(lin[1] ?? 0), enc(lin[2] ?? 0), alpha];
   }
+}
+
+/** A token value as sRGB (oklch, rgb or hex). */
+function parse(color: string): Rgba {
+  if (color.startsWith("oklch(")) return fromOklab(oklab(color));
   const rgb = /^rgb\(([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/.exec(color);
   if (rgb) {
     return [
@@ -120,6 +148,21 @@ for (const dark of [false, true]) {
   }
 }
 
+/** index.css: --destructive = color-mix(in oklab, status-danger 75%, text-primary). */
+const DANGER_TEXT_MIX = 75;
+/** index.css: --warning = color-mix(in oklab, status-warning 90%, text-primary) (glyphs only). */
+const WARNING_MIX = 90;
+
+/**
+ * index.css: --input is 50 % ink; with increased contrast it is text.secondary (opaque).
+ * Returned as the colour drawn over a surface.
+ */
+function INPUT_INK(ctx: Ctx, t: (name: string) => string): Rgba {
+  if (ctx.more) return parse(t("pl-color-text-secondary"));
+  const ink = parse(t("pl-color-text-primary"));
+  return [ink[0], ink[1], ink[2], 0.5];
+}
+
 /** Mica approximations used by the spec's measurements (§8): #F3F3F3 / #202020. */
 const MICA = { light: parse("#f3f3f3"), dark: parse("#202020") };
 
@@ -155,6 +198,63 @@ describe("Lamplight token contrast (WCAG AA)", () => {
       for (const [role, fg] of Object.entries(text)) {
         const ratio = contrast(fg, bg);
         if (ratio < 4.5) report.push(`${role} on ${surface}: ${ratio.toFixed(2)}`);
+      }
+    }
+    expect(report).toEqual([]);
+  });
+
+  // The pairs the app actually renders (PR #4 review 5, 9, 14, 16), on every surface they sit
+  // on: paper, callouts, popovers, glass, and the 5 % ink hover/selection wash on top of them.
+  it.each(CONTEXTS)("$name: status text, controls and focus on their real surfaces", (ctx) => {
+    const t = resolve(ctx);
+    const content = parse(t("pl-color-surface-content"));
+    const raised = parse(t("pl-color-surface-raised"));
+    const ink = parse(t("pl-color-text-primary"));
+    const wash = (base: Rgba, alpha = 0.05): Rgba => over([ink[0], ink[1], ink[2], alpha], base);
+    const surfaces: Record<string, Rgba> = {
+      content,
+      raised,
+      popover: parse(t("pl-color-surface-popover")),
+      glass: over(parse(t("pl-color-glass-tint")), content),
+      "hover on content": wash(content),
+      "hover on raised": wash(raised),
+      "selected row on content": wash(content, 0.09),
+    };
+    if (ctx.mica) {
+      const card = over(parse(t("pl-color-mica-layer-fill")), ctx.dark ? MICA.dark : MICA.light);
+      surfaces["mica card"] = card;
+      // Callouts on Mica are a 5 % ink wash (content.css), hovers another 5 % on top.
+      surfaces["mica callout"] = wash(card);
+      surfaces["hover on mica callout"] = wash(wash(card));
+    }
+    // index.css: error text is the danger colour mixed a quarter of the way to ink.
+    const dangerText = mixOklab(
+      t("pl-color-status-danger"),
+      DANGER_TEXT_MIX,
+      t("pl-color-text-primary"),
+    );
+    const secondary = parse(t("pl-color-text-secondary"));
+    const accent = parse(t("pl-color-accent"));
+    const report: string[] = [];
+    const need = (what: string, ratio: number, min: number) => {
+      if (ratio < min) report.push(`${what}: ${ratio.toFixed(2)} < ${min}`);
+    };
+    for (const [surface, bg] of Object.entries(surfaces)) {
+      need(`error text on ${surface}`, contrast(dangerText, bg), 4.5);
+      // Inactive tabs and hints sit on the muted (5 % ink) fills.
+      need(`secondary text on ${surface}`, contrast(secondary, bg), 4.5);
+      // Control boundaries (WCAG 1.4.11): unchecked radios, checkboxes, switch tracks.
+      need(`input border on ${surface}`, contrast(over([...INPUT_INK(ctx, t)], bg), bg), 3);
+      // Focus: a solid accent outline or ring.
+      need(`focus ring on ${surface}`, contrast(accent, bg), 3);
+      // Status colours only on glyphs (non-text, 3:1); words stay ink.
+      const glyphs: Record<string, Rgba> = {
+        success: parse(t("pl-color-status-success")),
+        warning: mixOklab(t("pl-color-status-warning"), WARNING_MIX, t("pl-color-text-primary")),
+        danger: dangerText,
+      };
+      for (const [status, glyph] of Object.entries(glyphs)) {
+        need(`${status} glyph on ${surface}`, contrast(glyph, bg), 3);
       }
     }
     expect(report).toEqual([]);

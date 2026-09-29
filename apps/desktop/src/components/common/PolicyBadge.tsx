@@ -12,11 +12,12 @@ export const POLICY_ICON: Record<AiPolicy, LucideIcon> = {
   unrestricted: CircleCheck,
 };
 
+/** A tinted wash and edge per policy; the words stay ink and the glyph carries the colour. */
 const TONE: Record<AiPolicy, string> = {
   unknown: "border-dashed text-muted-foreground",
-  prohibited: "border-destructive/30 bg-destructive/10 text-destructive",
-  learning_aid: "border-info/30 bg-info/10 text-info",
-  allowed_with_citation: "border-success/30 bg-success/10 text-success",
+  prohibited: "border-destructive/30 bg-destructive/10 text-foreground [&>svg]:text-destructive",
+  learning_aid: "border-info/30 bg-info/10 text-foreground [&>svg]:text-info",
+  allowed_with_citation: "border-success/30 bg-success/10 text-foreground [&>svg]:text-success",
   unrestricted: "text-foreground",
 };
 
