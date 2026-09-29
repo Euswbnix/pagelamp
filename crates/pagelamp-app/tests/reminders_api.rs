@@ -605,6 +605,8 @@ fn launch_tasks_list_offers_and_suggestions_until_not_now() {
     app.snooze_lifecycle_banner().unwrap();
     let quiet = app.startup_tasks(Utc::now()).unwrap();
     assert!(quiet.calendar_offers.is_empty() && quiet.removal_suggestions.is_empty());
+    // The Courses page's card reads the same offers.
+    assert!(app.syllabus_reading_offers().unwrap().is_empty());
 
     // A course offered later brings the offers back, all of them.
     let another = course(
@@ -616,5 +618,6 @@ fn launch_tasks_list_offers_and_suggestions_until_not_now() {
     with_syllabus(&app, &another);
     let back = app.startup_tasks(Utc::now()).unwrap();
     assert_eq!(back.calendar_offers_total, 2);
+    assert_eq!(app.syllabus_reading_offers().unwrap().len(), 2);
     assert!(back.removal_suggestions.is_empty(), "still snoozed");
 }

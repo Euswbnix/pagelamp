@@ -38,6 +38,10 @@ const CHECK_INTERVAL: TimeDelta = TimeDelta::hours(24);
 const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[
     (WhatsNewTopic::UpdateCheck, "0.3.0-alpha.1"),
     (WhatsNewTopic::CourseWeeks, "0.3.0-alpha.1"),
+    (WhatsNewTopic::CourseRemoval, "0.3.0-alpha.2"),
+    (WhatsNewTopic::SyllabusReading, "0.3.0-alpha.3"),
+    (WhatsNewTopic::AiWriting, "0.3.0-beta.1"),
+    (WhatsNewTopic::Reminders, "0.3.0-beta.1"),
 ];
 
 /// Where updates come from.
@@ -74,6 +78,15 @@ pub enum WhatsNewTopic {
     UpdateCheck,
     /// Course weeks, phases and the Past group.
     CourseWeeks,
+    /// Removing finished courses: 7 days to undo, the student's own folders untouched.
+    CourseRemoval,
+    /// AI reads a syllabus into cited date proposals; setting up a model (including the
+    /// ChatGPT plan) comes with it.
+    SyllabusReading,
+    /// Study plans and weekly explanations with the student's own model.
+    AiWriting,
+    /// Deadline and weekly reminders; the tray and starting at login (opt-in).
+    Reminders,
 }
 
 /// What's new since `since` (`None`: an update from 0.1, which didn't record its version).
@@ -352,10 +365,22 @@ mod tests {
 
     #[test]
     fn topics_are_the_ones_introduced_after_the_old_version() {
-        let alpha_1 = [WhatsNewTopic::UpdateCheck, WhatsNewTopic::CourseWeeks];
-        assert_eq!(topics_since(None), alpha_1);
-        assert_eq!(topics_since(Some("0.1.0")), alpha_1);
-        assert!(topics_since(Some("0.3.0-alpha.1")).is_empty());
+        use WhatsNewTopic::*;
+        let all = [
+            UpdateCheck,
+            CourseWeeks,
+            CourseRemoval,
+            SyllabusReading,
+            AiWriting,
+            Reminders,
+        ];
+        assert_eq!(topics_since(None), all);
+        assert_eq!(topics_since(Some("0.1.0")), all);
+        // Pre-releases order as semver does: alpha.1 < alpha.2 < alpha.3 < beta.1 < 0.3.0.
+        assert_eq!(topics_since(Some("0.3.0-alpha.1")), all[2..]);
+        assert_eq!(topics_since(Some("0.3.0-alpha.2")), all[3..]);
+        assert_eq!(topics_since(Some("0.3.0-alpha.3")), [AiWriting, Reminders]);
+        assert!(topics_since(Some("0.3.0-beta.1")).is_empty());
         assert!(topics_since(Some("0.3.0")).is_empty());
     }
 }
