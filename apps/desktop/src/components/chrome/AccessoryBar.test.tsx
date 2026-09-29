@@ -116,11 +116,33 @@ describe("AccessoryBar", () => {
     expect(screen.queryByRole("button", { name: "Sync failed" })).toBeNull();
   });
 
-  it("leaves quietly when the student stopped the sync", async () => {
+  it("leaves quietly when the student stopped the sync, but says so to screen readers", async () => {
     await renderIdle();
     startRun();
     act(() => useSyncStore.getState().finish(null, new ApiError("cancelled", "Cancelled")));
     expect(screen.queryByRole("button", { name: /sync/i })).toBeNull();
+    expect(announced()).toContain("Sync stopped");
+  });
+
+  it("waits while focused, and hands focus to the page when it leaves", async () => {
+    await renderIdle();
+    startRun();
+    vi.useFakeTimers();
+    finishCanvas(true);
+    act(() => useSyncStore.getState().finish(summary(true), null));
+    const capsule = screen.getByRole("button", { name: "Sync finished" });
+    act(() => capsule.focus());
+    act(() => vi.advanceTimersByTime(FINISHED_MS * 2));
+    expect(capsule).toHaveFocus();
+
+    // A problem dismissed with ×: focus goes to the page, not to <body>.
+    vi.useRealTimers();
+    startRun();
+    act(() => useSyncStore.getState().finish(null, new ApiError("network", "Synthetic failure")));
+    const dismiss = screen.getByRole("button", { name: "Dismiss" });
+    act(() => dismiss.focus());
+    fireEvent.click(dismiss);
+    expect(screen.getByRole("main")).toHaveFocus();
   });
 
   it("opens per-source progress with Stop and a way to Sources & sync", async () => {

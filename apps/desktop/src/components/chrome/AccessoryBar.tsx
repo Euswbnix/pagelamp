@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, CircleX, LoaderCircle, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,10 @@ export function AccessoryBar() {
   const [announcement, setAnnouncement] = useState("");
   const wasRunning = useRef(running);
   const detailsRef = useRef<HTMLDivElement>(null);
+  const capsuleRef = useRef<HTMLDivElement>(null);
+  // Pointer over it or focus in it: "Sync finished" waits (like when its details are open).
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
 
   // A run starting or ending decides what the capsule says afterwards; a stopped run leaves.
   useEffect(() => {
@@ -56,15 +60,16 @@ export function AccessoryBar() {
     const next =
       outcome === "done" || outcome === "doneWithErrors" || outcome === "failed" ? outcome : null;
     setEnding(next);
-    setAnnouncement(next ? tc(HEADLINE[next]) : "");
+    // A stopped run leaves quietly on screen, but screen readers hear that it stopped.
+    setAnnouncement(next ? tc(HEADLINE[next]) : outcome === "stopped" ? tc("sync.stopped") : "");
   }, [running, outcome, tc]);
 
-  // "Sync finished" leaves after 4 s, unless its details are open.
+  // "Sync finished" leaves after 4 s, unless its details are open or the student is on it.
   useEffect(() => {
-    if (ending !== "done" || open) return;
+    if (ending !== "done" || open || hovered || focused) return;
     const timer = setTimeout(() => setEnding(null), FINISHED_MS);
     return () => clearTimeout(timer);
-  }, [ending, open]);
+  }, [ending, open, hovered, focused]);
 
   const capsule: Capsule | null = running ? { kind: "running" } : ending ? { kind: ending } : null;
   const attention = capsule?.kind === "doneWithErrors" || capsule?.kind === "failed";
@@ -85,6 +90,28 @@ export function AccessoryBar() {
   const shown = useRef<Capsule>({ kind: "done" });
   if (capsule) shown.current = capsule;
   const visible = capsule !== null;
+
+  // When it leaves (timed out, ×, Esc, a run stopped from its details), focus that was in it
+  // or in its details (or already fell to <body> as it went inert) goes to the page, not to
+  // the top of the window.
+  const visibleRef = useRef(visible);
+  const stranded = useCallback((active: Element | null) => {
+    return (
+      !active ||
+      active === document.body ||
+      !!capsuleRef.current?.contains(active) ||
+      !!detailsRef.current?.contains(active)
+    );
+  }, []);
+  useEffect(() => {
+    const was = visibleRef.current;
+    visibleRef.current = visible;
+    if (was && !visible) {
+      if (stranded(document.activeElement)) focusPage();
+      setHovered(false);
+      setFocused(false);
+    }
+  }, [visible, stranded]);
   const text =
     shown.current.kind === "running"
       ? total && current
@@ -100,16 +127,23 @@ export function AccessoryBar() {
         {announcement}
       </p>
       <div
+        ref={capsuleRef}
         className="pl-accessory pl-glass flex h-(--pl-size-accessory-height) max-w-(--pl-layout-capsule-max) min-w-0 items-center gap-0.5 rounded-full p-1 text-sm"
         data-state={visible ? "visible" : "hidden"}
         aria-hidden={visible ? undefined : true}
         inert={!visible}
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+        }}
       >
         <Popover open={visible && open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex h-7 min-w-0 items-center gap-2 rounded-full px-3 outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-7 min-w-0 items-center gap-2 rounded-full px-3 outline-hidden hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <CapsuleIcon capsule={shown.current} done={done} total={total} />
               <span className="truncate">{text}</span>
@@ -121,6 +155,13 @@ export function AccessoryBar() {
             sideOffset={8}
             className="w-80 p-0"
             aria-label={t("accessory.details")}
+            // Closed because the capsule left: its trigger is inert, so continue on the page.
+            onCloseAutoFocus={(event) => {
+              if (!visibleRef.current) {
+                event.preventDefault();
+                focusPage();
+              }
+            }}
             // Focus the details, not Stop: Enter or Space right after opening must not stop a sync.
             onOpenAutoFocus={(event) => {
               event.preventDefault();
@@ -133,7 +174,7 @@ export function AccessoryBar() {
         {attention ? (
           <button
             type="button"
-            className="grid size-7 shrink-0 place-items-center rounded-full outline-none hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid size-7 shrink-0 place-items-center rounded-full outline-hidden hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={t("accessory.dismiss")}
             onClick={() => setEnding(null)}
           >
@@ -231,4 +272,9 @@ function SyncDetails({
       )}
     </div>
   );
+}
+
+/** The page's main region (AppShell's <main tabIndex={-1}>), without scrolling it. */
+function focusPage() {
+  document.getElementById("main")?.focus({ preventScroll: true });
 }

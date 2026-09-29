@@ -43,7 +43,8 @@ export function SyncBanner() {
       </Notice>
     );
   } else if (runError) {
-    announcement = tc("sync.failed");
+    // The accessory bar says "Sync failed"; this box adds why.
+    announcement = runError.kind === "busy" ? tc("sync.busy") : tc(`errors.${runError.kind}`);
     content = (
       <Notice
         icon={<CircleAlert className="size-4 text-warning" aria-hidden />}

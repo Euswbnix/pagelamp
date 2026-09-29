@@ -389,15 +389,14 @@ describe("CoursesPage — sync", () => {
 
     await user.click(await screen.findByRole("button", { name: "Sync now" }));
 
-    // The accessory bar says so too; the page's box explains why.
+    // The accessory bar says (and announces) "Sync failed"; the page's box explains why, and
+    // announces only the why, so nothing is heard twice.
     expect(await screen.findByRole("button", { name: "Sync failed" })).toBeInTheDocument();
     const page = within(screen.getByRole("main"));
-    // The headline is also announced from a visually hidden status; check the visible box.
     expect(page.getByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
-    expect(page.getByRole("status")).toHaveTextContent("Sync failed");
-    expect(
-      page.getByText("Couldn't reach the server. Check your internet connection and the address."),
-    ).toBeInTheDocument();
+    const why = "Couldn't reach the server. Check your internet connection and the address.";
+    expect(page.getByRole("status")).toHaveTextContent(why);
+    expect(page.getByText(why, { ignore: VISIBLE_ONLY })).toBeInTheDocument();
     await user.click(page.getByRole("button", { name: "Close" }));
     expect(page.queryByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeNull();
   });
