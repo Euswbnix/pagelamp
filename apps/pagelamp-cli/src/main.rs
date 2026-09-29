@@ -76,12 +76,13 @@ enum Command {
     /// Data folder, sources, counts and last sync.
     Status,
     /// Your courses by group (current, upcoming, past): week or phase, next deadline, AI
-    /// policy and access. With -v, why.
+    /// policy and access. With -v, why. Past courses are left out (also from --json) unless
+    /// you pass --past or --all.
     Courses {
         /// Only the past courses (ended, or inactive for months).
         #[arg(long, conflicts_with = "all")]
         past: bool,
-        /// Every course, past ones included.
+        /// Every course, past ones included (use this with --json for the full list).
         #[arg(long)]
         all: bool,
     },
