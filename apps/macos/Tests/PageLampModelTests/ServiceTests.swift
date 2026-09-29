@@ -237,3 +237,82 @@ struct LiveServiceTests {
         #expect(notNowDays() == 14 && keepCurrentDays() == 120 && keepForever() == "9999-12-31")
     }
 }
+
+/// `ForwardingService` forwards whatever a wrapper doesn't implement, so an override with a typo
+/// or a slightly different signature would silently forward too. These call every override
+/// through `any PageLampService` and check that the wrapper's own behaviour shows up.
+@Suite("ForwardingService wrappers")
+struct ForwardingWrapperTests {
+    func mock() -> MockService {
+        MockService(scenario: .demo, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+    }
+
+    /// `body` must fail with the fixture's own failure (not the base's answer).
+    func expectFixtureFailure(_ name: String, _ body: () async throws -> Void) async {
+        do {
+            try await body()
+            Issue.record("\(name) answered from the base service")
+        } catch {
+            let message = (error as? PageLampFailure)?.message ?? "\(error)"
+            #expect(message.hasPrefix("fixture:"), "\(name): \(message)")
+        }
+    }
+
+    @Test("every FixtureService override is the one called")
+    func fixtureOverrides() async throws {
+        let base = mock()
+        let failing: any PageLampService = FixtureService(
+            base: base, failing: [.courses, .deadlines, .studyPlan, .week, .overview, .clientConfigs, .clearCrash]
+        )
+        await expectFixtureFailure("listCourses") { _ = try await failing.listCourses() }
+        await expectFixtureFailure("listDeadlines") { _ = try await failing.listDeadlines(course: nil, daysAhead: 7, daysBack: 0) }
+        await expectFixtureFailure("latestStudyPlan") { _ = try await failing.latestStudyPlan() }
+        await expectFixtureFailure("weekMaterials") { _ = try await failing.weekMaterials(course: "DEMO101", week: nil) }
+        await expectFixtureFailure("courseOverview") { _ = try await failing.courseOverview(course: "DEMO101") }
+        await expectFixtureFailure("mcpClientConfigs") { _ = try await failing.mcpClientConfigs(pagelampBinary: MockService.binaryPath) }
+        await expectFixtureFailure("clearLastCrash") { try await failing.clearLastCrash() }
+        let courseDeadlines: any PageLampService = FixtureService(base: base, failing: [.courseDeadlines])
+        await expectFixtureFailure("listDeadlines(course:)") {
+            _ = try await courseDeadlines.listDeadlines(course: "DEMO101", daysAhead: 7, daysBack: 0)
+        }
+
+        #expect(try await base.status().syncInProgress == false)
+        let syncing: any PageLampService = FixtureService(base: base, syncInProgress: true)
+        #expect(try await syncing.status().syncInProgress)
+
+        #expect(try await base.courseTimeline(course: "DEMO101").currentWeek == 4)
+        let outside: any PageLampService = FixtureService(base: base, outsideTerm: true)
+        #expect(try await outside.courseTimeline(course: "DEMO101").currentWeek == nil)
+        #expect(try await outside.confirmCourseDates(course: "DEMO101").currentWeek == nil)
+
+        #expect(try await base.keepCourseCurrent(course: "DEMO101", until: nil).aiAccess)
+        let aiOff: any PageLampService = FixtureService(base: base, aiAccessOff: true)
+        #expect(try await !aiOff.keepCourseCurrent(course: "DEMO101", until: nil).aiAccess)
+        #expect(try await !aiOff.clearKeepCourseCurrent(course: "DEMO101").aiAccess)
+    }
+
+    @Test("HeldService's holds apply through any PageLampService")
+    func heldOverrides() async throws {
+        let statusHold = CallHold()
+        let configsHold = CallHold()
+        await statusHold.arm(failing: PageLampFailure(kind: .network, message: "held status"))
+        await configsHold.arm(failing: PageLampFailure(kind: .network, message: "held configs"))
+        let service: any PageLampService = HeldService(base: mock(), statusHold: statusHold, configsHold: configsHold)
+
+        let status = Task { try await service.status() }
+        await statusHold.waitUntilHeld()
+        await statusHold.release()
+        #expect((await status.result.failure as? PageLampFailure)?.message == "held status")
+
+        let configs = Task { try await service.mcpClientConfigs(pagelampBinary: MockService.binaryPath) }
+        await configsHold.waitUntilHeld()
+        await configsHold.release()
+        #expect((await configs.result.failure as? PageLampFailure)?.message == "held configs")
+    }
+}
+
+private extension Result {
+    var failure: Failure? {
+        if case .failure(let error) = self { error } else { nil }
+    }
+}
