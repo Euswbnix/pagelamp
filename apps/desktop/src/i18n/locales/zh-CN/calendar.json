@@ -9,7 +9,7 @@
     "ended": "已结课",
     "startsOn": "{{date}} 开课",
     "notStarted": "尚未开课",
-    "unknown": "周数未知"
+    "unknown": "周次未知"
   },
   "breakKind": {
     "reading_week": "阅读周",
