@@ -17,7 +17,9 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
-use pagelamp_app::{AppError, AppErrorKind, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord};
+use pagelamp_app::{
+    ActivityKind, AppError, AppErrorKind, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+};
 use pagelamp_core::brand;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -271,7 +273,8 @@ pub async fn updates_check<R: Runtime>(
 }
 
 /// Downloads, verifies and installs the update the last check found, then restarts. Only
-/// called after the student confirmed; refused while any sync runs (M0 has no cancellation).
+/// called after the student confirmed; refused while anything runs (a sync, a download, a Codex
+/// install, a model run).
 #[tauri::command]
 pub async fn updates_install<R: Runtime>(
     app: AppHandle<R>,
@@ -290,9 +293,18 @@ pub async fn updates_install<R: Runtime>(
     if let Ok(facade) = backend.app() {
         let activity = facade.activity();
         if !activity.items.is_empty() || activity.other_process_syncing {
+            let generating = activity
+                .items
+                .iter()
+                .any(|item| item.kind == ActivityKind::Generation);
             return Err(AppError::new(
                 AppErrorKind::Busy,
-                "A sync is running. Install the update when it finishes.",
+                if generating {
+                    "The AI is still working (reading a syllabus or writing a study plan). \
+                     Install the update when it finishes."
+                } else {
+                    "A sync is running. Install the update when it finishes."
+                },
             ));
         }
     }

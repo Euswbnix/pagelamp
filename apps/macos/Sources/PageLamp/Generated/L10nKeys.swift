@@ -1589,6 +1589,7 @@ nonisolated enum L10nKeys {
         "sources.status.syncing",
         "sources.title",
         "updates.install.aiApp",
+        "updates.install.availableAfterGeneration",
         "updates.install.availableAfterOtherSync",
         "updates.install.availableAfterSync",
         "updates.install.body",

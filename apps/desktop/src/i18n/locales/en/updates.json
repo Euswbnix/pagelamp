@@ -36,6 +36,7 @@
     "tryAgain": "Try again",
     "availableAfterSync": "Available when the sync finishes",
     "availableAfterOtherSync": "Available when the other sync (from the command line or another window) finishes",
+    "availableAfterGeneration": "Available when the AI finishes reading a syllabus or writing a study plan",
     "progressLabel": "Update progress",
     "stopSync": "Stop the sync"
   },

@@ -351,7 +351,7 @@ impl App {
                 .map(|course| store.resolve_course_with(course, true))
                 .collect::<std::result::Result<Vec<Course>, _>>()?
         };
-        let (_batch, batch_cancel) = self.state.runs.register(batch_id, None)?;
+        let (_batch, batch_cancel) = self.register_run(batch_id, None)?;
         let total = u32::try_from(resolved.len()).unwrap_or(u32::MAX);
         let mut outcomes = Vec::with_capacity(resolved.len());
         for (index, course) in resolved.iter().enumerate() {
@@ -425,6 +425,8 @@ impl App {
         parent: Option<&pagelamp_llm::CancellationToken>,
         on_event: &(dyn Fn(GenEvent) + Send + Sync),
     ) -> Result<CalendarProposal> {
+        // Registered until the proposal is stored: an update waits for the whole reading.
+        let (_run, cancel) = self.register_run(generation_id, parent)?;
         on_event(GenEvent::Stage {
             stage: GenStage::BuildingContext,
         });
@@ -483,7 +485,7 @@ impl App {
             .run_model(
                 RunRequest {
                     generation_id,
-                    parent,
+                    cancel: &cancel,
                     feature: AiFeature::CourseCalendar,
                     choice: &choice,
                     prompt,

@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{BackendRef, CostBasis, EstimateRequest, GenEvent, ModelChoice};
-use pagelamp_app::{App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions};
+use pagelamp_app::{
+    ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
+};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
 use pagelamp_core::calendar::candidates::{CandidateLeftOut, CandidateReason};
 use pagelamp_core::model::*;
@@ -253,6 +255,33 @@ fn collect() -> (Arc<Mutex<Vec<GenEvent>>>, impl Fn(GenEvent) + Send + Sync) {
     let events = Arc::new(Mutex::new(Vec::new()));
     let sink = Arc::clone(&events);
     (events, move |event| sink.lock().unwrap().push(event))
+}
+
+/// Wait until the mock model has been asked (the run is waiting for its answer).
+async fn wait_for_request(server: &MockServer) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while server.received_requests().await.unwrap().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the run never started"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// The generations `activity()` lists, by id.
+fn running_generations(app: &App) -> Vec<String> {
+    app.activity()
+        .items
+        .into_iter()
+        .map(|item: ActivityItem| {
+            assert_eq!(
+                (item.kind, item.source_id),
+                (ActivityKind::Generation, None)
+            );
+            item.generation_id.unwrap()
+        })
+        .collect()
 }
 
 #[test]
@@ -524,6 +553,97 @@ async fn an_answer_without_supported_dates_is_bad_output() {
 }
 
 #[tokio::test]
+async fn activity_lists_a_generation_until_it_ends() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    let read = |generation_id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar(
+                "DEMO101",
+                generation_id,
+                ReadCalendarOptions::default(),
+                |_| {},
+            )
+            .await
+        })
+    };
+
+    // Completed: listed while the model answers, gone once the proposal is stored.
+    Mock::given(method("POST"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let task = read("gen-done");
+    wait_for_request(&server).await;
+    assert_eq!(running_generations(&app), ["gen-done"]);
+    task.await.unwrap().unwrap();
+    assert!(app.activity().items.is_empty());
+
+    // Failed: the answer is checked (and fails) before the run ends.
+    server.reset().await;
+    let invented = json!({
+        "stated_term": {"text": null, "quote": null, "source": null},
+        "claims": [claim("first_class", day(-6), "Classes begin whenever you like.", "c1")],
+        "weeks": [],
+        "not_found": []
+    });
+    Mock::given(method("POST"))
+        .respond_with(answer(&invented).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let task = read("gen-failed");
+    wait_for_request(&server).await;
+    assert_eq!(running_generations(&app), ["gen-failed"]);
+    let err = task.await.unwrap().unwrap_err();
+    assert_eq!(err.model_error, Some(ModelErrorKind::BadOutput));
+    assert!(app.activity().items.is_empty());
+
+    // Blocked by the gate: nothing left behind.
+    let err = app
+        .read_course_calendar(
+            "DEMO505",
+            "gen-blocked",
+            ReadCalendarOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::CourseAiTurnedOff));
+    assert!(app.activity().items.is_empty());
+
+    // Cancelled: a second reading with the same id is busy, and the stop ends the run.
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_secs(30)))
+        .mount(&server)
+        .await;
+    let task = read("gen-stopped");
+    wait_for_request(&server).await;
+    assert_eq!(running_generations(&app), ["gen-stopped"]);
+    let busy = app
+        .read_course_calendar(
+            "DEMO101",
+            "gen-stopped",
+            ReadCalendarOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(busy.kind, AppErrorKind::Busy);
+    assert_eq!(running_generations(&app), ["gen-stopped"]);
+    app.cancel_generation("gen-stopped").unwrap();
+    let err = tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert!(app.activity().items.is_empty());
+}
+
+#[tokio::test]
 async fn a_batch_reads_course_by_course_and_can_be_stopped() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_courses(temp.path());
@@ -589,20 +709,16 @@ async fn a_batch_reads_course_by_course_and_can_be_stopped() {
         )
         .await
     });
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while server.received_requests().await.unwrap().is_empty() {
-        assert!(
-            std::time::Instant::now() < deadline,
-            "the run never started"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    wait_for_request(&server).await;
+    // The batch is one item of `activity()`, its course's run part of it.
+    assert_eq!(running_generations(&app), ["batch-2"]);
     app.cancel_generation("batch-2").unwrap();
     let outcomes = tokio::time::timeout(Duration::from_secs(10), task)
         .await
         .unwrap()
         .unwrap()
         .unwrap();
+    assert!(app.activity().items.is_empty());
     assert_eq!(outcomes.len(), 1, "the rest is not read");
     assert_eq!(outcomes[0].error, Some(AppErrorKind::Cancelled));
     let store = Store::open(&app.db_path()).unwrap();

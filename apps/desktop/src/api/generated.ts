@@ -6,7 +6,7 @@
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "ActivityKind".
  */
-export type ActivityKind = "sync" | "download" | "codex_install";
+export type ActivityKind = "sync" | "download" | "codex_install" | "generation";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "AdminVisibility".
@@ -1055,9 +1055,13 @@ export interface Activity {
  * via the `definition` "ActivityItem".
  */
 export interface ActivityItem {
+  /**
+   * A generation's id (a batch's for a batch): `cancel_generation` stops it.
+   */
+  generation_id?: string | null;
   kind: ActivityKind;
   /**
-   * The one source it works on; `None` for `sync_all`.
+   * The one source it works on; `None` for `sync_all` and a generation.
    */
   source_id?: string | null;
   started_at: string;

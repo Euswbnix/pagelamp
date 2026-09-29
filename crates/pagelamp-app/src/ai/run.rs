@@ -1,8 +1,10 @@
 //! One model run of a feature (model-access design §3.3, §3.7): after the feature's own gate
 //! and blocks, every backend goes the same way.
 //!
-//! - One run per generation id at a time (`busy` otherwise); `cancel_run` stops it: the HTTP
-//!   driver drops the request, Codex gets SIGINT and then a kill.
+//! - A feature registers its run first (`register_run`), so the run is one generation from its
+//!   gate to its stored answer: one per generation id at a time (`busy` otherwise), listed in
+//!   `activity()` (an update doesn't restart the app under it), and `cancel_run` stops it: the
+//!   HTTP driver drops the request, Codex gets SIGINT and then a kill.
 //! - Events: `started`, `stage waiting_for_model`, the JSON-fallback notice and the repair
 //!   stage, answer text (text answers only) and `usage`. The feature sends `finished` once it
 //!   has checked and stored the answer.
@@ -23,6 +25,7 @@ use pagelamp_llm::{CancellationToken, GenerateRequest, LlmError, OutputSpec, Str
 
 use super::settings::backend_key;
 use super::{BackendRef, GenEvent, GenNoticeCode, GenStage, ModelChoice, TokenUsage};
+use crate::activity::ActivityGuard;
 use crate::{App, AppError, AppErrorKind, Result};
 
 /// The runs in progress in this process, by generation id. A batch ("Read syllabi for N
@@ -86,11 +89,18 @@ impl Drop for Registration<'_> {
     }
 }
 
+/// A registered run (`App::register_run`); dropping it ends the run.
+pub(crate) struct RunGuard<'a> {
+    _registration: Registration<'a>,
+    /// `None` for a run of a batch: the batch's item stands for it.
+    _activity: Option<ActivityGuard>,
+}
+
 /// What a feature asks of one run.
 pub(crate) struct RunRequest<'a> {
     pub generation_id: &'a str,
-    /// The batch this run belongs to, whose stop also stops it.
-    pub parent: Option<&'a CancellationToken>,
+    /// The run's token (`App::register_run`).
+    pub cancel: &'a CancellationToken,
     pub feature: AiFeature,
     pub choice: &'a ModelChoice,
     pub prompt: RenderedPrompt,
@@ -121,17 +131,33 @@ pub(crate) enum Billing<'a> {
 }
 
 impl App {
-    /// Run `request` on its backend (see the module docs). The caller has gated the context and
-    /// checked every block; `on_event` gets the run's progress.
+    /// Register run `id` (a generation, or a batch of them) until the returned guard drops:
+    /// `busy` if `id` already runs. With `parent` (its batch), stopping the batch stops it too,
+    /// and the batch's `activity()` item stands for it.
+    pub(crate) fn register_run(
+        &self,
+        id: &str,
+        parent: Option<&CancellationToken>,
+    ) -> Result<(RunGuard<'_>, CancellationToken)> {
+        let (registration, cancel) = self.state.runs.register(id, parent)?;
+        let activity = parent.is_none().then(|| self.begin_generation(id));
+        Ok((
+            RunGuard {
+                _registration: registration,
+                _activity: activity,
+            },
+            cancel,
+        ))
+    }
+
+    /// Run `request` on its backend (see the module docs). The caller has registered the run,
+    /// gated the context and checked every block; `on_event` gets the run's progress.
     pub(crate) async fn run_model(
         &self,
         request: RunRequest<'_>,
         on_event: &(dyn Fn(GenEvent) + Send + Sync),
     ) -> Result<RunOutcome> {
-        let (_registration, cancel) = self
-            .state
-            .runs
-            .register(request.generation_id, request.parent)?;
+        let cancel = request.cancel.clone();
         match &request.choice.backend {
             BackendRef::Codex => self.codex_run(&request, on_event, &cancel).await,
             BackendRef::Provider { .. } => self.http_run(request, on_event, &cancel).await,

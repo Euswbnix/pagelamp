@@ -1024,12 +1024,15 @@ pub enum ActivityKind {
     Sync,
     Download,
     CodexInstall,
+    Generation,
 }
 
 #[uniffi::remote(Record)]
 pub struct ActivityItem {
     pub kind: ActivityKind,
     pub source_id: Option<String>,
+    #[uniffi(default)]
+    pub generation_id: Option<String>,
     pub started_at: Timestamp,
 }
 

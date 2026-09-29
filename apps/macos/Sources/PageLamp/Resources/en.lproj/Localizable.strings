@@ -1536,6 +1536,7 @@
 "sources.status.syncing" = "Syncing";
 "sources.title" = "Sources & sync";
 "updates.install.aiApp" = "Afterwards, quit and reopen your AI app so it uses the new PageLamp.";
+"updates.install.availableAfterGeneration" = "Available when the AI finishes reading a syllabus or writing a study plan";
 "updates.install.availableAfterOtherSync" = "Available when the other sync (from the command line or another window) finishes";
 "updates.install.availableAfterSync" = "Available when the sync finishes";
 "updates.install.body" = "PageLamp downloads the update, checks its signature, installs it and restarts.";
