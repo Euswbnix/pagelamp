@@ -74,6 +74,8 @@ export interface MockOptions {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+/** startup_tasks lists at most this many offers and suggestions (the facade's STARTUP_LIST_MAX). */
+const STARTUP_LIST_MAX = 20;
 
 function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
@@ -948,8 +950,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };
       }),
-    // The mock's startup offers are always empty, so "Not now" has nothing to hide.
-    snoozeCalendarOffers: () => respond(undefined),
     startupTasks: () =>
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
@@ -972,8 +972,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           due_reminders: dueReminders(),
           purge_due: false,
           removed_files_waiting: 0,
-          calendar_offers: [],
-          calendar_offers_total: 0,
+          // The same offers as the Courses page's card, "Not now" applied (proposals.ts).
+          calendar_offers: courseProposals.offersNow().slice(0, STARTUP_LIST_MAX),
+          calendar_offers_total: courseProposals.offersNow().length,
           removal_suggestions: [],
           removal_suggestions_total: 0,
         };
