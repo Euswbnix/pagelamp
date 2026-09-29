@@ -51,24 +51,11 @@ impl Store {
     }
 }
 
-/// The calendar JSON of a 0.1 override.
-///
-/// TEMPORARY SHIM until the course lane reaches main: it must equal
-/// `serde_json::to_string(&crate::calendar::legacy_calendar(start, end))`, whose shape the
-/// lane pins in a test (the start is always kept; the end only when start → end spans 4 to 36
-/// weeks). Replace it with that call when rebasing on main after the lane merge.
+/// The calendar JSON of a 0.1 override: the course lane's `legacy_calendar` (the start is
+/// always kept; the end only when start → end spans 4 to 36 weeks).
 fn legacy_calendar_json(start: NaiveDate, end: Option<NaiveDate>) -> String {
-    const MIN_TERM_DAYS: i64 = 28;
-    const MAX_YEAR_TERM_DAYS: i64 = 36 * 7;
-    let end = end.filter(|end| {
-        let days = (*end - start).num_days() + 1;
-        (MIN_TERM_DAYS..=MAX_YEAR_TERM_DAYS).contains(&days)
-    });
-    // Field order as the lane's `CourseCalendar` serialises it.
-    let last_class = end.map_or_else(|| "null".to_string(), |d| format!("\"{d}\""));
-    format!(
-        r#"{{"segments":[{{"first_class":"{start}","last_class":{last_class},"first_week_number":1}}],"breaks":[],"exam_period":null,"final_exam_on":null,"weeks":[]}}"#
-    )
+    serde_json::to_string(&crate::calendar::legacy_calendar(start, end))
+        .expect("a course calendar serialises")
 }
 
 #[cfg(test)]
@@ -80,8 +67,8 @@ mod tests {
     }
 
     #[test]
-    fn the_shim_matches_the_lanes_pinned_shape() {
-        // The course lane's test pins exactly this string for this input.
+    fn a_legacy_override_becomes_the_lanes_calendar_json() {
+        // The shape the migration stored before the lane merged (it must not change).
         assert_eq!(
             legacy_calendar_json(date(2026, 9, 8), Some(date(2026, 12, 8))),
             r#"{"segments":[{"first_class":"2026-09-08","last_class":"2026-12-08","first_week_number":1}],"breaks":[],"exam_period":null,"final_exam_on":null,"weeks":[]}"#
