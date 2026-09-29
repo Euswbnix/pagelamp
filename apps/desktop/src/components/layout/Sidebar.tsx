@@ -17,7 +17,7 @@ const NAV = [
 export function Sidebar() {
   const { t } = useTranslation();
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
+    <aside className="pl-sidebar flex shrink-0 flex-col text-sidebar-foreground">
       <div className="px-4 pt-5 pb-4">
         <BrandMark />
       </div>
@@ -29,7 +29,7 @@ export function Sidebar() {
                 to={to}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    "pl-nav-item flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                     "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                     "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sidebar-ring",
                     isActive && "bg-sidebar-accent font-medium text-sidebar-accent-foreground",

@@ -61,7 +61,8 @@ export function ThisWeek() {
   }
 
   return (
-    <Section card title={t("thisWeek.title")} description={summary}>
+    // The one light: only once this week's deadlines are there (never on a skeleton or error).
+    <Section title={t("thisWeek.title")} description={summary} lit={deadlines.isSuccess}>
       {body}
     </Section>
   );
@@ -89,7 +90,7 @@ function DayRow({ group }: { group: DayGroup }) {
     group.dayDiff === 0 ? tc("time.today") : group.dayDiff === 1 ? tc("time.tomorrow") : null;
 
   return (
-    <li className="grid gap-x-6 py-2 first:pt-0 last:pb-0 sm:grid-cols-[8rem_1fr]">
+    <li className="grid gap-x-6 py-2 last:pb-0 sm:grid-cols-[8rem_1fr]">
       <h3 className="pt-2.5 text-sm font-medium">
         {relative ?? date}
         {relative ? (

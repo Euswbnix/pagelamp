@@ -55,7 +55,7 @@ const MARKS = new RegExp(`${MARK}(\\d+)${MARK}`, "g");
  */
 export function translateWithText(
   // Any namespace's t: the key is built at run time.
-  t: TFunction<"calendar"> | TFunction<"proposals">,
+  t: TFunction<"calendar"> | TFunction<"proposals"> | TFunction<"sources">,
   key: string,
   params: Record<string, string | number>,
   texts: Record<string, string> = {},

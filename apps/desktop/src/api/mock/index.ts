@@ -415,7 +415,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           onEvent({
             type: "progress",
             source_id: source.id,
-            message: step < total ? `Indexing materials (${step}/${total})` : "Updating timelines",
+            ...stepOf(source, courses[Math.floor((step - 1) / 3)]?.course.code),
             current: step,
             total,
           });
@@ -989,4 +989,20 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     },
     logUiError: async () => {},
   };
+}
+
+/** A step like the facade's: its stage, its course, and the English text for the CLI and logs. */
+function stepOf(
+  source: SourceRecord,
+  courseCode: string | null | undefined,
+): Pick<Extract<SyncEvent, { type: "progress" }>, "message" | "stage" | "course"> {
+  const course = courseCode ?? source.label;
+  switch (source.kind) {
+    case "folder":
+      return { stage: "indexing_files", course, message: `${course}: indexing files` };
+    case "canvas":
+      return { stage: "reading_course", course, message: `${course}: reading` };
+    case "ical":
+      return { stage: "downloading_feed", course: null, message: "Downloading the calendar feed" };
+  }
 }

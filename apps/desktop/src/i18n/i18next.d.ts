@@ -4,6 +4,7 @@
 import "i18next";
 import type ai from "./locales/en/ai.json";
 import type calendar from "./locales/en/calendar.json";
+import type chrome from "./locales/en/chrome.json";
 import type common from "./locales/en/common.json";
 import type connect from "./locales/en/connect.json";
 import type course from "./locales/en/course.json";
@@ -21,6 +22,7 @@ declare module "i18next" {
     resources: {
       ai: typeof ai;
       calendar: typeof calendar;
+      chrome: typeof chrome;
       common: typeof common;
       connect: typeof connect;
       course: typeof course;

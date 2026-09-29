@@ -4,6 +4,7 @@
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use crate::{AppError, AppErrorKind};
 
@@ -18,7 +19,7 @@ impl SyncLock {
     /// this process) holds it.
     pub(crate) fn acquire(path: &Path) -> Result<SyncLock, AppError> {
         let file = open(path)?;
-        match file.try_lock() {
+        match try_lock_within(&file, ACQUIRE_GRACE) {
             Ok(()) => Ok(SyncLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(busy()),
             Err(TryLockError::Error(err)) => Err(AppError::new(
@@ -34,8 +35,31 @@ pub(crate) fn is_locked(path: &Path) -> bool {
     let Ok(file) = open(path) else {
         return false;
     };
-    matches!(file.try_lock(), Err(TryLockError::WouldBlock))
+    matches!(
+        try_lock_within(&file, PROBE_GRACE),
+        Err(TryLockError::WouldBlock)
+    )
     // Dropping `file` releases a lock taken by the probe.
+}
+
+/// How long `acquire` rides out a lock that was released a moment ago (see `try_lock_within`).
+const ACQUIRE_GRACE: Duration = Duration::from_millis(250);
+/// The same for the `is_locked` probe, kept short: status and activity poll it.
+const PROBE_GRACE: Duration = Duration::from_millis(20);
+
+/// `try_lock`, retried for up to `grace`. An `flock` belongs to the open file, and a child another
+/// thread of this process is starting shares every open file between fork and exec, so a lock
+/// released a moment ago can linger for a while; a real holder still gives `WouldBlock`.
+fn try_lock_within(file: &File, grace: Duration) -> Result<(), TryLockError> {
+    let started = Instant::now();
+    loop {
+        match file.try_lock() {
+            Err(TryLockError::WouldBlock) if started.elapsed() < grace => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            other => return other,
+        }
+    }
 }
 
 pub(crate) fn busy() -> AppError {
@@ -86,7 +110,48 @@ mod tests {
         let err = SyncLock::acquire(&path).unwrap_err();
         assert_eq!(err.kind, AppErrorKind::Busy);
         drop(first);
-        assert!(!is_locked(&path));
+        // Another test's children may hold a just-released lock for a moment.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while is_locked(&path) {
+            assert!(Instant::now() < deadline, "still locked");
+        }
         SyncLock::acquire(&path).unwrap();
+    }
+
+    /// An `flock` belongs to the open file, and a child another thread is starting shares every
+    /// open file between fork and exec, so a lock released a moment ago can linger. Acquiring
+    /// right after a release must still work while other threads start processes.
+    #[cfg(unix)]
+    #[test]
+    fn a_just_released_lock_can_be_taken_while_other_threads_start_processes() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sync.lock");
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let spawners: Vec<_> = (0..4)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(Ordering::Relaxed) {
+                        let _ = std::process::Command::new("/bin/sh")
+                            .args(["-c", "exit 0"])
+                            .status();
+                    }
+                })
+            })
+            .collect();
+        let mut busy = 0;
+        for _ in 0..400 {
+            match SyncLock::acquire(&path) {
+                Ok(lock) => drop(lock),
+                Err(err) if err.kind == AppErrorKind::Busy => busy += 1,
+                Err(err) => panic!("{err}"),
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        for spawner in spawners {
+            spawner.join().unwrap();
+        }
+        assert_eq!(busy, 0, "a released lock lingered past the grace period");
     }
 }

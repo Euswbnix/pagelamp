@@ -1,6 +1,7 @@
 import {
   CalendarClock,
   ClipboardList,
+  Clock,
   GraduationCap,
   NotebookPen,
   Presentation,
@@ -66,12 +67,14 @@ export function DeadlineRow({ deadline, showCourse = false, now }: DeadlineRowPr
         </div>
       </div>
       {when ? (
+        // Soon: ink words with an amber clock (status colours only on glyphs, §4.2).
         <span
           className={cn(
-            "shrink-0 text-xs",
-            soon ? "font-medium text-warning" : "text-muted-foreground",
+            "inline-flex shrink-0 items-center gap-1 text-xs",
+            soon ? "font-medium text-foreground" : "text-muted-foreground",
           )}
         >
+          {soon ? <Clock className="size-3 text-warning" aria-hidden /> : null}
           <RelativeTime iso={when} now={now} />
         </span>
       ) : null}

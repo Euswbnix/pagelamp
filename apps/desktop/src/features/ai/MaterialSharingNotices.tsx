@@ -43,10 +43,7 @@ export function MaterialSharingReminder({
   }
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex gap-3 rounded-lg border bg-muted/40 p-4 text-sm"
-    >
+    <section aria-labelledby={headingId} className="pl-callout flex gap-3 p-4 text-sm">
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-2">
         <h3 id={headingId} className="font-medium">
@@ -106,10 +103,7 @@ export function SharingNotAllowedNotice({
   const { t } = useTranslation("ai");
   const headingId = useId();
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex gap-3 rounded-lg border bg-muted/40 p-4 text-sm"
-    >
+    <section aria-labelledby={headingId} className="pl-callout flex gap-3 p-4 text-sm">
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-2">
         <h3 id={headingId} className="font-medium">

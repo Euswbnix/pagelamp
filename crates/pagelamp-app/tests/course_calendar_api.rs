@@ -329,3 +329,68 @@ async fn stored_calendars_arrive_with_schema_v4() {
         );
     }
 }
+
+/// Descriptions help the model but aren't part of the contract; `required` lists are sets.
+fn contract(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .filter(|(key, _)| key.as_str() != "description")
+                .map(|(key, child)| {
+                    let child = if key == "required" {
+                        let mut names: Vec<serde_json::Value> = child.as_array().unwrap().clone();
+                        names.sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+                        serde_json::Value::Array(names)
+                    } else {
+                        contract(child)
+                    };
+                    (key.clone(), child)
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(contract).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+#[test]
+fn the_model_answers_in_the_design_s_output_schema() {
+    let spec = pagelamp_llm::OutputSpec::for_type::<
+        pagelamp_core::calendar::extraction::CalendarExtraction,
+    >("course_calendar")
+    .unwrap();
+    let pagelamp_llm::OutputSpec::Json { name, schema } = spec else {
+        panic!("a JSON answer");
+    };
+    assert_eq!(name, "course_calendar");
+    // docs/design/v0.3-course-calendar.md §7.4, verbatim.
+    let design = json!({
+      "type": "object", "additionalProperties": false,
+      "required": ["stated_term", "claims", "weeks", "not_found"],
+      "properties": {
+        "stated_term": { "type": "object", "additionalProperties": false,
+          "required": ["text", "quote", "source"],
+          "properties": { "text": {"type": ["string","null"]}, "quote": {"type": ["string","null"]},
+                          "source": {"type": ["string","null"]} } },
+        "claims": { "type": "array", "items": { "type": "object", "additionalProperties": false,
+          "required": ["kind", "date", "end_date", "label", "quote", "source"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["first_class", "last_class", "break", "exam_period",
+                                                 "final_exam", "term_start", "term_end"] },
+            "date": {"type": "string"}, "end_date": {"type": ["string","null"]},
+            "label": {"type": "string"}, "quote": {"type": "string"}, "source": {"type": "string"} } } },
+        "weeks": { "type": "array", "items": { "type": "object", "additionalProperties": false,
+          "required": ["week", "starts_on", "kind", "topic", "quote", "header_quote", "source"],
+          "properties": {
+            "week": {"type": "integer"}, "starts_on": {"type": ["string","null"]},
+            "kind": {"type": "string", "enum": ["teaching", "break", "exam"]},
+            "topic": {"type": ["string","null"]}, "quote": {"type": "string"},
+            "header_quote": {"type": ["string","null"]}, "source": {"type": "string"} } } },
+        "not_found": { "type": "array", "items": { "type": "string",
+          "enum": ["first_class", "last_class", "breaks", "exam_period", "final_exam", "weeks"] } }
+      }
+    });
+    assert_eq!(contract(&schema), contract(&design));
+}

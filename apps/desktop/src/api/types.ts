@@ -104,6 +104,7 @@ export type {
   SyllabusOffer,
   SyncEvent,
   SyncRequest,
+  SyncStage,
   SyncSummary,
   TeachingSegment,
   TemporaryLocation,

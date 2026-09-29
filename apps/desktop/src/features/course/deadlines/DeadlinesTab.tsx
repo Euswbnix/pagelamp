@@ -118,7 +118,7 @@ function DeadlineSection({
 
 function DeadlineList({ deadlines }: { deadlines: Deadline[] }) {
   return (
-    <ul className="divide-y rounded-lg border bg-card px-4">
+    <ul className="divide-y border-t">
       {deadlines.map((deadline) => (
         <DeadlineRow key={deadline.id} deadline={deadline} />
       ))}

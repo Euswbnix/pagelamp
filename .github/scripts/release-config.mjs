@@ -161,6 +161,25 @@ export function secretProblems(file, text) {
   return problems;
 }
 
+// Contexts GitHub doesn't offer in workflow- or job-level `env:` (it then rejects the whole file,
+// and no job runs): runner, steps and job exist only inside a job's steps.
+const STEP_ONLY_CONTEXT = /\$\{\{(?:(?!\}\})[\s\S])*?\b(runner|steps|job)\s*\./;
+
+/** Every `runner.`/`steps.`/`job.` expression in a workflow-level or job-level `env:` value. */
+export function contextProblems(file, text) {
+  const problems = [];
+  for (const entry of values(scanYaml(text))) {
+    const topEnv = entry.path.length === 2 && entry.path[0] === "env";
+    const jobEnv = entry.path.length === 4 && entry.path[0] === "jobs" && entry.path[2] === "env";
+    if (!topEnv && !jobEnv) continue;
+    const match = STEP_ONLY_CONTEXT.exec(entry.value);
+    if (match) {
+      problems.push(`${file}:${entry.line}: the ${match[1]} context isn't available in ${entry.path.join(".")} (GitHub rejects the workflow); set it in the step's env: or read the environment variable (e.g. $RUNNER_TEMP) in the script`);
+    }
+  }
+  return problems;
+}
+
 /** Every `uses:` that isn't a local action or pinned to a full commit SHA (or image digest). */
 export function pinningProblems(file, text) {
   const problems = [];
@@ -331,7 +350,7 @@ export function run({ root = ".", strict = false, env = process.env, log = conso
   for (const name of workflows) {
     const text = readFileSync(join(workflowDir, name), "utf8");
     const file = `${WORKFLOWS_DIR}/${name}`;
-    errors.push(...secretProblems(file, text), ...pinningProblems(file, text));
+    errors.push(...secretProblems(file, text), ...pinningProblems(file, text), ...contextProblems(file, text));
   }
 
   const cargoToml = readFileSync(join(root, "Cargo.toml"), "utf8");

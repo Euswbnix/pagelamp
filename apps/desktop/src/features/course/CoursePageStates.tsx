@@ -26,7 +26,6 @@ export function CourseDetailSkeleton() {
   return (
     <div aria-busy="true">
       <h1 className="sr-only">{t("loading")}</h1>
-      <Skeleton className="mb-5 h-4 w-24" />
       <Skeleton className="h-4 w-20" />
       <Skeleton className="mt-2 h-8 w-80 max-w-full" />
       <Skeleton className="mt-3 h-4 w-72 max-w-full" />
@@ -70,7 +69,9 @@ export function CourseLoadError({ error, onRetry }: { error: unknown; onRetry: (
   const { t } = useTranslation("course");
   return (
     <div>
-      <BackToCourses />
+      <div className="mb-4">
+        <BackToCourses />
+      </div>
       <h1 className="sr-only">{t("loadError")}</h1>
       <ErrorState error={error} onRetry={onRetry} />
     </div>
