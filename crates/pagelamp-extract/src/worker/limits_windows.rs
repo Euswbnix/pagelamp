@@ -114,12 +114,10 @@ impl Job {
                 std::ptr::null_mut(),
             )
         } != 0;
-        ok.then(|| {
-            (
-                info.PeakProcessMemoryUsed as u64,
-                info.ProcessMemoryLimit as u64,
-            )
-        })
+        ok.then_some((
+            info.PeakProcessMemoryUsed as u64,
+            info.ProcessMemoryLimit as u64,
+        ))
     }
 
     /// CPU time the job's processes used (user + kernel).
