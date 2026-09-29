@@ -370,7 +370,8 @@ const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
      updated_at";
 const TERM_DATA_COLUMNS: &str = "lms_term_name, lms_term_start, lms_term_end, \
      lms_course_start, lms_course_end, lms_time_zone, lms_concluded, lms_workflow_state, \
-     lms_access_restricted, keep_current_until, removal_snoozed_until";
+     lms_access_restricted, keep_current_until, removal_snoozed_until, term_start, term_end, \
+     user_term_start, user_term_end";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, text_error_kind, \
@@ -2054,6 +2055,10 @@ fn term_data_from_row(row: &Row<'_>) -> rusqlite::Result<CourseTermData> {
         },
         keep_current_until: get_opt_value(row, "keep_current_until")?,
         removal_snoozed_until: get_opt_value(row, "removal_snoozed_until")?,
+        synced_term_start: get_opt_value(row, "term_start")?,
+        synced_term_end: get_opt_value(row, "term_end")?,
+        user_term_start: get_opt_value(row, "user_term_start")?,
+        user_term_end: get_opt_value(row, "user_term_end")?,
     })
 }
 

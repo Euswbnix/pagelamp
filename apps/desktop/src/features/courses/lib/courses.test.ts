@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { calendarFields, lifecycle } from "@/api/mock/calendar";
 import type { CourseSummary } from "@/api/types";
 import { courseLabelFor, sortCourses, sourceErrors } from "./courses";
 
@@ -24,7 +25,9 @@ function summary(id: string, code: string | null, hidden = false): CourseSummary
       current_module_ids: [],
       evidence: [],
       outside_term: false,
+      ...calendarFields({ phase: "unknown" }),
     },
+    lifecycle: lifecycle({ state: "current" }),
     ai_materials: "readable",
     counts: { indexed_materials: 0, materials: 0, modules: 0, upcoming_deadlines: 0 },
     source_label: "Course folder",

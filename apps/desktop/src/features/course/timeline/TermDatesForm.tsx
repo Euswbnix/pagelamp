@@ -1,39 +1,62 @@
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, type Ref, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { toApiError } from "@/api/errors";
 import { useSetCourseTerm } from "@/api/queries";
-import type { Course } from "@/api/types";
+import type { Course, CourseTimeline } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
-/** "Wrong week? Set this course's term dates": start/end override, saved per course. */
-export function TermDatesForm({ course }: { course: Course }) {
-  const { t } = useTranslation("course");
+/**
+ * "Course dates": the first and last day of classes, saved per course (calendar design §7.10;
+ * alpha.1 form). Prefilled from the dates the resolver uses now — never from a Canvas term it
+ * set aside. Only the fields the student changes are saved: an untouched field keeps the
+ * student's own earlier date (or none), so the prefill never becomes an override by itself.
+ * The last day of classes is an end-only anchor: the exam period follows it.
+ */
+export function TermDatesForm({
+  course,
+  timeline,
+  startRef,
+}: {
+  course: Course;
+  timeline: CourseTimeline;
+  /** The first date field, for "Edit dates" in the check-dates prompt. */
+  startRef?: Ref<HTMLInputElement>;
+}) {
+  const { t } = useTranslation("calendar");
   const { t: tc } = useTranslation();
-  const ids = { heading: useId(), start: useId(), end: useId(), error: useId() };
-  const savedStart = course.term_start ?? "";
-  const savedEnd = course.term_end ?? "";
-  const [start, setStart] = useState(savedStart);
-  const [end, setEnd] = useState(savedEnd);
+  const ids = { heading: useId(), start: useId(), end: useId(), endHint: useId(), error: useId() };
+  const { term } = timeline;
+  const own = { start: term.student_start ?? null, end: term.student_end ?? null };
+  const initial = {
+    start: own.start ?? term.teaching[0]?.first_class ?? term.week_one_monday ?? "",
+    end: own.end ?? term.teaching.at(-1)?.last_class ?? "",
+  };
+  const prefilled = (!own.start && !!initial.start) || (!own.end && !!initial.end);
+  const [start, setStart] = useState(initial.start);
+  const [end, setEnd] = useState(initial.end);
   const mutation = useSetCourseTerm();
   const saveRef = useRef<HTMLButtonElement>(null);
 
-  // When the saved dates change (after saving or clearing), start again from them. This is
-  // done here instead of re-keying the form, so focus stays in the date field after Enter.
-  const [shown, setShown] = useState({ start: savedStart, end: savedEnd });
-  if (shown.start !== savedStart || shown.end !== savedEnd) {
-    setShown({ start: savedStart, end: savedEnd });
-    setStart(savedStart);
-    setEnd(savedEnd);
+  // When the dates in force change (after saving or clearing), start again from them. Done
+  // here instead of re-keying the form, so focus stays in the date field after Enter.
+  const [shown, setShown] = useState(initial);
+  if (shown.start !== initial.start || shown.end !== initial.end) {
+    setShown(initial);
+    setStart(initial.start);
+    setEnd(initial.end);
   }
 
-  const changed = start !== savedStart || end !== savedEnd;
-  // Only a student's own override can be undone; the backend then falls back to the dates
-  // the course source reported (term_source "synced"), or to none.
-  const overridden = course.term_source === "user";
-  const errorKind = mutation.error ? toApiError(mutation.error).kind : null;
+  const changed = start !== initial.start || end !== initial.end;
+  // Checked here too: with only one field saved, the facade can't see the other one on screen.
+  const [endsBeforeStart, setEndsBeforeStart] = useState(false);
+  const errorKind = endsBeforeStart
+    ? "invalid"
+    : mutation.error
+      ? toApiError(mutation.error).kind
+      : null;
   const invalid = errorKind === "invalid";
 
   // mutateAsync + try/catch: the toast fires once the refreshed course is back.
@@ -49,39 +72,55 @@ export function TermDatesForm({ course }: { course: Course }) {
   // Editing a date clears the previous error message.
   function edit(set: (value: string) => void, value: string) {
     if (mutation.isError) mutation.reset();
+    setEndsBeforeStart(false);
     set(value);
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!changed || mutation.isPending) return;
-    void save({ start: start || null, end: end || null }, t("term.saved"));
+    if (start && end && end < start) {
+      setEndsBeforeStart(true);
+      return;
+    }
+    void save(
+      {
+        start: start !== initial.start ? start || null : own.start,
+        end: end !== initial.end ? end || null : own.end,
+      },
+      t("form.saved"),
+    );
   }
+
+  const describedBy = (extra?: string) =>
+    [extra, errorKind ? ids.error : null].filter(Boolean).join(" ") || undefined;
 
   return (
     <form onSubmit={submit} aria-labelledby={ids.heading} noValidate className="space-y-4">
       <div className="space-y-1">
         <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
-          {t("term.title")}
+          {t("form.title")}
         </h2>
-        <p className="text-sm text-muted-foreground">{t("term.description")}</p>
-        <p className="text-sm text-muted-foreground">{t("term.breaksNote")}</p>
+        <p className="text-sm text-muted-foreground">{t("form.description")}</p>
+        {prefilled ? <p className="text-sm text-muted-foreground">{t("form.prefilled")}</p> : null}
+        <p className="text-sm text-muted-foreground">{t("form.breaksNote")}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field data-invalid={invalid || undefined}>
-          <FieldLabel htmlFor={ids.start}>{t("term.start")}</FieldLabel>
+          <FieldLabel htmlFor={ids.start}>{t("form.start")}</FieldLabel>
           <Input
+            ref={startRef}
             id={ids.start}
             type="date"
             value={start}
             onChange={(event) => edit(setStart, event.target.value)}
             aria-invalid={invalid || undefined}
-            aria-describedby={errorKind ? ids.error : undefined}
+            aria-describedby={describedBy()}
           />
         </Field>
         <Field data-invalid={invalid || undefined}>
-          <FieldLabel htmlFor={ids.end}>{t("term.end")}</FieldLabel>
+          <FieldLabel htmlFor={ids.end}>{t("form.end")}</FieldLabel>
           <Input
             id={ids.end}
             type="date"
@@ -89,14 +128,15 @@ export function TermDatesForm({ course }: { course: Course }) {
             min={start || undefined}
             onChange={(event) => edit(setEnd, event.target.value)}
             aria-invalid={invalid || undefined}
-            aria-describedby={errorKind ? ids.error : undefined}
+            aria-describedby={describedBy(ids.endHint)}
           />
+          <FieldDescription id={ids.endHint}>{t("form.endHint")}</FieldDescription>
         </Field>
       </div>
 
       {errorKind ? (
         <FieldError id={ids.error}>
-          {invalid ? t("term.invalid") : tc(`errors.${errorKind}`)}
+          {invalid ? t("form.invalid") : tc(`errors.${errorKind}`)}
         </FieldError>
       ) : null}
 
@@ -107,20 +147,20 @@ export function TermDatesForm({ course }: { course: Course }) {
           aria-disabled={!changed || mutation.isPending}
           className="aria-disabled:opacity-50"
         >
-          {mutation.isPending ? tc("actions.saving") : t("term.save")}
+          {mutation.isPending ? tc("actions.saving") : t("form.save")}
         </Button>
-        {overridden ? (
+        {own.start || own.end ? (
           <Button
             type="button"
             variant="outline"
             disabled={mutation.isPending}
             onClick={() => {
-              // The button disappears once the override is gone; focus moves to Save.
+              // The button disappears once the student's dates are gone; focus moves to Save.
               saveRef.current?.focus();
-              void save({ start: null, end: null }, t("term.usedSynced"));
+              void save({ start: null, end: null }, t("form.cleared"));
             }}
           >
-            {t("term.useSynced")}
+            {t("form.clear")}
           </Button>
         ) : null}
       </div>

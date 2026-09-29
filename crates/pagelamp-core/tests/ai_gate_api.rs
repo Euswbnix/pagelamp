@@ -23,6 +23,7 @@ fn at() -> AsOf {
     AsOf {
         now: Utc.with_ymd_and_hms(2026, 9, 24, 12, 0, 0).unwrap(),
         today: NaiveDate::from_ymd_opt(2026, 9, 24).unwrap(),
+        tz: None,
     }
 }
 

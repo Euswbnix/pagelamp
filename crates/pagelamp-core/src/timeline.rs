@@ -1,23 +1,24 @@
 //! Course-timeline inference: "which teaching week is this course in, and why".
 //!
 //! Pure functions only (no DB, no clock) so they are easy to unit-test; callers pass `today`.
+//! First `term::resolve_term` decides which dates count weeks and the phase (teaching, break,
+//! exam period, ended, not started, unknown; docs/design/v0.3-course-calendar.md §6); then
+//! the signals below name the week.
 //!
-//! Signals, strongest first:
+//! Signals:
 //! 1. Modules with `unlock_at <= today` → the most recently unlocked module(s) are current.
 //!    If that module has a `week_hint`, that is the week (High confidence).
-//! 2. Term start known → week = floor((today - term_start) / 7) + 1 (Medium; High when it
-//!    agrees with signal 1). Reading week / breaks are not modelled in v0.1 — say so in evidence.
+//! 2. The resolved dates → the teaching week, Monday-aligned (the anchor's confidence; only
+//!    while teaching).
 //! 3. Materials with `week_hint` and `published_at <= today` → max week_hint among materials
 //!    published in the last 10 days (Medium).
 //! 4. Otherwise the latest-published material's week_hint (Low), else `current_week = None`.
 //!
 //! Evidence strings must name the concrete module/material/date used.
 //!
-//! Details and deliberate simplifications (v0.1):
-//! - **Dates.** An instant (`Timestamp`) becomes a calendar date via `.date_naive()` of the
-//!   *UTC* instant, not the student's local time zone. A module unlocking at 21:00 in Toronto
-//!   (01:00 UTC the next day) therefore counts as unlocked on the next day. That is good enough
-//!   for "which week" and keeps these functions free of time-zone settings.
+//! Details:
+//! - **Dates.** An instant (`Timestamp`) becomes a calendar date in the course's time zone
+//!   (`dates::course_date`; UTC when the course has none), the same in every signal.
 //! - **Signal 1** takes the latest unlock *date* on or before `today`; every module unlocked
 //!   on that date is "most recently unlocked". Modules without `unlock_at` are ignored, so when
 //!   no module has one (common on Canvas) signal 1 is simply absent. The group names a week
@@ -28,12 +29,9 @@
 //!   more days old. Weekly modules unlock at most 13 days apart, even around a one-week
 //!   break, so an older "latest unlock" means the later modules have no unlock date (or the
 //!   dates were copied from an earlier year) and the most recent unlock is no longer current.
-//! - **Signal 2** needs `today >= term_start`. It keeps counting after `term_end`;
-//!   `outside_term` and the evidence tell the reader. A calendar week above `MAX_WEEK` is
-//!   longer than any term, so the term start must be out of date (e.g. last year's date): the
-//!   signal is dropped, and when `term_end` is unknown that also counts as outside the term.
-//!   "High when it agrees with signal 1" needs no extra code: whenever signal 1 names a week
-//!   it wins with High confidence anyway.
+//! - **Signal 2** exists only in the Teaching phase: before week 1, in the exam period and
+//!   after the end there is no teaching week. Dates that aren't plausible (an enrollment-window
+//!   term, a start long before any activity) never count weeks (`term`).
 //! - **Signal 3** looks at the 10 calendar days ending today (today and the 9 days before).
 //!   Signal 4 is consulted only when no week-numbered material was published in that window.
 //!   Both ignore materials without a `week_hint` or `published_at`, and materials published
@@ -41,9 +39,13 @@
 //!   4: the latest publish date) name more than `MAX_WEEKS_PER_PUBLISH_BATCH` (4) different
 //!   weeks, they were published in bulk (a whole term uploaded at once, or a first folder sync
 //!   where every file gets the same date): that is noted and the signal names no week.
-//! - **Combining.** The strongest signal that names a week decides `current_week` and
-//!   `confidence`. Every weaker signal is still listed in the evidence, marked as agreeing or
-//!   disagreeing, so a student can see (and correct) a wrong inference.
+//! - **Combining** (design §6.7). While teaching, the strongest signal decides: the student's
+//!   own dates (High) first; otherwise module unlocks, then the dates, then materials. A
+//!   Medium week from the dates becomes High when recent materials agree (same week or one
+//!   ahead), unless the dates were fitted from those same materials. In the Unknown phase
+//!   only signals 1, 3 and 4 name a week; in the other phases the signals are only noted.
+//!   Every weaker signal is listed in the evidence, marked as agreeing or disagreeing, so a
+//!   student can see (and correct) a wrong inference.
 //! - **Titles in evidence** have control characters and line breaks replaced by spaces and are
 //!   cut after `MAX_TITLE_CHARS` (80) characters, so one odd or hostile title cannot forge
 //!   extra evidence lines or flood the output. They are still instructor-written text: callers
@@ -55,7 +57,13 @@ use std::sync::LazyLock;
 use chrono::NaiveDate;
 use regex::Regex;
 
-use crate::model::{Confidence, Course, CourseTimeline, Event, Material, Module, Timestamp};
+use crate::dates::{Tz, course_date, days_between};
+use crate::model::{
+    CalendarStatus, Confidence, CoursePhase, CourseTimeline, EvidenceCode, EvidenceItem,
+    EvidenceSignal, Material, Module, TermAnchorSource, TermResolution,
+};
+use crate::term::phase::{EXAM_PERIOD_DAYS, PhaseState, phase_on, teaching_week_on};
+use crate::term::{ResolvedTerm, TermInput, resolve_term};
 
 /// Largest week number `parse_week_hint` accepts (and the calendar may produce). A term has
 /// ~12–15 teaching weeks and a year-long course ~26; anything bigger is almost certainly a
@@ -183,84 +191,375 @@ pub fn week_of(term_start: NaiveDate, date: NaiveDate) -> Option<u32> {
     u32::try_from(days / 7 + 1).ok()
 }
 
-/// Infer where `course` is on `today`, using the four signals described in the module docs.
-///
-/// `modules` and `materials` must belong to `course`. `_events` is accepted so callers do not
-/// have to change when event-based signals arrive, but v0.1 ignores it: deadline dates say
-/// little about which teaching week a course is in.
-pub fn infer_timeline(
-    course: &Course,
-    modules: &[Module],
-    materials: &[Material],
-    _events: &[Event],
-    today: NaiveDate,
-) -> CourseTimeline {
-    // The signal functions add a line here when they have data that cannot name a week
-    // (batch release, old unlock, out-of-date term start, bulk publish).
-    let mut evidence = Vec::new();
+/// Where the course is on `input.today`: resolve its dates (`term::resolve_term`), then
+/// combine the week signals described in the module docs.
+pub fn course_timeline(input: &TermInput<'_>) -> CourseTimeline {
+    infer_timeline(input, &resolve_term(input))
+}
 
-    // Collect the signals that name a week, strongest first.
-    let unlock = latest_unlock(modules, today);
-    let mut signals = Vec::new();
-    if let Some(unlock) = &unlock {
-        signals.extend(unlock_signal(unlock, today, &mut evidence));
+/// Combine the resolved dates with the module-unlock and material signals (module docs).
+/// `input.modules` / `materials` / `events` must belong to `input.course`.
+pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseTimeline {
+    let today = input.today;
+    let tz = resolved.tz;
+    let term = &resolved.resolution;
+    let state = phase_on(
+        term,
+        term.anchor_confidence,
+        today,
+        resolved.full_year,
+        resolved.end_clipped,
+        resolved
+            .student_last_class
+            .filter(|_| term.teaching.is_empty()),
+    );
+
+    // Lines for `evidence` and `evidence_items`, in order: the dates, then the signals.
+    let mut lines = Lines::default();
+    for item in &resolved.evidence {
+        lines.item(item.clone());
     }
-    let calendar = calendar_signal(course, today, &mut evidence);
-    let uses_calendar = calendar.is_some();
-    signals.extend(calendar);
-    signals.extend(material_signal(materials, today, &mut evidence));
+    for english in &resolved.english {
+        lines.english(english.clone());
+    }
 
-    // The strongest signal decides; the weaker ones are listed as agreeing or disagreeing.
-    let (current_week, confidence) = match signals.split_first() {
-        Some((chosen, weaker)) => {
-            evidence.push(chosen.evidence.clone());
-            evidence.extend(weaker.iter().map(|signal| compare_note(signal, chosen)));
-            (Some(chosen.week), chosen.confidence)
+    // Signals that name a week (the signal functions add a line when they have data that
+    // cannot name a week: batch release, old unlock, bulk publish).
+    let unlock = latest_unlock(input.modules, today, tz);
+    let unlock_signal = unlock
+        .as_ref()
+        .and_then(|unlock| unlock_signal(unlock, today, &mut lines));
+    let calendar = match (state.phase, state.week) {
+        (CoursePhase::Teaching, Some(week)) => Some(calendar_signal(term, week, today)),
+        _ => None,
+    };
+    let material = material_signal(input.materials, today, tz, &mut lines);
+
+    let student = term.anchor == TermAnchorSource::StudentConfirmed;
+    let (current_week, confidence) = match state.phase {
+        CoursePhase::Teaching => {
+            let signals: Vec<&WeekSignal> = if student {
+                [calendar.as_ref(), unlock_signal.as_ref(), material.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            } else {
+                [unlock_signal.as_ref(), calendar.as_ref(), material.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            };
+            let (week, mut confidence, chosen) = choose(&signals, &mut lines);
+            if let Some(calendar) = calendar
+                .as_ref()
+                .filter(|_| chosen == Some(EvidenceSignal::Dates))
+            {
+                confidence =
+                    calendar_confidence(input, resolved, calendar, material.as_ref(), &mut lines);
+            }
+            (week, confidence)
         }
-        None => (None, Confidence::Low),
+        CoursePhase::Unknown => {
+            let signals: Vec<&WeekSignal> = [unlock_signal.as_ref(), material.as_ref()]
+                .into_iter()
+                .flatten()
+                .collect();
+            let (week, confidence, _) = choose(&signals, &mut lines);
+            (week, confidence)
+        }
+        // Outside teaching, week signals only add notes; they never change the phase.
+        CoursePhase::NotStarted
+        | CoursePhase::Break
+        | CoursePhase::ExamPeriod
+        | CoursePhase::Ended => {
+            for signal in [unlock_signal.as_ref(), material.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                lines.push(signal.evidence.clone(), signal.item.clone());
+            }
+            (
+                state.week,
+                if state.week.is_some() {
+                    state.confidence
+                } else {
+                    Confidence::Low
+                },
+            )
+        }
     };
 
-    if uses_calendar {
-        evidence.push(READING_WEEK_NOTE.to_string());
+    // Breaks unknown: dates count every 7 days. (A fit re-anchors on the latest weeks, so it
+    // follows a break by itself within two weeks.)
+    if calendar.is_some()
+        && term.breaks.is_empty()
+        && resolved.calendar == CalendarStatus::NoCalendar
+        && term.anchor != TermAnchorSource::PublishedWeekLabels
+    {
+        lines.push(
+            READING_WEEK_NOTE.to_string(),
+            EvidenceItem::new(EvidenceCode::BreaksUnknown),
+        );
     }
-    let outside_note = outside_term_note(course, today);
-    let outside_term = outside_note.is_some();
-    evidence.extend(outside_note);
-    if current_week.is_none() {
-        evidence.push(NO_SIGNAL_NOTE.to_string());
+    phase_lines(term, &state, today, &mut lines);
+    if current_week.is_none() && state.phase == CoursePhase::Unknown {
+        lines.push(
+            NO_SIGNAL_NOTE.to_string(),
+            EvidenceItem::new(EvidenceCode::NoWeekSignal),
+        );
     }
 
     let current_module_ids = match &unlock {
-        // Signal 1 found recently unlocked module(s) → those are current. An old unlock, or a
-        // batch release spanning several weeks, says nothing about "current", so it is skipped.
-        Some(unlock) if unlock.is_recent(today) && unlock.weeks().len() <= 1 => {
+        // Signal 1 found recently unlocked module(s) → those are current, while teaching. An
+        // old unlock, or a batch release spanning several weeks, says nothing about "current".
+        Some(unlock)
+            if unlock.is_recent(today)
+                && unlock.weeks().len() <= 1
+                && matches!(state.phase, CoursePhase::Teaching | CoursePhase::Unknown) =>
+        {
             unlock.modules.iter().map(|m| m.id.clone()).collect()
         }
-        _ => modules
+        _ => input
+            .modules
             .iter()
             .filter(|m| current_week.is_some() && m.week_hint == current_week)
             .map(|m| m.id.clone())
             .collect(),
     };
 
+    let default_week = match state.phase {
+        CoursePhase::Teaching | CoursePhase::Unknown => current_week,
+        CoursePhase::Break => state.week.or(state.break_after_week),
+        CoursePhase::NotStarted | CoursePhase::ExamPeriod | CoursePhase::Ended => None,
+    };
     CourseTimeline {
         as_of: today,
         current_week,
         confidence,
-        evidence,
+        evidence: lines.english,
         current_module_ids,
-        outside_term,
+        outside_term: matches!(state.phase, CoursePhase::NotStarted | CoursePhase::Ended),
+        phase: state.phase,
+        phase_confidence: state.confidence,
+        starts_on: term.teaching.first().map(|s| {
+            s.first_class
+                .max(crate::dates::week_one_monday(s.first_class))
+        }),
+        default_week,
+        break_after_week: state.break_after_week,
+        last_teaching_week: match state.phase {
+            CoursePhase::ExamPeriod => state.last_teaching_week,
+            _ => None,
+        },
+        current_break_kind: state.break_kind,
+        notes_week: resolved.notes_week,
+        term: term.clone(),
+        calendar: resolved.calendar,
+        evidence_items: lines.items,
     }
 }
 
-/// A signal that names a week, with the sentence that justifies it.
+/// High first.
+fn confidence_rank(confidence: Confidence) -> u8 {
+    match confidence {
+        Confidence::High => 0,
+        Confidence::Medium => 1,
+        Confidence::Low => 2,
+    }
+}
+
+/// `evidence` (English) and `evidence_items`, built side by side.
+#[derive(Default)]
+struct Lines {
+    english: Vec<String>,
+    items: Vec<EvidenceItem>,
+}
+
+impl Lines {
+    fn push(&mut self, english: String, item: EvidenceItem) {
+        self.english.push(english);
+        self.items.push(item);
+    }
+
+    fn english(&mut self, english: String) {
+        self.english.push(english);
+    }
+
+    fn item(&mut self, item: EvidenceItem) {
+        self.items.push(item);
+    }
+}
+
+/// The strongest signal decides; the weaker ones are listed as agreeing or disagreeing.
+/// `signals` come in priority order; a more confident signal still goes first (stable), so
+/// a Low week fitted from two materials doesn't outrank the Medium signal of those materials.
+fn choose(
+    signals: &[&WeekSignal],
+    lines: &mut Lines,
+) -> (Option<u32>, Confidence, Option<EvidenceSignal>) {
+    let mut signals = signals.to_vec();
+    signals.sort_by_key(|signal| confidence_rank(signal.confidence));
+    match signals.split_first() {
+        Some((chosen, weaker)) => {
+            lines.push(chosen.evidence.clone(), chosen.item.clone());
+            for signal in weaker {
+                let (english, item) = compare_note(signal, chosen);
+                lines.push(english, item);
+            }
+            (Some(chosen.week), chosen.confidence, Some(chosen.kind))
+        }
+        None => (None, Confidence::Low, None),
+    }
+}
+
+/// Confidence of a week that the course dates decided (design §6.7 rules 1 and 3).
+fn calendar_confidence(
+    input: &TermInput<'_>,
+    resolved: &ResolvedTerm,
+    calendar: &WeekSignal,
+    material: Option<&WeekSignal>,
+    lines: &mut Lines,
+) -> Confidence {
+    let term = &resolved.resolution;
+    if let Some(notes) = resolved.notes_week
+        && notes == calendar.week + 1
+    {
+        lines.item(EvidenceItem::new(EvidenceCode::NotesAhead).number("week", notes));
+    }
+    if term.anchor == TermAnchorSource::StudentConfirmed {
+        // Never above the anchor's own confidence (a disputed accepted calendar is Medium).
+        let confidence = student_confidence(input, resolved, calendar, lines);
+        return if confidence_rank(confidence) < confidence_rank(calendar.confidence) {
+            calendar.confidence
+        } else {
+            confidence
+        };
+    }
+    // Rule 3: an independent signal that agrees (same week or one ahead) upgrades Medium.
+    // Materials are not independent of a fit made from them.
+    let agrees = material.is_some_and(|m| m.week == calendar.week || m.week == calendar.week + 1);
+    if calendar.confidence == Confidence::Medium
+        && agrees
+        && term.anchor != TermAnchorSource::PublishedWeekLabels
+    {
+        Confidence::High
+    } else {
+        calendar.confidence
+    }
+}
+
+/// Rule 1: the student's dates are High, unless at least 2 recent (non-bulk) observations are
+/// 2 or more weeks off. Materials consistently `k` weeks off (at least 3) are a numbering
+/// difference, not a disagreement.
+fn student_confidence(
+    input: &TermInput<'_>,
+    resolved: &ResolvedTerm,
+    calendar: &WeekSignal,
+    lines: &mut Lines,
+) -> Confidence {
+    let term = &resolved.resolution;
+    let offsets: Vec<(NaiveDate, i64)> = resolved
+        .observations
+        .iter()
+        .filter_map(|o| {
+            let expected = teaching_week_on(term, o.day)?;
+            Some((o.day, i64::from(o.week) - i64::from(expected)))
+        })
+        .collect();
+    if offsets.len() >= 3
+        && let Some(&(_, k)) = offsets.first()
+        && k != 0
+        && offsets.iter().all(|(_, offset)| *offset == k)
+    {
+        lines.item(EvidenceItem::new(EvidenceCode::NumberingOffset).number("offset", k));
+        return Confidence::High;
+    }
+    let recent_off = offsets
+        .iter()
+        .filter(|(day, _)| days_between(*day, input.today) < 14)
+        .filter(|(_, offset)| offset.abs() >= 2)
+        .count();
+    if recent_off >= 2 {
+        let item = EvidenceItem::new(EvidenceCode::CalendarDisagreesWithNotes)
+            .number("week", calendar.week)
+            .number("notes_week", resolved.notes_week.unwrap_or_default());
+        lines.push(item.english(), item);
+        Confidence::Medium
+    } else {
+        Confidence::High
+    }
+}
+
+/// Lines about the phase (outside teaching).
+fn phase_lines(term: &TermResolution, state: &PhaseState, today: NaiveDate, lines: &mut Lines) {
+    match state.phase {
+        CoursePhase::NotStarted => {
+            if let Some(start) = state.starts_on {
+                lines.push(
+                    format!("outside term: today ({today}) is before the term starts ({start})"),
+                    EvidenceItem::new(EvidenceCode::StartsOn).date("date", start),
+                );
+            }
+        }
+        CoursePhase::ExamPeriod => {
+            let item = EvidenceItem::new(EvidenceCode::ExamPeriod)
+                .opt_date("start", state.since)
+                .opt_date("end", state.until);
+            lines.push(item.english(), item);
+            if state.estimated {
+                let item = EvidenceItem::new(EvidenceCode::ExamPeriodEstimated)
+                    .number("days", EXAM_PERIOD_DAYS);
+                lines.push(item.english(), item);
+            }
+        }
+        CoursePhase::Ended => {
+            let last = term
+                .teaching
+                .last()
+                .and_then(|s| s.last_class)
+                .or(state.since);
+            if let Some(last) = last {
+                lines.push(
+                    format!("outside term: today ({today}) is after the term ended ({last})"),
+                    EvidenceItem::new(EvidenceCode::EndedOn).opt_date("date", state.since),
+                );
+            }
+        }
+        CoursePhase::Unknown => {
+            if let Some((start, weeks)) = state.start_too_old {
+                let item = EvidenceItem::new(EvidenceCode::StartTooOld)
+                    .date("start", start)
+                    .number("weeks", weeks);
+                lines.push(item.english(), item);
+            }
+        }
+        CoursePhase::Break => {
+            if let Some(kind) = state.break_kind {
+                lines.item(EvidenceItem::new(EvidenceCode::InBreak).kind(kind));
+            }
+        }
+        CoursePhase::Teaching => {
+            // A holiday shorter than a break week: still teaching, but no class today.
+            if let Some(holiday) = term.breaks.iter().find(|b| b.span.contains(today)) {
+                let item = EvidenceItem::new(EvidenceCode::NoClassToday).kind(holiday.kind);
+                lines.push(item.english(), item);
+            }
+        }
+    }
+}
+
+/// A signal that names a week, with the sentence and the item that justify it.
 struct WeekSignal {
     week: u32,
     confidence: Confidence,
+    kind: EvidenceSignal,
     /// Short name used in agree/disagree notes, e.g. "module unlock dates".
     source: &'static str,
+    /// Weaker signals within this many weeks agree with it.
+    tolerance: u32,
     /// Human-readable reason naming the concrete module/material and date.
     evidence: String,
+    item: EvidenceItem,
 }
 
 /// Raw data for signal 1: the module(s) unlocked most recently on or before `today`.
@@ -285,6 +584,10 @@ impl LatestUnlock<'_> {
     fn is_recent(&self, today: NaiveDate) -> bool {
         self.age_days(today) < RECENT_UNLOCK_DAYS
     }
+
+    fn first_name(&self) -> &str {
+        self.modules.first().map_or("", |m| m.name.as_str())
+    }
 }
 
 /// The distinct week numbers in `weeks`, ascending.
@@ -295,14 +598,9 @@ fn distinct_weeks(weeks: impl Iterator<Item = u32>) -> Vec<u32> {
     weeks
 }
 
-/// Calendar date of an instant, taken in UTC (see the module docs for why).
-fn utc_date(instant: Timestamp) -> NaiveDate {
-    instant.date_naive()
-}
-
 /// Signal 1 input: None when no module has an unlock date on or before `today`.
-fn latest_unlock(modules: &[Module], today: NaiveDate) -> Option<LatestUnlock<'_>> {
-    let unlock_date = |m: &Module| m.unlock_at.map(utc_date);
+fn latest_unlock(modules: &[Module], today: NaiveDate, tz: Option<Tz>) -> Option<LatestUnlock<'_>> {
+    let unlock_date = |m: &Module| m.unlock_at.map(|at| course_date(at, tz));
     let date = modules
         .iter()
         .filter_map(unlock_date)
@@ -316,38 +614,67 @@ fn latest_unlock(modules: &[Module], today: NaiveDate) -> Option<LatestUnlock<'_
 }
 
 /// Signal 1: a week only when the unlock is recent and its modules name exactly one week.
-/// Otherwise the reason is pushed to `evidence` and there is no signal.
+/// Otherwise the reason is added to `lines` and there is no signal.
 fn unlock_signal(
     unlock: &LatestUnlock<'_>,
     today: NaiveDate,
-    evidence: &mut Vec<String>,
+    lines: &mut Lines,
 ) -> Option<WeekSignal> {
     let modules = describe_modules(&unlock.modules);
     let date = unlock.date;
-    let note = match unlock.weeks()[..] {
+    let count = i64::try_from(unlock.modules.len()).unwrap_or(i64::MAX);
+    let (english, item) = match unlock.weeks()[..] {
         // Checked first: a release of several weeks at once is the most specific explanation.
-        [first, .., last] => format!(
-            "{modules} all unlocked {date} (weeks {first}-{last}), so unlock dates do not pin \
-             down the current week"
+        [first, .., last] => (
+            format!(
+                "{modules} all unlocked {date} (weeks {first}-{last}), so unlock dates do not \
+                 pin down the current week"
+            ),
+            EvidenceItem::new(EvidenceCode::ModulesReleasedTogether)
+                .text("title", unlock.first_name())
+                .number("count", count)
+                .date("date", date)
+                .number("from_week", first)
+                .number("to_week", last),
         ),
-        _ if !unlock.is_recent(today) => format!(
-            "{modules} unlocked {date} (most recent unlock), {} days ago: too long ago to show \
-             the current week",
-            unlock.age_days(today)
+        _ if !unlock.is_recent(today) => (
+            format!(
+                "{modules} unlocked {date} (most recent unlock), {} days ago: too long ago to \
+                 show the current week",
+                unlock.age_days(today)
+            ),
+            EvidenceItem::new(EvidenceCode::UnlockTooOld)
+                .text("title", unlock.first_name())
+                .number("count", count)
+                .date("date", date)
+                .number("days", unlock.age_days(today)),
         ),
         [week] => {
             return Some(WeekSignal {
                 week,
                 confidence: Confidence::High,
+                kind: EvidenceSignal::ModuleUnlock,
                 source: "module unlock dates",
+
+                tolerance: 0,
                 evidence: format!("{modules} unlocked {date} (most recent unlock), so week {week}"),
+                item: EvidenceItem::new(EvidenceCode::WeekFromModuleUnlock)
+                    .number("week", week)
+                    .text("title", unlock.first_name())
+                    .date("date", date),
             });
         }
-        [] => format!(
-            "{modules} unlocked {date} (most recent unlock) without a week number in the name"
+        [] => (
+            format!(
+                "{modules} unlocked {date} (most recent unlock) without a week number in the name"
+            ),
+            EvidenceItem::new(EvidenceCode::UnlockWithoutWeek)
+                .text("title", unlock.first_name())
+                .number("count", count)
+                .date("date", date),
         ),
     };
-    evidence.push(note);
+    lines.push(english, item);
     None
 }
 
@@ -403,29 +730,35 @@ fn quote_title(title: &str) -> String {
     format!("'{quoted}'")
 }
 
-/// Signal 2: calendar week counted from the term start. A week above `MAX_WEEK` is longer
-/// than any term, so the term start must be out of date (e.g. last year's date left in a
-/// folder source's config): the reason is pushed to `evidence` and there is no signal.
-fn calendar_signal(
-    course: &Course,
-    today: NaiveDate,
-    evidence: &mut Vec<String>,
-) -> Option<WeekSignal> {
-    let start = course.term_start?;
-    let week = week_of(start, today)?;
-    if week > MAX_WEEK {
-        evidence.push(format!(
-            "term started {start}, so {today} would be calendar week {week}: longer than any \
-             term, so the term start looks out of date and the calendar is not used"
-        ));
-        return None;
-    }
-    Some(WeekSignal {
+/// Signal 2: the teaching week counted from the resolved dates (only while teaching).
+fn calendar_signal(term: &TermResolution, week: u32, today: NaiveDate) -> WeekSignal {
+    let first_class = term.teaching.first().map(|s| s.first_class);
+    let monday = term.week_one_monday.or(first_class).unwrap_or(today);
+    let evidence = match (term.anchor, first_class) {
+        (TermAnchorSource::PublishedWeekLabels, _) | (_, None) => format!(
+            "week 1 is the week of {monday} (fitted from the week numbers of posted materials), \
+             so {today} is calendar week {week}"
+        ),
+        (_, Some(start)) => format!("term started {start}, so {today} is calendar week {week}"),
+    };
+    // A fit is made from the materials the weaker signals look at: they agree within a week
+    // (last week's slides on a Monday are its own input, not a disagreement).
+    let fitted = term.anchor == TermAnchorSource::PublishedWeekLabels;
+    WeekSignal {
         week,
-        confidence: Confidence::Medium,
-        source: "the term calendar",
-        evidence: format!("term started {start}, so {today} is calendar week {week}"),
-    })
+        confidence: term.anchor_confidence,
+        kind: EvidenceSignal::Dates,
+        source: if fitted {
+            "the week numbers of posted materials"
+        } else {
+            "the term calendar"
+        },
+        tolerance: u32::from(fitted),
+        evidence,
+        item: EvidenceItem::new(EvidenceCode::WeekFromDates)
+            .number("week", week)
+            .date("monday", monday),
+    }
 }
 
 /// A material usable by signals 3 and 4, with its publish date and week.
@@ -439,10 +772,11 @@ struct DatedMaterial<'a> {
 fn dated_week_materials(
     materials: &[Material],
     today: NaiveDate,
+    tz: Option<Tz>,
 ) -> impl Iterator<Item = DatedMaterial<'_>> {
     materials.iter().filter_map(move |material| {
         let week = material.week_hint?;
-        let date = utc_date(material.published_at?);
+        let date = course_date(material.published_at?, tz);
         (date <= today).then_some(DatedMaterial {
             material,
             date,
@@ -457,30 +791,28 @@ fn dated_week_materials(
 fn material_signal(
     materials: &[Material],
     today: NaiveDate,
-    evidence: &mut Vec<String>,
+    tz: Option<Tz>,
+    lines: &mut Lines,
 ) -> Option<WeekSignal> {
-    let recent: Vec<DatedMaterial<'_>> = dated_week_materials(materials, today)
+    let recent: Vec<DatedMaterial<'_>> = dated_week_materials(materials, today, tz)
         .filter(|m| (today - m.date).num_days() < RECENT_MATERIAL_DAYS)
         .collect();
     if !recent.is_empty() {
-        return recent_material_signal(&recent, evidence);
+        return recent_material_signal(&recent, lines);
     }
-    let latest_date = dated_week_materials(materials, today)
+    let latest_date = dated_week_materials(materials, today, tz)
         .map(|m| m.date)
         .max()?;
-    let latest: Vec<DatedMaterial<'_>> = dated_week_materials(materials, today)
+    let latest: Vec<DatedMaterial<'_>> = dated_week_materials(materials, today, tz)
         .filter(|m| m.date == latest_date)
         .collect();
-    latest_material_signal(&latest, evidence)
+    latest_material_signal(&latest, lines)
 }
 
 /// Signal 3: highest week among the `recent` materials, unless they were published in bulk.
-fn recent_material_signal(
-    recent: &[DatedMaterial<'_>],
-    evidence: &mut Vec<String>,
-) -> Option<WeekSignal> {
-    if let Some(note) = bulk_publish_note(recent) {
-        evidence.push(note);
+fn recent_material_signal(recent: &[DatedMaterial<'_>], lines: &mut Lines) -> Option<WeekSignal> {
+    if let Some((english, item)) = bulk_publish_note(recent) {
+        lines.push(english, item);
         return None;
     }
     let best = recent
@@ -490,7 +822,10 @@ fn recent_material_signal(
     Some(WeekSignal {
         week: best.week,
         confidence: Confidence::Medium,
+        kind: EvidenceSignal::RecentMaterials,
         source: "recent materials",
+
+        tolerance: 0,
         evidence: format!(
             "material {} published {} has the highest week number ({}) among materials \
              published in the last {RECENT_MATERIAL_DAYS} days",
@@ -498,17 +833,19 @@ fn recent_material_signal(
             best.date,
             best.week
         ),
+        item: EvidenceItem::new(EvidenceCode::WeekFromRecentMaterials)
+            .number("week", best.week)
+            .text("title", &best.material.title)
+            .date("date", best.date)
+            .number("days", RECENT_MATERIAL_DAYS),
     })
 }
 
 /// Signal 4: week of the most recently published of the `latest` materials (all published on
 /// the latest publish date), unless they were published in bulk.
-fn latest_material_signal(
-    latest: &[DatedMaterial<'_>],
-    evidence: &mut Vec<String>,
-) -> Option<WeekSignal> {
-    if let Some(note) = bulk_publish_note(latest) {
-        evidence.push(note);
+fn latest_material_signal(latest: &[DatedMaterial<'_>], lines: &mut Lines) -> Option<WeekSignal> {
+    if let Some((english, item)) = bulk_publish_note(latest) {
+        lines.push(english, item);
         return None;
     }
     let newest = latest
@@ -518,7 +855,10 @@ fn latest_material_signal(
     Some(WeekSignal {
         week: newest.week,
         confidence: Confidence::Low,
+        kind: EvidenceSignal::LatestMaterial,
         source: "the latest material",
+
+        tolerance: 0,
         evidence: format!(
             "latest week-numbered material {} was published {} (week {}); nothing \
              week-numbered was published in the last {RECENT_MATERIAL_DAYS} days",
@@ -526,12 +866,17 @@ fn latest_material_signal(
             newest.date,
             newest.week
         ),
+        item: EvidenceItem::new(EvidenceCode::WeekFromLatestMaterial)
+            .number("week", newest.week)
+            .text("title", &newest.material.title)
+            .date("date", newest.date)
+            .number("days", RECENT_MATERIAL_DAYS),
     })
 }
 
 /// Some(note) when `group` names more than `MAX_WEEKS_PER_PUBLISH_BATCH` different weeks, i.e.
 /// it was published in bulk and its publish dates say nothing about the current week.
-fn bulk_publish_note(group: &[DatedMaterial<'_>]) -> Option<String> {
+fn bulk_publish_note(group: &[DatedMaterial<'_>]) -> Option<(String, EvidenceItem)> {
     let weeks = distinct_weeks(group.iter().map(|m| m.week));
     if weeks.len() <= MAX_WEEKS_PER_PUBLISH_BATCH {
         return None;
@@ -545,49 +890,55 @@ fn bulk_publish_note(group: &[DatedMaterial<'_>]) -> Option<String> {
     } else {
         format!("between {first_date} and {last_date}")
     };
-    Some(format!(
+    let english = format!(
         "{} (weeks {first_week}-{last_week}) were published {when}, e.g. by a bulk upload or a \
          first folder sync, so publish dates do not pin down the current week",
         describe_materials(group)
-    ))
-}
-
-/// Evidence line for a weaker signal, saying whether it agrees with the chosen one.
-fn compare_note(weaker: &WeekSignal, chosen: &WeekSignal) -> String {
-    if weaker.week == chosen.week {
-        format!("{} (agrees)", weaker.evidence)
-    } else {
-        format!(
-            "{} (disagrees with week {} from {}; the stronger signal wins)",
-            weaker.evidence, chosen.week, chosen.source
+    );
+    let item = EvidenceItem::new(EvidenceCode::BulkPublish)
+        .text(
+            "title",
+            group.first().map_or("", |m| m.material.title.as_str()),
         )
-    }
+        .number("count", i64::try_from(group.len()).unwrap_or(i64::MAX))
+        .number("from_week", first_week)
+        .number("to_week", last_week)
+        .date("start", first_date)
+        .date("end", last_date);
+    Some((english, item))
 }
 
-/// Some(note) when `today` is before the known term start or after the known term end. With
-/// no known end, more than `MAX_WEEK` weeks after the start also counts: no term is that long.
-fn outside_term_note(course: &Course, today: NaiveDate) -> Option<String> {
-    match (course.term_start, course.term_end) {
-        (Some(start), _) if today < start => Some(format!(
-            "outside term: today ({today}) is before the term starts ({start})"
-        )),
-        (_, Some(end)) if today > end => Some(format!(
-            "outside term: today ({today}) is after the term ended ({end})"
-        )),
-        (Some(start), None) if week_of(start, today).is_some_and(|week| week > MAX_WEEK) => {
-            Some(format!(
-                "outside term: today ({today}) is more than {MAX_WEEK} weeks after the term \
-                 started ({start})"
-            ))
-        }
-        _ => None,
+/// Evidence line for a weaker signal, saying whether it agrees with the chosen one (within the
+/// chosen signal's tolerance).
+fn compare_note(weaker: &WeekSignal, chosen: &WeekSignal) -> (String, EvidenceItem) {
+    if weaker.week.abs_diff(chosen.week) <= chosen.tolerance {
+        (
+            format!("{} (agrees)", weaker.evidence),
+            EvidenceItem::new(EvidenceCode::SignalAgrees)
+                .signal(weaker.kind)
+                .number("week", weaker.week),
+        )
+    } else {
+        (
+            format!(
+                "{} (disagrees with week {} from {}; the stronger signal wins)",
+                weaker.evidence, chosen.week, chosen.source
+            ),
+            EvidenceItem::new(EvidenceCode::SignalDisagrees)
+                .signal(weaker.kind)
+                .number("week", weaker.week)
+                .number("chosen_week", chosen.week),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{AiPolicy, EventKind, MaterialKind, TermSource, TextStatus};
+    use crate::model::{
+        AiPolicy, Course, CourseTermData, Event, EventKind, MaterialKind, TermSource, TextStatus,
+        Timestamp,
+    };
 
     // ----- helpers (synthetic data only) ------------------------------------------------------
 
@@ -699,7 +1050,33 @@ mod tests {
         materials: &[Material],
         today: NaiveDate,
     ) -> CourseTimeline {
-        infer_timeline(course, modules, materials, &[], today)
+        infer_with(course, modules, materials, &[], today)
+    }
+
+    /// The course's term dates are its folder's (a synced start/end, no LMS facts).
+    fn infer_with(
+        course: &Course,
+        modules: &[Module],
+        materials: &[Material],
+        events: &[Event],
+        today: NaiveDate,
+    ) -> CourseTimeline {
+        let data = CourseTermData {
+            synced_term_start: course.term_start,
+            synced_term_end: course.term_end,
+            ..CourseTermData::default()
+        };
+        course_timeline(&TermInput {
+            fallback_tz: None,
+            course,
+            data: &data,
+            dates_confirmed: false,
+            calendar: None,
+            modules,
+            materials,
+            events,
+            today,
+        })
     }
 
     fn has_evidence(timeline: &CourseTimeline, needle: &str) -> bool {
@@ -889,7 +1266,7 @@ mod tests {
             updated_at: noon(date(2026, 9, 1)),
             course_hint: None,
         };
-        let t = infer_timeline(&course_without_term(), &[], &[], &[event], today);
+        let t = infer_with(&course_without_term(), &[], &[], &[event], today);
         assert_eq!(t.current_week, None);
         assert_eq!(t.confidence, Confidence::Low);
     }
@@ -1143,7 +1520,10 @@ mod tests {
             material("c", "Course policies.pdf", Some(date(2026, 9, 15))), // no week number
         ];
         let t = infer(&course_without_term(), &[], &materials, date(2026, 10, 1));
-        assert_eq!(t.current_week, Some(2));
+        // Changed in v0.3 (calendar design §6.5, §6.7 rule 2): weeks 1 and 2, posted in the
+        // weeks of 09-07 and 09-14, fit week 1 to 2026-09-07 (Low). The fitted dates outrank
+        // the latest material, so 10-01 is week 4, not week 2; signal 4 is still listed.
+        assert_eq!(t.current_week, Some(4));
         assert_eq!(t.confidence, Confidence::Low);
         assert!(t.current_module_ids.is_empty());
         assert_evidence(
@@ -1231,8 +1611,11 @@ mod tests {
         let modules = vec![module("m1", "Week 1: Welcome", Some(date(2026, 8, 31)))];
         let t = infer(&course_with_term(), &modules, &[], date(2026, 9, 1));
         assert!(t.outside_term);
-        assert_eq!(t.current_week, Some(1));
-        assert_eq!(t.confidence, Confidence::High);
+        // Changed in v0.3 (calendar design §6.6, §6.7 rule 4): before week 1 the phase is
+        // NotStarted, which has no current week; the early unlock is only noted.
+        assert_eq!(t.phase, CoursePhase::NotStarted);
+        assert_eq!(t.current_week, None);
+        assert_eq!(t.confidence, Confidence::Low);
         assert_evidence(&t, "module 'Week 1: Welcome' unlocked 2026-08-31");
         assert_evidence(&t, "before the term starts");
     }
@@ -1241,7 +1624,10 @@ mod tests {
     fn after_term_end_is_outside_term_and_calendar_keeps_counting() {
         let t = infer(&course_with_term(), &[], &[], date(2027, 1, 10));
         assert!(t.outside_term);
-        assert_eq!(t.current_week, Some(18));
+        // Changed in v0.3 (calendar design §6.6): more than 21 days after the last class the
+        // course has Ended, and the calendar no longer counts weeks.
+        assert_eq!(t.phase, CoursePhase::Ended);
+        assert_eq!(t.current_week, None);
         assert_evidence(
             &t,
             "outside term: today (2027-01-10) is after the term ended (2026-12-18)",
@@ -1253,13 +1639,17 @@ mod tests {
         let t = infer(&course_with_term(), &[], &[], term_end());
         assert!(!t.outside_term);
         let open_ended = course(Some(term_start()), None);
-        // 2027-03-01 is calendar week 26: long, but still a possible (year-long) term.
+        // Changed in v0.3 (calendar design §6.6): a start alone counts weeks for 16 weeks (30
+        // with full-year evidence, which this course lacks). 2027-03-01 would be week 26, so
+        // the phase is Unknown with no week, and Unknown is not "outside the term".
         let t = infer(&open_ended, &[], &[], date(2027, 3, 1));
         assert!(!t.outside_term);
-        assert_eq!(t.current_week, Some(26));
-        // 2027-06-01 would be week 39: no term is that long, so the start is out of date.
+        assert_eq!(t.phase, CoursePhase::Unknown);
+        assert_eq!(t.current_week, None);
+        assert_evidence(&t, "only a start date is known (2026-09-07), 26 weeks ago");
+        // 2027-06-01 would be week 39: the same.
         let t = infer(&open_ended, &[], &[], date(2027, 6, 1));
-        assert!(t.outside_term);
+        assert!(!t.outside_term);
         assert_eq!(t.current_week, None);
     }
 
@@ -1484,12 +1874,15 @@ mod tests {
         let t = infer(&stale, &[], &materials, date(2027, 1, 8));
         assert_eq!(t.current_week, Some(1));
         assert_eq!(t.confidence, Confidence::Medium);
-        assert!(t.outside_term);
+        // Changed in v0.3 (calendar design §6.3, §6.6): the start is not used at all (it is
+        // more than 28 days before the course's first activity), so the phase is Unknown,
+        // which is not "outside the term".
+        assert!(!t.outside_term);
         assert_evidence(
             &t,
-            "term started 2025-09-08, so 2027-01-08 would be calendar week 70",
+            "the folder's dates (from 2025-09-08) not used: starts long before the course's \
+             first activity",
         );
-        assert_evidence(&t, "more than 30 weeks after the term started (2025-09-08)");
         assert!(!has_evidence(&t, "disagrees"), "{:#?}", t.evidence);
         assert!(!has_evidence(&t, "reading weeks"), "{:#?}", t.evidence);
 
@@ -1498,7 +1891,9 @@ mod tests {
         let t = infer(&ancient, &[], &[], date(2026, 9, 25));
         assert_eq!(t.current_week, None);
         assert_eq!(t.confidence, Confidence::Low);
-        assert!(t.outside_term);
+        // Changed in v0.3 (§6.6): Unknown (a start alone, long ago), not outside the term.
+        assert!(!t.outside_term);
+        assert_evidence(&t, "only a start date is known (2019-01-07)");
 
         // With a known (long past) term end the calendar is dropped the same way.
         let ended = course(Some(date(2025, 9, 8)), Some(date(2025, 12, 19)));

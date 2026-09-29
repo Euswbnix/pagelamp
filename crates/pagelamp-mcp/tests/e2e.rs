@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{TimeDelta, Utc};
+use chrono::{Datelike, Local, TimeDelta, Utc};
 use pagelamp_core::brand;
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
@@ -40,7 +40,10 @@ fn fixture(dir: &Path) -> PathBuf {
         })
         .unwrap();
     store.record_sync(SOURCE, Utc::now(), None).unwrap();
-    let today = Utc::now().date_naive();
+    // Week 1 began on the Monday two weeks ago, so today is week 3 (weeks run Monday to
+    // Sunday), by the same local date the server uses.
+    let today = Local::now().date_naive();
+    let week_one = today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14);
     for (external, code, name) in [
         ("101", "DEMO101", "Intro to Demo Studies"),
         ("202", "DEMO202", "Advanced Demo Studies"),
@@ -53,7 +56,7 @@ fn fixture(dir: &Path) -> PathBuf {
                 external_id: external.into(),
                 code: Some(code.into()),
                 name: name.into(),
-                term_start: Some(today - TimeDelta::days(16)), // week 3
+                term_start: Some(week_one),
                 term_end: Some(today + TimeDelta::days(80)),
                 url: Some(format!("https://lms.example.edu/courses/{external}")),
                 syllabus_text: None,
@@ -849,4 +852,89 @@ async fn local_file_paths_never_reach_the_ai_app() {
         );
     }
     client.cancel().await.unwrap();
+}
+
+/// CAL-18 `mcp_course_info_uses_resolved_dates`: with the LMS term rejected (an enrollment
+/// window), `course.term_start/term_end` carry the resolved teaching dates or null, never the
+/// window, and `term_dates_source` names where they come from. Listings carry phase and
+/// lifecycle; timelines carry structure only.
+#[tokio::test]
+async fn mcp_course_info_uses_resolved_dates() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    let window = |store: &Store, course: Option<(&str, &str)>| {
+        let date = |text: &str| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").ok();
+        store
+            .upsert_course(&CourseUpsert {
+                id: cid("404"),
+                source_id: SOURCE.into(),
+                external_id: "404".into(),
+                code: Some("DEMO404".into()),
+                name: "Demo Methods".into(),
+                term_start: date("2026-05-04"),
+                term_end: date("2027-01-31"),
+                url: None,
+                syllabus_text: None,
+                lms: LmsCourseInfo {
+                    term_name: Some("Fall 2026".into()),
+                    term_start: date("2026-05-04"),
+                    term_end: date("2027-01-31"),
+                    course_start: course.and_then(|(start, _)| date(start)),
+                    course_end: course.and_then(|(_, end)| date(end)),
+                    ..LmsCourseInfo::default()
+                },
+            })
+            .unwrap();
+    };
+    set(&db, |store| window(store, None));
+    let client = connect(db.clone()).await;
+
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO404"})).await);
+    let course = &overview["course"];
+    assert_eq!(course["term_start"], Value::Null);
+    assert_eq!(course["term_end"], Value::Null);
+    assert_eq!(course["term_dates_source"], "none");
+    let timeline = &overview["timeline"];
+    assert_eq!(timeline["phase"], "unknown");
+    assert_eq!(timeline["anchor"], "none");
+    assert_eq!(timeline["calendar_status"], "none");
+    assert!(
+        timeline["evidence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|line| line
+                .as_str()
+                .unwrap()
+                .contains("longer than a teaching term")),
+        "{timeline}"
+    );
+    assert!(overview.get("lifecycle").is_some());
+
+    // Plausible course dates count instead.
+    set(&db, |store| {
+        window(store, Some(("2026-09-08", "2026-12-08")))
+    });
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO404"})).await);
+    let course = &overview["course"];
+    assert_eq!(course["term_start"], "2026-09-08");
+    assert_eq!(course["term_end"], "2026-12-08");
+    assert_eq!(course["term_dates_source"], "lms_course_dates");
+    assert_eq!(
+        overview["timeline"]["teaching"][0]["first_class"],
+        "2026-09-08"
+    );
+    assert!(
+        overview["timeline"].get("breaks").is_none(),
+        "no breaks known"
+    );
+
+    let list = json_of(&call(&client, "list_courses", json!({})).await);
+    let demo = &list["courses"][0];
+    assert_eq!(demo["phase"], "teaching");
+    assert_eq!(demo["lifecycle"], "current");
+    assert_eq!(demo["outside_term"], false);
+    let week = json_of(&call(&client, "week_materials", json!({"course": "DEMO101"})).await);
+    assert_eq!(week["phase"], "teaching");
+    assert_eq!(week["course"]["term_dates_source"], "lms_term");
 }

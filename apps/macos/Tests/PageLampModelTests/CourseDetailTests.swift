@@ -26,11 +26,10 @@ private func material(_ status: TextStatus, blocked: DownloadBlock? = nil, url: 
     )
 }
 
-private func timeline(week: UInt32?, confidence: Confidence = .high, outside: Bool = false) -> CourseTimeline {
-    CourseTimeline(
-        asOf: "2026-09-25", currentWeek: week, confidence: confidence, evidence: [],
-        currentModuleIds: [], outsideTerm: outside
-    )
+private func timeline(
+    week: UInt32?, confidence: Confidence = .high, outside: Bool = false, phase: CoursePhase? = nil
+) -> CourseTimeline {
+    testTimeline(week: week, confidence: confidence, outsideTerm: outside, phase: phase)
 }
 
 @Suite("Course week line") @MainActor
@@ -208,6 +207,11 @@ struct CourseDeadlinesTests {
         #expect(CourseDetailModel.WeekNote(week(.outsideTerm, note: "x"))
             == .known(key: "course.week.note.outside_term", offersTermDates: true))
         #expect(CourseDetailModel.WeekNote(week(.noMaterialsThisWeek, note: "x")) == nil)
+        // The exam period and a break have known dates: their notes offer no Set Term Dates… (M0.10).
+        #expect(CourseDetailModel.WeekNote(week(.examPeriod, note: "x"))
+            == .known(key: "course.week.note.exam_period", offersTermDates: false))
+        #expect(CourseDetailModel.WeekNote(week(.break, note: "x"))
+            == .known(key: "course.week.note.break", offersTermDates: false))
         #expect(CourseDetailModel.WeekNote(week(nil, note: "Something new")) == .backend("Something new"))
         #expect(CourseDetailModel.WeekNote(week(nil, note: nil)) == nil)
     }
@@ -232,9 +236,17 @@ struct CourseDeadlinesTests {
         #expect(PrimaryActionArbiter.winner(preview) == .setTermDates)
         // A failure without a fix (can't connect) is no candidate.
         #expect(CourseDetailModel.primaryActionCandidates(source: source(.network), timeline: timeline(week: 4)).isEmpty)
-        // Unknown week, outside term or low confidence: Set Term Dates… is tinted.
-        for uncertain in [timeline(week: nil), timeline(week: 4, outside: true), timeline(week: 4, confidence: .low)] {
-            #expect(PrimaryActionArbiter.winner(CourseDetailModel.primaryActionCandidates(source: nil, timeline: uncertain)) == .setTermDates)
+        // Only an unknown phase tints Set Term Dates… (M0.10), with or without a week.
+        for unknown in [timeline(week: nil), timeline(week: 4, confidence: .low, phase: .unknown)] {
+            #expect(PrimaryActionArbiter.winner(CourseDetailModel.primaryActionCandidates(source: nil, timeline: unknown)) == .setTermDates)
+        }
+        // No current week is not enough: the exam period, a break, before the start and after the
+        // end have none, and their dates are known.
+        for known in [
+            timeline(week: nil, phase: .examPeriod), timeline(week: nil, phase: .break),
+            timeline(week: nil, outside: true, phase: .notStarted), timeline(week: nil, outside: true),
+        ] {
+            #expect(CourseDetailModel.primaryActionCandidates(source: nil, timeline: known).isEmpty)
         }
         // A confident current week and a healthy source: nothing is tinted.
         #expect(CourseDetailModel.primaryActionCandidates(source: nil, timeline: timeline(week: 4, confidence: .medium)).isEmpty)

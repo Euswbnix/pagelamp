@@ -8,6 +8,7 @@ import type {
   AppStatus,
   Confidence,
   Course,
+  CourseLifecycle,
   CourseTimeline,
   CrashReport,
   Deadline,
@@ -22,6 +23,15 @@ import type {
   StoredStudyPlan,
   TextStatus,
 } from "../types";
+import {
+  type CalendarFields,
+  calendarFields,
+  dayFrom,
+  ev,
+  lifecycle,
+  mondayOf,
+  resolution,
+} from "./calendar";
 
 export type MockScenario =
   | "demo"
@@ -59,7 +69,16 @@ export type MockScenario =
   | "codex-outdated-pin"
   | "codex-outdated-app"
   | "codex-free"
-  | "codex-cap";
+  | "codex-cap"
+  // Course weeks and lifecycle (M0.10): the owner's UofT-style case / one course per phase /
+  // only past courses.
+  | "uoft-fall"
+  | "phases"
+  | "all-past"
+  // Removal (F2): some courses already removed, one waiting to be purged.
+  | "removed"
+  // Calendar proposals (F3): an AI proposal with a conflict, a scan proposal, a stale calendar.
+  | "proposals";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -88,6 +107,11 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "codex-outdated-app",
   "codex-free",
   "codex-cap",
+  "uoft-fall",
+  "phases",
+  "all-past",
+  "removed",
+  "proposals",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */
@@ -101,8 +125,17 @@ export const MOCK_UPDATE_VERSION = "0.3.0-alpha.2";
 export interface MockCourse {
   course: Course;
   timeline: CourseTimeline;
+  /** The lifecycle without "I'm still taking this" (the mock applies that at read time). */
+  lifecycle: CourseLifecycle;
+  /** "I'm still taking this" until this date. */
+  keptCurrentUntil: string | null;
   /** What the source reported, restored when the student clears their term override. */
-  synced: { termStart: string | null; termEnd: string | null; timeline: CourseTimeline };
+  synced: {
+    termStart: string | null;
+    termEnd: string | null;
+    timeline: CourseTimeline;
+    lifecycle: CourseLifecycle;
+  };
   modules: Module[];
   materials: MaterialView[];
   announcements: MaterialView[];
@@ -123,7 +156,7 @@ export interface MockDb {
 export const MOCK_BINARY_PATH = "/Users/demo/PageLamp/target/debug/pagelamp";
 
 // Calendar arithmetic (not "+ N × 24 h"), so dates stay right across daylight-saving changes.
-function at(now: Date, days: number, hour = 12, minute = 0): string {
+export function at(now: Date, days: number, hour = 12, minute = 0): string {
   return new Date(
     now.getFullYear(),
     now.getMonth(),
@@ -133,7 +166,7 @@ function at(now: Date, days: number, hour = 12, minute = 0): string {
   ).toISOString();
 }
 
-function dateOnly(now: Date, days: number): string {
+export function dateOnly(now: Date, days: number): string {
   const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -195,7 +228,7 @@ function sources(now: Date, scenario: MockScenario): SourceRecord[] {
 // Courses
 // ---------------------------------------------------------------------------------------------
 
-interface CourseSpec {
+export interface CourseSpec {
   id: string;
   sourceId: string;
   code: string;
@@ -213,9 +246,13 @@ interface CourseSpec {
   confidence: Confidence;
   evidence: string[];
   url: string | null;
+  /** Phase, term resolution and evidence items (defaults: from `week` and the term start). */
+  calendar?: Partial<CalendarFields>;
+  /** The student's own dates (term_source "user"). */
+  userTerm?: boolean;
 }
 
-function course(spec: CourseSpec, now: Date): Course {
+export function course(spec: CourseSpec, now: Date): Course {
   const c: CourseWithSharing = {
     id: spec.id,
     source_id: spec.sourceId,
@@ -230,7 +267,7 @@ function course(spec: CourseSpec, now: Date): Course {
     ai_access: spec.aiAccess ?? true,
     material_sharing: spec.materialSharing ?? "unanswered",
     enrollment_active: spec.enrollmentActive ?? true,
-    term_source: spec.termStartDays === null ? "none" : "synced",
+    term_source: spec.userTerm ? "user" : spec.termStartDays === null ? "none" : "synced",
     hidden: spec.hidden,
     updated_at: at(now, -1, 9),
   };
@@ -238,30 +275,65 @@ function course(spec: CourseSpec, now: Date): Course {
 }
 
 /** Assemble a MockCourse, remembering the synced term so an override can be undone. */
-function mockCourse(parts: Omit<MockCourse, "synced">): MockCourse {
+export function mockCourse(
+  parts: Omit<MockCourse, "synced" | "keptCurrentUntil"> & { keptCurrentUntil?: string | null },
+): MockCourse {
   return {
     ...parts,
+    keptCurrentUntil: parts.keptCurrentUntil ?? null,
     synced: {
       termStart: parts.course.term_start ?? null,
       termEnd: parts.course.term_end ?? null,
       timeline: parts.timeline,
+      lifecycle: parts.lifecycle,
     },
   };
 }
 
-function timeline(spec: CourseSpec, now: Date, moduleIds: string[]): CourseTimeline {
+/** The calendar fields a v0.1-style spec implies: teaching week N from the term start. */
+function defaultCalendar(spec: CourseSpec, now: Date): CalendarFields {
+  if (spec.week === null || spec.termStartDays === null) {
+    return calendarFields({
+      phase: "unknown",
+      phase_confidence: "low",
+      evidence_items: [ev("no_week_signal")],
+    });
+  }
+  const start = dayFrom(now, spec.termStartDays);
+  return calendarFields({
+    phase: "teaching",
+    phase_confidence: spec.confidence,
+    default_week: spec.week,
+    term: resolution({
+      week_one_monday: mondayOf(start),
+      teaching: [
+        {
+          first_class: start,
+          last_class: dayFrom(now, spec.termStartDays + 12 * 7 + 4),
+          first_week_number: 1,
+        },
+      ],
+      anchor: spec.sourceId === SOURCE_FOLDER ? "folder_config" : "lms_course_dates",
+      anchor_confidence: "medium",
+    }),
+  });
+}
+
+export function timeline(spec: CourseSpec, now: Date, moduleIds: string[]): CourseTimeline {
+  const fields = { ...defaultCalendar(spec, now), ...spec.calendar };
   return {
     as_of: dateOnly(now, 0),
     current_week: spec.week,
     confidence: spec.confidence,
     evidence: spec.evidence,
     current_module_ids: moduleIds,
-    outside_term: false,
+    outside_term: fields.phase === "not_started" || fields.phase === "ended",
+    ...fields,
   };
 }
 
 let materialSeq = 0;
-function material(
+export function material(
   courseId: string,
   title: string,
   kind: MaterialKind,
@@ -297,7 +369,7 @@ function material(
 }
 
 let eventSeq = 0;
-function deadline(
+export function deadline(
   c: Course,
   title: string,
   kind: EventKind,
@@ -325,7 +397,7 @@ function deadline(
   };
 }
 
-function weekModules(courseId: string, names: string[], now: Date, termStartDays: number) {
+export function weekModules(courseId: string, names: string[], now: Date, termStartDays: number) {
   return names.map<Module>((name, i) => ({
     id: `${courseId}/module/${i + 1}`,
     course_id: courseId,
@@ -355,6 +427,18 @@ function demo101(now: Date): MockCourse {
       "Reading week is not modelled in v0.1",
     ],
     url: null,
+    calendar: {
+      notes_week: 4,
+      evidence_items: [
+        ev("week_from_module_unlock", {
+          title: "Week 4: Sampling and Surveys",
+          date: dateOnly(now, -2),
+          week: 4,
+        }),
+        ev("signal_agrees", { signal: "dates", week: 4 }),
+        ev("breaks_unknown"),
+      ],
+    },
   };
   const c = course(spec, now);
   const modules = weekModules(
@@ -431,6 +515,12 @@ function demo101(now: Date): MockCourse {
   return mockCourse({
     course: c,
     timeline: timeline(spec, now, [m4.id]),
+    lifecycle: lifecycle({
+      state: "current",
+      confidence: "high",
+      last_activity: dateOnly(now, -1),
+      next_event: dateOnly(now, 1),
+    }),
     modules,
     materials,
     announcements,
@@ -453,6 +543,14 @@ function demo205(now: Date): MockCourse {
     confidence: "medium",
     evidence: [`Term started ${dateOnly(now, -24)} (from Canvas) → week 4`],
     url: "https://canvas.demo.test/courses/205",
+    calendar: {
+      notes_week: 3,
+      evidence_items: [
+        ev("lms_course_dates", { start: dateOnly(now, -24), end: dateOnly(now, -24 + 12 * 7 + 4) }),
+        ev("week_from_dates", { week: 4, monday: dateOnly(now, -24) }),
+        ev("breaks_unknown"),
+      ],
+    },
   };
   const c = course(spec, now);
   const modules = weekModules(
@@ -486,6 +584,11 @@ function demo205(now: Date): MockCourse {
   return mockCourse({
     course: c,
     timeline: timeline(spec, now, [mc.id]),
+    lifecycle: lifecycle({
+      state: "current",
+      last_activity: dateOnly(now, -3),
+      next_event: dateOnly(now, 6),
+    }),
     modules,
     materials,
     announcements: [],
@@ -517,6 +620,7 @@ function demo310(now: Date): MockCourse {
   return mockCourse({
     course: c,
     timeline: timeline(spec, now, []),
+    lifecycle: lifecycle({ state: "unknown", confidence: "low", last_activity: dateOnly(now, -5) }),
     modules: [],
     materials,
     announcements: [],
@@ -545,6 +649,13 @@ function demo099(now: Date): MockCourse {
   return mockCourse({
     course: c,
     timeline: timeline(spec, now, []),
+    lifecycle: lifecycle({
+      state: "ended",
+      confidence: "high",
+      since: dateOnly(now, -3),
+      last_activity: dateOnly(now, -30),
+      evidence_items: [ev("no_longer_listed")],
+    }),
     modules: [],
     materials: [material(c.id, "Welcome page", "page", 1, -30, now, { chunks: 2 })],
     announcements: [],

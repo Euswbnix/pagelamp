@@ -14,7 +14,7 @@ use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
 use pagelamp_core::Store;
 use pagelamp_core::ingest::sha256_hex;
 use pagelamp_core::model::{Course, Event, EventKind, course_for_hint};
-use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress};
+use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress, SyncStage};
 use regex::Regex;
 
 use crate::IcalSyncReport;
@@ -217,6 +217,8 @@ pub(crate) async fn sync_ical(
         message: "Downloading the calendar feed".into(),
         current: None,
         total: None,
+        stage: Some(SyncStage::DownloadingFeed),
+        course: None,
     });
     let ics = fetch_ical(feed_url).await?;
     let db = db_path.to_path_buf();
@@ -242,7 +244,9 @@ pub(crate) async fn sync_ical(
     progress(SyncProgress::Step {
         message: format!("Saving {} calendar events", parsed.events.len()),
         current: None,
-        total: None,
+        total: Some(u32::try_from(parsed.events.len()).unwrap_or(u32::MAX)),
+        stage: Some(SyncStage::SavingEvents),
+        course: None,
     });
     let (db, source) = (db_path.to_path_buf(), source_id.to_string());
     blocking(move || Ok(Store::open(&db)?.replace_events(&source, &parsed.events)?)).await?;

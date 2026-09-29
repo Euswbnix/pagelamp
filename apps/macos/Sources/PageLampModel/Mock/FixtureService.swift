@@ -105,7 +105,12 @@ public struct FixtureService: PageLampService {
         return CourseTimeline(
             asOf: timeline.asOf, currentWeek: nil, confidence: .low,
             evidence: timeline.evidence + ["outside term: today is after the term ended"],
-            currentModuleIds: [], outsideTerm: true
+            currentModuleIds: [], outsideTerm: true,
+            // Outside the term is the ended phase (or not started): no default week (M0.10).
+            phase: .ended, phaseConfidence: .low, startsOn: timeline.startsOn, defaultWeek: nil,
+            breakAfterWeek: nil, lastTeachingWeek: nil, currentBreakKind: nil,
+            notesWeek: timeline.notesWeek, term: timeline.term, calendar: timeline.calendar,
+            evidenceItems: timeline.evidenceItems
         )
     }
 
@@ -116,6 +121,7 @@ public struct FixtureService: PageLampService {
             course: course(summary.course),
             aiMaterials: aiMaterials(summary.aiMaterials),
             timeline: timeline(summary.timeline),
+            lifecycle: summary.lifecycle,
             counts: CourseCounts(
                 modules: summary.counts.modules,
                 materials: summary.counts.materials,
@@ -176,7 +182,8 @@ public struct FixtureService: PageLampService {
         let overview = try await base.courseOverview(course: reference)
         return CourseOverview(
             course: course(overview.course), aiMaterials: aiMaterials(overview.aiMaterials),
-            timeline: timeline(overview.timeline), currentModules: overview.currentModules,
+            timeline: timeline(overview.timeline), lifecycle: overview.lifecycle,
+            currentModules: overview.currentModules,
             recentMaterials: overview.recentMaterials, upcomingDeadlines: overview.upcomingDeadlines,
             recentAnnouncements: overview.recentAnnouncements, sourceLabel: overview.sourceLabel,
             lastSyncedAt: overview.lastSyncedAt, downloadableFiles: overview.downloadableFiles

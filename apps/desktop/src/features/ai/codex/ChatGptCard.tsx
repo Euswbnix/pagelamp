@@ -96,7 +96,7 @@ function CardBody({
   if (runtime.state === "not_installed") {
     return (
       <>
-        <CodexDownload status={status} />
+        <CodexDownload />
         {untested}
       </>
     );

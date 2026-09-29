@@ -645,3 +645,108 @@ fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
         assert!(stderr.contains("Enter just the address"), "{stderr}");
     }
 }
+
+/// Course weeks and lifecycle groups (calendar design §7.13): `courses` shows Current and
+/// Upcoming with a count of the past courses, `--past` / `--all` the rest, `course timeline`
+/// the dates used and why, `course keep` "I'm still taking this".
+#[test]
+fn courses_are_grouped_by_lifecycle_with_timeline_and_keep() {
+    use chrono::{Datelike, Local, TimeDelta};
+
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let courses = temp.path().join("Courses");
+    // DEMO101 started on the Monday two weeks ago (week 3); DEMO202 ended in 2024 (no files,
+    // so nothing contradicts its dates).
+    let today = Local::now().date_naive();
+    let start = today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14);
+    let end = start + TimeDelta::days(90);
+    write(
+        &courses,
+        "DEMO101 Intro to Demo Studies/course.toml",
+        &format!("term_start = {start}\nterm_end = {end}\n"),
+    );
+    for week in 1..=3 {
+        write(
+            &courses,
+            &format!("DEMO101 Intro to Demo Studies/Week {week}/notes.md"),
+            "# Notes\nsynthetic text",
+        );
+    }
+    write(
+        &courses,
+        "DEMO202 Old Demo Studies/course.toml",
+        "term_start = 2024-09-09\nterm_end = 2024-12-13\n",
+    );
+    ok(&pagelamp(
+        &home,
+        &["folder", "add", courses.to_str().unwrap()],
+    ));
+    ok(&pagelamp(&home, &["sync"]));
+
+    let listed = ok(&pagelamp(&home, &["courses"]));
+    assert!(listed.contains("Current (1)"), "{listed}");
+    assert!(listed.contains("week 3 ("), "{listed}");
+    assert!(!listed.contains("DEMO202"), "{listed}");
+    assert!(listed.contains("Past courses: 1"), "{listed}");
+
+    let past = ok(&pagelamp(&home, &["courses", "--past"]));
+    assert!(
+        past.contains("Past (1)") && past.contains("DEMO202"),
+        "{past}"
+    );
+    assert!(past.contains("ended"), "{past}");
+    let why = ok(&pagelamp(&home, &["-v", "courses", "--past"]));
+    assert!(
+        why.contains("the folder's dates ended on 2024-12-13"),
+        "{why}"
+    );
+
+    let all = json_out(&pagelamp(&home, &["--json", "courses", "--all"]));
+    let groups: Vec<&str> = all
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["lifecycle"]["group"].as_str().unwrap())
+        .collect();
+    assert_eq!(groups, ["current", "past"]);
+
+    let timeline = ok(&pagelamp(&home, &["course", "timeline", "DEMO101"]));
+    assert!(timeline.contains("from the folder's dates"), "{timeline}");
+    assert!(timeline.contains("teaching"), "{timeline}");
+    let timeline = json_out(&pagelamp(
+        &home,
+        &["--json", "course", "timeline", "DEMO101"],
+    ));
+    assert_eq!(timeline["timeline"]["phase"], "teaching");
+    assert_eq!(timeline["timeline"]["current_week"], 3);
+    assert_eq!(timeline["lifecycle"]["state"], "current");
+
+    let kept = ok(&pagelamp(
+        &home,
+        &["course", "keep", "DEMO202", "--until", "2099-01-01"],
+    ));
+    assert!(
+        kept.contains("counts as current until 2099-01-01"),
+        "{kept}"
+    );
+    assert!(ok(&pagelamp(&home, &["courses"])).contains("DEMO202"));
+    let cleared = json_out(&pagelamp(
+        &home,
+        &["--json", "course", "keep", "DEMO202", "--clear"],
+    ));
+    assert_eq!(cleared["kept_current_until"], Value::Null);
+    assert_eq!(cleared["lifecycle"], "ended");
+    let conflict = pagelamp(
+        &home,
+        &[
+            "course",
+            "keep",
+            "DEMO202",
+            "--clear",
+            "--until",
+            "2099-01-01",
+        ],
+    );
+    assert!(!conflict.status.success());
+}

@@ -3694,8 +3694,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "chrono-tz",
  "directories",
  "hex",
+ "iana-time-zone",
  "keyring",
  "pagelamp-extract",
  "regex",
@@ -3708,6 +3710,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+ "unicode-normalization",
 ]
 
 [[package]]

@@ -71,6 +71,9 @@ impl Endpoint<'_> {
                     query.push(("enrollment_state", "active".into()));
                     query.push(("include[]", "term".into()));
                     query.push(("include[]", "syllabus_body".into()));
+                    // Adds the `concluded` flag to each course (a parameter, not a new
+                    // endpoint; calendar design §5 S1, D45).
+                    query.push(("include[]", "concluded".into()));
                 }
                 Endpoint::Tabs { course } => {
                     path.extend(["courses", &course.0, "tabs"]);
@@ -223,7 +226,7 @@ mod tests {
             ),
             (
                 Endpoint::Courses,
-                "https://lms.example.edu/api/v1/courses?enrollment_state=active&include%5B%5D=term&include%5B%5D=syllabus_body&per_page=100",
+                "https://lms.example.edu/api/v1/courses?enrollment_state=active&include%5B%5D=term&include%5B%5D=syllabus_body&include%5B%5D=concluded&per_page=100",
             ),
             (
                 Endpoint::Tabs { course: &course },

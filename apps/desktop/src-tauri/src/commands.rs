@@ -20,7 +20,9 @@ use pagelamp_app::{
 };
 use pagelamp_app::{StartupTasks, UpdateChannel, UpdateCheckRecord, UpdatePrefs};
 use pagelamp_core::ai::{AiFeature, MaterialSharing};
-use pagelamp_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
+use pagelamp_core::model::{
+    AiPolicy, Course, CourseTimeline, SearchHit, SourceRecord, StoredStudyPlan,
+};
 use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 use tauri::State;
 use tauri::ipc::Channel;
@@ -275,6 +277,39 @@ pub async fn set_course_material_sharing(
 ) -> CmdResult<()> {
     backend
         .blocking(move |app| app.set_course_material_sharing(&course, answer))
+        .await
+}
+
+/// "I'm still taking this" (`until` None = the facade's default date).
+#[tauri::command]
+pub async fn keep_course_current(
+    backend: State<'_, Backend>,
+    course: String,
+    until: Option<NaiveDate>,
+) -> CmdResult<Course> {
+    backend
+        .blocking(move |app| app.keep_course_current(&course, until))
+        .await
+}
+
+#[tauri::command]
+pub async fn clear_keep_course_current(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<Course> {
+    backend
+        .blocking(move |app| app.clear_keep_course_current(&course))
+        .await
+}
+
+/// "These dates are right" for dates kept from version 0.1.
+#[tauri::command]
+pub async fn confirm_course_dates(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<CourseTimeline> {
+    backend
+        .blocking(move |app| app.confirm_course_dates(&course))
         .await
 }
 
