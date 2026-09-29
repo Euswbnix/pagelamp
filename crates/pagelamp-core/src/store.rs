@@ -50,7 +50,7 @@ pub use calendars::{
     CalendarChecks, CalendarProvenance, CalendarRow, CalendarState, KEEP_DISMISSED_DAYS,
     KEEP_SUPERSEDED, NewCalendarRow, Staleness,
 };
-pub use migrate_v4::COURSE_DATES_CONFIRMED;
+pub use migrate_v4::{COURSE_DATES_CONFIRMED, MIGRATED_FINGERPRINT};
 
 pub const SCHEMA_VERSION: i64 = 4;
 
