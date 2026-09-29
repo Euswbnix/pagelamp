@@ -12,6 +12,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
+use pagelamp_extract::FailureKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +141,82 @@ pub struct MaterialView {
     pub download_blocked: Option<DownloadBlock>,
     /// Number of text chunks (pages/slides/sections) available via `read_material`.
     pub chunk_count: u32,
+    /// Why there is no text to read, in a word the app can show; `None` when the text is
+    /// there or was never tried (`pending`, `unsupported`, `not_downloaded`).
+    pub text_problem: Option<TextProblem>,
+}
+
+/// Why a material's text can't be read (`MaterialView::text_problem`). It is worked out when
+/// the view is built, from `text_status`, the chunk count, `text_error_kind` and the
+/// extractor's message, so it also covers failures that earlier versions recorded.
+/// `text_error` keeps the full message for the CLI, logs and MCP.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TextProblem {
+    /// Read, but there is no text in it (e.g. a scanned PDF).
+    NoText,
+    /// Over a size, page or part limit.
+    TooLarge,
+    /// A PDF that needs a password to open.
+    PasswordProtected,
+    /// Damaged, not the format its name says, or something the reader can't handle.
+    Malformed,
+    /// The extraction worker was still running at its time limit.
+    TimedOut,
+    /// The extraction worker used up its CPU-time budget.
+    CpuLimit,
+    /// The extraction worker went past its memory cap.
+    MemoryLimit,
+    /// The extraction worker died without an answer.
+    Crashed,
+    /// The extraction worker answered something unreadable.
+    BadOutput,
+    /// The extraction worker could not be started (e.g. blocked by antivirus).
+    SpawnFailed,
+    /// An extraction worker from another version answered.
+    ProtocolMismatch,
+    /// Any other failure; `text_error` says what.
+    Other,
+}
+
+impl TextProblem {
+    /// The problem with `material`'s text, which has `chunk_count` chunks.
+    pub fn of(material: &Material, chunk_count: u32) -> Option<TextProblem> {
+        match material.text_status {
+            TextStatus::Ok if chunk_count == 0 => Some(TextProblem::NoText),
+            TextStatus::Error => Some(match material.text_error_kind {
+                Some(kind) => TextProblem::from(kind),
+                None => match material
+                    .text_error
+                    .as_deref()
+                    .and_then(pagelamp_extract::failure_kind)
+                {
+                    Some(FailureKind::TooLarge) => TextProblem::TooLarge,
+                    Some(FailureKind::PasswordProtected) => TextProblem::PasswordProtected,
+                    Some(FailureKind::Malformed) => TextProblem::Malformed,
+                    None => TextProblem::Other,
+                },
+            }),
+            TextStatus::Ok
+            | TextStatus::Pending
+            | TextStatus::Unsupported
+            | TextStatus::NotDownloaded => None,
+        }
+    }
+}
+
+impl From<TextErrorKind> for TextProblem {
+    fn from(kind: TextErrorKind) -> Self {
+        match kind {
+            TextErrorKind::TimedOut => TextProblem::TimedOut,
+            TextErrorKind::CpuLimit => TextProblem::CpuLimit,
+            TextErrorKind::MemoryLimit => TextProblem::MemoryLimit,
+            TextErrorKind::Crashed => TextProblem::Crashed,
+            TextErrorKind::BadOutput => TextProblem::BadOutput,
+            TextErrorKind::SpawnFailed => TextProblem::SpawnFailed,
+            TextErrorKind::ProtocolMismatch => TextProblem::ProtocolMismatch,
+        }
+    }
 }
 
 /// Everything needed to answer "what's going on in this course right now".
@@ -830,6 +907,7 @@ impl CourseData {
     }
 
     fn view(&self, material: &Material) -> MaterialView {
+        let chunk_count = self.chunks_of(&material.id);
         MaterialView {
             id: material.id.clone(),
             course_id: material.course_id.clone(),
@@ -846,7 +924,8 @@ impl CourseData {
             text_status: material.text_status,
             text_error: material.text_error.clone(),
             download_blocked: material.download_blocked,
-            chunk_count: self.chunks_of(&material.id),
+            chunk_count,
+            text_problem: TextProblem::of(material, chunk_count),
         }
     }
 }

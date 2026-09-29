@@ -252,6 +252,28 @@ export type DownloadBlock = "locked" | "too_large";
  */
 export type MaterialKind = ("announcement" | "syllabus") | "file" | "page" | "external_link";
 /**
+ * Why a material's text can't be read (`MaterialView::text_problem`). It is worked out when
+ * the view is built, from `text_status`, the chunk count, `text_error_kind` and the
+ * extractor's message, so it also covers failures that earlier versions recorded.
+ * `text_error` keeps the full message for the CLI, logs and MCP.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TextProblem".
+ */
+export type TextProblem =
+  | "no_text"
+  | "too_large"
+  | "password_protected"
+  | "malformed"
+  | "timed_out"
+  | "cpu_limit"
+  | "memory_limit"
+  | "crashed"
+  | "bad_output"
+  | "spawn_failed"
+  | "protocol_mismatch"
+  | "other";
+/**
  * Whether we have searchable text for a material.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1280,6 +1302,11 @@ export interface MaterialView {
   module_name?: string | null;
   published_at?: string | null;
   text_error?: string | null;
+  /**
+   * Why there is no text to read, in a word the app can show; `None` when the text is
+   * there or was never tried (`pending`, `unsupported`, `not_downloaded`).
+   */
+  text_problem?: TextProblem | null;
   text_status: TextStatus;
   title: string;
   /**

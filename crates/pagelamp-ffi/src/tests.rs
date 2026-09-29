@@ -162,6 +162,7 @@ const MIRRORED: &[&str] = &[
     "CourseCounts",
     "CourseSummary",
     "MaterialView",
+    "TextProblem",
     "CourseOverview",
     "WeekNoteKind",
     "WeekMaterials",

@@ -56,8 +56,8 @@ use pagelamp_core::model::{
 };
 use pagelamp_core::source::{CourseSyncSummary, SyncStage};
 use pagelamp_core::views::{
-    CourseCounts, CourseOverview, CourseSummary, Deadline, MaterialView, WeekMaterials,
-    WeekNoteKind,
+    CourseCounts, CourseOverview, CourseSummary, Deadline, MaterialView, TextProblem,
+    WeekMaterials, WeekNoteKind,
 };
 
 use crate::PageLampError;
@@ -636,6 +636,25 @@ pub struct MaterialView {
     pub text_error: Option<String>,
     pub download_blocked: Option<DownloadBlock>,
     pub chunk_count: u32,
+    #[uniffi(default)]
+    pub text_problem: Option<TextProblem>,
+}
+
+/// Why a material's text can't be read.
+#[uniffi::remote(Enum)]
+pub enum TextProblem {
+    NoText,
+    TooLarge,
+    PasswordProtected,
+    Malformed,
+    TimedOut,
+    CpuLimit,
+    MemoryLimit,
+    Crashed,
+    BadOutput,
+    SpawnFailed,
+    ProtocolMismatch,
+    Other,
 }
 
 #[uniffi::remote(Record)]
