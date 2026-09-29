@@ -34,8 +34,8 @@ use pagelamp_app::ai::{
     StudyPlanRequest, SystemCodex, TokenUsage, TrainingFact, UsageRow, UsageSummary,
 };
 use pagelamp_app::ai::{
-    Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, OutputLanguage,
-    WeeklyExplanation,
+    Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, NoteFocus, OutputLanguage,
+    WeeklyExplanation, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings,
 };
 use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, ExtractWorkerCheck, ExtractWorkerStatus,
@@ -1229,6 +1229,40 @@ pub struct WeeklyExplanation {
     pub sharing_reminder: bool,
     pub dropped_citations: u32,
     pub cite_ai_use: bool,
+}
+
+// ----- the weekly note (beta.2) ------------------------------------------------------------------
+
+#[uniffi::remote(Record)]
+pub struct WeeklyNoteOptions {
+    #[uniffi(default)]
+    pub ui_language: Option<String>,
+    #[uniffi(default)]
+    pub override_budget: bool,
+    #[uniffi(default)]
+    pub automatic: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct NoteFocus {
+    pub text: String,
+    pub course_id: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct WeeklyNote {
+    pub meta: GenerationMeta,
+    pub week_of: IsoDate,
+    pub text: String,
+    pub focus: Vec<NoteFocus>,
+    pub automatic: bool,
+    pub graded_work_left_out: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct WeeklyNoteSettings {
+    pub prepare_on_monday: bool,
+    pub prepare_on_monday_allowed: bool,
 }
 
 #[uniffi::remote(Enum)]

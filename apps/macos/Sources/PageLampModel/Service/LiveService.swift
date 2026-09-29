@@ -283,6 +283,26 @@ public final class LiveService: PageLampService {
         try await call { try await core.setAiOutputLanguage(language: language) }
     }
 
+    public func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote {
+        try await call { try await core.writeWeeklyNote(generationId: generationId, options: options, observer: observer) }
+    }
+
+    public func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] {
+        try await call { try await core.weeklyNotes() }
+    }
+
+    public func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) {
+        try await call { try await core.deleteWeeklyNote(generationId: generationId) }
+    }
+
+    public func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings {
+        try await call { try await core.weeklyNoteSettings() }
+    }
+
+    public func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings {
+        try await call { try await core.setPrepareWeeklyNoteOnMonday(on: on) }
+    }
+
     public func generateStudyPlan(request: StudyPlanRequest, generationId: String, observer: any GenObserver) async throws(PageLampFailure) -> GeneratedStudyPlan {
         try await call { try await core.generateStudyPlan(request: request, generationId: generationId, observer: observer) }
     }
@@ -522,6 +542,11 @@ public struct UnavailableService: PageLampService {
     public func deleteExplanation(generationId: String) async throws(PageLampFailure) { throw failure }
     public func aiOutputLanguage() async throws(PageLampFailure) -> OutputLanguage { throw failure }
     public func setAiOutputLanguage(language: OutputLanguage) async throws(PageLampFailure) { throw failure }
+    public func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote { throw failure }
+    public func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] { throw failure }
+    public func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) { throw failure }
+    public func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings { throw failure }
+    public func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings { throw failure }
     public func generateStudyPlan(request: StudyPlanRequest, generationId: String, observer: any GenObserver) async throws(PageLampFailure) -> GeneratedStudyPlan { throw failure }
     public func acceptStudyPlan(generationId: String) async throws(PageLampFailure) -> StoredStudyPlan { throw failure }
     public func setStudyPlanItemDone(planId: Int64, itemIndex: UInt32, done: Bool) async throws(PageLampFailure) -> StoredStudyPlan { throw failure }

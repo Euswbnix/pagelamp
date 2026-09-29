@@ -1,6 +1,7 @@
-//! AI in the facade (v0.3 M1–M3): model setup and the disclosure, costs, the ChatGPT plan
-//! through Codex, weekly explanations, study plans and deleting what was generated. Every
-//! generation takes the caller's `generation_id`; `cancel_generation(id)` stops it.
+//! AI in the facade (v0.3 M1–M3, beta.2): model setup and the disclosure, costs, the ChatGPT
+//! plan through Codex, weekly explanations, the weekly note, study plans and deleting what was
+//! generated. Every generation takes the caller's `generation_id`; `cancel_generation(id)`
+//! stops it.
 
 use std::sync::Arc;
 
@@ -8,7 +9,8 @@ use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
     EstimateRequest, ExplainOptions, GeneratedStudyPlan, LocalServer, ModelChoice, ModelInfo,
     ModelProviderRecord, OutputLanguage, ProbeReport, ProviderPreset, RemoveAiDataReport,
-    StudyPlanRequest, UsageSummary, WeeklyExplanation,
+    StudyPlanRequest, UsageSummary, WeeklyExplanation, WeeklyNote, WeeklyNoteOptions,
+    WeeklyNoteSettings,
 };
 use pagelamp_core::ai::{AiFeature, MaterialSharing};
 use pagelamp_core::model::StoredStudyPlan;
@@ -262,6 +264,50 @@ impl PageLamp {
     pub async fn set_ai_output_language(&self, language: OutputLanguage) -> Result<()> {
         let app = self.app.clone();
         blocking(move || app.set_ai_output_language(language)).await
+    }
+
+    // ----- the weekly note (beta.2) ----------------------------------------------------------------
+
+    /// Writes this week's note from the courses' structure and the plan's progress (never
+    /// material text); `cancel_generation(generation_id)` stops it. `options.automatic` only
+    /// when `startup_tasks().prepare_weekly_note` said so.
+    pub async fn write_weekly_note(
+        &self,
+        generation_id: String,
+        options: WeeklyNoteOptions,
+        observer: Arc<dyn GenObserver>,
+    ) -> Result<WeeklyNote> {
+        let app = self.app.clone();
+        let events = gen_events(observer);
+        let sink = events.sink();
+        let result =
+            spawned(async move { app.write_weekly_note(&generation_id, options, sink).await })
+                .await;
+        events.drain().await;
+        result
+    }
+
+    /// The kept weekly notes, newest first.
+    pub async fn weekly_notes(&self) -> Result<Vec<WeeklyNote>> {
+        let app = self.app.clone();
+        blocking(move || app.weekly_notes()).await
+    }
+
+    pub async fn delete_weekly_note(&self, generation_id: String) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.delete_weekly_note(&generation_id)).await
+    }
+
+    /// "Prepare it when I open PageLamp on Monday", and whether the note's model allows it.
+    pub async fn weekly_note_settings(&self) -> Result<WeeklyNoteSettings> {
+        let app = self.app.clone();
+        blocking(move || app.weekly_note_settings()).await
+    }
+
+    /// Turns "prepare it on Monday" on (an API key or a model on this computer only) or off.
+    pub async fn set_prepare_weekly_note_on_monday(&self, on: bool) -> Result<WeeklyNoteSettings> {
+        let app = self.app.clone();
+        blocking(move || app.set_prepare_weekly_note_on_monday(on)).await
     }
 
     // ----- study plans -----------------------------------------------------------------------------

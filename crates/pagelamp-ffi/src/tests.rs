@@ -223,6 +223,10 @@ const MIRRORED: &[&str] = &[
     "ExplanationParagraph",
     "ExplanationSection",
     "WeeklyExplanation",
+    "WeeklyNote",
+    "NoteFocus",
+    "WeeklyNoteOptions",
+    "WeeklyNoteSettings",
     // AI (v0.3 M1)
     "AiFeature",
     "BlockReason",
@@ -738,7 +742,9 @@ fn course_lifecycle_calls_and_constants() {
 
 // ----- model runs, observers and the rest of the lane (Part 2) -----------------------------------
 
-use pagelamp_app::ai::{BackendRef, ExplainOptions, GenEvent, GenStage, ModelChoice};
+use pagelamp_app::ai::{
+    BackendRef, ExplainOptions, GenEvent, GenStage, ModelChoice, WeeklyNoteOptions,
+};
 use pagelamp_core::ai::{AiFeature, Effort};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -928,6 +934,71 @@ impl GenObserver for Panics {
     fn on_event(&self, _event: GenEvent) {
         panic!("an observer that fails");
     }
+}
+
+#[test]
+fn the_weekly_note_calls_reach_the_facade() {
+    let model = with_local_model();
+    let lamp = &model.lamp;
+    let settings = block_on(lamp.weekly_note_settings()).unwrap();
+    assert!(!settings.prepare_on_monday && !settings.prepare_on_monday_allowed);
+    assert!(matches!(
+        block_on(lamp.set_prepare_weekly_note_on_monday(true)),
+        Err(PageLampError::Invalid { .. })
+    ));
+    // The explanations' local model writes notes too.
+    let backend = block_on(lamp.ai_status()).unwrap().backends[0]
+        .backend
+        .clone();
+    block_on(lamp.set_feature_model(
+        AiFeature::WeeklyNote,
+        Some(ModelChoice {
+            backend,
+            model: "local-model".into(),
+            effort: Effort::Lowest,
+        }),
+    ))
+    .unwrap();
+    assert!(
+        block_on(lamp.set_prepare_weekly_note_on_monday(true))
+            .unwrap()
+            .prepare_on_monday_allowed
+    );
+    let note = serde_json::json!({
+        "note": "Week 2 of DEMO101 continues.",
+        "focus": [{"text": "Review the week 2 notes", "course_id": null}]
+    })
+    .to_string();
+    model.runtime.block_on(
+        Mock::given(method("POST"))
+            .respond_with(ollama_answer(&note, Duration::ZERO))
+            .mount(&model.server),
+    );
+    let recorder = Arc::new(Recorder {
+        events: Mutex::new(Vec::new()),
+        waiting: Mutex::new(None),
+    });
+    let written = block_on(lamp.write_weekly_note(
+        "note-ffi".into(),
+        WeeklyNoteOptions::default(),
+        recorder.clone(),
+    ))
+    .unwrap();
+    assert_eq!(written.text, "Week 2 of DEMO101 continues.");
+    assert_eq!(written.focus.len(), 1);
+    assert!(
+        recorder
+            .events
+            .lock()
+            .unwrap()
+            .contains(&GenEvent::Finished { ok: true })
+    );
+    assert_eq!(block_on(lamp.weekly_notes()).unwrap().len(), 1);
+    block_on(lamp.delete_weekly_note("note-ffi".into())).unwrap();
+    assert!(matches!(
+        block_on(lamp.delete_weekly_note("note-ffi".into())),
+        Err(PageLampError::NotFound { .. })
+    ));
 }
 
 #[test]

@@ -419,6 +419,32 @@ struct MockFeatureTests {
         #expect(try await service.aiStatus().budget.monthlyMicroUsd == nil)
     }
 
+    @Test("the weekly note is blocked without a model; only API keys and local models prepare it")
+    func weeklyNote() async throws {
+        let service = mock()
+        #expect(try await service.weeklyNotes().isEmpty)
+        #expect(try await service.weeklyNoteSettings().prepareOnMondayAllowed == false)
+        do {
+            _ = try await service.setPrepareWeeklyNoteOnMonday(on: true)
+            Issue.record("expected invalid")
+        } catch {
+            #expect(error.kind == .invalid)
+        }
+        let local = ModelChoice(backend: .provider(providerId: "ollama"), model: "local-model", effort: .lowest)
+        try await service.setFeatureModel(feature: .weeklyNote, choice: local)
+        let settings = try await service.setPrepareWeeklyNoteOnMonday(on: true)
+        #expect(settings.prepareOnMonday && settings.prepareOnMondayAllowed)
+        let plan = ModelChoice(backend: .codex, model: "plan-model", effort: .lowest)
+        try await service.setFeatureModel(feature: .weeklyNote, choice: plan)
+        #expect(try await service.weeklyNoteSettings().prepareOnMondayAllowed == false)
+        do {
+            _ = try await service.writeWeeklyNote(generationId: "n1", options: WeeklyNoteOptions(), observer: GenEventStream())
+            Issue.record("expected blocked")
+        } catch {
+            #expect(error.kind == .blocked)
+        }
+    }
+
     @Test("a study plan item can be checked off")
     func planItem() async throws {
         let service = mock()
