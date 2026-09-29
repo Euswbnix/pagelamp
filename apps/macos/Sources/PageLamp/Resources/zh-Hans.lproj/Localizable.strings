@@ -1528,6 +1528,10 @@
 "sources.status.new" = "新添加";
 "sources.status.ok" = "正常";
 "sources.status.syncing" = "同步中";
+"sources.technical.copyFor" = "复制技术详情：%1$@";
+"sources.technical.note" = "原始信息，可附在问题反馈里。";
+"sources.technical.title" = "技术详情";
+"sources.technical.titleFor" = "技术详情：%1$@";
 "sources.title" = "数据来源与同步";
 "updates.install.aiApp" = "更新完成后，请退出并重新打开你的 AI 应用，让它使用新的 PageLamp。";
 "updates.install.availableAfterOtherSync" = "另一个同步（来自命令行或另一个窗口）结束后可用";

@@ -1528,6 +1528,10 @@
 "sources.status.new" = "New";
 "sources.status.ok" = "OK";
 "sources.status.syncing" = "Syncing";
+"sources.technical.copyFor" = "Copy technical details for %1$@";
+"sources.technical.note" = "The original message, for a bug report.";
+"sources.technical.title" = "Technical details";
+"sources.technical.titleFor" = "Technical details for %1$@";
 "sources.title" = "Sources & sync";
 "updates.install.aiApp" = "Afterwards, quit and reopen your AI app so it uses the new PageLamp.";
 "updates.install.availableAfterOtherSync" = "Available when the other sync (from the command line or another window) finishes";

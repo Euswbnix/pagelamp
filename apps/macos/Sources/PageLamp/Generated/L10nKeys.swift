@@ -1556,6 +1556,7 @@ nonisolated enum L10nKeys {
         "sources.progress.starting",
         "sources.progress.steps",
         "sources.progress.stopped",
+        "sources.progress.warningCount",
         "sources.progress.warnings",
         "sources.remove.confirm",
         "sources.remove.description.canvas",
@@ -1581,6 +1582,10 @@ nonisolated enum L10nKeys {
         "sources.status.new",
         "sources.status.ok",
         "sources.status.syncing",
+        "sources.technical.copyFor",
+        "sources.technical.note",
+        "sources.technical.title",
+        "sources.technical.titleFor",
         "sources.title",
         "updates.install.aiApp",
         "updates.install.availableAfterOtherSync",
@@ -1678,6 +1683,7 @@ nonisolated enum L10nKeys {
         "removal.toast.deleted",
         "removal.toast.removed",
         "sources.progress.stage.saving_events",
+        "sources.progress.warningCount",
     ]
 
     static let arguments: [String: [String]] = [
@@ -2024,6 +2030,7 @@ nonisolated enum L10nKeys {
         "sources.progress.stage.saving_events": ["count"],
         "sources.progress.stage.scanning_files": ["course"],
         "sources.progress.steps": ["current", "total"],
+        "sources.progress.warningCount": ["count"],
         "sources.progress.warnings": ["n"],
         "sources.remove.done": ["label"],
         "sources.remove.title": ["label"],
@@ -2031,6 +2038,8 @@ nonisolated enum L10nKeys {
         "sources.replace.descriptionToken": ["label"],
         "sources.replace.doneFeed": ["label"],
         "sources.replace.doneToken": ["label"],
+        "sources.technical.copyFor": ["subject"],
+        "sources.technical.titleFor": ["subject"],
         "updates.install.downloading": ["percent"],
         "updates.install.title": ["version"],
         "updates.notice.available": ["version"],
