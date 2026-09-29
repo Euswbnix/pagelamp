@@ -76,12 +76,12 @@ describe("mock ChatGPT plan (Codex)", () => {
     expect((await plus.aiStatus()).backends[0]?.disclosure).toMatchObject({
       training: { kind: "may_train" },
       cost: "plan_credits",
-      admin_visibility: false,
+      admin_visibility: "no",
     });
     const edu = createMockApi({ ...fast, scenario: "codex-edu" });
     expect((await edu.aiStatus()).backends[0]).toMatchObject({
       state: "needs_disclosure",
-      disclosure: { training: { kind: "no_training" }, admin_visibility: true },
+      disclosure: { training: { kind: "no_training" }, admin_visibility: "yes" },
     });
   });
 
@@ -121,6 +121,8 @@ describe("mock ChatGPT plan (Codex)", () => {
   it("reports an API-key sign-in and a plan without codex exec", async () => {
     const key = createMockApi({ ...fast, scenario: "codex-api-key" });
     expect((await key.codexStatus()).login.state).toBe("api_key");
+    // No plan type: the admin warning is conditional, never left out.
+    expect((await key.aiStatus()).backends[0]?.disclosure.admin_visibility).toBe("unknown");
     const free = createMockApi({ ...fast, scenario: "codex-free" });
     expect(await free.codexStatus()).toMatchObject({
       exec_available: false,

@@ -137,6 +137,24 @@ impl Drop for RemoveOnDrop {
     }
 }
 
+/// The same rules for a blocking caller (`login::logout_blocking`): output discarded.
+pub(crate) fn std_command(binary: &Path, home: &CodexHome, cwd: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(binary);
+    command
+        .env_clear()
+        .envs(environment(std::env::vars_os(), home, Purpose::Other))
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
+    command
+}
+
 /// Remove ANSI escape sequences (Codex colours its prompts).
 pub(crate) fn strip_ansi(line: &str) -> String {
     let mut out = String::with_capacity(line.len());

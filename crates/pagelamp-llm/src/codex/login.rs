@@ -159,6 +159,31 @@ pub async fn logout(binary: &Path, home: &CodexHome) -> Result<(), CodexError> {
     Ok(())
 }
 
+/// `codex logout` for a blocking caller ("Remove all AI data" runs it before deleting
+/// `CODEX_HOME`): the same lock and rules, killed after `SHORT_COMMAND_TIMEOUT`.
+pub fn logout_blocking(binary: &Path, home: &CodexHome) -> Result<(), CodexError> {
+    let lock = home.lock()?;
+    home.write_config(&lock)?;
+    let mut child = process::std_command(binary, home, home.dir())
+        .arg("logout")
+        .spawn()
+        .map_err(|err| CodexError::Start(err.kind().to_string()))?;
+    let started = std::time::Instant::now();
+    loop {
+        if child.try_wait()?.is_some() {
+            return Ok(());
+        }
+        if started.elapsed() > SHORT_COMMAND_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CodexError::Failed {
+                kind: ModelErrorKind::Timeout,
+            });
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 /// `codex --version` (for "Use my installed Codex", D12). Needs no lock or config.
 pub async fn version(binary: &Path, home: &CodexHome) -> Result<Version, CodexError> {
     let cwd = std::env::temp_dir();

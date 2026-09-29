@@ -125,8 +125,10 @@ function CardBody({
           {plan ? t("codex.signedInPlan", { plan: t(`codex.plan.${plan}`) }) : t("codex.signedIn")}
         </p>
       ) : null}
-      {login.state === "chatgpt" && (plan === "edu" || plan === "enterprise") ? (
+      {backend?.disclosure.admin_visibility === "yes" ? (
         <Warning>{t("codex.adminWarning")}</Warning>
+      ) : backend?.disclosure.admin_visibility === "unknown" ? (
+        <Warning>{t("codex.adminUnknown")}</Warning>
       ) : null}
       {login.state === "api_key" ? <Warning>{t("codex.apiKeyWarning")}</Warning> : null}
       {login.state === "chatgpt" && status.exec_available === false ? (

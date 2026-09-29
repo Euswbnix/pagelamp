@@ -122,6 +122,8 @@ describe("Use my ChatGPT plan (Codex)", () => {
     expect(
       await within(region).findByText(/runs are billed to that key, not to your ChatGPT plan/),
     ).toBeInTheDocument();
+    // The plan type is unknown: the admin warning says "may".
+    expect(within(region).getByText(/If this is an Edu or workspace account/)).toBeInTheDocument();
   });
 
   it("points a plan without codex exec to what still works (D10)", async () => {

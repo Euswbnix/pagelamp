@@ -71,7 +71,12 @@ export function codexFacts(plan: ChatGptPlanType): DisclosureFacts {
           how_to_turn_off_url: "https://chatgpt.demo.test/settings/data-controls",
         },
     retention: { kind: "provider_terms" },
-    admin_visibility: plan === "edu" || plan === "enterprise",
+    admin_visibility:
+      plan === "edu" || plan === "enterprise" || plan === "business"
+        ? "yes"
+        : plan === "unknown"
+          ? "unknown"
+          : "no",
     min_age: 13,
     guardian_permission: true,
     cost: "plan_credits",
