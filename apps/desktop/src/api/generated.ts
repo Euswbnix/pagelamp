@@ -8,6 +8,92 @@
  */
 export type ActivityKind = "sync" | "download";
 /**
+ * Which backend a choice or an acknowledgement is about.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BackendRef".
+ */
+export type BackendRef =
+  | {
+      kind: "codex";
+    }
+  | {
+      kind: "claude_code";
+    }
+  | {
+      kind: "provider";
+      provider_id: string;
+    };
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CostKind".
+ */
+export type CostKind = "free_on_device" | "api_billing" | "plan_credits" | "cloud_via_local";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RetentionFact".
+ */
+export type RetentionFact =
+  | {
+      kind: "not_stored";
+    }
+  | {
+      days: number;
+      kind: "stored_days";
+    }
+  | {
+      kind: "provider_terms";
+    }
+  | {
+      kind: "on_device";
+    };
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SentData".
+ */
+export type SentData = "structure" | "material_text";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TrainingFact".
+ */
+export type TrainingFact =
+  | {
+      kind: "no_training";
+    }
+  | {
+      how_to_turn_off_url?: string | null;
+      kind: "may_train";
+    }
+  | {
+      kind: "may_train_free_tier";
+    }
+  | {
+      kind: "unknown";
+    };
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BackendKind".
+ */
+export type BackendKind = "api_key" | "local" | "codex" | "claude_code";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BackendProblem".
+ */
+export type BackendProblem =
+  "key_missing" | "server_not_running" | "model_missing" | "disclosure_changed";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BackendState".
+ */
+export type BackendState = ("ready" | "needs_setup" | "unavailable") | "needs_disclosure";
+/**
+ * A feature that runs a model.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiFeature".
+ */
+export type AiFeature = "study_plan" | "weekly_explanation" | "weekly_note" | "course_calendar";
+/**
  * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
  * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
  * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
@@ -28,6 +114,41 @@ export type AiMaterialsState = "readable" | "turned_off" | "withheld_by_policy";
 export type AiPolicy =
   "unknown" | "prohibited" | "learning_aid" | "allowed_with_citation" | "unrestricted";
 /**
+ * How hard the model should think. Mapped per wire: "lowest" is the cheapest setting the
+ * model allows (`none` / `minimal`, or `low` where thinking can't be turned off).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Effort".
+ */
+export type Effort = "lowest" | "low" | "medium" | "high";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ProviderWire".
+ */
+export type ProviderWire =
+  "openai_responses" | "openai_chat" | "anthropic_messages" | "ollama_native";
+/**
+ * Why a model call was refused before anything was sent.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BlockReason".
+ */
+export type BlockReason =
+  | (
+      | "course_hidden"
+      | "no_readable_materials"
+      | "disclosure_not_acknowledged"
+      | "no_model_chosen"
+      | "backend_disabled_in_this_build"
+    )
+  | "course_policy_prohibited"
+  | "course_ai_turned_off"
+  | "material_sharing_not_allowed"
+  | "coding_plan_key"
+  | "budget_reached"
+  | "price_unknown_not_acknowledged"
+  | "weekly_run_cap_reached";
+/**
  * What kind of failure happened; UIs branch on this, never on `message`.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -42,7 +163,32 @@ export type AppErrorKind =
   | "busy"
   | "schema_too_new"
   | "schema_too_old"
+  | "blocked"
+  | "model"
+  | "cancelled"
   | "internal";
+/**
+ * Why a model call failed (the facade's `SourceErrorKind` for models).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ModelErrorKind".
+ */
+export type ModelErrorKind =
+  | ("model_not_found" | "context_too_long" | "network" | "timeout")
+  | "not_signed_in"
+  | "auth_rejected"
+  | "billing_or_quota"
+  | "usage_limit"
+  | "rate_limited"
+  | "overloaded"
+  | "invalid_request"
+  | "refused"
+  | "content_filtered"
+  | "bad_output"
+  | "runtime_missing"
+  | "runtime_verify_failed"
+  | "runtime_outdated"
+  | "unsupported";
 /**
  * Where course data comes from.
  *
@@ -124,6 +270,106 @@ export type TextErrorKind =
   | "spawn_failed"
   | "protocol_mismatch";
 /**
+ * What an estimate is for.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EstimateRequest".
+ */
+export type EstimateRequest =
+  | {
+      /**
+       * Course ids or codes (empty: the default set).
+       */
+      courses: string[];
+      feature: "study_plan";
+      horizon_days?: number | null;
+    }
+  | {
+      course: string;
+      feature: "weekly_explanation";
+      week?: number | null;
+    }
+  | {
+      feature: "weekly_note";
+    }
+  | {
+      courses: string[];
+      feature: "course_calendar";
+    };
+/**
+ * What a generation reports while it runs.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenEvent".
+ */
+export type GenEvent =
+  | {
+      backend_label: string;
+      generation_id: string;
+      model: string;
+      on_device: boolean;
+      type: "started";
+    }
+  | {
+      stage: GenStage;
+      type: "stage";
+    }
+  | {
+      text: string;
+      type: "text_delta";
+    }
+  | {
+      code: GenNoticeCode;
+      type: "notice";
+    }
+  | {
+      type: "usage";
+      usage: TokenUsage;
+    }
+  | {
+      ok: boolean;
+      type: "finished";
+    };
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenStage".
+ */
+export type GenStage =
+  "building_context" | "waiting_for_model" | "validating" | "repairing" | "scheduling";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenNoticeCode".
+ */
+export type GenNoticeCode =
+  | (
+      | "context_trimmed"
+      | "thinking_always_on"
+      | "json_fallback"
+      | "courses_structure_only"
+      | "materials_left_out"
+      | "api_key_billing"
+    )
+  | "material_sharing_reminder";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LeftOutReason".
+ */
+export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalServerKind".
+ */
+export type LocalServerKind = "ollama" | "lm_studio";
+/**
+ * The student's answer to "May this course's materials be shared with an AI service?"
+ * (design §4.1, question (b); `courses.material_sharing`, schema v4). Only `not_allowed` stops
+ * material text from going to a cloud backend (owner decision D37, option 2).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "MaterialSharing".
+ */
+export type MaterialSharing = "unanswered" | "allowed" | "not_sure" | "not_allowed";
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "McpClient".
  */
@@ -159,6 +405,11 @@ export type McpNoteCode =
   | "custom_data_dir"
   | "generic_stdio_client"
   | "run_from_temporary_location";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "StructuredOutputTier".
+ */
+export type StructuredOutputTier = "native_schema" | "json_object" | "prompt_only";
 /**
  * A topic of the one-time What's new sheet shown after an update.
  *
@@ -243,36 +494,74 @@ export interface PageLampAppTypes {
   activity: Activity;
   activity_item: ActivityItem;
   activity_kind: ActivityKind;
+  ai_backend_status: AiBackendStatus;
+  ai_feature: AiFeature;
   ai_materials_state: AiMaterialsState;
   ai_policy: AiPolicy;
+  ai_status: AiStatus;
   app_error: AppError;
   app_status: AppStatus;
+  backend_kind: BackendKind;
+  backend_problem: BackendProblem;
+  backend_ref: BackendRef;
+  backend_state: BackendState;
+  block_reason: BlockReason;
+  budget_status: BudgetStatus;
+  cost_estimate: CostEstimate;
+  cost_kind: CostKind;
   course_overview: CourseOverview;
   course_summary: CourseSummary;
   course_sync_summary: CourseSyncSummary;
   crash_report: CrashReport;
   deadline: Deadline;
+  disclosure_facts: DisclosureFacts;
   doctor_report: DoctorReport;
+  effort: Effort;
+  estimate_request: EstimateRequest;
   extract_worker_check: ExtractWorkerCheck;
   extract_worker_status: ExtractWorkerStatus;
+  feature_routing: FeatureRouting;
+  gen_event: GenEvent;
+  gen_notice_code: GenNoticeCode;
+  gen_stage: GenStage;
+  generation_meta: GenerationMeta;
+  local_server: LocalServer;
+  local_server_kind: LocalServerKind;
+  material_sharing: MaterialSharing;
   mcp_client_config: McpClientConfig;
+  model_choice: ModelChoice;
+  model_error_kind: ModelErrorKind;
+  model_info: ModelInfo;
+  model_provider_record: ModelProviderRecord;
+  probe_report: ProbeReport;
   process_kind: ProcessKind;
+  provider_preset: ProviderPreset;
+  provider_wire: ProviderWire;
+  recipient: Recipient;
+  remove_ai_data_report: RemoveAiDataReport;
+  retention_fact: RetentionFact;
   search_hit: SearchHit;
+  sent_data: SentData;
   source_error_kind: SourceErrorKind;
   source_record: SourceRecord;
   source_sync_result: SourceSyncResult;
   startup_tasks: StartupTasks;
   stored_study_plan: StoredStudyPlan;
+  structured_output_tier: StructuredOutputTier;
   sync_event: SyncEvent;
   sync_request: SyncRequest;
   sync_summary: SyncSummary;
   term_source: TermSource;
   text_error_kind: TextErrorKind;
+  token_usage: TokenUsage;
+  training_fact: TrainingFact;
   unreadable_files: UnreadableFiles;
   update_channel: UpdateChannel;
   update_check_outcome: UpdateCheckOutcome;
   update_check_record: UpdateCheckRecord;
   update_prefs: UpdatePrefs;
+  usage_row: UsageRow;
+  usage_summary: UsageSummary;
   week_materials: WeekMaterials;
   whats_new: WhatsNew;
   whats_new_topic: WhatsNewTopic;
@@ -305,17 +594,156 @@ export interface ActivityItem {
   started_at: string;
 }
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiBackendStatus".
+ */
+export interface AiBackendStatus {
+  backend: BackendRef;
+  disclosure: DisclosureFacts;
+  /**
+   * The disclosure version the student acknowledged, if any.
+   */
+  disclosure_acknowledged?: number | null;
+  kind: BackendKind;
+  label: string;
+  problems: BackendProblem[];
+  state: BackendState;
+}
+/**
+ * What a backend is told and what happens to it (Canvas §2E items): codes and plain values the
+ * UIs render. The UIs always add the fixed limitations-and-risks and ownership paragraphs.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DisclosureFacts".
+ */
+export interface DisclosureFacts {
+  /**
+   * A school or company administrator can see the use (Edu/Enterprise plans).
+   */
+  admin_visibility: boolean;
+  cost: CostKind;
+  /**
+   * Under 18 needs a parent's or guardian's permission.
+   */
+  guardian_permission: boolean;
+  /**
+   * Where data is processed (ISO country code), if known.
+   */
+  location?: string | null;
+  min_age?: number | null;
+  on_device: boolean;
+  recipient: Recipient;
+  retention: RetentionFact;
+  sends: SentData[];
+  training: TrainingFact;
+  /**
+   * A hash of all the facts and of the fixed paragraphs' wording: any change asks again.
+   */
+  version: number;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Recipient".
+ */
+export interface Recipient {
+  name: string;
+  terms_url?: string | null;
+}
+/**
+ * Everything the AI settings page shows (no network call).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiStatus".
+ */
+export interface AiStatus {
+  /**
+   * In priority order.
+   */
+  backends: AiBackendStatus[];
+  budget: BudgetStatus;
+  features: FeatureRouting[];
+  providers: ModelProviderRecord[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BudgetStatus".
+ */
+export interface BudgetStatus {
+  /**
+   * The monthly soft cap for API keys (`None`: no cap).
+   */
+  monthly_micro_usd?: number | null;
+  /**
+   * Estimated spend this month.
+   */
+  spent_micro_usd: number;
+  /**
+   * Warn from this share of the cap.
+   */
+  warn_at_percent: number;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "FeatureRouting".
+ */
+export interface FeatureRouting {
+  choice?: ModelChoice | null;
+  feature: AiFeature;
+}
+/**
+ * The model a feature uses.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ModelChoice".
+ */
+export interface ModelChoice {
+  backend: BackendRef;
+  effort: Effort;
+  model: string;
+}
+/**
+ * A provider the student added (the key itself stays in the keychain).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ModelProviderRecord".
+ */
+export interface ModelProviderRecord {
+  base_url: string;
+  created_at: string;
+  /**
+   * The key's last 4 characters, for display.
+   */
+  key_last4?: string | null;
+  label: string;
+  on_device: boolean;
+  preset: string;
+  provider_id: string;
+  wire: ProviderWire;
+}
+/**
  * Error returned by every facade method. Serialised as-is by the Tauri commands.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "AppError".
  */
 export interface AppError {
+  /**
+   * Why a model call was refused (kind `blocked`).
+   */
+  blocked?: BlockReason | null;
   kind: AppErrorKind;
   /**
    * User-presentable; never contains a secret.
    */
   message: string;
+  /**
+   * Why a model call failed (kind `model`).
+   */
+  model_error?: ModelErrorKind | null;
+  /**
+   * How long the provider asked to wait before trying again.
+   */
+  retry_after_secs?: number | null;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -397,6 +825,28 @@ export interface SourceRecord {
   last_synced_at?: string | null;
 }
 /**
+ * "≈ $x" before Generate: an upper bound.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CostEstimate".
+ */
+export interface CostEstimate {
+  input_tokens: number;
+  max_output_tokens: number;
+  /**
+   * `None` when the model's price is unknown.
+   */
+  micro_usd_upper?: number | null;
+  price_known: boolean;
+  reasoning_allowance: number;
+  repair_possible: boolean;
+  /**
+   * What would stop the run if started now (over budget, price not acknowledged, a course
+   * answered "not allowed", …).
+   */
+  would_block?: BlockReason | null;
+}
+/**
  * Everything needed to answer "what's going on in this course right now".
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -404,7 +854,10 @@ export interface SourceRecord {
  */
 export interface CourseOverview {
   /**
-   * Effective AI access to this course's material text (`Course::ai_materials`).
+   * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
+   * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
+   * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
+   * always available; only material text is withheld.
    */
   ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   course: Course;
@@ -572,7 +1025,10 @@ export interface Deadline {
  */
 export interface CourseSummary {
   /**
-   * Effective AI access to this course's material text (`Course::ai_materials`).
+   * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
+   * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
+   * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
+   * always available; only material text is withheld.
    */
   ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   counts: CourseCounts;
@@ -736,6 +1192,101 @@ export interface UnreadableFiles {
   kind: TextErrorKind;
 }
 /**
+ * Token counts of a run.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TokenUsage".
+ */
+export interface TokenUsage {
+  cached_input_tokens: number;
+  /**
+   * All input tokens, cached ones included.
+   */
+  input_tokens: number;
+  /**
+   * All output tokens, reasoning included.
+   */
+  output_tokens: number;
+  /**
+   * Of `output_tokens`, the ones spent thinking, if the provider says.
+   */
+  reasoning_tokens?: number | null;
+}
+/**
+ * Provenance of every generated result (the "AI-generated · backend · model · date" label).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenerationMeta".
+ */
+export interface GenerationMeta {
+  backend_label: string;
+  context: ContextSummary;
+  created_at: string;
+  est_cost_micro_usd?: number | null;
+  /**
+   * Counts are estimates (the run was cancelled before the provider reported them).
+   */
+  estimated: boolean;
+  feature: AiFeature;
+  generation_id: string;
+  model: string;
+  prompt_version: number;
+  usage: TokenUsage;
+}
+/**
+ * What a context contains, for the UI (no text).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ContextSummary".
+ */
+export interface ContextSummary {
+  courses: ContextCourse[];
+  /**
+   * Materials left out, and why.
+   */
+  left_out: LeftOutMaterial[];
+  /**
+   * Materials whose text was included.
+   */
+  materials_included: number;
+  /**
+   * Materials whose text was cut to fit the budget.
+   */
+  materials_trimmed: number;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ContextCourse".
+ */
+export interface ContextCourse {
+  course_id: string;
+  state: AiMaterialsState;
+  /**
+   * Whether any material text of this course is in the context (else structure only).
+   */
+  text_included: boolean;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LeftOutMaterial".
+ */
+export interface LeftOutMaterial {
+  material_id: string;
+  reason: LeftOutReason;
+  title: string;
+}
+/**
+ * A local model server found on this computer.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalServer".
+ */
+export interface LocalServer {
+  base_url: string;
+  kind: LocalServerKind;
+  running: boolean;
+}
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "McpClientConfig".
  */
@@ -789,6 +1340,110 @@ export interface McpLaunch {
    * with a `RunFromTemporaryLocation` note.
    */
   temporary_location?: TemporaryLocation | null;
+}
+/**
+ * A model a backend offers.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ModelInfo".
+ */
+export interface ModelInfo {
+  context_window?: number | null;
+  id: string;
+  label?: string | null;
+  on_device: boolean;
+  /**
+   * Its price is in PageLamp's price list (else the budget can't be enforced for it).
+   */
+  price_known: boolean;
+  /**
+   * Thinking can't be turned off ("lowest" still thinks, and costs more).
+   */
+  reasoning_always_on: boolean;
+  /**
+   * Served by a local app but run in the cloud (Ollama cloud models).
+   */
+  runs_in_cloud: boolean;
+  /**
+   * Features this release suggests the model for.
+   */
+  suggested_for: AiFeature[];
+}
+/**
+ * What "Test" found out.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ProbeReport".
+ */
+export interface ProbeReport {
+  error?: ModelErrorKind | null;
+  latency_ms: number;
+  ok: boolean;
+  structured_output_tier?: StructuredOutputTier | null;
+  thinking_always_on: boolean;
+}
+/**
+ * A provider PageLamp can set up.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ProviderPreset".
+ */
+export interface ProviderPreset {
+  base_url_editable: boolean;
+  data_policy: DisclosureFacts1;
+  default_base_url?: string | null;
+  id: string;
+  label: string;
+  /**
+   * Runs on this computer (Ollama, LM Studio).
+   */
+  local: boolean;
+  needs_key: boolean;
+  wire: ProviderWire;
+}
+/**
+ * What a backend is told and what happens to it (Canvas §2E items): codes and plain values the
+ * UIs render. The UIs always add the fixed limitations-and-risks and ownership paragraphs.
+ */
+export interface DisclosureFacts1 {
+  /**
+   * A school or company administrator can see the use (Edu/Enterprise plans).
+   */
+  admin_visibility: boolean;
+  cost: CostKind;
+  /**
+   * Under 18 needs a parent's or guardian's permission.
+   */
+  guardian_permission: boolean;
+  /**
+   * Where data is processed (ISO country code), if known.
+   */
+  location?: string | null;
+  min_age?: number | null;
+  on_device: boolean;
+  recipient: Recipient;
+  retention: RetentionFact;
+  sends: SentData[];
+  training: TrainingFact;
+  /**
+   * A hash of all the facts and of the fixed paragraphs' wording: any change asks again.
+   */
+  version: number;
+}
+/**
+ * What "Remove all AI data" removed.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RemoveAiDataReport".
+ */
+export interface RemoveAiDataReport {
+  /**
+   * The pre-update database backup was deleted too (it holds AI data from schema 4 on).
+   */
+  backup_removed: boolean;
+  generations_removed: number;
+  providers_removed: number;
+  usage_rows_removed: number;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -979,6 +1634,37 @@ export interface UpdatePrefs {
   channel?: UpdateChannel | null;
 }
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UsageRow".
+ */
+export interface UsageRow {
+  backend_label: string;
+  /**
+   * Some counts are PageLamp's estimates (cancelled runs).
+   */
+  estimated: boolean;
+  feature: AiFeature;
+  input_tokens: number;
+  micro_usd: number;
+  model: string;
+  output_tokens: number;
+  reasoning_tokens: number;
+  runs: number;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UsageSummary".
+ */
+export interface UsageSummary {
+  budget: BudgetStatus;
+  /**
+   * The first day of the month.
+   */
+  month: string;
+  rows: UsageRow[];
+  total_micro_usd: number;
+}
+/**
  * Materials of one teaching week.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -986,7 +1672,10 @@ export interface UpdatePrefs {
  */
 export interface WeekMaterials {
   /**
-   * Effective AI access to this course's material text (`Course::ai_materials`).
+   * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
+   * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
+   * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
+   * always available; only material text is withheld.
    */
   ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   /**
