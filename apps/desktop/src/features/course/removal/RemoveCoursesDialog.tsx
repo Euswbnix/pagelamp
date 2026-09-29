@@ -146,7 +146,10 @@ export function RemoveCoursesDialog({
     const count = report.removed.length;
     const course = report.removed[0]?.code ?? report.removed[0]?.name ?? "";
     if (report.purged_now) {
-      toast.success(t("toast.deleted", { count, course }));
+      // The data is gone either way; files the Trash refused wait in "Removed courses".
+      if (report.removed.some((r) => r.files_pending))
+        toast.warning(t("toast.deletedFilesPending"));
+      else toast.success(t("toast.deleted", { count, course }));
       return;
     }
     const removedIds = report.removed.map((r) => r.removed_id);
@@ -182,7 +185,7 @@ export function RemoveCoursesDialog({
             <legend id={ids.list} className="mb-2 text-sm font-medium">
               {t("dialog.listLabel")}
             </legend>
-            <ul className="space-y-2">
+            <ul className="divide-y border-y">
               {rows.map((entry) => (
                 <CandidateRow
                   key={entry.course_id}
@@ -279,7 +282,7 @@ function CandidateRow({
   const id = useId();
   const name = entry.code ?? entry.name;
   return (
-    <li className="flex items-start gap-3 rounded-lg p-2 ring-1 ring-foreground/10">
+    <li className="flex items-start gap-3 py-2.5">
       <Checkbox
         id={id}
         checked={checked}
@@ -359,7 +362,7 @@ function PreviewDetails({ preview, loading }: { preview?: RemovalPreview; loadin
   const folders = preview.items.some((i) => i.own_folder_untouched);
 
   return (
-    <div className="space-y-3 text-sm">
+    <div className="pl-callout space-y-3 px-3 py-2.5 text-sm">
       <Section title={t("dialog.deletedTitle")}>
         <ul className="list-disc space-y-0.5 pl-5">
           {deleted.map((line) => (

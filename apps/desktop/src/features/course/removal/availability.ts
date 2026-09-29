@@ -1,10 +1,10 @@
 /**
- * The removal screens and the course dates form v2 (F2: the "courses look finished" banner,
- * "Review past courses…", "Remove from PageLamp…", "Removed courses", breaks and exam dates).
- * Like AI_SETUP_ENABLED on main, they run against the mock until src-tauri has the B5/B6
- * commands (alpha.2), so a real build (alpha.1) never shows screens whose commands don't exist.
- * VITE_PAGELAMP_REMOVAL_UI=1 turns them on in a real build for testing. Delete this switch in
- * the commit that wires the commands.
+ * The removal screens (F2: the "courses look finished" banner, "Review past courses…", "Remove
+ * from PageLamp…", "Removed courses" and its count). The commands are real on
+ * feat/course-removal; the screens stay behind this switch until that line reaches main, so a
+ * real build from main never shows screens whose commands don't exist there.
+ * VITE_PAGELAMP_REMOVAL_UI=1 turns them on in a real build. Delete this switch in the commit
+ * that makes them real on main. (The dates form v2 has its own switch: timeline/availability.)
  */
 export function removalUiEnabled(env: Record<string, unknown>): boolean {
   return env.VITE_API === "mock" || env.VITE_PAGELAMP_REMOVAL_UI === "1";
