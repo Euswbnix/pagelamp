@@ -23,6 +23,7 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   the system setting) makes every surface solid. The typeface is now Inter.
 
 ### Changed
+- MCP: tools declare all four annotation hints (read-only, destructive, idempotent, open-world).
 - A course file whose text can't be read now says why, in the app's language: no text found (for
   example a scanned PDF), too large, password-protected, damaged or an old format, or it hit the
   file reader's time or memory limit; the week's count of files your AI app can read leaves them
