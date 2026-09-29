@@ -12,6 +12,10 @@
 }
 .pl-content {
   background: var(--pl-color-surface-content);
+  /* WCAG 2.4.11 (C43): a focused element never scrolls under the sticky toolbar row or the
+     accessory bar. */
+  scroll-padding-top: calc(var(--pl-size-toolbar-row) + 8px);
+  scroll-padding-bottom: calc(var(--pl-size-accessory-height) + 24px);
 }
 
 /* Windows: Fluent's accent pill beside the selected row (the ink wash marks it everywhere). */
@@ -50,12 +54,26 @@
   box-shadow: inset 1px 1px 0 var(--pl-color-rule);
 }
 
+/* Windows contrast themes keep a background's alpha, and a transparent WebView2 has no base: an
+   opaque Canvas under the page, whichever contrast theme maps to prefers-contrast. */
+@media (forced-colors: active) {
+  :root[data-backdrop="mica"] body,
+  :root[data-backdrop="mica"] .pl-sidebar,
+  :root[data-backdrop="mica"] .pl-content {
+    background: Canvas;
+  }
+}
+
 /* Reduced transparency or increased contrast: nothing see-through, Mica or not. */
 :root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) body {
   background: var(--pl-color-surface-sidebar);
 }
 :root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) .pl-content {
   background: var(--pl-color-surface-content);
+  /* WCAG 2.4.11 (C43): a focused element never scrolls under the sticky toolbar row or the
+     accessory bar. */
+  scroll-padding-top: calc(var(--pl-size-toolbar-row) + 8px);
+  scroll-padding-bottom: calc(var(--pl-size-accessory-height) + 24px);
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   :root[data-backdrop="mica"] body {
@@ -141,5 +159,29 @@
   }
   .pl-accessory[data-state="visible"] {
     transition: opacity var(--pl-motion-reduced-duration) var(--pl-motion-reduced);
+  }
+}
+
+/* Popovers, menus and dialogs (shadcn + tw-animate-css, which has no reduced-motion rule): with
+   reduced motion only a 200 ms crossfade, no zoom or slide (§8, §10.4). */
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    [data-slot="popover-content"],
+    [data-slot="select-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="dialog-overlay"],
+    [data-slot="alert-dialog-overlay"]
+  ) {
+    --tw-enter-scale: 1;
+    --tw-exit-scale: 1;
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-enter-rotate: 0;
+    --tw-exit-rotate: 0;
+    animation-duration: var(--pl-motion-reduced-duration);
   }
 }
