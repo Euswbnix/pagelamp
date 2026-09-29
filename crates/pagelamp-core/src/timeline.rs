@@ -420,7 +420,13 @@ fn calendar_confidence(
         lines.item(EvidenceItem::new(EvidenceCode::NotesAhead).number("week", notes));
     }
     if term.anchor == TermAnchorSource::StudentConfirmed {
-        return student_confidence(input, resolved, calendar, lines);
+        // Never above the anchor's own confidence (a disputed accepted calendar is Medium).
+        let confidence = student_confidence(input, resolved, calendar, lines);
+        return if confidence_rank(confidence) < confidence_rank(calendar.confidence) {
+            calendar.confidence
+        } else {
+            confidence
+        };
     }
     // Rule 3: an independent signal that agrees (same week or one ahead) upgrades Medium.
     // Materials are not independent of a fit made from them.

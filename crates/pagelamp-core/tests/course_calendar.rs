@@ -969,6 +969,7 @@ fn user_calendar(draft: &DatesDraft) -> CalendarInForce {
         calendar: calendar_from_dates(draft).expect("valid dates"),
         origin: CalendarOrigin::User,
         ai_label: None,
+        disagrees_with_notes: false,
     }
 }
 
@@ -1008,6 +1009,18 @@ fn reading_week_from_confirmed_calendar() {
         (after.current_week, after.confidence),
         (Some(8), Confidence::High)
     );
+    // A calendar accepted despite V8 disagreement counts weeks at Medium.
+    let mut disputed = case.calendar.clone().unwrap();
+    disputed.disagrees_with_notes = true;
+    case.calendar = Some(disputed);
+    let disputed = case.timeline("2026-11-02");
+    assert_eq!(disputed.term.anchor, TermAnchorSource::StudentConfirmed);
+    assert_eq!(disputed.term.anchor_confidence, Confidence::Medium);
+    assert_eq!(
+        (disputed.current_week, disputed.confidence),
+        (Some(8), Confidence::Medium)
+    );
+    case.calendar = Some(user_calendar(&fall_draft(false)));
     assert!(
         !after
             .evidence

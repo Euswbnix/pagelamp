@@ -485,7 +485,13 @@ fn calendar_anchor(in_force: &CalendarInForce) -> Option<Anchor> {
         source: TermAnchorSource::StudentConfirmed,
         start: first.first_class,
         end: segments.last().and_then(|s| s.last_class),
-        confidence: Confidence::High,
+        // The student confirmed it, whoever read the dates (a scan too); V8 disagreement at
+        // acceptance caps it at Medium.
+        confidence: if in_force.disagrees_with_notes {
+            Confidence::Medium
+        } else {
+            Confidence::High
+        },
         origin: Some(in_force.origin),
         end_clipped: false,
         fit_weeks: None,

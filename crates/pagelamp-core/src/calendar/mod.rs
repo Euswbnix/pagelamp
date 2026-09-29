@@ -52,6 +52,9 @@ pub struct CalendarInForce {
     pub origin: CalendarOrigin,
     /// Set when the dates came from an AI (origin `ai` or `ai_app`).
     pub ai_label: Option<AiLabel>,
+    /// The proposal's V8 cross-checks disagreed (stored with it): the calendar counts weeks at
+    /// Medium, not High (design §7.5 V8).
+    pub disagrees_with_notes: bool,
 }
 
 /// The course dates form, as core validates it (the facade's `CourseDatesInput`).
