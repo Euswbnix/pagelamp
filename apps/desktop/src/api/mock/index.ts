@@ -459,7 +459,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const ai = createMockAi({
     scenario,
     now,
-    delay: (extra = 0) => sleep(latency + extra),
+    // The extra delay imitates slow network calls in the demo; tests (latency 0) skip it, so a
+    // loaded machine can't push them past their timeouts.
+    delay: (extra = 0) => sleep(latency > 0 ? latency + extra : 0),
     stepMs: syncStep,
     courses: () => db.courses,
     findCourse,

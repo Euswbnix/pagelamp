@@ -325,7 +325,9 @@ public actor MockService: PageLampService {
                     sourceId: source.id,
                     message: step < total ? "Indexing materials (\(step)/\(total))" : "Updating timelines",
                     current: step,
-                    total: total
+                    total: total,
+                    stage: nil,
+                    course: nil
                 ))
                 if source.kind == .folder, step == 2 {
                     let warning = "Skipped 'Week 3 lecture recording.mp4' — video files can't be read."

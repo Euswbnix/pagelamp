@@ -59,6 +59,7 @@ use pagelamp_core::model::{
 };
 use pagelamp_core::paths;
 use pagelamp_core::secrets::{KeychainSecrets, SecretBackend};
+pub use pagelamp_core::source::SyncStage;
 use pagelamp_core::source::{CourseSyncSummary, SourceError};
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, CourseOverview, CourseSummary, Deadline, WeekMaterials};
@@ -265,9 +266,13 @@ pub enum SyncEvent {
     },
     Progress {
         source_id: String,
+        /// English, for the CLI and logs; the UIs translate `stage` when it is set.
         message: String,
         current: Option<u32>,
         total: Option<u32>,
+        stage: Option<SyncStage>,
+        /// The course the step is about (its code, else its name).
+        course: Option<String>,
     },
     Warning {
         source_id: String,
