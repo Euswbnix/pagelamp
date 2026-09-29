@@ -131,12 +131,18 @@ struct MockServiceTests {
 
         await service.simulateUpgrade(from: "0.3.0-alpha.1")
         tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
-        #expect(tasks.whatsNew?.topics == [.updateCheck, .courseWeeks])
+        #expect(tasks.whatsNew?.topics == [.courseWeeks], "the Mac app's topics: no update check")
         #expect(tasks.updatedFrom == "0.3.0-alpha.1")
         #expect(!tasks.updateCheckDue, "not while What's new waits")
         try await service.acknowledgeWhatsNew()
         tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
         #expect(tasks.whatsNew == nil && tasks.updateCheckDue)
+
+        // Acknowledging the Mac app's What's new never counts as the update disclosure.
+        let fresh = mock(.demo)
+        await fresh.simulateUpgrade(from: nil)
+        try await fresh.acknowledgeWhatsNew()
+        #expect(try await !fresh.startupTasks(now: now).updateCheckDue, "no disclosure")
 
         try await service.setUpdatePrefs(prefs: UpdatePrefs(autoCheck: false, channel: .stable))
         #expect(try await service.updatePrefs() == UpdatePrefs(autoCheck: false, channel: .stable))
