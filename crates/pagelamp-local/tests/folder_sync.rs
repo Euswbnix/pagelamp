@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::*;
-use pagelamp_core::source::{SyncProgress, no_progress};
+use pagelamp_core::source::{SyncProgress, SyncStage, no_progress};
 use pagelamp_core::store::Store;
 use pagelamp_local::sync_folder;
 use serde_json::json;
@@ -186,6 +186,17 @@ fn syncs_courses_modules_and_materials() {
             ..
         }
     )));
+    // Every step carries its code and course, so the UIs can translate it.
+    for stage in [SyncStage::ScanningFiles, SyncStage::IndexingFiles] {
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                SyncProgress::Step { stage: Some(s), course: Some(c), .. }
+                    if *s == stage && c.starts_with("DEMO101")
+            )),
+            "{stage:?}: {events:?}"
+        );
+    }
 }
 
 #[test]

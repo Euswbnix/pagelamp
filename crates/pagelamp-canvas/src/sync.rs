@@ -28,7 +28,7 @@ use pagelamp_core::ingest::{self, IndexOutcome};
 use pagelamp_core::model::{
     CourseUpsert, DownloadBlock, Event, Material, MaterialKind, MaterialUpsert, Module, TextStatus,
 };
-use pagelamp_core::source::{CourseSyncSummary, ProgressFn, SourceError, SyncProgress};
+use pagelamp_core::source::{CourseSyncSummary, ProgressFn, SourceError, SyncProgress, SyncStage};
 use pagelamp_core::store::Store;
 
 use crate::api::{Api, Listing};
@@ -221,17 +221,32 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         }
     }
 
-    fn step(&self, message: String, current: Option<usize>, total: Option<usize>) {
+    fn step(
+        &self,
+        stage: SyncStage,
+        course: Option<&str>,
+        message: String,
+        current: Option<usize>,
+        total: Option<usize>,
+    ) {
         (self.progress)(SyncProgress::Step {
             message,
             current: current.map(to_u32),
             total: total.map(to_u32),
+            stage: Some(stage),
+            course: course.map(str::to_string),
         });
     }
 
     pub(crate) async fn run(&self) -> Result<SyncReport, SourceError> {
         // Same reading as when the source was added: a moved or redirecting Canvas says so.
-        self.step("Checking the Canvas token".into(), None, None);
+        self.step(
+            SyncStage::CheckingAccess,
+            None,
+            "Checking the Canvas token".into(),
+            None,
+            None,
+        );
         let _user: json::User = self
             .api
             .get_one(Endpoint::UsersSelf)
@@ -245,7 +260,13 @@ impl<T: CanvasTransport> Syncer<'_, T> {
     async fn run_inner(&self) -> Result<SyncReport, CanvasError> {
         let mut report = SyncReport::default();
 
-        self.step("Listing courses".into(), None, None);
+        self.step(
+            SyncStage::ListingCourses,
+            None,
+            "Listing courses".into(),
+            None,
+            None,
+        );
         let listing = self.api.get_all::<json::Course>(Endpoint::Courses).await?;
         if !listing.complete() {
             self.warn(
@@ -281,6 +302,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             self.check_cancelled()?;
             let label = upsert.code.clone().unwrap_or_else(|| upsert.name.clone());
             self.step(
+                SyncStage::ReadingCourse,
+                Some(&label),
                 format!("{label}: reading"),
                 Some(index + 1),
                 Some(selected.len()),
@@ -983,6 +1006,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         for (index, job) in downloads.into_iter().enumerate() {
             self.check_cancelled()?;
             self.step(
+                SyncStage::DownloadingFiles,
+                Some(label),
                 format!("{label}: downloading files"),
                 Some(index + 1),
                 Some(total),

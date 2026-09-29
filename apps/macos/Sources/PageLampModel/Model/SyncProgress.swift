@@ -45,7 +45,7 @@ public struct SyncProgress: Equatable, Sendable {
             message = nil
             current = nil
             total = nil
-        case .progress(let sourceId, let message, let current, let total):
+        case .progress(let sourceId, let message, let current, let total, _, _):
             self.sourceId = sourceId
             self.message = message
             self.current = current

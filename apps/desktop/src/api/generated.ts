@@ -438,9 +438,17 @@ export type SyncEvent =
       type: "source_started";
     }
   | {
+      /**
+       * The course the step is about (its code, else its name).
+       */
+      course?: string | null;
       current?: number | null;
+      /**
+       * English, for the CLI and logs; the UIs translate `stage` when it is set.
+       */
       message: string;
       source_id: string;
+      stage?: SyncStage | null;
       total?: number | null;
       type: "progress";
     }
@@ -456,6 +464,22 @@ export type SyncEvent =
       source_id: string;
       type: "source_finished";
     };
+/**
+ * What a sync step is doing, as a code the UIs translate (with `course`, `current` and `total`
+ * filled in); the step's English `message` stays for the CLI, logs and older clients.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SyncStage".
+ */
+export type SyncStage =
+  | "checking_access"
+  | "listing_courses"
+  | "reading_course"
+  | "downloading_files"
+  | "scanning_files"
+  | "indexing_files"
+  | "downloading_feed"
+  | "saving_events";
 /**
  * Origin of a course's effective term dates.
  *

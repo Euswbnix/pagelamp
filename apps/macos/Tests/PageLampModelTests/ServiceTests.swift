@@ -60,7 +60,7 @@ struct MockServiceTests {
         #expect(starts == ["folder:demo-courses", "ical:demo-calendar", "canvas:canvas.demo.test"])
         #expect(ends == ["folder:demo-courses:true", "ical:demo-calendar:true", "canvas:canvas.demo.test:false"])
         #expect(events.contains { if case .warning = $0 { true } else { false } })
-        #expect(events.contains { if case .progress(_, _, let current, let total) = $0 { current == total } else { false } })
+        #expect(events.contains { if case .progress(_, _, let current, let total, _, _) = $0 { current == total } else { false } })
     }
 
     @Test("busy while another process syncs; unknown sources are notFound")

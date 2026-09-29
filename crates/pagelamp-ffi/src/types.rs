@@ -47,7 +47,7 @@ use pagelamp_core::model::{
     EventKind, MaterialKind, Module, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
     StoreCounts, StoredStudyPlan, StudyPlan, StudyPlanItem, TermSource, TextErrorKind, TextStatus,
 };
-use pagelamp_core::source::CourseSyncSummary;
+use pagelamp_core::source::{CourseSyncSummary, SyncStage};
 use pagelamp_core::views::{
     CourseCounts, CourseOverview, CourseSummary, Deadline, MaterialView, WeekMaterials,
     WeekNoteKind,
@@ -459,6 +459,19 @@ pub struct SyncRequest {
     pub only_courses: Vec<String>,
 }
 
+/// What a sync step is doing (translate it; `SyncEvent.progress`'s message is English).
+#[uniffi::remote(Enum)]
+pub enum SyncStage {
+    CheckingAccess,
+    ListingCourses,
+    ReadingCourse,
+    DownloadingFiles,
+    ScanningFiles,
+    IndexingFiles,
+    DownloadingFeed,
+    SavingEvents,
+}
+
 /// Progress of a sync run, delivered to `SyncObserver.on_event`.
 #[uniffi::remote(Enum)]
 pub enum SyncEvent {
@@ -471,6 +484,8 @@ pub enum SyncEvent {
         message: String,
         current: Option<u32>,
         total: Option<u32>,
+        stage: Option<SyncStage>,
+        course: Option<String>,
     },
     Warning {
         source_id: String,

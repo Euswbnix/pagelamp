@@ -150,6 +150,7 @@ const MIRRORED: &[&str] = &[
     "AppStatus",
     "SyncRequest",
     "SyncEvent",
+    "SyncStage",
     "SourceSyncResult",
     "SyncSummary",
     "McpClient",
