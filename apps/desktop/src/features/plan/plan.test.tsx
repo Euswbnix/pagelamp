@@ -62,6 +62,7 @@ describe("Plan your study", () => {
     ).closest("section");
     if (!plan) throw new Error("no plan section");
     expect(await within(plan).findByText(/^Made by PageLamp /)).toBeInTheDocument();
+    expect(within(plan).getByText(/^AI-generated · /)).toBeInTheDocument();
 
     const [first] = await within(plan).findAllByRole("checkbox");
     if (!first) throw new Error("no plan item");

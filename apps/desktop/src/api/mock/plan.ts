@@ -134,6 +134,7 @@ export function createPlanMock(deps: {
       meta: {
         backend_label: run.backend_label,
         model: run.model,
+        on_device: run.on_device,
         created_at: today.toISOString(),
         generation_id: generationId,
         feature: "study_plan",
@@ -189,6 +190,13 @@ export function createPlanMock(deps: {
           created_at: now().toISOString(),
           origin: "pagelamp",
           generation_id: generationId,
+          // Kept with the plan, like a calendar's (also after "Remove all AI data").
+          ai_label: {
+            backend_label: draft.meta.backend_label,
+            model: draft.meta.model,
+            created_at: draft.meta.created_at,
+            on_device: draft.meta.on_device,
+          },
           plan: structuredClone(draft.plan),
         };
         db.studyPlan = stored;

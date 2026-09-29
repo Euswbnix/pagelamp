@@ -62,7 +62,11 @@ describe("mock study plans", () => {
     expect(await api.latestStudyPlan()).not.toMatchObject({ generation_id: "plan-1" });
 
     const stored = await api.acceptStudyPlan("plan-1");
-    expect(stored).toMatchObject({ origin: "pagelamp", generation_id: "plan-1" });
+    expect(stored).toMatchObject({
+      origin: "pagelamp",
+      generation_id: "plan-1",
+      ai_label: { backend_label: draft.meta.backend_label, model: draft.meta.model },
+    });
     expect(await api.latestStudyPlan()).toEqual(stored);
     await expect(api.acceptStudyPlan("plan-1")).rejects.toMatchObject({ kind: "invalid" });
     await expect(api.acceptStudyPlan("nope")).rejects.toMatchObject({ kind: "not_found" });

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useCourses, useSetStudyPlanItemDone, useStudyPlan } from "@/api/queries";
 import type { StoredStudyPlan } from "@/api/types";
+import { AiGeneratedLabel } from "@/components/common/AiGeneratedLabel";
 import { ErrorState } from "@/components/common/ErrorState";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,8 @@ function PlanMeta({ stored }: { stored: StoredStudyPlan }) {
           })}
         />
       </p>
+      {/* Written by PageLamp: the AI-generated line (Canvas §2E), kept with the saved plan. */}
+      {stored.ai_label ? <AiGeneratedLabel meta={stored.ai_label} /> : null}
       {isPlanStale(stored) ? (
         <p className="flex items-center gap-1.5 text-foreground">
           <Clock className="size-4 shrink-0 text-warning" aria-hidden />
