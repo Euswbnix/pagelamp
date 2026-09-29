@@ -30,7 +30,9 @@ use super::{
     TermAnchorSource, TermResolution,
 };
 use crate::calendar::CalendarInForce;
-use crate::dates::{Tz, add_days, course_date, days_between, time_zone, week_one_monday};
+use crate::dates::{
+    Tz, add_days, course_date, days_between, monday_of, time_zone, week_one_monday,
+};
 use crate::model::{Confidence, Course, CourseTermData, Event, Material, Module};
 
 /// Longest plausible teaching term, in days (26 weeks).
@@ -73,14 +75,17 @@ pub struct TermInput<'a> {
 }
 
 impl TermInput<'_> {
-    /// The course's time zone, else the machine's (None → UTC dates).
+    /// The course's time zone; for a folder course the machine's (None → UTC dates). A Canvas
+    /// course without a zone keeps UTC: its LMS dates were stored as UTC dates, and one course
+    /// uses one zone everywhere (§6.1).
     pub fn time_zone(&self) -> Option<Tz> {
+        let canvas = self.course.source_id.starts_with("canvas:");
         self.data
             .lms
             .time_zone
             .as_deref()
             .and_then(time_zone)
-            .or(self.fallback_tz)
+            .or(self.fallback_tz.filter(|_| !canvas))
     }
 }
 
@@ -264,6 +269,12 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         start: add_days(input.today, -FALLBACK_FRAME_DAYS),
         end: add_days(input.today, FALLBACK_FRAME_DAYS),
     });
+    // Week-1 Mondays are checked against the frame from its own week's Monday (a frame that
+    // starts on a Tuesday must still admit that week).
+    let frame = DateSpan {
+        start: monday_of(frame.start),
+        end: frame.end,
+    };
     let fitted = fit::fit(&observations, frame);
     if let Some(fitted) = fitted {
         plausible.push(Anchor {
@@ -356,6 +367,12 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         }
     } else {
         evidence.insert(0, EvidenceItem::new(EvidenceCode::NoCourseDates));
+        // A last day of classes with nothing else: an end-only date (§6.6).
+        if input.calendar.is_none()
+            && let Some(end) = data.user_term_end
+        {
+            evidence.push(EvidenceItem::new(EvidenceCode::StudentEndUsed).date("end", end));
+        }
     }
 
     // What was not used, and why.
@@ -416,10 +433,12 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             .segments
             .last()
             .and_then(|segment| segment.last_class),
-        // The student's own end, when it is the end in force (a legacy end may be dropped).
-        None => data
-            .user_term_end
-            .filter(|end| anchor.as_ref().and_then(|a| a.end) == Some(*end)),
+        // The student's own end, when it is the end in force (a legacy end may be dropped), or
+        // the only date there is (an end-only date).
+        None => data.user_term_end.filter(|end| match &anchor {
+            Some(anchor) => anchor.end == Some(*end),
+            None => true,
+        }),
     };
     ResolvedTerm {
         calendar: if input.calendar.is_some() {

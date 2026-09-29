@@ -724,6 +724,7 @@ pub fn assemble(input: &AssembleInput<'_>) -> Result<Assembled, BadOutput> {
         input.today,
         input.full_year || calendar.segments.len() == 2,
         false,
+        None,
     );
     let resulting_week_today = state.week;
     let resulting_phase = state.phase;

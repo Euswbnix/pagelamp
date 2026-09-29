@@ -64,13 +64,16 @@ impl PhaseState {
 }
 
 /// The phase of a course on `today`. `confidence` is the anchor's (after cross-checks);
-/// `end_clipped` (an end replaced by the session window) makes the phase Low.
+/// `end_clipped` (an end replaced by the session window) makes the phase Low. `end_only` is a
+/// last day of classes known without any start (the student's): Unknown up to it, then the
+/// exam period (Low) for 21 days, then Ended.
 pub(crate) fn phase_on(
     term: &TermResolution,
     confidence: Confidence,
     today: NaiveDate,
     full_year: bool,
     end_clipped: bool,
+    end_only: Option<NaiveDate>,
 ) -> PhaseState {
     let confidence = if end_clipped {
         Confidence::Low
@@ -78,7 +81,23 @@ pub(crate) fn phase_on(
         confidence
     };
     let Some(first) = term.teaching.first() else {
-        return PhaseState::new(CoursePhase::Unknown, Confidence::Low);
+        return match end_only {
+            Some(last) if today > last => {
+                let end = add_days(last, EXAM_PERIOD_DAYS);
+                if today <= end {
+                    let mut state = PhaseState::new(CoursePhase::ExamPeriod, Confidence::Low);
+                    state.since = Some(last);
+                    state.until = Some(end);
+                    state.estimated = true;
+                    state
+                } else {
+                    let mut state = PhaseState::new(CoursePhase::Ended, Confidence::Low);
+                    state.since = Some(end);
+                    state
+                }
+            }
+            _ => PhaseState::new(CoursePhase::Unknown, Confidence::Low),
+        };
     };
     if today < week_one_monday(first.first_class) {
         let mut state = PhaseState::new(CoursePhase::NotStarted, confidence);
@@ -272,7 +291,7 @@ mod tests {
     }
 
     fn phase(term: &TermResolution, today: NaiveDate) -> PhaseState {
-        phase_on(term, Confidence::Medium, today, false, false)
+        phase_on(term, Confidence::Medium, today, false, false, None)
     }
 
     #[test]
@@ -308,7 +327,7 @@ mod tests {
     fn exam_dates_end_the_exam_period() {
         let mut t = term(date(2026, 9, 8), Some(date(2026, 12, 8)));
         t.exams_end = Some(date(2026, 12, 22));
-        let exams = phase_on(&t, Confidence::High, date(2026, 12, 15), false, false);
+        let exams = phase_on(&t, Confidence::High, date(2026, 12, 15), false, false, None);
         assert_eq!(
             (exams.phase, exams.confidence),
             (CoursePhase::ExamPeriod, Confidence::High)
@@ -324,14 +343,14 @@ mod tests {
         assert_eq!(unknown.phase, CoursePhase::Unknown);
         assert_eq!(unknown.start_too_old, Some((date(2026, 9, 7), 17)));
         // Thirty weeks with full-year evidence.
-        let y = phase_on(&t, Confidence::Medium, date(2027, 3, 1), true, false);
+        let y = phase_on(&t, Confidence::Medium, date(2027, 3, 1), true, false, None);
         assert_eq!((y.phase, y.week), (CoursePhase::Teaching, Some(26)));
     }
 
     #[test]
     fn a_clipped_end_makes_the_phase_low() {
         let t = term(date(2026, 9, 8), Some(date(2026, 12, 31)));
-        let state = phase_on(&t, Confidence::Medium, date(2026, 10, 1), false, true);
+        let state = phase_on(&t, Confidence::Medium, date(2026, 10, 1), false, true, None);
         assert_eq!(
             (state.phase, state.confidence),
             (CoursePhase::Teaching, Confidence::Low)

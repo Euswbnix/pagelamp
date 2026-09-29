@@ -209,6 +209,9 @@ pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseT
         today,
         resolved.full_year,
         resolved.end_clipped,
+        resolved
+            .student_last_class
+            .filter(|_| term.teaching.is_empty()),
     );
 
     // Lines for `evidence` and `evidence_items`, in order: the dates, then the signals.
@@ -338,6 +341,10 @@ pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseT
         outside_term: matches!(state.phase, CoursePhase::NotStarted | CoursePhase::Ended),
         phase: state.phase,
         phase_confidence: state.confidence,
+        starts_on: term.teaching.first().map(|s| {
+            s.first_class
+                .max(crate::dates::week_one_monday(s.first_class))
+        }),
         default_week,
         break_after_week: state.break_after_week,
         last_teaching_week: match state.phase {
@@ -548,6 +555,8 @@ struct WeekSignal {
     kind: EvidenceSignal,
     /// Short name used in agree/disagree notes, e.g. "module unlock dates".
     source: &'static str,
+    /// Weaker signals within this many weeks agree with it.
+    tolerance: u32,
     /// Human-readable reason naming the concrete module/material and date.
     evidence: String,
     item: EvidenceItem,
@@ -646,6 +655,8 @@ fn unlock_signal(
                 confidence: Confidence::High,
                 kind: EvidenceSignal::ModuleUnlock,
                 source: "module unlock dates",
+
+                tolerance: 0,
                 evidence: format!("{modules} unlocked {date} (most recent unlock), so week {week}"),
                 item: EvidenceItem::new(EvidenceCode::WeekFromModuleUnlock)
                     .number("week", week)
@@ -730,11 +741,19 @@ fn calendar_signal(term: &TermResolution, week: u32, today: NaiveDate) -> WeekSi
         ),
         (_, Some(start)) => format!("term started {start}, so {today} is calendar week {week}"),
     };
+    // A fit is made from the materials the weaker signals look at: they agree within a week
+    // (last week's slides on a Monday are its own input, not a disagreement).
+    let fitted = term.anchor == TermAnchorSource::PublishedWeekLabels;
     WeekSignal {
         week,
         confidence: term.anchor_confidence,
         kind: EvidenceSignal::Dates,
-        source: "the term calendar",
+        source: if fitted {
+            "the week numbers of posted materials"
+        } else {
+            "the term calendar"
+        },
+        tolerance: u32::from(fitted),
         evidence,
         item: EvidenceItem::new(EvidenceCode::WeekFromDates)
             .number("week", week)
@@ -805,6 +824,8 @@ fn recent_material_signal(recent: &[DatedMaterial<'_>], lines: &mut Lines) -> Op
         confidence: Confidence::Medium,
         kind: EvidenceSignal::RecentMaterials,
         source: "recent materials",
+
+        tolerance: 0,
         evidence: format!(
             "material {} published {} has the highest week number ({}) among materials \
              published in the last {RECENT_MATERIAL_DAYS} days",
@@ -836,6 +857,8 @@ fn latest_material_signal(latest: &[DatedMaterial<'_>], lines: &mut Lines) -> Op
         confidence: Confidence::Low,
         kind: EvidenceSignal::LatestMaterial,
         source: "the latest material",
+
+        tolerance: 0,
         evidence: format!(
             "latest week-numbered material {} was published {} (week {}); nothing \
              week-numbered was published in the last {RECENT_MATERIAL_DAYS} days",
@@ -885,9 +908,10 @@ fn bulk_publish_note(group: &[DatedMaterial<'_>]) -> Option<(String, EvidenceIte
     Some((english, item))
 }
 
-/// Evidence line for a weaker signal, saying whether it agrees with the chosen one.
+/// Evidence line for a weaker signal, saying whether it agrees with the chosen one (within the
+/// chosen signal's tolerance).
 fn compare_note(weaker: &WeekSignal, chosen: &WeekSignal) -> (String, EvidenceItem) {
-    if weaker.week == chosen.week {
+    if weaker.week.abs_diff(chosen.week) <= chosen.tolerance {
         (
             format!("{} (agrees)", weaker.evidence),
             EvidenceItem::new(EvidenceCode::SignalAgrees)

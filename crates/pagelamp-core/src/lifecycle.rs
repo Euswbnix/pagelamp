@@ -201,7 +201,7 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
         last_activity,
         next_event: next_event.map(|(day, _)| day),
         starts_on,
-        kept_current_until: data.keep_current_until,
+        kept_current_until: data.keep_current_until.filter(|until| *until >= today),
         ..CourseLifecycle::unknown()
     };
     let activity_item = || match (last_activity, days_quiet) {
@@ -275,8 +275,13 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
 
     // Rules 3 and 3b: weaker end signals, only when the phase says nothing (Ended or
     // Unknown, or from a Low anchor). Teaching or a break from a Medium+ anchor blocks them.
+    // While the course is teaching (or on a break) and its last class is still ahead, no weak
+    // signal ends it, whatever the anchor's confidence (a cross-check can make it Low).
+    let last_class = term.teaching.last().and_then(|s| s.last_class);
+    let teaching_now = matches!(phase, CoursePhase::Teaching | CoursePhase::Break)
+        && last_class.is_none_or(|last| last >= today);
     let weak_phase = matches!(phase, CoursePhase::Ended | CoursePhase::Unknown)
-        || term.anchor_confidence == Confidence::Low;
+        || (term.anchor_confidence == Confidence::Low && !teaching_now);
     if weak_phase {
         let mut weak: Vec<EndSignal> = Vec::new();
         // E1: dates that aren't the student's put the course past its end.
@@ -292,6 +297,8 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
             .not_used
             .iter()
             .filter(|r| r.source == TermAnchorSource::LmsTerm)
+            // A clipped end counts only once the end that replaced it has passed too.
+            .filter(|r| !r.end_only || last_class.is_some_and(|last| last < today))
             .filter_map(|r| r.end)
             .find(|end| *end < today);
         if let Some(end) = e2 {

@@ -599,6 +599,9 @@ pub struct CourseTimeline {
     pub outside_term: bool,
     pub phase: CoursePhase,
     pub phase_confidence: Confidence,
+    /// The day teaching starts, when known (a weekend first class → the next Monday), for
+    /// "Starts Jan 11"; surfaces show this instead of computing it.
+    pub starts_on: Option<NaiveDate>,
     /// The week features and `week_materials` use by default: the current teaching week, the
     /// week before an unnumbered break, None in the exam period and outside the term.
     pub default_week: Option<u32>,

@@ -205,6 +205,13 @@ fn uoft_like_enrollment_window_is_not_used_to_count_weeks() {
     assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
     assert_eq!(t.term.week_one_monday, Some(date("2026-09-07")));
     assert!(codes(&t).contains(&"term_looks_like_enrollment_window"));
+    // Review 8: last week's slides are the fit's own input, not a disagreement.
+    assert!(
+        !t.evidence.iter().any(|line| line.contains("disagrees")),
+        "{:#?}",
+        t.evidence
+    );
+    assert!(codes(&t).contains(&"signal_agrees"));
     let fit = t
         .evidence_items
         .iter()
@@ -764,7 +771,9 @@ fn keep_current_upcoming_and_inactive() {
     );
     assert_eq!(lifecycle.kept_current_until, Some(date("2026-12-31")));
     assert!(lifecycle_codes(&lifecycle).contains(&"kept_current"));
-    assert_eq!(case.lifecycle("2027-01-01").state, LifecycleState::Ended);
+    let expired = case.lifecycle("2027-01-01");
+    assert_eq!(expired.state, LifecycleState::Ended);
+    assert_eq!(expired.kept_current_until, None, "review 4");
 
     // A Winter course seen in September: Upcoming from its session window.
     let winter = Case::new(
@@ -940,6 +949,8 @@ fn weekend_start_counts_from_the_next_monday() {
     assert_eq!(t.current_week, Some(4));
     let before = case.timeline("2026-09-06");
     assert_eq!(before.phase, CoursePhase::NotStarted);
+    assert_eq!(before.starts_on, Some(date("2026-09-07")), "review 6");
+    assert_eq!(t.starts_on, Some(date("2026-09-07")));
     assert_eq!(
         case.lifecycle("2026-09-06").starts_on,
         Some(date("2026-09-07"))
@@ -1312,4 +1323,185 @@ fn injected_syllabus_cannot_forge_dates() {
         assembled.calendar.exam_period.map(|p| p.end),
         Some(date("2026-12-22"))
     );
+}
+
+// ----- lane review of 2026-09-28 -----------------------------------------------------------------
+
+fn folder_course() -> Course {
+    course("folder:demo", "DEMO101", "Intro to Demo Studies")
+}
+
+/// Review 1a: a student's last day of classes replacing the dates' own end is the end that
+/// counts, for the timeline and the lifecycle alike.
+#[test]
+fn a_student_end_beats_the_lms_or_folder_end() {
+    let folder = CourseTermData {
+        synced_term_start: Some(date("2026-06-01")),
+        synced_term_end: Some(date("2026-08-28")),
+        user_term_end: Some(date("2026-12-18")),
+        ..CourseTermData::default()
+    };
+    let mut case = Case::new(folder_course(), folder);
+    case.confirmed = true;
+    let t = case.timeline("2026-09-28");
+    assert_eq!((t.phase, t.current_week), (CoursePhase::Teaching, Some(18)));
+    let lifecycle = case.lifecycle("2026-09-28");
+    assert_eq!(lifecycle.state, LifecycleState::Current, "{lifecycle:?}");
+    assert!(!lifecycle.suggest_removal);
+
+    let mut lms = CourseTermData::default();
+    lms.lms.course_start = Some(date("2026-09-08"));
+    lms.lms.course_end = Some(date("2026-12-08"));
+    lms.user_term_end = Some(date("2026-12-18"));
+    let mut case = Case::new(course("canvas:lms.example.edu", "DEMO101", "Intro"), lms);
+    case.confirmed = true;
+    assert_eq!(case.timeline("2026-12-30").phase, CoursePhase::ExamPeriod);
+    assert_eq!(
+        case.lifecycle("2026-12-30").state,
+        LifecycleState::Finishing
+    );
+}
+
+/// Review 1b: a legacy end the resolver dropped doesn't end the course.
+#[test]
+fn a_dropped_legacy_end_is_ignored() {
+    let data = CourseTermData {
+        user_term_start: Some(date("2026-09-08")),
+        user_term_end: Some(date("2026-09-20")), // under four weeks: dropped
+        ..CourseTermData::default()
+    };
+    let case = Case::new(folder_course(), data);
+    let t = case.timeline("2026-10-28");
+    assert_eq!((t.current_week, t.confidence), (Some(8), Confidence::High));
+    assert!(t.term.not_used.iter().any(|r| r.end_only));
+    let lifecycle = case.lifecycle("2026-10-28");
+    assert_eq!(lifecycle.state, LifecycleState::Current, "{lifecycle:?}");
+}
+
+/// Review 2 (a CAL-15 variant): week-numbered materials make the LMS term "may be wrong"
+/// (Low); a Y course quiet in February must still not end.
+#[test]
+fn teaching_phase_blocks_weak_end_signals_with_week_numbered_materials() {
+    let mut case = Case::new(
+        course(
+            UOFT,
+            "DEM137Y5 Y LEC0101 20269",
+            "DEM137Y5 Y LEC0101 20269 Demo Year",
+        ),
+        canvas_term("Fall-Winter 2026", "2026-09-01", "2027-01-31"),
+    );
+    // Weekly slides on the Tuesdays from 09-08 (week 1 = the week of 09-07, 7 days after
+    // the Canvas term's 08-31).
+    case.materials = (1..=5i64)
+        .map(|w| {
+            let day = date("2026-09-08") + chrono::TimeDelta::days(7 * (w - 1));
+            material(
+                &format!("w{w}"),
+                &format!("Week {w} slides"),
+                &format!("{day}T12:00:00Z"),
+            )
+        })
+        .collect();
+    case.materials
+        .push(material("n", "Notes", "2027-01-30T12:00:00Z"));
+    let t = case.timeline("2027-02-24");
+    assert_eq!(
+        t.term.anchor_confidence,
+        Confidence::Low,
+        "{:?}",
+        t.evidence
+    );
+    assert_eq!(t.phase, CoursePhase::Teaching);
+    let lifecycle = case.lifecycle("2027-02-24");
+    assert_eq!(lifecycle.state, LifecycleState::Current, "{lifecycle:?}");
+}
+
+/// Review 3: the fit's candidates are checked against a frame starting on its Monday.
+#[test]
+fn the_fit_works_when_the_frame_starts_mid_week() {
+    // A UofT course with no term dates: the session window starts Tuesday 09-01.
+    let mut uoft = Case::new(dem332(), CourseTermData::default());
+    uoft.materials = vec![
+        material("w1", "Week 1 slides", "2026-09-01T12:00:00Z"),
+        material("w2", "Week 2 slides", "2026-09-08T12:00:00Z"),
+        material("w3", "Week 3 slides", "2026-09-15T12:00:00Z"),
+    ];
+    let t = uoft.timeline("2026-09-21");
+    assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
+    assert_eq!(t.term.week_one_monday, Some(date("2026-08-31")));
+    assert_eq!(t.current_week, Some(4));
+    // A full-year course whose (rejected) term starts on a Wednesday.
+    let mut year = Case::new(
+        course("canvas:lms.example.edu", "DEMO137", "Demo Year"),
+        canvas_term("Full Year 2026-27", "2026-09-02", "2027-06-30"),
+    );
+    year.materials = vec![
+        material("w1", "Week 1 slides", "2026-09-02T12:00:00Z"),
+        material("w2", "Week 2 slides", "2026-09-09T12:00:00Z"),
+        material("w3", "Week 3 slides", "2026-09-16T12:00:00Z"),
+    ];
+    let t = year.timeline("2026-09-21");
+    assert_eq!(t.term.not_used.len(), 1);
+    assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
+    assert_eq!(t.current_week, Some(4));
+}
+
+/// Review 5: a last day of classes with nothing else is an end-only anchor.
+#[test]
+fn a_student_end_alone_is_an_end_only_anchor() {
+    let mut data = uoft_window_term();
+    data.user_term_end = Some(date("2026-12-08"));
+    let mut case = Case::new(dem332(), data);
+    case.confirmed = true;
+    let before = case.timeline("2026-10-01");
+    assert_eq!(
+        (before.phase, before.current_week),
+        (CoursePhase::Unknown, None)
+    );
+    assert!(codes(&before).contains(&"student_end_used"));
+    let exams = case.timeline("2026-12-15");
+    assert_eq!(
+        (exams.phase, exams.phase_confidence),
+        (CoursePhase::ExamPeriod, Confidence::Low)
+    );
+    assert_eq!(case.timeline("2026-12-30").phase, CoursePhase::Ended);
+    let lifecycle = case.lifecycle("2027-01-06");
+    assert_eq!(
+        (lifecycle.state, lifecycle.confidence),
+        (LifecycleState::Ended, Confidence::High)
+    );
+}
+
+/// Review 7: the machine's zone is for folder courses only; a Canvas course without a zone
+/// keeps UTC dates (its LMS dates were stored as UTC dates).
+#[test]
+fn canvas_courses_without_a_zone_stay_utc() {
+    let mut case = Case::new(
+        course("canvas:lms.example.edu", "DEMO101", "Intro"),
+        CourseTermData::default(),
+    );
+    case.materials = vec![material("n", "Week 3 notes", "2026-09-29T03:08:00Z")];
+    let mut input = case.input("2026-09-28");
+    input.fallback_tz = pagelamp_core::dates::time_zone(TORONTO);
+    assert_eq!(resolve_term(&input).last_activity, None, "UTC: 09-29");
+}
+
+/// CAL-7, alpha.1 behaviour for the owner's exact shape (UofT enrollment window, no course
+/// dates, a legacy start only): December may still show a teaching week, but the dates are
+/// marked legacy (the "Check this course's dates" prompt) and nothing claims Ended. Closed in
+/// alpha.2 by the institution calendar (design §14).
+#[test]
+fn owners_shape_in_alpha_1_is_legacy_and_not_ended() {
+    let mut data = uoft_window_term();
+    data.user_term_start = Some(date("2026-09-08"));
+    let case = Case::new(dem332(), data);
+    let t = case.timeline("2026-12-15");
+    assert_eq!(t.term.anchor, TermAnchorSource::StudentConfirmed);
+    assert_eq!(t.term.anchor_origin, Some(CalendarOrigin::Legacy));
+    assert_eq!(t.phase, CoursePhase::Teaching);
+    assert_eq!(t.current_week, Some(15));
+    assert!(codes(&t).contains(&"legacy_dates"));
+    let lifecycle = case.lifecycle("2026-12-15");
+    assert_ne!(lifecycle.state, LifecycleState::Ended);
+    assert!(!lifecycle.suggest_removal);
 }

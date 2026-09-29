@@ -283,6 +283,7 @@ pub struct CourseTimeline {
     pub outside_term: bool,
     pub phase: CoursePhase,
     pub phase_confidence: Confidence,
+    pub starts_on: Option<IsoDate>,
     pub default_week: Option<u32>,
     pub break_after_week: Option<u32>,
     pub last_teaching_week: Option<u32>,
