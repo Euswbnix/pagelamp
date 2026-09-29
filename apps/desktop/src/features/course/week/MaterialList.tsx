@@ -26,7 +26,8 @@ export function MaterialList({
 }) {
   const { t } = useTranslation("course");
   const headingId = useId();
-  const readable = materials.filter((m) => m.text_status === "ok").length;
+  // Like the facade's count: indexed with text (a scan is "ok" with no chunks).
+  const readable = materials.filter((m) => m.text_status === "ok" && m.chunk_count > 0).length;
   return (
     <section aria-labelledby={headingId} className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -87,10 +88,15 @@ function MaterialRow({ material, aiReadable }: { material: MaterialView; aiReada
           chunks={material.chunk_count}
           aiReadable={aiReadable}
           blocked={material.download_blocked}
+          problem={material.text_problem}
         />
-        {/* The facade's reason is English free text until MaterialView.text_problem gives a
-            code to translate: only an English UI shows it. */}
-        {material.text_error && english ? (
+        {/* Why there is no text, from the facade's code; an older facade's English message
+            (no code) shows only in an English UI. */}
+        {material.text_problem ? (
+          <p className="text-xs text-muted-foreground">
+            {tc(`textProblem.${material.text_problem}`)}
+          </p>
+        ) : material.text_error && english ? (
           <p className="text-xs text-muted-foreground">{material.text_error}</p>
         ) : null}
       </div>

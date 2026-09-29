@@ -34,6 +34,10 @@ mod sync;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
+pub use course::calendar::{
+    CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, OFFER_NO_CALENDAR,
+    ReadCalendarOptions, SyllabusOffer,
+};
 pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
 pub use course::removal::{
     BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
@@ -1255,6 +1259,14 @@ struct AppTypes {
     restore_outcome: RestoreOutcome,
     purge_report: PurgeReport,
     course_dates_input: CourseDatesInput,
+    // alpha.3 (F3: types first; AI reading and storage on the v4 line)
+    course_calendar_view: CourseCalendarView,
+    calendar_candidate: pagelamp_core::calendar::candidates::CalendarCandidate,
+    syllabus_offer: SyllabusOffer,
+    read_calendar_options: ReadCalendarOptions,
+    calendar_run_outcome: CalendarRunOutcome,
+    calendar_batch_event: CalendarBatchEvent,
+    calendar_proposal: pagelamp_core::calendar::proposal::CalendarProposal,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

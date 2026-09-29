@@ -395,7 +395,8 @@ describe("CoursesPage — sync", () => {
     const page = within(screen.getByRole("main"));
     expect(page.getByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
     const why = "Couldn't reach the server. Check your internet connection and the address.";
-    expect(page.getByRole("status")).toHaveTextContent(why);
+    // (The course list's syllabus batch has a live region of its own.)
+    expect(page.getAllByRole("status").some((s) => s.textContent === why)).toBe(true);
     expect(page.getByText(why, { ignore: VISIBLE_ONLY })).toBeInTheDocument();
     await user.click(page.getByRole("button", { name: "Close" }));
     expect(page.queryByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeNull();

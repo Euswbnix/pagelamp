@@ -97,6 +97,21 @@ export function createTauriApi(): PageLampApi {
     acceptPassingProposals: (proposalIds) => call("accept_passing_proposals", { proposalIds }),
     dismissCalendarProposal: (proposalId) => call("dismiss_calendar_proposal", { proposalId }),
     syllabusReadingOffers: () => call("syllabus_reading_offers"),
+    readCourseCalendar: (courseId, generationId, options, onEvent) =>
+      call("read_course_calendar", {
+        course: courseId,
+        generationId,
+        options,
+        onEvent: eventChannel(onEvent),
+      }),
+    readCourseCalendars: (courseIds, batchId, options, onEvent) =>
+      call("read_course_calendars", {
+        courses: courseIds,
+        batchId,
+        options,
+        onEvent: eventChannel(onEvent),
+      }),
+    cancelGeneration: (generationId) => call("cancel_generation", { generationId }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
     setCourseMaterialSharing: (courseId, answer) =>
@@ -161,6 +176,8 @@ export function createTauriApi(): PageLampApi {
         throw toApiError(error);
       }
     },
+    openMaterial: (materialId) => call("open_material", { materialId }),
+    revealMaterial: (materialId) => call("reveal_material", { materialId }),
     openExternal: async (url) => {
       // The opener capability is scoped to http(s) too; this check gives a clearer error.
       if (!isHttpUrl(url)) throw new ApiError("invalid", "Only web links can be opened");
