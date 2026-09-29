@@ -166,6 +166,21 @@
     "warnings": "Warnings ({{n}})",
     "expiredHint": "Access expired. Replace the token or feed address to sync this source again.",
     "fixOnSources": "Fix on Sources & sync",
-    "stopped": "Stopped"
+    "stopped": "Stopped",
+    "stage": {
+      "checking_access": "Checking access",
+      "listing_courses": "Listing courses",
+      "reading_course": "Reading {{course}}",
+      "reading_course_no_course": "Reading a course",
+      "downloading_files": "Downloading files for {{course}}",
+      "downloading_files_no_course": "Downloading files",
+      "scanning_files": "Scanning {{course}}'s files",
+      "scanning_files_no_course": "Scanning files",
+      "indexing_files": "Indexing {{course}}'s files",
+      "indexing_files_no_course": "Indexing files",
+      "downloading_feed": "Downloading the calendar feed",
+      "saving_events_one": "Saving {{count}} calendar event",
+      "saving_events_other": "Saving {{count}} calendar events"
+    }
   }
 }

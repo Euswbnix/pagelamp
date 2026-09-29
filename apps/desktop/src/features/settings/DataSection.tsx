@@ -69,7 +69,7 @@ function PathRow({ label, path, copyLabel, action }: PathRowProps) {
     <div className="space-y-1.5">
       <dt className="text-sm font-medium">{label}</dt>
       <dd className="flex flex-wrap items-center gap-2">
-        <code className="min-w-0 flex-1 rounded-md border bg-muted/50 px-3 py-1.5 font-mono text-[13px] break-all">
+        <code className="pl-concentric min-w-0 flex-1 bg-muted px-3 py-1.5 font-mono text-[13px] break-all [--pl-pad:1rem]">
           {path}
         </code>
         <CopyButton text={path} label={copyLabel} />
@@ -99,13 +99,13 @@ function CountList({ counts }: { counts: StoreCounts }) {
       <h3 className="text-sm font-medium">{t("data.countsTitle")}</h3>
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {COUNTS.map(({ key, label }) => (
-          <div key={key} className="rounded-lg border px-3 py-2">
+          <div key={key} className="rounded-row bg-muted px-3 py-2">
             <dt className="text-xs text-muted-foreground">{t(`data.counts.${label}`)}</dt>
             <dd className="text-lg font-semibold tabular-nums">{number.format(counts[key])}</dd>
           </div>
         ))}
         {REMOVAL_UI ? (
-          <div className="rounded-lg border px-3 py-2">
+          <div className="rounded-row bg-muted px-3 py-2">
             <dt className="text-xs text-muted-foreground">{tr("removed.title")}</dt>
             <dd className="text-lg font-semibold tabular-nums">
               {number.format(counts.removed_courses)}

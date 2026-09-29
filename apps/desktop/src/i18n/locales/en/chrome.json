@@ -1,0 +1,14 @@
+{
+  "appearance": {
+    "transparency": "Reduce transparency",
+    "transparencyHint": "Solid backgrounds instead of see-through glass. {{product}} also follows your system's setting.",
+    "contrast": "Increase contrast",
+    "contrastHint": "Darker text and borders, and no see-through glass."
+  },
+  "accessory": {
+    "syncingOf": "Syncing {{done}} of {{total}} · {{source}}",
+    "details": "Sync details",
+    "open": "Open Sources & sync",
+    "dismiss": "Dismiss"
+  }
+}

@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type { InstallKind, McpClientConfig } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { ClientNotes } from "./ClientNotes";
 import { InstallSteps } from "./InstallSteps";
 
@@ -27,7 +26,7 @@ export function ClientConfigCard({ config, recommended = false }: ClientConfigCa
   const KindIcon = KIND_ICON[config.install_kind];
   return (
     <article aria-labelledby={headingId}>
-      <Card className={cn(recommended && "ring-2 ring-primary/35")}>
+      <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <h2 id={headingId} className="font-heading text-base leading-snug font-medium">

@@ -10,7 +10,7 @@ import { COURSE_TABS, isCourseTab, useCourseTab } from "./useCourseParams";
 import { WeekTab } from "./week/WeekTab";
 
 // Radix makes each panel focusable (Tab from the tab list lands on it), so show where focus is.
-const PANEL = "rounded-lg pt-4 focus-visible:ring-[3px] focus-visible:ring-ring/50";
+const PANEL = "rounded-lg pt-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
 
 /**
  * The five course tabs. The selected tab is kept in `?tab=` (see useCourseParams).

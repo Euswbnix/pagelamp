@@ -3729,6 +3729,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tracing",
+ "windows-version",
 ]
 
 [[package]]

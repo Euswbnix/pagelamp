@@ -2,7 +2,11 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
+import i18n from "@/i18n";
+import { paths } from "@/lib/routes";
 import { useSyncStore } from "@/stores/sync";
+import { useUiStore } from "@/stores/ui";
+import { renderRoute } from "@/test/render";
 import { DEMO101, DEMO205, DEMO310, openCourse } from "../testing";
 
 function materialsList() {
@@ -35,6 +39,14 @@ describe("This week tab", () => {
     expect(screen.getByText("4 of 6 materials readable by your AI app")).toBeInTheDocument();
     // Other weeks' materials are not listed.
     expect(within(list).queryByText(/Week 3 slides/)).not.toBeInTheDocument();
+  });
+
+  it("leaves out the facade's English reason in Chinese until it comes as a code", async () => {
+    useUiStore.setState({ locale: "zh-CN" });
+    await i18n.changeLanguage("zh-CN");
+    renderRoute(paths.course(DEMO101));
+    expect(await screen.findByRole("link", { name: /^Week 4 slides/ })).toBeInTheDocument();
+    expect(screen.queryByText(/no text could be extracted/)).toBeNull();
   });
 
   it("shows recent announcements", async () => {

@@ -16,7 +16,7 @@ import { groupCourses } from "./lib/groups";
 import { Section } from "./parts/Section";
 
 /**
- * The course cards, grouped by the facade's lifecycle: Current, Upcoming, and "Past courses"
+ * The courses as a contents page, grouped by the facade's lifecycle: Current, Upcoming, and "Past courses"
  * (collapsed by default). Hidden courses appear, in their group, only when "Show hidden
  * courses" is on.
  */
@@ -138,7 +138,8 @@ function CourseGrid({
   headingLevel?: "h3" | "h4";
 }) {
   return (
-    <ul className="grid gap-3 sm:grid-cols-2">
+    // The contents page (§6.4): one line per course between hairlines.
+    <ul className="divide-y border-y">
       {courses.map((summary) => (
         <li key={summary.course.id}>
           <CourseCard

@@ -26,6 +26,11 @@ export interface SyncProgressPanelProps {
   onDismiss?: () => void;
   /** Link expired sources to Sources & sync (onboarding); the Sources screen has buttons. */
   showFixLink?: boolean;
+  /**
+   * Announce the headline (onboarding). Inside the app shell the accessory bar announces this
+   * window's runs, so the panel stays quiet there (one voice per event).
+   */
+  announce?: boolean;
   className?: string;
 }
 
@@ -45,6 +50,7 @@ export function SyncProgressPanel({
   onRetry,
   onDismiss,
   showFixLink = false,
+  announce = true,
   className,
 }: SyncProgressPanelProps) {
   const { t } = useTranslation("sources");
@@ -65,7 +71,10 @@ export function SyncProgressPanel({
     <section aria-labelledby={titleId} className={className}>
       <Card className="gap-2">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2" aria-live="polite">
+          <CardTitle
+            className="flex items-center gap-2"
+            aria-live={announce ? "polite" : undefined}
+          >
             <Icon className={cn("size-4 shrink-0", tone)} aria-hidden />
             <h2 id={titleId}>{tc(key)}</h2>
           </CardTitle>

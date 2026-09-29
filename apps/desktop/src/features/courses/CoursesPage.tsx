@@ -38,7 +38,7 @@ export function CoursesPage() {
     body = <CoursesEmpty />;
   } else {
     body = (
-      <div className="space-y-6">
+      <div className="space-y-10">
         {REMOVAL_UI ? <LifecycleBanner /> : null}
         <ThisWeek />
         <StudyPlanCard />

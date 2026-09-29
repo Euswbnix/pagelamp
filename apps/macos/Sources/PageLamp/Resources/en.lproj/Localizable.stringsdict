@@ -531,5 +531,21 @@
 			<string>%2$ld courses removed</string>
 		</dict>
 	</dict>
+	<key>sources.progress.stage.saving_events</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Saving %1$ld calendar event</string>
+			<key>other</key>
+			<string>Saving %1$ld calendar events</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

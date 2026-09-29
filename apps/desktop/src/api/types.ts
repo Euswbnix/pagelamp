@@ -83,6 +83,7 @@ export type {
   StudyPlanItem,
   SyncEvent,
   SyncRequest,
+  SyncStage,
   SyncSummary,
   TeachingSegment,
   TemporaryLocation,

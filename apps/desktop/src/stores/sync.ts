@@ -7,12 +7,16 @@ import { create } from "zustand";
 import { useApi } from "@/api/context";
 import { type ApiError, toApiError } from "@/api/errors";
 import { queryKeys, useStatus } from "@/api/queries";
-import type { AppStatus, SourceErrorKind, SyncEvent, SyncSummary } from "@/api/types";
+import type { AppStatus, SourceErrorKind, SyncEvent, SyncStage, SyncSummary } from "@/api/types";
 
 export interface SourceProgress {
   sourceId: string;
   label: string;
+  /** The facade's English step text (CLI, logs); the UI translates `stage` when it is set. */
   message: string | null;
+  /** What the step is (translated in the UI), and the course it is about. */
+  stage: SyncStage | null;
+  course: string | null;
   current: number | null;
   total: number | null;
   warnings: string[];
@@ -79,6 +83,8 @@ export const useSyncStore = create<SyncState>()((set) => ({
         sourceId: event.source_id,
         label: event.source_id,
         message: null,
+        stage: null,
+        course: null,
         current: null,
         total: null,
         warnings: [],
@@ -94,6 +100,8 @@ export const useSyncStore = create<SyncState>()((set) => ({
           next = {
             ...base,
             message: event.message,
+            stage: event.stage ?? null,
+            course: event.course ?? null,
             current: event.current ?? null,
             total: event.total ?? null,
           };

@@ -1,0 +1,187 @@
+/*
+ * The app shell's surfaces (docs/design/macos-shell.md §8, table "Surface"): base and sidebar,
+ * the content column, the selected navigation row. Hand-written; tokens from tokens.css.
+ * Unlayered on purpose, so these win over Tailwind's utilities on the same elements.
+ */
+
+/* Opaque window (macOS, Linux, Windows 10 / 21H2): paper everywhere, a hairline by the sidebar. */
+.pl-sidebar {
+  width: var(--pl-size-sidebar-ideal);
+  background: var(--pl-color-surface-sidebar);
+  border-right: 1px solid var(--pl-color-rule);
+}
+.pl-content {
+  background: var(--pl-color-surface-content);
+  /* WCAG 2.4.11 (C43): a focused element never scrolls under the sticky toolbar row or the
+     accessory bar. */
+  scroll-padding-top: calc(var(--pl-size-toolbar-row) + 8px);
+  scroll-padding-bottom: calc(var(--pl-size-accessory-height) + 24px);
+}
+
+/* Windows: Fluent's accent pill beside the selected row (the ink wash marks it everywhere). */
+:root[data-platform="windows"] .pl-nav-item {
+  position: relative;
+}
+:root[data-platform="windows"] .pl-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--pl-color-accent);
+}
+@media (forced-colors: active) {
+  :root[data-platform="windows"] .pl-nav-item[aria-current="page"]::before {
+    background: Highlight;
+  }
+}
+
+/* Windows 11 Mica: the window shows through base and sidebar (no CSS glass on the sidebar); the
+   content column is an inset LayerFill card. */
+:root[data-backdrop="mica"] body {
+  background: transparent;
+}
+:root[data-backdrop="mica"] .pl-sidebar {
+  background: transparent;
+  border-right-color: transparent;
+}
+:root[data-backdrop="mica"] .pl-content {
+  background: var(--pl-color-mica-layer-fill);
+  border-top-left-radius: var(--pl-radius-mica-card);
+  box-shadow: inset 1px 1px 0 var(--pl-color-rule);
+}
+
+/* Windows contrast themes keep a background's alpha, and a transparent WebView2 has no base: an
+   opaque Canvas under the page, whichever contrast theme maps to prefers-contrast. */
+@media (forced-colors: active) {
+  :root[data-backdrop="mica"] body,
+  :root[data-backdrop="mica"] .pl-sidebar,
+  :root[data-backdrop="mica"] .pl-content {
+    background: Canvas;
+  }
+}
+
+/* Reduced transparency or increased contrast: nothing see-through, Mica or not. */
+:root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) body {
+  background: var(--pl-color-surface-sidebar);
+}
+:root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) .pl-content {
+  background: var(--pl-color-surface-content);
+  /* WCAG 2.4.11 (C43): a focused element never scrolls under the sticky toolbar row or the
+     accessory bar. */
+  scroll-padding-top: calc(var(--pl-size-toolbar-row) + 8px);
+  scroll-padding-bottom: calc(var(--pl-size-accessory-height) + 24px);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root[data-backdrop="mica"] body {
+    background: var(--pl-color-surface-sidebar);
+  }
+  :root[data-backdrop="mica"] .pl-content {
+    background: var(--pl-color-surface-content);
+  }
+}
+
+/* Mock mode only (data-mica-sim, set by lib/appearance.ts): §8's Mica approximations
+   (#F3F3F3 / #202020) behind the transparent page, so screenshots show the Mica layout. */
+:root[data-mica-sim] {
+  background: #f3f3f3;
+}
+:root.dark[data-mica-sim] {
+  background: #202020;
+}
+
+/* The in-page toolbar row (48 px, sticky at the top of the content column). It is clear until
+   content scrolls under it; then AppShell adds .pl-glass, and a soft lower edge replaces a hard
+   line. Declared after glass.css, so sticky wins over .pl-glass's position. */
+.pl-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--pl-size-toolbar-row);
+}
+.pl-toolbar.pl-glass {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+}
+/* Opaque glass has nothing to soften; keep its edge crisp. */
+:root:is([data-transparency="reduced"], [data-contrast="more"]) .pl-toolbar.pl-glass {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  .pl-toolbar.pl-glass {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+/* The small title appears once the page's h1 has scrolled under the row. */
+.pl-toolbar-title {
+  opacity: 0;
+  transition: opacity var(--pl-motion-hover-duration) var(--pl-motion-hover);
+}
+.pl-toolbar-title[data-shown] {
+  opacity: 1;
+}
+
+/* The accessory bar (§6.2): materialises and leaves with motion.quick; a 200 ms crossfade when
+   motion is reduced. Hidden, it stays in the DOM (inert) so it can fade out. */
+.pl-accessory {
+  transition:
+    opacity var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    transform var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    visibility 0s;
+}
+.pl-accessory[data-state="hidden"],
+:root[data-window-active="false"] .pl-accessory[data-state="hidden"] {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    transform var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    visibility 0s linear var(--pl-motion-quick-duration);
+}
+.pl-accessory[data-state="visible"] {
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-accessory,
+  .pl-accessory[data-state="hidden"],
+  :root[data-window-active="false"] .pl-accessory[data-state="hidden"] {
+    transform: none;
+    transition:
+      opacity var(--pl-motion-reduced-duration) var(--pl-motion-reduced),
+      visibility 0s linear var(--pl-motion-reduced-duration);
+  }
+  .pl-accessory[data-state="visible"] {
+    transition: opacity var(--pl-motion-reduced-duration) var(--pl-motion-reduced);
+  }
+}
+
+/* Popovers, menus and dialogs (shadcn + tw-animate-css, which has no reduced-motion rule): with
+   reduced motion only a 200 ms crossfade, no zoom or slide (§8, §10.4). */
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    [data-slot="popover-content"],
+    [data-slot="select-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="dialog-overlay"],
+    [data-slot="alert-dialog-overlay"]
+  ) {
+    --tw-enter-scale: 1;
+    --tw-exit-scale: 1;
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-enter-rotate: 0;
+    --tw-exit-rotate: 0;
+    animation-duration: var(--pl-motion-reduced-duration);
+  }
+}
