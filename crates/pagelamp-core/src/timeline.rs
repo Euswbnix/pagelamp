@@ -1027,6 +1027,7 @@ mod tests {
             ..CourseTermData::default()
         };
         course_timeline(&TermInput {
+            fallback_tz: None,
             course,
             data: &data,
             dates_confirmed: false,

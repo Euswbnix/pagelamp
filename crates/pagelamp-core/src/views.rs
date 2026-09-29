@@ -15,7 +15,7 @@ use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dates::course_date;
+use crate::dates::{Tz, course_date, time_zone};
 use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
 use crate::store::Store;
@@ -37,17 +37,37 @@ pub struct AsOf {
     pub now: Timestamp,
     /// The student's local calendar date (drives timeline/week inference).
     pub today: NaiveDate,
+    /// The machine's time zone: the dates of courses without one of their own (folder
+    /// courses) are taken in it, so they agree with `today`. None → UTC.
+    pub tz: Option<Tz>,
 }
 
 impl AsOf {
-    /// Current instant; `today` in the machine's local timezone.
+    /// Current instant; `today` and `tz` in the machine's local time zone.
     pub fn now_local() -> Self {
         let now: DateTime<Utc> = Utc::now();
         AsOf {
             now,
             today: now.with_timezone(&Local).date_naive(),
+            tz: local_time_zone(),
         }
     }
+
+    /// A fixed moment (tests, previews): `today` as given, UTC for courses without a zone.
+    pub fn at(now: Timestamp, today: NaiveDate) -> Self {
+        AsOf {
+            now,
+            today,
+            tz: None,
+        }
+    }
+}
+
+/// The machine's IANA time zone, if it can be determined.
+fn local_time_zone() -> Option<Tz> {
+    iana_time_zone::get_timezone()
+        .ok()
+        .and_then(|name| time_zone(&name))
 }
 
 /// A deadline/event enriched with its course's code and name (all `Event` fields are
@@ -743,6 +763,7 @@ impl CourseData {
 
     fn input<'a>(&'a self, course: &'a Course, at: AsOf) -> TermInput<'a> {
         TermInput {
+            fallback_tz: at.tz,
             course,
             data: &self.term_data,
             dates_confirmed: self.dates_confirmed,

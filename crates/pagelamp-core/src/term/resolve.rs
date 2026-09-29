@@ -29,7 +29,7 @@ use super::{
     CalendarOrigin, DateSpan, RejectReason, RejectedDates, TeachingSegment, TermAnchorSource,
     TermResolution,
 };
-use crate::dates::{Tz, add_days, course_date, days_between, monday_of, time_zone};
+use crate::dates::{Tz, add_days, course_date, days_between, time_zone, week_one_monday};
 use crate::model::{Confidence, Course, CourseTermData, Event, Material, Module};
 
 /// Longest plausible teaching term, in days (26 weeks).
@@ -56,6 +56,9 @@ static FULL_YEAR_NAME: LazyLock<Regex> =
 /// Everything the resolver reads about one course (all of it from the store).
 #[derive(Clone, Copy)]
 pub struct TermInput<'a> {
+    /// The machine's time zone, for courses without their own (folder courses, Canvas rows
+    /// synced before schema 3). None → UTC.
+    pub fallback_tz: Option<Tz>,
     pub course: &'a Course,
     pub data: &'a CourseTermData,
     /// The course is in the `CONFIRMED_DATES_KEY` list.
@@ -67,9 +70,14 @@ pub struct TermInput<'a> {
 }
 
 impl TermInput<'_> {
-    /// The course's time zone (None → UTC dates).
+    /// The course's time zone, else the machine's (None → UTC dates).
     pub fn time_zone(&self) -> Option<Tz> {
-        self.data.lms.time_zone.as_deref().and_then(time_zone)
+        self.data
+            .lms
+            .time_zone
+            .as_deref()
+            .and_then(time_zone)
+            .or(self.fallback_tz)
     }
 }
 
@@ -117,6 +125,8 @@ struct Anchor {
     confidence: Confidence,
     origin: Option<CalendarOrigin>,
     end_clipped: bool,
+    /// For the fit: how many weeks' materials agree.
+    fit_weeks: Option<usize>,
 }
 
 /// What a plausibility check says about a span.
@@ -227,6 +237,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                     confidence: Confidence::Medium,
                     origin: None,
                     end_clipped: clipped.is_some(),
+                    fit_weeks: None,
                 });
             }
             Verdict::Reject(reason) => not_used.push(RejectedDates {
@@ -254,6 +265,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             confidence: fitted.confidence,
             origin: None,
             end_clipped: false,
+            fit_weeks: Some(fitted.weeks),
         });
     }
 
@@ -307,8 +319,8 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             .skip(lower_index)
             .filter(|lower| lower.source != anchor.source);
         for lower in lower {
-            let monday = monday_of(lower.start);
-            let days = days_between(monday_of(anchor.start), monday).abs();
+            let monday = week_one_monday(lower.start);
+            let days = days_between(week_one_monday(anchor.start), monday).abs();
             let item = if days >= DISAGREE_DAYS {
                 disagreed = true;
                 EvidenceItem::new(EvidenceCode::DatesMayBeWrong)
@@ -341,7 +353,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
 
     let resolution = match &anchor {
         Some(anchor) => TermResolution {
-            week_one_monday: Some(monday_of(anchor.start)),
+            week_one_monday: Some(week_one_monday(anchor.start)),
             teaching: vec![TeachingSegment {
                 first_class: anchor.start,
                 last_class: anchor.end,
@@ -416,6 +428,7 @@ fn student_anchor(
         confidence: Confidence::High,
         origin: Some(origin),
         end_clipped: false,
+        fit_weeks: None,
     })
 }
 
@@ -557,9 +570,12 @@ fn anchor_item(anchor: &Anchor, term_name: Option<&str>) -> EvidenceItem {
             .opt_text("term_name", term_name)
             .date("start", anchor.start)
             .opt_date("end", end),
-        TermAnchorSource::PublishedWeekLabels => {
-            EvidenceItem::new(EvidenceCode::WeekLabelsFit).date("monday", anchor.start)
-        }
+        TermAnchorSource::PublishedWeekLabels => EvidenceItem::new(EvidenceCode::WeekLabelsFit)
+            .date("monday", anchor.start)
+            .number(
+                "weeks",
+                i64::try_from(anchor.fit_weeks.unwrap_or_default()).unwrap_or_default(),
+            ),
         TermAnchorSource::FolderConfig
         | TermAnchorSource::InstitutionCalendar
         | TermAnchorSource::NoAnchor => EvidenceItem::new(EvidenceCode::FolderDates)

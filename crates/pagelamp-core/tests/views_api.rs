@@ -27,6 +27,7 @@ fn at() -> AsOf {
     AsOf {
         now: ts("2026-09-24T12:00:00Z"),
         today: date("2026-09-24"),
+        tz: None,
     }
 }
 
@@ -474,6 +475,7 @@ fn week_materials_notes() {
     let exams = AsOf {
         now: ts("2027-01-05T12:00:00Z"),
         today: date("2027-01-05"),
+        tz: None,
     };
     let exam_period = views::week_materials(&store, "DEMO101", None, false, exams).unwrap();
     assert!(!exam_period.timeline.outside_term);
@@ -485,6 +487,7 @@ fn week_materials_notes() {
     let later = AsOf {
         now: ts("2027-01-15T12:00:00Z"),
         today: date("2027-01-15"),
+        tz: None,
     };
     let outside = views::week_materials(&store, "DEMO101", None, false, later).unwrap();
     assert!(outside.timeline.outside_term);
@@ -705,6 +708,7 @@ fn sync_status_flags_stale_and_failing_sources() {
     let two_days_later = AsOf {
         now: ts("2026-09-26T12:00:00Z"),
         today: date("2026-09-26"),
+        tz: None,
     };
     assert!(views::sync_status(&store, two_days_later).unwrap().stale);
 

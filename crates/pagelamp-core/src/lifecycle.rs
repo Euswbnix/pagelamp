@@ -9,7 +9,7 @@ use chrono::{Datelike, NaiveDate};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::dates::{add_days, course_date, days_between};
+use crate::dates::{add_days, course_date, days_between, week_one_monday};
 use crate::model::{
     Confidence, Course, CourseTermData, CourseTimeline, Event, EventKind, TermResolution,
 };
@@ -183,7 +183,11 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
         .term
         .teaching
         .first()
-        .map(|segment| segment.first_class)
+        .map(|segment| {
+            segment
+                .first_class
+                .max(week_one_monday(segment.first_class))
+        })
         .filter(|_| phase == CoursePhase::NotStarted)
         .or_else(|| {
             resolved

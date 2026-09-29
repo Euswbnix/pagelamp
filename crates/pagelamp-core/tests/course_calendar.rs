@@ -99,6 +99,7 @@ impl Case {
 
     fn input(&self, today: &str) -> TermInput<'_> {
         TermInput {
+            fallback_tz: None,
             course: &self.course,
             data: &self.data,
             dates_confirmed: self.confirmed,
@@ -198,6 +199,15 @@ fn uoft_like_enrollment_window_is_not_used_to_count_weeks() {
     assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
     assert_eq!(t.term.week_one_monday, Some(date("2026-09-07")));
     assert!(codes(&t).contains(&"term_looks_like_enrollment_window"));
+    let fit = t
+        .evidence_items
+        .iter()
+        .find(|item| item.code == "week_labels_fit")
+        .unwrap();
+    assert_eq!(
+        (fit.param("monday"), fit.param("weeks")),
+        (Some("2026-09-07"), Some("3"))
+    );
     assert!(
         t.evidence.iter().any(|line| line
             == "LMS term 'Fall 2026' runs 2026-05-04 → 2027-01-31 (39 weeks): longer than a \
@@ -870,6 +880,7 @@ fn deadlines_are_not_filtered_by_lifecycle() {
     let at = AsOf {
         now: at("2026-09-28T12:00:00Z"),
         today: date("2026-09-28"),
+        tz: None,
     };
 
     let listed = views::list_courses(&store, false, at).unwrap();
@@ -885,4 +896,46 @@ fn deadlines_are_not_filtered_by_lifecycle() {
     let listed = views::list_courses(&store, false, at).unwrap();
     assert_eq!(listed[0].lifecycle.state, LifecycleState::Ended);
     assert!(listed[0].lifecycle.suggest_removal);
+}
+
+/// A folder course has no time zone of its own: its dates are taken in the machine's, so a
+/// file saved at 23:08 local time is today's activity, not tomorrow's (UTC).
+#[test]
+fn folder_course_dates_use_the_machine_time_zone() {
+    let mut case = Case::new(
+        course("folder:demo", "DEMO101", "Intro to Demo Studies"),
+        CourseTermData::default(),
+    );
+    // 2026-09-28 23:08 in Toronto.
+    case.materials = vec![material("n", "Week 3 notes", "2026-09-29T03:08:00Z")];
+    let mut input = case.input("2026-09-28");
+    assert_eq!(resolve_term(&input).last_activity, None, "UTC: tomorrow");
+    input.fallback_tz = pagelamp_core::dates::time_zone(TORONTO);
+    assert_eq!(resolve_term(&input).last_activity, Some(date("2026-09-28")));
+    assert_eq!(course_timeline(&input).current_week, Some(3));
+    // An LMS time zone wins over the machine's.
+    case.data.lms.time_zone = Some("Asia/Shanghai".into());
+    let mut input = case.input("2026-09-29");
+    input.fallback_tz = pagelamp_core::dates::time_zone(TORONTO);
+    assert_eq!(resolve_term(&input).last_activity, Some(date("2026-09-29")));
+}
+
+/// A term that "starts" on a Saturday teaches from the next Monday.
+#[test]
+fn weekend_start_counts_from_the_next_monday() {
+    let data = CourseTermData {
+        synced_term_start: Some(date("2026-09-05")),
+        synced_term_end: Some(date("2026-12-11")),
+        ..CourseTermData::default()
+    };
+    let case = Case::new(course("folder:demo", "DEMO101", "Intro"), data);
+    let t = case.timeline("2026-09-28");
+    assert_eq!(t.term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(t.current_week, Some(4));
+    let before = case.timeline("2026-09-06");
+    assert_eq!(before.phase, CoursePhase::NotStarted);
+    assert_eq!(
+        case.lifecycle("2026-09-06").starts_on,
+        Some(date("2026-09-07"))
+    );
 }

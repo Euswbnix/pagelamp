@@ -38,6 +38,17 @@ pub fn monday_of(date: NaiveDate) -> NaiveDate {
     date - TimeDelta::days(i64::from(date.weekday().num_days_from_monday()))
 }
 
+/// The Monday of teaching week 1 for classes starting on `first_class`: that week's Monday,
+/// or the next Monday for a weekend start (a term that "starts" on a Saturday teaches from
+/// Monday, as a weekend post counts for the next week).
+pub fn week_one_monday(first_class: NaiveDate) -> NaiveDate {
+    match first_class.weekday() {
+        chrono::Weekday::Sat => add_days(first_class, 2),
+        chrono::Weekday::Sun => add_days(first_class, 1),
+        _ => monday_of(first_class),
+    }
+}
+
 /// `date` plus `days` (negative goes back), saturating at the ends of `NaiveDate`.
 pub fn add_days(date: NaiveDate, days: i64) -> NaiveDate {
     let delta = TimeDelta::days(days);
@@ -99,6 +110,14 @@ mod tests {
             assert_eq!(monday_of(date(2026, 9, day)), date(2026, 9, 7), "day {day}");
         }
         assert_eq!(monday_of(date(2026, 9, 14)), date(2026, 9, 14));
+    }
+
+    #[test]
+    fn weekend_starts_teach_from_the_next_monday() {
+        assert_eq!(week_one_monday(date(2026, 9, 8)), date(2026, 9, 7));
+        assert_eq!(week_one_monday(date(2026, 9, 11)), date(2026, 9, 7));
+        assert_eq!(week_one_monday(date(2026, 9, 5)), date(2026, 9, 7));
+        assert_eq!(week_one_monday(date(2026, 9, 6)), date(2026, 9, 7));
     }
 
     #[test]

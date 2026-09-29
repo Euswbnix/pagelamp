@@ -12,7 +12,7 @@
 use chrono::NaiveDate;
 
 use super::{BreakKind, CalendarBreak, CoursePhase, TeachingSegment, TermResolution};
-use crate::dates::{add_days, days_between, monday_of};
+use crate::dates::{add_days, days_between, monday_of, week_one_monday};
 use crate::model::Confidence;
 
 /// Without exam dates, the exam period lasts this long after the last class.
@@ -80,9 +80,9 @@ pub(crate) fn phase_on(
     let Some(first) = term.teaching.first() else {
         return PhaseState::new(CoursePhase::Unknown, Confidence::Low);
     };
-    if today < monday_of(first.first_class) {
+    if today < week_one_monday(first.first_class) {
         let mut state = PhaseState::new(CoursePhase::NotStarted, confidence);
-        state.starts_on = Some(first.first_class);
+        state.starts_on = Some(first.first_class.max(week_one_monday(first.first_class)));
         return state;
     }
     let segments = &term.teaching;
@@ -93,7 +93,7 @@ pub(crate) fn phase_on(
             return inside_segment(term, segment, confidence, today, full_year);
         }
         if let Some(next) = next
-            && today < monday_of(next.first_class)
+            && today < week_one_monday(next.first_class)
         {
             // Between two segments of a full-year course.
             let mut state = PhaseState::new(CoursePhase::Break, confidence);
@@ -174,9 +174,9 @@ fn inside_segment(
     state
 }
 
-/// Whole weeks from the week of `start` to the week of `date`, plus one.
+/// Whole weeks from week 1 (starting `start`) to the week of `date`, plus one.
 fn weeks_since(start: NaiveDate, date: NaiveDate) -> u32 {
-    let weeks = days_between(monday_of(start), monday_of(date)) / 7 + 1;
+    let weeks = days_between(week_one_monday(start), monday_of(date)) / 7 + 1;
     u32::try_from(weeks.max(0)).unwrap_or(u32::MAX)
 }
 
@@ -187,7 +187,7 @@ fn teaching_week_in(
     segment: &TeachingSegment,
     date: NaiveDate,
 ) -> Option<u32> {
-    let first = monday_of(segment.first_class);
+    let first = week_one_monday(segment.first_class);
     let target = monday_of(date);
     if target < first {
         return None;
@@ -214,7 +214,7 @@ fn last_teaching_week_before(
     monday: NaiveDate,
 ) -> Option<u32> {
     let mut week = add_days(monday, -7);
-    while week >= monday_of(segment.first_class) {
+    while week >= week_one_monday(segment.first_class) {
         if let Some(number) = teaching_week_in(term, segment, week) {
             return Some(number);
         }
@@ -241,7 +241,7 @@ pub fn teaching_week_on(term: &TermResolution, date: NaiveDate) -> Option<u32> {
         .teaching
         .iter()
         .rev()
-        .find(|s| monday_of(s.first_class) <= date)?;
+        .find(|s| week_one_monday(s.first_class) <= date)?;
     if segment.last_class.is_some_and(|last| date > last) {
         return None;
     }
