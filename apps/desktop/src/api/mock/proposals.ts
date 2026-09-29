@@ -3,6 +3,7 @@
 // candidate picker and the syllabus-reading offers. A simplified stand-in for pagelamp-app's
 // calendar module with its own state beside the mock database.
 
+import { calendarToInput } from "@/lib/calendarInput";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import type {
@@ -46,30 +47,6 @@ const CANDIDATE_TITLE: [RegExp, CalendarCandidate["reason"]][] = [
   [/schedule|calendar|important dates|课程安排|日程/i, "title_schedule"],
   [/course information|info sheet/i, "title_info"],
 ];
-
-/** A proposal's calendar as the dates form's input (what accepting writes). */
-export function calendarToInput(calendar: CourseCalendar): CourseDatesInput {
-  const [first, second] = calendar.segments;
-  return {
-    first_class: first?.first_class ?? null,
-    last_class: first?.last_class ?? null,
-    exams_end: calendar.exam_period?.end ?? null,
-    breaks: calendar.breaks.map((b) => ({
-      kind: b.kind,
-      start: b.span.start,
-      end: b.span.end,
-      numbered: b.numbered,
-      label: b.label || null,
-    })),
-    second_segment: second
-      ? {
-          first_class: second.first_class,
-          last_class: second.last_class ?? null,
-          restart_numbering: second.first_week_number <= 1,
-        }
-      : null,
-  };
-}
 
 export function createProposalsMock(deps: {
   db: MockDb;

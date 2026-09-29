@@ -54,7 +54,8 @@ const MARKS = new RegExp(`${MARK}(\\d+)${MARK}`, "g");
  * interpolation, which would fill in a "{{week}}" inside them; they are swapped in afterwards.
  */
 export function translateWithText(
-  t: TFunction<"calendar">,
+  // Any namespace's t: the key is built at run time.
+  t: TFunction<"calendar"> | TFunction<"proposals">,
   key: string,
   params: Record<string, string | number>,
   texts: Record<string, string> = {},

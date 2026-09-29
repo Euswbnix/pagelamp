@@ -307,6 +307,22 @@
 			<string>%1$ld plan tasks today</string>
 		</dict>
 	</dict>
+	<key>proposals.card.dropped</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld date was left out because it couldn't be checked against the materials:</string>
+			<key>other</key>
+			<string>%1$ld dates were left out because they couldn't be checked against the materials:</string>
+		</dict>
+	</dict>
 	<key>removal.banner.title</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

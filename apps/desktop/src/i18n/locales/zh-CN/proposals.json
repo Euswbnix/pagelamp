@@ -1,0 +1,90 @@
+{
+  "section": {
+    "title": "提议的日期",
+    "description": "从这门课的资料里找到的日期。你接受之后才会生效。"
+  },
+  "card": {
+    "title": {
+      "scan": "从课程资料里找到的日期",
+      "ai": "AI 从教学大纲里读出的日期",
+      "ai_app": "你的 AI 应用提议的日期",
+      "other": "提议的日期"
+    },
+    "created": "{{date}} 提议",
+    "aiLabel": "AI 生成 · {{backend}} · {{model}} · {{date}}",
+    "scanNote": "由 {{product}} 在不使用 AI 的情况下找到，可信度最多为一般。",
+    "stripLabel": "提议的学期概览",
+    "datesTitle": "日期及其出处",
+    "kind": {
+      "first_class": "第一天上课",
+      "last_class": "最后一天上课",
+      "break": "假期",
+      "exam_period": "考试期",
+      "final_exam": "期末考试",
+      "week_start": "第 {{week}} 周开始"
+    },
+    "secondPart": "{{kind}}（第二部分）",
+    "span": "{{start}} – {{end}}",
+    "source": "{{title}}",
+    "sourceAt": "{{title}}，{{locator}}",
+    "derived": "根据课程安排表推算",
+    "open": "打开 {{title}}",
+    "choose": "不同资料给出的日期不一样。哪个是对的？",
+    "optionFrom": "{{date}}——来自 {{title}}",
+    "dropped_one": "有 {{count}} 个日期没能和资料核对上，所以没有采用：",
+    "dropped_other": "有 {{count}} 个日期没能和资料核对上，所以没有采用：",
+    "droppedReason": {
+      "unknown_source": "找不到对应的资料（{{count}}）",
+      "unsupported_quote": "资料里没有引用的原文（{{count}}）",
+      "date_not_in_quote": "引用的原文里没有这个日期（{{count}}）",
+      "ambiguous_year": "年份不明确（{{count}}）",
+      "outside_frame": "远在学期之外（{{count}}）",
+      "inconsistent": "自相矛盾（{{count}}）",
+      "table_dropped": "一张大部分无法核对的课程安排表（{{count}}）"
+    },
+    "lowQuality": "能核对上的日期很少。接受之前请仔细检查。",
+    "afterTitle": "接受之后",
+    "after": "今天将是：{{label}}",
+    "changesTitle": "会有哪些变化",
+    "change": {
+      "first_class_moved": "第一天上课：{{from}} → {{to}}",
+      "last_class_moved": "最后一天上课：{{from}} → {{to}}",
+      "break_added": "新增{{kind}}：{{start}} – {{end}}",
+      "break_removed": "移除{{kind}}：{{start}} – {{end}}",
+      "exams_end_set": "考试结束：{{date}}",
+      "week_today_changes": "今天是第几周：{{from}} → {{to}}",
+      "phase_changes": "课程进度：{{from}} → {{to}}",
+      "unknown": "当前版本的 {{product}} 无法显示的另一项变化"
+    },
+    "accept": "接受",
+    "acceptChoices": "按我的选择接受",
+    "chooseFirst": "请先为上面的每个问题选定一个日期。",
+    "edit": "修改…",
+    "dismiss": "忽略",
+    "accepted": "已接受这些日期",
+    "dismissed": "已忽略这个提议",
+    "editTitle": "修改提议的日期",
+    "editSave": "接受这些日期",
+    "cancel": "取消",
+    "phase": {
+      "not_started": "尚未开课",
+      "teaching": "上课中",
+      "break": "假期",
+      "exam_period": "考试期",
+      "ended": "已结课",
+      "unknown": "未知"
+    }
+  },
+  "conflict": {
+    "syllabus_from_another_year": "这个日期看起来来自另一年的教学大纲。请选出正确的那个。",
+    "inconsistent": "这些日期对不上。请选出正确的那个。",
+    "disagrees_with_notes": "这和教授资料里的周数不一致。请选出正确的那个。",
+    "disagrees_with_lms_dates": "这和 Canvas 的课程日期不一致。请选出正确的那个。",
+    "disagrees_with_class_event": "这和你日历里的上课时间不一致。请选出正确的那个。",
+    "differs_from_institution_calendar": "这和学校校历不一致。请选出正确的那个。"
+  },
+  "stale": {
+    "title": "教学大纲在 {{date}} 有改动",
+    "body": "{{materials}} 里已经找不到部分引用的原文。在你重新读取或修改之前，这些日期仍然有效。"
+  }
+}

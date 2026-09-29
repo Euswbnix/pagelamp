@@ -2,7 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { type FormEvent, type Ref, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { toApiError } from "@/api/errors";
+import { type ApiError, toApiError } from "@/api/errors";
 import { useSetCourseDates } from "@/api/removalQueries";
 import type {
   BreakKind,
@@ -114,10 +114,23 @@ export function CourseDatesForm({
   course,
   timeline,
   startRef,
+  edit,
 }: {
   course: Course;
   timeline: CourseTimeline;
   startRef?: Ref<HTMLInputElement>;
+  /**
+   * Edit a proposal instead (F3): start from its dates, and "save" accepts it with the edits.
+   * No "Clear my dates" here; Cancel closes the form.
+   */
+  edit?: {
+    term: TermResolution;
+    title: string;
+    saveLabel: string;
+    savedMessage: string;
+    save: (dates: CourseDatesInput) => Promise<void>;
+    onCancel: () => void;
+  };
 }) {
   const { t } = useTranslation("calendar");
   const { t: tc } = useTranslation();
@@ -135,8 +148,8 @@ export function CourseDatesForm({
   const saveRef = useRef<HTMLButtonElement>(null);
   const addBreakRef = useRef<HTMLButtonElement>(null);
   const nextKey = useRef(1000);
-  const { term } = timeline;
-  const own = term.anchor === "student_confirmed";
+  const term = edit?.term ?? timeline.term;
+  const own = !edit && term.anchor === "student_confirmed";
 
   const initial = initialState(term);
   const initialKey = JSON.stringify(initial);
@@ -149,12 +162,15 @@ export function CourseDatesForm({
   }
   const [outOfOrder, setOutOfOrder] = useState(false);
 
-  const changed = JSON.stringify({ ...state }) !== initialKey;
-  const apiError = mutation.error ? toApiError(mutation.error) : null;
+  // A proposal can be accepted as shown; the student's own dates only once changed.
+  const changed = !!edit || JSON.stringify({ ...state }) !== initialKey;
+  const [saveError, setSaveError] = useState<ApiError | null>(null);
+  const [pending, setPending] = useState(false);
+  const apiError = saveError;
   const invalid = outOfOrder || apiError?.kind === "invalid";
 
   function update(patch: Partial<DatesState>) {
-    if (mutation.isError) mutation.reset();
+    if (saveError) setSaveError(null);
     setOutOfOrder(false);
     setState((s) => ({ ...s, ...patch }));
   }
@@ -182,22 +198,27 @@ export function CourseDatesForm({
   }
 
   async function save(dates: CourseDatesInput | null, message: string) {
+    setPending(true);
     try {
-      await mutation.mutateAsync({ courseId: course.id, dates });
+      if (edit && dates) await edit.save(dates);
+      else await mutation.mutateAsync({ courseId: course.id, dates });
       toast.success(message);
-    } catch {
+    } catch (error) {
       // Shown inline below.
+      setSaveError(toApiError(error));
+    } finally {
+      setPending(false);
     }
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!changed || mutation.isPending) return;
+    if (!changed || pending) return;
     if (!inOrder(state)) {
       setOutOfOrder(true);
       return;
     }
-    void save(toInput(state), t("form.saved"));
+    void save(toInput(state), edit ? edit.savedMessage : t("form.saved"));
   }
 
   const describedBy = (...extra: (string | false)[]) =>
@@ -224,7 +245,7 @@ export function CourseDatesForm({
     <form onSubmit={submit} aria-labelledby={ids.heading} noValidate className="space-y-5">
       <div className="space-y-1">
         <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
-          {t("form.title")}
+          {edit ? edit.title : t("form.title")}
         </h2>
         <p className="text-sm text-muted-foreground">{t("form2.description")}</p>
         {!own && (initial.first || initial.last) ? (
@@ -312,16 +333,21 @@ export function CourseDatesForm({
         <Button
           ref={saveRef}
           type="submit"
-          aria-disabled={!changed || mutation.isPending}
+          aria-disabled={!changed || pending}
           className="aria-disabled:opacity-50"
         >
-          {mutation.isPending ? tc("actions.saving") : t("form.save")}
+          {pending ? tc("actions.saving") : edit ? edit.saveLabel : t("form.save")}
         </Button>
+        {edit ? (
+          <Button type="button" variant="outline" onClick={edit.onCancel}>
+            {tc("actions.cancel")}
+          </Button>
+        ) : null}
         {own ? (
           <Button
             type="button"
             variant="outline"
-            disabled={mutation.isPending}
+            disabled={pending}
             onClick={() => {
               // The button disappears once the student's dates are gone; focus moves to Save.
               saveRef.current?.focus();

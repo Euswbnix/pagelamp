@@ -1,6 +1,8 @@
 import { useRef } from "react";
 import type { Course, CourseLifecycle, CourseTimeline } from "@/api/types";
 import { Separator } from "@/components/ui/separator";
+import { CALENDAR_UI } from "../proposals/availability";
+import { ProposalsSection } from "../proposals/ProposalsSection";
 import { REMOVAL_UI } from "../removal/availability";
 import { CheckDatesPrompt } from "./CheckDatesPrompt";
 import { CourseDatesForm } from "./CourseDatesForm";
@@ -32,6 +34,14 @@ export function TimelineTab({
           courseId={course.id}
           onEdit={() => startRef.current?.focus()}
           onDone={() => requestAnimationFrame(() => headingRef.current?.focus())}
+        />
+      ) : null}
+
+      {CALENDAR_UI ? (
+        <ProposalsSection
+          course={course}
+          timeline={timeline}
+          onEmptied={() => headingRef.current?.focus()}
         />
       ) : null}
 
