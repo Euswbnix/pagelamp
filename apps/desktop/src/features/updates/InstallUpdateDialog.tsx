@@ -1,5 +1,5 @@
 import { LoaderCircle } from "lucide-react";
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailableUpdate } from "@/api/client";
 import { useUpdaterStatus } from "@/api/queries";
@@ -20,7 +20,9 @@ import { type InstallState, useInstallUpdate, useUpdateStore } from "@/stores/up
 /**
  * "Install PageLamp x.y.z?": the only way an update gets installed (decision D2: always ask).
  * Waits while any sync runs (the app's or the CLI's); on Windows it says PageLamp will close.
- * Once installing, it can't be dismissed: the app restarts at the end.
+ * Once installing, it can't be dismissed: the app restarts at the end. A sync that started
+ * during the download holds the install back; while the dialog stays open, the install goes on
+ * when that sync finishes.
  */
 export function InstallUpdateDialog({
   update,
@@ -46,8 +48,23 @@ export function InstallUpdateDialog({
     install.phase === "restarting";
   const blocked = busy || working;
 
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (open && wasBusy.current && !busy && useUpdateStore.getState().install.phase === "held") {
+      void start();
+    }
+    wasBusy.current = busy;
+  }, [busy, open, start]);
+
+  const openChange = (next: boolean) => {
+    if (working) return;
+    // Closing is "not now": nothing installs behind the student's back.
+    if (!next && install.phase === "held") useUpdateStore.setState({ install: { phase: "idle" } });
+    onOpenChange(next);
+  };
+
   return (
-    <AlertDialog open={open} onOpenChange={(next) => (working ? undefined : onOpenChange(next))}>
+    <AlertDialog open={open} onOpenChange={openChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t("install.title", { version: update.version })}</AlertDialogTitle>
@@ -61,9 +78,9 @@ export function InstallUpdateDialog({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        {install.phase === "idle" ? null : <InstallProgress install={install} />}
+        {install.phase === "idle" ? null : <InstallProgress install={install} heldId={hintId} />}
         <AlertDialogFooter className="items-center">
-          {busy && !working ? (
+          {busy && !working && install.phase !== "held" ? (
             <span id={hintId} className="text-xs text-muted-foreground sm:mr-auto">
               {external ? t("install.availableAfterOtherSync") : t("install.availableAfterSync")}
             </span>
@@ -99,9 +116,17 @@ export function InstallUpdateDialog({
   );
 }
 
-function InstallProgress({ install }: { install: InstallState }) {
+/** `heldId`: the held message describes the Install button, as the sync hint does otherwise. */
+function InstallProgress({ install, heldId }: { install: InstallState; heldId: string }) {
   const { t } = useTranslation("updates");
   const { t: tc } = useTranslation();
+  if (install.phase === "held") {
+    return (
+      <p id={heldId} role="status" className="text-sm text-muted-foreground">
+        {t("install.held")}
+      </p>
+    );
+  }
   if (install.phase === "failed") {
     return (
       <div role="alert" className="space-y-1 text-sm text-destructive">

@@ -659,5 +659,21 @@
 			<string>Saving %1$ld calendar events</string>
 		</dict>
 	</dict>
+	<key>sources.progress.warningCount</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld warning</string>
+			<key>other</key>
+			<string>%1$ld warnings</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

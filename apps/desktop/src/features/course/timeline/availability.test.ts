@@ -17,6 +17,12 @@ describe("the dates form v2 switch", () => {
     expect(DATES_V2_UI).toBe(true);
   });
 
+  it("is off in the mock as the release ships it (?shipped)", () => {
+    expect(datesV2UiEnabled({ VITE_API: "mock" }, "?shipped")).toBe(false);
+    expect(datesV2UiEnabled({ VITE_API: "mock", VITE_PAGELAMP_SHIPPED: "1" }, "")).toBe(false);
+    expect(datesV2UiEnabled({ VITE_API: "mock" }, "?scenario=demo")).toBe(true);
+  });
+
   it("isn't turned on by any env file a real build reads", () => {
     const envFiles = readdirSync(desktopDir).filter((f) => f.startsWith(".env"));
     for (const file of envFiles.filter((f) => f !== ".env.mock")) {

@@ -30,6 +30,15 @@ describe("shell.css", () => {
     expect(forced).toContain("background: Canvas");
   });
 
+  it("stops spinners turning with reduced motion; they fade instead", () => {
+    const reduced = block(
+      shell,
+      /@media \(prefers-reduced-motion: reduce\) \{\s*\.animate-spin \{[^}]*\}/,
+    );
+    expect(reduced).toContain("animation: pl-busy-fade");
+    expect(block(shell, /@keyframes pl-busy-fade \{[^}]*\}/)).toContain("opacity:");
+  });
+
   it("turns popovers, menus and dialogs into crossfades with reduced motion", () => {
     const reduced = block(
       shell,

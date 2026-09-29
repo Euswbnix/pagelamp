@@ -162,6 +162,19 @@
   }
 }
 
+/* Busy spinners (animate-spin): with reduced motion they stop turning and fade slowly in and out
+   instead. The text or status beside each one still says what is happening (§10.4). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: pl-busy-fade 1.6s var(--pl-motion-reduced) infinite alternate;
+  }
+}
+@keyframes pl-busy-fade {
+  to {
+    opacity: 0.4;
+  }
+}
+
 /* Popovers, menus and dialogs (shadcn + tw-animate-css, which has no reduced-motion rule): with
    reduced motion only a 200 ms crossfade, no zoom or slide (§8, §10.4). */
 @media (prefers-reduced-motion: reduce) {

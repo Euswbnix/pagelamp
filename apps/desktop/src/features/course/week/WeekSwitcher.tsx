@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Undo2 } from "lucide-react";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface WeekSwitcherProps {
   /** The week shown, or null when the backend fell back to "recent materials". */
@@ -43,7 +44,11 @@ export function WeekSwitcher({ week, currentWeek, availableWeeks, onSelect }: We
         ref={headingRef}
         tabIndex={-1}
         aria-live="polite"
-        className="min-w-28 px-1 text-center font-heading text-lg font-semibold tracking-tight outline-none"
+        className={cn(
+          "font-heading text-lg font-semibold tracking-tight outline-none",
+          // Centred between the arrows; without them it lines up with the content below.
+          showArrows && "min-w-28 px-1 text-center",
+        )}
       >
         {week !== null ? tc("week.current", { week }) : t("week.recent")}
         {week !== null && week === currentWeek ? (

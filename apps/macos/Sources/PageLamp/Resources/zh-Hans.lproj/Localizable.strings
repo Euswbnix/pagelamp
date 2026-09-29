@@ -476,7 +476,7 @@
 "calendar.phase.notStarted" = "尚未开课";
 "calendar.phase.startsOn" = "%1$@ 开课";
 "calendar.phase.teaching" = "第 %1$@ 周";
-"calendar.phase.unknown" = "周数未知";
+"calendar.phase.unknown" = "周次未知";
 "calendar.reject.conflicts_with_stronger_source" = "和更可靠的来源不一致。";
 "calendar.reject.end_outside_session_window" = "结束日期离本学期结束太远。";
 "calendar.reject.longer_than_teaching_term" = "比一个教学学期还长，更像是选课窗口，而不是上课日期。";
@@ -1541,6 +1541,10 @@
 "sources.status.new" = "新添加";
 "sources.status.ok" = "正常";
 "sources.status.syncing" = "同步中";
+"sources.technical.copyFor" = "复制技术详情：%1$@";
+"sources.technical.note" = "原始信息，可附在问题反馈里。";
+"sources.technical.title" = "技术详情";
+"sources.technical.titleFor" = "技术详情：%1$@";
 "sources.title" = "数据来源与同步";
 "updates.install.aiApp" = "更新完成后，请退出并重新打开你的 AI 应用，让它使用新的 PageLamp。";
 "updates.install.availableAfterOtherSync" = "另一个同步（来自命令行或另一个窗口）结束后可用";
@@ -1550,6 +1554,7 @@
 "updates.install.downloading" = "正在下载… %1$@%%";
 "updates.install.downloadingUnknown" = "正在下载…";
 "updates.install.failed" = "更新没能安装。";
+"updates.install.held" = "同步结束后，PageLamp 会接着安装这个更新。";
 "updates.install.installing" = "正在安装…";
 "updates.install.progressLabel" = "更新进度";
 "updates.install.restarting" = "正在重启 PageLamp…";

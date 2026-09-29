@@ -114,7 +114,7 @@ pub async fn sync_all(
     on_event: Channel<SyncEvent>,
 ) -> CmdResult<SyncSummary> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.sync_all(req, move |event| {
                 // The UI may have gone away (window reload); the sync carries on regardless.
                 let _ = on_event.send(event);
@@ -132,7 +132,7 @@ pub async fn sync_source(
     on_event: Channel<SyncEvent>,
 ) -> CmdResult<SourceSyncResult> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.sync_source(&source_id, req, move |event| {
                 let _ = on_event.send(event);
             })
@@ -150,7 +150,7 @@ pub async fn download_course_files(
     on_event: Channel<SyncEvent>,
 ) -> CmdResult<SourceSyncResult> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.download_course_files(&course, move |event| {
                 let _ = on_event.send(event);
             })
@@ -473,7 +473,7 @@ pub async fn download_material_files(
     on_event: Channel<SyncEvent>,
 ) -> CmdResult<SourceSyncResult> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.download_material_files(&course, material_ids, move |event| {
                 let _ = on_event.send(event);
             })
@@ -538,7 +538,7 @@ pub async fn read_course_calendar(
     on_event: Channel<GenEvent>,
 ) -> CmdResult<CalendarProposal> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.read_course_calendar(&course, &generation_id, options, move |event| {
                 let _ = on_event.send(event);
             })
@@ -556,7 +556,7 @@ pub async fn read_course_calendars(
     on_event: Channel<CalendarBatchEvent>,
 ) -> CmdResult<Vec<CalendarRunOutcome>> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.read_course_calendars(courses, &batch_id, options, move |event| {
                 let _ = on_event.send(event);
             })

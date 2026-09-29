@@ -171,6 +171,55 @@ describe("installing an update", () => {
     expect(install).not.toHaveBeenCalled();
   });
 
+  /** An install the app holds back after the download: a sync started meanwhile. */
+  function heldOnce(api: ReturnType<typeof mockApi>) {
+    return vi.spyOn(api, "installUpdate").mockImplementationOnce(async (onEvent) => {
+      onEvent({ type: "download_started", total_bytes: 100 });
+      onEvent({ type: "progress", downloaded_bytes: 100, total_bytes: 100 });
+      act(() => useSyncStore.setState({ running: true }));
+      throw new ApiError("busy", "A sync is running. Install the update when it finishes.");
+    });
+  }
+
+  it("installs once a sync that started during the download finishes", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    const install = heldOnce(api);
+    const { user } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+
+    const held = "PageLamp will install the update when the sync finishes.";
+    expect(await within(dialog).findByText(held)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+    const button = within(dialog).getByRole("button", { name: "Install and restart" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(held);
+
+    act(() => useSyncStore.setState({ running: false }));
+    expect(await within(dialog).findByText("Restarting PageLamp…")).toBeInTheDocument();
+    expect(install).toHaveBeenCalledTimes(2);
+  });
+
+  it("installs nothing later once the student closes a held install", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    const install = heldOnce(api);
+    const { user } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+    await within(dialog).findByText(/will install the update when the sync finishes/);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    act(() => useSyncStore.setState({ running: false }));
+    // The notice offers it again; nothing was installed.
+    expect(await screen.findByRole("region", { name: /is available\./ })).toBeInTheDocument();
+    expect(install).toHaveBeenCalledTimes(1);
+  });
+
   it("hides the notice for this launch with Later", async () => {
     const { user } = renderRoute("/courses", { scenario: "update-available" });
     const notice = await screen.findByRole("region", { name: /is available\./ });
