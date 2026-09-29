@@ -28,6 +28,7 @@ use pagelamp_core::views::{self, AsOf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::activity::ActivityKind;
 use crate::trash::FileTrash;
 use crate::{App, AppError, AppErrorKind, Result, SyncRequest};
 
@@ -346,6 +347,8 @@ impl App {
             },
             ..SyncRequest::default()
         };
+        // A sync of its source, listed like `sync_source` (an update waits for it).
+        let _activity = self.begin_activity(ActivityKind::Sync, Some(&tombstone.source_id));
         self.write_store()?
             .set_tombstone_state(removed_id, TombstoneState::Restoring)?;
         let cancel = self.begin_cancellable();

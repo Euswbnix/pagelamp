@@ -389,7 +389,7 @@ pub async fn remove_courses(
     options: RemoveOptions,
 ) -> CmdResult<RemovalReport> {
     backend
-        .spawn(|app| async move { app.remove_courses(courses, options).await })
+        .spawn_work(|app| async move { app.remove_courses(courses, options).await })
         .await
 }
 
@@ -405,7 +405,7 @@ pub async fn restore_course(
     removed_id: String,
 ) -> CmdResult<RestoreOutcome> {
     backend
-        .spawn(|app| async move { app.restore_course(&removed_id).await })
+        .spawn_work(|app| async move { app.restore_course(&removed_id).await })
         .await
 }
 
@@ -418,7 +418,7 @@ pub async fn purge_removed_courses(
     permanent_if_no_trash: bool,
 ) -> CmdResult<PurgeReport> {
     backend
-        .spawn(|app| async move {
+        .spawn_work(|app| async move {
             app.purge_removed_courses(removed_ids, permanent_if_no_trash)
                 .await
         })

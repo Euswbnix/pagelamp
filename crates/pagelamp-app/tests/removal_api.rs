@@ -699,11 +699,14 @@ async fn the_older_code_sweep_is_skipped_when_two_sources_share_a_canvas_id() {
     assert!(old.join("old.txt").exists());
 }
 
-/// A Trash that records the course's tombstone as each move starts (what a quit would leave).
+/// A Trash that records the course's tombstone as each move starts (what a quit would leave),
+/// and whether `activity()` sees the purge (it holds `sync.lock`).
 struct ObservingTrash {
+    app: App,
     db: PathBuf,
     course_id: String,
     seen: Mutex<Vec<(TombstoneState, bool)>>,
+    busy: Mutex<Vec<bool>>,
 }
 
 impl FileTrash for ObservingTrash {
@@ -717,6 +720,11 @@ impl FileTrash for ObservingTrash {
             .lock()
             .unwrap()
             .push((tombstone.state, tombstone.files_pending));
+        let activity = self.app.activity();
+        self.busy
+            .lock()
+            .unwrap()
+            .push(!activity.items.is_empty() || activity.other_process_syncing);
         std::fs::remove_dir_all(path).map_err(|e| e.to_string())
     }
 }
@@ -725,9 +733,11 @@ impl FileTrash for ObservingTrash {
 async fn the_purge_marks_the_files_pending_until_every_folder_is_handled() {
     let f = fixture().await;
     let observer = Arc::new(ObservingTrash {
+        app: f.app.clone(),
         db: f.app.db_path(),
         course_id: format!("{CANVAS}/course/303"),
         seen: Mutex::new(Vec::new()),
+        busy: Mutex::new(Vec::new()),
     });
     f.app.set_trash(observer.clone());
     let report = f
@@ -740,6 +750,9 @@ async fn the_purge_marks_the_files_pending_until_every_folder_is_handled() {
         *observer.seen.lock().unwrap(),
         [(TombstoneState::Purged, true)]
     );
+    // A running purge holds back "Install and restart" (through sync.lock).
+    assert_eq!(*observer.busy.lock().unwrap(), [true]);
+    assert!(f.app.activity().items.is_empty());
     assert!(!report.removed[0].files_pending, "cleared once moved");
     assert!(!f.downloads.exists());
 }
@@ -954,4 +967,49 @@ async fn a_renamed_folder_doesn_t_take_a_pending_removal_with_it() {
     assert!(store.get_course(&removed.course_id).unwrap().is_some());
     let outcome = f.app.restore_course(&removed.removed_id).await.unwrap();
     assert!(outcome.restored);
+}
+
+#[tokio::test]
+async fn a_restore_is_listed_as_a_sync_of_its_source_while_it_runs() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, ResponseTemplate};
+    let server = wiremock::MockServer::start().await;
+    let slow = std::time::Duration::from_millis(1500);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"id": 1, "name": "Demo"}))
+                .set_delay(slow),
+        )
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .with_priority(10)
+        .mount(&server)
+        .await;
+    let temp = tempfile::tempdir().unwrap();
+    let (app, id) = purged_canvas_course(temp.path(), &server.uri(), false).await;
+    assert!(app.activity().items.is_empty());
+    let restoring = {
+        let app = app.clone();
+        tokio::spawn(async move { app.restore_course(&id).await })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let item = loop {
+        if let Some(item) = app.activity().items.into_iter().next() {
+            break item;
+        }
+        assert!(std::time::Instant::now() < deadline, "never listed");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    };
+    assert_eq!(
+        (item.kind, item.source_id.as_deref()),
+        (pagelamp_app::ActivityKind::Sync, Some(CANVAS))
+    );
+    assert!(!app.activity().other_process_syncing, "this app's own sync");
+    restoring.await.unwrap().unwrap();
+    assert!(app.activity().items.is_empty());
 }
