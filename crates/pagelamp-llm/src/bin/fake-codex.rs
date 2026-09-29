@@ -60,13 +60,26 @@ fn main() {
         "cwd": std::env::current_dir().ok(),
         "stdin": stdin,
     });
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(home.join("fake-codex-observed.jsonl"))
-    {
-        // One write for the whole line, so a reader never sees half of it (Windows CI).
-        let _ = file.write_all(format!("{observed}\n").as_bytes());
+    // One write for the whole line, so a reader never sees half of it (Windows CI). Another
+    // process (an indexer, antivirus) may hold the new file briefly: retry, and fail loudly
+    // rather than leave the tests an empty record.
+    let record = format!("{observed}\n");
+    let mut recorded = false;
+    for _ in 0..20 {
+        let written = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(home.join("fake-codex-observed.jsonl"))
+            .and_then(|mut file| file.write_all(record.as_bytes()));
+        if written.is_ok() {
+            recorded = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    if !recorded {
+        eprintln!("fake-codex: could not record what it observed");
+        std::process::exit(97);
     }
 
     let lines = |name: &str| -> Vec<String> {
