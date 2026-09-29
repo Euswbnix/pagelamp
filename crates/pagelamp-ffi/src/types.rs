@@ -987,6 +987,7 @@ pub struct UpdatePrefs {
 pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
+    CourseRemoval,
 }
 
 #[uniffi::remote(Record)]
