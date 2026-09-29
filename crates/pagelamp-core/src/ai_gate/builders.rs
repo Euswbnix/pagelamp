@@ -17,8 +17,8 @@ use std::fmt::Write as _;
 use chrono::{Duration, NaiveDate};
 
 use super::{
-    Block, CitationTarget, ContextCourse, GatedContext, LeftOutMaterial, LeftOutReason,
-    ManifestEntry,
+    Block, CitationTarget, ContextCourse, ContextManifest, GatedContext, LeftOutMaterial,
+    LeftOutReason, ManifestEntry,
 };
 use crate::ai::{BlockReason, Destination};
 use crate::calendar::candidates::{
@@ -169,6 +169,20 @@ pub fn week_context(
     destination: Destination,
     budget: ContextBudget,
 ) -> Result<GatedContext, GateError> {
+    week_context_including(store, course, week, at, destination, budget, &[])
+}
+
+/// `week_context` with the materials in `include` sent although they look like assessments
+/// (the left-out list's "include"). Materials without text and external links stay out.
+pub fn week_context_including(
+    store: &Store,
+    course: &str,
+    week: Option<u32>,
+    at: AsOf,
+    destination: Destination,
+    budget: ContextBudget,
+    include: &[String],
+) -> Result<GatedContext, GateError> {
     let result = store.in_read_transaction(|store| {
         let course = store.resolve_course_with(course, true)?;
         if course.hidden {
@@ -188,7 +202,10 @@ pub fn week_context(
         let mut context = GatedContext::empty();
         let mut candidates = Vec::new();
         for view in &listed.materials {
-            if let Some(reason) = left_out(store, view)? {
+            let reason = left_out(store, view)?.filter(|reason| {
+                !(*reason == LeftOutReason::LooksLikeAssessment && include.contains(&view.id))
+            });
+            if let Some(reason) = reason {
                 context.summary.left_out.push(LeftOutMaterial {
                     material_id: view.id.clone(),
                     title: view.title.clone(),
@@ -264,6 +281,32 @@ pub fn week_context(
         Ok(Ok(context))
     })?;
     result.map_err(GateError::Blocked)
+}
+
+/// Whether an explanation of a course week is out of date at `at` (design §5.2): a material it
+/// was written from changed (`content_hash`) or is gone, or the week now lists a material it
+/// didn't consider (`considered`: the ids it included or left out).
+pub fn week_changed(
+    store: &Store,
+    course_id: &str,
+    week: Option<u32>,
+    manifest: &ContextManifest,
+    considered: &[String],
+    at: AsOf,
+) -> crate::Result<bool> {
+    store.in_read_transaction(|store| {
+        for entry in &manifest.materials {
+            let now = store.get_material(&entry.material_id)?;
+            if now.is_none_or(|material| material.content_hash != entry.content_hash) {
+                return Ok(true);
+            }
+        }
+        let listed = views::week_materials(store, course_id, week, true, at)?;
+        Ok(listed
+            .materials
+            .iter()
+            .any(|material| !considered.contains(&material.id)))
+    })
 }
 
 impl GatedContext {

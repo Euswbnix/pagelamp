@@ -1330,6 +1330,13 @@ struct AppTypes {
     plan_origin: pagelamp_core::model::PlanOrigin,
     unscheduled_task: pagelamp_core::planner::UnscheduledTask,
     unscheduled_reason: pagelamp_core::planner::UnscheduledReason,
+    // M3: weekly explanations
+    weekly_explanation: ai::WeeklyExplanation,
+    explanation_section: ai::ExplanationSection,
+    explanation_paragraph: ai::ExplanationParagraph,
+    citation: ai::Citation,
+    explain_options: ai::ExplainOptions,
+    output_language: ai::OutputLanguage,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

@@ -456,6 +456,12 @@ pub enum GenEvent {
     Stage {
         stage: GenStage,
     },
+    /// What the run sends, once its context is built (no text): the courses and materials
+    /// (included, trimmed, left out), and the input tokens when they can be counted.
+    Context {
+        summary: pagelamp_core::ai_gate::ContextSummary,
+        input_tokens: Option<u64>,
+    },
     TextDelta {
         text: String,
     },

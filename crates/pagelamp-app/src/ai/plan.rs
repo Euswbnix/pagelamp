@@ -168,6 +168,7 @@ impl App {
             let Some(choice) = feature_choice(&store, AiFeature::StudyPlan)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
+            let (profile, _) = self.estimate_profile(&choice)?;
             let scope = PlanScope {
                 courses: request.courses.clone(),
                 horizon_days: horizon,
@@ -196,6 +197,18 @@ impl App {
             )? {
                 return Err(blocked(reason));
             }
+            let estimate = pagelamp_llm::estimate::estimate(
+                &profile,
+                &choice.model,
+                &prompt,
+                &output,
+                choice.effort,
+                max_output,
+            );
+            on_event(GenEvent::Context {
+                summary: context.summary().clone(),
+                input_tokens: Some(estimate.input_tokens),
+            });
             (choice, context, prompt, output, max_output)
         };
         let run = self

@@ -7,7 +7,8 @@
 
 /// Stored with every generation; bumped when the wording changes meaning.
 /// 2: the study plan's graded-work example and ids rule (M3).
-pub const PROMPT_VERSION: u32 = 2;
+/// 3: the weekly explanation's paragraph citations (M3).
+pub const PROMPT_VERSION: u32 = 3;
 
 /// Study plan (structure only): propose tasks; PageLamp's scheduler dates them.
 pub const STUDY_PLAN: &str = "You help a university student plan their study time. Rules: \
@@ -30,8 +31,9 @@ pub const WEEKLY_EXPLANATION: &str = "You explain one week of a university cours
     understanding, never write answers to assignments, quizzes or exams. Respect the course's \
     AI policy.\n\
     Task: explain the week's topics in the order the materials present them, in sections with \
-    headings, then ask 2-3 short questions that check understanding. Answer with the JSON \
-    format only.";
+    headings. Give each paragraph the handles of the materials it comes from in citations: a \
+    paragraph without one is dropped. Then ask 2-3 short questions that check understanding. \
+    Answer with the JSON format only.";
 
 /// Weekly note (structure only): a short note and the top focus items.
 pub const WEEKLY_NOTE: &str = "You write a short weekly note for a university student. Rules: \

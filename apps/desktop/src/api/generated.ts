@@ -263,6 +263,11 @@ export type GenEvent =
       type: "stage";
     }
   | {
+      input_tokens?: number | null;
+      summary: ContextSummary;
+      type: "context";
+    }
+  | {
       text: string;
       type: "text_delta";
     }
@@ -284,6 +289,11 @@ export type GenEvent =
  */
 export type GenStage =
   "building_context" | "waiting_for_model" | "validating" | "repairing" | "scheduling";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LeftOutReason".
+ */
+export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "GenNoticeCode".
@@ -682,11 +692,6 @@ export type EvidenceCode =
  */
 export type EvidenceSignal = ("module_unlock" | "recent_materials" | "latest_material") | "dates";
 /**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "LeftOutReason".
- */
-export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
-/**
  * Why a task isn't in the plan.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -774,6 +779,13 @@ export type McpNoteCode =
   | "custom_data_dir"
   | "generic_stdio_client"
   | "run_from_temporary_location";
+/**
+ * The language explanations are written in (Settings → AI → Output language).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "OutputLanguage".
+ */
+export type OutputLanguage = "ui" | "course";
 /**
  * Who made a saved plan.
  *
@@ -981,6 +993,7 @@ export interface PageLampAppTypes {
   calendar_proposal: CalendarProposal;
   calendar_run_outcome: CalendarRunOutcome;
   chat_gpt_plan_type: ChatGptPlanType;
+  citation: Citation;
   codex_login: CodexLogin;
   codex_login_method: CodexLoginMethod;
   codex_login_state: CodexLoginState;
@@ -1007,6 +1020,9 @@ export interface PageLampAppTypes {
   estimate_request: EstimateRequest;
   evidence_code: EvidenceCode;
   evidence_signal: EvidenceSignal;
+  explain_options: ExplainOptions;
+  explanation_paragraph: ExplanationParagraph;
+  explanation_section: ExplanationSection;
   extract_worker_check: ExtractWorkerCheck;
   extract_worker_status: ExtractWorkerStatus;
   feature_routing: FeatureRouting;
@@ -1027,6 +1043,7 @@ export interface PageLampAppTypes {
   model_error_kind: ModelErrorKind;
   model_info: ModelInfo;
   model_provider_record: ModelProviderRecord;
+  output_language: OutputLanguage;
   plan_origin: PlanOrigin;
   plan_warning: PlanWarning;
   plan_warning_code: PlanWarningCode;
@@ -1077,6 +1094,7 @@ export interface PageLampAppTypes {
   usage_summary: UsageSummary;
   week_materials: WeekMaterials;
   weekly_digest: WeeklyDigest;
+  weekly_explanation: WeeklyExplanation;
   whats_new: WhatsNew;
   whats_new_topic: WhatsNewTopic;
 }
@@ -1346,6 +1364,48 @@ export interface SourceRecord {
    */
   last_error_kind?: SourceErrorKind | null;
   last_synced_at?: string | null;
+}
+/**
+ * What a context contains, for the UI (no text).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ContextSummary".
+ */
+export interface ContextSummary {
+  courses: ContextCourse[];
+  /**
+   * Materials left out, and why.
+   */
+  left_out: LeftOutMaterial[];
+  /**
+   * Materials whose text was included.
+   */
+  materials_included: number;
+  /**
+   * Materials whose text was cut to fit the budget.
+   */
+  materials_trimmed: number;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ContextCourse".
+ */
+export interface ContextCourse {
+  course_id: string;
+  state: AiMaterialsState;
+  /**
+   * Whether any material text of this course is in the context (else structure only).
+   */
+  text_included: boolean;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LeftOutMaterial".
+ */
+export interface LeftOutMaterial {
+  material_id: string;
+  reason: LeftOutReason;
+  title: string;
 }
 /**
  * Token counts of a run.
@@ -1660,6 +1720,19 @@ export interface ProposedDate {
 export interface DropCount {
   count: number;
   reason: DropReason;
+}
+/**
+ * A material a paragraph comes from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Citation".
+ */
+export interface Citation {
+  handle: string;
+  locator?: string | null;
+  material_id: string;
+  title: string;
+  url?: string | null;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -2412,6 +2485,48 @@ export interface UnreadableFiles {
   kind: TextErrorKind;
 }
 /**
+ * Options of one explanation run.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ExplainOptions".
+ */
+export interface ExplainOptions {
+  /**
+   * Materials the left-out list offered, to send this time ("include").
+   */
+  include?: string[];
+  /**
+   * The student chose to go over the monthly budget for this run.
+   */
+  override_budget?: boolean;
+  /**
+   * The UI's language, e.g. "en" or "zh-CN" (English for any other).
+   */
+  ui_language?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ExplanationParagraph".
+ */
+export interface ExplanationParagraph {
+  /**
+   * At least one.
+   */
+  citations: Citation[];
+  /**
+   * Markdown (a UI renders a subset, never raw HTML).
+   */
+  text: string;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ExplanationSection".
+ */
+export interface ExplanationSection {
+  heading: string;
+  paragraphs: ExplanationParagraph[];
+}
+/**
  * A draft plan: dates set by PageLamp's scheduler, waiting for `accept_study_plan`.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -2446,48 +2561,6 @@ export interface GenerationMeta {
   model: string;
   prompt_version: number;
   usage: TokenUsage;
-}
-/**
- * What a context contains, for the UI (no text).
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "ContextSummary".
- */
-export interface ContextSummary {
-  courses: ContextCourse[];
-  /**
-   * Materials left out, and why.
-   */
-  left_out: LeftOutMaterial[];
-  /**
-   * Materials whose text was included.
-   */
-  materials_included: number;
-  /**
-   * Materials whose text was cut to fit the budget.
-   */
-  materials_trimmed: number;
-}
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "ContextCourse".
- */
-export interface ContextCourse {
-  course_id: string;
-  state: AiMaterialsState;
-  /**
-   * Whether any material text of this course is in the context (else structure only).
-   */
-  text_included: boolean;
-}
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "LeftOutMaterial".
- */
-export interface LeftOutMaterial {
-  material_id: string;
-  reason: LeftOutReason;
-  title: string;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -3361,6 +3434,46 @@ export interface DigestPlan {
    */
   last_week_planned: number;
   today: StudyPlanItem[];
+}
+/**
+ * One week explained.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WeeklyExplanation".
+ */
+export interface WeeklyExplanation {
+  /**
+   * 2–3 short questions that check understanding.
+   */
+  check_questions: string[];
+  /**
+   * The course's AI policy asks to cite AI use: the footer says so.
+   */
+  cite_ai_use: boolean;
+  course_id: string;
+  /**
+   * Citations of handles the materials don't have, dropped (with any paragraph left
+   * without a citation).
+   */
+  dropped_citations: number;
+  /**
+   * Materials not sent, and why ("include" sends one next time).
+   */
+  left_out: LeftOutMaterial[];
+  meta: GenerationMeta;
+  sections: ExplanationSection[];
+  /**
+   * This run carried the course's one-time question (b) reminder.
+   */
+  sharing_reminder: boolean;
+  /**
+   * Its materials changed or new ones appeared since it was written: regenerate?
+   */
+  stale: boolean;
+  /**
+   * The week explained; `None` when the course's weeks are unknown (recent materials).
+   */
+  week?: number | null;
 }
 /**
  * `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model
