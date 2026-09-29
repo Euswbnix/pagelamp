@@ -218,9 +218,7 @@ fn lifecycle_summary(store: &Store, at: AsOf) -> Result<LifecycleSummary> {
         .map(|entry| entry.course_id.clone())
         .collect();
     let snooze: BannerSnooze = store
-        .setting::<BannerSnooze>(BANNER_KEY)
-        .ok()
-        .flatten()
+        .setting_or_absent::<BannerSnooze>(BANNER_KEY)?
         .unwrap_or_default();
     let banner_snoozed_until = snooze.until.filter(|until| *until >= at.today);
     let show_banner = match banner_snoozed_until {

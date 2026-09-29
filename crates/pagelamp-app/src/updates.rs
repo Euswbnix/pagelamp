@@ -127,13 +127,10 @@ pub(crate) struct LaunchClass {
 }
 
 impl App {
-    /// The student's update settings (defaults when never set, or unreadable).
+    /// The student's update settings (defaults when never set or unparseable; a failed read is
+    /// an error, never the defaults).
     pub fn update_prefs(&self) -> Result<UpdatePrefs> {
-        Ok(self
-            .read_store()?
-            .setting(PREFS_KEY)
-            .unwrap_or(None)
-            .unwrap_or_default())
+        prefs_in(&self.read_store()?)
     }
 
     pub fn set_update_prefs(&self, prefs: UpdatePrefs) -> Result<()> {
@@ -154,7 +151,7 @@ impl App {
     pub fn startup_tasks(&self, now: Timestamp) -> Result<StartupTasks> {
         let launch = self.launch_class()?;
         let store = self.read_store()?;
-        let whats_new = if launch.upgrade && !whats_new_acknowledged(&store) {
+        let whats_new = if launch.upgrade && !whats_new_acknowledged(&store)? {
             let topics = topics_since(launch.updated_from.as_deref());
             (!topics.is_empty()).then(|| WhatsNew {
                 since: launch.updated_from.clone(),
@@ -163,12 +160,11 @@ impl App {
         } else {
             None
         };
-        let prefs: UpdatePrefs = store.setting(PREFS_KEY).unwrap_or(None).unwrap_or_default();
-        let disclosed: bool = store
-            .setting(DISCLOSURE_KEY)
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let last_check: Option<UpdateCheckRecord> = store.setting(LAST_CHECK_KEY).unwrap_or(None);
+        // A failed read fails the call (the app asks again on its timer): it must never look like
+        // "checks on", "disclosed" or "never checked".
+        let prefs = prefs_in(&store)?;
+        let disclosed: bool = store.setting_or_absent(DISCLOSURE_KEY)?.unwrap_or(false);
+        let last_check: Option<UpdateCheckRecord> = store.setting_or_absent(LAST_CHECK_KEY)?;
         let check_is_old = last_check.is_none_or(|check| now - check.at >= CHECK_INTERVAL);
         Ok(StartupTasks {
             update_check_due: prefs.auto_check && disclosed && whats_new.is_none() && check_is_old,
@@ -199,7 +195,7 @@ impl App {
     }
 
     pub fn last_update_check(&self) -> Result<Option<UpdateCheckRecord>> {
-        Ok(self.read_store()?.setting(LAST_CHECK_KEY).unwrap_or(None))
+        Ok(self.read_store()?.setting_or_absent(LAST_CHECK_KEY)?)
     }
 
     /// Classify this launch once per process: a fresh install gets no What's new (its
@@ -212,7 +208,9 @@ impl App {
         }
         let current = env!("CARGO_PKG_VERSION");
         let store = self.write_store()?;
-        let last_run: Option<String> = store.setting(LAST_RUN_KEY).unwrap_or(None);
+        // Before any write: a failed read leaves the launch unclassified, and the next call
+        // tries again.
+        let last_run: Option<String> = store.setting_or_absent(LAST_RUN_KEY)?;
         let launch = match last_run {
             Some(last) if last == current => LaunchClass {
                 upgrade: false,
@@ -264,11 +262,15 @@ fn topics_since(since: Option<&str>) -> Vec<WhatsNewTopic> {
         .collect()
 }
 
-fn whats_new_acknowledged(store: &Store) -> bool {
-    store
-        .setting::<String>(WHATS_NEW_ACK_KEY)
-        .unwrap_or(None)
-        .is_some_and(|version| version == env!("CARGO_PKG_VERSION"))
+fn whats_new_acknowledged(store: &Store) -> Result<bool> {
+    Ok(store
+        .setting_or_absent::<String>(WHATS_NEW_ACK_KEY)?
+        .is_some_and(|version| version == env!("CARGO_PKG_VERSION")))
+}
+
+/// The student's update settings in `store` (see `App::update_prefs`).
+fn prefs_in(store: &Store) -> Result<UpdatePrefs> {
+    Ok(store.setting_or_absent(PREFS_KEY)?.unwrap_or_default())
 }
 
 /// "2026-10-01 14:03 UTC (beta): up_to_date | available 0.3.0-alpha.2 | error network".
