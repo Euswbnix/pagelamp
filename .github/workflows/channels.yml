@@ -1,0 +1,143 @@
+name: Update channels
+
+# The desktop app's update channels (docs/design/v0.3-plan.md M0.4, D5), static files on GitHub
+# Pages (source: branch gh-pages, folder /; the owner's one-time setup in docs/release-runbook.md):
+#   https://euswbnix.github.io/pagelamp/updates/beta.json    every published release
+#   https://euswbnix.github.io/pagelamp/updates/stable.json  published releases that aren't
+#                                                              pre-releases (the app falls back to
+#                                                              releases/latest/download/latest.json)
+#   https://euswbnix.github.io/pagelamp/updates/test.json    a rehearsal's N+1 build, only for
+#                                                              builds made with the rehearsal overlay
+# Each is a copy of a release's latest.json (release.yml writes it into the draft when the updater
+# is on), checked against the manifest contract first. Channels move only when the owner publishes
+# a draft, so the review of the draft stays the gate. Releases made with the updater off have no
+# latest.json and leave the channels as they are.
+#
+# By hand (Actions → Update channels → Run workflow, from main):
+# - promote: point `channel` at the published release `tag` (the "bad release" runbook's
+#   rollback: it stops further updates to the bad version but can't roll anyone back);
+# - test-publish: serve the updater-test artifact of the rehearsal run `run_id` (release.yml run
+#   from main with the updater on) as the test channel, under updates/test/<commit>/;
+# - test-delete: remove the test channel again.
+#
+# The work is in .github/scripts/update-channels.sh. Only GITHUB_TOKEN is used, with contents: write
+# (and actions: read to fetch a rehearsal's artifact); gh-pages is replaced by one commit per change.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'promote: point a channel at a published release (rollback). test-publish / test-delete: the rehearsal test channel.'
+        type: choice
+        options: [promote, test-publish, test-delete]
+        default: promote
+      tag:
+        description: 'promote: the published release the channel should serve (e.g. v0.3.0-alpha.1).'
+        required: false
+        default: ''
+      channel:
+        description: 'promote: the channel to move.'
+        type: choice
+        options: [beta, stable]
+        default: beta
+      run_id:
+        description: 'test-publish: the ID of a rehearsal run of Release from main (the number in its URL).'
+        required: false
+        default: ''
+
+permissions: {}
+
+# One change to gh-pages at a time, in order.
+concurrency:
+  group: update-channels
+  cancel-in-progress: false
+
+env:
+  PAGES_URL: https://euswbnix.github.io/pagelamp
+
+jobs:
+  release:
+    name: Channels follow the published release
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      # The published tag's own scripts (the event's ref).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Update beta (and stable for a full release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: bash .github/scripts/update-channels.sh release
+
+  promote:
+    name: Point a channel at a release
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'promote' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Point the channel at the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+        run: bash .github/scripts/update-channels.sh promote
+
+  test-publish:
+    name: Serve a rehearsal on the test channel
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'test-publish' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      # The rehearsal run's details and its updater-test artifact.
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Publish the test channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: bash .github/scripts/update-channels.sh test-publish
+
+  test-delete:
+    name: Remove the test channel
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action == 'test-delete' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Remove the test channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/update-channels.sh test-delete
