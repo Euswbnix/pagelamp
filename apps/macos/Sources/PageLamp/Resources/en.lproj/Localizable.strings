@@ -31,7 +31,7 @@
 "calendar.evidence.course_end_passed" = "The course ended %1$@, according to %2$@";
 "calendar.evidence.dates_agree" = "Agrees with %1$@: week 1 is the week of %2$@";
 "calendar.evidence.dates_ended" = "By the course dates, it ended %1$@";
-"calendar.evidence.dates_may_be_wrong" = "%1$@ puts week 1 in the week of %2$@, %3$@ days away. These dates may be wrong — check them.";
+"calendar.evidence.dates_may_be_wrong" = "According to %1$@, week 1 is the week of %2$@, %3$@ days away. These dates may be wrong — check them.";
 "calendar.evidence.dates_not_used" = "Not used: %1$@, %2$@ → %3$@. %4$@";
 "calendar.evidence.dates_not_used_no_end" = "Not used: %1$@ from %2$@. %3$@";
 "calendar.evidence.dates_not_used_no_end_no_start" = "Not used: %1$@. %2$@";

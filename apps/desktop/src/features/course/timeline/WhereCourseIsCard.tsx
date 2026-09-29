@@ -32,7 +32,9 @@ export function WhereCourseIsCard({
   // A week (teaching, or from the older signals) is as sure as the week; otherwise the phase.
   const confidence =
     describePhase(timeline).kind === "teaching" ? timeline.confidence : timeline.phase_confidence;
-  const notesWeek = timeline.notes_week ?? null;
+  // How far the professor's materials have got matters only while the course is running.
+  const running = ["teaching", "break", "unknown"].includes(timeline.phase);
+  const notesWeek = running ? (timeline.notes_week ?? null) : null;
 
   return (
     <section

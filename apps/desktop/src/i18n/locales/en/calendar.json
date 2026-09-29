@@ -207,7 +207,7 @@
     "dates_not_used_no_end_no_start": "Not used: {{source}}. {{reason}}",
     "end_not_used": "Not used: the end of {{source}}, {{end}}; {{until}} is used instead. {{reason}}",
     "dates_agree": "Agrees with {{source}}: week 1 is the week of {{monday}}",
-    "dates_may_be_wrong": "{{source}} puts week 1 in the week of {{monday}}, {{days}} days away. These dates may be wrong — check them.",
+    "dates_may_be_wrong": "According to {{source}}, week 1 is the week of {{monday}}, {{days}} days away. These dates may be wrong — check them.",
     "session_window": "Session {{session}} ({{section}}) runs within {{start}} – {{end}}",
     "session_window_no_section": "Session {{session}} runs within {{start}} – {{end}}",
     "week_from_dates": "Week 1 started the week of {{monday}} → week {{week}}",

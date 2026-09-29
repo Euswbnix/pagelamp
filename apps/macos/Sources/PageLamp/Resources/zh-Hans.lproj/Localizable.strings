@@ -31,7 +31,7 @@
 "calendar.evidence.course_end_passed" = "根据%2$@，这门课已于 %1$@ 结束";
 "calendar.evidence.dates_agree" = "与%1$@一致：第 1 周是 %2$@ 那一周";
 "calendar.evidence.dates_ended" = "按课程日期，这门课已于 %1$@ 结束";
-"calendar.evidence.dates_may_be_wrong" = "%1$@显示第 1 周是 %2$@ 那一周，相差 %3$@ 天。这些日期可能有误，请检查。";
+"calendar.evidence.dates_may_be_wrong" = "根据%1$@，第 1 周是 %2$@ 那一周，相差 %3$@ 天。这些日期可能有误，请检查。";
 "calendar.evidence.dates_not_used" = "未采用：%1$@，%2$@ → %3$@。%4$@";
 "calendar.evidence.dates_not_used_no_end" = "未采用：%1$@，从 %2$@ 起。%3$@";
 "calendar.evidence.dates_not_used_no_end_no_start" = "未采用：%1$@。%2$@";

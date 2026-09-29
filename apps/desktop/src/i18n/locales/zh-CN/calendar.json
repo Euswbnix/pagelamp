@@ -207,7 +207,7 @@
     "dates_not_used_no_end_no_start": "未采用：{{source}}。{{reason}}",
     "end_not_used": "未采用：{{source}}的结束日期 {{end}}，改用 {{until}}。{{reason}}",
     "dates_agree": "与{{source}}一致：第 1 周是 {{monday}} 那一周",
-    "dates_may_be_wrong": "{{source}}显示第 1 周是 {{monday}} 那一周，相差 {{days}} 天。这些日期可能有误，请检查。",
+    "dates_may_be_wrong": "根据{{source}}，第 1 周是 {{monday}} 那一周，相差 {{days}} 天。这些日期可能有误，请检查。",
     "session_window": "{{session}} 学期（{{section}}）在 {{start}} – {{end}} 之间",
     "session_window_no_section": "{{session}} 学期在 {{start}} – {{end}} 之间",
     "week_from_dates": "第 1 周从 {{monday}} 那一周开始 → 第 {{week}} 周",
