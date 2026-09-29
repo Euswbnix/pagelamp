@@ -106,7 +106,7 @@ export type TextStatus = "pending" | "ok" | "unsupported" | "not_downloaded" | "
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "CalendarStatus".
  */
-export type CalendarStatus = "none" | "proposed" | "accepted" | "accepted_stale";
+export type CalendarStatus = ("proposed" | "accepted" | "accepted_stale") | "none";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "BreakKind".
@@ -128,13 +128,13 @@ export type CoursePhase =
  * via the `definition` "TermAnchorSource".
  */
 export type TermAnchorSource =
-  | "none"
   | "student_confirmed"
   | "lms_course_dates"
   | "lms_term"
   | "folder_config"
   | "institution_calendar"
-  | "published_week_labels";
+  | "published_week_labels"
+  | "none";
 /**
  * Where a student-confirmed calendar came from.
  *
@@ -761,7 +761,7 @@ export interface TermResolution {
   ai_label?: AiLabel | null;
   anchor: TermAnchorSource;
   /**
-   * Low when `anchor` is `None`.
+   * Low when `anchor` is `NoAnchor`.
    */
   anchor_confidence: "high" | "medium" | "low";
   /**
@@ -1386,7 +1386,7 @@ export interface TermResolution1 {
   ai_label?: AiLabel | null;
   anchor: TermAnchorSource;
   /**
-   * Low when `anchor` is `None`.
+   * Low when `anchor` is `NoAnchor`.
    */
   anchor_confidence: "high" | "medium" | "low";
   /**
