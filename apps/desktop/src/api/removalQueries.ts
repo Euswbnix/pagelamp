@@ -104,6 +104,22 @@ export function useForgetRemovedCourse() {
   });
 }
 
+/**
+ * Undo for the "Removed" toast. The toast outlives the dialog (and, from a course page, the
+ * page), so this calls the API directly rather than through a component's mutation.
+ */
+export function useUndoRemoval() {
+  const api = useApi();
+  const client = useQueryClient();
+  return async (removedIds: string[]) => {
+    try {
+      for (const id of removedIds) await api.restoreCourse(id);
+    } finally {
+      await client.invalidateQueries({ queryKey: queryKeys.all });
+    }
+  };
+}
+
 export function useSetCourseDates() {
   const api = useApi();
   const invalidate = useInvalidateAll();
