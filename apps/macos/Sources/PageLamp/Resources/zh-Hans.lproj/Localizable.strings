@@ -1236,6 +1236,8 @@
 "plan.unscheduled.title" = "未排入计划";
 "proposals.batch.done" = "完成";
 "proposals.batch.failed" = "没能读取课程大纲";
+"proposals.batch.notNow" = "暂不处理";
+"proposals.batch.notNowLabel" = "暂不处理：用 AI 读取教学大纲";
 "proposals.batch.outcome.accepted" = "日期已确认";
 "proposals.batch.outcome.choose" = "找到了日期，有些需要你来选";
 "proposals.batch.outcome.failed" = "没能读取";
@@ -1243,6 +1245,7 @@
 "proposals.batch.outcome.passing" = "找到了日期，全部检查都通过了";
 "proposals.batch.outcome.stopped" = "没有读取（已停止）";
 "proposals.batch.progress" = "正在读取第 %1$@/%2$@ 门 · %3$@";
+"proposals.batch.snoozed" = "两周后再提醒你。";
 "proposals.batch.stop" = "停止剩下的";
 "proposals.batch.title" = "用 AI 读取课程大纲";
 "proposals.card.accept" = "接受";

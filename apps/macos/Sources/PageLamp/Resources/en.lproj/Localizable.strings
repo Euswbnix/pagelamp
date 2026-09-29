@@ -1236,6 +1236,8 @@
 "plan.unscheduled.title" = "Not in the plan";
 "proposals.batch.done" = "Done";
 "proposals.batch.failed" = "The syllabi couldn't be read";
+"proposals.batch.notNow" = "Not now";
+"proposals.batch.notNowLabel" = "Not now: reading syllabi with AI";
 "proposals.batch.outcome.accepted" = "Dates accepted";
 "proposals.batch.outcome.choose" = "Dates found; some need your choice";
 "proposals.batch.outcome.failed" = "Couldn't be read";
@@ -1243,6 +1245,7 @@
 "proposals.batch.outcome.passing" = "Dates found; they passed every check";
 "proposals.batch.outcome.stopped" = "Not read (stopped)";
 "proposals.batch.progress" = "Reading %1$@ of %2$@ · %3$@";
+"proposals.batch.snoozed" = "We'll offer it again in two weeks.";
 "proposals.batch.stop" = "Stop the rest";
 "proposals.batch.title" = "Read syllabi with AI";
 "proposals.card.accept" = "Accept";
