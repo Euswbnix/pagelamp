@@ -310,7 +310,7 @@ pub enum TermAnchorSource {
     FolderConfig,
     InstitutionCalendar,
     PublishedWeekLabels,
-    None,
+    NoAnchor,
 }
 
 #[uniffi::remote(Enum)]
@@ -381,7 +381,7 @@ pub struct CalendarBreak {
 
 #[uniffi::remote(Enum)]
 pub enum CalendarStatus {
-    None,
+    NoCalendar,
     Proposed,
     Accepted,
     AcceptedStale,

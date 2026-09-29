@@ -66,7 +66,9 @@ pub enum TermAnchorSource {
     InstitutionCalendar,
     /// Week 1 fitted from the week numbers and publish dates of the professor's materials.
     PublishedWeekLabels,
-    None,
+    /// No usable dates ("none" in JSON; named so Swift's `.none` stays Optional's).
+    #[serde(rename = "none")]
+    NoAnchor,
 }
 
 impl TermAnchorSource {
@@ -78,7 +80,7 @@ impl TermAnchorSource {
             TermAnchorSource::FolderConfig => "folder_config",
             TermAnchorSource::InstitutionCalendar => "institution_calendar",
             TermAnchorSource::PublishedWeekLabels => "published_week_labels",
-            TermAnchorSource::None => "none",
+            TermAnchorSource::NoAnchor => "none",
         }
     }
 }
@@ -220,7 +222,9 @@ pub struct CalendarBreak {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CalendarStatus {
-    None,
+    /// No calendar ("none" in JSON; named so Swift's `.none` stays Optional's).
+    #[serde(rename = "none")]
+    NoCalendar,
     Proposed,
     Accepted,
     AcceptedStale,
@@ -229,7 +233,7 @@ pub enum CalendarStatus {
 impl CalendarStatus {
     pub fn as_str(self) -> &'static str {
         match self {
-            CalendarStatus::None => "none",
+            CalendarStatus::NoCalendar => "none",
             CalendarStatus::Proposed => "proposed",
             CalendarStatus::Accepted => "accepted",
             CalendarStatus::AcceptedStale => "accepted_stale",
@@ -246,7 +250,7 @@ pub struct TermResolution {
     pub breaks: Vec<CalendarBreak>,
     pub exams_end: Option<NaiveDate>,
     pub anchor: TermAnchorSource,
-    /// Low when `anchor` is `None`.
+    /// Low when `anchor` is `NoAnchor`.
     pub anchor_confidence: Confidence,
     /// For `StudentConfirmed`: where the student's dates came from.
     pub anchor_origin: Option<CalendarOrigin>,
@@ -270,7 +274,7 @@ impl Default for TermResolution {
             teaching: Vec::new(),
             breaks: Vec::new(),
             exams_end: None,
-            anchor: TermAnchorSource::None,
+            anchor: TermAnchorSource::NoAnchor,
             anchor_confidence: Confidence::Low,
             anchor_origin: None,
             ai_label: None,
@@ -278,6 +282,46 @@ impl Default for TermResolution {
             not_used: Vec::new(),
             student_start: None,
             student_end: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enum_json_names_match_as_str() {
+        for source in [
+            TermAnchorSource::StudentConfirmed,
+            TermAnchorSource::LmsCourseDates,
+            TermAnchorSource::LmsTerm,
+            TermAnchorSource::FolderConfig,
+            TermAnchorSource::InstitutionCalendar,
+            TermAnchorSource::PublishedWeekLabels,
+            TermAnchorSource::NoAnchor,
+        ] {
+            assert_eq!(serde_json::to_value(source).unwrap(), source.as_str());
+        }
+        for status in [
+            CalendarStatus::NoCalendar,
+            CalendarStatus::Proposed,
+            CalendarStatus::Accepted,
+            CalendarStatus::AcceptedStale,
+        ] {
+            assert_eq!(serde_json::to_value(status).unwrap(), status.as_str());
+        }
+        assert_eq!(TermAnchorSource::NoAnchor.as_str(), "none");
+        assert_eq!(CalendarStatus::NoCalendar.as_str(), "none");
+        for phase in [
+            CoursePhase::NotStarted,
+            CoursePhase::Teaching,
+            CoursePhase::Break,
+            CoursePhase::ExamPeriod,
+            CoursePhase::Ended,
+            CoursePhase::Unknown,
+        ] {
+            assert_eq!(serde_json::to_value(phase).unwrap(), phase.as_str());
         }
     }
 }

@@ -262,7 +262,7 @@ pub fn infer_timeline(
         current_break_kind: None,
         notes_week: None,
         term: TermResolution::default(),
-        calendar: CalendarStatus::None,
+        calendar: CalendarStatus::NoCalendar,
         evidence_items: Vec::new(),
     }
 }
