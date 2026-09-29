@@ -7,12 +7,15 @@
 
 import type {
   AiLabel,
+  AppErrorKind,
+  BlockReason,
   BreakKind,
   CalendarOrigin,
   CalendarStatus,
   CoursePhase,
   DateSpan,
   EvidenceParam,
+  GenEvent,
   MaterialKind,
   TeachingSegment,
 } from "../generated";
@@ -203,23 +206,14 @@ export interface CalendarCandidate {
   url?: string | null;
 }
 
-/** Why the AI can't read this course's syllabus now (facade BlockReason, design §3.4). */
-export type CalendarBlockReason =
-  | "course_policy_prohibited"
-  | "course_ai_turned_off"
-  | "course_hidden"
-  | "no_readable_materials"
-  | "material_sharing_not_allowed"
-  | "disclosure_not_acknowledged"
-  | "no_model_chosen";
-
 export interface CourseCalendarView {
   course_id: string;
   accepted?: AcceptedCalendar | null;
   proposals: CalendarProposal[];
   status: CalendarStatus;
   candidates: CalendarCandidate[];
-  blocked?: CalendarBlockReason | null;
+  /** Why AI reading can't run now (M1's BlockReason; design §3.4). */
+  blocked?: BlockReason | null;
 }
 
 /** A course the "Read syllabi for N courses" batch would read (the facade decides). */
@@ -229,3 +223,28 @@ export interface SyllabusOffer {
   candidates: number;
   has_text: boolean;
 }
+
+/** Options of an AI reading run (read_course_calendar / read_course_calendars). */
+export interface ReadCalendarOptions {
+  /** The student chose to go over the monthly budget for this run (GenerateButton). */
+  override_budget: boolean;
+}
+
+/** How one course of "Read syllabi for N courses" ended. */
+export interface CalendarRunOutcome {
+  course_id: string;
+  /** The proposal the run made; null when it was blocked, failed, stopped or found no dates. */
+  proposal_id?: number | null;
+  /** The proposal has no conflicts and isn't low quality (accept_passing_proposals). */
+  passing: boolean;
+  /** The gate stopped this course (each course is gated on its own). */
+  blocked?: BlockReason | null;
+  /** The run failed or was stopped (`cancelled`). */
+  error?: AppErrorKind | null;
+}
+
+/** Progress of read_course_calendars: one course after another, each with its GenEvents. */
+export type CalendarBatchEvent =
+  | { type: "course_started"; course_id: string; index: number; total: number }
+  | { type: "gen"; course_id: string; event: GenEvent }
+  | { type: "course_finished"; outcome: CalendarRunOutcome };

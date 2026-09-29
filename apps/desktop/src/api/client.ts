@@ -4,6 +4,7 @@ import type {
   BackendRef,
   CostEstimate,
   EstimateRequest,
+  GenEvent,
   LocalServer,
   MaterialSharing,
   ModelChoice,
@@ -24,8 +25,10 @@ import type {
 import type {
   AiPolicy,
   AppStatus,
+  CalendarBatchEvent,
   CalendarCandidate,
   CalendarProposal,
+  CalendarRunOutcome,
   CourseCalendarView,
   CourseDatesInput,
   CourseOverview,
@@ -37,6 +40,7 @@ import type {
   LifecycleSummary,
   McpClientConfig,
   PurgeReport,
+  ReadCalendarOptions,
   RemovalPreview,
   RemovalReport,
   RemovedCourse,
@@ -218,6 +222,22 @@ export interface PageLampApi {
   dismissCalendarProposal(proposalId: number): Promise<void>;
   /** The courses "Read syllabi for N courses" would read (the facade decides). */
   syllabusReadingOffers(): Promise<SyllabusOffer[]>;
+  /** "Read the syllabus with AI" (design §7.3): gated like every AI run; makes a proposal. */
+  readCourseCalendar(
+    courseId: string,
+    generationId: string,
+    options: ReadCalendarOptions,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<CalendarProposal>;
+  /** "Read syllabi for N courses": one course after another, each gated on its own. */
+  readCourseCalendars(
+    courseIds: string[],
+    batchId: string,
+    options: ReadCalendarOptions,
+    onEvent: (event: CalendarBatchEvent) => void,
+  ): Promise<CalendarRunOutcome[]>;
+  /** Stop a running generation or batch (by its id); the run ends with `cancelled`. */
+  cancelGeneration(generationId: string): Promise<void>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 

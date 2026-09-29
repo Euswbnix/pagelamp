@@ -14,6 +14,7 @@
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
+import { sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
@@ -238,6 +239,31 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     now,
     respond,
     findCourse,
+    step: () => sleep(syncStep),
+    // The AI mock's estimate is the gate, as in the facade (created below; called later).
+    aiGate: async (courseId, overrideBudget) => {
+      const estimate = await ai.estimateGeneration({
+        feature: "course_calendar",
+        courses: [courseId],
+      });
+      const block = estimate.would_block ?? null;
+      if (block && !(block === "budget_reached" && overrideBudget)) {
+        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+      }
+      const status = await ai.aiStatus();
+      const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
+      const backend = choice
+        ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
+        : undefined;
+      if (!choice || !backend) {
+        throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
+      }
+      return {
+        backend_label: backend.label,
+        model: choice.model,
+        on_device: backend.kind === "local",
+      };
+    },
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));
       c.timeline = {

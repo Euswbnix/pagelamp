@@ -339,6 +339,118 @@
 			<string>%1$ld plan tasks today</string>
 		</dict>
 	</dict>
+	<key>proposals.batch.acceptPassing</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Accept the %1$ld that passed every check</string>
+			<key>other</key>
+			<string>Accept the %1$ld that passed every check</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.accepted</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Dates accepted for %1$ld course.</string>
+			<key>other</key>
+			<string>Dates accepted for %1$ld courses.</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.description</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld course has no confirmed dates yet. AI can read its outline and propose dates for you to check.</string>
+			<key>other</key>
+			<string>%1$ld courses have no confirmed dates yet. AI can read their outlines and propose dates for you to check.</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.finished</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Done: %1$ld course has dates to check.</string>
+			<key>other</key>
+			<string>Done: %1$ld courses have dates to check.</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.read</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Read the syllabus for %1$ld course</string>
+			<key>other</key>
+			<string>Read syllabi for %1$ld courses</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.started</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Reading the syllabus for %1$ld course…</string>
+			<key>other</key>
+			<string>Reading syllabi for %1$ld courses…</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.stopped</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Stopped. %1$ld course has dates to check; the rest weren't read.</string>
+			<key>other</key>
+			<string>Stopped. %1$ld courses have dates to check; the rest weren't read.</string>
+		</dict>
+	</dict>
 	<key>proposals.card.dropped</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

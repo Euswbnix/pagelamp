@@ -390,7 +390,7 @@ describe("CoursesPage — sync", () => {
 
     // The headline is also announced from a visually hidden status; check the visible box.
     expect(await screen.findByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Sync failed");
+    expect(screen.getAllByRole("status").some((s) => s.textContent === "Sync failed")).toBe(true);
     expect(
       screen.getByText(
         "Couldn't reach the server. Check your internet connection and the address.",

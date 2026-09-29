@@ -297,6 +297,104 @@
 			<string>今天有 %1$ld 项学习任务</string>
 		</dict>
 	</dict>
+	<key>proposals.batch.acceptPassing</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>确认全部检查都通过的 %1$ld 门</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.accepted</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>已确认 %1$ld 门课的日期。</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.description</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>有 %1$ld 门课还没有确认过日期。AI 可以读取它们的课程大纲，提出日期建议供你核对。</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.finished</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>完成：有 %1$ld 门课的日期需要核对。</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.read</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>读取 %1$ld 门课的课程大纲</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.started</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>正在读取 %1$ld 门课的课程大纲…</string>
+		</dict>
+	</dict>
+	<key>proposals.batch.stopped</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>已停止。有 %1$ld 门课的日期需要核对，其余的没有读取。</string>
+		</dict>
+	</dict>
 	<key>proposals.card.dropped</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

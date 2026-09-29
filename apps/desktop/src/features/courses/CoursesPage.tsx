@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useCourses } from "@/api/queries";
 import { ErrorState } from "@/components/common/ErrorState";
 import { PageHeader } from "@/components/common/PageHeader";
+import { CALENDAR_UI } from "@/features/course/proposals/availability";
+import { ReadSyllabiBatch } from "@/features/course/proposals/ReadSyllabiBatch";
 import { REMOVAL_UI } from "@/features/course/removal/availability";
 import { LifecycleBanner } from "@/features/course/removal/LifecycleBanner";
 import { CourseList } from "./CourseList";
@@ -42,6 +44,7 @@ export function CoursesPage() {
         {REMOVAL_UI ? <LifecycleBanner /> : null}
         <ThisWeek />
         <StudyPlanCard />
+        {CALENDAR_UI ? <ReadSyllabiBatch /> : null}
         <CourseList courses={courses.data} />
       </div>
     );

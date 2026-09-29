@@ -4,15 +4,17 @@
 // calendar module with its own state beside the mock database.
 
 import { calendarToInput } from "@/lib/calendarInput";
+import type { BlockReason, GenEvent } from "../ai";
+import { materialSharing } from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import type {
   AcceptedCalendar,
   AiLabel,
-  CalendarBlockReason,
   CalendarCandidate,
   CalendarOrigin,
   CalendarProposal,
+  CalendarRunOutcome,
   CalendarStatus,
   CourseCalendar,
   CourseCalendarView,
@@ -33,7 +35,17 @@ type ProposalsApi = Pick<
   | "acceptPassingProposals"
   | "dismissCalendarProposal"
   | "syllabusReadingOffers"
+  | "readCourseCalendar"
+  | "readCourseCalendars"
+  | "cancelGeneration"
 >;
+
+/** Who an AI reading run would go to (the AI mock's routing for course_calendar). */
+export interface MockAiRun {
+  backend_label: string;
+  model: string;
+  on_device: boolean;
+}
 
 interface CourseState {
   accepted: AcceptedCalendar | null;
@@ -54,6 +66,13 @@ export function createProposalsMock(deps: {
   now: () => Date;
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   findCourse: (courseId: string) => MockCourse;
+  /** One step of a run (the mock's sync step; 0 in tests). */
+  step: () => Promise<void>;
+  /**
+   * The AI gate for one course (the AI mock's estimate): who the run goes to, or an ApiError
+   * `blocked` with the reason. The student may override a reached budget.
+   */
+  aiGate: (courseId: string, overrideBudget: boolean) => Promise<MockAiRun>;
   /** Put a calendar in force on the mock course (timeline, lifecycle, term dates). */
   applyCalendar: (
     c: MockCourse,
@@ -65,6 +84,10 @@ export function createProposalsMock(deps: {
   const { db, now, respond, findCourse } = deps;
   const states = new Map<string, CourseState>();
   let nextId = 1;
+  /** Generation and batch ids the student stopped (cancel_generation). */
+  const cancelled = new Set<string>();
+  /** Courses whose first cloud run already showed the question (b) reminder (D37, D49). */
+  const reminded = new Set<string>();
 
   function stateOf(courseId: string): CourseState {
     let state = states.get(courseId);
@@ -115,7 +138,7 @@ export function createProposalsMock(deps: {
     return list;
   }
 
-  function blockedOf(c: MockCourse, candidates: CalendarCandidate[]): CalendarBlockReason | null {
+  function blockedOf(c: MockCourse, candidates: CalendarCandidate[]): BlockReason | null {
     if (c.course.hidden) return "course_hidden";
     const materials = aiMaterialsState(c.course);
     if (materials === "withheld_by_policy") return "course_policy_prohibited";
@@ -435,7 +458,110 @@ export function createProposalsMock(deps: {
     return m;
   }
 
-  const api: ProposalsApi = {
+  /**
+   * One AI reading run, like the facade's read_course_calendar: gated, then its stages, then a
+   * proposal from the first included candidate (replacing an earlier AI proposal). Stops with
+   * `cancelled` between stages when its id (or its batch's) was cancelled.
+   */
+  async function readOne(
+    courseId: string,
+    generationId: string,
+    overrideBudget: boolean,
+    onEvent: (event: GenEvent) => void,
+    batchId: string | null = null,
+  ): Promise<CalendarProposal> {
+    const c = findCourse(courseId);
+    const course = blockedOf(c, candidatesOf(c));
+    if (course)
+      throw new ApiError("blocked", "AI reading can't run for this course.", { blocked: course });
+    const run = await deps.aiGate(courseId, overrideBudget);
+    const stopped = () =>
+      cancelled.has(generationId) || (batchId !== null && cancelled.has(batchId));
+    onEvent({ type: "started", generation_id: generationId, ...run });
+    for (const stage of ["building_context", "waiting_for_model", "validating"] as const) {
+      onEvent({ type: "stage", stage });
+      await deps.step();
+      if (stopped()) {
+        onEvent({ type: "finished", ok: false });
+        throw new ApiError("cancelled", "The reading was stopped.");
+      }
+    }
+    // The course's first cloud run with question (b) unanswered or "not sure" (D37 option 2).
+    const answer = materialSharing(c.course);
+    const reminder =
+      !run.on_device &&
+      (answer === "unanswered" || answer === "not_sure") &&
+      !reminded.has(courseId);
+    if (reminder) {
+      reminded.add(courseId);
+      onEvent({ type: "notice", code: "material_sharing_reminder" });
+    }
+    onEvent({
+      type: "usage",
+      usage: { input_tokens: 14_200, cached_input_tokens: 0, output_tokens: 900 },
+    });
+    onEvent({ type: "finished", ok: true });
+
+    const source = candidatesOf(c).find((x) => x.included);
+    const m = c.materials.find((x) => x.id === source?.material_id);
+    if (!m)
+      throw new ApiError("blocked", "No readable outline.", { blocked: "no_readable_materials" });
+    const state = stateOf(courseId);
+    const made = proposal(c, "ai", m, {
+      ai_label: {
+        backend_label: run.backend_label,
+        model: run.model,
+        created_at: now().toISOString(),
+      },
+      sharing_reminder: reminder,
+      created_at: now().toISOString(),
+    });
+    state.proposals = [...state.proposals.filter((p) => p.origin !== "ai"), made];
+    sync(c);
+    return made;
+  }
+
+  const runs = {
+    readCourseCalendar: (courseId, generationId, options, onEvent) =>
+      readOne(courseId, generationId, options.override_budget, onEvent),
+
+    readCourseCalendars: async (courseIds, batchId, options, onEvent) => {
+      const outcomes: CalendarRunOutcome[] = [];
+      for (const [index, courseId] of courseIds.entries()) {
+        if (cancelled.has(batchId)) break;
+        onEvent({ type: "course_started", course_id: courseId, index, total: courseIds.length });
+        let outcome: CalendarRunOutcome;
+        try {
+          const made = await readOne(
+            courseId,
+            `${batchId}/${courseId}`,
+            options.override_budget,
+            (event) => onEvent({ type: "gen", course_id: courseId, event }),
+            batchId,
+          );
+          outcome = { course_id: courseId, proposal_id: made.id, passing: made.passing };
+        } catch (error) {
+          const e = error instanceof ApiError ? error : null;
+          outcome = {
+            course_id: courseId,
+            passing: false,
+            blocked: e?.kind === "blocked" ? e.blocked : null,
+            error: e?.kind === "blocked" ? null : (e?.kind ?? "internal"),
+          };
+        }
+        outcomes.push(outcome);
+        onEvent({ type: "course_finished", outcome });
+      }
+      return outcomes;
+    },
+
+    cancelGeneration: (generationId) =>
+      respond(() => {
+        cancelled.add(generationId);
+      }),
+  } satisfies Pick<ProposalsApi, "readCourseCalendar" | "readCourseCalendars" | "cancelGeneration">;
+
+  const api: Omit<ProposalsApi, keyof typeof runs> = {
     courseCalendar: (courseId) => respond(() => view(findCourse(courseId))),
 
     setCalendarSources: (courseId, include, exclude) =>
@@ -504,7 +630,7 @@ export function createProposalsMock(deps: {
       ),
   };
 
-  return { api };
+  return { api: { ...api, ...runs } satisfies ProposalsApi };
 }
 
 /** "September 8" in English, as a syllabus would write it (quotes are the material's words). */

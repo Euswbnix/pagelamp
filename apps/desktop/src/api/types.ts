@@ -105,11 +105,12 @@ export type {
 export type {
   AcceptedCalendar,
   AlternativeDate,
-  CalendarBlockReason,
+  CalendarBatchEvent,
   CalendarCandidate,
   CalendarChange,
   CalendarConflict,
   CalendarProposal,
+  CalendarRunOutcome,
   CandidateLeftOut,
   CandidateReason,
   ChangeCode,
@@ -121,6 +122,7 @@ export type {
   DropCount,
   DropReason,
   ProposedDate,
+  ReadCalendarOptions,
   SyllabusOffer,
 } from "./provisional/courseCalendarProposals";
 

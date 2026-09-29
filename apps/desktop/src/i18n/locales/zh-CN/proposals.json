@@ -11,7 +11,6 @@
       "other": "提议的日期"
     },
     "created": "{{date}} 提议",
-    "aiLabel": "AI 生成 · {{backend}} · {{model}} · {{date}}",
     "scanNote": "由 {{product}} 在不使用 AI 的情况下找到，可信度最多为一般。",
     "stripLabel": "提议的学期概览",
     "datesTitle": "日期及其出处",
@@ -135,6 +134,58 @@
   },
   "reading": {
     "title": "从教学大纲读取日期",
-    "description": "扫描和 AI 可以从课程大纲和课程安排中找出这门课的日期。在你接受提议之前，什么都不会改变。"
+    "description": "扫描和 AI 可以从课程大纲和课程安排中找出这门课的日期。在你接受提议之前，什么都不会改变。",
+    "scan": "不用 AI，直接查找日期",
+    "scanHint": "在这台电脑上查找这些资料里写明的日期，不会发送任何内容。",
+    "scanning": "正在查找日期…",
+    "scanFound": "找到了日期，请在本页顶部查看建议。",
+    "scanNothing": "这些资料里没有找到新的日期。",
+    "aiTitle": "用 AI 读取",
+    "aiHint": "AI 会连同出处原文一起抄下每个日期，方便你核对。你确认之前什么都不会改变。",
+    "readWithAi": "用 AI 读取课程大纲",
+    "starting": "正在开始…",
+    "running": "正在用 {{backend}} · {{model}} 读取",
+    "readingNow": "正在读取课程大纲…",
+    "stage": {
+      "building_context": "正在挑选要发送的大纲和日程内容…",
+      "waiting_for_model": "正在等待模型回复…",
+      "validating": "正在逐一核对每个日期和课程原文…",
+      "repairing": "正在请模型修正回答…",
+      "scheduling": "正在整理日期…"
+    },
+    "stop": "停止",
+    "stopping": "正在停止…",
+    "done": "日期已读取，请在本页顶部查看建议。",
+    "stopped": "已停止，没有做任何更改。",
+    "failed": "没能读取课程大纲"
+  },
+  "batch": {
+    "title": "用 AI 读取课程大纲",
+    "description_one": "有 {{count}} 门课还没有确认过日期。AI 可以读取它的课程大纲，提出日期建议供你核对。",
+    "description_other": "有 {{count}} 门课还没有确认过日期。AI 可以读取它们的课程大纲，提出日期建议供你核对。",
+    "read_one": "读取 {{count}} 门课的课程大纲",
+    "read_other": "读取 {{count}} 门课的课程大纲",
+    "started_one": "正在读取 {{count}} 门课的课程大纲…",
+    "started_other": "正在读取 {{count}} 门课的课程大纲…",
+    "progress": "正在读取第 {{done}}/{{total}} 门 · {{course}}",
+    "stop": "停止剩下的",
+    "finished_one": "完成：有 {{count}} 门课的日期需要核对。",
+    "finished_other": "完成：有 {{count}} 门课的日期需要核对。",
+    "stopped_one": "已停止。有 {{count}} 门课的日期需要核对，其余的没有读取。",
+    "stopped_other": "已停止。有 {{count}} 门课的日期需要核对，其余的没有读取。",
+    "outcome": {
+      "passing": "找到了日期，全部检查都通过了",
+      "choose": "找到了日期，有些需要你来选",
+      "accepted": "日期已确认",
+      "stopped": "没有读取（已停止）",
+      "failed": "没能读取",
+      "nothing": "没有找到日期"
+    },
+    "acceptPassing_one": "确认全部检查都通过的 {{count}} 门",
+    "acceptPassing_other": "确认全部检查都通过的 {{count}} 门",
+    "accepted_one": "已确认 {{count}} 门课的日期。",
+    "accepted_other": "已确认 {{count}} 门课的日期。",
+    "done": "完成",
+    "failed": "没能读取课程大纲"
   }
 }
