@@ -32,7 +32,37 @@ arm64 `codex --version` / `codex exec --help` only (0.144.1). No Codex credentia
    Plus and higher. But nothing explicitly says a *third-party consumer app* may drive a user's ChatGPT-signed-in
    Codex. **Ask OpenAI for written confirmation.** It is cheap, but unlike Anthropic's case it should not block.
 7. **Free/Go students are not covered by any doc.** The pricing page lists Free/Go Codex only "in the desktop app,
-   subject to rollout". The owner should test Free and Go accounts himself (checklist in §9).
+   subject to rollout". The owner should test Free and Go accounts themselves (checklist in §11).
+
+---
+
+## Observed 2026-09-28 (addendum)
+
+The leader ran these on the owner's Mac with the owner's permission. No credentials and no course
+content were read or recorded.
+
+1. **A pinned Codex can stop working when OpenAI changes the account's default model.** The
+   standalone Codex CLI 0.144.1 (`~/.local/bin/codex`) failed every run with HTTP 400: "The
+   'gpt-6-astra' model requires a newer version of Codex. Please upgrade to the latest app or CLI
+   and try again." The account's default model had moved on. The Codex CLI bundled in the ChatGPT
+   desktop app (0.158.0-alpha.2.1) worked. For mode A (a pinned Codex downloaded on demand) this
+   means a pin can break without any retirement notice. Design response (design §2.3, plan M2):
+   - always pass an explicit `-m` from a short supported list in `codex-pin.toml`, never the
+     account default (whether that always avoids the error is **[unverified]**);
+   - map this 400 to its own `ModelErrorKind` (`RuntimeOutdated`) with a student-facing message:
+     "PageLamp needs a newer Codex; updating…" when the pin already names a newer version, else
+     "Update PageLamp";
+   - refresh the pin on a schedule (at least monthly) and out of cycle on this error;
+   - a default-model canary in the owner's A7 test (checklist item 12 in §11).
+2. **MCP output size.** With PageLamp's MCP server added to Codex, one question ("where is each of
+   my courses this week?", 13 courses) made Codex call `sync_status`, `list_courses` and
+   `course_overview` ×7, and used about 113k input tokens (89k cached) and 1.3k output tokens.
+   Tool outputs are re-read on every turn, so PageLamp keeps `course_overview` and `list_courses`
+   compact, and any budget for a run that attaches the MCP server must count tool-output tokens
+   (design §6).
+3. **`codex exec` waits on an open stdin.** Spawned without a prompt on stdin and with stdin left
+   open, it prints "Reading additional input from stdin..." and waits. PageLamp closes stdin after
+   writing the prompt, and gives every other Codex command a null stdin (`</dev/null`).
 
 ---
 
@@ -359,6 +389,9 @@ spawn: env_clear + allowlist; CODEX_HOME=<data_dir>/codex-home; cwd=<data_dir>/c
 9. A Codex login that uses an API key: `login status` output; PageLamp warns about API billing.
 10. Hit a usage limit (or simulate one): capture the `turn.failed` message text.
 11. If available, a ChatGPT Edu account: is local Codex enabled, and which workspace gets forced?
+12. (Added 2026-09-28) **Default-model canary:** on each test account, run the pinned version once
+    without `-m` and once with the pin's `-m`, with stdin closed (`</dev/null` or the prompt on
+    stdin). Record whether either fails with "requires a newer version of Codex".
 
 ## 12. Questions only the owner can answer
 
