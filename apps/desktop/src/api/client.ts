@@ -1,6 +1,9 @@
 import type {
   AiPolicy,
   AppStatus,
+  CalendarCandidate,
+  CalendarProposal,
+  CourseCalendarView,
   CourseDatesInput,
   CourseOverview,
   CourseSummary,
@@ -21,6 +24,7 @@ import type {
   SourceSyncResult,
   StartupTasks,
   StoredStudyPlan,
+  SyllabusOffer,
   SyncEvent,
   SyncRequest,
   SyncSummary,
@@ -156,6 +160,34 @@ export interface PageLampApi {
   ): Promise<PurgeReport>;
   /** Purged courses only: the next sync brings the course back. */
   forgetRemovedCourse(removedId: string): Promise<void>;
+
+  // ----- course calendar proposals (calendar design §7; F3) --------------------------------
+  /** The calendar in force, pending proposals, candidates and why AI reading can't run. */
+  courseCalendar(courseId: string): Promise<CourseCalendarView>;
+  /** The student's add/remove of candidate materials. */
+  setCalendarSources(
+    courseId: string,
+    include: string[],
+    exclude: string[],
+  ): Promise<CalendarCandidate[]>;
+  /** Download chosen files only (counts as viewing them in Canvas; D46). */
+  downloadMaterialFiles(
+    courseId: string,
+    materialIds: string[],
+    onEvent: (event: SyncEvent) => void,
+  ): Promise<SourceSyncResult>;
+  /** The deterministic syllabus scan (no model). null = nothing new to propose. */
+  scanCourseCalendar(courseId: string): Promise<CalendarProposal | null>;
+  /** Accept a proposal, optionally with the student's edits and conflict choices. */
+  acceptCalendarProposal(
+    proposalId: number,
+    edits: CourseDatesInput | null,
+  ): Promise<CourseCalendarView>;
+  /** Accept several proposals that have no conflicts and aren't low quality. */
+  acceptPassingProposals(proposalIds: number[]): Promise<CourseCalendarView[]>;
+  dismissCalendarProposal(proposalId: number): Promise<void>;
+  /** The courses "Read syllabi for N courses" would read (the facade decides). */
+  syllabusReadingOffers(): Promise<SyllabusOffer[]>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 

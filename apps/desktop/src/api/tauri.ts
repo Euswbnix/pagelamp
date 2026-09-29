@@ -80,6 +80,22 @@ export function createTauriApi(): PageLampApi {
     purgeRemovedCourses: (removedIds, permanentIfNoTrash) =>
       call("purge_removed_courses", { removedIds, permanentIfNoTrash }),
     forgetRemovedCourse: (removedId) => call("forget_removed_course", { removedId }),
+
+    courseCalendar: (courseId) => call("course_calendar", { course: courseId }),
+    setCalendarSources: (courseId, include, exclude) =>
+      call("set_calendar_sources", { course: courseId, include, exclude }),
+    downloadMaterialFiles: (courseId, materialIds, onEvent) =>
+      call("download_material_files", {
+        course: courseId,
+        materialIds,
+        onEvent: eventChannel(onEvent),
+      }),
+    scanCourseCalendar: (courseId) => call("scan_course_calendar", { course: courseId }),
+    acceptCalendarProposal: (proposalId, edits) =>
+      call("accept_calendar_proposal", { proposalId, edits }),
+    acceptPassingProposals: (proposalIds) => call("accept_passing_proposals", { proposalIds }),
+    dismissCalendarProposal: (proposalId) => call("dismiss_calendar_proposal", { proposalId }),
+    syllabusReadingOffers: () => call("syllabus_reading_offers"),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
 

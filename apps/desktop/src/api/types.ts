@@ -83,6 +83,27 @@ export type {
   WhatsNewTopic,
 } from "./generated";
 export type {
+  AcceptedCalendar,
+  AlternativeDate,
+  CalendarBlockReason,
+  CalendarCandidate,
+  CalendarChange,
+  CalendarConflict,
+  CalendarProposal,
+  CandidateLeftOut,
+  CandidateReason,
+  ChangeCode,
+  ConflictCode,
+  CourseCalendar,
+  CourseCalendarView,
+  DateEvidence,
+  DateKind,
+  DropCount,
+  DropReason,
+  ProposedDate,
+  SyllabusOffer,
+} from "./provisional/courseCalendarProposals";
+export type {
   BackupInfo,
   BreakInput,
   CourseDatesInput,

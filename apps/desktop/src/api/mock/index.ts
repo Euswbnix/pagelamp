@@ -47,6 +47,7 @@ import {
   type MockScenario,
   mcpClientConfigs,
 } from "./fixtures";
+import { createProposalsMock } from "./proposals";
 import { createLifecycleMock } from "./removal";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
@@ -224,6 +225,24 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   // taking this" and snoozes, as the facade computes them per read.
   const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
   const lifecycleOf = courseLifecycle.lifecycleOf;
+  // Calendar proposals, candidates and syllabus reading (proposals.ts).
+  const courseProposals = createProposalsMock({
+    db,
+    scenario,
+    now,
+    respond,
+    findCourse,
+    applyCalendar: (c, input, origin, aiLabel) => {
+      const next = withCourseDates(c.timeline, input, isoOf(now()));
+      c.timeline = {
+        ...next.timeline,
+        term: { ...next.timeline.term, anchor_origin: origin, ai_label: aiLabel },
+      };
+      c.lifecycle = next.lifecycle;
+      c.course.term_start = input.first_class ?? c.course.term_start;
+      c.course.term_source = "user";
+    },
+  });
 
   function summary(c: MockCourse): CourseSummary {
     const upcoming = deadlinesWithin([c], 21, 0).filter((d) => d.kind !== "class_event");
@@ -430,6 +449,26 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
   return {
     ...courseLifecycle.api,
+    ...courseProposals.api,
+
+    downloadMaterialFiles: async (courseId, materialIds, onEvent) => {
+      const c = findCourse(courseId);
+      const source = findSource(c.course.source_id);
+      if (source.kind !== "canvas") {
+        await sleep(latency);
+        throw new ApiError("invalid", "Only Canvas courses have files to download.");
+      }
+      const [result] = await runSync([source.id], onEvent);
+      if (!result) throw new ApiError("internal", "Sync produced no result");
+      let downloaded = 0;
+      for (const m of c.materials) {
+        if (!materialIds.includes(m.id) || m.text_status !== "not_downloaded") continue;
+        m.text_status = "ok";
+        m.chunk_count = 6;
+        downloaded += 1;
+      }
+      return clone({ ...result, files_downloaded: downloaded, files_indexed: downloaded });
+    },
     status: () => respond(status),
     listSources: () => respond(() => db.sources),
 

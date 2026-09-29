@@ -52,7 +52,9 @@ export type MockScenario =
   | "phases"
   | "all-past"
   // Removal (F2): some courses already removed, one waiting to be purged.
-  | "removed";
+  | "removed"
+  // Calendar proposals (F3): an AI proposal with a conflict, a scan proposal, a stale calendar.
+  | "proposals";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -70,6 +72,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "phases",
   "all-past",
   "removed",
+  "proposals",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */
