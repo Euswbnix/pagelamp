@@ -357,6 +357,12 @@ pub async fn snooze_lifecycle_banner(backend: State<'_, Backend>) -> CmdResult<(
     backend.blocking(|app| app.snooze_lifecycle_banner()).await
 }
 
+/// "Not now" on the syllabus reading offers (14 days).
+#[tauri::command]
+pub async fn snooze_calendar_offers(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend.blocking(|app| app.snooze_calendar_offers()).await
+}
+
 #[tauri::command]
 pub async fn snooze_removal_suggestions(
     backend: State<'_, Backend>,
@@ -606,6 +612,16 @@ pub async fn saved_explanations(
 ) -> CmdResult<Vec<WeeklyExplanation>> {
     backend
         .blocking(move |app| app.saved_explanations(&course, week))
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_explanation(
+    backend: State<'_, Backend>,
+    generation_id: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.delete_explanation(&generation_id))
         .await
 }
 

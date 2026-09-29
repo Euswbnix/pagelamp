@@ -223,6 +223,10 @@
     }
   },
   {
+    "cmd": "snooze_calendar_offers",
+    "args": {}
+  },
+  {
     "cmd": "clear_removal_snooze",
     "args": {
       "courses": [
@@ -392,6 +396,12 @@
     "args": {
       "course": "folder:contract-test/course/DEMO101",
       "week": 4
+    }
+  },
+  {
+    "cmd": "delete_explanation",
+    "args": {
+      "generationId": "contract-test-explanation"
     }
   },
   {

@@ -50,7 +50,13 @@
     "copy": "Copy",
     "sourcesLabel": "Sources",
     "citation": "{{title}}, {{locator}}",
-    "notOnComputer": "{{title}} isn't on this computer and has no link to open."
+    "notOnComputer": "{{title}} isn't on this computer and has no link to open.",
+    "delete": "Delete…",
+    "deleteTitle": "Delete this explanation?",
+    "deleteBody": "It is removed from {{product}}, with its text. This can't be undone.",
+    "deleteConfirm": "Delete",
+    "deleted": "Explanation deleted.",
+    "deleteFailed": "The explanation couldn't be deleted."
   },
   "history": {
     "title": "Earlier explanations",

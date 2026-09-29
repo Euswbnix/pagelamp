@@ -190,6 +190,8 @@ export interface PageLampApi {
   snoozeLifecycleBanner(): Promise<void>;
   /** "Not now" (14 days) or "Keep" (never again) on some courses' removal suggestion. */
   snoozeRemovalSuggestions(courseIds: string[], kind: SnoozeKind): Promise<void>;
+  /** "Not now" on the syllabus reading offers: 14 days, like the lifecycle banner. */
+  snoozeCalendarOffers(): Promise<void>;
   clearRemovalSnooze(courseIds: string[]): Promise<void>;
   /** What removing these courses would delete and keep. */
   removalPreview(courseIds: string[]): Promise<RemovalPreview>;
@@ -264,6 +266,8 @@ export interface PageLampApi {
   ): Promise<WeeklyExplanation>;
   /** The last 5 for the course and week, newest first (`stale` recomputed). */
   savedExplanations(courseId: string, week: number | null): Promise<WeeklyExplanation[]>;
+  /** Deletes one explanation and its text (`not_found` for another feature's id). */
+  deleteExplanation(generationId: string): Promise<void>;
   /** Whether explanations are written in PageLamp's language or the course's. */
   aiOutputLanguage(): Promise<OutputLanguage>;
   setAiOutputLanguage(language: OutputLanguage): Promise<void>;

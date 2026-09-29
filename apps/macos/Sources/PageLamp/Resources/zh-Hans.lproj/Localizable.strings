@@ -935,6 +935,12 @@
 "explain.result.citation" = "%1$@，%2$@";
 "explain.result.citeAiUse" = "你的课程要求注明 AI 的使用：请说明你在哪里用到了这份讲解。";
 "explain.result.copy" = "复制";
+"explain.result.delete" = "删除…";
+"explain.result.deleteBody" = "它会连同内容一起从 PageLamp 中删除，且无法撤销。";
+"explain.result.deleteConfirm" = "删除";
+"explain.result.deleteFailed" = "没能删除这份讲解。";
+"explain.result.deleteTitle" = "删除这份讲解？";
+"explain.result.deleted" = "讲解已删除。";
 "explain.result.done" = "讲解已生成。";
 "explain.result.failed" = "没能生成讲解。";
 "explain.result.includeAgain" = "纳入这些资料并重新生成";

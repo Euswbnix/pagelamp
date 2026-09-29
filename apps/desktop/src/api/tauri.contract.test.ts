@@ -71,6 +71,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.lifecycleSummary();
   await api.snoozeLifecycleBanner();
   await api.snoozeRemovalSuggestions([COURSE], "not_now");
+  await api.snoozeCalendarOffers();
   await api.clearRemovalSnooze([COURSE]);
   // Removal: the course and removed ids are made up, so the facade answers not_found (nothing is
   // removed or moved to the Trash); purging every due removal finds none in the empty data dir.
@@ -116,6 +117,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
     onEvent,
   );
   await api.savedExplanations(COURSE, 4);
+  await api.deleteExplanation("contract-test-explanation");
   await api.aiOutputLanguage();
   await api.setAiOutputLanguage("course");
   await api.generateStudyPlan(

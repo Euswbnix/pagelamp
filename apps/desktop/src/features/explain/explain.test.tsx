@@ -57,6 +57,18 @@ describe("Course → Explain", () => {
     expect(open).toHaveBeenCalledWith(expect.any(String));
   });
 
+  it("deletes an explanation after asking", async () => {
+    const api = mockApi();
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    await user.click(await screen.findByRole("button", { name: "Delete…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete this explanation?" });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Explanation deleted.")).toBeInTheDocument();
+    expect(await api.savedExplanations(READABLE, 4)).toEqual([]);
+    await waitFor(() => expect(screen.queryByRole("article")).toBeNull());
+  });
+
   it("stops a run, and nothing is saved", async () => {
     const api = mockApi({ syncStepMs: 200 });
     const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });

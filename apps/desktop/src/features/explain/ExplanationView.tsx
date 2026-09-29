@@ -1,4 +1,5 @@
 import { FileText, TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useApi } from "@/api/context";
@@ -18,8 +19,11 @@ import { isHttpUrl } from "@/lib/url";
 export function ExplanationView({
   explanation,
   onIncludeLeftOut,
+  actions,
 }: {
   explanation: WeeklyExplanation;
+  /** More controls beside Copy (Delete). */
+  actions?: ReactNode;
   /** Write again with the left-out materials included (only those the student may add). */
   onIncludeLeftOut?: (materialIds: string[]) => void;
 }) {
@@ -31,10 +35,13 @@ export function ExplanationView({
     <article className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <AiGeneratedLabel meta={explanation.meta} />
-        <CopyButton
-          text={copyText(explanation, aiGeneratedLabelText(explanation.meta, tai, i18n.language))}
-          label={t("result.copy")}
-        />
+        <div className="flex items-center gap-1">
+          <CopyButton
+            text={copyText(explanation, aiGeneratedLabelText(explanation.meta, tai, i18n.language))}
+            label={t("result.copy")}
+          />
+          {actions}
+        </div>
       </div>
 
       {explanation.sections.map((section, s) => (

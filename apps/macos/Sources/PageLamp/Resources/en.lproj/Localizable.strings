@@ -935,6 +935,12 @@
 "explain.result.citation" = "%1$@, %2$@";
 "explain.result.citeAiUse" = "Your course asks you to cite AI use: say where you used this explanation.";
 "explain.result.copy" = "Copy";
+"explain.result.delete" = "Delete…";
+"explain.result.deleteBody" = "It is removed from PageLamp, with its text. This can't be undone.";
+"explain.result.deleteConfirm" = "Delete";
+"explain.result.deleteFailed" = "The explanation couldn't be deleted.";
+"explain.result.deleteTitle" = "Delete this explanation?";
+"explain.result.deleted" = "Explanation deleted.";
 "explain.result.done" = "The explanation is ready.";
 "explain.result.failed" = "The explanation couldn't be written.";
 "explain.result.includeAgain" = "Include them and write again";

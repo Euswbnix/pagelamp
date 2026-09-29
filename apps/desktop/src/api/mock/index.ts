@@ -578,6 +578,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     },
     explainWeek: explanations.explainWeek,
     savedExplanations: explanations.savedExplanations,
+    deleteExplanation: explanations.deleteExplanation,
     aiOutputLanguage: explanations.aiOutputLanguage,
     setAiOutputLanguage: explanations.setAiOutputLanguage,
     generateStudyPlan: studyPlans.generateStudyPlan,
@@ -947,6 +948,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };
       }),
+    // The mock's startup offers are always empty, so "Not now" has nothing to hide.
+    snoozeCalendarOffers: () => respond(undefined),
     startupTasks: () =>
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;

@@ -112,6 +112,17 @@ export function useSavedExplanations(courseId: string, week: number | null) {
   });
 }
 
+/** Deletes an explanation; the course's saved lists refresh. */
+export function useDeleteExplanation(courseId: string) {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (generationId: string) => api.deleteExplanation(generationId),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: [...queryKeys.all, "explanations", courseId] }),
+  });
+}
+
 export function useOutputLanguage() {
   const api = useApi();
   return useQuery({ queryKey: explainKeys.language(), queryFn: () => api.aiOutputLanguage() });

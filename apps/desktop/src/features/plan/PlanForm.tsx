@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { GenerateButton } from "@/features/ai/GenerateButton";
 import { paths } from "@/lib/routes";
-import { useToday } from "@/lib/useToday";
 import { activeCourses } from "./activeCourses";
 
 /**
@@ -31,9 +30,8 @@ export function PlanForm({
 }) {
   const { t, i18n } = useTranslation("plan");
   const courses = useCourses();
-  const today = useToday();
   // Only active courses: the facade plans nothing else (Invalid "no active course").
-  const listed = activeCourses(courses.data ?? [], today);
+  const listed = activeCourses(courses.data ?? []);
   const [horizon, setHorizon] = useState(
     String(initial?.horizon_days ?? PLAN_LIMITS.horizonDays.default),
   );

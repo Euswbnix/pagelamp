@@ -15,7 +15,11 @@ import type { MockAiRun } from "./proposals";
 
 type ExplainApi = Pick<
   PageLampApi,
-  "explainWeek" | "savedExplanations" | "aiOutputLanguage" | "setAiOutputLanguage"
+  | "explainWeek"
+  | "savedExplanations"
+  | "deleteExplanation"
+  | "aiOutputLanguage"
+  | "setAiOutputLanguage"
 >;
 
 const KEEP = 5;
@@ -185,6 +189,17 @@ export function createExplainMock(deps: {
         const c = deps.findCourse(courseId);
         const resolved = week ?? c.timeline.default_week ?? c.timeline.current_week ?? 1;
         return saved.get(key(c.course.id, resolved)) ?? [];
+      }),
+    deleteExplanation: (generationId) =>
+      respond(() => {
+        for (const [k, list] of saved) {
+          const kept = list.filter((e) => e.meta.generation_id !== generationId);
+          if (kept.length < list.length) {
+            saved.set(k, kept);
+            return;
+          }
+        }
+        throw new ApiError("not_found", `There is no explanation ${generationId}.`);
       }),
     aiOutputLanguage: () => respond(language),
     setAiOutputLanguage: (next) =>

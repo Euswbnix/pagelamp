@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import type { EstimateRequest } from "@/api/ai";
 import type { WeeklyExplanation } from "@/api/explain";
 import { useWeekMaterials } from "@/api/queries";
@@ -17,8 +18,14 @@ import { MaterialSharingReminder } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { formatDate } from "@/lib/format";
 import { useFocusOnMount } from "@/lib/useFocusOnMount";
+import { DeleteExplanation } from "./DeleteExplanation";
 import { ExplanationView } from "./ExplanationView";
-import { type ExplainRunState, useExplanation, useSavedExplanations } from "./useExplanation";
+import {
+  type ExplainRunState,
+  useDeleteExplanation,
+  useExplanation,
+  useSavedExplanations,
+} from "./useExplanation";
 
 /**
  * Course → Explain (design §5.2, §7): a week, "≈ $x" and Explain, the run's stages with Stop
@@ -40,8 +47,10 @@ export function ExplainTab({
   const week = picked ?? timeline.default_week ?? current;
   const saved = useSavedExplanations(course.id, week);
   const run = useExplanation(course.id);
+  const remove = useDeleteExplanation(course.id);
   const [shownId, setShownId] = useState<string | null>(null);
   const [reminderClosed, setReminderClosed] = useState<string | null>(null);
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const weekLabelId = useId();
   const resultRef = useRef<HTMLDivElement>(null);
   const { state } = run;
@@ -69,8 +78,12 @@ export function ExplainTab({
     );
   }
 
-  const list = saved.data ?? [];
-  const fresh = state.phase === "done" ? state.explanation : null;
+  // Deleted ones leave at once, the run's own result included.
+  const list = (saved.data ?? []).filter((e) => !deleted.has(e.meta.generation_id));
+  const fresh =
+    state.phase === "done" && !deleted.has(state.explanation.meta.generation_id)
+      ? state.explanation
+      : null;
   const shown: WeeklyExplanation | null =
     list.find((e) => e.meta.generation_id === shownId) ??
     (fresh && fresh.week === week ? fresh : null) ??
@@ -143,7 +156,26 @@ export function ExplainTab({
               </Button>
             </div>
           ) : null}
-          <ExplanationView explanation={shown} onIncludeLeftOut={(ids) => start(ids)} />
+          <ExplanationView
+            explanation={shown}
+            onIncludeLeftOut={(ids) => start(ids)}
+            actions={
+              <DeleteExplanation
+                deleting={remove.isPending}
+                onDelete={() =>
+                  remove.mutate(shown.meta.generation_id, {
+                    onSuccess: () => {
+                      const id = shown.meta.generation_id;
+                      setDeleted((before) => new Set([...before, id]));
+                      setShownId(null);
+                      toast.success(t("result.deleted"));
+                    },
+                    onError: () => toast.error(t("result.deleteFailed")),
+                  })
+                }
+              />
+            }
+          />
           {shown.sharing_reminder && reminderClosed !== shown.meta.generation_id ? (
             <MaterialSharingReminder
               courseId={course.id}

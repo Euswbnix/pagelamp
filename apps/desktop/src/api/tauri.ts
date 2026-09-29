@@ -75,6 +75,7 @@ export function createTauriApi(): PageLampApi {
     snoozeLifecycleBanner: () => call("snooze_lifecycle_banner"),
     snoozeRemovalSuggestions: (courseIds, kind) =>
       call("snooze_removal_suggestions", { courses: courseIds, kind }),
+    snoozeCalendarOffers: () => call("snooze_calendar_offers"),
     clearRemovalSnooze: (courseIds) => call("clear_removal_snooze", { courses: courseIds }),
     removalPreview: (courseIds) => call("removal_preview", { courses: courseIds }),
     removeCourses: (courseIds, options) => call("remove_courses", { courses: courseIds, options }),
@@ -123,6 +124,7 @@ export function createTauriApi(): PageLampApi {
         onEvent: eventChannel(onEvent),
       }),
     savedExplanations: (courseId, week) => call("saved_explanations", { course: courseId, week }),
+    deleteExplanation: (generationId) => call("delete_explanation", { generationId }),
     aiOutputLanguage: () => call("ai_output_language"),
     setAiOutputLanguage: (language) => call("set_ai_output_language", { language }),
     generateStudyPlan: (request, generationId, onEvent) =>

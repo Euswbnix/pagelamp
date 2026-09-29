@@ -50,7 +50,13 @@
     "copy": "复制",
     "sourcesLabel": "出处",
     "citation": "{{title}}，{{locator}}",
-    "notOnComputer": "「{{title}}」不在这台电脑上，也没有可以打开的链接。"
+    "notOnComputer": "「{{title}}」不在这台电脑上，也没有可以打开的链接。",
+    "delete": "删除…",
+    "deleteTitle": "删除这份讲解？",
+    "deleteBody": "它会连同内容一起从 {{product}} 中删除，且无法撤销。",
+    "deleteConfirm": "删除",
+    "deleted": "讲解已删除。",
+    "deleteFailed": "没能删除这份讲解。"
   },
   "history": {
     "title": "以前的讲解",
