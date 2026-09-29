@@ -574,12 +574,10 @@ impl App {
                     None => None,
                 };
                 Ok(super::run::RunOutcome {
-                    text: outcome.text,
                     json,
                     backend_label: CODEX_LABEL.to_string(),
                     model: outcome.model,
                     on_device: false,
-                    usage,
                 })
             }
             Err(err) => {

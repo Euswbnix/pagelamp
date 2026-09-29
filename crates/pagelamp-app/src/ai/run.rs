@@ -4,7 +4,8 @@
 //! - One run per generation id at a time (`busy` otherwise); `cancel_run` stops it: the HTTP
 //!   driver drops the request, Codex gets SIGINT and then a kill.
 //! - Events: `started`, `stage waiting_for_model`, the JSON-fallback notice and the repair
-//!   stage, answer text (text answers only), `usage` and `finished`.
+//!   stage, answer text (text answers only) and `usage`. The feature sends `finished` once it
+//!   has checked and stored the answer.
 //! - Every run that reached a backend is one `ai_usage` row: tokens and an estimated cost, or
 //!   "free" on this computer, or one run of the ChatGPT plan's weekly cap. A cancelled HTTP
 //!   run that never got its counts is recorded with estimated input tokens.
@@ -24,13 +25,20 @@ use super::settings::backend_key;
 use super::{BackendRef, GenEvent, GenNoticeCode, GenStage, ModelChoice, TokenUsage};
 use crate::{App, AppError, AppErrorKind, Result};
 
-/// The runs in progress in this process, by generation id.
+/// The runs in progress in this process, by generation id. A batch ("Read syllabi for N
+/// courses") is a run too: its token is the parent of each course's run, so stopping the batch
+/// stops the course being read.
 #[derive(Default)]
 pub(crate) struct Runs(Mutex<HashMap<String, CancellationToken>>);
 
 impl Runs {
-    /// Register `id`; `busy` if a run with that id is still going.
-    fn register(&self, id: &str) -> Result<(Registration<'_>, CancellationToken)> {
+    /// Register `id` (with a token of its own, or a child of `parent`'s); `busy` if a run with
+    /// that id is still going.
+    pub(crate) fn register(
+        &self,
+        id: &str,
+        parent: Option<&CancellationToken>,
+    ) -> Result<(Registration<'_>, CancellationToken)> {
         let mut running = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if running.contains_key(id) {
             return Err(AppError::new(
@@ -38,7 +46,10 @@ impl Runs {
                 "This is already running; wait for it or stop it first.",
             ));
         }
-        let cancel = CancellationToken::new();
+        let cancel = match parent {
+            Some(parent) => parent.child_token(),
+            None => CancellationToken::new(),
+        };
         running.insert(id.to_string(), cancel.clone());
         Ok((
             Registration {
@@ -49,7 +60,7 @@ impl Runs {
         ))
     }
 
-    /// Stop run `id`; false when nothing with that id runs.
+    /// Stop run `id` (and its children); false when nothing with that id runs.
     pub(crate) fn cancel(&self, id: &str) -> bool {
         let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
         match running.get(id) {
@@ -60,18 +71,10 @@ impl Runs {
             None => false,
         }
     }
-
-    /// Ids of the runs going now (`activity`).
-    pub(crate) fn running(&self) -> Vec<String> {
-        let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ids: Vec<String> = running.keys().cloned().collect();
-        ids.sort();
-        ids
-    }
 }
 
 /// Unregisters its run when dropped (also on an early `?` or a panic).
-struct Registration<'a> {
+pub(crate) struct Registration<'a> {
     runs: &'a Runs,
     id: String,
 }
@@ -86,6 +89,8 @@ impl Drop for Registration<'_> {
 /// What a feature asks of one run.
 pub(crate) struct RunRequest<'a> {
     pub generation_id: &'a str,
+    /// The batch this run belongs to, whose stop also stops it.
+    pub parent: Option<&'a CancellationToken>,
     pub feature: AiFeature,
     pub choice: &'a ModelChoice,
     pub prompt: RenderedPrompt,
@@ -96,14 +101,12 @@ pub(crate) struct RunRequest<'a> {
 /// A finished run: the answer as it came (the feature validates it) and its provenance.
 #[derive(Clone, Debug)]
 pub(crate) struct RunOutcome {
-    pub text: String,
     /// The parsed answer of a JSON run.
     pub json: Option<serde_json::Value>,
     pub backend_label: String,
     /// The model that answered (Codex may fall back from a retired default).
     pub model: String,
     pub on_device: bool,
-    pub usage: TokenUsage,
 }
 
 /// How a run's cost is known, for its usage row.
@@ -125,27 +128,23 @@ impl App {
         request: RunRequest<'_>,
         on_event: &(dyn Fn(GenEvent) + Send + Sync),
     ) -> Result<RunOutcome> {
-        let (_registration, cancel) = self.state.runs.register(request.generation_id)?;
-        let result = match &request.choice.backend {
+        let (_registration, cancel) = self
+            .state
+            .runs
+            .register(request.generation_id, request.parent)?;
+        match &request.choice.backend {
             BackendRef::Codex => self.codex_run(&request, on_event, &cancel).await,
             BackendRef::Provider { .. } => self.http_run(request, on_event, &cancel).await,
             BackendRef::ClaudeCode => Err(AppError::blocked(
                 BlockReason::BackendDisabledInThisBuild,
                 "The Claude plan isn't available in this build yet.",
             )),
-        };
-        on_event(GenEvent::Finished { ok: result.is_ok() });
-        result
+        }
     }
 
     /// Stop run `id` (a generation or a batch); false when nothing with that id runs.
     pub(crate) fn cancel_run(&self, id: &str) -> bool {
         self.state.runs.cancel(id)
-    }
-
-    /// The generation ids running now.
-    pub(crate) fn running_generations(&self) -> Vec<String> {
-        self.state.runs.running()
     }
 
     async fn http_run(
@@ -221,12 +220,10 @@ impl App {
                 )?;
                 on_event(GenEvent::Usage { usage });
                 Ok(RunOutcome {
-                    text: outcome.text,
                     json: outcome.json,
                     backend_label,
                     model: outcome.model_reported.unwrap_or(model),
                     on_device,
-                    usage,
                 })
             }
             Err(LlmError::Cancelled) => {
@@ -324,15 +321,22 @@ mod tests {
     #[test]
     fn a_run_id_is_registered_once_and_cancelled_by_id() {
         let runs = Runs::default();
-        let (registration, cancel) = runs.register("gen-1").unwrap();
-        assert!(matches!(runs.register("gen-1"), Err(e) if e.kind == AppErrorKind::Busy));
-        assert_eq!(runs.running(), ["gen-1"]);
+        let (registration, cancel) = runs.register("gen-1", None).unwrap();
+        assert!(matches!(runs.register("gen-1", None), Err(e) if e.kind == AppErrorKind::Busy));
         assert!(!runs.cancel("other"));
         assert!(runs.cancel("gen-1"));
         assert!(cancel.is_cancelled());
         drop(registration);
-        assert!(runs.running().is_empty());
-        assert!(runs.register("gen-1").is_ok(), "free again");
+        assert!(runs.register("gen-1", None).is_ok(), "free again");
+    }
+
+    #[test]
+    fn stopping_a_batch_stops_its_current_run() {
+        let runs = Runs::default();
+        let (_batch, batch_token) = runs.register("batch-1", None).unwrap();
+        let (_child, child_token) = runs.register("batch-1:0", Some(&batch_token)).unwrap();
+        assert!(runs.cancel("batch-1"));
+        assert!(child_token.is_cancelled());
     }
 
     #[test]

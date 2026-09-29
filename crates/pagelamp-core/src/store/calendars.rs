@@ -20,11 +20,12 @@ use super::{Store, TextValue, expect_changed, get_opt_value, get_value, opt_date
 use crate::Result;
 use crate::ai_gate::ManifestEntry;
 use crate::calendar::CourseCalendar;
-use crate::calendar::assemble::{CalendarConflict, ProposedDate};
+use crate::calendar::assemble::{CalendarChange, CalendarConflict, ProposedDate};
+use crate::calendar::candidates::CandidateSignals;
 use crate::calendar::text::{find_quote, rebuild_parts};
 use crate::calendar::validate::DropCount;
 use crate::model::Timestamp;
-use crate::term::CalendarOrigin;
+use crate::term::{CalendarOrigin, CoursePhase};
 
 /// Superseded rows kept per course (for undo).
 pub const KEEP_SUPERSEDED: usize = 3;
@@ -93,6 +94,11 @@ pub struct CalendarChecks {
     pub disagrees_with_notes: bool,
     /// Show the one-time question (b) reminder with this proposal (D37 option 2).
     pub sharing_reminder: bool,
+    /// Today's week and phase once accepted, and what accepting changes, as computed when the
+    /// proposal was made.
+    pub resulting_week_today: Option<u32>,
+    pub resulting_phase: Option<CoursePhase>,
+    pub changes: Vec<CalendarChange>,
 }
 
 /// Where an AI-read calendar came from (the "AI-generated · backend · model · date" label).
@@ -261,6 +267,52 @@ impl Store {
             }
         }
         Ok(staleness)
+    }
+
+    /// The candidate signals schema 4 stores for a course: files the syllabus links to, the
+    /// front page (both sync-written) and the student's own adds and removes.
+    pub fn calendar_signals(&self, course_id: &str) -> Result<CandidateSignals> {
+        let mut signals = CandidateSignals::default();
+        let flagged: Vec<(String, bool, bool)> = self.query_list(
+            "SELECT id, linked_from_syllabus, is_front_page FROM materials
+             WHERE course_id = ?1 AND (linked_from_syllabus = 1 OR is_front_page = 1)",
+            [course_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        for (id, linked, front) in flagged {
+            if linked {
+                signals.linked_from_syllabus.insert(id.clone());
+            }
+            if front {
+                signals.front_page.insert(id);
+            }
+        }
+        let stored: Option<String> = self
+            .query_opt(
+                "SELECT calendar_sources FROM courses WHERE id = ?1",
+                [course_id],
+                |row| row.get(0),
+            )?
+            .flatten();
+        if let Some(text) = stored {
+            // An unreadable value is treated as no choices (it is rewritten on the next edit).
+            signals.choices = serde_json::from_str(&text).unwrap_or_default();
+        }
+        Ok(signals)
+    }
+
+    /// The student's adds (`true`) and removes (`false`) of candidate materials.
+    pub fn set_calendar_sources(
+        &self,
+        course_id: &str,
+        choices: &std::collections::BTreeMap<String, bool>,
+    ) -> Result<()> {
+        let value = (!choices.is_empty()).then(|| json(choices));
+        let changed = self.conn.execute(
+            "UPDATE courses SET calendar_sources = ?2 WHERE id = ?1",
+            params![course_id, value],
+        )?;
+        expect_changed(changed, "course", course_id)
     }
 
     /// Store a proposal (state `proposed`); a proposal from the same origin for the course is

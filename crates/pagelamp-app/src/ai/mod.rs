@@ -15,6 +15,8 @@ mod types;
 mod usage;
 
 pub use codex::DEFAULT_WEEKLY_CAP;
+pub(crate) use estimate::{calendar_budget, feature_choice, request_shape};
+pub(crate) use settings::backend_key;
 pub use types::*;
 
 use std::time::Duration;
