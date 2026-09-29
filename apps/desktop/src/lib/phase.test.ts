@@ -52,15 +52,17 @@ describe("describePhase", () => {
     expect(describePhase(timeline({ phase: "exam_period" }))).toEqual({ kind: "exams" });
   });
 
-  it("gives the first day of classes before a course starts", () => {
-    const term = resolution({
-      teaching: [{ first_class: "2027-01-11", last_class: null, first_week_number: 1 }],
-    });
-    expect(describePhase(timeline({ phase: "not_started", term }))).toEqual({
+  it("gives the facade's start day before a course starts", () => {
+    const course = timeline({ phase: "not_started" });
+    expect(describePhase({ ...course, starts_on: "2027-01-11" })).toEqual({
       kind: "startsOn",
       date: "2027-01-11",
     });
-    expect(describePhase(timeline({ phase: "not_started" }))).toEqual({ kind: "notStarted" });
+    // Teaching dates alone don't decide it: the facade may move a weekend start to Monday.
+    const term = resolution({
+      teaching: [{ first_class: "2027-01-09", last_class: null, first_week_number: 1 }],
+    });
+    expect(describePhase(timeline({ phase: "not_started", term }))).toEqual({ kind: "notStarted" });
   });
 
   it("never shows a week for an ended course", () => {

@@ -23,6 +23,7 @@ import {
   ev,
   lifecycle,
   resolution,
+  teachingStart,
 } from "./calendar";
 import {
   buildMockDb,
@@ -463,6 +464,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
     confidence: "medium",
     calendar: {
       phase: "not_started",
+      starts_on: teachingStart(dayFrom(now, 40)),
       term: resolution({
         week_one_monday: on(Math.ceil((40 + dow) / 7)),
         teaching: [{ first_class: dayFrom(now, 40), last_class: null, first_week_number: 1 }],

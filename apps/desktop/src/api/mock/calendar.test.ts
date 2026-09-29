@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMockApi } from ".";
-import { addDays, isoOf, mondayOf } from "./calendar";
+import { addDays, isoOf, mondayOf, teachingStart } from "./calendar";
 import { CALENDAR_SCENARIOS } from "./courseScenarios";
 
 // A fixed Monday, so week arithmetic in the fixtures is easy to check.
@@ -14,6 +14,10 @@ describe("mock calendar helpers", () => {
     expect(mondayOf("2026-10-04")).toBe("2026-09-28"); // Sunday
     expect(mondayOf("2026-11-03")).toBe("2026-11-02"); // across the DST change
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+    // Like the facade: a weekend first class starts teaching the next Monday.
+    expect(teachingStart("2026-10-03")).toBe("2026-10-05"); // Saturday
+    expect(teachingStart("2026-10-04")).toBe("2026-10-05"); // Sunday
+    expect(teachingStart("2026-10-06")).toBe("2026-10-06");
   });
 });
 

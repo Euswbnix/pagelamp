@@ -827,6 +827,11 @@ export interface CourseTimeline {
   outside_term: boolean;
   phase: CoursePhase;
   phase_confidence: Confidence;
+  /**
+   * The day teaching starts, when known (a weekend first class → the next Monday), for
+   * "Starts Jan 11"; surfaces show this instead of computing it.
+   */
+  starts_on?: string | null;
   term: TermResolution;
 }
 /**
