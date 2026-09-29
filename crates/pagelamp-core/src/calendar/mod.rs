@@ -5,6 +5,7 @@
 //! accepted calendar as its first anchor. This module starts with the types and
 //! `legacy_calendar`, which the schema-v4 migration calls for PageLamp 0.1 term overrides.
 
+pub mod assemble;
 pub mod extraction;
 pub mod text;
 pub mod validate;
