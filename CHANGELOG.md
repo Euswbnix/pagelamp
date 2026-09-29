@@ -39,6 +39,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 - Releases: one universal macOS disk image for Apple silicon and Intel; Windows ships only the
   per-user installer (no MSI).
 
+### Fixed
+- A file that became locked or was moved, and hasn't been read again, no longer shows its old
+  text anywhere: not in search, not to your AI app, not in PageLamp's own AI features.
+
 ## [0.1.0] — 2026-09-28
 
 First public release.

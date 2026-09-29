@@ -991,6 +991,45 @@ async fn h_a_redirect_back_to_canvas_is_refused() {
 }
 
 #[tokio::test]
+async fn i_a_locked_file_without_its_copy_loses_its_old_text() {
+    let f = Fixture::new().await;
+    f.standard().await;
+    f.downloads().await;
+    f.sync(&f.options(true)).await.unwrap();
+    assert_eq!(f.store().search("stomata", None, 5).unwrap().len(), 1);
+    // The copy is gone (the student cleaned up), and the file is locked now.
+    let materials = f.store().list_materials(&course101(&f)).unwrap();
+    let notes = material(&materials, "/file/502").clone();
+    std::fs::remove_file(notes.local_path.as_deref().unwrap()).unwrap();
+    f.canvas.reset().await;
+    f.storage.reset().await;
+    let mut locked = f.file(502, "notes.txt", 20);
+    locked["url"] = Value::Null;
+    locked["locked_for_user"] = json!(true);
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/files"))
+        .and(query_param("page", "2"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!([locked, f.file(503, "huge.txt", 5000)])),
+        )
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    f.standard().await;
+    f.sync(&f.options(true)).await.unwrap();
+
+    let store = f.store();
+    let notes = store.get_material(&notes.id).unwrap().unwrap();
+    assert_eq!(notes.text_status, TextStatus::NotDownloaded);
+    // No reader can see the old text: not search, not read_material, not a model's context.
+    assert_eq!(store.chunk_count(&notes.id).unwrap(), 0);
+    assert!(store.search("stomata", None, 5).unwrap().is_empty());
+    let read = pagelamp_core::views::read_material(&store, &notes.id, 0, 12_000).unwrap();
+    assert!(read.chunks.is_empty());
+}
+
+#[tokio::test]
 async fn i_a_locked_file_keeps_its_earlier_copy() {
     let f = Fixture::new().await;
     f.standard().await;
