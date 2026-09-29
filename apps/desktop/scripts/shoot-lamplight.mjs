@@ -43,6 +43,7 @@ const SCREENS = {
     scenario: "demo",
   },
   sources: { hash: "#/sources", scenario: "demo" },
+  connect: { hash: "#/connect", scenario: "demo" },
   settings: { hash: "#/settings", scenario: "demo" },
   // The toolbar row once content scrolls under it (glass, and the title echo).
   scrolled: {
