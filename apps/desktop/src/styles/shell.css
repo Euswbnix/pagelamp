@@ -74,3 +74,72 @@
 :root.dark[data-mica-sim] {
   background: #202020;
 }
+
+/* The in-page toolbar row (48 px, sticky at the top of the content column). It is clear until
+   content scrolls under it; then AppShell adds .pl-glass, and a soft lower edge replaces a hard
+   line. Declared after glass.css, so sticky wins over .pl-glass's position. */
+.pl-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--pl-size-toolbar-row);
+}
+.pl-toolbar.pl-glass {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
+}
+/* Opaque glass has nothing to soften; keep its edge crisp. */
+:root:is([data-transparency="reduced"], [data-contrast="more"]) .pl-toolbar.pl-glass {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  .pl-toolbar.pl-glass {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+/* The small title appears once the page's h1 has scrolled under the row. */
+.pl-toolbar-title {
+  opacity: 0;
+  transition: opacity var(--pl-motion-hover-duration) var(--pl-motion-hover);
+}
+.pl-toolbar-title[data-shown] {
+  opacity: 1;
+}
+
+/* The accessory bar (§6.2): materialises and leaves with motion.quick; a 200 ms crossfade when
+   motion is reduced. Hidden, it stays in the DOM (inert) so it can fade out. */
+.pl-accessory {
+  transition:
+    opacity var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    transform var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    visibility 0s;
+}
+.pl-accessory[data-state="hidden"],
+:root[data-window-active="false"] .pl-accessory[data-state="hidden"] {
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    transform var(--pl-motion-quick-duration) var(--pl-motion-quick),
+    visibility 0s linear var(--pl-motion-quick-duration);
+}
+.pl-accessory[data-state="visible"] {
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-accessory,
+  .pl-accessory[data-state="hidden"],
+  :root[data-window-active="false"] .pl-accessory[data-state="hidden"] {
+    transform: none;
+    transition:
+      opacity var(--pl-motion-reduced-duration) var(--pl-motion-reduced),
+      visibility 0s linear var(--pl-motion-reduced-duration);
+  }
+  .pl-accessory[data-state="visible"] {
+    transition: opacity var(--pl-motion-reduced-duration) var(--pl-motion-reduced);
+  }
+}

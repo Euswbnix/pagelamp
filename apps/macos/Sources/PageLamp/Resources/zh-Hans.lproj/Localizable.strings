@@ -310,6 +310,10 @@
 "ai.usage.title" = "AI 用量";
 "ai.usage.tokens" = "输入 %1$@，输出 %2$@";
 "ai.usage.total" = "合计";
+"chrome.accessory.details" = "同步详情";
+"chrome.accessory.dismiss" = "关闭";
+"chrome.accessory.open" = "打开“数据来源与同步”";
+"chrome.accessory.syncingOf" = "正在同步 %1$@/%2$@ · %3$@";
 "chrome.appearance.contrast" = "增强对比度";
 "chrome.appearance.contrastHint" = "文字和边框更深，并且不使用半透明的玻璃效果。";
 "chrome.appearance.transparency" = "减少透明效果";
@@ -628,7 +632,6 @@
 "courses.banner.checkAgain" = "重新检查";
 "courses.banner.externalHint" = "可能是从命令行启动的。等它结束后，点“重新检查”刷新一下。";
 "courses.banner.externalTitle" = "已有另一个同步在进行";
-"courses.banner.runningHint" = "同步完成后，课程信息会自动更新。";
 "courses.card.hidden" = "已隐藏";
 "courses.card.next" = "下一项：%1$@ · %2$@";
 "courses.card.noDeadlines" = "近期没有截止日期";

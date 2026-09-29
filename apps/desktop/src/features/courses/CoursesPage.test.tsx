@@ -359,11 +359,12 @@ describe("CoursesPage — sync", () => {
 
     expect(syncAll).toHaveBeenCalledTimes(1);
     expect(button).toHaveAttribute("aria-disabled", "true");
-    expect(await screen.findByText("Your courses update when it finishes.")).toBeInTheDocument();
+    // Progress shows in the accessory bar at the foot of the window.
+    expect(await screen.findByRole("button", { name: /^Syncing/ })).toBeInTheDocument();
 
     release();
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
-    expect(screen.queryByText("Your courses update when it finishes.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Sync finished" })).toBeInTheDocument();
   });
 
   it("explains why a sync could not run, until dismissed", async () => {
@@ -373,16 +374,17 @@ describe("CoursesPage — sync", () => {
 
     await user.click(await screen.findByRole("button", { name: "Sync now" }));
 
+    // The accessory bar says so too; the page's box explains why.
+    expect(await screen.findByRole("button", { name: "Sync failed" })).toBeInTheDocument();
+    const page = within(screen.getByRole("main"));
     // The headline is also announced from a visually hidden status; check the visible box.
-    expect(await screen.findByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Sync failed");
+    expect(page.getByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeInTheDocument();
+    expect(page.getByRole("status")).toHaveTextContent("Sync failed");
     expect(
-      screen.getByText(
-        "Couldn't reach the server. Check your internet connection and the address.",
-      ),
+      page.getByText("Couldn't reach the server. Check your internet connection and the address."),
     ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.queryByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeNull();
+    await user.click(page.getByRole("button", { name: "Close" }));
+    expect(page.queryByText("Sync failed", { ignore: VISIBLE_ONLY })).toBeNull();
   });
 
   it("disables 'Sync now' while another process is syncing, and checks again", async () => {

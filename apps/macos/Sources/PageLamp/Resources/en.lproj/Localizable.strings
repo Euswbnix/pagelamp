@@ -310,6 +310,10 @@
 "ai.usage.title" = "AI usage";
 "ai.usage.tokens" = "%1$@ in, %2$@ out";
 "ai.usage.total" = "Total";
+"chrome.accessory.details" = "Sync details";
+"chrome.accessory.dismiss" = "Dismiss";
+"chrome.accessory.open" = "Open Sources & sync";
+"chrome.accessory.syncingOf" = "Syncing %1$@ of %2$@ · %3$@";
 "chrome.appearance.contrast" = "Increase contrast";
 "chrome.appearance.contrastHint" = "Darker text and borders, and no see-through glass.";
 "chrome.appearance.transparency" = "Reduce transparency";
@@ -628,7 +632,6 @@
 "courses.banner.checkAgain" = "Check again";
 "courses.banner.externalHint" = "It may have been started from the command line. When it finishes, check again to refresh.";
 "courses.banner.externalTitle" = "Another sync is running";
-"courses.banner.runningHint" = "Your courses update when it finishes.";
 "courses.card.hidden" = "Hidden";
 "courses.card.next" = "Next: %1$@ · %2$@";
 "courses.card.noDeadlines" = "No upcoming deadlines";
