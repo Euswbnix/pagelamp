@@ -849,7 +849,13 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
                 continue;
             }
-            let downloadable = self.options.download_files
+            let asked = self.options.download_files
+                && self
+                    .options
+                    .only_files
+                    .as_ref()
+                    .is_none_or(|only| only.contains(id));
+            let downloadable = asked
                 && file.locked_for_user != Some(true)
                 && file.size.is_none_or(|s| s <= self.options.max_file_bytes);
             let link = file.url.as_deref().and_then(|u| url::Url::parse(u).ok());
@@ -877,9 +883,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     downloads.push(job);
                 }
                 _ => {
-                    if self.options.download_files
-                        && file.size.is_some_and(|s| s > self.options.max_file_bytes)
-                    {
+                    if asked && file.size.is_some_and(|s| s > self.options.max_file_bytes) {
                         self.warn(
                             report,
                             format!(

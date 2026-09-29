@@ -9,7 +9,8 @@
 //!   weekly cap), run on the chosen backend, checked against the course's own text and stored
 //!   as a proposal with its AI label. The course's first cloud run shows the question (b)
 //!   reminder once (D37, D49).
-//! - Downloading chosen Canvas files (D46) is still to come.
+//! - The student can download chosen Canvas files (D46), e.g. a syllabus candidate that isn't
+//!   downloaded yet.
 
 use std::collections::BTreeSet;
 
@@ -166,14 +167,16 @@ impl App {
             .collect())
     }
 
-    /// Download the chosen files only (it counts as viewing them in Canvas; D46).
+    /// Download the chosen files only (it counts as viewing them in Canvas; D46), e.g. the
+    /// syllabus candidates marked downloadable. Holds the sync lock like any sync.
     pub async fn download_material_files(
         &self,
-        _course: &str,
-        _material_ids: Vec<String>,
-        _on_event: impl Fn(SyncEvent) + Send + Sync,
+        course: &str,
+        material_ids: Vec<String>,
+        on_event: impl Fn(SyncEvent) + Send + Sync,
     ) -> Result<SourceSyncResult> {
-        Err(not_yet("Downloading chosen files"))
+        self.download_chosen_files(course, material_ids, on_event)
+            .await
     }
 
     /// The deterministic syllabus scan (no model, §7.2): a proposal from the candidates' own
@@ -779,12 +782,5 @@ fn no_proposal(id: i64) -> AppError {
     AppError::new(
         AppErrorKind::NotFound,
         format!("There is no calendar proposal {id}."),
-    )
-}
-
-fn not_yet(what: &str) -> AppError {
-    AppError::new(
-        AppErrorKind::Internal,
-        format!("{what} is not available in this build yet."),
     )
 }

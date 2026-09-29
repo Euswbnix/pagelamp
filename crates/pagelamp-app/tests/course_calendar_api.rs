@@ -394,12 +394,14 @@ async fn the_scan_proposes_and_the_student_decides() {
         )
         .unwrap_err();
     assert_eq!(err.kind, AppErrorKind::Invalid);
-    // Not yet: downloading chosen Canvas files.
-    let err = app
-        .download_material_files("DEMO101", vec![], |_| {})
-        .await
-        .unwrap_err();
-    assert_eq!(err.kind, AppErrorKind::Internal);
+    // Downloading chosen files takes the course's own files only.
+    for ids in [vec![], vec![format!("{SOURCE}/syllabus/101")]] {
+        let err = app
+            .download_material_files("DEMO101", ids, |_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Invalid);
+    }
 }
 
 #[tokio::test]
