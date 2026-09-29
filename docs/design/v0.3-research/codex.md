@@ -64,6 +64,28 @@ content were read or recorded.
    open, it prints "Reading additional input from stdin..." and waits. PageLamp closes stdin after
    writing the prompt, and gives every other Codex command a null stdin (`</dev/null`).
 
+## Checked 2026-09-29 (addendum): the 0.158.0 release assets
+
+The backend downloaded the 0.158.0 single-binary assets (with the owner's permission; deleted
+afterwards) to settle the signature rule of the managed runtime (plan M2, `codex-pin.toml`):
+- **macOS arm64 and x64:** signed "Developer ID Application: OpenAI OpCo, LLC (2DC432GLL2)", with
+  the hardened runtime and a secure timestamp. `codesign --verify --strict` passes with the
+  requirement `anchor apple generic and certificate leaf[subject.OU] = "2DC432GLL2"`, and fails
+  with any other team. This matches the ChatGPT.app bundled Codex the leader checked.
+- **Windows x64 and arm64 (`codex.exe`):** Authenticode-signed; the signer is "OpenAI OpCo, LLC",
+  issued by "Microsoft ID Verified CS AOC CA 03" (chain: Microsoft ID Verified Code Signing PCA
+  2021 → Microsoft Identity Verification Root Certificate Authority 2020). This answers the §6
+  **[unverified]** "Authenticode signing" for this version: signed. Whether Smart App Control
+  accepts it is still A7's check.
+- **Linux:** unsigned binaries; the pinned SHA-256 is the check (sigstore bundles exist for the
+  `codex-package-*` archives only).
+- Sizes: download 68–80 MB; unpacked 240 MB (macOS arm64), 258 MB (macOS x64), 324 MB (Windows
+  x64). A pure-Rust zstd decoder (`ruzstd`) unpacks them identically to `unzstd`.
+- The official installer uses `codex-package-<target>.tar.gz` (`bin/codex`,
+  `bin/codex-code-mode-host`, `codex-path/rg`, and on Linux `codex-resources/bwrap`); PageLamp
+  uses the bare binary, as tools are off. Whether `-s read-only` needs `bwrap` on Linux is checked
+  by the leader's contract test (plan M2).
+
 ---
 
 ## 1. Current state: versions and release cadence
