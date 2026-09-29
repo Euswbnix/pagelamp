@@ -60,7 +60,8 @@
     "undo": "Undo",
     "undone": "Removal undone",
     "deleted_one": "{{course}} deleted. Restoring means syncing it again.",
-    "deleted_other": "{{count}} courses deleted. Restoring means syncing them again."
+    "deleted_other": "{{count}} courses deleted. Restoring means syncing them again.",
+    "deletedFilesPending": "The data was deleted, but some files couldn't be moved to the Trash. Settings → Removed courses lists them."
   },
   "settings": {
     "title": "Remove from {{product}}",
@@ -77,19 +78,21 @@
     "pending_other": "Removed {{date}} · its data is deleted in {{count}} days",
     "purged": "Data deleted {{date}}",
     "restoring": "Restoring…",
-    "filesPending": "Its downloaded files couldn't be moved to the Trash.",
+    "filesPending": "Its downloaded files couldn't be moved to the Trash. {{product}} tries again at each sync.",
     "keptFiles": "Downloaded files kept",
     "undo": "Undo",
     "deleteNow": "Delete now",
     "restore": "Restore",
     "forget": "Forget",
+    "tryAgain": "Try again",
+    "tryAgainLabel": "Try again: move {{course}}'s files to the Trash",
     "deletePermanently": "Delete files permanently",
     "confirmDeleteNowTitle": "Delete {{course}}'s data now?",
     "confirmDeleteNowBody": "You can't undo this. Restoring means syncing the course again.",
     "confirmForgetTitle": "Forget {{course}}?",
     "confirmForgetBody": "{{product}} stops remembering it, so the next sync brings the course back.",
     "confirmPermanentTitle": "Delete {{course}}'s files permanently?",
-    "confirmPermanentBody": "They couldn't be moved to the Trash, so they would be deleted for good.",
+    "confirmPermanentBody": "They couldn't be moved to the Trash, so they would be deleted for good. You can't undo this.",
     "restored": "{{course}} is back in your courses",
     "restoreFailed": {
       "not_listed": "Couldn't restore {{course}}: Canvas no longer lists it.",
@@ -98,6 +101,10 @@
       "other": "Couldn't restore {{course}}."
     },
     "deleted": "{{course}}'s data was deleted",
+    "deletedFilesPending": "{{course}}'s data was deleted, but its files couldn't be moved to the Trash.",
+    "movedToTrash": "{{course}}'s files are in the Trash",
+    "stillPending": "Still couldn't move {{course}}'s files to the Trash.",
+    "deletedPermanently": "{{course}}'s files were deleted permanently",
     "forgotten": "{{course}} was forgotten. The next sync brings it back.",
     "count_one": "{{count}} removed course",
     "count_other": "{{count}} removed courses"

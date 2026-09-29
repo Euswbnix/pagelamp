@@ -57,7 +57,6 @@ export function createLifecycleMock(deps: {
   const snoozes = new Map<string, string>();
   let banner: { until: string; courses: string[] } | null = null;
   const removed: MockRemoved[] = [];
-  let removedSeq = 0;
 
   const sourceKind = (sourceId: string): SourceKind =>
     db.sources.find((s) => s.id === sourceId)?.kind ?? "folder";
@@ -132,10 +131,10 @@ export function createLifecycleMock(deps: {
   }
 
   function removeOne(c: MockCourse, reason: RemovalReason, purgeNow: boolean, keepFiles: boolean) {
-    removedSeq += 1;
     const at = now().toISOString();
     const record: RemovedCourse = {
-      removed_id: `removed-${removedSeq}`,
+      // Like the facade's tombstone, keyed by the course id.
+      removed_id: c.course.id,
       source_id: c.course.source_id,
       source_kind: sourceKind(c.course.source_id),
       external_id: c.course.external_id,
@@ -264,12 +263,15 @@ export function createLifecycleMock(deps: {
     purgeRemovedCourses: (removedIds, permanentIfNoTrash) =>
       respond(() => {
         busyCheck();
-        const due = removed.filter((r) =>
-          removedIds
-            ? removedIds.includes(r.record.removed_id)
-            : r.record.state === "pending" &&
-              Date.parse(r.record.purge_after ?? "") <= now().getTime(),
-        );
+        // Without ids: every due removal, and the purged ones whose files wait for the Trash.
+        const due = removedIds
+          ? removedIds.map(findRemoved)
+          : removed.filter(
+              (r) =>
+                (r.record.state === "pending" &&
+                  Date.parse(r.record.purge_after ?? "") <= now().getTime()) ||
+                (r.record.state === "purged" && r.record.files_pending),
+            );
         const purged: string[] = [];
         const filesPending: string[] = [];
         for (const r of due) {
@@ -280,6 +282,8 @@ export function createLifecycleMock(deps: {
             r.record.purge_in_days = null;
             purged.push(r.record.removed_id);
           }
+          // The mock's Trash keeps failing for a course whose move already failed: only "Delete
+          // permanently" (permanentIfNoTrash) clears it.
           if (r.record.files_pending && permanentIfNoTrash) r.record.files_pending = false;
           if (r.record.files_pending) filesPending.push(r.record.removed_id);
         }

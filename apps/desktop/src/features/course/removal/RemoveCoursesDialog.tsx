@@ -146,7 +146,10 @@ export function RemoveCoursesDialog({
     const count = report.removed.length;
     const course = report.removed[0]?.code ?? report.removed[0]?.name ?? "";
     if (report.purged_now) {
-      toast.success(t("toast.deleted", { count, course }));
+      // The data is gone either way; files the Trash refused wait in "Removed courses".
+      if (report.removed.some((r) => r.files_pending))
+        toast.warning(t("toast.deletedFilesPending"));
+      else toast.success(t("toast.deleted", { count, course }));
       return;
     }
     const removedIds = report.removed.map((r) => r.removed_id);

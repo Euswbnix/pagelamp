@@ -91,6 +91,27 @@ describe("mock removal", () => {
     expect(refused.kind).toBe("busy");
   });
 
+  it("keys a removal by its course id, like the facade", async () => {
+    const api = createMockApi({ ...fast, scenario: "phases" });
+    const { removed } = await api.removeCourses([ENDED], removeOptions);
+    expect(removed[0]?.removed_id).toBe(ENDED);
+  });
+
+  it("retries files waiting for the Trash with every due purge; only the flag deletes them", async () => {
+    const api = createMockApi({ ...fast, scenario: "removed" });
+    const waiting = (await api.removedCourses()).find((r) => r.files_pending);
+    const id = waiting?.removed_id ?? "";
+    let report = await api.purgeRemovedCourses(null, false);
+    expect(report.files_pending).toEqual([id]);
+    report = await api.purgeRemovedCourses([id], false);
+    expect(report.files_pending).toEqual([id]);
+    report = await api.purgeRemovedCourses([id], true);
+    expect(report.files_pending).toEqual([]);
+    expect((await api.removedCourses()).find((r) => r.removed_id === id)?.files_pending).toBe(
+      false,
+    );
+  });
+
   it("deletes a pending course's data now", async () => {
     const api = createMockApi({ ...fast, scenario: "removed" });
     const pending = (await api.removedCourses()).find((r) => r.state === "pending");
