@@ -12,6 +12,8 @@ interface UiState {
   /** null = the brand's default language. */
   locale: Locale | null;
   showHiddenCourses: boolean;
+  /** "Past courses" group expanded on the course list (collapsed by default). */
+  showPastCourses: boolean;
   /** The student dismissed onboarding without adding a source. */
   onboardingSkipped: boolean;
   /** When the student confirmed the AI disclosure (ISO instant), null = not yet. */
@@ -19,6 +21,7 @@ interface UiState {
   setTheme: (theme: ThemePreference) => void;
   setLocale: (locale: Locale) => void;
   setShowHiddenCourses: (show: boolean) => void;
+  setShowPastCourses: (show: boolean) => void;
   setOnboardingSkipped: (skipped: boolean) => void;
   /** Tick/untick "I understand" under the AI disclosure. */
   setAiDisclosureAcknowledged: (acknowledged: boolean) => void;
@@ -30,11 +33,13 @@ export const useUiStore = create<UiState>()(
       theme: "system",
       locale: null,
       showHiddenCourses: false,
+      showPastCourses: false,
       onboardingSkipped: false,
       aiDisclosureAcknowledgedAt: null,
       setTheme: (theme) => set({ theme }),
       setLocale: (locale) => set({ locale }),
       setShowHiddenCourses: (showHiddenCourses) => set({ showHiddenCourses }),
+      setShowPastCourses: (showPastCourses) => set({ showPastCourses }),
       setOnboardingSkipped: (onboardingSkipped) => set({ onboardingSkipped }),
       setAiDisclosureAcknowledged: (acknowledged) =>
         set({ aiDisclosureAcknowledgedAt: acknowledged ? new Date().toISOString() : null }),
@@ -48,6 +53,7 @@ export const useUiStore = create<UiState>()(
         theme: s.theme,
         locale: s.locale,
         showHiddenCourses: s.showHiddenCourses,
+        showPastCourses: s.showPastCourses,
         onboardingSkipped: s.onboardingSkipped,
         aiDisclosureAcknowledgedAt: s.aiDisclosureAcknowledgedAt,
       }),
