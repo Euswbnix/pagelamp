@@ -22,7 +22,7 @@ use pagelamp_core::store::Store;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{App, Result};
+use crate::{App, Reminder, Result};
 
 const PREFS_KEY: &str = "updates.prefs";
 const DISCLOSURE_KEY: &str = "updates.disclosure_acknowledged";
@@ -94,6 +94,13 @@ pub struct StartupTasks {
     /// The version this launch updated from (`None`: not an update, or an update from 0.1).
     /// Shows the "quit and reopen your AI app" banner.
     pub updated_from: Option<String>,
+    /// Reminders to show now (`due_reminders`); `mark_reminders_shown` once shown.
+    pub due_reminders: Vec<Reminder>,
+    /// Removed courses wait for their purge (it is due, or a Trash move left files): run
+    /// `purge_removed_courses(None)` (the app-start purge, calendar design §8.3).
+    pub purge_due: bool,
+    /// Removed courses whose downloaded files still wait for the Trash.
+    pub removed_files_waiting: u32,
 }
 
 /// One update check and how it ended (`record_update_check`).
@@ -170,10 +177,22 @@ impl App {
             .unwrap_or(false);
         let last_check: Option<UpdateCheckRecord> = store.setting(LAST_CHECK_KEY).unwrap_or(None);
         let check_is_old = last_check.is_none_or(|check| now - check.at >= CHECK_INTERVAL);
+        let tombstones = store.tombstones()?;
+        let removed_files_waiting = tombstones.iter().filter(|t| t.files_pending).count();
+        let purge_due = removed_files_waiting > 0 || !store.due_purges(now)?.is_empty();
+        drop(store);
+        // Reminders never keep the rest from the shell.
+        let due_reminders = self.due_reminders(now).unwrap_or_else(|err| {
+            tracing::warn!(target: "pagelamp::reminders", "due reminders failed: {:?}", err.kind);
+            Vec::new()
+        });
         Ok(StartupTasks {
             update_check_due: prefs.auto_check && disclosed && whats_new.is_none() && check_is_old,
             whats_new,
             updated_from: launch.updated_from.clone(),
+            due_reminders,
+            purge_due,
+            removed_files_waiting: u32::try_from(removed_files_waiting).unwrap_or(u32::MAX),
         })
     }
 

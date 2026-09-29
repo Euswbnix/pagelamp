@@ -31,6 +31,7 @@ pub mod diagnostics;
 mod lock;
 mod material_file;
 mod mcp_config;
+mod reminders;
 mod sync;
 pub mod trash;
 mod updates;
@@ -49,6 +50,7 @@ pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
 pub use material_file::LocalFileUse;
+pub use reminders::{DigestDay, Reminder, ReminderKind, ReminderSettings};
 pub use updates::{
     StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
     WhatsNewTopic,
@@ -467,6 +469,8 @@ pub(crate) struct AppState {
     pub(crate) runs: ai::run::Runs,
     /// Where removed courses' downloaded files go (`trash`).
     pub(crate) trash: trash::TrashSlot,
+    /// The time zone reminders and the digest use instead of the computer's (`set_time_zone`).
+    pub(crate) zone: std::sync::RwLock<Option<pagelamp_core::dates::Tz>>,
 }
 
 impl std::fmt::Debug for App {
@@ -1312,6 +1316,12 @@ struct AppTypes {
     calendar_run_outcome: CalendarRunOutcome,
     calendar_batch_event: CalendarBatchEvent,
     calendar_proposal: pagelamp_core::calendar::proposal::CalendarProposal,
+    // M3: reminders and the weekly digest
+    weekly_digest: pagelamp_core::views::WeeklyDigest,
+    reminder: Reminder,
+    reminder_kind: ReminderKind,
+    reminder_settings: ReminderSettings,
+    digest_day: DigestDay,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

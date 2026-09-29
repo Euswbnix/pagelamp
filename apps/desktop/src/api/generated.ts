@@ -548,6 +548,14 @@ export type EventKind =
  */
 export type ProcessKind = "app" | "mcp";
 /**
+ * The day of the weekly digest.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DigestDay".
+ */
+export type DigestDay =
+  "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "LocalServerKind".
  */
@@ -759,6 +767,11 @@ export type McpNoteCode =
  */
 export type StructuredOutputTier = "native_schema" | "json_object" | "prompt_only";
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ReminderKind".
+ */
+export type ReminderKind = "deadline_soon" | "weekly_digest" | "plan_today";
+/**
  * What a later sync can't bring back once a course is purged (§8.3).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -967,6 +980,7 @@ export interface PageLampAppTypes {
   course_timeline: CourseTimeline;
   crash_report: CrashReport;
   deadline: Deadline;
+  digest_day: DigestDay;
   disclosure_facts: DisclosureFacts;
   doctor_report: DoctorReport;
   effort: Effort;
@@ -999,6 +1013,9 @@ export interface PageLampAppTypes {
   purge_report: PurgeReport;
   read_calendar_options: ReadCalendarOptions;
   recipient: Recipient;
+  reminder: Reminder;
+  reminder_kind: ReminderKind;
+  reminder_settings: ReminderSettings;
   removal_preview: RemovalPreview;
   removal_report: RemovalReport;
   remove_ai_data_report: RemoveAiDataReport;
@@ -1032,6 +1049,7 @@ export interface PageLampAppTypes {
   usage_row: UsageRow;
   usage_summary: UsageSummary;
   week_materials: WeekMaterials;
+  weekly_digest: WeeklyDigest;
   whats_new: WhatsNew;
   whats_new_topic: WhatsNewTopic;
 }
@@ -2657,6 +2675,73 @@ export interface ReadCalendarOptions {
   override_budget: boolean;
 }
 /**
+ * One reminder. A UI builds its text from `kind` and these fields (translated), never from
+ * material text.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Reminder".
+ */
+export interface Reminder {
+  /**
+   * `weekly_digest`: the deadlines of the 7 days from `fire_at`; `plan_today`: the plan's
+   * open items that day.
+   */
+  count?: number | null;
+  course_code?: string | null;
+  /**
+   * `deadline_soon`: its course (none for a feed event not linked to a course).
+   */
+  course_id?: string | null;
+  course_name?: string | null;
+  /**
+   * `deadline_soon`: when it is due, and how many hours before that this fires.
+   */
+  due_at?: string | null;
+  fire_at: string;
+  hours_before?: number | null;
+  /**
+   * Stable: the same reminder has the same id in every call (`mark_reminders_shown`).
+   */
+  id: string;
+  kind: ReminderKind;
+  /**
+   * The wall-clock time it fires at in `time_zone`, "YYYY-MM-DDTHH:MM".
+   */
+  local_time: string;
+  /**
+   * IANA time zone of `local_time` (the computer's zone; "UTC" if it is unknown).
+   */
+  time_zone: string;
+  /**
+   * `deadline_soon`: the deadline's title.
+   */
+  title?: string | null;
+}
+/**
+ * Which reminders the student wants, and when (Settings → Reminders). Times are local
+ * wall-clock times, "HH:MM" (24-hour); a kind turned off keeps its time.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ReminderSettings".
+ */
+export interface ReminderSettings {
+  deadline_soon?: boolean;
+  /**
+   * The day of the weekly digest.
+   */
+  digest_day?: "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+  digest_time?: string;
+  plan_today?: boolean;
+  plan_today_time?: string;
+  /**
+   * The onboarding answer "Remind me (keep PageLamp in the tray / menu bar and start it at
+   * login)". Each shell keeps its tray and login item in line with it; reminders are
+   * computed the same either way.
+   */
+  run_in_background?: boolean;
+  weekly_digest?: boolean;
+}
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "RemovalPreview".
  */
@@ -2867,6 +2952,19 @@ export interface SourceSyncResult {
  * via the `definition` "StartupTasks".
  */
 export interface StartupTasks {
+  /**
+   * Reminders to show now (`due_reminders`); `mark_reminders_shown` once shown.
+   */
+  due_reminders: Reminder[];
+  /**
+   * Removed courses wait for their purge (it is due, or a Trash move left files): run
+   * `purge_removed_courses(None)` (the app-start purge, calendar design §8.3).
+   */
+  purge_due: boolean;
+  /**
+   * Removed courses whose downloaded files still wait for the Trash.
+   */
+  removed_files_waiting: number;
   /**
    * Run the automatic update check now: it is on, the student saw the disclosure (onboarding
    * or What's new), no What's new is waiting, and the last check is 24 h or more ago.
@@ -3111,6 +3209,60 @@ export interface WeekMaterials {
    * The week actually shown (None when no week could be determined; see `note`).
    */
   week?: number | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WeeklyDigest".
+ */
+export interface WeeklyDigest {
+  courses: DigestCourse[];
+  generated_at: string;
+  /**
+   * `None` when there is no saved study plan.
+   */
+  plan?: DigestPlan | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DigestCourse".
+ */
+export interface DigestCourse {
+  /**
+   * Active this week (lifecycle `is_active`): only then are `week` and the materials set.
+   */
+  active: boolean;
+  code?: string | null;
+  confidence: Confidence;
+  course_id: string;
+  /**
+   * Due in the next `DIGEST_DEADLINE_DAYS` days, soonest first.
+   */
+  deadlines: Deadline[];
+  /**
+   * This week's materials.
+   */
+  material_count: number;
+  /**
+   * The first `DIGEST_MAX_TITLES` of them.
+   */
+  material_titles: string[];
+  name: string;
+  /**
+   * The course's default week (`CourseTimeline::default_week`).
+   */
+  week?: number | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DigestPlan".
+ */
+export interface DigestPlan {
+  last_week_done: number;
+  /**
+   * Items of the last 7 days (today excluded), and how many are done.
+   */
+  last_week_planned: number;
+  today: StudyPlanItem[];
 }
 /**
  * `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model

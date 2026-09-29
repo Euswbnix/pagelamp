@@ -911,6 +911,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             (last === null || last <= now().getTime() - DAY),
           updated_from:
             scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
+          // Reminders and the app-start purge (M3): none in the mock yet.
+          due_reminders: [],
+          purge_due: false,
+          removed_files_waiting: 0,
         };
       }),
     acknowledgeWhatsNew: () =>
