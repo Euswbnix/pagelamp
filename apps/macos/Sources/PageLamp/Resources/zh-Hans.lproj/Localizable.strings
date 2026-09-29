@@ -147,6 +147,7 @@
 "ai.disclosure.cost.free_on_device" = "在这台电脑上运行是免费的，但会占用它的内存和电量。";
 "ai.disclosure.cost.heading" = "费用";
 "ai.disclosure.cost.plan_credits" = "每次运行都计入你 ChatGPT 订阅的用量限额；超出订阅额度后，运行可能会消耗你的 ChatGPT 额度点数。";
+"ai.disclosure.cost.self_hosted" = "如有费用，由运行这台服务器的一方决定。";
 "ai.disclosure.freeTier.confirm" = "我知道在免费档中，发送的内容可能被用于改进 %1$@ 的产品，并可能有人工审阅。";
 "ai.disclosure.gai.body" = "当你让 PageLamp 做学习计划或讲解时，它会用生成式 AI 模型来写。它写出的每一样内容都会标注“AI 生成”，并注明服务、模型和日期。";
 "ai.disclosure.gai.heading" = "PageLamp 使用生成式 AI";
@@ -247,6 +248,7 @@
 "ai.policy.cost.cloud_via_local" = "在云端运行";
 "ai.policy.cost.free_on_device" = "免费";
 "ai.policy.cost.plan_credits" = "使用你的 ChatGPT 订阅（超出额度后消耗点数）";
+"ai.policy.cost.self_hosted" = "费用由运行该服务器的一方决定";
 "ai.policy.label" = "数据政策";
 "ai.policy.retention.not_stored" = "不保存";
 "ai.policy.retention.on_device" = "不会保存到别处";

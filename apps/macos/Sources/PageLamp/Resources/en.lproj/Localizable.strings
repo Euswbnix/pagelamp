@@ -147,6 +147,7 @@
 "ai.disclosure.cost.free_on_device" = "Runs on this computer are free. They use its memory and battery.";
 "ai.disclosure.cost.heading" = "Cost";
 "ai.disclosure.cost.plan_credits" = "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.";
+"ai.disclosure.cost.self_hosted" = "Costs, if any, are set by whoever runs this server.";
 "ai.disclosure.freeTier.confirm" = "I understand that on the free tier, what's sent may be used to improve %1$@'s products and reviewed by people.";
 "ai.disclosure.gai.body" = "When you ask for a study plan or an explanation, PageLamp writes it with a generative AI model. Everything it writes is labelled AI-generated, with the service, the model and the date.";
 "ai.disclosure.gai.heading" = "PageLamp uses generative AI";
@@ -247,6 +248,7 @@
 "ai.policy.cost.cloud_via_local" = "runs in the cloud";
 "ai.policy.cost.free_on_device" = "free";
 "ai.policy.cost.plan_credits" = "uses your ChatGPT plan (credits past its limit)";
+"ai.policy.cost.self_hosted" = "cost set by whoever runs the server";
 "ai.policy.label" = "Data policy";
 "ai.policy.retention.not_stored" = "not stored";
 "ai.policy.retention.on_device" = "not stored elsewhere";

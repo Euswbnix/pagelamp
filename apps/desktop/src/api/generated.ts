@@ -28,7 +28,8 @@ export type BackendRef =
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "CostKind".
  */
-export type CostKind = "free_on_device" | "api_billing" | "plan_credits" | "cloud_via_local";
+export type CostKind =
+  "free_on_device" | "api_billing" | "plan_credits" | "cloud_via_local" | "self_hosted";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "RetentionFact".
