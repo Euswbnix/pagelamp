@@ -27,10 +27,12 @@ export function Section({ title, description, actions, lit = false, children }: 
     <section aria-labelledby={id}>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-rule pb-3">
         <div className={cn("min-w-0 space-y-1", lit && "pl-lamp-text")}>
-          <h2 id={id} className="font-heading text-lg font-semibold tracking-tight">
+          <h2 id={id} className="font-heading text-title-3 font-semibold tracking-tight">
             {title}
           </h2>
-          {description ? <div className="text-sm text-muted-foreground">{description}</div> : null}
+          {description ? (
+            <div className="pl-prose text-sm text-muted-foreground">{description}</div>
+          ) : null}
         </div>
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
       </div>

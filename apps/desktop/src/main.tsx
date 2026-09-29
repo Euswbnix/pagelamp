@@ -44,6 +44,16 @@ if (API_MODE === "tauri") {
 }
 initI18n(useUiStore.getState().locale);
 
+// Inter (Windows, Linux) is font-display: swap; wait for it briefly so the first frame isn't the
+// fallback font followed by a reflow. macOS uses system-ui and never loads it.
+const platform = document.documentElement.dataset.platform;
+if (platform === "windows" || platform === "linux") {
+  await Promise.race([
+    document.fonts.load('400 14px "Inter Variable"').catch(() => []),
+    new Promise((resolve) => setTimeout(resolve, 150)),
+  ]);
+}
+
 const root = document.getElementById("root");
 if (!root) throw new Error("#root missing from index.html");
 

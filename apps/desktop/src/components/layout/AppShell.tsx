@@ -14,9 +14,13 @@ import { LampContext } from "./lamp";
 import { Sidebar } from "./Sidebar";
 import { ToolbarContext, useScrolled } from "./toolbar";
 
+/** The reading column (§3.0): layout.measure of text between layout.gutter margins. */
+const READING_COLUMN =
+  "mx-auto w-full max-w-[calc(var(--pl-layout-measure)+2*var(--pl-layout-gutter))] px-(--pl-layout-gutter)";
+
 /**
  * Sidebar + scrollable content column. The column starts with a sticky toolbar row (a screen's
- * PageHeader puts its actions there), can light a lamp band behind its top (PageHeader `lit`)
+ * PageHeader puts its actions there), can light a lamp band behind its top (a section's `lit`)
  * and has the floating accessory bar at its foot. Every screen except onboarding renders
  * inside this.
  */
@@ -52,12 +56,12 @@ export function AppShell() {
             className={cn("pl-toolbar", scrolled && "pl-glass")}
             data-scrolled={scrolled || undefined}
           >
-            <div ref={setSlot} className="mx-auto flex h-full max-w-5xl items-center gap-4 px-8" />
+            <div ref={setSlot} className={cn(READING_COLUMN, "flex h-full items-center gap-4")} />
           </div>
           <LampContext.Provider value={setLit}>
             <ToolbarContext.Provider value={toolbar}>
               {/* Room at the foot for the accessory bar. */}
-              <div className="mx-auto max-w-5xl px-8 pt-2 pb-20">
+              <div className={cn(READING_COLUMN, "pt-2 pb-20")}>
                 <CrashNotice />
                 <PostUpdateBanner />
                 <UpdateNotice />

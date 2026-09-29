@@ -59,16 +59,18 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
             data-course-id={course.id}
             className="flex min-w-0 items-baseline gap-2 outline-hidden after:absolute after:inset-0 after:rounded-row"
           >
-            <span className="shrink-0 font-semibold">{course.code ?? course.name}</span>{" "}
+            <span className="shrink-0 text-subheadline font-semibold">
+              {course.code ?? course.name}
+            </span>{" "}
             {course.code ? (
-              <span className="min-w-0 truncate text-muted-foreground" title={course.name}>
+              <span className="min-w-0 truncate text-foreground" title={course.name}>
                 {course.name}
               </span>
             ) : null}
           </Link>
         </Heading>
         <span aria-hidden className="pl-leader min-w-6 flex-1" />
-        <span className="shrink-0 text-right tabular-nums">
+        <span className="shrink-0 text-right text-title-3 tabular-nums">
           {/* A past course's week doesn't matter; say what the lifecycle concluded instead. */}
           {past ? (
             <span className="text-muted-foreground">{tcal(`status.state.${lifecycle.state}`)}</span>

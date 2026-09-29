@@ -13,6 +13,14 @@
 @import "./content.css";
 
 @theme inline {
+  /* The type ramp (§10.3) as Tailwind text sizes: text-large-title, text-title-3, text-subheadline. */
+  --text-large-title: var(--pl-font-large-title-size);
+  --text-large-title--line-height: var(--pl-font-large-title-line-height);
+  --text-title-3: var(--pl-font-title-3-size);
+  --text-title-3--line-height: var(--pl-font-title-3-line-height);
+  --text-subheadline: var(--pl-font-subheadline-size);
+  --text-subheadline--line-height: var(--pl-font-subheadline-line-height);
+
   /* Paper (content layer) and ink. */
   --color-content: var(--pl-color-surface-content);
   --color-raised: var(--pl-color-surface-raised);

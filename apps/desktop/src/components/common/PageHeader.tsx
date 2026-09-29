@@ -62,12 +62,12 @@ export function PageHeader({
           {eyebrow ? <div className="text-sm text-muted-foreground">{eyebrow}</div> : null}
           <h1
             ref={headingRef}
-            className="font-heading text-2xl font-semibold tracking-tight text-balance"
+            className="font-heading text-large-title font-semibold tracking-tight text-balance"
           >
             {title}
           </h1>
           {description ? (
-            <p className="max-w-prose text-sm text-muted-foreground">{description}</p>
+            <p className="pl-prose max-w-prose text-sm text-muted-foreground">{description}</p>
           ) : null}
         </div>
         {actions && !toolbar ? (

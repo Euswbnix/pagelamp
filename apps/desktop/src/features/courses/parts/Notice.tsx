@@ -19,7 +19,7 @@ export function Notice({ icon, title, children, action }: NoticeProps) {
       <span className="mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="font-medium">{title}</p>
-        {children ? <div className="text-muted-foreground">{children}</div> : null}
+        {children ? <div className="pl-prose text-muted-foreground">{children}</div> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
