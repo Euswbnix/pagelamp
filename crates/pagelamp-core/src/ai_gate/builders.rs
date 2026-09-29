@@ -1,0 +1,466 @@
+//! The context builders (design §4.2): the only code that reads course data for a prompt.
+//!
+//! - Course state is read in the same read transaction as the text (`in_read_transaction`),
+//!   never cached: a policy change between two runs is always honoured.
+//! - Text comes only from `chunks` of courses that are `readable` at that moment;
+//!   `withheld_by_policy` and `turned_off` courses give structure only, hidden courses nothing.
+//! - Structure = titles, kinds, dates, week numbers, deadlines (rule 8). Titles are course
+//!   content too, so structure is wrapped as data like material text.
+//! - Left out of an explanation by default (listed in the summary): materials that look like
+//!   assessments (rule 4), external links, materials without text, and whatever doesn't fit
+//!   the budget (each material gets a fair share).
+
+use std::fmt::Write as _;
+
+use chrono::{Duration, NaiveDate};
+
+use super::{
+    Block, CitationTarget, ContextCourse, GatedContext, LeftOutMaterial, LeftOutReason,
+    ManifestEntry,
+};
+use crate::ai::BlockReason;
+use crate::model::{AiMaterialsState, Course, MaterialKind, TextStatus};
+use crate::store::Store;
+use crate::views::{self, AsOf, MaterialView};
+
+/// Words that mark a title as an assessment (whole words, any case) [tunable; open item].
+const ASSESSMENT_WORDS: [&str; 10] = [
+    "assignment",
+    "homework",
+    "hw",
+    "problem set",
+    "pset",
+    "quiz",
+    "exam",
+    "midterm",
+    "test",
+    "lab report",
+];
+
+/// Words that make an assessment-looking title study material after all ("Midterm review",
+/// "Practice quiz solutions", "Exam preparation notes").
+const STUDY_WORDS: [&str; 8] = [
+    "review",
+    "practice",
+    "solution",
+    "solutions",
+    "notes",
+    "lecture",
+    "slides",
+    "preparation",
+];
+
+/// How much course text a context may hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContextBudget {
+    /// Characters of material text, shared fairly among the materials.
+    pub max_chars: usize,
+}
+
+/// Why no context was built.
+#[derive(Debug, thiserror::Error)]
+pub enum GateError {
+    /// The course's state (or the request) doesn't allow it; nothing to send.
+    #[error("blocked: {}", .0.as_str())]
+    Blocked(BlockReason),
+    #[error(transparent)]
+    Store(#[from] crate::Error),
+}
+
+/// Which courses a study plan covers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PlanScope {
+    /// Course ids or codes; empty: every visible course.
+    pub courses: Vec<String>,
+    /// Days ahead the plan covers (deadlines in this window are listed).
+    pub horizon_days: u32,
+}
+
+/// Structure only, for a study plan: the courses in scope with their week, this and next
+/// week's materials (titles and ids) and the deadlines in the horizon. Hidden courses are left
+/// out.
+pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedContext, GateError> {
+    store
+        .in_read_transaction(|store| {
+            let courses = scoped_courses(store, &scope.courses)?;
+            let mut context = GatedContext::empty();
+            for course in &courses {
+                let text = course_structure(store, course, at, scope.horizon_days, &mut context)?;
+                context.blocks.push(Block::Structure(text));
+            }
+            Ok(context)
+        })
+        .map_err(GateError::from)
+}
+
+/// Structure and study-plan progress, for the weekly note: every visible course, deadlines in
+/// the next 7 days, and last week's and today's plan items.
+pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> {
+    store
+        .in_read_transaction(|store| {
+            let courses = scoped_courses(store, &[])?;
+            let mut context = GatedContext::empty();
+            for course in &courses {
+                let text = course_structure(store, course, at, 7, &mut context)?;
+                context.blocks.push(Block::Structure(text));
+            }
+            if let Some(plan) = store.latest_study_plan()? {
+                let week_ago = at.today - Duration::days(7);
+                let last_week: Vec<_> = plan
+                    .plan
+                    .items
+                    .iter()
+                    .filter(|item| item.date >= week_ago && item.date < at.today)
+                    .collect();
+                let done = last_week.iter().filter(|item| item.done).count();
+                let mut text = format!(
+                    "Study plan progress: last 7 days {done} of {} items done.\nToday:",
+                    last_week.len()
+                );
+                let today: Vec<_> = plan
+                    .plan
+                    .items
+                    .iter()
+                    .filter(|i| i.date == at.today)
+                    .collect();
+                if today.is_empty() {
+                    text.push_str(" nothing planned.");
+                }
+                for item in today {
+                    let _ = write!(
+                        text,
+                        "\n- {}{}",
+                        item.title,
+                        if item.done { " (done)" } else { "" }
+                    );
+                }
+                context.blocks.push(Block::Structure(text));
+            }
+            Ok(context)
+        })
+        .map_err(GateError::from)
+}
+
+/// Material text of one course week, for an explanation: blocked unless the course is visible,
+/// `readable` and has readable materials that week (`week`: default the current week).
+pub fn week_context(
+    store: &Store,
+    course: &str,
+    week: Option<u32>,
+    at: AsOf,
+    budget: ContextBudget,
+) -> Result<GatedContext, GateError> {
+    let result = store.in_read_transaction(|store| {
+        let course = store.resolve_course_with(course, true)?;
+        if course.hidden {
+            return Ok(Err(BlockReason::CourseHidden));
+        }
+        match course.ai_materials() {
+            AiMaterialsState::Readable => {}
+            AiMaterialsState::TurnedOff => return Ok(Err(BlockReason::CourseAiTurnedOff)),
+            AiMaterialsState::WithheldByPolicy => {
+                return Ok(Err(BlockReason::CoursePolicyProhibited));
+            }
+        }
+        let listed = views::week_materials(store, &course.id, week, true, at)?;
+        let mut context = GatedContext::empty();
+        let mut candidates = Vec::new();
+        for view in &listed.materials {
+            if let Some(reason) = left_out(store, view)? {
+                context.summary.left_out.push(LeftOutMaterial {
+                    material_id: view.id.clone(),
+                    title: view.title.clone(),
+                    reason,
+                });
+                continue;
+            }
+            let chunks = store.get_chunks(&view.id, 0, None)?;
+            let hash = store.get_material(&view.id)?.and_then(|m| m.content_hash);
+            candidates.push((view, hash, chunks));
+        }
+        let sizes: Vec<usize> = candidates
+            .iter()
+            .map(|(_, _, chunks)| chunks.iter().map(|c| c.text.len()).sum())
+            .collect();
+        let shares = fair_shares(&sizes, budget.max_chars);
+
+        let mut header = format!("Course: {}\n", course.display_name());
+        match listed.week {
+            Some(n) => {
+                let _ = write!(header, "Week: {n}");
+            }
+            None => header.push_str("Week: unknown (recent materials)"),
+        }
+        context.blocks.push(Block::Structure(header));
+        for ((view, hash, chunks), share) in candidates.iter().zip(shares) {
+            let mut used = 0;
+            let mut ords = Vec::new();
+            for chunk in chunks {
+                if used + chunk.text.len() > share {
+                    break;
+                }
+                used += chunk.text.len();
+                ords.push(chunk.ord);
+                let handle = format!("c{}", context.handles() + 1);
+                context.blocks.push(Block::Material {
+                    handle,
+                    target: CitationTarget {
+                        material_id: view.id.clone(),
+                        title: view.title.clone(),
+                        locator: chunk.locator.clone(),
+                        url: view.url.clone(),
+                    },
+                    text: chunk.text.clone(),
+                });
+            }
+            if ords.is_empty() {
+                context.summary.left_out.push(LeftOutMaterial {
+                    material_id: view.id.clone(),
+                    title: view.title.clone(),
+                    reason: LeftOutReason::OverBudget,
+                });
+                continue;
+            }
+            context.summary.materials_included += 1;
+            if ords.len() < chunks.len() {
+                context.summary.materials_trimmed += 1;
+            }
+            context.manifest.materials.push(ManifestEntry {
+                material_id: view.id.clone(),
+                content_hash: hash.clone(),
+                chunk_ords: ords,
+            });
+        }
+        if context.summary.materials_included == 0 {
+            return Ok(Err(BlockReason::NoReadableMaterials));
+        }
+        context.summary.courses.push(ContextCourse {
+            course_id: course.id.clone(),
+            state: AiMaterialsState::Readable,
+            text_included: true,
+        });
+        Ok(Ok(context))
+    })?;
+    result.map_err(GateError::Blocked)
+}
+
+impl GatedContext {
+    /// How many citation handles the context has so far.
+    fn handles(&self) -> usize {
+        self.blocks
+            .iter()
+            .filter(|block| matches!(block, Block::Material { .. }))
+            .count()
+    }
+}
+
+/// The visible courses among `wanted` (ids or codes; empty: all visible), in list order.
+fn scoped_courses(store: &Store, wanted: &[String]) -> crate::Result<Vec<Course>> {
+    if wanted.is_empty() {
+        return store.list_courses(false);
+    }
+    let mut courses = Vec::new();
+    for query in wanted {
+        let course = store.resolve_course_with(query, true)?;
+        if !course.hidden && !courses.iter().any(|c: &Course| c.id == course.id) {
+            courses.push(course);
+        }
+    }
+    Ok(courses)
+}
+
+/// The structure block of one course: its state, week, this and next week's materials and the
+/// deadlines in the next `days` days. Adds the course to the summary and its listed materials to
+/// the manifest (ids only).
+fn course_structure(
+    store: &Store,
+    course: &Course,
+    at: AsOf,
+    days: u32,
+    context: &mut GatedContext,
+) -> crate::Result<String> {
+    let state = course.ai_materials();
+    context.summary.courses.push(ContextCourse {
+        course_id: course.id.clone(),
+        state,
+        text_included: false,
+    });
+    let mut text = format!(
+        "Course: {} [course_id: {}]\nMaterial text shared with AI: {}\n",
+        course.display_name(),
+        course.id,
+        match state {
+            AiMaterialsState::Readable => "yes",
+            AiMaterialsState::TurnedOff => "no (turned off by the student)",
+            AiMaterialsState::WithheldByPolicy => "no (the course does not allow AI use)",
+        }
+    );
+    let this_week = views::week_materials(store, &course.id, None, true, at)?;
+    match this_week.week {
+        Some(n) => {
+            let _ = writeln!(text, "Current week: {n}");
+            list_materials(
+                &mut text,
+                &format!("Week {n} materials"),
+                &this_week.materials,
+                context,
+            );
+            let next = views::week_materials(store, &course.id, Some(n + 1), true, at)?;
+            list_materials(
+                &mut text,
+                &format!("Week {} materials", n + 1),
+                &next.materials,
+                context,
+            );
+        }
+        None => {
+            text.push_str("Current week: unknown\n");
+            list_materials(&mut text, "Recent materials", &this_week.materials, context);
+        }
+    }
+    let deadlines = views::deadlines(store, Some(&course.id), days, 0, true, at)?;
+    let _ = writeln!(text, "Deadlines in the next {days} days:");
+    if deadlines.is_empty() {
+        text.push_str("- none\n");
+    }
+    for deadline in deadlines {
+        let when = deadline.event.when().map(|t| t.date_naive());
+        let _ = writeln!(
+            text,
+            "- {} {} ({})",
+            when.map(|d: NaiveDate| d.to_string()).unwrap_or_default(),
+            deadline.event.title,
+            deadline.event.kind.as_str()
+        );
+    }
+    Ok(text)
+}
+
+fn list_materials(
+    text: &mut String,
+    heading: &str,
+    materials: &[MaterialView],
+    context: &mut GatedContext,
+) {
+    let _ = writeln!(text, "{heading}:");
+    if materials.is_empty() {
+        text.push_str("- none\n");
+    }
+    for material in materials {
+        let _ = writeln!(
+            text,
+            "- [{}] {} ({})",
+            material.id,
+            material.title,
+            material.kind.as_str()
+        );
+        if !context
+            .manifest
+            .materials
+            .iter()
+            .any(|m| m.material_id == material.id)
+        {
+            context.manifest.materials.push(ManifestEntry {
+                material_id: material.id.clone(),
+                content_hash: None,
+                chunk_ords: Vec::new(),
+            });
+        }
+    }
+}
+
+/// Why a week material is left out of an explanation, if it is.
+fn left_out(store: &Store, view: &MaterialView) -> crate::Result<Option<LeftOutReason>> {
+    if view.kind == MaterialKind::ExternalLink {
+        return Ok(Some(LeftOutReason::ExternalLink));
+    }
+    if looks_like_assessment(&view.title) {
+        return Ok(Some(LeftOutReason::LooksLikeAssessment));
+    }
+    let readable = store
+        .get_material(&view.id)?
+        .is_some_and(|m| m.text_status == TextStatus::Ok);
+    if !readable || store.chunk_count(&view.id)? == 0 {
+        return Ok(Some(LeftOutReason::NoText));
+    }
+    Ok(None)
+}
+
+/// A title with an assessment word and no study word (whole words, any case).
+pub(crate) fn looks_like_assessment(title: &str) -> bool {
+    let words: Vec<String> = title
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let joined = format!(" {} ", words.join(" "));
+    let has = |phrase: &str| {
+        let phrase = format!(" {phrase} ");
+        // "hw3", "hw 3": a word that starts with "hw" followed by digits counts as "hw".
+        joined.contains(&phrase)
+            || (phrase == " hw "
+                && words.iter().any(|w| {
+                    w.strip_prefix("hw").is_some_and(|rest| {
+                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
+                    })
+                }))
+    };
+    ASSESSMENT_WORDS.iter().any(|w| has(w)) && !STUDY_WORDS.iter().any(|w| has(w))
+}
+
+/// Split `budget` characters fairly: every material gets the same share, and what a small one
+/// doesn't need goes to the others.
+fn fair_shares(sizes: &[usize], budget: usize) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..sizes.len()).collect();
+    order.sort_by_key(|&i| sizes[i]);
+    let mut shares = vec![0; sizes.len()];
+    let mut remaining = budget;
+    for (position, &i) in order.iter().enumerate() {
+        let left = sizes.len() - position;
+        let share = (remaining / left).min(sizes[i]);
+        shares[i] = share;
+        remaining -= share;
+    }
+    shares
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assessments_are_recognised_by_title_but_study_material_is_kept() {
+        for title in [
+            "Assignment 2",
+            "Homework 3 (due Oct 14)",
+            "HW4",
+            "hw 5",
+            "Problem Set 1",
+            "Quiz 2",
+            "Final Exam",
+            "Midterm",
+            "Lab report template",
+        ] {
+            assert!(looks_like_assessment(title), "{title}");
+        }
+        for title in [
+            "Midterm review",
+            "Practice quiz solutions",
+            "Exam preparation notes",
+            "Week 3 slides",
+            "Lecture 5: testing hypotheses",
+            "Homeworking tips",
+            "Shows",
+        ] {
+            assert!(!looks_like_assessment(title), "{title}");
+        }
+    }
+
+    #[test]
+    fn shares_are_fair_and_small_materials_give_back() {
+        assert_eq!(fair_shares(&[100, 100], 100), vec![50, 50]);
+        assert_eq!(fair_shares(&[10, 1000, 1000], 310), vec![10, 150, 150]);
+        assert_eq!(fair_shares(&[10, 20], 1000), vec![10, 20]);
+        assert_eq!(fair_shares(&[], 1000), Vec::<usize>::new());
+    }
+}

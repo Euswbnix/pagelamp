@@ -521,6 +521,20 @@ impl Store {
         Ok(value)
     }
 
+    /// Run `f` in one read transaction: every read inside sees the same snapshot of the
+    /// database (WAL), so a check and the data it guards can't disagree (the AI policy gate
+    /// reads a course's state and its text this way). Takes no write lock. Must not be nested
+    /// or wrap writes.
+    pub fn in_read_transaction<T>(&self, f: impl FnOnce(&Store) -> Result<T>) -> Result<T> {
+        if !self.conn.is_autocommit() {
+            return Err(nested_transaction_error());
+        }
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Deferred)?;
+        let value = f(self)?;
+        tx.commit()?;
+        Ok(value)
+    }
+
     /// Run `f` inside a SAVEPOINT: its statements take effect all together or not at all.
     /// Savepoints nest, so this works on its own and inside `in_transaction` alike.
     ///

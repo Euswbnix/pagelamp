@@ -59,6 +59,10 @@
 //! let context = GatedContext { blocks: Vec::new(), summary: ContextSummary::default(), manifest: ContextManifest::default() };
 //! ```
 
+mod builders;
+
+pub use builders::{ContextBudget, GateError, PlanScope, note_context, plan_context, week_context};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -127,8 +131,6 @@ pub struct CitationTarget {
 }
 
 /// One piece of a context, in order.
-// Built by the context builders (plan, week, note), which land next in M1.
-#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Clone, Debug)]
 enum Block {
     /// Titles, kinds, dates, week numbers and deadlines of the courses in scope.
