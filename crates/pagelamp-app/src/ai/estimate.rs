@@ -1,8 +1,8 @@
 //! "≈ $x" before Generate, and everything that would stop the run (design §3.5, §4.1): the
-//! gate's own blocks, question (b) on a cloud backend, the disclosure, an unpriced model, and
-//! the monthly budget. Local and cheap: DB reads only, no network call.
+//! gate's own blocks (question (b) on a cloud backend among them), the disclosure, an unpriced
+//! model, and the monthly budget. Local and cheap: DB reads only, no network call.
 
-use pagelamp_core::ai::{AiFeature, BlockReason, MaterialSharing};
+use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
     ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, assemble, note_context,
     plan_context, week_context,
@@ -45,11 +45,15 @@ impl App {
             return Ok(blocked_estimate(BlockReason::NoModelChosen));
         };
         let provider = self.provider_for(&choice.backend)?;
-        let cloud = !provider.profile.on_device();
+        let destination = if provider.profile.on_device() {
+            Destination::OnDevice
+        } else {
+            Destination::Cloud
+        };
         let at = AsOf::now_local();
 
-        // The gate decides what may be sent at all.
-        let (context, courses) = match request {
+        // The gate decides what may be sent at all, question (b) included.
+        let context = match request {
             EstimateRequest::StudyPlan {
                 horizon_days,
                 courses,
@@ -58,19 +62,16 @@ impl App {
                     courses: courses.clone(),
                     horizon_days: horizon_days.unwrap_or(DEFAULT_PLAN_DAYS),
                 };
-                (plan_context(&store, &scope, at), Vec::new())
+                plan_context(&store, &scope, at)
             }
             EstimateRequest::WeeklyExplanation { course, week } => {
                 let budget = ContextBudget {
                     max_chars: EXPLANATION_CONTEXT_CHARS,
                 };
-                (
-                    week_context(&store, course, *week, at, budget),
-                    vec![course.clone()],
-                )
+                week_context(&store, course, *week, at, destination, budget)
             }
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
-                (note_context(&store, at), Vec::new())
+                note_context(&store, at)
             }
         };
         let context = match context {
@@ -78,17 +79,6 @@ impl App {
             Err(GateError::Blocked(reason)) => return Ok(blocked_estimate(reason)),
             Err(GateError::Store(err)) => return Err(err.into()),
         };
-        // Question (b): material text never goes to a cloud backend for a course answered
-        // "not allowed" (owner decision D37, option 2).
-        let mut would_block = None;
-        if cloud && feature.sends_material_text() {
-            for course in &courses {
-                let course = store.resolve_course_with(course, true)?;
-                if course.material_sharing == MaterialSharing::NotAllowed {
-                    would_block = Some(BlockReason::MaterialSharingNotAllowed);
-                }
-            }
-        }
         let (prompt, output, max_output) = request_shape(feature, &context);
         let estimate = pagelamp_llm::estimate::estimate(
             &provider.profile,
@@ -98,16 +88,14 @@ impl App {
             choice.effort,
             max_output,
         );
-        if would_block.is_none() {
-            would_block = self.other_blocks(
-                &store,
-                &choice.backend,
-                &choice.model,
-                &provider,
-                estimate.micro_usd_upper,
-                estimate.price_known,
-            )?;
-        }
+        let would_block = self.other_blocks(
+            &store,
+            &choice.backend,
+            &choice.model,
+            &provider,
+            estimate.micro_usd_upper,
+            estimate.price_known,
+        )?;
         Ok(CostEstimate {
             micro_usd_upper: estimate.micro_usd_upper,
             input_tokens: estimate.input_tokens,

@@ -308,7 +308,13 @@ async fn the_estimate_says_what_would_block_a_run() {
         .unwrap()
     };
     choose("gpt-6-luna");
-    assert_eq!(block(&app), Some(BlockReason::DisclosureNotAcknowledged));
+    // Blocks after the gate keep the full estimate (the UI shows the amount).
+    let pending = app.estimate_generation(&request).unwrap();
+    assert_eq!(
+        pending.would_block,
+        Some(BlockReason::DisclosureNotAcknowledged)
+    );
+    assert!(pending.micro_usd_upper.is_some() && pending.input_tokens > 0);
     let version = app.ai_status().unwrap().backends[0].disclosure.version;
     app.acknowledge_ai_disclosure(&backend, version).unwrap();
 
@@ -320,7 +326,20 @@ async fn the_estimate_says_what_would_block_a_run() {
     // Question (b): material text never goes to a cloud backend for a "not allowed" course.
     app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
         .unwrap();
-    assert_eq!(block(&app), Some(BlockReason::MaterialSharingNotAllowed));
+    // The gate's blocks (question (b) among them) carry no numbers: nothing would be sent.
+    let not_allowed = app.estimate_generation(&request).unwrap();
+    assert_eq!(
+        not_allowed.would_block,
+        Some(BlockReason::MaterialSharingNotAllowed)
+    );
+    assert_eq!(
+        (
+            not_allowed.micro_usd_upper,
+            not_allowed.input_tokens,
+            not_allowed.price_known
+        ),
+        (None, 0, false)
+    );
     app.set_course_material_sharing("DEMO101", MaterialSharing::NotSure)
         .unwrap();
     assert_eq!(block(&app), None, "not sure proceeds (D37 option 2)");
@@ -338,7 +357,12 @@ async fn the_estimate_says_what_would_block_a_run() {
 
     // Budget.
     app.set_monthly_budget(Some(1)).unwrap();
-    assert_eq!(block(&app), Some(BlockReason::BudgetReached));
+    let over = app.estimate_generation(&request).unwrap();
+    assert_eq!(over.would_block, Some(BlockReason::BudgetReached));
+    assert_eq!(
+        over.micro_usd_upper, ok.micro_usd_upper,
+        "the amount that would go over"
+    );
     app.set_monthly_budget(None).unwrap();
     assert_eq!(block(&app), None, "no cap");
 
@@ -350,6 +374,7 @@ async fn the_estimate_says_what_would_block_a_run() {
         Some(BlockReason::PriceUnknownNotAcknowledged)
     );
     assert!(!unpriced.price_known && unpriced.micro_usd_upper.is_none());
+    assert!(unpriced.input_tokens > 0);
     app.acknowledge_unpriced_model(&backend, "gpt-9-unreleased")
         .unwrap();
     assert_eq!(block(&app), None);
@@ -357,6 +382,51 @@ async fn the_estimate_says_what_would_block_a_run() {
     // Removing the provider forgets its routing.
     app.remove_model_provider("openai").unwrap();
     assert_eq!(block(&app), Some(BlockReason::NoModelChosen));
+}
+
+#[tokio::test]
+async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    seed_course(&app);
+    Store::open(&app.db_path())
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "ollama".into(),
+            preset: "ollama".into(),
+            label: "Ollama".into(),
+            wire: "ollama_native".into(),
+            base_url: "http://127.0.0.1:11434".into(),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    app.set_feature_model(
+        AiFeature::WeeklyExplanation,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "local-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let version = app.ai_status().unwrap().backends[0].disclosure.version;
+    app.acknowledge_ai_disclosure(&backend, version).unwrap();
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+        .unwrap();
+    app.set_monthly_budget(Some(0)).unwrap();
+    let estimate = app
+        .estimate_generation(&EstimateRequest::WeeklyExplanation {
+            course: "DEMO101".into(),
+            week: Some(3),
+        })
+        .unwrap();
+    assert_eq!(estimate.would_block, None, "{estimate:?}");
+    assert_eq!(estimate.micro_usd_upper, Some(0));
+    assert!(estimate.input_tokens > 0);
 }
 
 #[tokio::test]

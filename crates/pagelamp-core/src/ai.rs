@@ -242,6 +242,24 @@ impl MaterialSharing {
             MaterialSharing::NotAllowed => "not_allowed",
         }
     }
+
+    /// Whether material text may go to a model at `destination`: everything but `not_allowed`
+    /// with a cloud model.
+    pub fn allows(self, destination: Destination) -> bool {
+        !(self == MaterialSharing::NotAllowed && destination == Destination::Cloud)
+    }
+}
+
+/// Where the model that receives a context runs. Question (b) limits only cloud models; a model
+/// on this computer (a local server) sends nothing anywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Destination {
+    OnDevice,
+    Cloud,
+}
+
+impl Destination {
+    pub const ALL: [Destination; 2] = [Destination::OnDevice, Destination::Cloud];
 }
 
 /// A provider the student added, as stored (`model_providers`; the key is in the keychain).
