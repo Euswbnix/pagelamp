@@ -112,6 +112,7 @@ export type {
   TermResolution,
   TermSource,
   TextErrorKind,
+  TextProblem,
   TextStatus,
   TombstoneState,
   UnreadableFiles,
