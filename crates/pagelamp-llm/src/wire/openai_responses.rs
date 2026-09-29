@@ -4,10 +4,13 @@
 use pagelamp_core::ai::{Effort, ModelErrorKind};
 use serde_json::{Value, json};
 
-use super::{Dialect, Step, count, event_json, kind_for_status, status_message};
+use super::{
+    BodyOptions, Dialect, REPAIR_INSTRUCTION, Step, count, event_json, kind_for_status,
+    status_message,
+};
 use crate::error::ModelError;
 use crate::profile::ProviderProfile;
-use crate::request::{GenerateRequest, OutputSpec, StopReason, Usage};
+use crate::request::{GenerateRequest, JsonTier, OutputSpec, StopReason, Usage};
 use crate::sse::{Framing, RawEvent};
 
 pub(crate) struct OpenAiResponses;
@@ -25,14 +28,29 @@ impl Dialect for OpenAiResponses {
         "/responses".to_string()
     }
 
-    fn request_body(req: &GenerateRequest, profile: &ProviderProfile) -> Value {
+    fn request_body(
+        req: &GenerateRequest,
+        profile: &ProviderProfile,
+        options: BodyOptions,
+    ) -> Value {
+        let mut input = vec![json!({
+            "role": "user",
+            "content": [{ "type": "input_text", "text": req.prompt.user_text() }],
+        })];
+        if let Some(previous) = options.repair {
+            input.push(json!({
+                "role": "assistant",
+                "content": [{ "type": "output_text", "text": previous }],
+            }));
+            input.push(json!({
+                "role": "user",
+                "content": [{ "type": "input_text", "text": REPAIR_INSTRUCTION }],
+            }));
+        }
         let mut body = json!({
             "model": req.model,
             "instructions": req.prompt.instructions(),
-            "input": [{
-                "role": "user",
-                "content": [{ "type": "input_text", "text": req.prompt.user_text() }],
-            }],
+            "input": input,
             "stream": true,
             "store": false,
             "max_output_tokens": req.max_output_tokens,
@@ -48,9 +66,17 @@ impl Dialect for OpenAiResponses {
             body["reasoning"] = json!({ "effort": effort });
         }
         if let OutputSpec::Json { name, schema } = &req.output {
-            body["text"] = json!({
-                "format": { "type": "json_schema", "name": name, "schema": schema, "strict": true }
-            });
+            match options.tier {
+                JsonTier::NativeSchema => {
+                    body["text"] = json!({
+                        "format": { "type": "json_schema", "name": name, "schema": schema, "strict": true }
+                    });
+                }
+                JsonTier::JsonObject => {
+                    body["text"] = json!({ "format": { "type": "json_object" } });
+                }
+                JsonTier::PromptOnly => {}
+            }
         }
         body
     }

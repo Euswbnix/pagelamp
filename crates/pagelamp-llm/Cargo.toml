@@ -17,6 +17,9 @@ tracing.workspace = true
 url.workspace = true
 toml = "0.9"
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+# Validates JSON answers locally. No default features: they fetch remote `$ref`s and bring a
+# second TLS stack.
+jsonschema = { version = "0.58", default-features = false }
 
 [dev-dependencies]
 pagelamp-core = { workspace = true, features = ["test-support"] }

@@ -1,0 +1,9 @@
+: SYNTHETIC fixture (no real API call): a JSON answer streamed as content deltas, shaped after
+: OpenAI's chat.completion.chunk format (2026-09-29).
+
+data: {"id":"chatcmpl-demo2","object":"chat.completion.chunk","model":"gemini-3.1-flash-lite","choices":[{"index":0,"delta":{"role":"assistant","content":"{\"summary\":\"Week 3 "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-demo2","object":"chat.completion.chunk","model":"gemini-3.1-flash-lite","choices":[{"index":0,"delta":{"content":"covers stomata.\",\"citations\":[\"c1\"]}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":800,"completion_tokens":40,"total_tokens":840}}
+
+data: [DONE]
+

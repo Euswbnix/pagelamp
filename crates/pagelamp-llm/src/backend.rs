@@ -14,12 +14,16 @@ use crate::client::{
 };
 use crate::error::{LlmError, ModelError};
 use crate::profile::{ApiKey, EndpointCheck, ProviderProfile, Wire, check_endpoint};
-use crate::request::{GenerateRequest, Outcome, OutputSpec, StopReason, StreamEvent, Usage};
+use crate::request::{
+    GenerateRequest, JsonTier, Notice, Outcome, OutputSpec, StopReason, StreamEvent, Usage,
+};
 use crate::retry::delay_before_retry;
 use crate::sse::EventParser;
 use crate::wire::anthropic::AnthropicMessages;
+use crate::wire::ollama::OllamaNative;
+use crate::wire::openai_chat::OpenAiChat;
 use crate::wire::openai_responses::OpenAiResponses;
-use crate::wire::{Dialect, Step};
+use crate::wire::{BodyOptions, Dialect, Step};
 
 /// The most answer text accepted from one call.
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
@@ -129,32 +133,133 @@ impl HttpDriver {
     ) -> Result<Outcome, LlmError> {
         match self.profile.wire {
             Wire::OpenAiResponses => {
-                self.run::<OpenAiResponses>(&request, on_event, &cancel)
+                self.generate_with::<OpenAiResponses>(&request, on_event, &cancel)
                     .await
             }
             Wire::AnthropicMessages => {
-                self.run::<AnthropicMessages>(&request, on_event, &cancel)
+                self.generate_with::<AnthropicMessages>(&request, on_event, &cancel)
                     .await
             }
-            Wire::OpenAiChat | Wire::OllamaNative => Err(LlmError::Model(ModelError::new(
-                ModelErrorKind::Unsupported,
-                "this provider type is not available yet",
-            ))),
+            Wire::OpenAiChat => {
+                self.generate_with::<OpenAiChat>(&request, on_event, &cancel)
+                    .await
+            }
+            Wire::OllamaNative => {
+                self.generate_with::<OllamaNative>(&request, on_event, &cancel)
+                    .await
+            }
         }
     }
 
-    /// The full request body for `request` on this provider (also used by the per-wire golden
-    /// tests: exactly these bytes are sent).
+    /// The full request body for `request` on this provider, as first sent (also used by the
+    /// per-wire golden tests: exactly these bytes are sent).
     pub fn request_body(&self, request: &GenerateRequest) -> serde_json::Value {
+        let options = BodyOptions {
+            tier: self.first_tier(),
+            repair: None,
+        };
         match self.profile.wire {
-            Wire::OpenAiResponses => self.body::<OpenAiResponses>(request),
-            Wire::AnthropicMessages => self.body::<AnthropicMessages>(request),
-            Wire::OpenAiChat | Wire::OllamaNative => serde_json::Value::Null,
+            Wire::OpenAiResponses => self.body::<OpenAiResponses>(request, options),
+            Wire::AnthropicMessages => self.body::<AnthropicMessages>(request, options),
+            Wire::OpenAiChat => self.body::<OpenAiChat>(request, options),
+            Wire::OllamaNative => self.body::<OllamaNative>(request, options),
         }
     }
 
-    fn body<D: Dialect>(&self, request: &GenerateRequest) -> serde_json::Value {
-        let mut body = D::request_body(request, &self.profile);
+    /// The best JSON tier this provider is known to take.
+    fn first_tier(&self) -> JsonTier {
+        let quirks = &self.profile.quirks;
+        if quirks.no_json_mode {
+            JsonTier::PromptOnly
+        } else if quirks.json_object_only {
+            JsonTier::JsonObject
+        } else {
+            JsonTier::NativeSchema
+        }
+    }
+
+    /// Run `request`; for JSON, fall back a tier when the server rejects the format, then
+    /// validate the answer locally and, below the native tier, ask once for a repair.
+    async fn generate_with<D: Dialect>(
+        &self,
+        request: &GenerateRequest,
+        on_event: &(dyn Fn(StreamEvent) + Send + Sync),
+        cancel: &CancellationToken,
+    ) -> Result<Outcome, LlmError> {
+        let OutputSpec::Json { schema, .. } = &request.output else {
+            let options = BodyOptions {
+                tier: JsonTier::NativeSchema,
+                repair: None,
+            };
+            return self.run::<D>(request, options, on_event, cancel).await;
+        };
+        let validator = jsonschema::validator_for(schema).map_err(|_| {
+            ModelError::new(
+                ModelErrorKind::Unsupported,
+                "the answer format is not usable",
+            )
+        })?;
+        let mut tier = self.first_tier();
+        let first = loop {
+            let options = BodyOptions { tier, repair: None };
+            match self.run::<D>(request, options, on_event, cancel).await {
+                Err(LlmError::Model(error)) if rejects_format(&error) => match tier.next() {
+                    Some(next) => {
+                        tracing::info!(
+                            target: "pagelamp::llm",
+                            provider = %self.profile.id,
+                            from = tier.as_str(),
+                            to = next.as_str(),
+                            "JSON format refused; trying the next"
+                        );
+                        on_event(StreamEvent::Notice(Notice::JsonFallback));
+                        tier = next;
+                    }
+                    None => return Err(LlmError::Model(error)),
+                },
+                other => break other?,
+            }
+        };
+        let mut outcome = Outcome {
+            json_tier: Some(tier),
+            ..first
+        };
+        if outcome.stop != StopReason::Complete {
+            return Ok(outcome); // cut off or refused: nothing to validate
+        }
+        if let Some(value) = valid_json(&outcome.text, &validator) {
+            outcome.json = Some(value);
+            return Ok(outcome);
+        }
+        if tier == JsonTier::NativeSchema {
+            return Err(bad_json());
+        }
+        on_event(StreamEvent::Notice(Notice::Repairing));
+        let options = BodyOptions {
+            tier,
+            repair: Some(&outcome.text),
+        };
+        let second = self.run::<D>(request, options, on_event, cancel).await?;
+        let usage = outcome.usage.plus(second.usage);
+        let json = (second.stop == StopReason::Complete)
+            .then(|| valid_json(&second.text, &validator))
+            .flatten()
+            .ok_or_else(bad_json)?;
+        Ok(Outcome {
+            json: Some(json),
+            usage,
+            json_tier: Some(tier),
+            repaired: true,
+            ..second
+        })
+    }
+
+    fn body<D: Dialect>(
+        &self,
+        request: &GenerateRequest,
+        options: BodyOptions<'_>,
+    ) -> serde_json::Value {
+        let mut body = D::request_body(request, &self.profile, options);
         if let Some(extra) = &self.profile.quirks.extra_body
             && let Ok(extra) = serde_json::to_value(extra)
         {
@@ -178,20 +283,22 @@ impl HttpDriver {
         Ok(headers)
     }
 
+    /// One request with retries before the first byte.
     async fn run<D: Dialect>(
         &self,
         request: &GenerateRequest,
+        options: BodyOptions<'_>,
         on_event: &(dyn Fn(StreamEvent) + Send + Sync),
         cancel: &CancellationToken,
     ) -> Result<Outcome, LlmError> {
         let url = join_path(&self.base_url, &D::generate_path(&request.model));
-        let body = self.body::<D>(request);
+        let body = self.body::<D>(request, options);
         let headers = self.headers::<D>()?;
         let mut tries = 0;
         loop {
             tries += 1;
             let error = match self
-                .attempt::<D>(&url, &headers, &body, request, on_event, cancel)
+                .attempt::<D>(&url, &headers, &body, on_event, cancel)
                 .await
             {
                 Ok(outcome) => return Ok(outcome),
@@ -223,7 +330,6 @@ impl HttpDriver {
         url: &Url,
         headers: &HeaderMap,
         body: &serde_json::Value,
-        request: &GenerateRequest,
         on_event: &(dyn Fn(StreamEvent) + Send + Sync),
         cancel: &CancellationToken,
     ) -> Result<Outcome, Attempt> {
@@ -279,24 +385,18 @@ impl HttpDriver {
                 }
                 Ok(Ok(None)) => parser.finish().map_err(|_| after(too_long(), &text))?,
             };
+            // Event by event, so an error event knows whether text came before it.
             for event in &events {
                 let steps = D::on_event(&mut state, event).map_err(|error| after(error, &text))?;
                 for step in steps {
-                    match step {
-                        Step::Text(delta) => {
-                            if text.len() + delta.len() > MAX_OUTPUT_BYTES {
-                                return Err(after(too_long(), &text).into());
-                            }
-                            text.push_str(&delta);
-                            on_event(StreamEvent::TextDelta(delta));
-                        }
-                        Step::Usage(new) => {
-                            usage = new;
-                            on_event(StreamEvent::Usage(usage));
-                        }
-                        Step::Done { stop, model } => finished = Some((stop, model)),
-                    }
+                    apply(step, &mut text, &mut usage, &mut finished, on_event)?;
                 }
+            }
+            if ended
+                && finished.is_none()
+                && let Some(step) = D::on_end(&mut state)
+            {
+                apply(step, &mut text, &mut usage, &mut finished, on_event)?;
             }
             if ended && finished.is_none() {
                 let error = ModelError::new(
@@ -311,23 +411,42 @@ impl HttpDriver {
             StopReason::Refusal(reason) if reason.is_empty() => StopReason::Refusal(text.clone()),
             other => other,
         };
-        let json = match (&request.output, &stop) {
-            (OutputSpec::Json { .. }, StopReason::Complete) => {
-                Some(serde_json::from_str(&text).map_err(|_| {
-                    ModelError::new(ModelErrorKind::BadOutput, "the answer is not valid JSON")
-                })?)
-            }
-            _ => None,
-        };
         Ok(Outcome {
             text,
-            json,
+            json: None,
             stop,
             usage,
             request_id,
             model_reported,
+            json_tier: None,
+            repaired: false,
         })
     }
+}
+
+/// Take one step of the stream into the answer so far.
+fn apply(
+    step: Step,
+    text: &mut String,
+    usage: &mut Usage,
+    finished: &mut Option<(StopReason, Option<String>)>,
+    on_event: &(dyn Fn(StreamEvent) + Send + Sync),
+) -> Result<(), ModelError> {
+    match step {
+        Step::Text(delta) => {
+            if text.len() + delta.len() > MAX_OUTPUT_BYTES {
+                return Err(after(too_long(), text));
+            }
+            text.push_str(&delta);
+            on_event(StreamEvent::TextDelta(delta));
+        }
+        Step::Usage(new) => {
+            *usage = new;
+            on_event(StreamEvent::Usage(new));
+        }
+        Step::Done { stop, model } => *finished = Some((stop, model)),
+    }
+    Ok(())
 }
 
 /// How one try ended when it didn't produce an outcome.
@@ -340,6 +459,33 @@ impl From<ModelError> for Attempt {
     fn from(error: ModelError) -> Self {
         Attempt::Failed(error)
     }
+}
+
+/// A 400/422 before any output while a JSON format was asked for: the server may not know the
+/// format (the next tier is tried).
+fn rejects_format(error: &ModelError) -> bool {
+    error.kind == ModelErrorKind::InvalidRequest
+        && !error.after_output
+        && matches!(error.http_status, Some(400 | 422))
+}
+
+/// `text` parsed and valid against the schema (a code fence around it is tolerated).
+fn valid_json(text: &str, validator: &jsonschema::Validator) -> Option<serde_json::Value> {
+    let trimmed = text.trim();
+    let unfenced = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .and_then(|rest| rest.strip_suffix("```"))
+        .unwrap_or(trimmed);
+    let value: serde_json::Value = serde_json::from_str(unfenced.trim()).ok()?;
+    validator.is_valid(&value).then_some(value)
+}
+
+fn bad_json() -> LlmError {
+    LlmError::Model(ModelError::new(
+        ModelErrorKind::BadOutput,
+        "the answer did not match the required format",
+    ))
 }
 
 fn timed_out() -> ModelError {

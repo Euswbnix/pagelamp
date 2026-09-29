@@ -1,0 +1,7 @@
+: SYNTHETIC fixture (no real API call): JSON that misses a required field (for the repair
+: test), shaped after OpenAI's chat.completion.chunk format (2026-09-29).
+
+data: {"id":"chatcmpl-demo3","object":"chat.completion.chunk","model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":"{\"summary\":\"Week 3 covers stomata.\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":700,"completion_tokens":20,"total_tokens":720}}
+
+data: [DONE]
+

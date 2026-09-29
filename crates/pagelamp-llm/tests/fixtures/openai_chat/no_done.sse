@@ -1,0 +1,7 @@
+: SYNTHETIC fixture (no real API call): a server that ends the stream after the finish reason
+: without [DONE], and without usage (llama.cpp-style), shaped after chat.completion.chunk (2026-09-29).
+
+data: {"id":"chatcmpl-demo4","object":"chat.completion.chunk","model":"local-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Photosynthesis turns light"},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-demo4","object":"chat.completion.chunk","model":"local-model","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+

@@ -583,3 +583,372 @@ async fn a_silent_stream_times_out_after_its_text() {
     assert_eq!(error.kind, ModelErrorKind::Timeout);
     assert!(error.after_output, "not retried: text was already shown");
 }
+
+// ----- OpenAI-compatible Chat Completions -----------------------------------------------------
+
+#[tokio::test]
+async fn openrouter_streams_with_privacy_routing_attribution_and_usage() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/chat/completions"))
+        .and(header("authorization", format!("Bearer {KEY}").as_str()))
+        .and(header("x-openrouter-title", "PageLamp"))
+        .respond_with(sse(fixture("openai_chat/text.sse")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("openrouter", &format!("{}/api/v1", server.uri()));
+    let (result, events) = run(&backend, request("openai/gpt-6-luna", OutputSpec::Text)).await;
+    let outcome = result.unwrap();
+    assert_eq!(outcome.text, "Photosynthesis turns light into sugar [c1].");
+    assert_eq!(texts(&events), outcome.text);
+    assert_eq!(outcome.stop, StopReason::Complete);
+    assert_eq!(
+        outcome.usage,
+        Usage {
+            input_uncached: 200,
+            cache_read: 1000,
+            cache_write: 0,
+            output: 90,
+            reasoning: Some(64),
+            estimated: false
+        }
+    );
+    assert_eq!(outcome.model_reported.as_deref(), Some("openai/gpt-6-luna"));
+    let sent = body_of(&server.received_requests().await.unwrap()[0]);
+    assert_eq!(sent["messages"][0]["role"], "system");
+    assert_eq!(
+        sent["messages"][0]["content"],
+        "Explain the week. Cite handles."
+    );
+    assert_eq!(sent["messages"][1]["content"], MATERIAL);
+    assert_eq!(sent["stream_options"]["include_usage"], true);
+    assert_eq!(sent["provider"]["data_collection"], "deny");
+    assert_eq!(sent["provider"]["require_parameters"], true);
+    assert_eq!(sent["reasoning"]["effort"], "low");
+    assert_eq!(sent["max_tokens"], 1000);
+    for absent in ["temperature", "tools", "tool_choice", "reasoning_effort"] {
+        assert!(sent.get(absent).is_none(), "{absent} sent: {sent}");
+    }
+}
+
+#[tokio::test]
+async fn gemini_and_lm_studio_send_effort_only_where_the_preset_says() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/json.sse")))
+        .mount(&server)
+        .await;
+    let gemini = driver("gemini", &format!("{}/v1beta/openai", server.uri()));
+    let (result, _) = run(&gemini, request("gemini-3.1-flash-lite", json_output())).await;
+    let outcome = result.unwrap();
+    assert_eq!(
+        outcome.json,
+        Some(json!({ "summary": "Week 3 covers stomata.", "citations": ["c1"] }))
+    );
+    assert_eq!(
+        outcome.json_tier,
+        Some(pagelamp_llm::request::JsonTier::NativeSchema)
+    );
+    let lm_studio = driver("lm_studio", &format!("{}/v1", server.uri()));
+    run(&lm_studio, request("qwen3.5-9b", OutputSpec::Text))
+        .await
+        .0
+        .unwrap();
+
+    let received = server.received_requests().await.unwrap();
+    let gemini_sent = body_of(&received[0]);
+    assert_eq!(gemini_sent["reasoning_effort"], "low");
+    assert_eq!(gemini_sent["response_format"]["type"], "json_schema");
+    assert_eq!(
+        gemini_sent["response_format"]["json_schema"]["strict"],
+        true
+    );
+    assert_eq!(
+        gemini_sent["response_format"]["json_schema"]["name"],
+        "week_summary"
+    );
+    let lm_sent = body_of(&received[1]);
+    assert!(lm_sent.get("reasoning_effort").is_none() && lm_sent.get("reasoning").is_none());
+    assert!(lm_sent.get("response_format").is_none());
+    // A local server gets no key even if one was stored.
+    assert!(received[1].headers.get("authorization").is_none());
+}
+
+#[tokio::test]
+async fn a_server_ending_without_done_still_completes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/no_done.sse")))
+        .mount(&server)
+        .await;
+    let backend = driver("custom", &format!("{}/v1", server.uri()));
+    let outcome = run(&backend, request("local-model", OutputSpec::Text))
+        .await
+        .0
+        .unwrap();
+    assert_eq!(outcome.text, "Photosynthesis turns light");
+    assert_eq!(outcome.stop, StopReason::MaxTokens);
+    assert_eq!(outcome.usage, Usage::default(), "no usage reported");
+}
+
+#[tokio::test]
+async fn chat_errors_mid_stream_and_in_responses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/midstream_error.sse")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("openrouter", &format!("{}/api/v1", server.uri()));
+    let error = model_error(
+        run(&backend, request("openai/gpt-6-luna", OutputSpec::Text))
+            .await
+            .0,
+    );
+    assert_eq!(error.kind, ModelErrorKind::Overloaded);
+    assert!(error.after_output);
+
+    let cases: [(u16, Value, ModelErrorKind); 4] = [
+        (
+            402,
+            json!({"error": {"code": 402, "message": "Insufficient credits"}}),
+            ModelErrorKind::BillingOrQuota,
+        ),
+        (
+            401,
+            json!({"error": {"code": 401, "message": "No auth credentials found"}}),
+            ModelErrorKind::AuthRejected,
+        ),
+        // Gemini's compatible endpoint wraps its error in a list.
+        (
+            429,
+            json!([{"error": {"code": 429, "message": "Resource has been exhausted", "status": "RESOURCE_EXHAUSTED"}}]),
+            ModelErrorKind::RateLimited,
+        ),
+        (
+            404,
+            json!({"error": {"message": "The model `nope` does not exist", "type": "invalid_request_error", "code": "model_not_found"}}),
+            ModelErrorKind::ModelNotFound,
+        ),
+    ];
+    for (status, body, kind) in cases {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("retry-after", "0")
+                    .set_body_json(body.clone()),
+            )
+            .mount(&server)
+            .await;
+        let backend = driver("custom", &format!("{}/v1", server.uri()));
+        let error = model_error(run(&backend, request("m", OutputSpec::Text)).await.0);
+        assert_eq!(error.kind, kind, "{status} {body}");
+        assert!(!error.message.is_empty());
+    }
+}
+
+// ----- structured output: tiers and repair ------------------------------------------------------
+
+#[tokio::test]
+async fn a_server_without_schemas_gets_json_object_then_the_answer_is_checked() {
+    let server = MockServer::start().await;
+    // Rejects the strict schema, like an older compatible server.
+    Mock::given(method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            json!({ "response_format": { "type": "json_schema" } }),
+        ))
+        .respond_with(ResponseTemplate::new(400).set_body_json(
+            json!({"error": {"message": "response_format json_schema is not supported", "type": "invalid_request_error"}}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            json!({ "response_format": { "type": "json_object" } }),
+        ))
+        .respond_with(sse(fixture("openai_chat/json.sse")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("custom", &format!("{}/v1", server.uri()));
+    let (result, events) = run(&backend, request("local-model", json_output())).await;
+    let outcome = result.unwrap();
+    assert_eq!(
+        outcome.json_tier,
+        Some(pagelamp_llm::request::JsonTier::JsonObject)
+    );
+    assert!(!outcome.repaired);
+    assert!(events.contains(&StreamEvent::Notice(
+        pagelamp_llm::request::Notice::JsonFallback
+    )));
+}
+
+#[tokio::test]
+async fn an_answer_off_the_format_is_repaired_once_with_the_static_instruction() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            json!({ "response_format": { "type": "json_schema" } }),
+        ))
+        .respond_with(ResponseTemplate::new(422).set_body_json(
+            json!({"error": {"message": "unknown field response_format.json_schema"}}),
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/json_invalid.sse")))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/json.sse")))
+        .mount(&server)
+        .await;
+    let backend = driver("custom", &format!("{}/v1", server.uri()));
+    let (result, events) = run(&backend, request("local-model", json_output())).await;
+    let outcome = result.unwrap();
+    assert!(outcome.repaired);
+    assert_eq!(
+        outcome.json,
+        Some(json!({ "summary": "Week 3 covers stomata.", "citations": ["c1"] }))
+    );
+    assert_eq!(
+        outcome.usage.input_uncached,
+        700 + 800,
+        "both calls counted"
+    );
+    assert!(events.contains(&StreamEvent::Notice(
+        pagelamp_llm::request::Notice::Repairing
+    )));
+
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(received.len(), 3);
+    let repair = body_of(&received[2]);
+    let messages = repair["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 4);
+    assert_eq!(messages[1]["content"], MATERIAL, "the same prompt");
+    assert_eq!(messages[2]["role"], "assistant");
+    assert_eq!(
+        messages[2]["content"],
+        "{\"summary\":\"Week 3 covers stomata.\"}"
+    );
+    assert_eq!(messages[3]["role"], "user");
+    assert!(
+        messages[3]["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("Your previous answer did not match")
+    );
+}
+
+#[tokio::test]
+async fn a_failed_repair_or_a_bad_strict_answer_is_bad_output() {
+    // Below the native tier: one repair, then bad output.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/json_invalid.sse")))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let profile = preset("custom")
+        .unwrap()
+        .with_base_url(check_base_url(&format!("{}/v1", server.uri())).unwrap());
+    let mut profile = profile;
+    profile.quirks.json_object_only = true;
+    let backend = Backend::Http(HttpDriver::new(profile, None).unwrap());
+    let error = model_error(run(&backend, request("local-model", json_output())).await.0);
+    assert_eq!(error.kind, ModelErrorKind::BadOutput);
+    server.verify().await;
+
+    // The strict tier guarantees the format: a violation isn't repaired.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("openai_chat/json_invalid.sse")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("custom", &format!("{}/v1", server.uri()));
+    let error = model_error(run(&backend, request("local-model", json_output())).await.0);
+    assert_eq!(error.kind, ModelErrorKind::BadOutput);
+    server.verify().await;
+}
+
+// ----- Ollama -----------------------------------------------------------------------------------
+
+fn ndjson(body: String) -> ResponseTemplate {
+    ResponseTemplate::new(200)
+        .insert_header("content-type", "application/x-ndjson")
+        .set_body_string(body)
+}
+
+#[tokio::test]
+async fn ollama_streams_ndjson_with_a_fitted_context_and_thinking_off() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(ndjson(fixture("ollama/text.ndjson")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("ollama", &server.uri());
+    let (result, events) = run(&backend, request("qwen3.5:9b", OutputSpec::Text)).await;
+    let outcome = result.unwrap();
+    assert_eq!(outcome.text, "Photosynthesis turns light into sugar [c1].");
+    assert_eq!(texts(&events), outcome.text);
+    assert_eq!(outcome.usage.input_uncached, 1300);
+    assert_eq!(outcome.usage.output, 24);
+    let received = server.received_requests().await.unwrap();
+    let sent = body_of(&received[0]);
+    assert_eq!(sent["think"], false);
+    assert_eq!(sent["stream"], true);
+    assert_eq!(sent["options"]["num_predict"], 1000);
+    let num_ctx = sent["options"]["num_ctx"].as_u64().unwrap();
+    assert!(num_ctx >= 4096 && num_ctx.is_multiple_of(1024), "{num_ctx}");
+    assert!(received[0].headers.get("authorization").is_none());
+}
+
+#[tokio::test]
+async fn ollama_json_uses_the_schema_as_format_and_maps_errors() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ndjson(fixture("ollama/json.ndjson")))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ndjson(fixture("ollama/midstream_error.ndjson")))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(404)
+                .set_body_json(json!({"error": "model \"nope\" not found, try pulling it first"})),
+        )
+        .mount(&server)
+        .await;
+    let backend = driver("ollama", &server.uri());
+    let outcome = run(&backend, request("gemma4:e4b", json_output()))
+        .await
+        .0
+        .unwrap();
+    assert_eq!(
+        outcome.json,
+        Some(json!({ "summary": "Week 3 covers stomata.", "citations": ["c1"] }))
+    );
+    let sent = body_of(&server.received_requests().await.unwrap()[0]);
+    assert_eq!(sent["format"]["type"], "object");
+    assert_eq!(sent["format"]["additionalProperties"], false);
+
+    let error = model_error(
+        run(&backend, request("qwen3.5:9b", OutputSpec::Text))
+            .await
+            .0,
+    );
+    assert!(error.after_output);
+    let error = model_error(run(&backend, request("nope", OutputSpec::Text)).await.0);
+    assert_eq!(error.kind, ModelErrorKind::ModelNotFound);
+}

@@ -3,6 +3,8 @@
 //! (`backend.rs`); nothing here does I/O.
 
 pub(crate) mod anthropic;
+pub(crate) mod ollama;
+pub(crate) mod openai_chat;
 pub(crate) mod openai_responses;
 
 use pagelamp_core::ai::ModelErrorKind;
@@ -10,8 +12,22 @@ use reqwest::header::HeaderMap;
 
 use crate::error::ModelError;
 use crate::profile::ProviderProfile;
-use crate::request::{GenerateRequest, StopReason, Usage};
+use crate::request::{GenerateRequest, JsonTier, StopReason, Usage};
 use crate::sse::{Framing, RawEvent};
+
+/// The static repair instruction: sent after an answer that didn't match the format, with that
+/// answer as the model's own previous turn. No other text is ever added to a prompt.
+pub(crate) const REPAIR_INSTRUCTION: &str = "Your previous answer did not match the required \
+     JSON format. Reply again with only the JSON object, exactly in the required format.";
+
+/// How to build one request body beyond the `GenerateRequest` itself.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BodyOptions<'a> {
+    /// How the JSON answer is asked for (ignored for text).
+    pub tier: JsonTier,
+    /// The model's previous answer, when asking it to repair that answer.
+    pub repair: Option<&'a str>,
+}
 
 /// What one stream event means.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,8 +53,16 @@ pub(crate) trait Dialect {
     fn headers() -> HeaderMap {
         HeaderMap::new()
     }
-    fn request_body(req: &GenerateRequest, profile: &ProviderProfile) -> serde_json::Value;
+    fn request_body(
+        req: &GenerateRequest,
+        profile: &ProviderProfile,
+        options: BodyOptions<'_>,
+    ) -> serde_json::Value;
     fn on_event(state: &mut Self::State, event: &RawEvent) -> Result<Vec<Step>, ModelError>;
+    /// The stream ended without a `Done` step: what it means (`None`: it broke off).
+    fn on_end(_state: &mut Self::State) -> Option<Step> {
+        None
+    }
     /// An error response (`status` ≥ 400) as a model error.
     fn map_error(status: u16, body: &str) -> ModelError;
 }

@@ -1,0 +1,18 @@
+: SYNTHETIC fixture (no real API call): an OpenAI-compatible Chat Completions stream as
+: OpenRouter sends it (keep-alive comment, usage chunk with include_usage, then [DONE]), shaped after
+: https://openrouter.ai/docs/api/reference/streaming and OpenAI's chat.completion.chunk (2026-09-29).
+
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-demo1","object":"chat.completion.chunk","created":1790000000,"model":"openai/gpt-6-luna","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"gen-demo1","object":"chat.completion.chunk","created":1790000000,"model":"openai/gpt-6-luna","choices":[{"index":0,"delta":{"content":"Photosynthesis turns "},"finish_reason":null}]}
+
+data: {"id":"gen-demo1","object":"chat.completion.chunk","created":1790000000,"model":"openai/gpt-6-luna","choices":[{"index":0,"delta":{"content":"light into sugar [c1]."},"finish_reason":null}]}
+
+data: {"id":"gen-demo1","object":"chat.completion.chunk","created":1790000000,"model":"openai/gpt-6-luna","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"gen-demo1","object":"chat.completion.chunk","created":1790000000,"model":"openai/gpt-6-luna","choices":[],"usage":{"prompt_tokens":1200,"completion_tokens":90,"total_tokens":1290,"prompt_tokens_details":{"cached_tokens":1000},"completion_tokens_details":{"reasoning_tokens":64},"cost":0.00006}}
+
+data: [DONE]
+

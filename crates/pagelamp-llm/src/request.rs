@@ -25,6 +25,46 @@ pub enum OutputSpec {
     },
 }
 
+/// How a JSON answer is asked for, best first. A server that rejects one tier (HTTP 400)
+/// is asked again with the next.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum JsonTier {
+    /// The provider enforces the schema (strict JSON schema).
+    NativeSchema,
+    /// The provider guarantees JSON, not the schema.
+    JsonObject,
+    /// Only the instructions ask for the format.
+    PromptOnly,
+}
+
+impl JsonTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JsonTier::NativeSchema => "native_schema",
+            JsonTier::JsonObject => "json_object",
+            JsonTier::PromptOnly => "prompt_only",
+        }
+    }
+
+    /// The next tier down, if any.
+    pub(crate) fn next(self) -> Option<JsonTier> {
+        match self {
+            JsonTier::NativeSchema => Some(JsonTier::JsonObject),
+            JsonTier::JsonObject => Some(JsonTier::PromptOnly),
+            JsonTier::PromptOnly => None,
+        }
+    }
+}
+
+/// Something worth telling the student while the model answers (codes the UIs translate).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Notice {
+    /// The server didn't take the JSON format; asked again with a weaker one.
+    JsonFallback,
+    /// The answer didn't match the format; the model is asked once to correct it.
+    Repairing,
+}
+
 /// Something that happened while the model answered.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StreamEvent {
@@ -32,6 +72,7 @@ pub enum StreamEvent {
     TextDelta(String),
     /// Token counts so far (the last one is final).
     Usage(Usage),
+    Notice(Notice),
 }
 
 /// Token counts of one call.
@@ -60,6 +101,23 @@ pub enum StopReason {
     ContentFilter,
 }
 
+impl Usage {
+    /// Both calls' counts (a repair).
+    pub(crate) fn plus(self, other: Usage) -> Usage {
+        Usage {
+            input_uncached: self.input_uncached + other.input_uncached,
+            cache_read: self.cache_read + other.cache_read,
+            cache_write: self.cache_write + other.cache_write,
+            output: self.output + other.output,
+            reasoning: match (self.reasoning, other.reasoning) {
+                (None, None) => None,
+                (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
+            },
+            estimated: self.estimated || other.estimated,
+        }
+    }
+}
+
 /// A finished call.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Outcome {
@@ -71,4 +129,8 @@ pub struct Outcome {
     pub request_id: Option<String>,
     /// The model id the provider reports (may differ from the requested alias).
     pub model_reported: Option<String>,
+    /// How the JSON answer was asked for (`None` for text).
+    pub json_tier: Option<JsonTier>,
+    /// A repair call was made (its usage is included).
+    pub repaired: bool,
 }

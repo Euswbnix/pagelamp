@@ -6,10 +6,13 @@ use pagelamp_core::ai::{Effort, ModelErrorKind};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
 
-use super::{Dialect, Step, count, event_json, kind_for_status, status_message};
+use super::{
+    BodyOptions, Dialect, REPAIR_INSTRUCTION, Step, count, event_json, kind_for_status,
+    status_message,
+};
 use crate::error::ModelError;
 use crate::profile::ProviderProfile;
-use crate::request::{GenerateRequest, OutputSpec, StopReason, Usage};
+use crate::request::{GenerateRequest, JsonTier, OutputSpec, StopReason, Usage};
 use crate::sse::{Framing, RawEvent};
 
 /// The API version header every request carries.
@@ -41,12 +44,21 @@ impl Dialect for AnthropicMessages {
         headers
     }
 
-    fn request_body(req: &GenerateRequest, profile: &ProviderProfile) -> Value {
+    fn request_body(
+        req: &GenerateRequest,
+        profile: &ProviderProfile,
+        options: BodyOptions,
+    ) -> Value {
+        let mut messages = vec![json!({ "role": "user", "content": req.prompt.user_text() })];
+        if let Some(previous) = options.repair {
+            messages.push(json!({ "role": "assistant", "content": previous }));
+            messages.push(json!({ "role": "user", "content": REPAIR_INSTRUCTION }));
+        }
         let mut body = json!({
             "model": req.model,
             "max_tokens": req.max_output_tokens,
             "system": req.prompt.instructions(),
-            "messages": [{ "role": "user", "content": req.prompt.user_text() }],
+            "messages": messages,
             "stream": true,
         });
         let mut output_config = serde_json::Map::new();
@@ -58,7 +70,10 @@ impl Dialect for AnthropicMessages {
             };
             output_config.insert("effort".into(), json!(effort));
         }
-        if let OutputSpec::Json { schema, .. } = &req.output {
+        // Anthropic has no JSON-object mode: below the native schema, only the prompt asks.
+        if let OutputSpec::Json { schema, .. } = &req.output
+            && options.tier == JsonTier::NativeSchema
+        {
             output_config.insert(
                 "format".into(),
                 json!({ "type": "json_schema", "schema": schema }),

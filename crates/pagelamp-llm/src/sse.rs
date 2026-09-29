@@ -8,8 +8,6 @@ const MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Framing {
     Sse,
-    // Ollama's native stream; its driver lands next in M1.
-    #[allow(dead_code)]
     Ndjson,
 }
 
