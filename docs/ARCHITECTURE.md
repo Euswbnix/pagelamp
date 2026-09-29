@@ -1,6 +1,6 @@
 # PageLamp v0.1 — Architecture & team contract
 
-Status: agreed baseline (leader session, 2026-09-25). Changes to anything in §3–§5 go through the leader.
+Status: agreed baseline (2026-09-25). Changes to anything in §3–§5 go through the maintainers.
 
 ## 1. Product scope (v0.1 = "MCP-first")
 
@@ -36,7 +36,7 @@ work for Brightspace/Moodle schools too). UI English-first, zh-CN second.
 
 Rust workspace:
 
-| Crate | Purpose | Owner |
+| Crate | Purpose | Area |
 |---|---|---|
 | `crates/pagelamp-core` | model, store (SQLite + FTS5), ingest, timeline, views, paths, secrets | backend |
 | `crates/pagelamp-extract` | PDF/PPTX/DOCX/ipynb/HTML/text extraction + chunking | backend |
@@ -46,17 +46,18 @@ Rust workspace:
 | `crates/pagelamp-app` | **the facade** used by CLI and desktop app | backend |
 | `apps/pagelamp-cli` | `pagelamp` binary | backend |
 | `apps/desktop` (+ `src-tauri`) | Tauri 2 + React desktop shell | frontend |
-| root `Cargo.toml`, `docs/` | workspace + contracts | leader |
+| root `Cargo.toml`, `docs/` | workspace + contracts | shared |
 | root `package.json`, `pnpm-workspace.yaml` (if any) | JS tooling | frontend |
 
 ## 3. Hard rules (product/policy requirements)
 
 1. **Canvas access is GET-only**, from `pagelamp-canvas` only, triggered by sync only. The MCP server
-   never touches the network (Canvas API Policy §3(i) forbids accessing Canvas APIs via unapproved
-   MCP servers).
+   never touches the network (Canvas API Policy §3(i) restricts access to Canvas APIs through MCP
+   servers that Instructure hasn't approved; our understanding is that this rules out Canvas access
+   from the MCP server, so all Canvas access happens in sync).
 2. **Personal token = personal use.** Instructure: asking other users to manually generate a token
    for your app violates the API Policy. UI and CLI must say so when adding a Canvas source; the
-   folder + calendar-feed path is the shareable one. Tokens expire (the maximum is set per school/role and shown by Canvas, e.g. 90 days at UofT for this user; Instructure caps student-only users at 30) — surface
+   folder + calendar-feed path is the shareable one. Tokens expire (the maximum is set per school/role and shown by Canvas, e.g. 90 days at some schools; Instructure caps student-only users at 30) — surface
    expiry/401 clearly.
 3. **Secrets** (Canvas token, calendar-feed URL) live only in the OS keychain (`core::secrets`);
    never in the DB, logs, MCP output, frontend state beyond the input field, or test fixtures.
@@ -94,7 +95,7 @@ Rust workspace:
 ## 5. App facade API (`pagelamp-app`) — the backend ⇄ frontend contract
 
 Backend implements; frontend's Tauri commands are thin 1:1 wrappers. Names below are agreed; field
-details may be refined by the backend, who then regenerates schemas and tells the frontend.
+details may be refined in the backend; the TypeScript types are then regenerated from the schema (below).
 All return types are `Serialize + JsonSchema`; `pagelamp schema` prints them as JSON Schema →
 frontend generates TS with `json-schema-to-typescript` (no hand-written duplicate types).
 
@@ -231,7 +232,7 @@ Additions agreed 2026-09-26 (release audit):
   override, hide) · Connect your AI app (cards from `mcp_client_configs`, copy buttons) ·
   Settings/About (data dir, privacy + AI disclosure). **No chat UI.**
 
-## 7. Roadmap (decided 2026-09-25, revised 2026-09-28)
+## 7. Roadmap (decided 2026-09-25, revised 2026-09-29)
 
 License: **Apache-2.0** (root `LICENSE`; `license.workspace = true` in every crate, `"license":
 "Apache-2.0"` in package.json). Dependencies must be Apache-2.0/MIT/BSD/ISC/Zlib/Unicode-compatible —
@@ -240,50 +241,31 @@ no GPL/AGPL/SSPL/BUSL/FSL crates or npm packages (a `cargo deny` license check w
 | Version | Scope |
 |---|---|
 | **v0.1 MCP-first** | core + sources + MCP server + CLI; desktop shell for onboarding/sources/courses/connect. `v0.1.0` released 2026-09-28 (a normal release, signed on macOS and Windows; it does not update itself) |
-| v0.2 | **no separate release** (decided 2026-09-27): its items moved into v0.3 (updater, extraction worker, reminders, `.mcpb`, bilingual docs, "Past courses" and cleanup of inactive courses) or to v0.3.x (Canvas `public_url` downloads); signed releases already shipped in v0.1.0. Browser Connector: evaluated, not scheduled |
-| **v0.3.0 "full" PageLamp** | **Start (M0):** signed releases (in place since v0.1.0: macOS Developer ID + notarization, Windows Azure Artifact Signing; M0 adds the universal DMG, NSIS per-user only, Linux SHA256SUMS + attestations), Tauri updater (stable/beta channels, own manifest), `pagelamp extract-worker` (resource-limited extraction), schema v3 with a reader-compatibility marker. **Then:** embedded model access through `crates/pagelamp-llm` behind the `pagelamp-app` facade (Tauri, Swift and CLI): ChatGPT plan through the **unmodified official Codex** (`codex exec`, downloaded on demand, Codex-managed sign-in), the student's own API key, local models (Ollama/LM Studio). Features: study plan (deterministic dates), weekly explanation with citations, weekly progress reminders. **Course calendar and lifecycle:** deterministic weeks and phases from Canvas dates and the professor's week-numbered materials (enrollment-window terms are not used to count weeks); the AI reads the syllabus and schedule into cited date proposals the student confirms, plus a deterministic syllabus scan; finished courses grouped under "Past", and two-stage course removal (undo for 7 days, files to the Trash) that sync honours. The course AI policy gates every model call by type (`ai_gate` → `RenderedPrompt`); course materials go to a cloud model unless the student answered "not allowed" for that course (a one-time reminder otherwise); no chat UI; no tools; never proxy/resell usage or handle subscription tokens; coding-plan keys refused. See `docs/design/v0.3-model-access.md` and `docs/design/v0.3-course-calendar.md` |
-| v0.3.x | Claude plan through the student's **unmodified Claude Code** (`claude -p`), switched on only after Anthropic's written confirmation and Commercial Terms acceptance; `.mcpb` generated at runtime (if not already in v0.3.0, per D30); Canvas `public_url` downloads if verified; follow-up questions on an explanation (their own gated type); opt-in automatic syllabus re-read; Canvas enrollments and calendar-event signals; class timetables as a week-1 anchor; midterm dates in the course calendar; calendar week topics over MCP |
-| after v0.3 | branded distributions (first: UTMCSSA Academic Dept) via brand config — display, provider-preset overlay, updater endpoints/channel — no fork |
-| later | read-only tutor loop (in-process MCP tools, ≤ 8), optional ACP host for the student's own coding agent, Gemini native / Open Responses dialect, the Codex app-server backend once Stable. macOS: the native SwiftUI app (`apps/macos`, on `main` since 9b12029 as a developer preview outside the release artifacts; over the same Rust core via UniFFI) ships to students once it passes its own M2 (Tauri parity) gate; same Developer ID + notarization; its own updater (Sparkle 2), not Tauri's. **Never a Swift re-implementation of core/sync/policy logic**: keep `pagelamp-app` FFI-friendly (plain serialisable types, no Tauri types in its API). Direct distribution, not the Mac App Store (sandbox vs course folders and AI-app-launched MCP) |
+| v0.2 | **no separate release** (decided 2026-09-27): its items moved into v0.3 (updater, extraction worker, reminders, `.mcpb`, bilingual docs, "Past courses" and cleanup of inactive courses) or to v0.3.x (Canvas `public_url` downloads); signed releases already shipped in v0.1.0. A browser-connector approach was evaluated and is not planned |
+| **v0.3.0 "full" PageLamp** | **Start (M0):** signed releases (in place since v0.1.0: macOS Developer ID + notarization, Windows Azure Artifact Signing; M0 adds the universal DMG, NSIS per-user only, Linux SHA256SUMS + attestations), Tauri updater (stable/beta channels, own manifest), `pagelamp extract-worker` (resource-limited extraction), schema v3 with a reader-compatibility marker. **Then:** embedded model access through `crates/pagelamp-llm` behind the `pagelamp-app` facade (Tauri, Swift and CLI): the student's own API key, local models (Ollama/LM Studio), and the ChatGPT plan through the **unmodified official Codex** (`codex exec`, downloaded on demand, Codex-managed sign-in) only with OpenAI's written confirmation that this use is allowed (asked in writing; with no reply by alpha.3 on 2026-11-22, alpha.3 ships without it, the code stays behind a switch and it can follow in v0.3.x once confirmed; if OpenAI answers "use API keys", it is dropped). Features: study plan (deterministic dates), weekly explanation with citations, weekly progress reminders. **Course calendar and lifecycle:** deterministic weeks and phases from Canvas dates and the professor's week-numbered materials (enrollment-window terms are not used to count weeks); the AI reads the syllabus and schedule into cited date proposals the student confirms, plus a deterministic syllabus scan; finished courses grouped under "Past", and two-stage course removal (undo for 7 days, files to the Trash) that sync honours. The course AI policy gates every model call by type (`ai_gate` → `RenderedPrompt`); course materials go to a cloud model unless the student answered "not allowed" for that course (a one-time reminder otherwise); no chat UI; no tools; never proxy/resell usage or handle subscription tokens; coding-plan keys refused. See `docs/design/v0.3-model-access.md` and `docs/design/v0.3-course-calendar.md` |
+| v0.3.x | ChatGPT plan through the official Codex, if it was held back from v0.3.0 and OpenAI has since confirmed in writing that this use is allowed; Claude plan through the student's **unmodified Claude Code** (`claude -p`), switched on only after Anthropic's written confirmation and Commercial Terms acceptance; `.mcpb` generated at runtime (if not already in v0.3.0, per D30); Canvas `public_url` downloads if verified; follow-up questions on an explanation (their own gated type); opt-in automatic syllabus re-read (with the student's own API key or a local model; through a ChatGPT or Claude plan only after the vendor explicitly agrees); Canvas enrollments and calendar-event signals; class timetables as a week-1 anchor; midterm dates in the course calendar; calendar week topics over MCP |
+| after v0.3 | branded distributions (first: a student association) via brand config — display, provider-preset overlay, updater endpoints/channel — no fork |
+| later | read-only tutor loop (in-process MCP tools, ≤ 8), optional ACP host for the student's own coding agent (only where the vendor's terms allow it), Gemini native / Open Responses dialect, the Codex app-server backend once Stable (only where the vendor's terms allow it). macOS: the native SwiftUI app (`apps/macos`, on `main` since 9b12029 as a developer preview outside the release artifacts; over the same Rust core via UniFFI) ships to students once it passes its own M2 (Tauri parity) gate; same Developer ID + notarization; its own updater (Sparkle 2), not Tauri's. **Never a Swift re-implementation of core/sync/policy logic**: keep `pagelamp-app` FFI-friendly (plain serialisable types, no Tauri types in its API). Direct distribution, not the Mac App Store (sandbox vs course folders and AI-app-launched MCP) |
 
-The v0.3 milestones, dates and owner decisions are in `docs/design/v0.3-plan.md`.
+The v0.3 milestones, dates and decisions are in `docs/design/v0.3-plan.md`.
 
 ## 8. Collaboration rules
 
-- Stay inside your owned paths (§2). Need a change elsewhere → message the owner (cc leader for
-  contract changes in §3–§5).
-- Definition of done — backend: `cargo fmt --check`,
-  `cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings`,
-  `cargo test --workspace --exclude pagelamp-desktop` green; frontend: `pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build`
-  green, `pnpm tauri dev` launches.
+Contributions go through pull requests; CI must be green on Linux, macOS and Windows.
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the setup, the ground rules and a pre-PR checklist.
 
-### Git workflow (user decision 2026-09-25: commit locally, push every 5 commits)
-
-All sessions share ONE working tree and ONE local `main`. The repo is public.
-- **Commit** each finished logical change yourself (small, focused commits). Before committing,
-  the checks of your area must pass (DoD above, scoped to what you changed at minimum).
-- **Commit with a pathspec, never a bare `git commit`** (the index is shared; a bare commit takes
-  whatever anyone staged — this happened once in 810e415). Owned paths: backend `crates/
-  apps/pagelamp-cli/`; frontend `apps/desktop/`; leader: root files, `docs/`, `spikes/`.
-  Recipe: `git add -N <new files in your paths>` (intent-to-add, so pathspec commits see them),
-  then `git commit -F msg -- <your paths>`. A pathspec commit records only those paths (their
-  working-tree content) and leaves anything else in the index untouched. Don't leave files staged.
-  Never `git add -A`, `git add .`, `git commit -a`. Verify with `git show --stat HEAD` right after.
-- **`Cargo.lock` is committed by whoever's manifest change caused the lock change, in the same
-  pathspec commit** (`git commit -- crates/… Cargo.lock` or `-- apps/desktop/ Cargo.lock`), so no
-  commit has a manifest/lock mismatch. Before including it, check `git diff Cargo.lock` contains
-  only your change; if it also has the other side's uncommitted entries, message them and agree who
-  commits first.
-- **Push when ≥ 5 local commits are ahead**: `git fetch origin && git rev-list --count origin/main..main`;
-  if ≥ 5 → run the full DoD for your area once more, scan staged history for secrets, then
-  `git push origin main`. Whoever makes the 5th commit pushes (including others' commits — they
-  were checked by their owners). Never force-push; never rewrite pushed history.
-- `.git/index.lock` exists → another session is committing; wait a few seconds and retry. Never
-  delete the lock file.
-- Commit messages: imperative subject ≤ 72 chars with an area prefix (`core:`, `extract:`,
-  `canvas:`, `local:`, `mcp:`, `app:`, `cli:`, `desktop:`, `docs:`, `spike:`), body explains why.
-  **No `Co-Authored-By: Claude` trailers and no "Generated with Claude Code" lines** (explicit
-  user preference). Commits are authored by the configured git identity; don't change git config.
-- Tooling note: `/usr/local/bin/gh` is an x86_64 build that breaks when it shells out to git — use
-  plain `git push` (credential helper works) and `gh api` for GitHub API calls.
-- Report milestones to the leader with what changed, how it was verified, and open questions.
+- Definition of done, at least for what you changed:
+  - desktop (`apps/desktop`): `pnpm run lint` (Biome), `pnpm run typecheck` (tsc), `pnpm run test`
+    (Vitest) and `pnpm run build` (Vite) green; `pnpm tauri dev` launches;
+  - Rust: `cargo fmt --all --check`,
+    `cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings` and
+    `cargo test --workspace --exclude pagelamp-desktop` green; for the desktop crate, after
+    `pnpm run build && pnpm run build:sidecar`, also
+    `cargo clippy -p pagelamp-desktop --all-targets -- -D warnings` and `cargo test -p pagelamp-desktop`;
+  - generated types: after a facade type changes, run `pnpm run gen:types` and commit
+    `apps/desktop/src/api/generated.ts` (CI fails on drift);
+  - macOS strings: `node apps/macos/scripts/gen-strings.mjs --check` passes (after changing UI text,
+    run it without `--check` and commit the regenerated files);
+  - no secrets: the added lines contain no tokens, keys or calendar-feed URLs.
+- Commit messages: imperative subject ≤ 72 chars with an area prefix (`core:`, `desktop:`, `docs:`,
+  …; the list is in CONTRIBUTING.md), body explains why.
