@@ -121,13 +121,16 @@ export function useWeeklyNoteRun() {
   );
 
   const stop = useCallback(async () => {
-    const current = useNoteRunStore.getState().run;
-    if (current.phase !== "running") return;
-    useNoteRunStore
-      .getState()
-      .setRun((r) => (r.phase === "running" ? { ...r, stopping: true } : r));
-    // A failed cancel leaves the run going: its Stop stays, and it ends as it would.
-    await api.cancelGeneration(current.id).catch(() => {});
+    const store = useNoteRunStore.getState();
+    const current = store.run;
+    // One cancel per run: a second click while it stops sends nothing.
+    if (current.phase !== "running" || current.stopping) return;
+    const { id } = current;
+    store.setRun((r) => (r.phase === "running" && r.id === id ? { ...r, stopping: true } : r));
+    // A failed cancel leaves the run going, and Stop can be pressed again.
+    await api.cancelGeneration(id).catch(() => {
+      store.setRun((r) => (r.phase === "running" && r.id === id ? { ...r, stopping: false } : r));
+    });
   }, [api]);
 
   return { run, start, stop };

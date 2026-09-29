@@ -82,6 +82,34 @@ describe("Courses → Weekly note", () => {
     expect(await api.weeklyNotes()).toEqual([]);
   });
 
+  it("sends one cancel per Stop; a failed cancel lets Stop be pressed again", async () => {
+    const api = mockApi({ syncStepMs: 300, now: () => TUESDAY });
+    const realCancel = api.cancelGeneration.bind(api);
+    const cancel = vi
+      .spyOn(api, "cancelGeneration")
+      .mockRejectedValueOnce(new ApiError("internal", "The cancel didn't get through."));
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    // The failed cancel: the run goes on, and Stop is back.
+    const again = await screen.findByRole("button", { name: "Stop" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    let release = () => {};
+    cancel.mockImplementationOnce(
+      (id) =>
+        new Promise<void>((resolve) => {
+          release = () => void realCancel(id).then(resolve);
+        }),
+    );
+    await user.click(again);
+    const stopping = await screen.findByRole("button", { name: "Stopping…" });
+    await user.click(stopping);
+    expect(cancel).toHaveBeenCalledTimes(2);
+    release();
+    expect(await screen.findByText("Stopped. Nothing was saved.")).toBeInTheDocument();
+    expect(cancel).toHaveBeenCalledTimes(2);
+  });
+
   it("deletes a note after asking, and the focus goes on", async () => {
     const api = mockApi({ now: () => TUESDAY });
     await api.writeWeeklyNote("n-1", {}, () => {});
