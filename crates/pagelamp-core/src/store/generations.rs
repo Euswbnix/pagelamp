@@ -6,7 +6,7 @@
 
 use rusqlite::{Row, params};
 
-use super::{Store, TextValue, get_value, ts_text};
+use super::{Store, TextValue, get_opt_value, get_value, opt_date_text, ts_text};
 use crate::Result;
 use crate::ai::AiFeature;
 use crate::model::Timestamp;
@@ -69,10 +69,13 @@ pub struct GenerationRecord {
     pub summary_json: Option<String>,
     /// A `ModelErrorKind` or `bad_output` code.
     pub error_kind: Option<String>,
+    /// The Monday `week` started on when it was written (explanations): a calendar that moves
+    /// the week makes the result stale.
+    pub week_starts_on: Option<chrono::NaiveDate>,
 }
 
 const GENERATION_COLUMNS: &str = "id, feature, course_id, week, backend, model, status, \
-     created_at, prompt_version, output_json, summary_json, error_kind";
+     created_at, prompt_version, output_json, summary_json, error_kind, week_starts_on";
 
 fn generation_from_row(row: &Row<'_>) -> rusqlite::Result<GenerationRecord> {
     Ok(GenerationRecord {
@@ -88,6 +91,7 @@ fn generation_from_row(row: &Row<'_>) -> rusqlite::Result<GenerationRecord> {
         output_json: row.get("output_json")?,
         summary_json: row.get("summary_json")?,
         error_kind: row.get("error_kind")?,
+        week_starts_on: get_opt_value(row, "week_starts_on")?,
     })
 }
 
@@ -99,8 +103,8 @@ impl Store {
             self.conn.execute(
                 "INSERT OR REPLACE INTO generations
                      (id, feature, course_id, week, backend, model, status, created_at,
-                      prompt_version, output_json, summary_json, error_kind)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                      prompt_version, output_json, summary_json, error_kind, week_starts_on)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     record.id,
                     record.feature.as_str(),
@@ -114,6 +118,7 @@ impl Store {
                     record.output_json,
                     record.summary_json,
                     record.error_kind,
+                    opt_date_text(record.week_starts_on),
                 ],
             )?;
             // Rows a calendar still points to are kept (course_calendars.generation_id).
@@ -164,6 +169,14 @@ impl Store {
             )?;
             Ok(u32::try_from(removed).unwrap_or(u32::MAX))
         })
+    }
+
+    /// Delete run `id`; whether there was one.
+    pub fn delete_generation(&self, id: &str) -> Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM generations WHERE id = ?1", [id])?
+            == 1)
     }
 
     /// How many kept runs failed, by error kind (`ModelErrorKind` codes), most first: counts
@@ -259,6 +272,7 @@ mod tests {
             output_json: Some("{}".into()),
             summary_json: Some(r#"{"materials_included":1}"#.into()),
             error_kind: None,
+            week_starts_on: None,
         }
     }
 

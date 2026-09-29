@@ -678,6 +678,70 @@ async fn prompts_state_limits_and_never_inline_text() {
             && plan.contains("10 hours")
             && plan.contains("save_study_plan")
     );
+
+    // The week-based prompts follow the lifecycle (calendar design §8.1, D43): the default
+    // week, and a course out of session is said so, not reviewed or planned.
+    let today = Local::now().date_naive();
+    set(&db, |s| {
+        s.upsert_course(&CourseUpsert {
+            id: cid("404"),
+            source_id: SOURCE.into(),
+            external_id: "404".into(),
+            code: Some("DEMO404".into()),
+            name: "Past Demo Studies".into(),
+            term_start: Some(today - TimeDelta::days(400)),
+            term_end: Some(today - TimeDelta::days(300)),
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap()
+    });
+    let review = |course: &'static str| {
+        let client = &client;
+        async move {
+            prompt_text(
+                client
+                    .get_prompt(
+                        GetPromptRequestParams::new("weekly_review")
+                            .with_arguments(args(json!({ "course": course }))),
+                    )
+                    .await
+                    .unwrap(),
+            )
+        }
+    };
+    let current = review("DEMO101").await;
+    assert!(current.contains("week 3 of DEMO101"), "{current}");
+    let ended = review("DEMO404").await;
+    assert!(
+        ended.contains("It has ended") && ended.contains("ask me which week"),
+        "{ended}"
+    );
+    let catch_up = prompt_text(
+        client
+            .get_prompt(
+                GetPromptRequestParams::new("catch_up")
+                    .with_arguments(args(json!({"course": "DEMO404"}))),
+            )
+            .await
+            .unwrap(),
+    );
+    assert!(
+        catch_up.contains("nothing new to catch up on"),
+        "{catch_up}"
+    );
+    let plan = prompt_text(
+        client
+            .get_prompt(GetPromptRequestParams::new("study_plan"))
+            .await
+            .unwrap(),
+    );
+    assert!(
+        plan.contains("Plan only the courses in session: DEMO101, DEMO202.")
+            && plan.contains("Leave out the 1 other(s)"),
+        "{plan}"
+    );
     client.cancel().await.unwrap();
 }
 

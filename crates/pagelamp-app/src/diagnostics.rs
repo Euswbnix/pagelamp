@@ -1100,6 +1100,7 @@ mod tests {
                 output_json: None,
                 summary_json: None,
                 error_kind: Some("bad_output".into()),
+                week_starts_on: None,
             })
             .unwrap();
         drop(store);

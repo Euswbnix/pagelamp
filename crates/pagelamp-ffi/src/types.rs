@@ -1028,6 +1028,14 @@ pub struct StartupTasks {
     pub purge_due: bool,
     #[uniffi(default)]
     pub removed_files_waiting: u32,
+    #[uniffi(default)]
+    pub calendar_offers: Vec<SyllabusOffer>,
+    #[uniffi(default)]
+    pub calendar_offers_total: u32,
+    #[uniffi(default)]
+    pub removal_suggestions: Vec<String>,
+    #[uniffi(default)]
+    pub removal_suggestions_total: u32,
 }
 
 // ----- reminders and the weekly digest (v0.3 M3; methods are wired by the leader) -------------
@@ -1085,6 +1093,11 @@ pub struct DigestCourse {
     pub active: bool,
     pub week: Option<u32>,
     pub confidence: Confidence,
+    pub phase: CoursePhase,
+    #[uniffi(default)]
+    pub current_break_kind: Option<BreakKind>,
+    #[uniffi(default)]
+    pub last_teaching_week: Option<u32>,
     pub material_count: u32,
     pub material_titles: Vec<String>,
     pub deadlines: Vec<Deadline>,

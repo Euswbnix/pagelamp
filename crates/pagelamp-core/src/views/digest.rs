@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::{AsOf, Deadline, deadlines, list_courses, week_materials};
 use crate::Result;
 use crate::lifecycle::is_active;
-use crate::model::{Confidence, StudyPlanItem, Timestamp};
+use crate::model::{BreakKind, Confidence, CoursePhase, StudyPlanItem, Timestamp};
 use crate::store::Store;
 
 /// Days ahead whose deadlines are in the digest.
@@ -40,6 +40,12 @@ pub struct DigestCourse {
     /// The course's default week (`CourseTimeline::default_week`).
     pub week: Option<u32>,
     pub confidence: Confidence,
+    /// The phase line ("Reading week — catch up", "Exams (after week 12)"): the phase, and
+    /// during a break its kind. Codes only; UIs word them.
+    pub phase: CoursePhase,
+    pub current_break_kind: Option<BreakKind>,
+    /// During the exam period: the last teaching week.
+    pub last_teaching_week: Option<u32>,
     /// This week's materials.
     pub material_count: u32,
     /// The first `DIGEST_MAX_TITLES` of them.
@@ -73,6 +79,9 @@ pub fn weekly_digest(store: &Store, at: AsOf) -> Result<WeeklyDigest> {
             active,
             week: None,
             confidence: summary.timeline.confidence,
+            phase: summary.timeline.phase,
+            current_break_kind: summary.timeline.current_break_kind,
+            last_teaching_week: summary.timeline.last_teaching_week,
             material_count: 0,
             material_titles: Vec::new(),
             deadlines: upcoming,

@@ -101,7 +101,18 @@ pub struct StartupTasks {
     pub purge_due: bool,
     /// Removed courses whose downloaded files still wait for the Trash.
     pub removed_files_waiting: u32,
+    /// Courses whose syllabus PageLamp could read with AI (only offered, D47): at most
+    /// `STARTUP_LIST_MAX`, empty while "Not now" covers them (`snooze_calendar_offers`).
+    pub calendar_offers: Vec<crate::SyllabusOffer>,
+    pub calendar_offers_total: u32,
+    /// Ids of the courses that look finished (`lifecycle_summary().suggested`): at most
+    /// `STARTUP_LIST_MAX`, empty while the banner's "Not now" covers them.
+    pub removal_suggestions: Vec<String>,
+    pub removal_suggestions_total: u32,
 }
+
+/// The most items of each list in `StartupTasks` (the totals say how many there are).
+pub const STARTUP_LIST_MAX: usize = 20;
 
 /// One update check and how it ended (`record_update_check`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -181,11 +192,28 @@ impl App {
         let removed_files_waiting = tombstones.iter().filter(|t| t.files_pending).count();
         let purge_due = removed_files_waiting > 0 || !store.due_purges(now)?.is_empty();
         drop(store);
-        // Reminders never keep the rest from the shell.
+        // Reminders, offers and suggestions never keep the rest from the shell.
         let due_reminders = self.due_reminders(now).unwrap_or_else(|err| {
             tracing::warn!(target: "pagelamp::reminders", "due reminders failed: {:?}", err.kind);
             Vec::new()
         });
+        let mut calendar_offers = self.unsnoozed_calendar_offers().unwrap_or_else(|err| {
+            tracing::warn!(target: "pagelamp::calendar", "offers failed: {:?}", err.kind);
+            Vec::new()
+        });
+        let mut removal_suggestions = match self.lifecycle_summary() {
+            Ok(summary) if summary.show_banner => summary.suggested,
+            Ok(_) => Vec::new(),
+            Err(err) => {
+                tracing::warn!(target: "pagelamp::lifecycle", "suggestions failed: {:?}", err.kind);
+                Vec::new()
+            }
+        };
+        let calendar_offers_total = u32::try_from(calendar_offers.len()).unwrap_or(u32::MAX);
+        let removal_suggestions_total =
+            u32::try_from(removal_suggestions.len()).unwrap_or(u32::MAX);
+        calendar_offers.truncate(STARTUP_LIST_MAX);
+        removal_suggestions.truncate(STARTUP_LIST_MAX);
         Ok(StartupTasks {
             update_check_due: prefs.auto_check && disclosed && whats_new.is_none() && check_is_old,
             whats_new,
@@ -193,6 +221,10 @@ impl App {
             due_reminders,
             purge_due,
             removed_files_waiting: u32::try_from(removed_files_waiting).unwrap_or(u32::MAX),
+            calendar_offers,
+            calendar_offers_total,
+            removal_suggestions,
+            removal_suggestions_total,
         })
     }
 

@@ -22,6 +22,7 @@ use pagelamp_core::ai_gate::{
 };
 use pagelamp_core::model::AiPolicy;
 use pagelamp_core::store::{GenerationRecord, GenerationStatus};
+use pagelamp_core::term::phase::week_starts_on;
 use pagelamp_core::views::{self, AsOf};
 use pagelamp_llm::OutputSpec;
 use schemars::JsonSchema;
@@ -164,6 +165,8 @@ impl App {
         let store = self.read_store()?;
         let course = store.resolve_course_with(course, true)?;
         let at = AsOf::now_local();
+        // The calendar in force now: a week it moved makes an explanation stale.
+        let term = views::course_timeline(&store, &course, at)?.term;
         let mut out = Vec::new();
         for record in store.generations_of(
             AiFeature::WeeklyExplanation,
@@ -182,35 +185,55 @@ impl App {
                 .summary_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok());
-            explanation.stale = match summary {
-                Some(summary) => {
-                    let considered: Vec<String> = summary
-                        .manifest
-                        .materials
-                        .iter()
-                        .map(|entry| entry.material_id.clone())
-                        .chain(
-                            summary
-                                .context
-                                .left_out
-                                .iter()
-                                .map(|m| m.material_id.clone()),
-                        )
-                        .collect();
-                    week_changed(
-                        &store,
-                        &course.id,
-                        record.week,
-                        &summary.manifest,
-                        &considered,
-                        at,
-                    )?
-                }
-                None => true,
-            };
+            let moved = record.week_starts_on.is_some()
+                && record.week.and_then(|week| week_starts_on(&term, week))
+                    != record.week_starts_on;
+            explanation.stale = moved
+                || match summary {
+                    Some(summary) => {
+                        let considered: Vec<String> = summary
+                            .manifest
+                            .materials
+                            .iter()
+                            .map(|entry| entry.material_id.clone())
+                            .chain(
+                                summary
+                                    .context
+                                    .left_out
+                                    .iter()
+                                    .map(|m| m.material_id.clone()),
+                            )
+                            .collect();
+                        week_changed(
+                            &store,
+                            &course.id,
+                            record.week,
+                            &summary.manifest,
+                            &considered,
+                            at,
+                        )?
+                    }
+                    None => true,
+                };
             out.push(explanation);
         }
         Ok(out)
+    }
+
+    /// Delete one kept explanation (the history's "Delete"): its row, with the stored answer.
+    /// `NotFound` for an unknown id or one that isn't an explanation.
+    pub fn delete_explanation(&self, generation_id: &str) -> Result<()> {
+        let store = self.write_store()?;
+        let is_explanation = store
+            .generation(generation_id)?
+            .is_some_and(|record| record.feature == AiFeature::WeeklyExplanation);
+        if !is_explanation || !store.delete_generation(generation_id)? {
+            return Err(AppError::new(
+                AppErrorKind::NotFound,
+                format!("There is no explanation {generation_id}."),
+            ));
+        }
+        Ok(())
     }
 
     /// The output-language setting (default: the UI's language).
@@ -244,7 +267,7 @@ impl App {
         let at = AsOf::now_local();
         let started = Utc::now().trunc_subsecs(0);
         // Everything read before the model call; the store isn't held across it.
-        let (course, week, choice, destination, context, prompt, output) = {
+        let (course, week, week_starts, choice, destination, context, prompt, output) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
             let Some(choice) = feature_choice(&store, AiFeature::WeeklyExplanation)? else {
@@ -265,6 +288,8 @@ impl App {
                 Err(GateError::Store(err)) => return Err(err.into()),
             };
             let week = views::week_materials(&store, &course.id, week, true, at)?.week;
+            let term = views::course_timeline(&store, &course, at)?.term;
+            let week_starts = week.and_then(|week| week_starts_on(&term, week));
             let setting: OutputLanguage = store
                 .setting(OUTPUT_LANGUAGE)
                 .unwrap_or(None)
@@ -295,7 +320,16 @@ impl App {
                 summary: context.summary().clone(),
                 input_tokens: Some(estimate.input_tokens),
             });
-            (course, week, choice, destination, context, prompt, output)
+            (
+                course,
+                week,
+                week_starts,
+                choice,
+                destination,
+                context,
+                prompt,
+                output,
+            )
         };
         let run = self
             .run_model(
@@ -329,6 +363,7 @@ impl App {
             output_json,
             summary_json: summary.clone(),
             error_kind: error_kind.map(str::to_string),
+            week_starts_on: week_starts,
         };
         let run = match run {
             Ok(run) => run,

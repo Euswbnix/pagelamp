@@ -68,6 +68,7 @@ use std::time::Instant;
 use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics::redact;
+use pagelamp_core::lifecycle::is_active;
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
     CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, PlanOrigin,
@@ -810,7 +811,20 @@ impl PageLampServer {
     ) -> Result<Vec<PromptMessage>, ErrorData> {
         let week = parse_number(args.week.as_deref(), "week")?;
         let course = self.course_state(&args.course).await?;
-        let mut message = text::weekly_review(&course.label, &course.reference, week);
+        // No week given: the course's default week; a course out of session, or with no
+        // week to default to (exams), is said so (calendar design §8.1).
+        let mut message = match (week, course.out_of_session, course.default_week) {
+            (Some(week), ..) => text::weekly_review(&course.label, &course.reference, Some(week)),
+            (None, Some(why), _) => text::weekly_review_ask(&course.label, why),
+            (None, None, Some(week)) => {
+                text::weekly_review(&course.label, &course.reference, Some(week))
+            }
+            (None, None, None) if course.known => text::weekly_review_ask(
+                &course.label,
+                "has no teaching week right now (exams or a break)",
+            ),
+            (None, None, None) => text::weekly_review(&course.label, &course.reference, None),
+        };
         append_withheld(&mut message, &course.label, course.state);
         Ok(vec![PromptMessage::new_text(Role::User, message)])
     }
@@ -833,7 +847,10 @@ impl PageLampServer {
         };
         let course = self.course_state(&args.course).await?;
         let since = since.format("%Y-%m-%d").to_string();
-        let mut message = text::catch_up(&course.label, &course.reference, &since);
+        let mut message = match course.out_of_session {
+            Some(why) => text::catch_up_not_in_session(&course.label, why),
+            None => text::catch_up(&course.label, &course.reference, &since),
+        };
         append_withheld(&mut message, &course.label, course.state);
         Ok(vec![PromptMessage::new_text(Role::User, message)])
     }
@@ -847,9 +864,16 @@ impl PageLampServer {
             .unwrap_or(14)
             .clamp(1, MAX_PLAN_DAYS);
         let hours = parse_number(args.hours_per_week.as_deref(), "hours_per_week")?;
+        let in_session = self.courses_in_session().await;
         Ok(vec![PromptMessage::new_text(
             Role::User,
-            text::study_plan(days, hours),
+            text::study_plan(
+                days,
+                hours,
+                in_session
+                    .as_ref()
+                    .map(|(courses, left_out)| (courses.as_slice(), *left_out)),
+            ),
         )])
     }
 }
@@ -935,6 +959,28 @@ impl PageLampServer {
 
     /// Display label and AI-materials state of a course, for prompts. Before the first sync
     /// the prompt still works (the tools will explain the missing data).
+    /// The codes of the courses in session (lifecycle `is_active`) and how many visible courses
+    /// are left out; `None` before the first sync.
+    async fn courses_in_session(&self) -> Option<(Vec<String>, usize)> {
+        let db = Arc::clone(&self.db_path);
+        tokio::task::spawn_blocking(move || {
+            let store = Store::open_read_only(&db).ok()?;
+            let at = AsOf::now_local();
+            let courses = views::list_courses(&store, false, at).ok()?;
+            let total = courses.len();
+            let in_session: Vec<String> = courses
+                .into_iter()
+                .filter(|summary| is_active(&summary.lifecycle, at.today))
+                .map(|summary| summary.course.code.unwrap_or(summary.course.name))
+                .collect();
+            let left_out = total - in_session.len();
+            Some((in_session, left_out))
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
     async fn course_state(&self, course: &str) -> Result<PromptCourse, ErrorData> {
         let db = Arc::clone(&self.db_path);
         let query = course.to_string();
@@ -949,10 +995,29 @@ impl PageLampServer {
                 }
                 _ => course.id.clone(),
             };
+            // Where the course is (calendar design §8.1): the week-based prompts use its
+            // default week and leave out a course that isn't in session.
+            let at = AsOf::now_local();
+            let summary = views::list_courses(&store, false, at)?
+                .into_iter()
+                .find(|summary| summary.course.id == course.id);
+            let (out_of_session, default_week) = match &summary {
+                Some(summary) if is_active(&summary.lifecycle, at.today) => {
+                    (None, summary.timeline.default_week)
+                }
+                Some(summary) => (
+                    text::not_in_session(summary.lifecycle.state).or(Some("isn't in session")),
+                    None,
+                ),
+                None => (None, None),
+            };
             Ok::<_, pagelamp_core::Error>(PromptCourse {
                 label: course.display_name(),
                 reference,
                 state: course.ai_materials(),
+                known: summary.is_some(),
+                out_of_session,
+                default_week,
             })
         })
         .await
@@ -965,6 +1030,9 @@ impl PageLampServer {
                 label: course.to_string(),
                 reference: course.to_string(),
                 state: AiMaterialsState::Readable,
+                known: false,
+                out_of_session: None,
+                default_week: None,
             }),
             // Fixed texts: rmcp logs error responses, and neither the query nor the course
             // list belongs in a log.
@@ -1007,6 +1075,12 @@ struct PromptCourse {
     /// For tool arguments: a code or id that resolves to this course.
     reference: String,
     state: AiMaterialsState,
+    /// Its lifecycle is known (there is a database and the course is listed).
+    known: bool,
+    /// Why it is out of the week-based prompts (ended, inactive, not started), if it is.
+    out_of_session: Option<&'static str>,
+    /// Its default week (`CourseTimeline::default_week`) when in session.
+    default_week: Option<u32>,
 }
 
 /// A core error as a tool error the model can explain to the student.
