@@ -30,7 +30,7 @@ import {
 import {
   defaultKeepUntil,
   isoOf,
-  keptCurrent,
+  withCourseDates,
   withoutStudentDates,
   withStudentDates,
 } from "./calendar";
@@ -47,6 +47,7 @@ import {
   type MockScenario,
   mcpClientConfigs,
 } from "./fixtures";
+import { createLifecycleMock } from "./removal";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
 
@@ -219,12 +220,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   }
 
   /** The lifecycle with "I'm still taking this" applied, as the facade computes it per read. */
-  function lifecycleOf(c: MockCourse) {
-    const today = isoOf(now());
-    return c.keptCurrentUntil && c.keptCurrentUntil >= today
-      ? keptCurrent(c.lifecycle, c.keptCurrentUntil)
-      : c.lifecycle;
-  }
+  // Lifecycle, removal suggestions and removal (removal.ts). lifecycleOf applies "I'm still
+  // taking this" and snoozes, as the facade computes them per read.
+  const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
+  const lifecycleOf = courseLifecycle.lifecycleOf;
 
   function summary(c: MockCourse): CourseSummary {
     const upcoming = deadlinesWithin([c], 21, 0).filter((d) => d.kind !== "class_event");
@@ -270,6 +269,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         chunks: indexed.reduce((n, m) => n + m.chunk_count, 0),
         events: db.courses.reduce((n, c) => n + c.deadlines.length, 0),
         study_plans: db.studyPlan ? 1 : 0,
+        removed_courses: courseLifecycle.removedCount(),
       },
       last_synced_at: synced.at(-1) ?? null,
       sync_in_progress: syncing || db.externalSyncRunning,
@@ -418,7 +418,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return results;
   }
 
+  /** The student's dates cleared: back to what the source reported (like the facade). */
+  function clearStudentDates(c: MockCourse) {
+    c.course.term_start = c.synced.termStart;
+    c.course.term_end = c.synced.termEnd;
+    c.course.term_source = c.synced.termStart || c.synced.termEnd ? "synced" : "none";
+    const synced = withoutStudentDates(c.synced.timeline, c.synced.lifecycle);
+    c.timeline = synced.timeline;
+    c.lifecycle = synced.lifecycle;
+  }
+
   return {
+    ...courseLifecycle.api,
     status: () => respond(status),
     listSources: () => respond(() => db.sources),
 
@@ -661,13 +672,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const c = findCourse(courseId);
       const today = isoOf(now());
       if (start === null && end === null) {
-        // Clearing the override falls back to what the source reported (like the facade).
-        c.course.term_start = c.synced.termStart;
-        c.course.term_end = c.synced.termEnd;
-        c.course.term_source = c.synced.termStart || c.synced.termEnd ? "synced" : "none";
-        const synced = withoutStudentDates(c.synced.timeline, c.synced.lifecycle);
-        c.timeline = synced.timeline;
-        c.lifecycle = synced.lifecycle;
+        clearStudentDates(c);
         return;
       }
       // COALESCE(user, synced), per field; the student's end is the last day of classes.
@@ -705,6 +710,39 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (c.timeline.term.anchor_origin === "legacy") {
         c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "user" } };
       }
+    },
+
+    setCourseDates: async (courseId, dates) => {
+      await sleep(latency);
+      const c = findCourse(courseId);
+      if (dates === null) {
+        clearStudentDates(c);
+        return;
+      }
+      const inOrder = (...dates: (string | null | undefined)[]) => {
+        const set = dates.filter((d): d is string => !!d);
+        return set.every((d, i) => i === 0 || (set[i - 1] ?? d) <= d);
+      };
+      const segment = dates.second_segment;
+      if (
+        !inOrder(
+          dates.first_class,
+          dates.last_class,
+          segment?.first_class,
+          segment?.last_class,
+          dates.exams_end,
+        ) ||
+        dates.breaks.some((b) => b.end < b.start)
+      ) {
+        throw new ApiError("invalid", "These dates are out of order.");
+      }
+      const next = withCourseDates(c.timeline, dates, isoOf(now()));
+      c.course.term_start = dates.first_class ?? c.synced.termStart;
+      c.course.term_end =
+        dates.exams_end ?? segment?.last_class ?? dates.last_class ?? c.synced.termEnd;
+      c.course.term_source = "user";
+      c.timeline = next.timeline;
+      c.lifecycle = next.lifecycle;
     },
 
     setCourseAiAccess: async (courseId, allowed) => {

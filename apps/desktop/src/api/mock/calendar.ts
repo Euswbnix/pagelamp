@@ -4,6 +4,7 @@
 // rules live in pagelamp-core; nothing here is meant to match them beyond what the UI shows.
 
 import type { Confidence, CourseTimeline } from "../generated";
+import type { CourseDatesInput } from "../provisional/courseRemoval";
 import type {
   CourseGroup,
   CourseLifecycle,
@@ -275,4 +276,75 @@ export function withoutStudentDates(
     },
     lifecycle: lifecycle({ state: "unknown", confidence: "low", suggest_removal: false }),
   };
+}
+
+/**
+ * The timeline and lifecycle after the student saves the dates form v2: the first part as
+ * `withStudentDates`, plus the end of exams, breaks and a second part (full-year courses). Only
+ * what the UI shows is simulated: breaks give the Break phase, a later exams end extends the
+ * exam period, and a second part continues or restarts the week numbers.
+ */
+export function withCourseDates(
+  base: CourseTimeline,
+  input: CourseDatesInput,
+  today: string,
+): { timeline: CourseTimeline; lifecycle: CourseLifecycle } {
+  const second = input.second_segment ?? null;
+  const lastDay = second ? (second.last_class ?? null) : (input.last_class ?? null);
+  const next = withStudentDates(base, input.first_class ?? null, lastDay, today);
+  const monday = next.timeline.term.week_one_monday ?? null;
+  const first = next.timeline.term.teaching[0];
+  const firstWeeks =
+    monday && input.last_class
+      ? Math.floor(daysBetween(monday, mondayOf(input.last_class)) / 7) + 1
+      : 0;
+  const teaching = first
+    ? [
+        { ...first, last_class: input.last_class ?? null },
+        ...(second
+          ? [
+              {
+                first_class: second.first_class,
+                last_class: second.last_class ?? null,
+                first_week_number: second.restart_numbering ? 1 : firstWeeks + 1,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const breaks = input.breaks.map((b) => ({
+    kind: b.kind,
+    span: { start: b.start, end: b.end },
+    numbered: b.numbered,
+    label: b.label ?? "",
+  }));
+  let timeline: CourseTimeline = {
+    ...next.timeline,
+    term: {
+      ...next.timeline.term,
+      teaching,
+      breaks,
+      exams_end: input.exams_end ?? null,
+      anchor_origin: "user",
+    },
+  };
+  let life = next.lifecycle;
+  const inBreak = input.breaks.find(
+    (b) => b.start <= addDays(today, 4) && b.end >= mondayOf(today),
+  );
+  if (inBreak && timeline.phase === "teaching") {
+    timeline = {
+      ...timeline,
+      phase: "break",
+      current_break_kind: inBreak.kind,
+      current_week: inBreak.numbered ? timeline.current_week : null,
+      break_after_week: inBreak.numbered ? null : (timeline.current_week ?? 1) - 1,
+      default_week: inBreak.numbered ? timeline.current_week : (timeline.current_week ?? 1) - 1,
+    };
+  }
+  if (input.exams_end && lastDay && today > lastDay && today <= input.exams_end) {
+    timeline = { ...timeline, phase: "exam_period", phase_confidence: "high", outside_term: false };
+    life = lifecycle({ state: "finishing", confidence: "high" });
+  }
+  return { timeline, lifecycle: life };
 }

@@ -50,7 +50,9 @@ export type MockScenario =
   // only past courses.
   | "uoft-fall"
   | "phases"
-  | "all-past";
+  | "all-past"
+  // Removal (F2): some courses already removed, one waiting to be purged.
+  | "removed";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -67,6 +69,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "uoft-fall",
   "phases",
   "all-past",
+  "removed",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */

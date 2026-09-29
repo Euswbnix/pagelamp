@@ -27,6 +27,7 @@ export type {
   CourseCounts,
   CourseGroup,
   CourseLifecycle,
+  CourseLifecycleEntry,
   CourseOverview,
   CoursePhase,
   CourseSummary,
@@ -42,6 +43,7 @@ export type {
   EvidenceSignal,
   InstallKind,
   LifecycleState,
+  LifecycleSummary,
   MaterialKind,
   MaterialView,
   McpClient,
@@ -52,6 +54,7 @@ export type {
   RejectedDates,
   RejectReason,
   SearchHit,
+  SnoozeKind,
   SourceErrorKind,
   SourceKind,
   SourceRecord,
@@ -79,6 +82,23 @@ export type {
   WhatsNew,
   WhatsNewTopic,
 } from "./generated";
+export type {
+  BackupInfo,
+  BreakInput,
+  CourseDatesInput,
+  LostAfterPurge,
+  PurgeReport,
+  RemovalPreview,
+  RemovalPreviewItem,
+  RemovalReason,
+  RemovalReport,
+  RemovedCourse,
+  RemovedState,
+  RemoveOptions,
+  RestoreFailure,
+  RestoreOutcome,
+  SegmentInput,
+} from "./provisional/courseRemoval";
 
 import type { AiMaterialsState, AiPolicy, Course } from "./generated";
 

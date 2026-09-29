@@ -38,7 +38,7 @@ import {
   timeline,
 } from "./fixtures";
 
-export const CALENDAR_SCENARIOS = ["uoft-fall", "phases", "all-past"] as const;
+export const CALENDAR_SCENARIOS = ["uoft-fall", "phases", "all-past", "removed"] as const;
 type CalendarScenario = (typeof CALENDAR_SCENARIOS)[number];
 
 function isCalendarScenario(scenario: MockScenario): scenario is CalendarScenario {
@@ -620,6 +620,9 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       ];
     case "all-past":
       return [summer, lastFall, ended, inactive];
+    case "removed":
+      // removal.ts removes the first three past courses; two stay suggested.
+      return [fitted, unlabelled, legacy, summer, lastFall, winterHidden, ended, inactive];
   }
 }
 

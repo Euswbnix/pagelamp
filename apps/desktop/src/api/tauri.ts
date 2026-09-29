@@ -66,6 +66,20 @@ export function createTauriApi(): PageLampApi {
       call("keep_course_current", { course: courseId, until }),
     clearKeepCourseCurrent: (courseId) => call("clear_keep_course_current", { course: courseId }),
     confirmCourseDates: (courseId) => call("confirm_course_dates", { course: courseId }),
+    setCourseDates: (courseId, dates) => call("set_course_dates", { course: courseId, dates }),
+
+    lifecycleSummary: () => call("lifecycle_summary"),
+    snoozeLifecycleBanner: () => call("snooze_lifecycle_banner"),
+    snoozeRemovalSuggestions: (courseIds, kind) =>
+      call("snooze_removal_suggestions", { courses: courseIds, kind }),
+    clearRemovalSnooze: (courseIds) => call("clear_removal_snooze", { courses: courseIds }),
+    removalPreview: (courseIds) => call("removal_preview", { courses: courseIds }),
+    removeCourses: (courseIds, options) => call("remove_courses", { courses: courseIds, options }),
+    removedCourses: () => call("removed_courses"),
+    restoreCourse: (removedId) => call("restore_course", { removedId }),
+    purgeRemovedCourses: (removedIds, permanentIfNoTrash) =>
+      call("purge_removed_courses", { removedIds, permanentIfNoTrash }),
+    forgetRemovedCourse: (removedId) => call("forget_removed_course", { removedId }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
 
