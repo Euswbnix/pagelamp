@@ -72,6 +72,7 @@
 "ai.codex.costLine" = "Uses your ChatGPT plan";
 "ai.codex.costLineRuns" = "Uses your ChatGPT plan · %1$@ of %2$@ runs this week";
 "ai.codex.description" = "PageLamp runs OpenAI's official Codex on this computer, signed in with your ChatGPT account. It never sees your password or sign-in tokens.";
+"ai.codex.download.busy" = "Codex is being installed in another PageLamp window. Try again when it's done.";
 "ai.codex.download.button" = "Download Codex";
 "ai.codex.download.cancel" = "Cancel download";
 "ai.codex.download.downloading" = "Downloading Codex… %1$@%%";
@@ -79,7 +80,7 @@
 "ai.codex.download.failed" = "Codex couldn't be installed.";
 "ai.codex.download.installing" = "Installing…";
 "ai.codex.download.progress" = "Codex download";
-"ai.codex.download.size" = "Codex is a separate download from OpenAI's releases on GitHub: about %1$@, %2$@ once installed on this computer. PageLamp checks it before installing it.";
+"ai.codex.download.size" = "Codex is a separate download from OpenAI's releases on GitHub: ≈70–80 MB, taking up to ≈330 MB once installed on this computer. PageLamp checks it before installing it.";
 "ai.codex.download.tryAgain" = "Try again";
 "ai.codex.download.unsupported" = "Codex isn't available for this computer.";
 "ai.codex.download.untested" = "Codex runs on this computer (Windows on Arm), but PageLamp hasn't been tested on it.";
