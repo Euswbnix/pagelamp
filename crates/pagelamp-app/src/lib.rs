@@ -47,8 +47,8 @@ pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
 pub use updates::{
-    StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
-    WhatsNewTopic,
+    Shell, StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs,
+    WhatsNew, WhatsNewTopic,
 };
 
 use std::collections::BTreeMap;
@@ -447,6 +447,8 @@ pub struct App {
 pub(crate) struct AppState {
     /// This launch's classification (`updates`), computed once.
     launch: std::sync::Mutex<Option<updates::LaunchClass>>,
+    /// Which shell opened the app (`App::set_shell`); What's new is per shell.
+    shell: std::sync::Mutex<updates::Shell>,
     /// Running syncs and downloads (`activity`).
     activity: activity::Registry,
     /// The `pagelamp` executable that runs extraction workers (`set_extract_worker`).
