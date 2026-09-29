@@ -1,3 +1,4 @@
+import { setTheme } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -6,7 +7,12 @@ import { App } from "@/App";
 import { API_MODE, createApi } from "@/api";
 import { applyBrandTheme, brand } from "@/brand";
 import { initI18n } from "@/i18n";
-import { applyStaticAppearance, staticAppearance } from "@/lib/appearance";
+import {
+  applyPreferences,
+  applyStaticAppearance,
+  recordStartupScheme,
+  staticAppearance,
+} from "@/lib/appearance";
 import { useUiStore } from "@/stores/ui";
 
 applyBrandTheme();
@@ -21,6 +27,15 @@ applyStaticAppearance(
   }),
   API_MODE === "mock",
 );
+// The student's theme, transparency and contrast before the first render too; the window is
+// shown once the page has loaded (window.rs), so it never flashes the system theme or a Mica the
+// student turned off. The system scheme is read before anything calls setTheme.
+const prefs = useUiStore.getState();
+applyPreferences(document.documentElement, prefs, recordStartupScheme());
+if (API_MODE === "tauri" && prefs.theme !== "system") {
+  // The native title bar and Mica, too (useAppearance keeps them in step afterwards).
+  setTheme(prefs.theme).catch(() => {});
+}
 document.title = brand.productName;
 if (API_MODE === "tauri") {
   // The native window title follows the brand too (permission: core:window:allow-set-title).

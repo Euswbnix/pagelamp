@@ -54,3 +54,45 @@ export function applyStaticAppearance(
   root.dataset.backdrop = appearance.backdrop;
   if (simulateMica && appearance.backdrop === "mica") root.dataset.micaSim = "";
 }
+
+/** The student's appearance preferences (stores/ui.ts). */
+export interface AppearancePreferences {
+  theme: "system" | "light" | "dark";
+  transparency: "auto" | "reduced";
+  contrast: "auto" | "more";
+}
+
+/**
+ * The preferences on <html> before the first render (usePreferences and useAppearance keep them
+ * in step afterwards), so the first frame already has the student's theme and transparency.
+ */
+export function applyPreferences(
+  root: HTMLElement,
+  prefs: AppearancePreferences,
+  systemDark: boolean,
+): void {
+  const dark = prefs.theme === "dark" || (prefs.theme === "system" && systemDark);
+  root.classList.toggle("dark", dark);
+  root.style.colorScheme = dark ? "dark" : "light";
+  root.dataset.transparency = prefs.transparency;
+  root.dataset.contrast = prefs.contrast;
+}
+
+let startupDark: boolean | null = null;
+
+/** Records the system's colour scheme at startup, before anything calls setTheme. */
+export function recordStartupScheme(): boolean {
+  startupDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return startupDark;
+}
+
+/**
+ * The native theme for "system" after an explicit light or dark this session. On Linux, tao
+ * turns setTheme(null) into "prefer light" (overriding the portal's dark preference), so the
+ * system value seen at startup goes back instead; tao's portal listener follows later changes.
+ * macOS and Windows go back to following the system with null.
+ */
+export function systemNativeTheme(platform: string | undefined): "light" | "dark" | null {
+  if (platform !== "linux") return null;
+  return startupDark ? "dark" : "light";
+}

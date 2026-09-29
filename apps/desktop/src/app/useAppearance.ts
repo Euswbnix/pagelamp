@@ -1,6 +1,7 @@
 import { setTheme } from "@tauri-apps/api/app";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { API_MODE } from "@/api";
+import { systemNativeTheme } from "@/lib/appearance";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -14,10 +15,17 @@ export function useAppearance() {
   const transparency = useUiStore((s) => s.transparency);
   const contrast = useUiStore((s) => s.contrast);
 
-  // The native title bar and Mica follow the in-app theme (null = the system's).
+  // The native title bar and Mica follow the in-app theme. "system" leaves the window alone
+  // until the student picked light or dark this session (setTheme(null) would force light on
+  // Linux); then it goes back to the system's (systemNativeTheme).
+  const nativeSet = useRef(false);
   useEffect(() => {
     if (API_MODE !== "tauri") return;
-    setTheme(theme === "system" ? null : theme).catch(() => {
+    if (theme === "system" && !nativeSet.current) return;
+    nativeSet.current = true;
+    const native =
+      theme === "system" ? systemNativeTheme(document.documentElement.dataset.platform) : theme;
+    setTheme(native).catch(() => {
       // Cosmetic: the page itself already follows the theme.
     });
   }, [theme]);
