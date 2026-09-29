@@ -1,7 +1,13 @@
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import { type AiStatus, backendKey, type CostEstimate, type EstimateRequest } from "@/api/ai";
+import {
+  type AiStatus,
+  type BlockReason,
+  backendKey,
+  type CostEstimate,
+  type EstimateRequest,
+} from "@/api/ai";
 import {
   useAcknowledgeUnpricedModel,
   useAiStatus,
@@ -15,6 +21,21 @@ import { Spinner } from "@/components/ui/spinner";
 import { paths } from "@/lib/routes";
 import { estimateAmount, formatTokens } from "./lib/money";
 import { useAiErrorText } from "./useAiErrorText";
+
+/**
+ * Whether the cost line applies. No model and the gate's blocks (the course's rules, question
+ * (b)) carry no estimate; the others (disclosure, unpriced model, weekly cap, budget) leave it
+ * complete, and over the budget the student decides on the override with it.
+ */
+function showsCost(block: BlockReason | null): boolean {
+  return (
+    block === null ||
+    block === "disclosure_not_acknowledged" ||
+    block === "budget_reached" ||
+    block === "price_unknown_not_acknowledged" ||
+    block === "weekly_run_cap_reached"
+  );
+}
 
 /** Blocks the student resolves in Settings → AI models. */
 const SETTINGS_BLOCKS = new Set(["no_model_chosen", "disclosure_not_acknowledged"]);
@@ -64,12 +85,12 @@ export function GenerateButton({
         </Button>
         <p id={ids.line} className="text-sm text-muted-foreground" aria-live="polite">
           {estimate.isPending && request ? <Spinner aria-hidden /> : null}
-          {data && request ? (
+          {data && request && showsCost(block) ? (
             <CostLine estimate={data} status={status.data ?? null} feature={request.feature} />
           ) : null}
         </p>
       </div>
-      {data && request ? (
+      {data && request && data.input_tokens > 0 ? (
         <p className="text-xs text-muted-foreground">
           {t("estimate.details", {
             input: formatTokens(data.input_tokens, i18n.language),

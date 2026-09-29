@@ -1204,18 +1204,16 @@ async fn a_stopped_sync_is_cancelled_not_failed_and_the_next_one_runs() {
     let source = app.add_folder_source(&courses, None, None).unwrap();
     app.cancel_sync(); // nothing runs: no effect
 
+    // Stop when the source starts: that event is sent on the calling thread before the folder
+    // work begins, so the stop is seen before the first file on every run. (Progress events
+    // arrive from the worker thread with a delay, so stopping on one of those would race with
+    // the files; stopping between files is tested deterministically in pagelamp-local.)
     let remote = app.clone();
     let events = Arc::new(Mutex::new(Vec::new()));
     let sink = events.clone();
     let result = app
         .sync_all(SyncRequest::default(), move |event| {
-            if matches!(
-                &event,
-                SyncEvent::Progress {
-                    current: Some(2),
-                    ..
-                }
-            ) {
+            if matches!(&event, SyncEvent::SourceStarted { .. }) {
                 remote.cancel_sync();
             }
             sink.lock().unwrap().push(event);
@@ -1244,7 +1242,7 @@ async fn a_stopped_sync_is_cancelled_not_failed_and_the_next_one_runs() {
         .await
         .unwrap();
     assert!(done.ok, "{done:?}");
-    assert_eq!(done.files_indexed, 3, "file 1 was indexed before the stop");
+    assert_eq!(done.files_indexed, 4, "nothing was read before the stop");
     let course = &app.list_courses().unwrap()[0];
     assert_eq!(course.counts.indexed_materials, 4);
 }

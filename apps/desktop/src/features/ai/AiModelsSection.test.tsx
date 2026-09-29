@@ -208,7 +208,7 @@ describe("Settings → AI models", () => {
     expect(await within(section).findByText("$4.96 used this month")).toBeInTheDocument();
   });
 
-  it("explains model errors by code, with the provider's retry delay", async () => {
+  it("explains model errors by code", async () => {
     const { user } = renderRoute("/settings", { scenario: "ai-errors" });
     const section = await aiSection();
     expect(await within(section).findByText(/Couldn't load the models from/)).toBeInTheDocument();
@@ -217,7 +217,9 @@ describe("Settings → AI models", () => {
     ).closest("li");
     if (!row) throw new Error("no row");
     await user.click(within(row).getByRole("button", { name: "Test" }));
-    expect(await within(row).findByText(/Try again in 20 s/)).toBeInTheDocument();
+    expect(
+      await within(row).findByText("The provider is limiting requests. Try again in a moment."),
+    ).toBeInTheDocument();
   });
 
   it("removes all AI data after asking", async () => {

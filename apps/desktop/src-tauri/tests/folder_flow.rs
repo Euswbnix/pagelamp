@@ -17,6 +17,14 @@ use tauri::test::{
 };
 use tauri::webview::InvokeRequest;
 
+/// Where the app's own page is served from, the only origin the ACL lets call app commands:
+/// Tauri serves it from `http://tauri.localhost` on Windows and `tauri://localhost` elsewhere.
+const APP_ORIGIN: &str = if cfg!(windows) {
+    "http://tauri.localhost"
+} else {
+    "tauri://localhost"
+};
+
 fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Result<Value, Value> {
     get_ipc_response(
         webview,
@@ -24,7 +32,7 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "tauri://localhost".parse().expect("url"),
+            url: APP_ORIGIN.parse().expect("url"),
             body: InvokeBody::Json(args),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),

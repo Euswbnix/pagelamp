@@ -107,7 +107,7 @@ struct Sandbox {
 
 /// The case of a `PageLampError`, without its message.
 enum ErrorCase: Equatable {
-    case auth, network, invalid, notFound, ambiguous, busy, schema, `internal`, panic
+    case auth, network, invalid, notFound, ambiguous, busy, schema, blocked, model, cancelled, `internal`, panic
 
     init(_ error: PageLampError) {
         switch error {
@@ -118,6 +118,9 @@ enum ErrorCase: Equatable {
         case .Ambiguous: self = .ambiguous
         case .Busy: self = .busy
         case .Schema: self = .schema
+        case .Blocked: self = .blocked
+        case .Model: self = .model
+        case .Cancelled: self = .cancelled
         case .Internal: self = .internal
         case .Panic: self = .panic
         }
