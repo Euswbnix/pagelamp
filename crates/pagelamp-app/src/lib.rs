@@ -449,6 +449,10 @@ pub(crate) struct AppState {
     extract_worker: std::sync::RwLock<Option<PathBuf>>,
     /// The stop request of the sync this app is running, if any (`cancel_sync`).
     sync_cancel: std::sync::Mutex<Option<pagelamp_core::source::CancelFlag>>,
+    /// Whether the data dir had been used when this app opened it (sources, or a
+    /// pre-migration backup), for the launch classification (`updates`): read at open, since
+    /// the first-run screens add a source before the shell asks for its startup tasks.
+    used_before_at_open: bool,
 }
 
 impl std::fmt::Debug for App {
@@ -482,12 +486,21 @@ impl App {
                 ),
             )
         })?;
+        let db_path = paths::db_path_in(&data_dir);
+        // Create + migrate, then only read: the launch itself is classified (and the running
+        // version recorded) by the first `startup_tasks`, never by a CLI or MCP process.
+        let store = Store::open(&db_path)?;
+        let used_before_at_open =
+            !store.list_sources()?.is_empty() || store.last_migration_backup()?.is_some();
+        drop(store);
         let app = App {
             data_dir,
             secrets,
-            state: Arc::default(),
+            state: Arc::new(AppState {
+                used_before_at_open,
+                ..AppState::default()
+            }),
         };
-        Store::open(&app.db_path())?; // create + migrate, then close
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
         Ok(app)

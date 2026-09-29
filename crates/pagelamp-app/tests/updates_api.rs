@@ -100,6 +100,38 @@ fn a_fresh_install_checks_daily_once_the_disclosure_was_seen() {
 }
 
 #[test]
+fn a_new_user_who_adds_a_source_before_startup_tasks_sees_no_whats_new() {
+    // The desktop's first-run screens add a source, then the shell asks for its startup tasks.
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let courses = temp.path().join("Courses");
+    std::fs::create_dir_all(courses.join("DEMO101 Intro")).unwrap();
+    std::fs::write(courses.join("DEMO101 Intro/notes.txt"), "demo").unwrap();
+    let app = open(&data);
+    app.add_folder_source(&courses, None, None).unwrap();
+    let tasks = app.startup_tasks(at("2026-10-01T09:00:00Z")).unwrap();
+    assert_eq!(tasks.whats_new, None, "a new user, not an upgrade");
+    assert_eq!(tasks.updated_from, None);
+    let acknowledged: Option<String> = Store::open(&data.join("pagelamp.db"))
+        .unwrap()
+        .setting("app.whats_new_acknowledged")
+        .unwrap();
+    assert_eq!(acknowledged.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn the_same_version_again_shows_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    used_before(&data, &temp.path().join("Courses"));
+    set_last_run(&data, env!("CARGO_PKG_VERSION"));
+    let tasks = open(&data)
+        .startup_tasks(at("2026-10-01T09:00:00Z"))
+        .unwrap();
+    assert_eq!((tasks.whats_new, tasks.updated_from), (None, None));
+}
+
+#[test]
 fn an_upgrade_from_0_1_shows_whats_new_before_the_first_check() {
     let temp = tempfile::tempdir().unwrap();
     let data = data_dir(&temp);
