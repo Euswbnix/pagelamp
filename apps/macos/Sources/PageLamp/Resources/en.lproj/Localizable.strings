@@ -1240,7 +1240,7 @@
 "proposals.sources.title" = "Materials to read dates from";
 "proposals.stale.body" = "Some quoted words aren't in %1$@ any more. The dates stay in force until you read it again or change them.";
 "proposals.stale.title" = "The syllabus changed on %1$@";
-"removal.banner.body" = "Finished courses are already out of your weekly views. Remove them from PageLamp to stop syncing them and free up space.";
+"removal.banner.body" = "Their deadlines are still listed. Remove them from PageLamp to stop syncing them and free up space.";
 "removal.banner.notNow" = "Not now";
 "removal.banner.review" = "Review";
 "removal.banner.snoozed" = "We'll ask again in two weeks.";

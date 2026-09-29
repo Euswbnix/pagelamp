@@ -1240,7 +1240,7 @@
 "proposals.sources.title" = "从哪些资料读取日期";
 "proposals.stale.body" = "%1$@ 里已经找不到部分引用的原文。在你重新读取或修改之前，这些日期仍然有效。";
 "proposals.stale.title" = "教学大纲在 %1$@ 有改动";
-"removal.banner.body" = "已结束的课程已经不会出现在按周显示的内容里。从 PageLamp 中移除它们，就不再同步，也能腾出空间。";
+"removal.banner.body" = "它们的截止日期仍会列出。从 PageLamp 中移除它们，就不再同步，也能腾出空间。";
 "removal.banner.notNow" = "暂不处理";
 "removal.banner.review" = "查看";
 "removal.banner.snoozed" = "两周后再提醒你。";
