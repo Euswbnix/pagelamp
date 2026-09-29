@@ -37,6 +37,7 @@ import {
   mockUsage,
   ollamaCloudFacts,
 } from "./ai-fixtures";
+import { createMockCodex } from "./codex";
 import type { MockCourse, MockScenario } from "./fixtures";
 
 type AiApi = Pick<
@@ -57,6 +58,15 @@ type AiApi = Pick<
   | "estimateGeneration"
   | "usageSummary"
   | "removeAllAiData"
+  | "codexStatus"
+  | "installCodex"
+  | "cancelCodexInstall"
+  | "removeCodex"
+  | "codexLogin"
+  | "cancelCodexLogin"
+  | "codexLogout"
+  | "setCodexSource"
+  | "setModeAWeeklyCap"
 >;
 
 export interface MockAiContext {
@@ -64,6 +74,8 @@ export interface MockAiContext {
   now: () => Date;
   /** Waits the mock's latency plus `extra` ms. */
   delay: (extra?: number) => Promise<void>;
+  /** Delay between streamed events (install, sign-in) in ms. */
+  stepMs: number;
   courses: () => MockCourse[];
   findCourse: (courseId: string) => MockCourse;
 }
@@ -126,7 +138,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   const unpricedAcks = new Set<string>();
   const features = new Map<AiFeature, ModelChoice | null>(FEATURES.map((f) => [f, null]));
   let budget: number | null = DEFAULT_BUDGET_MICRO_USD;
-  let usage: [number, UsageRow][] = mockUsage(scenario);
+  const codex = createMockCodex({ scenario, delay: ctx.delay, stepMs: ctx.stepMs });
+  let usage: [number, UsageRow][] = [...mockUsage(scenario), ...codex.usageRows()];
 
   function record(presetId: string, providerId: string, baseUrl: string, key: string | null) {
     const preset = presetOf(presetId);
@@ -192,6 +205,18 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     default:
       break;
   }
+  // Mode A scenarios (M2): signed in and routed to the pin's models, unless signed out.
+  const codexStart = codex.backendStatus(null);
+  if (codexStart && scenario !== "codex-signed-out") {
+    if (codex.initiallyAcknowledged) acknowledged.set("codex", codexStart.disclosure.version);
+    for (const feature of FEATURES) {
+      features.set(feature, {
+        backend: { kind: "codex" },
+        model: feature === "weekly_explanation" ? "gpt-6-sol" : "gpt-6-luna",
+        effort: "lowest",
+      });
+    }
+  }
 
   // ----- helpers -------------------------------------------------------------------------------
   function findProvider(providerId: string): ModelProviderRecord {
@@ -206,6 +231,24 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       });
     }
     return findProvider(backend.provider_id);
+  }
+  function codexBackend(): AiBackendStatus {
+    const found = codex.backendStatus(acknowledged.get("codex") ?? null);
+    if (!found) {
+      throw new ApiError("model", "Codex isn't installed.", { model_error: "runtime_missing" });
+    }
+    return found;
+  }
+  /** The facade's view of any backend: its status and its models. */
+  function statusOf(backend: BackendRef): AiBackendStatus {
+    return backend.kind === "codex" ? codexBackend() : backendStatus(providerOf(backend));
+  }
+  function modelsFor(backend: BackendRef): ModelInfo[] {
+    if (backend.kind === "codex") {
+      codexBackend();
+      return codex.models();
+    }
+    return modelsOf(providerOf(backend));
   }
   function modelsOf(provider: ModelProviderRecord): ModelInfo[] {
     return MOCK_MODELS[provider.preset] ?? [];
@@ -329,7 +372,11 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     aiStatus: async (): Promise<AiStatus> => {
       await ctx.delay();
       return structuredClone({
-        backends: providers.map(backendStatus),
+        // Priority order (design §7): the ChatGPT plan first, then keys and local models.
+        backends: [
+          codex.backendStatus(acknowledged.get("codex") ?? null),
+          ...providers.map(backendStatus),
+        ].filter((b): b is AiBackendStatus => b !== null),
         features: FEATURES.map((feature) => ({ feature, choice: features.get(feature) ?? null })),
         budget: budgetStatus(),
       });
@@ -389,6 +436,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     listModels: async (backend) => {
       await ctx.delay(400);
+      if (backend.kind === "codex") return modelsFor(backend);
       const provider = providerOf(backend);
       if (scenario === "ai-errors") {
         throw new ApiError("model", "Couldn't reach llm.demo.test.", { model_error: "network" });
@@ -398,6 +446,28 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     testModel: async (backend, model): Promise<ProbeReport> => {
       await ctx.delay(900);
+      if (backend.kind === "codex") {
+        const models = modelsFor(backend);
+        const status = await codex.api.codexStatus();
+        if (status.login.state === "signed_out") {
+          throw new ApiError("model", "Not signed in.", { model_error: "not_signed_in" });
+        }
+        if (status.outdated_action !== "none") {
+          throw new ApiError("model", "The model requires a newer version of Codex.", {
+            model_error: "runtime_outdated",
+          });
+        }
+        if (!models.some((m) => m.id === model)) {
+          throw new ApiError("model", `No model "${model}".`, { model_error: "model_not_found" });
+        }
+        return {
+          ok: true,
+          latency_ms: 3_100,
+          structured_output_tier: "native_schema",
+          thinking_always_on: false,
+          error: null,
+        };
+      }
       const provider = providerOf(backend);
       if (scenario === "ai-errors") {
         throw new ApiError("model", "Rate limited.", {
@@ -421,8 +491,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     setFeatureModel: async (feature, choice) => {
       await ctx.delay();
       if (choice) {
-        const provider = providerOf(choice.backend);
-        if (!modelInfo(provider, choice.model)) {
+        if (!modelsFor(choice.backend).some((m) => m.id === choice.model)) {
           throw new ApiError("invalid", `No model "${choice.model}".`);
         }
       }
@@ -431,7 +500,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     acknowledgeAiDisclosure: async (backend, version) => {
       await ctx.delay();
-      const current = disclosureOf(providerOf(backend)).version;
+      const current = statusOf(backend).disclosure.version;
       if (version !== current) {
         throw new ApiError("invalid", "The disclosure changed; read it again.");
       }
@@ -440,7 +509,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     acknowledgeUnpricedModel: async (backend, model) => {
       await ctx.delay();
-      providerOf(backend);
+      statusOf(backend);
       unpricedAcks.add(`${backendKey(backend)}/${model}`);
     },
 
@@ -466,8 +535,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         would_block: null,
       };
       if (!choice) return { ...blank, would_block: "no_model_chosen" };
-      const provider = providerOf(choice.backend);
-      const info = modelInfo(provider, choice.model);
+      const info = modelsFor(choice.backend).find((m) => m.id === choice.model) ?? null;
       const onDevice = info?.on_device ?? false;
       const courses =
         req.feature === "weekly_explanation"
@@ -477,11 +545,15 @@ export function createMockAi(ctx: MockAiContext): AiApi {
             : [];
       let block: BlockReason | null = null;
       for (const course of courses) block ??= courseGate(course, onDevice);
-      const status = backendStatus(provider);
+      const status = statusOf(choice.backend);
       if (!block && status.state !== "ready") block = "disclosure_not_acknowledged";
+      // Mode A has no money budget; PageLamp's runs per week are capped instead.
+      if (!block && status.kind === "codex" && codex.capReached()) {
+        block = "weekly_run_cap_reached";
+      }
 
       const reasoning = Math.max(REASONING[choice.effort], info?.reasoning_always_on ? 8_000 : 0);
-      const repair = provider.wire === "chat_completions";
+      const repair = status.provider?.wire === "chat_completions";
       const price = MOCK_PRICES[choice.model];
       let upper: number | null = null;
       if (onDevice) upper = 0;
@@ -522,6 +594,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         rows,
         total_micro_usd: rows.reduce((sum, r) => sum + (r.micro_usd ?? 0), 0),
         budget: budgetStatus(),
+        mode_a: codex.modeA(),
       });
     },
 
@@ -533,6 +606,16 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       for (const feature of FEATURES) features.set(feature, null);
       budget = DEFAULT_BUDGET_MICRO_USD;
       usage = [];
+      codex.forget();
+    },
+
+    ...codex.api,
+    removeCodex: async () => {
+      await codex.api.removeCodex();
+      acknowledged.delete("codex");
+      for (const [feature, choice] of features) {
+        if (choice?.backend.kind === "codex") features.set(feature, null);
+      }
     },
   };
 }

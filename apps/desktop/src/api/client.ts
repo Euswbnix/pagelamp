@@ -2,15 +2,20 @@ import type {
   AiFeature,
   AiStatus,
   BackendRef,
+  CodexLoginMethod,
+  CodexSource,
+  CodexStatus,
   CostEstimate,
   EstimateRequest,
   LocalServer,
+  LoginEvent,
   MaterialSharing,
   ModelChoice,
   ModelInfo,
   ModelProviderRecord,
   ProbeReport,
   ProviderPreset,
+  RuntimeEvent,
   UsageSummary,
 } from "./provisional/ai";
 import type {
@@ -165,8 +170,28 @@ export interface PageLampApi {
   estimateGeneration(req: EstimateRequest): Promise<CostEstimate>;
   /** `month` = any day of the month (null = this month). Counts only, never content. */
   usageSummary(month: IsoDate | null): Promise<UsageSummary>;
-  /** Keys, generated content, the usage ledger and AI settings. */
+  /** Keys, generated content, the usage ledger and AI settings; signs out of Codex first. */
   removeAllAiData(): Promise<void>;
+
+  // ----- mode A: the ChatGPT plan through official Codex (M2; design §2.3) -------------------
+  /** The runtime, the sign-in, the weekly cap and what a RuntimeOutdated error means now. */
+  codexStatus(): Promise<CodexStatus>;
+  /**
+   * Downloads the pinned Codex, verifies it and installs it (≈70 MB). `installId` (made by the
+   * UI) lets cancelCodexInstall stop it before this resolves; a cancel rejects with `cancelled`.
+   */
+  installCodex(installId: string, onEvent: (event: RuntimeEvent) => void): Promise<CodexStatus>;
+  /** Stops the download; the partial file is deleted, never resumed. */
+  cancelCodexInstall(installId: string): Promise<void>;
+  removeCodex(): Promise<void>;
+  /** Codex's own sign-in; PageLamp never sees the credentials. */
+  codexLogin(method: CodexLoginMethod, onEvent: (event: LoginEvent) => void): Promise<CodexStatus>;
+  cancelCodexLogin(): Promise<void>;
+  codexLogout(): Promise<CodexStatus>;
+  /** Use PageLamp's own Codex or an installed one in the tested range (D12). */
+  setCodexSource(source: CodexSource): Promise<void>;
+  /** PageLamp's ChatGPT-plan runs per week; null = no cap. */
+  setModeAWeeklyCap(runs: number | null): Promise<void>;
 
   // ----- "connect your AI app" -------------------------------------------------------------
   /** The Rust side decides which `pagelamp` binary the snippets point at. */

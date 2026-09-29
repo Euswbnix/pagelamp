@@ -88,6 +88,17 @@ export function createTauriApi(): PageLampApi {
     estimateGeneration: (req) => call("estimate_generation", { req }),
     usageSummary: (month) => call("usage_summary", { month }),
     removeAllAiData: () => call("remove_all_ai_data"),
+    codexStatus: () => call("codex_status"),
+    installCodex: (installId, onEvent) =>
+      call("install_codex", { installId, onEvent: eventChannel(onEvent) }),
+    cancelCodexInstall: (installId) => call("cancel_codex_install", { installId }),
+    removeCodex: () => call("remove_codex"),
+    codexLogin: (method, onEvent) =>
+      call("codex_login", { method, onEvent: eventChannel(onEvent) }),
+    cancelCodexLogin: () => call("cancel_codex_login"),
+    codexLogout: () => call("codex_logout"),
+    setCodexSource: (source) => call("set_codex_source", { source }),
+    setModeAWeeklyCap: (runs) => call("set_mode_a_weekly_cap", { runs }),
 
     mcpClientConfigs: () => call("mcp_client_configs"),
 

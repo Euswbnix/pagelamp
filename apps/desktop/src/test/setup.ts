@@ -3,6 +3,7 @@ import { cleanup } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, vi } from "vitest";
 import i18n, { initI18n } from "@/i18n";
+import { useCodexStore } from "@/stores/codex";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/updates";
@@ -50,4 +51,5 @@ afterEach(() => {
   useUiStore.setState(initialUi, true);
   useSyncStore.getState().reset();
   useUpdateStore.getState().reset();
+  useCodexStore.setState({ install: { phase: "idle" } });
 });

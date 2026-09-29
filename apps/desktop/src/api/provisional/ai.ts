@@ -283,13 +283,126 @@ export interface UsageRow {
   estimated: boolean;
 }
 
+/** Mode A has no money budget; a weekly run cap instead (design §2.3). */
+export interface ModeAUsage {
+  runs_this_week: number;
+  weekly_cap?: number | null;
+}
+
 export interface UsageSummary {
   /** The first day of the month. */
   month: IsoDate;
   rows: UsageRow[];
   total_micro_usd: number;
   budget: BudgetStatus;
+  /** Null when Codex isn't set up. */
+  mode_a?: ModeAUsage | null;
 }
+
+// ----- generated content --------------------------------------------------------------------------
+
+/** Token counts of one run (serde `TokenUsage`). */
+export interface TokenUsage {
+  /** The total, cached ones included. */
+  input_tokens: number;
+  cached_input_tokens: number;
+  /** Reasoning included. */
+  output_tokens: number;
+  /** Null when the provider doesn't report it. */
+  reasoning_tokens?: number | null;
+}
+
+/**
+ * Embedded in every result (design §3.8); the "AI-generated · …" label is built from it. The
+ * context summary and prompt version arrive with the backend's type-only commit.
+ */
+export interface GenerationMeta {
+  generation_id: string;
+  feature: AiFeature;
+  backend_label: string;
+  model: string;
+  created_at: Timestamp;
+  usage: TokenUsage;
+  est_cost_micro_usd?: number | null;
+  /** Some numbers are estimates (true after a cancel). */
+  estimated: boolean;
+}
+
+// ----- mode A: the ChatGPT plan through official Codex (M2; design §2.3) -------------------------
+// Names agreed with the backend on 2026-09-28; M2 is theirs after M1, so these may still move.
+
+export type CodexRuntimeState = "not_installed" | "installed" | "unsupported_platform";
+export type CodexSource = "managed" | "system";
+
+export interface CodexRuntime {
+  state: CodexRuntimeState;
+  source: CodexSource;
+  installed_version?: string | null;
+  pinned_version: string;
+  /** The compressed download, for "≈70 MB". */
+  download_bytes: number;
+  /** Windows arm64: runs, but untested (D14). */
+  untested_platform: boolean;
+}
+
+/** What a RuntimeOutdated error means right now; the facade decides (rule 12). */
+export type CodexOutdatedAction = "none" | "install_pin" | "update_pagelamp";
+
+export type CodexLoginState = "signed_out" | "chatgpt" | "api_key";
+/** A best guess from `codex login status`; `unknown` whenever it doesn't say (until A7). */
+export type ChatGptPlanType =
+  | "free"
+  | "go"
+  | "plus"
+  | "pro"
+  | "business"
+  | "edu"
+  | "enterprise"
+  | "unknown";
+
+export interface CodexLogin {
+  state: CodexLoginState;
+  plan_type?: ChatGptPlanType | null;
+}
+
+export interface SystemCodex {
+  version: string;
+  in_tested_range: boolean;
+}
+
+export interface CodexStatus {
+  runtime: CodexRuntime;
+  outdated_action: CodexOutdatedAction;
+  login: CodexLogin;
+  /** False when `codex exec` doesn't work on this plan (Free/Go, D10; pending A7). */
+  exec_available?: boolean | null;
+  weekly_cap?: number | null;
+  runs_this_week: number;
+  /** An installed `codex` found on this computer (D12). */
+  system_codex?: SystemCodex | null;
+}
+
+/** install_codex progress (serde tag "type"). A failure or cancel ends the call with an error. */
+export type RuntimeEvent =
+  | { type: "download_started"; total_bytes: number }
+  | { type: "progress"; downloaded_bytes: number; total_bytes: number }
+  | { type: "verifying" }
+  | { type: "installing" }
+  | { type: "done"; version: string };
+
+export type CodexLoginMethod = "browser" | "device_code";
+
+/** codex_login progress (serde tag "type"). */
+export type LoginEvent =
+  | { type: "browser_opened"; url?: string | null }
+  | {
+      type: "device_code";
+      verification_url: string;
+      user_code: string;
+      expires_in_secs?: number | null;
+    }
+  | { type: "waiting" }
+  | { type: "done" };
 
 // ----- courses -----------------------------------------------------------------------------------
 

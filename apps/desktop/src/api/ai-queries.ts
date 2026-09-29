@@ -9,6 +9,7 @@ import {
   type AiFeature,
   type BackendRef,
   backendKey,
+  type CodexSource,
   type EstimateRequest,
   type MaterialSharing,
   type ModelChoice,
@@ -24,6 +25,7 @@ export const aiKeys = {
   models: (backend: BackendRef) => [...aiKeys.all, "models", backendKey(backend)] as const,
   estimate: (req: EstimateRequest) => [...aiKeys.all, "estimate", req] as const,
   usage: (month: IsoDate | null) => [...aiKeys.all, "usage", month] as const,
+  codex: () => [...aiKeys.all, "codex"] as const,
 };
 
 function useInvalidateAi() {
@@ -216,5 +218,44 @@ export function useRemoveAllAiData() {
   return useMutation({
     mutationFn: () => api.removeAllAiData(),
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+// ----- mode A: the ChatGPT plan through Codex (M2) --------------------------------------------
+// Installing (progress that outlives the screen) lives in stores/codex.ts; signing in lives in
+// its dialog, whose closing cancels it.
+
+export function useCodexStatus() {
+  const api = useApi();
+  return useQuery({ queryKey: aiKeys.codex(), queryFn: () => api.codexStatus() });
+}
+
+export function useCodexLogout() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({ mutationFn: () => api.codexLogout(), onSuccess: invalidate });
+}
+
+export function useRemoveCodex() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({ mutationFn: () => api.removeCodex(), onSuccess: invalidate });
+}
+
+export function useSetCodexSource() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({
+    mutationFn: (source: CodexSource) => api.setCodexSource(source),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetModeAWeeklyCap() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({
+    mutationFn: (runs: number | null) => api.setModeAWeeklyCap(runs),
+    onSuccess: invalidate,
   });
 }

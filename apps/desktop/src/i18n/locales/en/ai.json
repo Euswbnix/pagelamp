@@ -71,7 +71,7 @@
     "ageGuardian": "{{age}}+ with a guardian's permission",
     "cost": {
       "api_billing": "billed to your API account",
-      "plan_credits": "counts toward your plan",
+      "plan_credits": "uses your ChatGPT plan (credits past its limit)",
       "free_on_device": "free",
       "cloud_via_local": "runs in the cloud"
     }
@@ -90,7 +90,8 @@
       "material_text": "Text from your course materials (slides, notes), for explanations and course calendars, only from courses whose rules allow it.",
       "cloud": "It goes to {{name}} and is handled under {{name}}'s terms.",
       "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
-      "terms": "Read {{name}}'s terms"
+      "terms": "Read {{name}}'s terms",
+      "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings."
     },
     "training": {
       "heading": "Training and storage",
@@ -114,7 +115,7 @@
     "cost": {
       "heading": "Cost",
       "api_billing": "Each run is billed to your API account. {{product}} shows an estimate before each run and keeps to a monthly budget you set.",
-      "plan_credits": "Runs count toward your plan's usage limits. Past them, credits may be used.",
+      "plan_credits": "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.",
       "free_on_device": "Runs on this computer are free. They use its memory and battery.",
       "cloud_via_local": "This model runs in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply."
     },
@@ -211,7 +212,7 @@
     "button": "Remove all AI data",
     "hint": "Deletes your keys, model choices, usage history and everything {{product}} wrote with AI.",
     "title": "Remove all AI data?",
-    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and every plan and explanation {{product}} wrote. Your courses, their rules and your answers about sharing materials stay.",
+    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and every plan and explanation {{product}} wrote, and signs {{product}}'s Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.",
     "confirm": "Remove all",
     "done": "All AI data removed"
   },
@@ -232,7 +233,10 @@
     "free": "Free",
     "noPrice": "No price",
     "estimatedNote": "≈ includes estimates (for example, a cancelled run).",
-    "total": "Total"
+    "total": "Total",
+    "plan": "ChatGPT plan",
+    "modeA": "{{runs}} of {{cap}} ChatGPT-plan runs this week",
+    "modeANoCap": "{{runs}} ChatGPT-plan runs this week"
   },
   "estimate": {
     "label": "Estimated cost:",
@@ -312,5 +316,97 @@
       "structureOnly": "Get an overview from the course structure only",
       "change": "Change the answer"
     }
+  },
+  "codex": {
+    "title": "Use my ChatGPT plan (runs OpenAI Codex)",
+    "description": "PageLamp runs OpenAI's official Codex on this computer, signed in with your ChatGPT account. It never sees your password or sign-in tokens.",
+    "download": {
+      "size": "Codex is a separate download from OpenAI's releases on GitHub: about {{download}}, {{disk}} once installed on this computer. PageLamp checks it before installing it.",
+      "button": "Download Codex",
+      "downloading": "Downloading Codex… {{percent}}%",
+      "downloadingUnknown": "Downloading Codex…",
+      "verifying": "Checking the download…",
+      "installing": "Installing…",
+      "progress": "Codex download",
+      "cancel": "Cancel download",
+      "failed": "Codex couldn't be installed.",
+      "tryAgain": "Try again",
+      "untested": "Codex runs on this computer (Windows on Arm), but PageLamp hasn't been tested on it.",
+      "unsupported": "Codex isn't available for this computer."
+    },
+    "installed": "Codex {{version}} is installed.",
+    "signIn": "Sign in with ChatGPT",
+    "signedIn": "Signed in with ChatGPT",
+    "signedInPlan": "Signed in with ChatGPT · {{plan}}",
+    "plan": {
+      "free": "Free",
+      "go": "Go",
+      "plus": "Plus",
+      "pro": "Pro",
+      "business": "Business",
+      "edu": "Edu",
+      "enterprise": "Enterprise"
+    },
+    "adminWarning": "This is a school or company workspace: its administrators can see what PageLamp sends through it, including text from your course materials.",
+    "apiKeyWarning": "Codex is signed in with an API key, so runs are billed to that key, not to your ChatGPT plan. Sign out and sign in with ChatGPT to use your plan.",
+    "noExec": "Your ChatGPT plan doesn't let other apps run Codex. You can still use an API key, a model on this computer, or your own AI app.",
+    "noExecConnect": "Connect your AI app",
+    "signOut": "Sign out",
+    "signOutDone": "Signed out of ChatGPT",
+    "remove": "Remove Codex",
+    "removeTitle": "Remove Codex?",
+    "removeBody": "PageLamp signs Codex out, deletes it from this computer and stops using your ChatGPT plan for every feature. You can download it again later.",
+    "removed": "Codex removed",
+    "outdated": {
+      "installPin": "PageLamp needs a newer Codex; updating…",
+      "updateApp": "Update PageLamp to keep using your ChatGPT plan.",
+      "checkUpdates": "Check for updates",
+      "noUpdateYet": "No update yet. OpenAI changed something this version of PageLamp's Codex doesn't support; a PageLamp update will follow.",
+      "install": "Install PageLamp {{version}}"
+    },
+    "system": {
+      "found": "Codex {{version}} is also installed on this computer.",
+      "use": "Use it instead",
+      "outOfRange": "PageLamp keeps using its own Codex: that version hasn't been tested with PageLamp.",
+      "inUse": "Using the Codex installed on this computer.",
+      "useManaged": "Use PageLamp's own Codex"
+    },
+    "cap": {
+      "title": "Weekly limit on ChatGPT-plan runs",
+      "hint": "Past your plan's limit, runs may use your ChatGPT credits. This limit keeps PageLamp from running more often than you expect.",
+      "amount": "Runs per week",
+      "noLimit": "No limit",
+      "save": "Save limit",
+      "saved": "Limit saved",
+      "used": "{{runs}} of {{cap}} runs this week",
+      "usedNoCap": "{{runs}} runs this week",
+      "invalid": "Enter a whole number of runs, at least 1."
+    },
+    "signInDialog": {
+      "title": "Sign in with ChatGPT",
+      "description": "Codex signs you in; PageLamp never sees your password or tokens. This sign-in is separate from any Codex you use yourself.",
+      "method": "How to sign in",
+      "browser": "In your browser",
+      "browserHint": "Recommended. Your browser opens ChatGPT's sign-in page.",
+      "device": "With a code",
+      "deviceHint": "If the browser sign-in doesn't work. First turn on device code sign-in in ChatGPT's security settings.",
+      "start": "Continue",
+      "waitingBrowser": "Finish signing in in your browser. This window updates when you're done.",
+      "openAgain": "Open the sign-in page again",
+      "deviceStep": "Open this page and enter the code:",
+      "codeLabel": "Sign-in code",
+      "expires": "The code expires in {{minutes}} minutes.",
+      "waiting": "Waiting for you to finish…",
+      "done": "Signed in with ChatGPT",
+      "failed": "Signing in didn't work.",
+      "tryAgain": "Try again"
+    },
+    "costLine": "Uses your ChatGPT plan",
+    "costLineRuns": "Uses your ChatGPT plan · {{runs}} of {{cap}} runs this week"
+  },
+  "aiLabel": {
+    "prefix": "AI-generated",
+    "tokens": "{{tokens}} tokens",
+    "tokensApprox": "≈ {{tokens}} tokens"
   }
 }

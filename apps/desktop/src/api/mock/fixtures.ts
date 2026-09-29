@@ -47,7 +47,19 @@ export type MockScenario =
   | "ai-unpriced"
   | "ai-budget"
   | "ai-disclosure-changed"
-  | "ai-errors";
+  | "ai-errors"
+  // The ChatGPT plan through Codex (M2): installed and signed out / Plus (12 of 40 runs this week)
+  // / an Edu workspace / signed in with an API key / an installed Codex older than the pin /
+  // RuntimeOutdated at the pin (update PageLamp) / Free without `codex exec` / the weekly cap
+  // reached. The demo has no Codex installed.
+  | "codex-signed-out"
+  | "codex-plus"
+  | "codex-edu"
+  | "codex-api-key"
+  | "codex-outdated-pin"
+  | "codex-outdated-app"
+  | "codex-free"
+  | "codex-cap";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -68,6 +80,14 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "ai-budget",
   "ai-disclosure-changed",
   "ai-errors",
+  "codex-signed-out",
+  "codex-plus",
+  "codex-edu",
+  "codex-api-key",
+  "codex-outdated-pin",
+  "codex-outdated-app",
+  "codex-free",
+  "codex-cap",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */

@@ -6,7 +6,9 @@
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
-// (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors.
+// (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
+// ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
+// codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -405,6 +407,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     scenario,
     now,
     delay: (extra = 0) => sleep(latency + extra),
+    stepMs: syncStep,
     courses: () => db.courses,
     findCourse,
   });
