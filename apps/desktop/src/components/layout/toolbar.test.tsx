@@ -26,6 +26,14 @@ describe("toolbar row", () => {
     ).toBeTruthy();
   });
 
+  it("starts with a course page's way back", async () => {
+    renderRoute(`/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}`);
+    await screen.findByRole("heading", { level: 1, name: "Intro to Demo Studies" });
+    const back = screen.getByRole("link", { name: "All courses" });
+    expect(toolbarRow()).toContainElement(back);
+    expect(toolbarRow().querySelector("a, button")).toBe(back);
+  });
+
   it("turns to glass only once content scrolls under it", async () => {
     renderRoute("/sources");
     await screen.findByRole("heading", { level: 1, name: "Sources & sync" });
@@ -74,10 +82,18 @@ describe("toolbar row", () => {
     expect(echo).not.toHaveAttribute("data-shown");
   });
 
-  it("keeps the actions in the header outside the app shell", () => {
-    render(<PageHeader title="Welcome" actions={<button type="button">Next</button>} />);
+  it("keeps the leading item and actions in the page outside the app shell", () => {
+    render(
+      <PageHeader
+        title="Welcome"
+        leading={<a href="#back">Back</a>}
+        actions={<button type="button">Next</button>}
+      />,
+    );
     const header = screen.getByRole("banner");
     expect(header).toContainElement(screen.getByRole("button", { name: "Next" }));
+    const back = screen.getByRole("link", { name: "Back" });
+    expect(back.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector(".pl-toolbar-title")).toBeNull();
   });
 });

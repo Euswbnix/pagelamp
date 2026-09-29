@@ -24,8 +24,8 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
   const { course, timeline } = overview;
   return (
     <div className="pb-6">
-      <BackToCourses />
       <PageHeader
+        leading={<BackToCourses />}
         eyebrow={course.code ?? undefined}
         title={course.name}
         description={<Freshness overview={overview} />}
