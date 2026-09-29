@@ -255,6 +255,22 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
         text::PROPOSE_COURSE_CALENDAR
     );
     assert_eq!(description("sync_status"), text::sync_status_description());
+    // All four hints on propose_course_calendar (main's four-hint test covers every tool once
+    // it merges down).
+    let propose = tools
+        .iter()
+        .find(|t| t.name == "propose_course_calendar")
+        .and_then(|t| t.annotations.as_ref())
+        .unwrap();
+    assert_eq!(
+        (
+            propose.read_only_hint,
+            propose.destructive_hint,
+            propose.idempotent_hint,
+            propose.open_world_hint
+        ),
+        (Some(false), Some(false), Some(false), Some(false))
+    );
     for tool in &tools {
         let read_only = tool.annotations.as_ref().and_then(|a| a.read_only_hint);
         assert_eq!(
