@@ -25,6 +25,8 @@ interface CourseCardProps {
   summary: CourseSummary;
   /** Why this course's source last failed to sync, if it did. */
   sourceError: SourceErrorKind | null;
+  /** h4 when the card sits under a group heading (Current, Upcoming, Past). */
+  headingLevel?: "h3" | "h4";
 }
 
 /**
@@ -33,12 +35,13 @@ interface CourseCardProps {
  * card is clickable while the page still has exactly one link per course and nothing
  * interactive nested inside it.
  */
-export function CourseCard({ summary, sourceError }: CourseCardProps) {
+export function CourseCard({ summary, sourceError, headingLevel = "h3" }: CourseCardProps) {
+  const Heading = headingLevel;
   const { t } = useTranslation("courses");
   const { t: tc } = useTranslation();
-  const { course, timeline, counts, next_deadline: next } = summary;
+  const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
-  const weekUnknown = timeline.current_week == null && !timeline.outside_term;
+  const weekUnknown = timeline.phase === "unknown" && timeline.current_week == null;
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   return (
@@ -50,7 +53,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0">
+        <Heading className="min-w-0">
           <Link
             ref={linkRef}
             to={paths.course(course.id)}
@@ -63,7 +66,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
               <span className="block text-muted-foreground">{course.name}</span>
             ) : null}
           </Link>
-        </h3>
+        </Heading>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <PolicyBadge policy={course.ai_policy} />
           {course.ai_policy === "unknown" ? (
@@ -118,7 +121,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
             {tc(`sourceError.${sourceError}`)}
           </span>
         ) : null}
-        {course.enrollment_active ? null : <PastCourseBadge />}
+        <PastCourseBadge lifecycle={lifecycle} />
         {course.hidden ? (
           <>
             <Badge variant="outline">
