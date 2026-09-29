@@ -184,9 +184,11 @@ fn make_private_if_ours(dir: &Path) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let name = entry?.file_name();
         let name = name.to_string_lossy();
-        // A course-aliases.json.<pid>.tmp left behind by an interrupted write is ours too.
+        // A course-aliases.json.<pid>.tmp left behind by an interrupted write is ours too, and
+        // so are pre-migration backups (`pagelamp.db.v<N>.bak`, `store::backup_path`).
         let alias_temp = name.starts_with("course-aliases.json.") && name.ends_with(".tmp");
-        if !OWN_ENTRIES.contains(&name.as_ref()) && !alias_temp {
+        let backup = name.starts_with(&format!("{DB_FILE}.v"));
+        if !OWN_ENTRIES.contains(&name.as_ref()) && !alias_temp && !backup {
             return Ok(()); // shared with other things: not ours to lock down
         }
     }

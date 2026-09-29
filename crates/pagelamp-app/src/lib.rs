@@ -70,6 +70,11 @@ pub enum AppErrorKind {
     Ambiguous,
     /// Another process (CLI or desktop app) is syncing (holds `sync.lock`).
     Busy,
+    /// The database was written by a newer PageLamp than this one: update PageLamp.
+    SchemaTooNew,
+    /// The database was written by an older PageLamp and not updated yet: open the app once
+    /// (or run any `pagelamp` command), which updates it.
+    SchemaTooOld,
     /// Anything else (database, keychain, I/O, bugs).
     Internal,
 }
@@ -105,14 +110,12 @@ impl From<pagelamp_core::Error> for AppError {
         let kind = match &err {
             E::NotFound(_) | E::NotInitialised(_) => AppErrorKind::NotFound,
             E::Ambiguous { .. } => AppErrorKind::Ambiguous,
+            E::SchemaTooNew { .. } => AppErrorKind::SchemaTooNew,
+            E::SchemaTooOld { .. } => AppErrorKind::SchemaTooOld,
             E::Invalid(_) => AppErrorKind::Invalid,
-            E::Db(_)
-            | E::Json(_)
-            | E::Io(_)
-            | E::SchemaTooNew { .. }
-            | E::SchemaTooOld { .. }
-            | E::NoDataDir
-            | E::Secret(_) => AppErrorKind::Internal,
+            E::Db(_) | E::Json(_) | E::Io(_) | E::NoDataDir | E::Secret(_) => {
+                AppErrorKind::Internal
+            }
         };
         // Core error messages never contain secrets (the store never sees them and
         // `secrets` redacts keychain errors).
@@ -562,6 +565,11 @@ impl App {
         store.remove_source(source_id)?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;
+        }
+        // The pre-update backup holds course text too: it goes with the last source.
+        if store.list_sources()?.is_empty() {
+            pagelamp_core::store::delete_database_backups(&self.db_path())
+                .map_err(pagelamp_core::Error::from)?;
         }
         Ok(())
     }

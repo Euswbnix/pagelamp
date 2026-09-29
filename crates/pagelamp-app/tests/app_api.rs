@@ -630,6 +630,50 @@ fn mcp_configs_point_at_the_binary_and_the_custom_data_dir() {
 // ----- errors & schema ------------------------------------------------------------------------
 
 #[test]
+fn a_database_from_a_newer_pagelamp_reaches_the_facade_as_schema_too_new() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = temp.path().join("data");
+    drop(app_in(temp.path()));
+    let store = Store::open(&data.join("pagelamp.db")).unwrap();
+    store
+        .conn()
+        .pragma_update(
+            None,
+            "user_version",
+            pagelamp_core::store::SCHEMA_VERSION + 1,
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE schema_meta SET value = ?1 WHERE key = 'min_reader_version'",
+            [(pagelamp_core::store::SCHEMA_VERSION + 1).to_string()],
+        )
+        .unwrap();
+    drop(store);
+    let Err(err) = App::open_at_with_secrets(data, Arc::new(MemorySecrets::new())) else {
+        panic!("a newer database must be refused");
+    };
+    assert_eq!(err.kind, AppErrorKind::SchemaTooNew, "{}", err.message);
+    let json = serde_json::to_value(err.kind).unwrap();
+    assert_eq!(json, "schema_too_new");
+}
+
+#[test]
+fn the_pre_update_backup_goes_with_the_last_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    seed(&app);
+    let backup = pagelamp_core::store::backup_path(&app.db_path(), 2);
+    std::fs::write(&backup, b"demo copy").unwrap();
+    let folder = app.add_folder_source(temp.path(), None, None).unwrap();
+    app.remove_source("canvas:lms.example.edu").unwrap();
+    assert!(backup.exists(), "a source is left");
+    app.remove_source(&folder.id).unwrap();
+    assert!(!backup.exists(), "deleted with the last source");
+}
+
+#[test]
 fn errors_map_to_stable_kinds() {
     use pagelamp_core::Error as E;
     let cases = [
@@ -645,6 +689,20 @@ fn errors_map_to_stable_kinds() {
         (E::Invalid("x".into()), AppErrorKind::Invalid),
         (E::NoDataDir, AppErrorKind::Internal),
         (E::Secret("x".into()), AppErrorKind::Internal),
+        (
+            E::SchemaTooNew {
+                found: 9,
+                supported: 3,
+            },
+            AppErrorKind::SchemaTooNew,
+        ),
+        (
+            E::SchemaTooOld {
+                found: 1,
+                supported: 3,
+            },
+            AppErrorKind::SchemaTooOld,
+        ),
     ];
     for (err, expected) in cases {
         assert_eq!(AppError::from(err).kind, expected);

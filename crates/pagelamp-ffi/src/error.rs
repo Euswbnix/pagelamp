@@ -1,12 +1,8 @@
 //! `PageLampError`: the one error every export throws in Swift.
 //!
 //! The facade's `AppError` is a struct (`kind` + `message`); Swift wants an enum it can
-//! `switch` over, so each `AppErrorKind` becomes a case carrying the message. Two cases are
+//! `switch` over, so each `AppErrorKind` becomes a case carrying the message. One case is
 //! added by this crate:
-//! - `Schema`: the database was written by a newer (or not yet migrated by an older) PageLamp.
-//!   The facade reports this as `Internal`; the text is recognised from `pagelamp-core`'s own
-//!   `Display` of `Error::SchemaTooNew` / `Error::SchemaTooOld` (see `is_schema_message`), so a
-//!   rewording in core cannot silently break it (a test pins it).
 //! - `Panic`: a bug made the Rust side of the call panic (caught at the task boundary; the
 //!   panic hook installed by `init_diagnostics` records it as the last crash).
 //!
@@ -57,7 +53,8 @@ impl From<AppError> for PageLampError {
             AppErrorKind::NotFound => Self::NotFound { message },
             AppErrorKind::Ambiguous => Self::Ambiguous { message },
             AppErrorKind::Busy => Self::Busy { message },
-            AppErrorKind::Internal if is_schema_message(&message) => Self::Schema { message },
+            // One Swift case for both for now; the shell splits them later.
+            AppErrorKind::SchemaTooNew | AppErrorKind::SchemaTooOld => Self::Schema { message },
             AppErrorKind::Internal => Self::Internal { message },
         }
     }
@@ -94,55 +91,6 @@ pub(crate) fn join_error(err: tokio::task::JoinError) -> PageLampError {
     }
 }
 
-/// Whether an `Internal` message is `pagelamp-core`'s `SchemaTooNew` / `SchemaTooOld` text.
-/// The pattern is derived from core's own `Display` (rendered with sentinel numbers), so it
-/// follows any rewording there.
-fn is_schema_message(message: &str) -> bool {
-    use pagelamp_core::Error;
-    const SENTINEL: i64 = 987_654_321;
-    [
-        Error::SchemaTooNew {
-            found: SENTINEL,
-            supported: SENTINEL,
-        },
-        Error::SchemaTooOld {
-            found: SENTINEL,
-            supported: SENTINEL,
-        },
-    ]
-    .iter()
-    .any(|err| {
-        let template = err.to_string();
-        let parts: Vec<&str> = template.split(&SENTINEL.to_string()).collect();
-        matches_with_numbers(message, &parts)
-    })
-}
-
-/// `text` is `parts` joined by (possibly negative) integers.
-fn matches_with_numbers(text: &str, parts: &[&str]) -> bool {
-    let Some((first, rest)) = parts.split_first() else {
-        return text.is_empty();
-    };
-    let Some(mut remaining) = text.strip_prefix(first) else {
-        return false;
-    };
-    for part in rest {
-        let unsigned = remaining.strip_prefix('-').unwrap_or(remaining);
-        let digits = unsigned.len()
-            - unsigned
-                .trim_start_matches(|c: char| c.is_ascii_digit())
-                .len();
-        if digits == 0 {
-            return false;
-        }
-        let Some(after) = unsigned[digits..].strip_prefix(part) else {
-            return false;
-        };
-        remaining = after;
-    }
-    remaining.is_empty()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +104,8 @@ mod tests {
             (AppErrorKind::NotFound, "not_found"),
             (AppErrorKind::Ambiguous, "ambiguous"),
             (AppErrorKind::Busy, "busy"),
+            (AppErrorKind::SchemaTooNew, "schema_too_new"),
+            (AppErrorKind::SchemaTooOld, "schema_too_old"),
             (AppErrorKind::Internal, "internal"),
         ];
         for (kind, message) in cases {
@@ -177,6 +127,9 @@ mod tests {
                     message: message.into(),
                 },
                 AppErrorKind::Busy => PageLampError::Busy {
+                    message: message.into(),
+                },
+                AppErrorKind::SchemaTooNew | AppErrorKind::SchemaTooOld => PageLampError::Schema {
                     message: message.into(),
                 },
                 AppErrorKind::Internal => PageLampError::Internal {
@@ -204,26 +157,6 @@ mod tests {
             let mapped = PageLampError::from(AppError::from(core));
             assert_eq!(mapped, PageLampError::Schema { message: text });
         }
-        // Other internal errors stay internal, including near misses.
-        for message in [
-            "database error: disk I/O error",
-            "database schema version x is newer than supported version 7; please update PageLamp",
-            "",
-        ] {
-            let mapped = PageLampError::from(AppError::new(AppErrorKind::Internal, message));
-            assert!(
-                matches!(mapped, PageLampError::Internal { .. }),
-                "{message}"
-            );
-        }
-    }
-
-    #[test]
-    fn numbers_between_parts() {
-        assert!(matches_with_numbers("a1b-22c", &["a", "b", "c"]));
-        assert!(!matches_with_numbers("a1bc", &["a", "b", "c"]));
-        assert!(!matches_with_numbers("a1b2c!", &["a", "b", "c"]));
-        assert!(matches_with_numbers("only", &["only"]));
     }
 
     #[test]

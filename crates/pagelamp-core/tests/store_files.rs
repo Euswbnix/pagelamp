@@ -210,26 +210,216 @@ fn read_only_open_of_uninitialised_db_is_not_initialised() {
     ));
 }
 
+/// A database written by a future version: `SCHEMA_VERSION + 1`, with `min_reader_version`
+/// set to `min_reader` (`None`: no `schema_meta` row at all).
+fn future_db(path: &Path, min_reader: Option<i64>) {
+    let store = Store::open(path).unwrap();
+    let conn = store.conn();
+    conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+        .unwrap();
+    conn.execute("DELETE FROM schema_meta", []).unwrap();
+    if let Some(min) = min_reader {
+        conn.execute(
+            "INSERT INTO schema_meta (key, value) VALUES ('min_reader_version', ?1)",
+            [min.to_string()],
+        )
+        .unwrap();
+    }
+}
+
+fn assert_too_new<T>(result: Result<T, Error>) {
+    match result {
+        Err(Error::SchemaTooNew { found, supported }) => {
+            assert_eq!(found, SCHEMA_VERSION + 1);
+            assert_eq!(supported, SCHEMA_VERSION);
+        }
+        Err(other) => panic!("expected SchemaTooNew, got {other:?}"),
+        Ok(_) => panic!("expected SchemaTooNew, got Ok"),
+    }
+}
+
 #[test]
-fn newer_schema_is_rejected_by_both_open_modes() {
+fn a_newer_database_is_readable_when_it_allows_this_reader_but_never_writable() {
+    let (_dir, path) = temp_db();
+    future_db(&path, Some(SCHEMA_VERSION));
+    let reader = Store::open_read_only(&path).unwrap();
+    assert_eq!(reader.schema_version().unwrap(), SCHEMA_VERSION + 1);
+    assert_eq!(reader.min_reader_version().unwrap(), Some(SCHEMA_VERSION));
+    assert!(reader.list_courses(true).unwrap().is_empty());
+    drop(reader);
+    assert_eq!(Store::upgrade_existing(&path).unwrap(), None);
+    assert_too_new(Store::open(&path));
+}
+
+#[test]
+fn a_newer_database_that_needs_a_newer_reader_is_refused_by_both_open_modes() {
+    for min_reader in [Some(SCHEMA_VERSION + 1), None] {
+        let (_dir, path) = temp_db();
+        future_db(&path, min_reader);
+        assert_too_new(Store::open_read_only(&path));
+        assert_too_new(Store::upgrade_existing(&path));
+        assert_too_new(Store::open(&path));
+    }
+}
+
+/// A database at schema 2 (v0.1.0) with one Canvas course whose term override is `user`.
+fn version_2_db(path: &Path, user: (&str, &str)) {
+    let plain = rusqlite::Connection::open(path).unwrap();
+    plain.execute_batch(SCHEMA_V1).unwrap();
+    plain
+        .execute_batch(pagelamp_core::store::SCHEMA_V2)
+        .unwrap();
+    plain.pragma_update(None, "user_version", 2).unwrap();
+    plain
+        .execute(
+            "INSERT INTO sources (id, kind, label) VALUES ('canvas:demo', 'canvas', 'Demo LMS')",
+            [],
+        )
+        .unwrap();
+    plain
+        .execute(
+            "INSERT INTO courses (id, source_id, external_id, code, name, term_start, term_end,
+                                  user_term_start, user_term_end, updated_at)
+             VALUES ('canvas:demo/course/101', 'canvas:demo', '101', 'DEMO101', 'Intro',
+                     '2026-05-01', '2026-12-31', ?1, ?2, '2026-09-20T00:00:00Z')",
+            [user.0, user.1],
+        )
+        .unwrap();
+}
+
+#[test]
+fn migrating_backs_up_the_database_first_and_keeps_only_the_newest_copy() {
+    let (dir, path) = temp_db();
+    version_2_db(&path, ("2026-05-01", "2026-12-31"));
+    // A copy from an earlier update, and one a crashed process never finished.
+    std::fs::write(dir.path().join("pagelamp.db.v1.bak"), b"old").unwrap();
+    std::fs::write(dir.path().join("pagelamp.db.v1.bak.4242.tmp"), b"").unwrap();
+
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+    drop(store);
+    let backup = pagelamp_core::store::database_backup(&path).expect("a backup");
+    assert_eq!(backup.path, dir.path().join("pagelamp.db.v2.bak"));
+    assert_eq!(backup.schema_version, 2);
+    assert!(
+        !dir.path().join("pagelamp.db.v1.bak").exists(),
+        "only the newest"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&backup.path)
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0, "private: it holds course text");
+    }
+    // The copy is the database as it was: schema 2, with its course.
+    let copy = rusqlite::Connection::open(&backup.path).unwrap();
+    let version: i64 = copy
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+    let courses: i64 = copy
+        .query_row("SELECT COUNT(*) FROM courses", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(courses, 1);
+    drop(copy);
+
+    // Opening again (nothing to migrate) makes no new copy; deleting removes every copy.
+    Store::open(&path).unwrap();
+    assert_eq!(
+        pagelamp_core::store::database_backup(&path).unwrap().path,
+        backup.path
+    );
+    assert_eq!(
+        pagelamp_core::store::delete_database_backups(&path).unwrap(),
+        2
+    );
+    assert!(pagelamp_core::store::database_backup(&path).is_none());
+    assert!(!dir.path().join("pagelamp.db.v1.bak.4242.tmp").exists());
+}
+
+#[test]
+fn a_new_database_is_not_backed_up() {
+    let (dir, path) = temp_db();
+    Store::open(&path).unwrap();
+    assert!(pagelamp_core::store::database_backup(&path).is_none());
+    let entries: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.contains(".bak"))
+        .collect();
+    assert!(entries.is_empty(), "{entries:?}");
+}
+
+#[test]
+fn the_v3_migration_drops_term_overrides_that_are_only_the_old_prefill() {
+    // CAL-7: the v0.1 dates form saved the synced dates as overrides.
+    for (user, expected) in [
+        (("2026-05-01", "2026-12-31"), (None, None)),
+        (("2026-09-08", "2026-12-31"), (Some("2026-09-08"), None)),
+        (
+            ("2026-09-08", "2026-12-18"),
+            (Some("2026-09-08"), Some("2026-12-18")),
+        ),
+    ] {
+        let (_dir, path) = temp_db();
+        version_2_db(&path, user);
+        let store = Store::open(&path).unwrap();
+        let (start, end): (Option<String>, Option<String>) = store
+            .conn()
+            .query_row(
+                "SELECT user_term_start, user_term_end FROM courses",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (start.as_deref(), end.as_deref()),
+            expected,
+            "user dates {user:?}"
+        );
+        assert_eq!(store.min_reader_version().unwrap(), Some(3));
+    }
+}
+
+#[test]
+fn settings_are_json_values_by_key() {
     let (_dir, path) = temp_db();
     let store = Store::open(&path).unwrap();
+    assert_eq!(store.setting::<bool>("updates.auto_check").unwrap(), None);
+    store.set_setting("updates.auto_check", &false).unwrap();
     store
-        .conn()
-        .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+        .set_setting("updates.channel", &serde_json::json!({"channel": "beta"}))
         .unwrap();
+    store.set_setting("updates.auto_check", &true).unwrap();
+    assert_eq!(
+        store.setting::<bool>("updates.auto_check").unwrap(),
+        Some(true)
+    );
+    assert_eq!(
+        store
+            .setting::<serde_json::Value>("updates.channel")
+            .unwrap()
+            .unwrap()["channel"],
+        "beta"
+    );
+    // A value this version can't read is an error the caller can fall back from.
+    assert!(matches!(
+        store.setting::<u32>("updates.channel"),
+        Err(Error::Invalid(_))
+    ));
+    store.remove_setting("updates.channel").unwrap();
+    assert_eq!(store.setting::<bool>("updates.channel").unwrap(), None);
+    // Readers see settings too.
     drop(store);
-
-    for result in [Store::open_read_only(&path), Store::open(&path)] {
-        match result {
-            Err(Error::SchemaTooNew { found, supported }) => {
-                assert_eq!(found, SCHEMA_VERSION + 1);
-                assert_eq!(supported, SCHEMA_VERSION);
-            }
-            Err(other) => panic!("expected SchemaTooNew, got {other:?}"),
-            Ok(_) => panic!("expected SchemaTooNew, got a store"),
-        }
-    }
+    let reader = Store::open_read_only(&path).unwrap();
+    assert_eq!(
+        reader.setting::<bool>("updates.auto_check").unwrap(),
+        Some(true)
+    );
 }
 
 #[test]

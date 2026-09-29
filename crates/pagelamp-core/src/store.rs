@@ -29,8 +29,8 @@
 //! Methods that run several statements (`replace_*`, `prune_*`) also use a SAVEPOINT, so they
 //! are all-or-nothing both when called on their own and inside `in_transaction`.
 
-use std::path::Path;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, NaiveDate, SecondsFormat, SubsecRound, Utc};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
@@ -41,7 +41,7 @@ use rusqlite::{
 use crate::model::*;
 use crate::{Error, Result};
 
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// Version-1 schema. Applied by `open` when `user_version` is 0.
 pub const SCHEMA_V1: &str = r#"
@@ -159,10 +159,55 @@ ALTER TABLE events ADD COLUMN course_hint TEXT;
 ALTER TABLE materials ADD COLUMN download_blocked TEXT;
 "#;
 
+/// Version 3 (v0.3 M0.8; docs/design/v0.3-model-access.md §5.4, v0.3-course-calendar.md §3.1):
+/// - extraction worker failures: `materials.text_error_kind` (`TextErrorKind`) and
+///   `text_error_fingerprint` (the worker protocol and app version that failed, kept next to
+///   `content_hash`), so a hard failure is not retried until one of the three changes;
+/// - `schema_meta` (key → value): `min_reader_version`, the oldest schema whose readers can
+///   still read this database (the reader rule, `Store::open_read_only`);
+/// - `settings` (key → JSON): app preferences such as the update settings (`Store::setting`);
+/// - course columns: raw LMS dates, time zone and state (written only by sync) and the
+///   student's `keep_current_until` / `removal_snoozed_until` (never touched by sync);
+/// - clears v0.1 term overrides that are only the untouched prefill of the dates form (it saved
+///   the synced dates as overrides): an override equal to the synced date is dropped.
+pub const SCHEMA_V3: &str = r#"
+ALTER TABLE materials ADD COLUMN text_error_kind        TEXT;
+ALTER TABLE materials ADD COLUMN text_error_fingerprint TEXT;
+
+CREATE TABLE schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT INTO schema_meta (key, value) VALUES ('min_reader_version', '3');
+
+CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,                 -- JSON
+    updated_at TEXT NOT NULL
+);
+
+ALTER TABLE courses ADD COLUMN lms_term_name         TEXT;    -- term.name, e.g. "Fall 2026"
+ALTER TABLE courses ADD COLUMN lms_term_start        TEXT;    -- raw term dates, in the course time zone
+ALTER TABLE courses ADD COLUMN lms_term_end          TEXT;
+ALTER TABLE courses ADD COLUMN lms_course_start      TEXT;    -- raw course.start_at
+ALTER TABLE courses ADD COLUMN lms_course_end        TEXT;
+ALTER TABLE courses ADD COLUMN lms_time_zone         TEXT;    -- IANA name
+ALTER TABLE courses ADD COLUMN lms_concluded         INTEGER; -- NULL = unknown
+ALTER TABLE courses ADD COLUMN lms_workflow_state    TEXT;
+ALTER TABLE courses ADD COLUMN lms_access_restricted INTEGER; -- listed but access_restricted_by_date
+ALTER TABLE courses ADD COLUMN keep_current_until    TEXT;    -- "I'm still taking this" (student)
+ALTER TABLE courses ADD COLUMN removal_snoozed_until TEXT;    -- "Not now" / "Keep" (student)
+
+UPDATE courses SET user_term_start = NULL WHERE user_term_start = term_start;
+UPDATE courses SET user_term_end   = NULL WHERE user_term_end   = term_end;
+"#;
+
 /// Schema migrations, in order: `MIGRATIONS[i]` upgrades a database from `user_version` `i`
 /// to `i + 1`. To change the schema, APPEND a migration (never edit one that has shipped) and
-/// bump `SCHEMA_VERSION`; the assertion below keeps the two in step.
-const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
+/// bump `SCHEMA_VERSION`; the assertion below keeps the two in step. A migration that only
+/// adds things keeps `schema_meta.min_reader_version` as it is (older readers can still read
+/// the database); one that changes what readers select must raise it.
+const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 const _: () = assert!(MIGRATIONS.len() as i64 == SCHEMA_VERSION);
 
 /// How long a statement waits for another connection's lock before failing with "busy".
@@ -248,7 +293,10 @@ impl Store {
     /// Open read-only (`SQLITE_OPEN_READ_ONLY`), `busy_timeout=5000`, `query_only=ON`.
     /// Errors: `NotInitialised` if the file is missing or `user_version == 0`;
     /// `SchemaTooOld` for an older, non-zero version (it needs a read-write `open` to migrate
-    /// first); `SchemaTooNew` if `user_version > SCHEMA_VERSION`.
+    /// first); `SchemaTooNew` if `user_version > SCHEMA_VERSION`, unless the newer database
+    /// says this version can still read it (**reader rule**: `schema_meta.min_reader_version`
+    /// ≤ `SCHEMA_VERSION`; newer migrations are additive, so a running MCP process of the
+    /// previous version keeps working after an update).
     ///
     /// Never creates the database file. (SQLite may create the `-wal`/`-shm` side files
     /// next to it, which is how WAL readers coordinate with the writer.)
@@ -261,19 +309,23 @@ impl Store {
         conn.busy_timeout(BUSY_TIMEOUT)?;
         conn.pragma_update(None, "query_only", true)?;
         let store = Store { conn };
-        match store.checked_user_version()? {
+        match store.user_version()? {
             0 => Err(Error::NotInitialised(path.display().to_string())),
             found if found < SCHEMA_VERSION => Err(Error::SchemaTooOld {
                 found,
                 supported: SCHEMA_VERSION,
             }),
-            _ => Ok(store),
+            found => {
+                store.check_readable(found)?;
+                Ok(store)
+            }
         }
     }
 
     /// Migrate an existing database written by an older version (0 < `user_version` <
     /// `SCHEMA_VERSION`) with one read-write `open`; returns the version it had. A missing
-    /// file, an uninitialised (0) or current database is left alone (`None`); a newer one is
+    /// file, an uninitialised (0) or current database is left alone (`None`), and so is a newer
+    /// one this version may read (the reader rule of `open_read_only`); any other newer one is
     /// `SchemaTooNew`. Used by read-only processes (the MCP server) at startup.
     pub fn upgrade_existing(path: &Path) -> Result<Option<i64>> {
         if !path.is_file() {
@@ -282,10 +334,16 @@ impl Store {
         let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         let conn = Connection::open_with_flags(path, flags)?;
         conn.busy_timeout(BUSY_TIMEOUT)?;
-        let version = Store { conn }.checked_user_version()?;
+        let store = Store { conn };
+        let version = store.user_version()?;
         if version == 0 || version == SCHEMA_VERSION {
             return Ok(None);
         }
+        if version > SCHEMA_VERSION {
+            store.check_readable(version)?;
+            return Ok(None);
+        }
+        drop(store);
         Store::open(path)?;
         Ok(Some(version))
     }
@@ -302,8 +360,14 @@ impl Store {
     /// Bring the schema up to `SCHEMA_VERSION` by applying the missing `MIGRATIONS`.
     fn migrate(&self) -> Result<()> {
         // Fast path that takes no write lock: already up to date (or too new → error).
-        if self.checked_user_version()? == SCHEMA_VERSION {
+        let current = self.checked_user_version()?;
+        if current == SCHEMA_VERSION {
             return Ok(());
+        }
+        // Outside the transaction (VACUUM can't run inside one); a copy made while another
+        // process migrates is detected and dropped (`write_backup`).
+        if current > 0 {
+            self.back_up_before_migration(current);
         }
         self.in_transaction(|store| {
             // Read again under the write lock: another process may have migrated meanwhile.
@@ -322,21 +386,86 @@ impl Store {
 
     /// `PRAGMA user_version`, rejecting versions this binary cannot handle.
     fn checked_user_version(&self) -> Result<i64> {
-        let version: i64 = self
-            .conn
-            .pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let version = self.user_version()?;
         if version > SCHEMA_VERSION {
             return Err(Error::SchemaTooNew {
                 found: version,
                 supported: SCHEMA_VERSION,
             });
         }
+        Ok(version)
+    }
+
+    /// `PRAGMA user_version` as stored (`Invalid` if negative).
+    fn user_version(&self) -> Result<i64> {
+        let version: i64 = self
+            .conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))?;
         if version < 0 {
             return Err(Error::Invalid(format!(
                 "database has an invalid schema version ({version})"
             )));
         }
         Ok(version)
+    }
+
+    /// The reader rule: a database at `version` (newer than `SCHEMA_VERSION`) may be read if its
+    /// `schema_meta.min_reader_version` is at most `SCHEMA_VERSION`; otherwise `SchemaTooNew`.
+    fn check_readable(&self, version: i64) -> Result<()> {
+        if version <= SCHEMA_VERSION {
+            return Ok(());
+        }
+        let too_new = || Error::SchemaTooNew {
+            found: version,
+            supported: SCHEMA_VERSION,
+        };
+        let min_reader: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = 'min_reader_version'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap_or(None); // no schema_meta table: a database no reader rule applies to
+        match min_reader.and_then(|v| v.trim().parse::<i64>().ok()) {
+            Some(min) if min <= SCHEMA_VERSION => Ok(()),
+            _ => Err(too_new()),
+        }
+    }
+
+    /// `schema_meta.min_reader_version`, if the database has one (schema 3 and later).
+    pub fn min_reader_version(&self) -> Result<Option<i64>> {
+        let value: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM schema_meta WHERE key = 'min_reader_version'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value.and_then(|v| v.trim().parse().ok()))
+    }
+
+    /// Copy the database before migrating it from `version` (see `write_backup`). Best effort:
+    /// a failure is logged, and the migration (additive, in one transaction) goes ahead.
+    fn back_up_before_migration(&self, version: i64) {
+        let Some(db) = self
+            .conn
+            .path()
+            .filter(|p| !p.is_empty())
+            .map(std::path::PathBuf::from)
+        else {
+            return; // in memory
+        };
+        match write_backup(&self.conn, &db, version) {
+            Ok(Some(backup)) => tracing::info!(
+                "backed up the database (schema {version}) before updating it: {}",
+                backup.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            Ok(None) => {}
+            Err(err) => tracing::warn!("could not back up the database before updating it: {err}"),
+        }
     }
 
     /// Run `f` inside `BEGIN IMMEDIATE … COMMIT` on this connection (ROLLBACK on error).
@@ -1149,6 +1278,41 @@ impl Store {
         }))
     }
 
+    // ----- settings (schema 3) --------------------------------------------------------------
+
+    /// The JSON value stored under `key`, if any. `Invalid` when it can't be read as `T` (a
+    /// value written by another version); callers usually fall back to their default.
+    pub fn setting<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
+        let text: Option<String> =
+            self.query_opt("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })?;
+        text.map(|text| {
+            serde_json::from_str(&text)
+                .map_err(|err| Error::Invalid(format!("setting '{key}' could not be read: {err}")))
+        })
+        .transpose()
+    }
+
+    /// Store `value` as JSON under `key`, replacing an earlier value.
+    pub fn set_setting<T: serde::Serialize>(&self, key: &str, value: &T) -> Result<()> {
+        let text = serde_json::to_string(value)?;
+        self.conn.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+                                            updated_at = excluded.updated_at",
+            params![key, text, now_text()],
+        )?;
+        Ok(())
+    }
+
+    /// Forget the value under `key` (absent is fine).
+    pub fn remove_setting(&self, key: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM settings WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
     // ----- statistics ----------------------------------------------------------------------
 
     /// `PRAGMA user_version` of this database (see `SCHEMA_VERSION`).
@@ -1263,6 +1427,135 @@ fn expect_changed(changed: usize, what: &str, id: &str) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+// ----- pre-migration backups ----------------------------------------------------------------
+
+/// `<db>.v<version>.bak` next to the database, e.g. `pagelamp.db.v2.bak`.
+pub fn backup_path(db: &Path, version: i64) -> PathBuf {
+    let name = db.file_name().unwrap_or_default().to_string_lossy();
+    db.with_file_name(format!("{name}.v{version}.bak"))
+}
+
+/// The copy of the database a migration made before changing it (the newest one; only that one
+/// is kept). It holds course text like the database itself: mode 0600, never part of a report,
+/// deleted with the last source (docs/design/v0.3-model-access.md §5.4).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DatabaseBackup {
+    pub path: PathBuf,
+    /// The schema version the database had when it was copied.
+    pub schema_version: i64,
+    /// When the copy was made (the file's modification time).
+    pub made_at: Option<SystemTime>,
+}
+
+/// The pre-migration backup next to `db`, if there is one.
+pub fn database_backup(db: &Path) -> Option<DatabaseBackup> {
+    backup_files(db)
+        .into_iter()
+        .filter_map(|(path, version)| {
+            let made_at = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+            path.is_file().then_some(DatabaseBackup {
+                path,
+                schema_version: version,
+                made_at,
+            })
+        })
+        .max_by_key(|backup| (backup.made_at, backup.schema_version))
+}
+
+/// Delete every pre-migration backup next to `db`, and copies left half-written. Returns how
+/// many files were removed.
+pub fn delete_database_backups(db: &Path) -> std::io::Result<usize> {
+    let mut removed = 0;
+    for (path, _) in backup_files(db).into_iter().chain(backup_temp_files(db)) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(removed)
+}
+
+/// `(path, version)` of every `<db>.v<N>.bak` next to `db`.
+fn backup_files(db: &Path) -> Vec<(PathBuf, i64)> {
+    backup_siblings(db)
+        .into_iter()
+        .filter_map(|(path, rest)| Some((path, rest.strip_suffix(".bak")?.parse().ok()?)))
+        .collect()
+}
+
+/// `<db>.v<N>.bak.<pid>.tmp` files: copies a process didn't finish.
+fn backup_temp_files(db: &Path) -> Vec<(PathBuf, i64)> {
+    backup_siblings(db)
+        .into_iter()
+        .filter(|(_, rest)| rest.contains(".bak.") && rest.ends_with(".tmp"))
+        .map(|(path, _)| (path, 0))
+        .collect()
+}
+
+/// Files next to `db` named `<db name>.v…`, with the text after `.v`.
+fn backup_siblings(db: &Path) -> Vec<(PathBuf, String)> {
+    let prefix = format!("{}.v", db.file_name().unwrap_or_default().to_string_lossy());
+    let dir = match db.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let rest = name.strip_prefix(&prefix)?.to_string();
+            Some((entry.path(), rest))
+        })
+        .collect()
+}
+
+/// Copy the database (`conn`, at `db`, schema `version`) to `backup_path(db, version)` with
+/// `VACUUM INTO`, which is safe while other connections use the database (WAL). The copy is
+/// written to a private temporary file first and renamed; older backups are then deleted.
+/// `Ok(None)` when another process migrated the database meanwhile (the copy is dropped).
+fn write_backup(conn: &Connection, db: &Path, version: i64) -> Result<Option<PathBuf>> {
+    let name = db.file_name().unwrap_or_default().to_string_lossy();
+    let temp = db.with_file_name(format!("{name}.v{version}.bak.{}.tmp", std::process::id()));
+    let _ = std::fs::remove_file(&temp);
+    // Created empty and private first: VACUUM INTO accepts an empty file and keeps its mode.
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    drop(options.open(&temp)?);
+    let copied = conn
+        .execute("VACUUM INTO ?1", [temp.to_string_lossy()])
+        .map_err(Error::from)
+        .and_then(|_| {
+            let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+            let copy = Connection::open_with_flags(&temp, flags)?;
+            Ok(copy.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))?)
+        });
+    match copied {
+        Ok(copied) if copied == version => {}
+        Ok(_) => {
+            let _ = std::fs::remove_file(&temp);
+            return Ok(None);
+        }
+        Err(err) => {
+            let _ = std::fs::remove_file(&temp);
+            return Err(err);
+        }
+    }
+    let backup = backup_path(db, version);
+    std::fs::rename(&temp, &backup)?;
+    for (older, _) in backup_files(db) {
+        if older != backup {
+            let _ = std::fs::remove_file(older);
+        }
+    }
+    Ok(Some(backup))
 }
 
 // ----- course resolution helpers ------------------------------------------------------------
