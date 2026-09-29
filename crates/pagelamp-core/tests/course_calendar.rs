@@ -2,9 +2,10 @@
 //! (CAL-n, by their design names). All dates and courses are synthetic.
 
 use chrono::{DateTime, NaiveDate, Utc};
+use pagelamp_core::lifecycle::{LifecycleInput, course_lifecycle, is_active};
 use pagelamp_core::model::*;
 use pagelamp_core::term::{TermInput, resolve_term};
-use pagelamp_core::timeline::{self, course_timeline};
+use pagelamp_core::timeline::{self, course_timeline, infer_timeline};
 
 const UOFT: &str = "canvas:q.utoronto.ca";
 const TORONTO: &str = "America/Toronto";
@@ -110,6 +111,44 @@ impl Case {
 
     fn timeline(&self, today: &str) -> CourseTimeline {
         course_timeline(&self.input(today))
+    }
+
+    fn lifecycle(&self, today: &str) -> CourseLifecycle {
+        let input = self.input(today);
+        let resolved = resolve_term(&input);
+        let timeline = infer_timeline(&input, &resolved);
+        course_lifecycle(&LifecycleInput {
+            course: &self.course,
+            data: &self.data,
+            resolved: &resolved,
+            timeline: &timeline,
+            events: &self.events,
+            today: date(today),
+        })
+    }
+}
+
+fn lifecycle_codes(lifecycle: &CourseLifecycle) -> Vec<&str> {
+    lifecycle
+        .evidence_items
+        .iter()
+        .map(|item| item.code.as_str())
+        .collect()
+}
+
+fn event(id: &str, kind: EventKind, title: &str, due: &str) -> Event {
+    Event {
+        id: id.into(),
+        source_id: UOFT.into(),
+        course_id: Some(format!("{UOFT}/course/1")),
+        kind,
+        title: title.into(),
+        starts_at: None,
+        ends_at: None,
+        due_at: Some(at(due)),
+        url: None,
+        updated_at: at("2026-09-01T12:00:00Z"),
+        course_hint: None,
     }
 }
 
@@ -501,4 +540,349 @@ fn teaching_phase_blocks_weak_end_signals() {
     assert_eq!(t.phase_confidence, Confidence::Low);
     assert_eq!(t.current_week, Some(26));
     assert!(!t.outside_term);
+}
+
+/// CAL-8 (the lifecycle half): on 07-15 the summer F course is finishing, the S course current.
+#[test]
+fn summer_f_end_is_clipped_to_session_window_lifecycle() {
+    let term = canvas_term("Summer 2026", "2026-05-04", "2026-08-28");
+    let f = Case::new(
+        course(
+            UOFT,
+            "DEM101H5 F LEC0101 20265",
+            "DEM101H5 F LEC0101 20265 Demo I",
+        ),
+        term.clone(),
+    );
+    let lifecycle = f.lifecycle("2026-07-15");
+    assert!(
+        matches!(
+            lifecycle.state,
+            LifecycleState::Finishing | LifecycleState::Ended
+        ),
+        "{lifecycle:?}"
+    );
+    let mut s = Case::new(
+        course(
+            UOFT,
+            "DEM102H5 S LEC0101 20265",
+            "DEM102H5 S LEC0101 20265 Demo II",
+        ),
+        term,
+    );
+    s.materials = vec![
+        material("w1", "Week 1 slides", "2026-07-07T12:00:00Z"),
+        material("w2", "Week 2 slides", "2026-07-14T12:00:00Z"),
+    ];
+    let lifecycle = s.lifecycle("2026-07-15");
+    assert_eq!(lifecycle.state, LifecycleState::Current);
+    assert_eq!(lifecycle.group, CourseGroup::Current);
+}
+
+/// A past UofT course that was never concluded: an enrollment-window term, materials without
+/// week numbers, last activity in December 2025.
+fn past_course(code: &str, term: CourseTermData) -> Case {
+    let mut case = Case::new(course(UOFT, code, &format!("{code} Demo")), term);
+    case.materials = vec![
+        material("a", "Lecture notes", "2025-10-01T12:00:00Z"),
+        material("b", "Final review", "2025-12-03T12:00:00Z"),
+    ];
+    case
+}
+
+/// CAL-11: past courses end with evidence (Medium; High when the LMS says concluded).
+#[test]
+fn past_courses_end_with_evidence() {
+    let summer_2024 = canvas_term("Summer 2024", "2024-05-01", "2024-08-31");
+    let fall_2025 = canvas_term("Fall 2025", "2025-05-05", "2026-01-31");
+    for case in [
+        past_course("DEM101H5 F LEC0101 20245", summer_2024),
+        past_course("DEM236H5 F LEC0101 20259", fall_2025),
+    ] {
+        assert!(case.course.enrollment_active);
+        let lifecycle = case.lifecycle("2026-09-28");
+        assert_eq!(
+            (lifecycle.state, lifecycle.confidence),
+            (LifecycleState::Ended, Confidence::Medium),
+            "{:?}: {lifecycle:?}",
+            case.course.code
+        );
+        assert_eq!(lifecycle.group, CourseGroup::Past);
+        assert!(lifecycle.suggest_removal);
+        assert_eq!(lifecycle.last_activity, Some(date("2025-12-03")));
+        assert!(lifecycle_codes(&lifecycle).contains(&"quiet_since"));
+        assert!(!is_active(&lifecycle, date("2026-09-28")));
+
+        let mut concluded = case;
+        concluded.data.lms.concluded = Some(true);
+        let lifecycle = concluded.lifecycle("2026-09-28");
+        assert_eq!(
+            (lifecycle.state, lifecycle.confidence),
+            (LifecycleState::Ended, Confidence::High)
+        );
+        assert!(lifecycle_codes(&lifecycle).contains(&"lms_concluded"));
+    }
+    // Snoozed ("Not now") or kept: still Ended, not suggested.
+    let mut case = past_course(
+        "DEM236H5 F LEC0101 20259",
+        canvas_term("Fall 2025", "2025-05-05", "2026-01-31"),
+    );
+    case.data.removal_snoozed_until = Some(date("2026-10-12"));
+    let lifecycle = case.lifecycle("2026-09-28");
+    assert_eq!(lifecycle.state, LifecycleState::Ended);
+    assert!(!lifecycle.suggest_removal);
+    assert!(lifecycle_codes(&lifecycle).contains(&"removal_snoozed"));
+    case.data.removal_snoozed_until = Some(date("9999-12-31"));
+    assert!(lifecycle_codes(&case.lifecycle("2026-09-28")).contains(&"removal_kept"));
+    // The snooze runs out.
+    case.data.removal_snoozed_until = Some(date("2026-09-01"));
+    assert!(case.lifecycle("2026-09-28").suggest_removal);
+}
+
+/// CAL-12: the session window alone never ends a course.
+#[test]
+fn session_hint_alone_cannot_end_a_course() {
+    let mut case = Case::new(
+        course(
+            UOFT,
+            "DEM300H5 F LEC0101 20265",
+            "DEM300H5 F LEC0101 20265 Demo",
+        ),
+        CourseTermData::default(),
+    );
+    // The window (May–June) passed long ago; the last activity was 30 days ago.
+    case.materials = vec![material("a", "Notes", "2026-08-29T12:00:00Z")];
+    let lifecycle = case.lifecycle("2026-09-28");
+    assert_ne!(lifecycle.state, LifecycleState::Ended);
+    assert_eq!(lifecycle.group, CourseGroup::Current);
+    assert!(!lifecycle.suggest_removal);
+    assert!(lifecycle_codes(&lifecycle).contains(&"may_have_ended"));
+    // After 60 quiet days it counts.
+    let lifecycle = case.lifecycle("2026-11-05");
+    assert_eq!(
+        (lifecycle.state, lifecycle.confidence),
+        (LifecycleState::Ended, Confidence::Medium)
+    );
+    assert!(lifecycle_codes(&lifecycle).contains(&"session_ended"));
+}
+
+/// CAL-13: an end signal with recent activity (grade announcements) is Finishing.
+#[test]
+fn recent_activity_keeps_finishing() {
+    let mut case = past_course(
+        "DEM236H5 F LEC0101 20259",
+        canvas_term("Fall 2025", "2025-05-05", "2026-01-31"),
+    );
+    case.materials
+        .push(material("g", "Final grades posted", "2026-02-10T12:00:00Z"));
+    let lifecycle = case.lifecycle("2026-02-20");
+    assert_eq!(lifecycle.state, LifecycleState::Finishing);
+    assert_eq!(lifecycle.group, CourseGroup::Current);
+    assert!(!lifecycle.suggest_removal);
+    assert!(lifecycle_codes(&lifecycle).contains(&"recent_activity"));
+    assert!(is_active(&lifecycle, date("2026-02-20")));
+    // Quiet for three weeks: Ended.
+    assert_eq!(case.lifecycle("2026-03-05").state, LifecycleState::Ended);
+}
+
+/// CAL-14: a deadline ahead keeps an ended course Finishing.
+#[test]
+fn future_deadlines_keep_finishing() {
+    let mut case = past_course(
+        "DEM236H5 F LEC0101 20259",
+        canvas_term("Fall 2025", "2025-05-05", "2026-01-31"),
+    );
+    case.data.lms.concluded = Some(true);
+    case.events = vec![event(
+        "ps9",
+        EventKind::AssignmentDue,
+        "Deferred problem set",
+        "2026-10-08T16:00:00Z",
+    )];
+    let lifecycle = case.lifecycle("2026-09-28");
+    assert_eq!(lifecycle.state, LifecycleState::Finishing);
+    assert_eq!(lifecycle.next_event, Some(date("2026-10-08")));
+    assert!(!lifecycle.suggest_removal);
+    assert!(lifecycle_codes(&lifecycle).contains(&"next_event"));
+    // Events of kind "other" don't count, nor do events more than 30 days ahead.
+    case.events[0].kind = EventKind::Other;
+    assert_eq!(case.lifecycle("2026-09-28").state, LifecycleState::Ended);
+    case.events[0].kind = EventKind::Exam;
+    case.events[0].due_at = Some(at("2026-11-20T16:00:00Z"));
+    assert_eq!(case.lifecycle("2026-09-28").state, LifecycleState::Ended);
+}
+
+/// CAL-15 (the lifecycle half): three quiet weeks in February don't end a Y course.
+#[test]
+fn teaching_phase_blocks_weak_end_signals_lifecycle() {
+    let mut case = Case::new(
+        course(
+            UOFT,
+            "DEM137Y5 Y LEC0101 20269",
+            "DEM137Y5 Y LEC0101 20269 Demo Year",
+        ),
+        canvas_term("Fall-Winter 2026", "2026-09-01", "2027-01-31"),
+    );
+    case.materials = vec![
+        material("s", "Syllabus", "2026-09-02T12:00:00Z"),
+        material("n", "Notes", "2027-01-30T12:00:00Z"),
+    ];
+    let lifecycle = case.lifecycle("2027-02-24");
+    assert_eq!(lifecycle.state, LifecycleState::Current);
+    assert!(!lifecycle.suggest_removal);
+}
+
+#[test]
+fn keep_current_upcoming_and_inactive() {
+    // "I'm still taking this" wins over any end signal, until it runs out.
+    let mut case = past_course(
+        "DEM236H5 F LEC0101 20259",
+        canvas_term("Fall 2025", "2025-05-05", "2026-01-31"),
+    );
+    case.data.lms.concluded = Some(true);
+    case.data.keep_current_until = Some(date("2026-12-31"));
+    let lifecycle = case.lifecycle("2026-09-28");
+    assert_eq!(
+        (lifecycle.state, lifecycle.confidence),
+        (LifecycleState::Current, Confidence::High)
+    );
+    assert_eq!(lifecycle.kept_current_until, Some(date("2026-12-31")));
+    assert!(lifecycle_codes(&lifecycle).contains(&"kept_current"));
+    assert_eq!(case.lifecycle("2027-01-01").state, LifecycleState::Ended);
+
+    // A Winter course seen in September: Upcoming from its session window.
+    let winter = Case::new(
+        course(
+            UOFT,
+            "DEM210H5 S LEC0101 20271",
+            "DEM210H5 S LEC0101 20271 Demo",
+        ),
+        CourseTermData::default(),
+    );
+    let lifecycle = winter.lifecycle("2026-09-28");
+    assert_eq!(lifecycle.state, LifecycleState::Upcoming);
+    assert_eq!(lifecycle.group, CourseGroup::Upcoming);
+    assert_eq!(lifecycle.starts_on, Some(date("2027-01-01")));
+    assert!(!is_active(&lifecycle, date("2026-09-28")));
+    assert!(is_active(&lifecycle, date("2026-12-20")));
+
+    // Dates known and not started yet.
+    let mut data = CourseTermData::default();
+    data.lms.course_start = Some(date("2027-01-11"));
+    data.lms.course_end = Some(date("2027-04-09"));
+    let later = Case::new(
+        course("canvas:lms.example.edu", "DEMO400", "Demo 400"),
+        data,
+    );
+    let lifecycle = later.lifecycle("2026-12-01");
+    assert_eq!(lifecycle.state, LifecycleState::Upcoming);
+    assert_eq!(lifecycle.starts_on, Some(date("2027-01-11")));
+
+    // No dates at all and nothing for months: an orientation site.
+    let mut site = Case::new(
+        course("canvas:lms.example.edu", "ORIENT", "Orientation"),
+        CourseTermData::default(),
+    );
+    site.materials = vec![material("w", "Welcome", "2026-01-10T12:00:00Z")];
+    let lifecycle = site.lifecycle("2026-09-28");
+    assert_eq!(lifecycle.state, LifecycleState::Inactive);
+    assert_eq!(lifecycle.group, CourseGroup::Past);
+    assert!(lifecycle.suggest_removal);
+    // …but with recent activity it is Unknown (listed with the current courses).
+    site.materials
+        .push(material("n", "News", "2026-09-20T12:00:00Z"));
+    assert_eq!(site.lifecycle("2026-09-28").state, LifecycleState::Unknown);
+}
+
+/// A course with a plausible LMS end: Ended · High 21 days after it; teaching before.
+#[test]
+fn plausible_lms_end_ends_the_course() {
+    let mut data = CourseTermData::default();
+    data.lms.course_start = Some(date("2026-09-08"));
+    data.lms.course_end = Some(date("2026-12-08"));
+    let case = Case::new(
+        course("canvas:lms.example.edu", "DEMO101", "Intro to Demo Studies"),
+        data,
+    );
+    assert_eq!(case.lifecycle("2026-10-01").state, LifecycleState::Current);
+    assert_eq!(
+        case.lifecycle("2026-12-16").state,
+        LifecycleState::Finishing
+    );
+    let lifecycle = case.lifecycle("2027-01-05");
+    assert_eq!(
+        (lifecycle.state, lifecycle.confidence),
+        (LifecycleState::Ended, Confidence::High)
+    );
+    assert_eq!(lifecycle.since, Some(date("2026-12-08")));
+    assert!(lifecycle_codes(&lifecycle).contains(&"course_end_passed"));
+}
+
+/// CAL-14 (the views half): deadlines are never filtered by the lifecycle, and course lists
+/// carry each course's lifecycle.
+#[test]
+fn deadlines_are_not_filtered_by_lifecycle() {
+    use pagelamp_core::store::Store;
+    use pagelamp_core::views::{self, AsOf};
+
+    let store = Store::open_in_memory().unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: UOFT.into(),
+            kind: SourceKind::Canvas,
+            label: "Quercus".into(),
+            config: serde_json::json!({ "base_url": "https://q.utoronto.ca" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    let id = format!("{UOFT}/course/236");
+    store
+        .upsert_course(&CourseUpsert {
+            id: id.clone(),
+            source_id: UOFT.into(),
+            external_id: "236".into(),
+            code: Some("DEM236H5 F LEC0101 20259".into()),
+            name: "DEM236H5 F LEC0101 20259 Demo".into(),
+            term_start: Some(date("2025-05-05")),
+            term_end: Some(date("2026-01-31")),
+            url: None,
+            syllabus_text: None,
+            lms: LmsCourseInfo {
+                term_name: Some("Fall 2025".into()),
+                term_start: Some(date("2025-05-05")),
+                term_end: Some(date("2026-01-31")),
+                concluded: Some(true),
+                time_zone: Some(TORONTO.into()),
+                ..LmsCourseInfo::default()
+            },
+        })
+        .unwrap();
+    let mut due = event(
+        "ps9",
+        EventKind::AssignmentDue,
+        "Deferred problem set",
+        "2026-10-08T16:00:00Z",
+    );
+    due.course_id = Some(id.clone());
+    store.replace_events(UOFT, &[due]).unwrap();
+    let at = AsOf {
+        now: at("2026-09-28T12:00:00Z"),
+        today: date("2026-09-28"),
+    };
+
+    let listed = views::list_courses(&store, false, at).unwrap();
+    assert_eq!(listed[0].lifecycle.state, LifecycleState::Finishing);
+    let deadlines = views::deadlines(&store, None, 21, 0, false, at).unwrap();
+    assert_eq!(deadlines.len(), 1);
+    assert_eq!(deadlines[0].event.title, "Deferred problem set");
+    let overview = views::course_overview(&store, "DEM236", false, at).unwrap();
+    assert_eq!(overview.lifecycle, listed[0].lifecycle);
+
+    // Without the deadline the course has ended, and its lifecycle says so everywhere.
+    store.replace_events(UOFT, &[]).unwrap();
+    let listed = views::list_courses(&store, false, at).unwrap();
+    assert_eq!(listed[0].lifecycle.state, LifecycleState::Ended);
+    assert!(listed[0].lifecycle.suggest_removal);
 }

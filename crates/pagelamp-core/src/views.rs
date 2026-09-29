@@ -16,6 +16,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::dates::course_date;
+use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
 use crate::store::Store;
 use crate::term::phase::teaching_week_on;
@@ -258,7 +259,8 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
             term_data.remove(&course.id).unwrap_or_default(),
             &confirmed,
         )?;
-        let (_, timeline) = data.timeline(&course, at);
+        let (resolved, timeline) = data.timeline(&course, at);
+        let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
         let ai_materials = course.ai_materials();
         let course_deadlines: Vec<&Event> = upcoming
             .iter()
@@ -286,7 +288,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
         summaries.push(CourseSummary {
             ai_materials,
             timeline,
-            lifecycle: CourseLifecycle::unknown(),
+            lifecycle,
             counts,
             next_deadline,
             source_label,
@@ -313,7 +315,8 @@ pub fn course_overview(
 ) -> Result<CourseOverview> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (_, timeline) = data.timeline(&course, at);
+    let (resolved, timeline) = data.timeline(&course, at);
+    let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
     let current_modules = data
         .modules
         .iter()
@@ -353,7 +356,7 @@ pub fn course_overview(
     Ok(CourseOverview {
         ai_materials: course.ai_materials(),
         timeline,
-        lifecycle: CourseLifecycle::unknown(),
+        lifecycle,
         current_modules,
         recent_materials: recent(false),
         upcoming_deadlines,
@@ -760,6 +763,24 @@ impl CourseData {
 
     fn chunks_of(&self, material_id: &str) -> u32 {
         self.chunk_counts.get(material_id).copied().unwrap_or(0)
+    }
+
+    /// The course's lifecycle (`lifecycle::course_lifecycle`).
+    fn lifecycle(
+        &self,
+        course: &Course,
+        resolved: &ResolvedTerm,
+        timeline: &CourseTimeline,
+        at: AsOf,
+    ) -> CourseLifecycle {
+        lifecycle::course_lifecycle(&LifecycleInput {
+            course,
+            data: &self.term_data,
+            resolved,
+            timeline,
+            events: &self.events,
+            today: at.today,
+        })
     }
 
     /// Teaching week of a material per the `week_materials` membership rule: its own week

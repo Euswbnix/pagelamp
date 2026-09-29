@@ -84,6 +84,9 @@ pub struct ResolvedTerm {
     pub full_year: bool,
     /// The anchor's end was replaced by the session window end.
     pub end_clipped: bool,
+    /// The first plausible, unclipped end of the LMS or folder dates (lifecycle rule 2), with
+    /// its source, whether or not those dates are the anchor.
+    pub plausible_end: Option<(TermAnchorSource, NaiveDate)>,
     /// Earliest and latest activity on or before today (materials, unlocks, events).
     pub first_activity: Option<NaiveDate>,
     pub last_activity: Option<NaiveDate>,
@@ -363,9 +366,14 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             ..TermResolution::default()
         },
     };
+    let plausible_end = plausible
+        .iter()
+        .filter(|a| a.source != TermAnchorSource::PublishedWeekLabels && !a.end_clipped)
+        .find_map(|a| Some((a.source, a.end?)));
     ResolvedTerm {
         resolution,
         tz,
+        plausible_end,
         end_clipped: anchor.as_ref().is_some_and(|a| a.end_clipped),
         session,
         full_year,

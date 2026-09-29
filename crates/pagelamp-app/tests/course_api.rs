@@ -175,6 +175,8 @@ fn course_timeline_and_lifecycle_summary_cover_hidden_courses() {
     let timeline = app.course_timeline("DEMO303").unwrap();
     assert_eq!(timeline.as_of, today());
 
+    // No dates and no activity at all: both courses are Inactive (design §8.1 rule 7) and
+    // suggested for removal, the hidden one too.
     let summary = app.lifecycle_summary().unwrap();
     let ids: Vec<&str> = summary
         .courses
@@ -183,13 +185,46 @@ fn course_timeline_and_lifecycle_summary_cover_hidden_courses() {
         .collect();
     assert_eq!(ids, [course_id("101"), course_id("303")]);
     assert!(summary.courses[1].hidden);
-    assert!(!summary.show_banner);
+    assert!(
+        summary
+            .courses
+            .iter()
+            .all(|entry| entry.lifecycle.state == LifecycleState::Inactive)
+    );
+    assert_eq!(summary.suggested, [course_id("101"), course_id("303")]);
+    assert!(summary.show_banner);
     assert_eq!(summary.banner_snoozed_until, None);
 
+    // "Not now" on the banner hides it for this set of courses…
     app.snooze_lifecycle_banner().unwrap();
     let summary = app.lifecycle_summary().unwrap();
+    assert!(!summary.show_banner);
     assert_eq!(
         summary.banner_snoozed_until,
         Some(today() + TimeDelta::days(NOT_NOW_DAYS))
     );
+    // …"Keep" takes a course off the suggestions…
+    app.snooze_removal_suggestions(vec!["DEMO101".into()], SnoozeKind::Keep)
+        .unwrap();
+    let summary = app.lifecycle_summary().unwrap();
+    assert_eq!(summary.suggested, [course_id("303")]);
+    assert!(!summary.show_banner);
+    // …and a newly suggested course shows the banner again.
+    let store = Store::open(&app.db_path()).unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: course_id("404"),
+            source_id: SOURCE.into(),
+            external_id: "404".into(),
+            code: Some("DEMO404".into()),
+            name: "Demo course 404".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    let summary = app.lifecycle_summary().unwrap();
+    assert!(summary.show_banner);
 }
