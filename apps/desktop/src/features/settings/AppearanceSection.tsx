@@ -14,6 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isSupportedLocale } from "@/i18n";
 import { type ThemePreference, useUiStore } from "@/stores/ui";
 import { SettingsSection } from "./SettingsSection";
+import { TransparencySettings } from "./TransparencySettings";
 
 const THEMES: { value: ThemePreference; icon: LucideIcon }[] = [
   { value: "system", icon: Monitor },
@@ -89,6 +90,7 @@ export function AppearanceSection() {
           </SelectContent>
         </Select>
       </div>
+      <TransparencySettings />
     </SettingsSection>
   );
 }

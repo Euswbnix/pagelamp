@@ -35,7 +35,7 @@ export function RemoveCourseSection({
   return (
     <section
       aria-labelledby={ids.heading}
-      className="flex flex-wrap items-start justify-between gap-4 rounded-lg border bg-card p-4"
+      className="pl-callout flex flex-wrap items-start justify-between gap-4 p-4"
     >
       <div className="grid gap-1">
         <h3 id={ids.heading} className="text-sm font-medium">

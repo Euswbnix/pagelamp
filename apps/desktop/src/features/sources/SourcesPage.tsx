@@ -82,6 +82,7 @@ export function SourcesPage() {
         <SyncProgressPanel
           onRetry={() => void startSync()}
           onDismiss={() => useSyncStore.getState().reset()}
+          announce={false}
         />
 
         <SourceList

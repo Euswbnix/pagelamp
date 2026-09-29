@@ -25,7 +25,7 @@ export function FileReaderStatus() {
 function ReaderWarning({ status }: { status: ExtractWorkerStatus }) {
   const { t } = useTranslation("settings");
   return (
-    <Alert role="note" className="border-warning/50 bg-warning/10 *:[svg]:text-warning">
+    <Alert role="note" className="*:[svg]:text-warning">
       <TriangleAlert aria-hidden />
       <AlertDescription className="text-foreground">
         {status === "protocol_mismatch"

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { SyncEvent } from "@/api/types";
+import i18n from "@/i18n";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
@@ -325,7 +326,7 @@ describe("SourcesPage", () => {
       onEvent({
         type: "progress",
         source_id: "folder:demo-courses",
-        message: "Indexing materials (3/12)",
+        message: "DEMO101: indexing files",
         current: 3,
         total: 12,
       });
@@ -345,7 +346,7 @@ describe("SourcesPage", () => {
     );
     const bar = screen.getByRole("progressbar", { name: "Course folder progress" });
     expect(bar).toHaveAttribute("aria-valuenow", "25");
-    expect(screen.getByText("Indexing materials (3/12)")).toBeInTheDocument();
+    expect(screen.getByText("DEMO101: indexing files")).toBeInTheDocument();
     expect(screen.getByText("Syncing")).toBeInTheDocument(); // the folder card's badge
     // No removing while a sync runs, even for a source that hasn't started yet.
     expect(screen.getByRole("button", { name: "Remove Demo Canvas" })).toBeDisabled();
@@ -363,6 +364,52 @@ describe("SourcesPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Hide sync results" }));
     expect(screen.queryByRole("heading", { name: "Sync finished" })).not.toBeInTheDocument();
+  });
+
+  it("translates the step from its stage code, with the course as plain text", async () => {
+    useUiStore.setState({ locale: "zh-CN" });
+    await i18n.changeLanguage("zh-CN");
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const realSyncAll = api.syncAll;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    api.syncAll = async (req, onEvent: (event: SyncEvent) => void) => {
+      const source_id = "folder:demo-courses";
+      onEvent({ type: "source_started", source_id, label: "Course folder" });
+      onEvent({
+        type: "progress",
+        source_id,
+        stage: "indexing_files",
+        course: "DEMO{{x}}101",
+        message: "DEMO{{x}}101: indexing files",
+        current: 3,
+        total: 12,
+      });
+      onEvent({
+        type: "source_started",
+        source_id: "ical:demo-calendar",
+        label: "Course calendar",
+      });
+      // An older facade: English text and no stage, so a Chinese UI leaves it out.
+      onEvent({
+        type: "progress",
+        source_id: "ical:demo-calendar",
+        message: "Saving 12 calendar events",
+      });
+      await gate;
+      return realSyncAll(req, onEvent);
+    };
+    const { user } = renderRoute("/sources", { api });
+
+    await user.click(await screen.findByRole("button", { name: "全部同步" }));
+    const row = (await screen.findByText("正在同步… · 3/12")).closest("li") as HTMLElement;
+    expect(within(row).getByText("Course folder")).toBeInTheDocument();
+    expect(within(row).getByText("正在为 DEMO{{x}}101 的文件建立索引")).toBeInTheDocument();
+    expect(screen.queryByText("Saving 12 calendar events")).toBeNull();
+    release();
+    expect(await screen.findByRole("heading", { level: 2, name: "同步完成" })).toBeInTheDocument();
   });
 
   it("syncs a single source", async () => {

@@ -1,0 +1,14 @@
+{
+  "appearance": {
+    "transparency": "减少透明效果",
+    "transparencyHint": "用实色背景代替半透明的玻璃效果。{{product}} 也会遵循系统的设置。",
+    "contrast": "增强对比度",
+    "contrastHint": "文字和边框更深，并且不使用半透明的玻璃效果。"
+  },
+  "accessory": {
+    "syncingOf": "正在同步 {{done}}/{{total}} · {{source}}",
+    "details": "同步详情",
+    "open": "打开“数据来源与同步”",
+    "dismiss": "关闭"
+  }
+}

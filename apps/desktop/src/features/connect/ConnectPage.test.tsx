@@ -61,7 +61,7 @@ describe("ConnectPage", () => {
   it("shows a loading placeholder while the setup steps load", async () => {
     const api = mockApi({ mcpClientConfigs: () => new Promise<McpClientConfig[]>(() => {}) });
     renderRoute("/connect", { api });
-    expect(await screen.findByRole("status")).toHaveTextContent("Loading…");
+    expect(await screen.findByText("Loading…")).toHaveAttribute("role", "status");
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 

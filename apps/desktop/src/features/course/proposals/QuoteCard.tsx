@@ -16,7 +16,7 @@ export function QuoteCard({ evidence }: { evidence: DateEvidence }) {
     ? t("card.sourceAt", { title: evidence.title, locator: evidence.locator })
     : t("card.source", { title: evidence.title });
   return (
-    <figure className="space-y-1 rounded-md border-l-2 border-primary/40 bg-muted/40 px-3 py-2">
+    <figure className="pl-concentric space-y-1 border-l-2 border-rule bg-muted px-3 py-2 [--pl-pad:1.25rem]">
       {evidence.quote ? (
         <blockquote className="text-sm whitespace-pre-wrap">“{evidence.quote}”</blockquote>
       ) : null}

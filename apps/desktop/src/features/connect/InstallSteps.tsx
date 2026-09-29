@@ -190,7 +190,7 @@ function RemoveFirst({ config }: { config: McpClientConfig }) {
 function ConfigPath({ path, app }: { path: string; app: string }) {
   const { t } = useTranslation("connect");
   return (
-    <div className="flex items-center gap-2 rounded-lg border bg-muted/50 py-1.5 pr-1.5 pl-3">
+    <div className="pl-concentric flex items-center gap-2 bg-muted py-1.5 pr-1.5 pl-3 [--pl-pad:1rem]">
       <code className="min-w-0 flex-1 font-mono text-[13px] break-all">{path}</code>
       <CopyButton text={path} label={t("copyPath", { app })} variant="ghost" />
     </div>

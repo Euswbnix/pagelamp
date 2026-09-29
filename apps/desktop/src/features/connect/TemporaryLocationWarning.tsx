@@ -21,7 +21,7 @@ export function TemporaryLocationWarning() {
   const where = temporaryLocation(configs.data ?? []);
   if (!where) return null;
   return (
-    <Alert role="note" className="border-warning/50 bg-warning/10 px-4 py-3 *:[svg]:text-warning">
+    <Alert role="note" className="px-4 py-3 *:[svg]:text-warning">
       <TriangleAlert aria-hidden />
       <AlertTitle>{t(`temporaryLocation.${where}.title`)}</AlertTitle>
       <AlertDescription className="text-foreground">
