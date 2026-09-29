@@ -9,6 +9,7 @@ pub(crate) mod codex;
 mod estimate;
 pub mod prompts;
 mod providers;
+pub(crate) mod run;
 mod settings;
 mod types;
 mod usage;
@@ -121,7 +122,7 @@ impl App {
             };
             backends.push(AiBackendStatus {
                 backend: BackendRef::Codex,
-                label: "ChatGPT plan (through OpenAI Codex)".to_string(),
+                label: codex::CODEX_LABEL.to_string(),
                 kind: BackendKind::Codex,
                 state,
                 problems,

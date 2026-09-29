@@ -462,6 +462,8 @@ pub(crate) struct AppState {
     /// pre-migration backup), for the launch classification (`updates`): read at open, since
     /// the first-run screens add a source before the shell asks for its startup tasks.
     used_before_at_open: bool,
+    /// Model runs in progress, by generation id (`cancel_generation`).
+    pub(crate) runs: ai::run::Runs,
 }
 
 impl std::fmt::Debug for App {
