@@ -44,3 +44,7 @@ apps/macos/Frameworks/
 apps/macos/.build/
 apps/macos/.swiftpm/
 apps/macos/dist/
+
+# Local Claude Code preview configs (per session, never committed)
+/.claude/launch.json
+/.claude/worktrees/
