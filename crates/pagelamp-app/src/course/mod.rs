@@ -170,16 +170,16 @@ impl App {
     }
 }
 
-/// Add (`true`) or remove the course from the confirmed-dates list.
+/// Add (`true`) or remove the course from the confirmed-dates list. A failed read fails the
+/// call before anything is written, so the other courses' confirmations are never lost; a
+/// value that doesn't parse counts as an empty list.
 pub(crate) fn set_dates_confirmed(
     store: &Store,
     course_id: &str,
     confirmed: bool,
 ) -> pagelamp_core::Result<()> {
     let mut ids: BTreeSet<String> = store
-        .setting::<BTreeSet<String>>(CONFIRMED_DATES_KEY)
-        .ok()
-        .flatten()
+        .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
         .unwrap_or_default();
     let changed = if confirmed {
         ids.insert(course_id.to_string())
@@ -218,9 +218,7 @@ fn lifecycle_summary(store: &Store, at: AsOf) -> Result<LifecycleSummary> {
         .map(|entry| entry.course_id.clone())
         .collect();
     let snooze: BannerSnooze = store
-        .setting::<BannerSnooze>(BANNER_KEY)
-        .ok()
-        .flatten()
+        .setting_or_absent::<BannerSnooze>(BANNER_KEY)?
         .unwrap_or_default();
     let banner_snoozed_until = snooze.until.filter(|until| *until >= at.today);
     let show_banner = match banner_snoozed_until {

@@ -191,6 +191,8 @@ public final class AppModel {
     public private(set) var diagnosticReportHost: DiagnosticReportHost = .main
     /// The Debug menu asked to switch to live data; the root view asks for confirmation.
     public var confirmingLiveData = false
+    /// What's new after an update, until the student closes it (the main window's sheet).
+    public private(set) var whatsNew: WhatsNewPresentation?
 
     // MARK: Settings
 
@@ -289,6 +291,7 @@ public final class AppModel {
     /// Loads the shell data and refreshes it whenever the app becomes active (spec §2.2).
     /// Idempotent; the root view calls it once.
     public func start() async {
+        let firstStart = activationTask == nil
         if activationTask == nil {
             let center = notificationCenter
             activationTask = Task { [weak self] in
@@ -298,6 +301,7 @@ public final class AppModel {
             }
         }
         await refresh()
+        if firstStart { await loadWhatsNew() }
     }
 
     /// Reloads status, courses, sources and the This Week inputs.
@@ -689,6 +693,40 @@ public final class AppModel {
         }
     }
 
+    // MARK: - What's new
+
+    /// Asks the facade whether this launch follows an update of the Mac app (it answers once per
+    /// launch and shell, until acknowledged) and shows the topics this build can show. With none
+    /// left it acknowledges at once: nothing should wait on a sheet that never shows. When the
+    /// state can't be read (the settings aren't readable), it shows nothing and writes nothing.
+    public func loadWhatsNew() async {
+        let generation = self.generation
+        let offered: WhatsNew
+        do throws(PageLampFailure) {
+            guard let whatsNew = try await service.startupTasks(now: clock()).whatsNew else { return }
+            offered = whatsNew
+        } catch {
+            return
+        }
+        guard generation == self.generation else { return }
+        let l10n = self.l10n
+        let items = WhatsNewCatalog.items(for: offered.topics) { l10n.has($0) }
+        if items.isEmpty {
+            await acknowledgeWhatsNew()
+        } else {
+            whatsNew = WhatsNewPresentation(since: offered.since, items: items)
+        }
+    }
+
+    /// The sheet closed, any way (Got It, Esc): this version's What's new counts as read. The
+    /// update disclosure is never acknowledged here; that is the Tauri app's.
+    public func acknowledgeWhatsNew() async {
+        whatsNew = nil
+        // A failure is harmless: the facade offers What's new only on the first launch after an
+        // update, so it doesn't come back next time either.
+        try? await service.acknowledgeWhatsNew()
+    }
+
     // MARK: - Data mode
 
     /// Switches to synthetic data (never touches the real data folder).
@@ -718,6 +756,7 @@ public final class AppModel {
             return
         }
         await refresh()
+        await loadWhatsNew()
     }
 
     private func replaceService(_ service: any PageLampService, mode: DataMode) {
@@ -743,6 +782,7 @@ public final class AppModel {
         highlightTimer?.cancel()
         sourceHighlight = nil
         courseStates = [:]
+        whatsNew = nil
         if case .course = destination { destination = .thisWeek }
     }
 
