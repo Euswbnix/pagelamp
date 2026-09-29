@@ -9,6 +9,12 @@ describe("toApiError", () => {
     expect(error.message).toBe("Canvas rejected the token");
   });
 
+  it("keeps every kind the facade sends, including the schema screens' kinds", () => {
+    for (const kind of ["schema_too_new", "schema_too_old", "busy", "not_found"] as const) {
+      expect(toApiError({ kind, message: "x" }).kind).toBe(kind);
+    }
+  });
+
   it("treats unknown kinds, strings and Errors as internal", () => {
     expect(toApiError({ kind: "weird", message: "x" }).kind).toBe("internal");
     expect(toApiError("command not found").kind).toBe("internal");
