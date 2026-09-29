@@ -23,12 +23,14 @@ import { estimateAmount, formatTokens } from "./lib/money";
 import { useAiErrorText } from "./useAiErrorText";
 
 /**
- * Whether the cost line applies: a blocked estimate carries no amount, except over the budget
- * (the student decides on the override with it), an unpriced model and the plan's weekly cap.
+ * Whether the cost line applies. No model and the gate's blocks (the course's rules, question
+ * (b)) carry no estimate; the others (disclosure, unpriced model, weekly cap, budget) leave it
+ * complete, and over the budget the student decides on the override with it.
  */
 function showsCost(block: BlockReason | null): boolean {
   return (
     block === null ||
+    block === "disclosure_not_acknowledged" ||
     block === "budget_reached" ||
     block === "price_unknown_not_acknowledged" ||
     block === "weekly_run_cap_reached"

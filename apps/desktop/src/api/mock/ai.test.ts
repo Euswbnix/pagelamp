@@ -136,6 +136,7 @@ describe("mock AI setup", () => {
       micro_usd_upper: null,
       would_block: "price_unknown_not_acknowledged",
     });
+    expect(first.input_tokens).toBeGreaterThan(0);
     await api.acknowledgeUnpricedModel(openai, "gpt-6-preview-0929");
     expect((await api.estimateGeneration(req)).would_block).toBeNull();
   });
@@ -160,7 +161,13 @@ describe("mock AI setup", () => {
     const [backend] = (await api.aiStatus()).backends;
     expect(backend).toMatchObject({ state: "needs_disclosure", problems: ["disclosure_changed"] });
     const estimate = await api.estimateGeneration({ feature: "weekly_note" });
-    expect(estimate.would_block).toBe("disclosure_not_acknowledged");
+    // Fully estimated: only the acknowledgement stops the run.
+    expect(estimate).toMatchObject({
+      would_block: "disclosure_not_acknowledged",
+      price_known: true,
+    });
+    expect(estimate.input_tokens).toBeGreaterThan(0);
+    expect(estimate.micro_usd_upper).toBeGreaterThan(0);
   });
 
   it("reports model errors with their codes", async () => {

@@ -522,19 +522,19 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       await ctx.delay();
       const choice = features.get(req.feature) ?? null;
       const { input, output } = workload(req);
-      // Like the facade: a blocked estimate has no amount and 0 tokens. PROVISIONAL: except
-      // budget_reached, whose amount the student needs to decide on the per-run override (asked
-      // of the backend on 2026-09-28).
-      const blocked = (reason: BlockReason, priceKnown = false): CostEstimate => ({
+      // Like the facade (pinned in its tests/ai_api.rs): no model and the gate's blocks
+      // (question (b) included) carry no amount and 0 tokens; the other blocks leave the
+      // estimate complete, since only an acknowledgement or a cap stops the run.
+      const gateBlocked = (reason: BlockReason): CostEstimate => ({
         micro_usd_upper: null,
         input_tokens: 0,
         max_output_tokens: 0,
         reasoning_allowance: 0,
         repair_possible: false,
-        price_known: priceKnown,
+        price_known: false,
         would_block: reason,
       });
-      if (!choice) return blocked("no_model_chosen");
+      if (!choice) return gateBlocked("no_model_chosen");
       const info = modelsFor(choice.backend).find((m) => m.id === choice.model) ?? null;
       const onDevice = info?.on_device ?? false;
       const courses =
@@ -543,15 +543,12 @@ export function createMockAi(ctx: MockAiContext): AiApi {
           : req.feature === "course_calendar"
             ? req.courses
             : [];
-      let block: BlockReason | null = null;
-      for (const course of courses) block ??= courseGate(course, onDevice);
-      const status = statusOf(choice.backend);
-      if (!block && status.state !== "ready") block = "disclosure_not_acknowledged";
-      // Mode A has no money budget; PageLamp's runs per week are capped instead.
-      if (!block && status.kind === "codex" && codex.capReached()) {
-        block = "weekly_run_cap_reached";
+      for (const course of courses) {
+        const gate = courseGate(course, onDevice);
+        if (gate) return gateBlocked(gate);
       }
 
+      const status = statusOf(choice.backend);
       const reasoning = Math.max(REASONING[choice.effort], info?.reasoning_always_on ? 8_000 : 0);
       const record =
         choice.backend.kind === "provider" ? findProvider(choice.backend.provider_id) : null;
@@ -565,13 +562,19 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         );
       }
       const priceKnown = upper !== null;
+
+      let block: BlockReason | null = null;
+      if (status.state !== "ready") block = "disclosure_not_acknowledged";
+      // Mode A has no money budget; PageLamp's runs per week are capped instead.
+      if (!block && status.kind === "codex" && codex.capReached()) {
+        block = "weekly_run_cap_reached";
+      }
       if (!block && status.kind === "api_key" && !priceKnown) {
         if (!unpricedAcks.has(`${backendKey(choice.backend)}/${choice.model}`)) {
           block = "price_unknown_not_acknowledged";
         }
       }
-      if (block) return blocked(block, priceKnown);
-      if (upper !== null && upper > 0 && budget !== null) {
+      if (!block && upper !== null && upper > 0 && budget !== null) {
         if (spentThisMonth() + upper > budget) block = "budget_reached";
       }
       return {
