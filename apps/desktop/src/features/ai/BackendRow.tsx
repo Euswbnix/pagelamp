@@ -51,7 +51,7 @@ export function BackendRow({
         </span>
       </div>
       {provider?.key_last4 ? (
-        <p className="font-mono text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           {t("backend.keyEnds", { last4: provider.key_last4 })}
         </p>
       ) : null}
