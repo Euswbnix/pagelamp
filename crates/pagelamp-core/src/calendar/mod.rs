@@ -7,6 +7,7 @@
 
 pub mod assemble;
 pub mod extraction;
+pub mod scan;
 pub mod text;
 pub mod validate;
 
