@@ -282,8 +282,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-    env:
-      WORK: ${{ runner.temp }}
+    # (No job-level env: the runner context isn't available there; the script uses $RUNNER_TEMP.)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
