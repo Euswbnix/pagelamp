@@ -7,8 +7,10 @@
 #   macos-signing.sh import-certificate        Developer ID .p12 → a temporary keychain (CLI job)
 #   macos-signing.sh notarize <file> <log>     upload, poll until Apple is done; fails unless Accepted
 #   macos-signing.sh staple <file>             staple the ticket, retrying while Apple publishes it
-#   macos-signing.sh verify-app <x.app>        signatures, Gatekeeper verdict, stapled ticket
+#   macos-signing.sh verify-app <x.app>        signatures, Gatekeeper verdict, stapled ticket, universal
 #   macos-signing.sh verify-dmg <x.dmg>        the same for the disk image and the app inside it
+#   macos-signing.sh verify-updater-archive <x.app.tar.gz>
+#                                              the same for the app inside the updater's archive
 #   macos-signing.sh verify-cli <bin> <log>    signature + the notary ticket covers this binary
 #   macos-signing.sh cleanup                   delete the keychain and key files (runs even on failure)
 #
@@ -341,6 +343,17 @@ stapled() {
   xcrun stapler validate "$1" || fail "No valid notarization ticket is stapled to $1"
 }
 
+# The one macOS download is universal (D4): every executable needs both slices, arm64 (Apple
+# silicon) and x86_64 (Intel), and nothing else.
+check_universal() {
+  local path=$1 archs
+  archs=$(lipo -archs "$path" 2>&1) || { echo "$archs"; fail "lipo can't read the architectures of $path"; }
+  # shellcheck disable=SC2086 # split lipo's space-separated list
+  archs=$(printf '%s\n' $archs | sort | tr '\n' ' ')
+  [ "$archs" = "arm64 x86_64 " ] || fail "$path isn't universal (arm64 and x86_64): lipo -archs says '${archs% }'"
+  echo "$path: ${archs% }"
+}
+
 verify_app() {
   local app=$1 bin
   [ -d "$app" ] || fail "No app bundle at $app"
@@ -350,10 +363,29 @@ verify_app() {
   # Tauri signs every executable in Contents/MacOS (the app and the `pagelamp` sidecar) first.
   for bin in "$app"/Contents/MacOS/*; do
     check_signature "$bin" code
+    check_universal "$bin"
   done
   check_identifier "$app/Contents/MacOS/pagelamp" pagelamp
   gatekeeper "$app" execute
   stapled "$app"
+}
+
+# The updater installs the app from its .app.tar.gz, not from the .dmg, so the app in there must
+# pass the same checks: Tauri archives it after notarizing and stapling it.
+verify_updater_archive() {
+  local archive=$1 dir app count=0
+  [ -f "$archive" ] || fail "No updater archive at $archive"
+  dir=$(mktemp -d "$RUNNER_TEMP/updater-archive.XXXXXX")
+  tar -xzf "$archive" -C "$dir" || fail "Couldn't extract $archive"
+  for app in "$dir"/*.app; do
+    [ -d "$app" ] && count=$((count + 1))
+  done
+  [ "$count" = 1 ] || fail "$archive should hold exactly one .app at its top level (found $count)"
+  for app in "$dir"/*.app; do
+    echo "== $archive"
+    verify_app "$app"
+  done
+  rm -rf "$dir"
 }
 
 MOUNT_POINT=""
@@ -426,10 +458,11 @@ case "$cmd" in
   staple) staple "$@" ;;
   verify-app) verify_app "$@" ;;
   verify-dmg) verify_dmg "$@" ;;
+  verify-updater-archive) verify_updater_archive "$@" ;;
   verify-cli) verify_cli "$@" ;;
   cleanup) cleanup ;;
   *)
-    echo "usage: $0 preflight|write-api-key|import-certificate|notarize|staple|verify-app|verify-dmg|verify-cli|cleanup" >&2
+    echo "usage: $0 preflight|write-api-key|import-certificate|notarize|staple|verify-app|verify-dmg|verify-updater-archive|verify-cli|cleanup" >&2
     exit 2
     ;;
 esac

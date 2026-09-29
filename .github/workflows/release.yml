@@ -1,27 +1,35 @@
 name: Release
 
 # Push a tag like `v0.1.0` (or `v0.1.0-beta.1`) to build installers and CLI archives for every
-# platform into a DRAFT GitHub release. Review the draft, then publish it by hand.
+# platform into a DRAFT GitHub release. Review the draft, then publish it by hand; publishing
+# moves the update channels (.github/workflows/channels.yml). docs/release-runbook.md has the
+# steps, the owner's one-time setup and what to do about a bad release.
+#
+# First, with no secret: `preflight` checks the release configuration
+# (.github/scripts/release-config.mjs, strict for tags: see "Updater" below) and runs the release
+# scripts' tests, and `deny` checks advisories and licences (cargo deny). A release starts only
+# when both pass; a rehearsal runs them too but doesn't wait for `deny`.
 #
 # macOS builds are signed with the owner's Developer ID and notarized by Apple, so they open
-# without System Settings → Privacy & Security: the app with its `pagelamp` sidecar, the .dmg (the
-# ticket is stapled to the .dmg and to the app inside it) and the standalone CLI (a bare binary
-# can't be stapled, so Gatekeeper looks its ticket up online). The signing material lives only in
-# the GitHub environment `release`: secrets APPLE_CERTIFICATE (base64 of the .p12),
-# APPLE_CERTIFICATE_PASSWORD, APPLE_API_ISSUER, APPLE_API_KEY (the Key ID) and APPLE_API_KEY_P8 (the
-# .p8 file's text), and the variable APPLE_SIGNING_IDENTITY ("Developer ID Application: <name>
-# (<team>)"). Each secret goes only to the steps that need it. If anything is missing those jobs
-# fail, so macOS builds are never released unsigned. Nothing is uploaded until every signature,
-# Gatekeeper verdict and stapled ticket has been checked (.github/scripts/macos-signing.sh).
+# without System Settings → Privacy & Security: one universal app (Apple silicon and Intel, D4)
+# with its universal `pagelamp` sidecar, its .dmg (the ticket is stapled to the .dmg and to the app
+# inside it) and the standalone CLI for each architecture (a bare binary can't be stapled, so
+# Gatekeeper looks its ticket up online). The signing material lives only in the GitHub
+# environment `release`: secrets APPLE_CERTIFICATE (base64 of the .p12), APPLE_CERTIFICATE_PASSWORD,
+# APPLE_API_ISSUER, APPLE_API_KEY (the Key ID) and APPLE_API_KEY_P8 (the .p8 file's text), and the
+# variable APPLE_SIGNING_IDENTITY ("Developer ID Application: <name> (<team>)"). Each secret goes
+# only to the steps that need it. If anything is missing those jobs fail, so macOS builds are never
+# released unsigned. Nothing is uploaded until every signature, Gatekeeper verdict, stapled ticket
+# and architecture has been checked (.github/scripts/macos-signing.sh).
 #
 # Windows builds are signed with Azure Artifact Signing (Public Trust, the owner's validated
-# identity): the NSIS installer (-setup.exe) and its uninstaller, the .msi, the app executable and
-# its `pagelamp.exe` sidecar inside both, and the standalone `pagelamp.exe`. There is no Windows
-# secret: those jobs sign in to Azure with their GitHub OIDC token (azure/login). The Entra app
-# that holds the "Artifact Signing Certificate Profile Signer" role on the account trusts that
-# token through a federated credential for the environment `release` (this repo was created after
-# 2026-07-15, so GitHub's subject carries the owner and repo IDs:
-# repo:Euswbnix@187366146/pagelamp@1388331836:environment:release). The environment has only
+# identity): the NSIS installer (-setup.exe) and its uninstaller, the .msi if tauri.conf.json still
+# builds one, the app executable and its `pagelamp.exe` sidecar inside them, and the standalone
+# `pagelamp.exe`. There is no Windows secret: those jobs sign in to Azure with their GitHub OIDC
+# token (azure/login). The Entra app that holds the "Artifact Signing Certificate Profile Signer"
+# role on the account trusts that token through a federated credential for the environment
+# `release` (this repo was created after 2026-07-15, so GitHub's subject carries the owner and repo
+# IDs: repo:Euswbnix@187366146/pagelamp@1388331836:environment:release). The environment has only
 # variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
 # AZURE_ARTIFACT_SIGNING_ENDPOINT, AZURE_ARTIFACT_SIGNING_ACCOUNT, AZURE_ARTIFACT_SIGNING_PROFILE
 # and AZURE_ARTIFACT_SIGNING_PUBLISHER (the certificate's CN, which every signature must carry).
@@ -31,29 +39,50 @@ name: Release
 # they install have a valid, timestamped signature from that publisher
 # (.github/scripts/windows-signing.ps1). Linux builds are not code-signed; SHA256SUMS covers them.
 #
-# Only the four signing jobs (app-macos, cli-macos, app-windows, cli-windows) use the environment
-# `release`, and only the two Windows jobs may request an OIDC token. Only tag pushes and manual
-# runs start this workflow, never pull requests, so forks can't reach the secrets or the Azure
-# role. The signing jobs restore no caches, so nothing another run wrote can end up in them.
-# The Linux jobs do restore caches and can upload to the release too, so `checksums` writes
-# SHA256SUMS only if the draft still holds exactly the signed files their jobs checked.
-# Environment settings: deployment tags `v*`, plus the branch a rehearsal runs from (`main` once
-# this is merged); required reviewer: the owner (recommended, with "Prevent self-review" off). The
-# branch and tag rules only limit which refs may use the secrets, not who can push those refs, and
-# the workflow that runs is the one in the pushed commit; a reviewer is the only check by a person.
+# Updater (M0.4). It is on when tauri.conf.json has `bundle.createUpdaterArtifacts: true` and a
+# real `plugins.updater.pubkey`. Then the macOS, Windows and Linux app jobs also sign the updater
+# artifacts (PageLamp_<version>_universal.app.tar.gz, the -setup.exe, the .AppImage) with the
+# updater key, from the `release` secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD (only in the step that signs), `updater-manifest` checks every
+# signature and writes latest.json (.github/scripts/updater-manifest.mjs), and SHA256SUMS covers
+# them all. Linux builds in its own signing job (`app-linux`) instead of `app`. When the updater
+# is off, nothing of this runs and a release builds what v0.1.0 did (plus the universal .dmg):
+# tauri.conf.json is bundled with createUpdaterArtifacts off, and `checksums` deletes any stray
+# .app.tar.gz. For a tag, preflight fails if the updater is on without a real key, with a
+# tauri.conf.json version other than the Cargo version (Tauri binds each signature to it), or
+# with an MSI (D4); without the updater an MSI only warns.
 #
-# Rehearsal (no release): Actions → Release → Run workflow → pick the branch or tag under "Use
-# workflow from", leave "tag" empty, tick "rehearsal". It builds that commit's macOS app and CLI
-# (Apple silicon and Intel) and Windows installers and CLI, signs them (and notarizes and staples
-# the macOS ones) and checks them exactly as a release does, and keeps them as workflow artifacts
-# for 7 days (the repo is public, so anyone signed in to GitHub can download them; their names say
-# "rehearsal"). It never creates, edits or uploads to a release. Linux isn't built.
+# The signing jobs (app-macos, app-windows, app-linux, cli-macos, cli-windows) are the only ones
+# that use the environment `release`, and only the two Windows jobs may request an OIDC token for
+# Azure (`checksums` requests one for the attestation). Only tag pushes and manual runs start this
+# workflow, never pull requests, so forks can't reach the secrets or the Azure role. The signing
+# jobs restore no caches, so nothing another run wrote can end up in them, and every action is
+# pinned to a commit. The Linux `app` and `cli` jobs do restore caches and can upload to the
+# release too, so `checksums` writes SHA256SUMS only if the draft still holds exactly the signed
+# files their jobs checked, then attests every file listed in it (actions/attest; check with
+# `gh attestation verify <file> --repo Euswbnix/pagelamp`).
+# Environment settings: deployment tags `v*` and the branch `main` (rehearsals); required
+# reviewer: the owner (with "Prevent self-review" off). The branch and tag rules only limit which
+# refs may use the secrets, not who can push those refs, and the workflow that runs is the one in
+# the pushed commit; a reviewer is the only check by a person.
+#
+# Rehearsal (no release): Actions → Release → Run workflow → "Use workflow from": main, leave "tag"
+# empty, tick "rehearsal". It builds that commit's universal macOS app, macOS CLIs and Windows
+# installers and CLI (and, with the updater on, the Linux AppImage), signs them (and notarizes and
+# staples the macOS ones) and checks them exactly as a release does, and keeps them as workflow
+# artifacts for 7 days (the repo is public, so anyone signed in to GitHub can download them; their
+# names say "rehearsal"). If src-tauri/tauri.rehearsal.conf.json exists, a rehearsal builds with it
+# (its updater reads the test channel), and with the updater on it also writes the test channel's
+# latest.json into the artifact updater-test-<commit>-attempt<n> for channels.yml. It never
+# creates, edits or uploads to a release.
 # "Re-run failed jobs" works for a release and a rehearsal: artifact names can't repeat within a
-# run, so every name carries the attempt number.
+# run, so every name carries the attempt number. Re-run a release only from its tag
+# (`gh workflow run release.yml --ref v0.3.0-alpha.1`), never from a branch.
 #
 # The tag must match `[workspace.package] version` (e.g. v0.1.0-beta.1 ↔ 0.1.0-beta.1), which is
-# what `pagelamp --version`, the About screen and diagnostic reports show. tauri.conf.json keeps
-# the numeric part only (0.1.0), because MSI rejects pre-release versions.
+# what `pagelamp --version`, the About screen and diagnostic reports show, and what the updater
+# manifest announces. tauri.conf.json has that version, only its numeric part (0.1.0, from when
+# MSI rejected pre-release versions; not with the updater on), or none (it follows Cargo.toml).
 
 on:
   push:
@@ -85,10 +114,67 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
   # "true" only for a manual run with the rehearsal box ticked.
   REHEARSAL: ${{ inputs.rehearsal == true }}
+  # GitHub Pages of this repo (D5), where channels.yml publishes updates/{stable,beta,test}.json.
+  PAGES_URL: https://euswbnix.github.io/pagelamp
 
 jobs:
+  # The release configuration and the release scripts' tests, before anything is built. No secret.
+  preflight:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    outputs:
+      # "true" when updater artifacts are built and published (see "Updater" above).
+      updater: ${{ steps.config.outputs.updater }}
+      # The Cargo workspace version, which the updater manifest announces.
+      version: ${{ steps.config.outputs.version }}
+      # "true" when src-tauri/tauri.rehearsal.conf.json exists (a rehearsal builds with it).
+      test_overlay: ${{ steps.config.outputs.test_overlay }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Test the release scripts
+        run: node --test .github/scripts/*.test.mjs
+      # Strict for a release: a placeholder updater key, a numeric tauri.conf.json version with the
+      # updater on, or an MSI with the updater on fail here instead of warning.
+      - name: Check the release configuration
+        id: config
+        run: |
+          if [ "$REHEARSAL" = true ]; then
+            node .github/scripts/release-config.mjs
+          else
+            node .github/scripts/release-config.mjs --strict
+          fi
+
+  # Known vulnerabilities and licences of every Rust dependency, as ci.yml's `licenses` job but
+  # with advisories too. A release waits for it; a rehearsal doesn't (it still turns the run red).
+  # Unmaintained crates only warn: Tauri's Linux stack (gtk-rs 0.18 and its macros) is
+  # unmaintained upstream, and deny.toml has no [advisories] section of its own yet.
+  deny:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          # The action's image has Rust 1.85; the workspace needs 1.90.
+          rust-version: stable
+          command: check
+          command-arguments: advisories licenses --warn unmaintained
+
   create-release:
-    # Skipped in a rehearsal, and with it every job that needs it except the four signing jobs.
+    # Skipped in a rehearsal, and with it every job that needs it except the signing jobs.
+    needs: [preflight, deny]
     if: ${{ !inputs.rehearsal }}
     runs-on: ubuntu-22.04
     outputs:
@@ -105,7 +191,7 @@ jobs:
           esac
       # No job in this workflow runs git: gh and tauri-action get the token in their own step's
       # env. So checkout leaves no write token on disk for later steps (build scripts included).
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
@@ -115,9 +201,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version *= *"\(.*\)"/\1/p' Cargo.toml)
-          bundle=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
-          if [ "v$version" != "$TAG" ] || [ "$bundle" != "${version%%-*}" ]; then
-            echo "::error::Tag $TAG, Cargo version $version and tauri.conf.json version $bundle don't match"
+          bundle=$(jq -r '.version // empty' apps/desktop/src-tauri/tauri.conf.json)
+          if [ "v$version" != "$TAG" ] || { [ -n "$bundle" ] && [ "$bundle" != "$version" ] && [ "$bundle" != "${version%%-*}" ]; }; then
+            echo "::error::Tag $TAG, Cargo version $version and tauri.conf.json version ${bundle:-(none)} don't match"
             exit 1
           fi
           notes="docs/release-notes/${TAG}.md"
@@ -136,36 +222,39 @@ jobs:
           echo "release_id=$(gh release view "$TAG" --json databaseId --jq .databaseId)" >> "$GITHUB_OUTPUT"
 
   # Linux (.AppImage/.deb/.rpm) installers with the `pagelamp` CLI bundled as a Tauri sidecar
-  # (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE). Not code-signed (SHA256SUMS covers
-  # them); tauri-action uploads them straight to the draft release. macOS and Windows have their
-  # own signing jobs below.
+  # (built by `beforeBuildCommand` for TAURI_ENV_TARGET_TRIPLE), while the updater is off (as in
+  # v0.1.0). Not code-signed (SHA256SUMS covers them); tauri-action uploads them straight to the
+  # draft release. With the updater on, `app-linux` builds them instead.
   app:
-    needs: create-release
+    needs: [preflight, create-release]
+    if: ${{ needs.preflight.outputs.updater != 'true' }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            args: ''
+            # Passed on to `cargo build`: exactly the dependency versions in Cargo.lock.
+            args: '-- --locked'
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
         with:
           package_json_file: apps/desktop/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.target }}
       - name: Linux system libraries (Tauri)
@@ -177,7 +266,7 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v1
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -186,29 +275,163 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: ${{ matrix.args }}
 
-  # The macOS app (.dmg), one per architecture, signed and notarized. Tauri signs the sidecar and
-  # then the app with the hardened runtime, and notarizes and staples the .app, when the APPLE_*
-  # variables are set; it signs the .dmg but doesn't notarize it, so that happens here. The .dmg
-  # is uploaded only after every check has passed (in a rehearsal it becomes a workflow artifact).
-  app-macos:
-    needs: create-release
-    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+  # The Linux installers when the updater is on: a signing job like the macOS and Windows ones
+  # (environment `release`, no caches), because it signs the AppImage with the updater key. The
+  # packages are bundled without the key: making the AppImage downloads linuxdeploy and its
+  # plugins, which tauri-bundler doesn't pin. Then the Tauri CLI alone signs the AppImage (the
+  # updater installs only the AppImage; .deb/.rpm installs get a download link, D7). Also runs in
+  # a rehearsal, where the AppImage and its signature become a workflow artifact.
+  app-linux:
+    needs: [preflight, create-release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.updater == 'true' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     environment: release
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [aarch64-apple-darwin, x86_64-apple-darwin]
-    runs-on: macos-latest
-    # "<sha256>  <file name>" of the .dmg as checked and uploaded (see `checksums`). One output
-    # per target: the legs of a matrix share the job's outputs.
+    runs-on: ubuntu-22.04
+    # "<sha256>  <file name>" of each file as checked and uploaded (see `checksums`).
     outputs:
-      dmg_sum_aarch64: ${{ steps.sum.outputs.dmg_sum_aarch64 }}
-      dmg_sum_x86_64: ${{ steps.sum.outputs.dmg_sum_x86_64 }}
+      appimage_sum: ${{ steps.sums.outputs.appimage_sum }}
+      appimage_sig_sum: ${{ steps.sums.outputs.appimage_sig_sum }}
+      deb_sum: ${{ steps.sums.outputs.deb_sum }}
+      rpm_sum: ${{ steps.sums.outputs.rpm_sum }}
+      # The rehearsal's AppImage + signature (for `updater-manifest`).
+      updater_artifact_id: ${{ steps.keep-updater.outputs.artifact-id }}
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+      TEST_OVERLAY: ${{ inputs.rehearsal && needs.preflight.outputs.test_overlay == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      # Sees only whether each secret is set, never its value.
+      - name: Check updater signing setup
+        env:
+          HAS_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          missing=""
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY"
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::The updater is on (tauri.conf.json) but the secret(s)$missing are missing in the GitHub environment 'release' (docs/release-runbook.md, one-time setup)."
+            exit 1
+          fi
+          echo "Updater signing setup complete: both secrets are present (values not shown)."
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
+        with:
+          package_json_file: apps/desktop/package.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-gnu
+      - name: Linux system libraries (Tauri)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libdbus-1-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf xdg-utils
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+      - name: Build the app (no secrets)
+        working-directory: apps/desktop
+        run: |
+          configs=()
+          if [ "$TEST_OVERLAY" = true ]; then configs+=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.rehearsal.conf.json"); fi
+          pnpm tauri build --target x86_64-unknown-linux-gnu --no-bundle "${configs[@]}" -- --locked
+      - name: Bundle the packages (no secrets)
+        working-directory: apps/desktop
+        run: |
+          configs=(--config "$GITHUB_WORKSPACE/.github/tauri/updater-off.json")
+          if [ "$TEST_OVERLAY" = true ]; then configs+=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.rehearsal.conf.json"); fi
+          pnpm tauri bundle --target x86_64-unknown-linux-gnu --bundles appimage,deb,rpm "${configs[@]}"
+      - name: Find the packages
+        run: |
+          shopt -s nullglob
+          bundle="target/x86_64-unknown-linux-gnu/release/bundle"
+          appimages=("$bundle"/appimage/*.AppImage)
+          debs=("$bundle"/deb/*.deb)
+          rpms=("$bundle"/rpm/*.rpm)
+          if [ ${#appimages[@]} -ne 1 ] || [ ${#debs[@]} -ne 1 ] || [ ${#rpms[@]} -ne 1 ]; then
+            echo "::error::Expected one .AppImage, one .deb and one .rpm under $bundle, found: ${appimages[*]} ${debs[*]} ${rpms[*]}"
+            exit 1
+          fi
+          echo "APPIMAGE_PATH=$PWD/${appimages[0]}" >> "$GITHUB_ENV"
+          echo "DEB_PATH=$PWD/${debs[0]}" >> "$GITHUB_ENV"
+          echo "RPM_PATH=$PWD/${rpms[0]}" >> "$GITHUB_ENV"
+      # The same signature `tauri bundle` makes with createUpdaterArtifacts, bound to the version
+      # Tauri binds it to (tauri.conf.json's, else Cargo's).
+      - name: Sign the AppImage for the updater (Tauri CLI)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          app_version=$(jq -r '.version // empty' src-tauri/tauri.conf.json)
+          pnpm tauri signer sign --app-version "${app_version:-$VERSION}" "$APPIMAGE_PATH"
+          if [ ! -s "$APPIMAGE_PATH.sig" ]; then
+            echo "::error::tauri signer sign wrote no $APPIMAGE_PATH.sig"
+            exit 1
+          fi
+          echo "APPIMAGE_SIG_PATH=$APPIMAGE_PATH.sig" >> "$GITHUB_ENV"
+      # For `checksums`, as in `app-windows`.
+      - name: Record the packages' hashes
+        id: sums
+        run: |
+          sum() { (cd "$(dirname "$1")" && sha256sum "$(basename "$1")"); }
+          {
+            echo "appimage_sum=$(sum "$APPIMAGE_PATH")"
+            echo "appimage_sig_sum=$(sum "$APPIMAGE_SIG_PATH")"
+            echo "deb_sum=$(sum "$DEB_PATH")"
+            echo "rpm_sum=$(sum "$RPM_PATH")"
+          } | tee -a "$GITHUB_OUTPUT"
+      # Same file names tauri-action used; --clobber replaces files from an earlier run.
+      - name: Upload the packages to the draft release
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" "$APPIMAGE_PATH" "$APPIMAGE_SIG_PATH" "$DEB_PATH" "$RPM_PATH" --clobber
+      - name: Keep the AppImage and its signature (rehearsal)
+        id: keep-updater
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: updater-linux-rehearsal-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.APPIMAGE_PATH }}
+            ${{ env.APPIMAGE_SIG_PATH }}
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  # The macOS app: one universal .dmg (Apple silicon and Intel, D4), signed and notarized. Tauri
+  # signs the sidecar and then the app with the hardened runtime, and notarizes and staples the
+  # .app, when the APPLE_* variables are set; it signs the .dmg but doesn't notarize it, so that
+  # happens here. With the updater on, Tauri also archives the stapled app as the updater's
+  # .app.tar.gz and signs it with the updater key. Nothing is uploaded before every check has
+  # passed (in a rehearsal the files become workflow artifacts).
+  app-macos:
+    needs: [preflight, create-release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    environment: release
+    runs-on: macos-latest
+    # "<sha256>  <file name>" of each file as checked and uploaded (see `checksums`).
+    outputs:
+      dmg_sum: ${{ steps.sums.outputs.dmg_sum }}
+      updater_sum: ${{ steps.sums.outputs.updater_sum }}
+      updater_sig_sum: ${{ steps.sums.outputs.updater_sig_sum }}
+      # The rehearsal's updater archive + signature (for `updater-manifest`).
+      updater_artifact_id: ${{ steps.keep-updater.outputs.artifact-id }}
     env:
       # Public (it's in every signature); the checks make sure this team signed each file.
       DEVELOPER_TEAM_ID: CBU69BX7M8
+      UPDATER: ${{ needs.preflight.outputs.updater }}
+      TEST_OVERLAY: ${{ inputs.rehearsal && needs.preflight.outputs.test_overlay == 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A rehearsal builds exactly the commit it runs from, which the environment's branch
           # and tag rules have already allowed.
@@ -225,32 +448,69 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
           INPUT_TAG: ${{ inputs.tag }}
         run: bash .github/scripts/macos-signing.sh preflight
+      # As in `app-linux`.
+      - name: Check updater signing setup
+        if: ${{ needs.preflight.outputs.updater == 'true' }}
+        env:
+          HAS_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          missing=""
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY"
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::The updater is on (tauri.conf.json) but the secret(s)$missing are missing in the GitHub environment 'release' (docs/release-runbook.md, one-time setup)."
+            exit 1
+          fi
+          echo "Updater signing setup complete: both secrets are present (values not shown)."
       # No caches in the signing jobs: any run on main can write a cache entry under any key, and
       # restoring one would put that run's files (~/.cargo/bin, build outputs, the pnpm store)
-      # into the job that signs. Third-party actions are pinned to a commit here, so a moved tag
-      # can't bring new code into this job either.
+      # into the job that signs. Actions are pinned to a commit, so a moved tag can't bring new
+      # code into this job either.
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
         with:
           package_json_file: apps/desktop/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           package-manager-cache: false
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
           toolchain: stable
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
+      # A universal build compiles the app once per architecture, and tauri-build (the desktop
+      # crate's build script) then needs that architecture's sidecar,
+      # binaries/pagelamp-{aarch64,x86_64}-apple-darwin; the bundler then puts the universal one,
+      # binaries/pagelamp-universal-apple-darwin, into the app (externalBin + "-<target triple>",
+      # and the triple of a universal build is universal-apple-darwin). beforeBuildCommand
+      # (scripts/build-sidecar.mjs) builds and merges the universal one again, from the same
+      # cargo outputs.
+      - name: Build the universal sidecar (not signed yet)
+        run: |
+          bins=apps/desktop/src-tauri/binaries
+          mkdir -p "$bins"
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked -p pagelamp-cli --target "$target"
+            cp "target/$target/release/pagelamp" "$bins/pagelamp-$target"
+          done
+          lipo -create -output "$bins/pagelamp-universal-apple-darwin" \
+            "$bins/pagelamp-aarch64-apple-darwin" "$bins/pagelamp-x86_64-apple-darwin"
+          lipo -archs "$bins/pagelamp-universal-apple-darwin"
       # Compile first, with no secret in the environment, so build scripts, proc macros and Vite
       # plugins never have the signing material in their environment. That limits accidental
       # exposure, but it isn't isolation: they run on the same runner as the signing steps below,
       # so the lockfiles and the actions above are trusted. `tauri bundle` below then only
-      # packages, signs and notarizes (Tauri's documented build/bundle split).
+      # packages, signs and notarizes (Tauri's documented build/bundle split). Tauri builds each
+      # architecture and merges the app executable with lipo.
       - name: Build the app (not signed yet)
         working-directory: apps/desktop
-        run: pnpm tauri build --target ${{ matrix.target }} --no-bundle
+        run: |
+          configs=()
+          if [ "$TEST_OVERLAY" = true ]; then configs+=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.rehearsal.conf.json"); fi
+          pnpm tauri build --target universal-apple-darwin --no-bundle "${configs[@]}" -- --locked
       - name: Write the notary API key
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -258,12 +518,14 @@ jobs:
         run: bash .github/scripts/macos-signing.sh write-api-key
       # Tauri imports the certificate into its own temporary keychain (deleted when it's done),
       # signs Contents/MacOS/pagelamp and the app with the hardened runtime and no entitlements,
-      # notarizes and staples the .app, then builds and signs the .dmg. APPLE_SIGNING_IDENTITY
-      # overrides tauri.conf.json's `"signingIdentity": "-"` (ad hoc, for local builds). Without
-      # notarization credentials Tauri would only print a warning, and it ignores a failed staple,
-      # hence the preflight above and the checks below. Tauri waits for Apple in one `notarytool
-      # submit --wait` without retries (unlike macos-signing.sh for the .dmg and the CLI), so a
-      # network drop on the runner during a long wait fails this step: "Re-run failed jobs".
+      # notarizes and staples the .app, then builds and signs the .dmg; with the updater on it
+      # also archives the stapled app (PageLamp.app.tar.gz) and signs the archive with the updater
+      # key (PageLamp.app.tar.gz.sig). APPLE_SIGNING_IDENTITY overrides tauri.conf.json's
+      # `"signingIdentity": "-"` (ad hoc, for local builds). Without notarization credentials Tauri
+      # would only print a warning, and it ignores a failed staple, hence the preflight above and
+      # the checks below. Tauri waits for Apple in one `notarytool submit --wait` without retries
+      # (unlike macos-signing.sh for the .dmg and the CLI), so a network drop on the runner during
+      # a long wait fails this step: "Re-run failed jobs".
       - name: Bundle, sign and notarize the app (Tauri)
         working-directory: apps/desktop
         env:
@@ -273,13 +535,21 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
+          # The updater key only while the updater is on; empty otherwise.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           # As tauri-action does: keep the .dmg window layout (Tauri skips it when CI=true).
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
-        run: pnpm tauri bundle --target ${{ matrix.target }} --bundles app,dmg
-      - name: Find the app and the disk image
+        run: |
+          configs=()
+          if [ "$TEST_OVERLAY" = true ]; then configs+=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.rehearsal.conf.json"); fi
+          # Updater off: no updater archive, whatever tauri.conf.json says (e.g. a placeholder key).
+          if [ "$UPDATER" != true ]; then configs+=(--config "$GITHUB_WORKSPACE/.github/tauri/updater-off.json"); fi
+          pnpm tauri bundle --target universal-apple-darwin --bundles app,dmg "${configs[@]}"
+      - name: Find the app, the disk image and the updater archive
         run: |
           shopt -s nullglob
-          bundle="target/${{ matrix.target }}/release/bundle"
+          bundle="target/universal-apple-darwin/release/bundle"
           apps=("$bundle"/macos/*.app)
           dmgs=("$bundle"/dmg/*.dmg)
           if [ ${#apps[@]} -ne 1 ] || [ ${#dmgs[@]} -ne 1 ]; then
@@ -288,6 +558,22 @@ jobs:
           fi
           echo "APP_PATH=$PWD/${apps[0]}" >> "$GITHUB_ENV"
           echo "DMG_PATH=$PWD/${dmgs[0]}" >> "$GITHUB_ENV"
+          if [ "$UPDATER" = true ]; then
+            archives=("$bundle"/macos/*.app.tar.gz)
+            if [ ${#archives[@]} -ne 1 ] || [ ! -s "${archives[0]}.sig" ]; then
+              echo "::error::Expected one signed updater archive (.app.tar.gz and .sig) under $bundle/macos, found: ${archives[*]}"
+              exit 1
+            fi
+            # Named after the .dmg (PageLamp_<version>_universal.app.tar.gz), as a release asset.
+            # Renaming doesn't touch the signature, which covers the bytes.
+            dir="$RUNNER_TEMP/updater"
+            name="$(basename "${dmgs[0]}" .dmg).app.tar.gz"
+            mkdir -p "$dir"
+            cp "${archives[0]}" "$dir/$name"
+            cp "${archives[0]}.sig" "$dir/$name.sig"
+            echo "UPDATER_ARCHIVE=$dir/$name" >> "$GITHUB_ENV"
+            echo "UPDATER_SIG=$dir/$name.sig" >> "$GITHUB_ENV"
+          fi
       # The script waits up to NOTARY_TIMEOUT_MINUTES (240 by default) for Apple, riding out network
       # errors; this limit only stops a hung notarytool call (then the always() steps still run).
       # A job can't run past 6 hours on GitHub's runners, whatever its timeout-minutes.
@@ -298,36 +584,46 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/pagelamp-signing/AuthKey.p8
         run: |
-          bash .github/scripts/macos-signing.sh notarize "$DMG_PATH" "$RUNNER_TEMP/notary-logs/dmg-${{ matrix.target }}.json"
+          bash .github/scripts/macos-signing.sh notarize "$DMG_PATH" "$RUNNER_TEMP/notary-logs/dmg-universal.json"
           bash .github/scripts/macos-signing.sh staple "$DMG_PATH"
       - name: Remove signing material
         if: ${{ always() }}
         run: bash .github/scripts/macos-signing.sh cleanup
       # codesign --verify --deep --strict; Developer ID of this team, secure timestamp and hardened
-      # runtime on the app, its executables and the sidecar; Gatekeeper says "Notarized Developer
-      # ID" for the app (execute) and the .dmg (open); tickets stapled to the .app, the .dmg and the
-      # app inside the mounted .dmg.
-      - name: Check signatures, Gatekeeper and tickets
+      # runtime on the app, its executables and the sidecar; lipo: arm64 and x86_64 in the app
+      # executable and the sidecar; Gatekeeper says "Notarized Developer ID" for the app (execute)
+      # and the .dmg (open); tickets stapled to the .app, the .dmg and the app inside the mounted
+      # .dmg. With the updater on, the same for the app inside the updater archive.
+      - name: Check signatures, Gatekeeper, tickets and architectures
         run: |
           bash .github/scripts/macos-signing.sh verify-app "$APP_PATH"
           bash .github/scripts/macos-signing.sh verify-dmg "$DMG_PATH"
+          if [ "$UPDATER" = true ]; then
+            bash .github/scripts/macos-signing.sh verify-updater-archive "$UPDATER_ARCHIVE"
+          fi
       # For `checksums`, as in `app-windows`.
-      - name: Record the disk image's hash
-        id: sum
-        env:
-          TARGET: ${{ matrix.target }}
+      - name: Record the hashes
+        id: sums
         run: |
-          sum="$(shasum -a 256 "$DMG_PATH" | cut -d ' ' -f 1)  $(basename "$DMG_PATH")"
-          echo "dmg_sum_${TARGET%%-*}=$sum" >> "$GITHUB_OUTPUT"
-          echo "$sum"
-      # Same file name tauri-action would use; --clobber replaces the file from an earlier run.
-      # Only the .dmg is published: the .app.tar.gz tauri-action used to add is only for an updater.
-      - name: Upload the disk image to the draft release
+          sum() { echo "$(shasum -a 256 "$1" | cut -d ' ' -f 1)  $(basename "$1")"; }
+          {
+            echo "dmg_sum=$(sum "$DMG_PATH")"
+            if [ "$UPDATER" = true ]; then
+              echo "updater_sum=$(sum "$UPDATER_ARCHIVE")"
+              echo "updater_sig_sum=$(sum "$UPDATER_SIG")"
+            fi
+          } | tee -a "$GITHUB_OUTPUT"
+      # Same .dmg file name tauri-action would use; --clobber replaces files from an earlier run.
+      # The updater archive is published only with the updater on (latest.json points at it).
+      - name: Upload to the draft release
         if: ${{ !inputs.rehearsal }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: gh release upload "$TAG" "$DMG_PATH" --clobber
+        run: |
+          files=("$DMG_PATH")
+          if [ "$UPDATER" = true ]; then files+=("$UPDATER_ARCHIVE" "$UPDATER_SIG"); fi
+          gh release upload "$TAG" "${files[@]}" --clobber
       # A name that can't pass for a release file, with the attempt number: artifact names can't
       # repeat within a run, and a re-run is the same run. The stapled ticket is inside the file,
       # so the copy is just as notarized.
@@ -340,18 +636,31 @@ jobs:
           echo "REHEARSAL_DMG=$copy" >> "$GITHUB_ENV"
       - name: Keep the disk image (rehearsal)
         if: ${{ inputs.rehearsal }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.REHEARSAL_DMG }}
           archive: false
           retention-days: 7
           if-no-files-found: error
+      # Inside a zip whose name says "rehearsal"; `updater-manifest` puts it on the test channel.
+      - name: Keep the updater archive and its signature (rehearsal)
+        id: keep-updater
+        if: ${{ inputs.rehearsal && needs.preflight.outputs.updater == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: updater-macos-rehearsal-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.UPDATER_ARCHIVE }}
+            ${{ env.UPDATER_SIG }}
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
       # Apple's verdict and any warnings, for both a release and a rehearsal (no secrets inside).
       - name: Keep the notary log
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: notary-log-app-${{ matrix.target }}-attempt${{ github.run_attempt }}
+          name: notary-log-app-universal-attempt${{ github.run_attempt }}
           path: ${{ runner.temp }}/notary-logs
           retention-days: 7
           if-no-files-found: ignore
@@ -359,32 +668,38 @@ jobs:
   # The Windows installers, signed with Azure Artifact Signing. Tauri's own hook
   # (bundle.windows.signCommand, from a config file written on the runner) signs the `pagelamp`
   # sidecar, the app executable (once per installer), the NSIS plugins and uninstaller, the WiX
-  # extension DLLs it uses locally (not shipped), the -setup.exe and the .msi, and each signature
-  # is checked as it is made. Afterwards the installers are checked, the -setup.exe is installed on
-  # the runner and the .msi extracted, and every .exe and .dll in them must be signed too. Only
-  # then is anything uploaded (in a rehearsal they become workflow artifacts).
+  # extension DLLs it uses locally (not shipped), the -setup.exe and the .msi (if still built),
+  # and each signature is checked as it is made; with the updater on it then signs the -setup.exe
+  # with the updater key too. Afterwards the installers are checked, the -setup.exe is installed
+  # on the runner (and the .msi extracted), and every .exe and .dll in them must be signed too.
+  # Only then is anything uploaded (in a rehearsal they become workflow artifacts).
   app-windows:
-    needs: create-release
-    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    needs: [preflight, create-release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     environment: release
     runs-on: windows-latest
     # Replaces the workflow's permissions for this job: the release upload, and the OIDC token that
-    # azure/login exchanges for an Azure token (only the two Windows jobs may request one).
+    # azure/login exchanges for an Azure token (only the two Windows jobs may request one for that).
     permissions:
       contents: write
       id-token: write
-    # "<sha256>  <file name>" of each installer as checked and uploaded (see `checksums`).
+    # "<sha256>  <file name>" of each file as checked and uploaded (see `checksums`).
     outputs:
       setup_sum: ${{ steps.sums.outputs.setup_sum }}
+      setup_sig_sum: ${{ steps.sums.outputs.setup_sig_sum }}
       msi_sum: ${{ steps.sums.outputs.msi_sum }}
+      # The rehearsal's installer + updater signature (for `updater-manifest`).
+      updater_artifact_id: ${{ steps.keep-updater.outputs.artifact-id }}
     env:
       # Every signature must carry this CN (the owner's validated name; public in each signature).
       AZURE_ARTIFACT_SIGNING_PUBLISHER: ${{ vars.AZURE_ARTIFACT_SIGNING_PUBLISHER }}
+      UPDATER: ${{ needs.preflight.outputs.updater }}
+      TEST_OVERLAY: ${{ inputs.rehearsal && needs.preflight.outputs.test_overlay == 'true' }}
     defaults:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # A rehearsal builds exactly the commit it runs from, as in `app-macos`.
           ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
@@ -400,6 +715,22 @@ jobs:
           AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
           INPUT_TAG: ${{ inputs.tag }}
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 preflight
+      # As in `app-linux`.
+      - name: Check updater signing setup
+        if: ${{ needs.preflight.outputs.updater == 'true' }}
+        shell: bash
+        env:
+          HAS_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          missing=""
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY"
+          [ "$HAS_TAURI_SIGNING_PRIVATE_KEY_PASSWORD" = true ] || missing="$missing TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::The updater is on (tauri.conf.json) but the secret(s)$missing are missing in the GitHub environment 'release' (docs/release-runbook.md, one-time setup)."
+            exit 1
+          fi
+          echo "Updater signing setup complete: both secrets are present (values not shown)."
       # Sign in once before the build, so a wrong federated credential, tenant or client ID fails
       # within a minute instead of after the build, then sign out for the build. The real sign-in
       # comes right before signing: the GitHub token azure/login exchanges is valid for minutes, and
@@ -415,11 +746,11 @@ jobs:
       - name: Sign out of Azure for the build
         if: ${{ always() }}
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
-      # No caches and pinned third-party actions, as in `app-macos`.
+      # No caches and pinned actions, as in `app-macos`.
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
         with:
           package_json_file: apps/desktop/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           package-manager-cache: false
@@ -434,9 +765,13 @@ jobs:
       # and signs. As on macOS this limits exposure but isn't isolation: any step of this job could
       # request the job's OIDC token, so the lockfiles and the actions above are trusted. (The fix,
       # a build job without `id-token` for both Windows jobs, is in post-beta-followups.md.)
+      # '--' is quoted so PowerShell passes it on: what follows goes to `cargo build`.
       - name: Build the app (not signed yet)
         working-directory: apps/desktop
-        run: pnpm tauri build --target x86_64-pc-windows-msvc --no-bundle
+        run: |
+          $configs = @()
+          if ($env:TEST_OVERLAY -eq 'true') { $configs += @('--config', (Join-Path $env:GITHUB_WORKSPACE 'apps/desktop/src-tauri/tauri.rehearsal.conf.json')) }
+          pnpm tauri build --target x86_64-pc-windows-msvc --no-bundle @configs '--' --locked
       # SignTool and the Artifact Signing dlib from nuget.org, pinned and hash-checked;
       # metadata.json (account, profile, endpoint); the Tauri config with the signCommand.
       - name: Install the signing tools
@@ -460,10 +795,20 @@ jobs:
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
       # Signs the sidecar, the app executable (for each installer), the NSIS plugins and the
       # uninstaller, and the installers, each through `windows-signing.ps1 sign`, which checks
-      # every signature it makes. Which installers are built is up to tauri.conf.json.
+      # every signature it makes; with the updater on, Tauri then signs the finished -setup.exe
+      # with the updater key (-setup.exe.sig). Which installers are built is up to tauri.conf.json.
       - name: Bundle and sign the installers (Tauri)
         working-directory: apps/desktop
-        run: pnpm tauri bundle --target x86_64-pc-windows-msvc --config "$env:PAGELAMP_TAURI_SIGNING_CONFIG"
+        env:
+          # The updater key only while the updater is on; empty otherwise.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: |
+          $configs = @('--config', $env:PAGELAMP_TAURI_SIGNING_CONFIG)
+          if ($env:TEST_OVERLAY -eq 'true') { $configs += @('--config', (Join-Path $env:GITHUB_WORKSPACE 'apps/desktop/src-tauri/tauri.rehearsal.conf.json')) }
+          # Updater off: no updater signature, whatever tauri.conf.json says.
+          if ($env:UPDATER -ne 'true') { $configs += @('--config', (Join-Path $env:GITHUB_WORKSPACE '.github/tauri/updater-off.json')) }
+          pnpm tauri bundle --target x86_64-pc-windows-msvc @configs
       - name: Sign out of Azure
         if: ${{ always() }}
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 sign-out
@@ -485,6 +830,15 @@ jobs:
           "SETUP_PATH=$($setup[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           $msiPath = if ($msi.Count -eq 1) { $msi[0].FullName } else { '' }
           "MSI_PATH=$msiPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $setupSig = ''
+          if ($env:UPDATER -eq 'true') {
+            $setupSig = "$($setup[0].FullName).sig"
+            if (-not (Test-Path -LiteralPath $setupSig -PathType Leaf) -or (Get-Item -LiteralPath $setupSig).Length -eq 0) {
+              "::error::The updater signature $(Split-Path -Leaf $setupSig) is missing next to the installer"
+              exit 1
+            }
+          }
+          "SETUP_SIG_PATH=$setupSig" | Out-File -FilePath $env:GITHUB_ENV -Append
       # signtool verify /pa /all /tw (chain to Microsoft's Public Trust root) and
       # Get-AuthenticodeSignature (Valid, publisher CN, timestamp) on each installer, then on every
       # .exe/.dll the -setup.exe installs (the app, pagelamp.exe, uninstall.exe) and the .msi
@@ -503,9 +857,11 @@ jobs:
             return "$hash  $(Split-Path -Leaf $Path)"
           }
           $setup = Get-Sum $env:SETUP_PATH
+          $setupSig = Get-Sum $env:SETUP_SIG_PATH
           $msi = Get-Sum $env:MSI_PATH
-          "setup_sum=$setup", "msi_sum=$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "setup_sum=$setup", "setup_sig_sum=$setupSig", "msi_sum=$msi" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "$setup"
+          if ($setupSig) { "$setupSig" }
           if ($msi) { "$msi" }
       # Same file names tauri-action used; --clobber replaces files from an earlier run.
       - name: Upload the installers to the draft release
@@ -515,6 +871,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           $files = @($env:SETUP_PATH)
+          if ($env:SETUP_SIG_PATH) { $files += $env:SETUP_SIG_PATH }
           if ($env:MSI_PATH) { $files += $env:MSI_PATH }
           gh release upload $env:TAG @files --clobber
       # As for the rehearsal .dmg: not a release name, and unique per attempt. Renaming doesn't
@@ -538,7 +895,7 @@ jobs:
           "REHEARSAL_MSI=$msiCopy" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Keep the NSIS installer (rehearsal)
         if: ${{ inputs.rehearsal }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.REHEARSAL_SETUP }}
           archive: false
@@ -546,10 +903,23 @@ jobs:
           if-no-files-found: error
       - name: Keep the MSI (rehearsal)
         if: ${{ inputs.rehearsal && env.REHEARSAL_MSI != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.REHEARSAL_MSI }}
           archive: false
+          retention-days: 7
+          if-no-files-found: error
+      # With its release name, inside a zip whose name says "rehearsal"; `updater-manifest` puts it
+      # on the test channel.
+      - name: Keep the installer and its updater signature (rehearsal)
+        id: keep-updater
+        if: ${{ inputs.rehearsal && needs.preflight.outputs.updater == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: updater-windows-rehearsal-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: |
+            ${{ env.SETUP_PATH }}
+            ${{ env.SETUP_SIG_PATH }}
           retention-days: 7
           if-no-files-found: error
 
@@ -565,14 +935,15 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.TAG }}
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: cli-${{ matrix.target }}
       - name: Linux system libraries
@@ -601,11 +972,12 @@ jobs:
           (cd dist && $sum "$file" > "$file.sha256")
           gh release upload "$TAG" "$archive" "$archive.sha256" --clobber
 
-  # The standalone macOS CLI, signed and notarized. A bare binary can't carry a stapled ticket, so
-  # Gatekeeper checks it online the first time it runs. Also runs in a rehearsal.
+  # The standalone macOS CLI, signed and notarized, one per architecture (the archives keep their
+  # names). A bare binary can't carry a stapled ticket, so Gatekeeper checks it online the first
+  # time it runs. Also runs in a rehearsal.
   cli-macos:
-    needs: create-release
-    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    needs: [preflight, create-release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     environment: release
     strategy:
       fail-fast: false
@@ -620,7 +992,7 @@ jobs:
       # Public (it's in every signature); the checks make sure this team signed each file.
       DEVELOPER_TEAM_ID: CBU69BX7M8
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
           persist-credentials: false
@@ -712,7 +1084,7 @@ jobs:
         run: gh release upload "$TAG" "$ARCHIVE" "$ARCHIVE.sha256" --clobber
       - name: Keep the archive (rehearsal)
         if: ${{ inputs.rehearsal }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.ARCHIVE }}
           archive: false
@@ -720,7 +1092,7 @@ jobs:
           if-no-files-found: error
       - name: Keep the notary log
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notary-log-cli-${{ matrix.target }}-attempt${{ github.run_attempt }}
           path: ${{ runner.temp }}/notary-logs
@@ -730,8 +1102,8 @@ jobs:
   # The standalone Windows CLI, signed with Azure Artifact Signing by the same script as the app,
   # and checked, before it is zipped. Also runs in a rehearsal.
   cli-windows:
-    needs: create-release
-    if: ${{ !cancelled() && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    needs: [preflight, create-release]
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     environment: release
     runs-on: windows-latest
     # As in `app-windows`: the release upload, and the OIDC token for azure/login.
@@ -747,7 +1119,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
           persist-credentials: false
@@ -841,52 +1213,169 @@ jobs:
         run: gh release upload $env:TAG $env:ARCHIVE "$env:ARCHIVE.sha256" --clobber
       - name: Keep the archive (rehearsal)
         if: ${{ inputs.rehearsal }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           path: ${{ env.ARCHIVE }}
           archive: false
           retention-days: 7
           if-no-files-found: error
 
-  # One SHA256SUMS file covering every asset (installers + CLI archives), so testers can verify
-  # any download with `shasum -a 256 -c SHA256SUMS --ignore-missing`. It runs after the signing
-  # jobs have uploaded their files (notarized and stapled on macOS, signed on Windows), so it hashes
-  # the final files. First it checks that the draft still holds exactly the signed files those jobs
-  # checked (they pass on each file's hash as a job output, which no other job can set): every job
-  # here can upload to the release, and the Linux ones restore caches, so one of them could have
-  # replaced a signed file in the meantime. Then SHA256SUMS would vouch for it; instead this fails.
-  checksums:
-    needs: [create-release, app, app-macos, app-windows, cli, cli-macos, cli-windows]
+  # With the updater on: latest.json, the updater manifest (.github/scripts/updater-manifest.mjs),
+  # after every signature has been checked against its artifact with tauri.conf.json's public key
+  # and its version binding against the Cargo version. A release uploads it to the draft
+  # (channels.yml copies it to Pages when the release is published; the stable channel also reads
+  # releases/latest/download/latest.json). A rehearsal writes the test channel's manifest instead
+  # (macOS and Windows only; the ~95 MB AppImage is too big for Pages, its signature is still
+  # checked) and keeps it with those files as the artifact updater-test-<commit>-attempt<n>.
+  updater-manifest:
+    needs: [preflight, create-release, app-macos, app-windows, app-linux]
+    if: ${{ !cancelled() && needs.preflight.outputs.updater == 'true' && needs.app-macos.result == 'success' && needs.app-windows.result == 'success' && needs.app-linux.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    # "<sha256>  latest.json" as uploaded (see `checksums`).
+    outputs:
+      manifest_sum: ${{ steps.upload.outputs.manifest_sum }}
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - name: Compute and upload SHA256SUMS
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.rehearsal && github.sha || env.TAG }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Download the updater artifacts from the draft
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release download "$TAG" --dir "$RUNNER_TEMP/updater" \
+            --pattern '*.app.tar.gz' --pattern '*.app.tar.gz.sig' \
+            --pattern '*-setup.exe' --pattern '*-setup.exe.sig' \
+            --pattern '*.AppImage' --pattern '*.AppImage.sig'
+          ls -l "$RUNNER_TEMP/updater"
+      # By the IDs the signing jobs passed on, not by name (every job of the run can upload).
+      - name: Download the updater artifacts (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.app-macos.outputs.updater_artifact_id }},${{ needs.app-windows.outputs.updater_artifact_id }},${{ needs.app-linux.outputs.updater_artifact_id }}
+          path: ${{ runner.temp }}/updater
+          merge-multiple: true
+      - name: Write latest.json and check every signature
+        run: |
+          dir="$RUNNER_TEMP/updater"
+          key=apps/desktop/src-tauri/tauri.conf.json
+          if [ "$REHEARSAL" = true ]; then
+            base="$PAGES_URL/updates/test/${GITHUB_SHA:0:7}/"
+            # All four signatures, then the test channel's manifest (the platforms Pages serves).
+            node .github/scripts/updater-manifest.mjs build --dir "$dir" --version "$VERSION" \
+              --base-url "$base" --pubkey-config "$key" --out "$RUNNER_TEMP/all-platforms.json"
+            node .github/scripts/updater-manifest.mjs build --dir "$dir" --version "$VERSION" \
+              --base-url "$base" --platforms darwin-aarch64-app,darwin-x86_64-app,windows-x86_64-nsis \
+              --notes "Rehearsal build ${GITHUB_SHA:0:7} (test channel)" --out "$RUNNER_TEMP/latest.json"
+          else
+            node .github/scripts/updater-manifest.mjs build --dir "$dir" --version "$VERSION" \
+              --tag "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "docs/release-notes/$TAG.md" \
+              --pubkey-config "$key" --out "$RUNNER_TEMP/latest.json"
+          fi
+          cat "$RUNNER_TEMP/latest.json"
+      - name: Upload latest.json to the draft release
+        id: upload
+        if: ${{ !inputs.rehearsal }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd "$RUNNER_TEMP"
+          gh release upload "$TAG" latest.json --clobber
+          echo "manifest_sum=$(sha256sum latest.json)" | tee -a "$GITHUB_OUTPUT"
+      - name: Collect the test channel files (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        run: |
+          dir="$RUNNER_TEMP/updater"
+          out="$RUNNER_TEMP/updater-test"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/latest.json" "$dir"/*.app.tar.gz "$dir"/*.app.tar.gz.sig "$dir"/*-setup.exe "$dir"/*-setup.exe.sig "$out/"
+          ls -l "$out"
+      - name: Keep the test channel files (rehearsal)
+        if: ${{ inputs.rehearsal }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: updater-test-${{ github.sha }}-attempt${{ github.run_attempt }}
+          path: ${{ runner.temp }}/updater-test
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  # One SHA256SUMS file covering every asset (installers, CLI archives and, with the updater on,
+  # the updater artifacts, their signatures and latest.json), so testers can verify any download
+  # with `shasum -a 256 -c SHA256SUMS --ignore-missing`, plus a GitHub artifact attestation for
+  # every file it lists. It runs after the signing jobs have uploaded their files (notarized and
+  # stapled on macOS, signed on Windows), so it hashes the final files. First it checks that the
+  # draft still holds exactly the signed files those jobs checked (they pass on each file's hash
+  # as a job output, which no other job can set): every job here can upload to the release, and
+  # the Linux `app` and `cli` jobs restore caches, so one of them could have replaced a signed
+  # file in the meantime. Then SHA256SUMS would vouch for it; instead this fails.
+  checksums:
+    needs: [preflight, create-release, app, app-linux, app-macos, app-windows, cli, cli-macos, cli-windows, updater-manifest]
+    # Every job it needs succeeded or was skipped on purpose (`app` or `app-linux`, and
+    # `updater-manifest` with the updater off).
+    if: ${{ !cancelled() && !failure() && !inputs.rehearsal }}
+    runs-on: ubuntu-22.04
+    # The upload, and the OIDC token and permission that actions/attest needs for the attestation.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Check the draft and compute SHA256SUMS
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          UPDATER: ${{ needs.preflight.outputs.updater }}
           # "<sha256>  <file name>", as the signing job checked and uploaded the file.
-          DMG_AARCH64: ${{ needs.app-macos.outputs.dmg_sum_aarch64 }}
-          DMG_X86_64: ${{ needs.app-macos.outputs.dmg_sum_x86_64 }}
+          DMG: ${{ needs.app-macos.outputs.dmg_sum }}
           CLI_MACOS_AARCH64: ${{ needs.cli-macos.outputs.archive_sum_aarch64 }}
           CLI_MACOS_X86_64: ${{ needs.cli-macos.outputs.archive_sum_x86_64 }}
           WINDOWS_SETUP: ${{ needs.app-windows.outputs.setup_sum }}
           # Empty when tauri.conf.json builds no .msi.
           WINDOWS_MSI: ${{ needs.app-windows.outputs.msi_sum }}
           CLI_WINDOWS: ${{ needs.cli-windows.outputs.zip_sum }}
+          # With the updater on only.
+          MACOS_UPDATER: ${{ needs.app-macos.outputs.updater_sum }}
+          MACOS_UPDATER_SIG: ${{ needs.app-macos.outputs.updater_sig_sum }}
+          WINDOWS_SETUP_SIG: ${{ needs.app-windows.outputs.setup_sig_sum }}
+          LINUX_APPIMAGE: ${{ needs.app-linux.outputs.appimage_sum }}
+          LINUX_APPIMAGE_SIG: ${{ needs.app-linux.outputs.appimage_sig_sum }}
+          LINUX_DEB: ${{ needs.app-linux.outputs.deb_sum }}
+          LINUX_RPM: ${{ needs.app-linux.outputs.rpm_sum }}
+          UPDATER_MANIFEST: ${{ needs.updater-manifest.outputs.manifest_sum }}
         run: |
           # tauri-action packs the macOS .app as .app.tar.gz when it uploads (earlier runs of this
-          # workflow did); without an updater it only duplicates the .dmg and confuses testers, so
-          # drop any that are left.
-          gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".app.tar.gz"))' |
-            while read -r asset; do gh release delete-asset "$TAG" "$asset" --yes; done
+          # workflow did); without the updater it only duplicates the .dmg and confuses testers, so
+          # drop any that are left. With the updater on it is the macOS update and stays.
+          if [ "$UPDATER" != true ]; then
+            gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".app.tar.gz"))' |
+              while read -r asset; do gh release delete-asset "$TAG" "$asset" --yes; done
+          fi
           mkdir assets && cd assets
           gh release download "$TAG"
           signed="$RUNNER_TEMP/signed-files.sha256"
           : > "$signed"
-          for name in DMG_AARCH64 DMG_X86_64 CLI_MACOS_AARCH64 CLI_MACOS_X86_64 WINDOWS_SETUP CLI_WINDOWS; do
+          required="DMG CLI_MACOS_AARCH64 CLI_MACOS_X86_64 WINDOWS_SETUP CLI_WINDOWS"
+          if [ "$UPDATER" = true ]; then
+            required="$required MACOS_UPDATER MACOS_UPDATER_SIG WINDOWS_SETUP_SIG LINUX_APPIMAGE LINUX_APPIMAGE_SIG LINUX_DEB LINUX_RPM UPDATER_MANIFEST"
+          fi
+          for name in $required; do
             if [ -z "${!name}" ]; then
               # e.g. GitHub drops a job output that contains a secret's value ("Skip output").
-              echo "::error::The signing job passed on no hash for $name, so the signed files can't be checked. Look for 'Skip output' in that job's log."
+              echo "::error::The job that checked it passed on no hash for $name, so the signed files can't be checked. Look for 'Skip output' in that job's log."
               exit 1
             fi
             printf '%s\n' "${!name}" >> "$signed"
@@ -895,6 +1384,16 @@ jobs:
           if ! sha256sum --strict --check "$signed"; then
             echo "::error::A signed file in the draft release is missing or isn't the file its signing job checked (see above). Don't publish this draft, and find out from the run's logs which job uploaded over it before re-running anything."
             exit 1
+          fi
+          # With the updater on, the draft's only updater files are the ones checked above.
+          if [ "$UPDATER" = true ]; then
+            for f in ./*.app.tar.gz ./*.sig ./latest.json; do
+              [ -e "$f" ] || continue
+              if ! cut -d ' ' -f 3- "$signed" | grep -qxF -- "${f#./}"; then
+                echo "::error::${f#./} is in the draft release, but no signing job checked it. Don't publish this draft, and find out from the run's logs which job uploaded it."
+                exit 1
+              fi
+            done
           fi
           # Each archive's .sha256 must match the archive too.
           for f in ./*.sha256; do
@@ -907,4 +1406,14 @@ jobs:
           rm -f SHA256SUMS ./*.sha256
           sha256sum -- * > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "$TAG" SHA256SUMS --clobber
+      # A signed statement from GitHub that this workflow run built each listed file (Sigstore;
+      # public for a public repo). Before the upload, so a SHA256SUMS in the draft means attested.
+      - name: Attest every file in SHA256SUMS
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: assets/SHA256SUMS
+      - name: Upload SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "$TAG" assets/SHA256SUMS --clobber
