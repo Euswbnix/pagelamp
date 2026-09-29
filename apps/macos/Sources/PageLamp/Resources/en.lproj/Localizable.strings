@@ -1603,7 +1603,15 @@
 "updates.whatsNew.done" = "Got it";
 "updates.whatsNew.since" = "Since version %1$@";
 "updates.whatsNew.title" = "What's new in PageLamp";
+"updates.whatsNew.topics.ai_writing.body" = "With your own model, PageLamp can plan your study days around your deadlines and explain a week's materials, citing where each point comes from.";
+"updates.whatsNew.topics.ai_writing.title" = "Study plans and weekly explanations";
+"updates.whatsNew.topics.course_removal.body" = "Courses that look finished can be removed from PageLamp. You have 7 days to undo it, and your own course folders are never touched.";
+"updates.whatsNew.topics.course_removal.title" = "Remove finished courses";
 "updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to a “Past” group.";
 "updates.whatsNew.topics.course_weeks.title" = "Weeks and phases for every course";
+"updates.whatsNew.topics.reminders.body" = "Reminders before deadlines and a weekly summary. If you turn it on, PageLamp can also keep running in the background and start when you log in.";
+"updates.whatsNew.topics.reminders.title" = "Reminders";
+"updates.whatsNew.topics.syllabus_reading.body" = "AI can read a course's syllabus and schedule and propose its dates, each with the words it comes from; nothing changes until you accept. Set up a model first; your ChatGPT plan works too.";
+"updates.whatsNew.topics.syllabus_reading.title" = "Course dates from the syllabus";
 "updates.whatsNew.topics.update_check.body" = "Once a day it downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing anything.";
 "updates.whatsNew.topics.update_check.title" = "PageLamp now updates itself";

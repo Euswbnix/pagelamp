@@ -1,4 +1,12 @@
-import { CalendarRange, type LucideIcon, RefreshCw } from "lucide-react";
+import {
+  Archive,
+  Bell,
+  CalendarRange,
+  FileSearch,
+  type LucideIcon,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -23,6 +31,10 @@ import { Switch } from "@/components/ui/switch";
 const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   update_check: RefreshCw,
   course_weeks: CalendarRange,
+  course_removal: Archive,
+  syllabus_reading: FileSearch,
+  ai_writing: Sparkles,
+  reminders: Bell,
 };
 
 /**

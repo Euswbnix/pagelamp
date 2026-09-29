@@ -1011,6 +1011,10 @@ pub struct UpdatePrefs {
 pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
+    CourseRemoval,
+    SyllabusReading,
+    AiWriting,
+    Reminders,
 }
 
 #[uniffi::remote(Record)]
