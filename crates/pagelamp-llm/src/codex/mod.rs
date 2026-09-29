@@ -4,9 +4,19 @@
 //!
 //! - `pin`: the pinned version, its models and the verified asset per target.
 //! - `runtime`: download, verify and install that asset (at most two versions kept).
+//! - `home`: the dedicated `CODEX_HOME`, its config and the cross-process lock.
+//! - `login`: sign-in, status and sign-out through Codex itself.
+//! - `process`: how every Codex command is started (environment allow-list, null stdin).
 
+mod error;
+pub mod home;
+pub mod login;
 pub mod pin;
+mod process;
 pub mod runtime;
 
+pub use error::CodexError;
+pub use home::{CodexHome, HomeError, HomeLock};
+pub use login::{LoginEvent, LoginMethod, LoginState};
 pub use pin::{Pin, PinAsset, Version, pin, running_target};
 pub use runtime::{InstallError, InstallEvent, Installed, Runtime};

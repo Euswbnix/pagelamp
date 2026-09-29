@@ -81,6 +81,21 @@ afterwards) to settle the signature rule of the managed runtime (plan M2, `codex
   `codex-package-*` archives only).
 - Sizes: download 68–80 MB; unpacked 240 MB (macOS arm64), 258 MB (macOS x64), 324 MB (Windows
   x64). A pure-Rust zstd decoder (`ruzstd`) unpacks them identically to `unzstd`.
+- **Config keys (0.158.0 `codex-rs/core/config.schema.json`).** The root, `[features]`, `[tools]`
+  and the other tables reject unknown keys, so `--strict-config` fails on any typo. Differences
+  from design §2.3's list: there is no `tools.view_image` (it is `features.view_image`);
+  `features.code_mode` takes a plain boolean; `[tools]` holds only `update_plan`,
+  `experimental_request_user_input` and `web_search` (tables with `enabled`). 0.158.0 has more
+  tools PageLamp turns off: `unified_exec`, `js_repl`, `browser_use`, `computer_use`,
+  `image_generation`, `plugins`, `collab`, `codex_hooks` / `plugin_hooks`,
+  `standalone_web_search`. The generated config (`pagelamp-llm` `codex/home.rs`) was checked
+  key by key against that schema.
+- **Sign-in output (0.158.0 source).** Browser: stderr "Starting local login server on
+  http://localhost:1455. If your browser did not open, navigate to this URL to authenticate:"
+  then the URL. Device code: stdout "1. Open this link…" + URL, "2. Enter this one-time code
+  (expires in 15 minutes)" + code (ANSI-coloured). `login status` (stderr): "Logged in using
+  ChatGPT", "Logged in using an API key - <masked>", and other "Logged in using …" modes
+  (access token, personal access token, Bedrock, workload identity).
 - The official installer uses `codex-package-<target>.tar.gz` (`bin/codex`,
   `bin/codex-code-mode-host`, `codex-path/rg`, and on Linux `codex-resources/bwrap`); PageLamp
   uses the bare binary, as tools are off. Whether `-s read-only` needs `bwrap` on Linux is checked
