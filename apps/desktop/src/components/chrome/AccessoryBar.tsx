@@ -200,7 +200,7 @@ function CapsuleIcon({
       return total ? (
         <ProgressRing value={done / total} />
       ) : (
-        <LoaderCircle className="size-4 animate-spin motion-reduce:animate-none" aria-hidden />
+        <LoaderCircle className="size-4 animate-spin" aria-hidden />
       );
     case "done":
       return <CircleCheck className="size-4 text-success" aria-hidden />;

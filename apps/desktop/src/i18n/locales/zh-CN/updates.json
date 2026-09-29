@@ -36,6 +36,7 @@
     "tryAgain": "重试",
     "availableAfterSync": "同步结束后可用",
     "availableAfterOtherSync": "另一个同步（来自命令行或另一个窗口）结束后可用",
+    "held": "同步结束后，{{product}} 会接着安装这个更新。",
     "progressLabel": "更新进度",
     "stopSync": "停止同步"
   },

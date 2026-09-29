@@ -1249,6 +1249,10 @@ export interface StoreCounts {
   indexed_materials: number;
   materials: number;
   modules: number;
+  /**
+   * Courses under "Removed courses" (their tombstones), not counted above.
+   */
+  removed_courses: number;
   study_plans: number;
 }
 /**
@@ -2608,6 +2612,14 @@ export interface DisclosureFacts1 {
  */
 export interface PurgeReport {
   /**
+   * A purged course asked for the pre-update backup to go, and it did.
+   */
+  backup_deleted: boolean;
+  /**
+   * Deleting the pre-update backup failed (the purge went ahead).
+   */
+  backup_failed: boolean;
+  /**
    * `removed_id`s whose files couldn't be moved to the Trash (kept; retried later).
    */
   files_pending: string[];
@@ -2689,7 +2701,14 @@ export interface RemovalPreviewItem {
  * via the `definition` "RemovalReport".
  */
 export interface RemovalReport {
+  /**
+   * The pre-update backup was deleted now (`purge_now`; otherwise it goes with the purge).
+   */
   backup_deleted: boolean;
+  /**
+   * Deleting the pre-update backup failed (the courses are removed all the same).
+   */
+  backup_failed: boolean;
   purged_now: boolean;
   removed: RemovedCourse[];
 }
@@ -2748,6 +2767,9 @@ export interface RemoveAiDataReport {
  * via the `definition` "RemoveOptions".
  */
 export interface RemoveOptions {
+  /**
+   * Delete the pre-update backup with the purge (at once with `purge_now`); an undo keeps it.
+   */
   delete_pre_update_backup: boolean;
   keep_downloaded_files: boolean;
   /**

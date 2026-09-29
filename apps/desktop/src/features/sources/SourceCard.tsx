@@ -20,6 +20,7 @@ import { useStartSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { RemoveSourceButton } from "./RemoveSourceButton";
 import { SourceStatusBadge } from "./SourceStatusBadge";
 import { configString, hasSecret, SOURCE_ICON } from "./sourceMeta";
+import { TechnicalDetails } from "./TechnicalDetails";
 
 interface SourceCardProps {
   source: SourceRecord;
@@ -50,9 +51,10 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <h2 className="min-w-0 truncate">{source.label}</h2>
+        {/* A long label wraps (any character may break it), so the status badge stays on the card. */}
+        <CardTitle className="flex min-w-0 items-start gap-2">
+          <Icon className="mt-0.75 size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <h2 className="min-w-0 [overflow-wrap:anywhere]">{source.label}</h2>
         </CardTitle>
         <CardDescription>
           {accountName
@@ -80,7 +82,9 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
                   {t(canvas ? "problem.expiredCanvas" : "problem.expiredFeed")}
                 </p>
               ) : null}
-              {source.last_error ? <p lang="en">{source.last_error}</p> : null}
+              {source.last_error ? (
+                <TechnicalDetails lines={[source.last_error]} subject={source.label} />
+              ) : null}
               {expired && hasSecret(source.kind) ? (
                 <Button size="sm" onClick={() => onReplaceSecret(source)} aria-label={replaceName}>
                   <KeyRound aria-hidden />
