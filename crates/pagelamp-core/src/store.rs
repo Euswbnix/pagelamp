@@ -43,6 +43,7 @@ use crate::{Error, Result};
 
 mod ai;
 mod migrate_v4;
+mod tombstones;
 
 pub use ai::USAGE_KEEP_DAYS;
 pub use migrate_v4::COURSE_DATES_CONFIRMED;
@@ -874,14 +875,26 @@ impl Store {
     }
 
     /// All courses (including hidden ones when `include_hidden`), ordered by code, name.
+    /// Removed courses (with a tombstone) are never listed: they show under "Removed courses".
     pub fn list_courses(&self, include_hidden: bool) -> Result<Vec<Course>> {
         self.query_list(
             &format!(
                 "SELECT {COURSE_COLUMNS} FROM courses
-                 WHERE hidden = 0 OR ?1
+                 WHERE (hidden = 0 OR ?1)
+                   AND id NOT IN (SELECT course_id FROM course_tombstones)
                  ORDER BY code, name, id"
             ),
             [include_hidden],
+            course_from_row,
+        )
+    }
+
+    /// Every course row, removed ones too (whose local data may still be there): for what
+    /// decides which downloaded folders are still in use.
+    pub fn list_all_courses(&self) -> Result<Vec<Course>> {
+        self.query_list(
+            &format!("SELECT {COURSE_COLUMNS} FROM courses ORDER BY code, name, id"),
+            [],
             course_from_row,
         )
     }
@@ -1615,8 +1628,11 @@ impl Store {
     /// Row counts (see `StoreCounts` for what each number means).
     pub fn counts(&self) -> Result<StoreCounts> {
         let sql = "SELECT
-            (SELECT COUNT(*) FROM courses WHERE hidden = 0) AS courses,
-            (SELECT COUNT(*) FROM courses WHERE hidden <> 0) AS hidden_courses,
+            (SELECT COUNT(*) FROM courses WHERE hidden = 0
+               AND id NOT IN (SELECT course_id FROM course_tombstones)) AS courses,
+            (SELECT COUNT(*) FROM courses WHERE hidden <> 0
+               AND id NOT IN (SELECT course_id FROM course_tombstones)) AS hidden_courses,
+            (SELECT COUNT(*) FROM course_tombstones) AS removed_courses,
             (SELECT COUNT(*) FROM modules) AS modules,
             (SELECT COUNT(*) FROM materials) AS materials,
             (SELECT COUNT(*) FROM materials m
@@ -1636,6 +1652,7 @@ impl Store {
                 chunks: row.get("chunks")?,
                 events: row.get("events")?,
                 study_plans: row.get("study_plans")?,
+                removed_courses: row.get("removed_courses")?,
             })
         })?)
     }

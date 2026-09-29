@@ -594,12 +594,6 @@ pub struct Event {
 /// ignored. The longest code wins ("DEMO1011" over "DEMO101"); between equally long codes a
 /// visible course wins over a hidden one (e.g. last year's folder of the same course).
 pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Course> {
-    fn squash(text: &str) -> String {
-        text.chars()
-            .filter(|c| !c.is_whitespace())
-            .flat_map(char::to_uppercase)
-            .collect()
-    }
     let target = squash(hint);
     courses
         .iter()
@@ -609,6 +603,20 @@ pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Cour
         })
         .max_by_key(|(len, course)| (*len, !course.hidden))
         .map(|(_, course)| course)
+}
+
+/// Whether a course text (see `course_for_hint`) starts with `code`, case-insensitive with
+/// spaces ignored (e.g. a feed event of a removed course).
+pub fn hint_names_code(hint: &str, code: &str) -> bool {
+    let code = squash(code);
+    !code.is_empty() && squash(hint).starts_with(&code)
+}
+
+fn squash(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_uppercase)
+        .collect()
 }
 
 impl Event {
@@ -705,6 +713,8 @@ pub struct StoreCounts {
     pub chunks: u32,
     pub events: u32,
     pub study_plans: u32,
+    /// Courses under "Removed courses" (their tombstones), not counted above.
+    pub removed_courses: u32,
 }
 
 // ---------------------------------------------------------------------------

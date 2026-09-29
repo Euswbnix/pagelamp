@@ -13,6 +13,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use pagelamp_core::Store;
 use pagelamp_core::ingest::{self, Extractor, IndexOutcome};
 use pagelamp_core::model::{CourseUpsert, MaterialKind, MaterialUpsert, Module, TextStatus};
+use pagelamp_core::removal::TombstoneState;
 use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress, SyncStage};
 use pagelamp_core::timeline::parse_week_hint;
 use regex::Regex;
@@ -65,8 +66,22 @@ pub(crate) fn sync_folder(
 
     let mut report = FolderSyncReport::default();
     let mut keep_courses = Vec::new();
+    // Removed courses (calendar design §5): not read. A pending one keeps its row until its
+    // purge; a purged one has none. The student's folder is never changed.
+    let tombstones = store.tombstone_states(source_id)?;
+    let mut read = 0;
     for (dir_name, dir) in &course_dirs {
         let course_id = format!("{source_id}/course/{dir_name}");
+        match tombstones.get(dir_name.as_str()) {
+            Some(state) if state.skipped_by_sync() => {
+                if *state == TombstoneState::Pending {
+                    keep_courses.push(course_id);
+                }
+                continue;
+            }
+            _ => {}
+        }
+        read += 1;
         keep_courses.push(course_id.clone());
         let course = CourseDir {
             source_id,
@@ -79,7 +94,7 @@ pub(crate) fn sync_folder(
         course.sync(store, progress, &mut report)?;
     }
     store.prune_courses(source_id, &keep_courses)?;
-    report.courses = course_dirs.len();
+    report.courses = read;
     Ok(report)
 }
 
