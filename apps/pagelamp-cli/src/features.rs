@@ -1,6 +1,6 @@
-//! `pagelamp plan`, `explain` and `remind` (model-access design §7, CLI): study plans and weekly
-//! explanations PageLamp writes itself, and the reminders and weekly digest (cron-friendly).
-//! Every policy is the facade's; this only prints.
+//! `pagelamp plan`, `explain`, `note` and `remind` (model-access design §7, CLI): study plans,
+//! weekly explanations and weekly notes PageLamp writes itself, and the reminders and weekly
+//! digest (cron-friendly). Every policy is the facade's; this only prints.
 
 use std::collections::HashMap;
 
@@ -8,7 +8,7 @@ use chrono::Utc;
 use clap::ValueEnum;
 use pagelamp_app::ai::{
     ExplainOptions, GenEvent, GeneratedStudyPlan, PlanWarningCode, StudyPlanRequest,
-    WeeklyExplanation,
+    WeeklyExplanation, WeeklyNote, WeeklyNoteOptions,
 };
 use pagelamp_app::{App, DayOfWeek, Reminder, ReminderKind};
 use pagelamp_core::ai_gate::LeftOutReason;
@@ -332,6 +332,60 @@ fn print_explanation(explanation: &WeeklyExplanation) {
     if explanation.sharing_reminder {
         println!("{}", crate::text::sharing_reminder_note());
     }
+}
+
+/// `pagelamp note`: write a weekly note, or (`saved`) list the kept ones.
+pub async fn note(app: &App, over_budget: bool, saved: bool, json: bool) -> anyhow::Result<()> {
+    if saved {
+        let notes = app.weekly_notes()?;
+        if json {
+            return print_json(&notes);
+        }
+        if notes.is_empty() {
+            println!("No saved weekly notes.");
+        }
+        for note in &notes {
+            print_note(note, &codes(app));
+            println!();
+        }
+        return Ok(());
+    }
+    let id = generation_id("note");
+    let options = WeeklyNoteOptions {
+        // The command line speaks English.
+        ui_language: Some("en".to_string()),
+        override_budget: over_budget,
+        automatic: false,
+    };
+    let note = app
+        .write_weekly_note(&id, options, progress)
+        .await
+        .map_err(said)?;
+    if json {
+        return print_json(&note);
+    }
+    print_note(&note, &codes(app));
+    Ok(())
+}
+
+fn print_note(note: &WeeklyNote, codes: &HashMap<String, String>) {
+    println!("# Week of {}\n", note.week_of);
+    println!("{}\n", note.text);
+    if !note.focus.is_empty() {
+        println!("Focus on:");
+        for (n, item) in note.focus.iter().enumerate() {
+            match item.course_id.as_ref().and_then(|id| codes.get(id)) {
+                Some(code) => println!("  {}. {} ({code})", n + 1, item.text),
+                None => println!("  {}. {}", n + 1, item.text),
+            }
+        }
+    }
+    println!(
+        "\nAI-generated · {} · {} · {}",
+        note.meta.backend_label,
+        note.meta.model,
+        note.meta.created_at.format("%Y-%m-%d")
+    );
 }
 
 #[derive(Serialize)]

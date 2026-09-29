@@ -12,6 +12,7 @@ struct MockFeatures: Sendable {
     var monthlyBudget: UInt64?
     var sharing: [String: MaterialSharing] = [:]
     var outputLanguage: OutputLanguage = .ui
+    var prepareNoteOnMonday = false
     var weeklyCap: UInt32?
     var codexSource: CodexSource = .managed
     var reminderSettings = ReminderSettings(
@@ -221,6 +222,55 @@ extension MockService {
     public func setAiOutputLanguage(language: OutputLanguage) async throws(PageLampFailure) {
         await respond("setAiOutputLanguage")
         db.features.outputLanguage = language
+    }
+
+    // MARK: - The weekly note (no model: blocked; the facade's rules for "prepare it on Monday")
+
+    public func writeWeeklyNote(
+        generationId: String, options: WeeklyNoteOptions, observer: any GenObserver
+    ) async throws(PageLampFailure) -> WeeklyNote {
+        await respond("writeWeeklyNote")
+        if options.automatic {
+            // The mock's launch tasks never ask for one.
+            throw PageLampFailure(kind: .invalid, message: "The weekly note isn't due to be prepared now.")
+        }
+        throw Self.noModel
+    }
+
+    public func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] {
+        await respond("weeklyNotes")
+        return []
+    }
+
+    public func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) {
+        await respond("deleteWeeklyNote")
+        throw PageLampFailure(kind: .notFound, message: "No weekly note with id \(generationId)")
+    }
+
+    public func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings {
+        await respond("weeklyNoteSettings")
+        return noteSettings()
+    }
+
+    public func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings {
+        await respond("setPrepareWeeklyNoteOnMonday")
+        if on && !noteSettings().prepareOnMondayAllowed {
+            throw PageLampFailure(
+                kind: .invalid,
+                message: "Preparing the note on Monday needs an API key or a model on this computer for weekly notes."
+            )
+        }
+        db.features.prepareNoteOnMonday = on
+        return noteSettings()
+    }
+
+    /// Only an API key or a model on this computer may prepare it (plan D27).
+    private func noteSettings() -> WeeklyNoteSettings {
+        var allowed = false
+        if case .provider = db.features.featureModels[.weeklyNote]?.backend {
+            allowed = true
+        }
+        return WeeklyNoteSettings(prepareOnMonday: db.features.prepareNoteOnMonday, prepareOnMondayAllowed: allowed)
     }
 
     public func generateStudyPlan(

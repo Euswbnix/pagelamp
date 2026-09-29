@@ -353,7 +353,7 @@ fn a_not_allowed_course_is_blocked_for_a_cloud_model_from_the_cli() {
 }
 
 #[test]
-fn remind_is_quiet_until_something_is_due_and_plan_needs_a_model() {
+fn remind_is_quiet_until_something_is_due_and_plan_and_note_need_a_model() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
     synced_demo_course(&home, &temp.path().join("Courses"));
@@ -379,4 +379,7 @@ fn remind_is_quiet_until_something_is_due_and_plan_needs_a_model() {
     assert!(
         ok(&pagelamp(&home, &["explain", "DEMO101", "--saved"])).contains("No saved explanations.")
     );
+    let note = failed(&pagelamp(&home, &["note"]));
+    assert!(note.contains("blocked: no_model_chosen"), "{note}");
+    assert!(ok(&pagelamp(&home, &["note", "--saved"])).contains("No saved weekly notes."));
 }

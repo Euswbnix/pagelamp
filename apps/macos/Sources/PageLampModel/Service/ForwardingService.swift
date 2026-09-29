@@ -230,6 +230,26 @@ extension ForwardingService {
         try await base.setAiOutputLanguage(language: language)
     }
 
+    public func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote {
+        try await base.writeWeeklyNote(generationId: generationId, options: options, observer: observer)
+    }
+
+    public func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] {
+        try await base.weeklyNotes()
+    }
+
+    public func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) {
+        try await base.deleteWeeklyNote(generationId: generationId)
+    }
+
+    public func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings {
+        try await base.weeklyNoteSettings()
+    }
+
+    public func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings {
+        try await base.setPrepareWeeklyNoteOnMonday(on: on)
+    }
+
     public func generateStudyPlan(request: StudyPlanRequest, generationId: String, observer: any GenObserver) async throws(PageLampFailure) -> GeneratedStudyPlan {
         try await base.generateStudyPlan(request: request, generationId: generationId, observer: observer)
     }

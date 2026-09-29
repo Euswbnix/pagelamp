@@ -120,6 +120,17 @@ public protocol PageLampService: Sendable {
     /// Explanations in the app's language or the course's.
     func aiOutputLanguage() async throws(PageLampFailure) -> OutputLanguage
     func setAiOutputLanguage(language: OutputLanguage) async throws(PageLampFailure)
+    /// Writes this week's note from the courses' structure and the plan's progress (never
+    /// material text); `cancelGeneration(generationId:)` stops it. `options.automatic` only
+    /// when `startupTasks(now:).prepareWeeklyNote` said so.
+    func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote
+    /// The kept weekly notes, newest first.
+    func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote]
+    func deleteWeeklyNote(generationId: String) async throws(PageLampFailure)
+    /// "Prepare it when I open PageLamp on Monday", and whether the note's model allows it.
+    func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings
+    /// Turns "prepare it on Monday" on (an API key or a model on this computer only) or off.
+    func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings
     /// Drafts a plan (not saved until `acceptStudyPlan(generationId:)`);
     /// `cancelGeneration(generationId:)` stops it.
     func generateStudyPlan(request: StudyPlanRequest, generationId: String, observer: any GenObserver) async throws(PageLampFailure) -> GeneratedStudyPlan

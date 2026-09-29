@@ -1353,6 +1353,11 @@ struct AppTypes {
     citation: ai::Citation,
     explain_options: ai::ExplainOptions,
     output_language: ai::OutputLanguage,
+    // beta.2: the AI weekly note
+    weekly_note: ai::WeeklyNote,
+    note_focus: ai::NoteFocus,
+    weekly_note_options: ai::WeeklyNoteOptions,
+    weekly_note_settings: ai::WeeklyNoteSettings,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.
