@@ -92,6 +92,8 @@ struct MockDb: Sendable {
     /// "Not now" / "Keep" on removal suggestions, by course id.
     var removalSnoozes: [String: String] = [:]
     var bannerSnoozedUntil: String?
+    /// The M1–M3 state the mock keeps (AI settings, reminders, removed courses).
+    var features = MockFeatures()
 }
 
 /// Update settings and the launch state behind `startupTasks` (a fresh install by default).
