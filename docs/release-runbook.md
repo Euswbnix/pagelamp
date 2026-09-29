@@ -75,6 +75,13 @@ move.
   fails after you approved the deployments. After editing the version run
   `cargo update --workspace --offline` (or any `cargo metadata --offline >/dev/null`), then
   `git add Cargo.toml Cargo.lock`. Release config fails when they disagree.
+- **What's new matches what ships.** Every feature this release turns on for students has its
+  `WhatsNewTopic` row in `crates/pagelamp-app/src/updates.rs` (`WHATS_NEW`, introduced in this
+  version) and its desktop copy, and no row names a feature that is still behind a switch
+  (`REMOVAL_UI`, `CALENDAR_UI`, `AI_SETUP_ENABLED`, `REMINDERS_UI`…) in this build. A row lands in
+  the same branch as its feature. A row that first ships in a later release than its
+  `introduced_in` version is never shown to people upgrading from that version, so fix the
+  version before tagging.
 - A rehearsal of that commit passed (next section).
 
 ## Rehearsal from main

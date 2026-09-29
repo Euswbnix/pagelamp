@@ -79,6 +79,78 @@ struct MockServiceTests {
         }
     }
 
+    @Test("course lane: timeline, lifecycle summary, I'm still taking this, snoozes")
+    func courseLane() async throws {
+        let service = mock(.demo)
+        #expect(try await service.courseTimeline(course: "DEMO101").currentWeek == 4)
+        let kept = try await service.keepCourseCurrent(course: "DEMO101", until: "2027-01-31")
+        #expect(kept.code == "DEMO101")
+        var summary = try await service.lifecycleSummary()
+        let courseCount = try await service.listCourses().count
+        #expect(summary.courses.count == courseCount)
+        let entry = summary.courses.first { $0.code == "DEMO101" }
+        #expect(entry?.lifecycle.keptCurrentUntil == "2027-01-31")
+        #expect(entry?.lifecycle.state == .current && entry?.lifecycle.confidence == .high)
+        #expect(summary.suggested.isEmpty && !summary.showBanner)
+        _ = try await service.clearKeepCourseCurrent(course: "DEMO101")
+        let listed = try await service.listCourses().first { $0.course.code == "DEMO101" }
+        #expect(listed?.lifecycle.keptCurrentUntil == nil)
+        // Without a date: today + keepCurrentDays() (the mock has no term dates).
+        _ = try await service.keepCourseCurrent(course: "DEMO205", until: nil)
+        summary = try await service.lifecycleSummary()
+        #expect(summary.courses.first { $0.code == "DEMO205" }?.lifecycle.keptCurrentUntil?.hasPrefix("2027-01-") == true)
+
+        try await service.snoozeRemovalSuggestions(courses: ["DEMO099"], kind: .keep)
+        try await service.clearRemovalSnooze(courses: ["DEMO099"])
+        try await service.snoozeLifecycleBanner()
+        #expect(try await service.lifecycleSummary().bannerSnoozedUntil == "2026-10-09")
+        #expect(try await service.confirmCourseDates(course: "DEMO101").currentWeek == 4)
+        do {
+            _ = try await service.courseTimeline(course: "NOPE")
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
+    }
+
+    @Test("updates: a fresh install checks after the disclosure; an upgrade shows What's new first")
+    func updates() async throws {
+        let service = mock(.demo)
+        let now = TestClock.now
+        #expect(try await service.effectiveUpdateChannel() == .beta, "0.1.0-mock is a pre-release")
+        var tasks = try await service.startupTasks(now: now)
+        #expect(tasks.whatsNew == nil && tasks.updatedFrom == nil && !tasks.updateCheckDue)
+        try await service.acknowledgeUpdateDisclosure()
+        #expect(try await service.startupTasks(now: now).updateCheckDue)
+
+        let record = UpdateCheckRecord(at: now, channel: .beta, outcome: .upToDate)
+        try await service.recordUpdateCheck(record: record)
+        #expect(try await service.lastUpdateCheck() == record)
+        #expect(try await !service.startupTasks(now: now).updateCheckDue)
+        #expect(try await service.startupTasks(now: now.addingTimeInterval(24 * 3600)).updateCheckDue)
+
+        await service.simulateUpgrade(from: "0.3.0-alpha.1")
+        tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
+        #expect(tasks.whatsNew?.topics == [.updateCheck, .courseWeeks])
+        #expect(tasks.updatedFrom == "0.3.0-alpha.1")
+        #expect(!tasks.updateCheckDue, "not while What's new waits")
+        try await service.acknowledgeWhatsNew()
+        tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
+        #expect(tasks.whatsNew == nil && tasks.updateCheckDue)
+
+        try await service.setUpdatePrefs(prefs: UpdatePrefs(autoCheck: false, channel: .stable))
+        #expect(try await service.updatePrefs() == UpdatePrefs(autoCheck: false, channel: .stable))
+        #expect(try await service.effectiveUpdateChannel() == .stable)
+        #expect(try await !service.startupTasks(now: now.addingTimeInterval(48 * 3600)).updateCheckDue)
+    }
+
+    @Test("activity: nothing running here; another process's sync shows")
+    func activity() async throws {
+        let idle = try await mock(.demo).activity()
+        #expect(idle.items.isEmpty && !idle.otherProcessSyncing)
+        #expect(try await mock(.busy).activity().otherProcessSyncing)
+    }
+
     @Test("empty scenario: no sources; Connect and diagnostics still answer")
     func emptyScenario() async throws {
         let service = mock(.empty)
@@ -144,5 +216,103 @@ struct LiveServiceTests {
         } catch {
             #expect(error.kind == .notFound)
         }
+
+        // The course lane and the update facade reach the core.
+        let summary = try await service.lifecycleSummary()
+        #expect(summary.courses.isEmpty && !summary.showBanner)
+        do {
+            _ = try await service.courseTimeline(course: "NOPE")
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
+        #expect(try await service.updatePrefs().autoCheck)
+        let tasks = try await service.startupTasks(now: Date())
+        #expect(tasks.whatsNew == nil, "a fresh data folder is a fresh install")
+        try await service.acknowledgeUpdateDisclosure()
+        #expect(try await service.startupTasks(now: Date()).updateCheckDue)
+        #expect(try await service.lastUpdateCheck() == nil)
+        let activity = try await service.activity()
+        #expect(activity.items.isEmpty && !activity.otherProcessSyncing)
+        #expect(notNowDays() == 14 && keepCurrentDays() == 120 && keepForever() == "9999-12-31")
+    }
+}
+
+/// `ForwardingService` forwards whatever a wrapper doesn't implement, so an override with a typo
+/// or a slightly different signature would silently forward too. These call every override
+/// through `any PageLampService` and check that the wrapper's own behaviour shows up.
+@Suite("ForwardingService wrappers")
+struct ForwardingWrapperTests {
+    func mock() -> MockService {
+        MockService(scenario: .demo, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+    }
+
+    /// `body` must fail with the fixture's own failure (not the base's answer).
+    func expectFixtureFailure(_ name: String, _ body: () async throws -> Void) async {
+        do {
+            try await body()
+            Issue.record("\(name) answered from the base service")
+        } catch {
+            let message = (error as? PageLampFailure)?.message ?? "\(error)"
+            #expect(message.hasPrefix("fixture:"), "\(name): \(message)")
+        }
+    }
+
+    @Test("every FixtureService override is the one called")
+    func fixtureOverrides() async throws {
+        let base = mock()
+        let failing: any PageLampService = FixtureService(
+            base: base, failing: [.courses, .deadlines, .studyPlan, .week, .overview, .clientConfigs, .clearCrash]
+        )
+        await expectFixtureFailure("listCourses") { _ = try await failing.listCourses() }
+        await expectFixtureFailure("listDeadlines") { _ = try await failing.listDeadlines(course: nil, daysAhead: 7, daysBack: 0) }
+        await expectFixtureFailure("latestStudyPlan") { _ = try await failing.latestStudyPlan() }
+        await expectFixtureFailure("weekMaterials") { _ = try await failing.weekMaterials(course: "DEMO101", week: nil) }
+        await expectFixtureFailure("courseOverview") { _ = try await failing.courseOverview(course: "DEMO101") }
+        await expectFixtureFailure("mcpClientConfigs") { _ = try await failing.mcpClientConfigs(pagelampBinary: MockService.binaryPath) }
+        await expectFixtureFailure("clearLastCrash") { try await failing.clearLastCrash() }
+        let courseDeadlines: any PageLampService = FixtureService(base: base, failing: [.courseDeadlines])
+        await expectFixtureFailure("listDeadlines(course:)") {
+            _ = try await courseDeadlines.listDeadlines(course: "DEMO101", daysAhead: 7, daysBack: 0)
+        }
+
+        #expect(try await base.status().syncInProgress == false)
+        let syncing: any PageLampService = FixtureService(base: base, syncInProgress: true)
+        #expect(try await syncing.status().syncInProgress)
+
+        #expect(try await base.courseTimeline(course: "DEMO101").currentWeek == 4)
+        let outside: any PageLampService = FixtureService(base: base, outsideTerm: true)
+        #expect(try await outside.courseTimeline(course: "DEMO101").currentWeek == nil)
+        #expect(try await outside.confirmCourseDates(course: "DEMO101").currentWeek == nil)
+
+        #expect(try await base.keepCourseCurrent(course: "DEMO101", until: nil).aiAccess)
+        let aiOff: any PageLampService = FixtureService(base: base, aiAccessOff: true)
+        #expect(try await !aiOff.keepCourseCurrent(course: "DEMO101", until: nil).aiAccess)
+        #expect(try await !aiOff.clearKeepCourseCurrent(course: "DEMO101").aiAccess)
+    }
+
+    @Test("HeldService's holds apply through any PageLampService")
+    func heldOverrides() async throws {
+        let statusHold = CallHold()
+        let configsHold = CallHold()
+        await statusHold.arm(failing: PageLampFailure(kind: .network, message: "held status"))
+        await configsHold.arm(failing: PageLampFailure(kind: .network, message: "held configs"))
+        let service: any PageLampService = HeldService(base: mock(), statusHold: statusHold, configsHold: configsHold)
+
+        let status = Task { try await service.status() }
+        await statusHold.waitUntilHeld()
+        await statusHold.release()
+        #expect((await status.result.failure as? PageLampFailure)?.message == "held status")
+
+        let configs = Task { try await service.mcpClientConfigs(pagelampBinary: MockService.binaryPath) }
+        await configsHold.waitUntilHeld()
+        await configsHold.release()
+        #expect((await configs.result.failure as? PageLampFailure)?.message == "held configs")
+    }
+}
+
+private extension Result {
+    var failure: Failure? {
+        if case .failure(let error) = self { error } else { nil }
     }
 }

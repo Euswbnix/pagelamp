@@ -52,6 +52,8 @@ struct MockCourse: Sendable {
     var materials: [MaterialView]
     var announcements: [MaterialView]
     var deadlines: [Deadline]
+    /// "I'm still taking this" until this day.
+    var keptCurrentUntil: String? = nil
 }
 
 /// The course calendar and lifecycle fields (M0.10) in neutral values: a course with a week is
@@ -66,11 +68,13 @@ enum MockCalendar {
         )
     }
 
-    static func lifecycle(_ timeline: CourseTimeline) -> CourseLifecycle {
-        CourseLifecycle(
-            state: timeline.currentWeek == nil ? .unknown : .current, group: .current,
-            confidence: timeline.confidence, since: nil, startsOn: nil, lastActivity: nil,
-            nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: nil
+    static func lifecycle(_ timeline: CourseTimeline, keptCurrentUntil: String? = nil) -> CourseLifecycle {
+        // "I'm still taking this" makes a course Current with high confidence (lifecycle rule 1).
+        let kept = keptCurrentUntil != nil
+        return CourseLifecycle(
+            state: kept || timeline.currentWeek != nil ? .current : .unknown, group: .current,
+            confidence: kept ? .high : timeline.confidence, since: nil, startsOn: nil, lastActivity: nil,
+            nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: keptCurrentUntil
         )
     }
 }
@@ -84,6 +88,22 @@ struct MockDb: Sendable {
     var externalSyncRunning: Bool
     /// What the panic hook recorded last time ("crashed" scenario).
     var lastCrash: CrashReport?
+    var updates = MockUpdates()
+    /// "Not now" / "Keep" on removal suggestions, by course id.
+    var removalSnoozes: [String: String] = [:]
+    var bannerSnoozedUntil: String?
+}
+
+/// Update settings and the launch state behind `startupTasks` (a fresh install by default).
+struct MockUpdates: Sendable {
+    var prefs = UpdatePrefs(autoCheck: true, channel: nil)
+    var disclosureSeen = false
+    /// This launch followed an update (`MockService.simulateUpgrade`).
+    var upgraded = false
+    /// The version it updated from (nil: 0.1, which recorded none).
+    var upgradedFrom: String?
+    var whatsNewSeen = false
+    var lastCheck: UpdateCheckRecord?
 }
 
 enum MockIds {
