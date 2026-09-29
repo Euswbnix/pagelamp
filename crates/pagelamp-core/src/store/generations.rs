@@ -146,6 +146,26 @@ impl Store {
         )
     }
 
+    /// Delete the runs of `course_id` (explanations, calendar readings, notes) or, with `None`,
+    /// every run (study plan drafts included); how many. A calendar that came from a run keeps
+    /// its dates and its own label (`generation_id` becomes NULL); an accepted plan keeps its
+    /// label.
+    pub fn delete_generations(&self, course_id: Option<&str>) -> Result<u32> {
+        self.atomic(|| {
+            let removed = self.conn.execute(
+                "DELETE FROM generations WHERE ?1 IS NULL OR course_id = ?1",
+                [course_id],
+            )?;
+            self.conn.execute(
+                "UPDATE study_plans SET generation_id = NULL
+                 WHERE generation_id IS NOT NULL
+                   AND generation_id NOT IN (SELECT id FROM generations)",
+                [],
+            )?;
+            Ok(u32::try_from(removed).unwrap_or(u32::MAX))
+        })
+    }
+
     /// A feature's runs with `status` for a course, of one week or (`None`) all, newest first.
     pub fn generations_of(
         &self,

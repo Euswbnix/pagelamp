@@ -468,6 +468,35 @@ async fn study_plans_round_trip_and_are_validated() {
     assert_eq!(stored.matches("</study_plan>").count(), 1, "{stored}");
     assert!(stored.ends_with("\n</study_plan>"), "{stored}");
 
+    // A plan PageLamp made says so, with its label as data (design §6).
+    let db = temp.path().join("pagelamp.db");
+    let label = pagelamp_core::term::AiLabel {
+        backend_label: "Ollama".into(),
+        model: "local-model".into(),
+        created_at: chrono::Utc::now(),
+        on_device: true,
+    };
+    pagelamp_core::store::Store::open(&db)
+        .unwrap()
+        .save_study_plan_as(
+            &serde_json::from_value(json!({
+                "horizon_start": "2026-10-01", "horizon_end": "2026-10-07", "items": []
+            }))
+            .unwrap(),
+            pagelamp_core::model::PlanOrigin::PageLamp,
+            Some("plan-1"),
+            Some(&label),
+        )
+        .unwrap();
+    let stored = text_of(&call(&client, "get_study_plan", json!({})).await);
+    let (preface, rest) = stored.split_once("\n<study_plan>\n").unwrap();
+    assert_eq!(preface, text::PLAN_PREFACE_PAGELAMP);
+    let inner: Value = serde_json::from_str(rest.strip_suffix("\n</study_plan>").unwrap()).unwrap();
+    assert_eq!(
+        (&inner["origin"], &inner["ai_label"]["model"]),
+        (&json!("pagelamp"), &json!("local-model"))
+    );
+
     let reversed = json!({ "plan": {
         "horizon_start": "2026-10-07", "horizon_end": "2026-10-01", "items": []
     }});

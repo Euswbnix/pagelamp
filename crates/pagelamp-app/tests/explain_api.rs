@@ -542,3 +542,33 @@ async fn an_answer_citing_nothing_real_is_bad_output() {
             .is_empty()
     );
 }
+
+/// "Delete generated content per course" (design §8), then everything.
+#[tokio::test]
+async fn generated_content_is_deleted_per_course_or_all() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    for (course, id) in [
+        ("DEMO101", "e-101-a"),
+        ("DEMO101", "e-101-b"),
+        ("DEMO505", "e-505"),
+    ] {
+        app.explain_week(course, Some(3), id, ExplainOptions::default(), |_| {})
+            .await
+            .unwrap();
+    }
+    assert_eq!(app.delete_generated(Some("DEMO101")).unwrap(), 2);
+    assert!(app.saved_explanations("DEMO101", None).unwrap().is_empty());
+    assert_eq!(app.saved_explanations("DEMO505", None).unwrap().len(), 1);
+    assert_eq!(app.delete_generated(None).unwrap(), 1);
+    assert!(app.saved_explanations("DEMO505", None).unwrap().is_empty());
+    assert_eq!(
+        app.delete_generated(Some("NOPE999")).unwrap_err().kind,
+        AppErrorKind::NotFound
+    );
+}

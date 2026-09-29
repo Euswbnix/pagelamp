@@ -70,8 +70,8 @@ use pagelamp_core::brand;
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
-    CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, SourceErrorKind,
-    SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
+    CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, PlanOrigin,
+    SourceErrorKind, SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
 };
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, Deadline, MaterialView};
@@ -726,7 +726,14 @@ impl PageLampServer {
     async fn get_study_plan(&self) -> CallToolResult {
         match self.read(|store| store.latest_study_plan()).await {
             Ok(Some(plan)) => match serde_json::to_string(&plan) {
-                Ok(json) => text_result(wrap_plan(text::PLAN_PREFACE, &json)),
+                // The origin says who made it (design §6): the student's AI app, or PageLamp.
+                Ok(json) => text_result(wrap_plan(
+                    match plan.origin {
+                        PlanOrigin::AiApp => text::PLAN_PREFACE,
+                        PlanOrigin::PageLamp => text::PLAN_PREFACE_PAGELAMP,
+                    },
+                    &json,
+                )),
                 Err(err) => error_result(format!("internal error: {err}")),
             },
             Ok(None) => text_result(text::NO_PLAN),
