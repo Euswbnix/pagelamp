@@ -11,10 +11,17 @@
 //! | `updates.last_check`         | `UpdateCheckRecord`                                      |
 //! | `app.last_run_version`       | the version that last ran `startup_tasks`                |
 //! | `app.whats_new_acknowledged` | the version whose What's new the student closed          |
+//! | `app.mac.last_run_version`, `app.mac.whats_new_acknowledged` | the same for the Mac app |
 //!
 //! `startup_tasks(now)` classifies the launch once per process (fresh install, upgrade and
 //! from which version) and records the running version; everything else is recomputed on every
 //! call, because the app may run for days and callers poll it on a timer.
+//!
+//! What's new is per shell (`Shell`): the desktop app and the Mac app share the data folder,
+//! and whichever asked first would otherwise take the other's upgrade. The desktop app keeps
+//! the keys above, unchanged; the Mac app has its own, its first run shows nothing, and it never
+//! gets the update-check topic (it updates itself with Sparkle), so only the desktop app's
+//! What's new counts as the update disclosure.
 
 use chrono::TimeDelta;
 use pagelamp_core::model::Timestamp;
@@ -29,6 +36,35 @@ const DISCLOSURE_KEY: &str = "updates.disclosure_acknowledged";
 const LAST_CHECK_KEY: &str = "updates.last_check";
 const LAST_RUN_KEY: &str = "app.last_run_version";
 const WHATS_NEW_ACK_KEY: &str = "app.whats_new_acknowledged";
+const MAC_LAST_RUN_KEY: &str = "app.mac.last_run_version";
+const MAC_WHATS_NEW_ACK_KEY: &str = "app.mac.whats_new_acknowledged";
+
+/// Which app shell opened the data folder (`App::set_shell`): What's new is per shell.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Shell {
+    /// The desktop app, and every caller that doesn't say (the CLI, tests): the keys alpha.1
+    /// wrote, the update-check topic and the update disclosure.
+    #[default]
+    Desktop,
+    /// The native Mac app: its own keys, and no update-check topic (Sparkle updates it).
+    Mac,
+}
+
+impl Shell {
+    fn last_run_key(self) -> &'static str {
+        match self {
+            Shell::Desktop => LAST_RUN_KEY,
+            Shell::Mac => MAC_LAST_RUN_KEY,
+        }
+    }
+
+    fn whats_new_ack_key(self) -> &'static str {
+        match self {
+            Shell::Desktop => WHATS_NEW_ACK_KEY,
+            Shell::Mac => MAC_WHATS_NEW_ACK_KEY,
+        }
+    }
+}
 
 /// How often the automatic update check runs.
 const CHECK_INTERVAL: TimeDelta = TimeDelta::hours(24);
@@ -127,13 +163,22 @@ pub(crate) struct LaunchClass {
 }
 
 impl App {
-    /// The student's update settings (defaults when never set, or unreadable).
+    /// The shell that opened this app (default `Desktop`); set it before the first
+    /// `startup_tasks`. Only the Mac app's FFI calls it.
+    pub fn set_shell(&self, shell: Shell) {
+        *self.state.shell.lock().unwrap_or_else(|e| e.into_inner()) = shell;
+        // Classified again with this shell's keys.
+        *self.state.launch.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    fn shell(&self) -> Shell {
+        *self.state.shell.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The student's update settings (defaults when never set or unparseable; a failed read is
+    /// an error, never the defaults).
     pub fn update_prefs(&self) -> Result<UpdatePrefs> {
-        Ok(self
-            .read_store()?
-            .setting(PREFS_KEY)
-            .unwrap_or(None)
-            .unwrap_or_default())
+        prefs_in(&self.read_store()?)
     }
 
     pub fn set_update_prefs(&self, prefs: UpdatePrefs) -> Result<()> {
@@ -153,9 +198,10 @@ impl App {
     /// clock, so the answer is testable and follows a long-running app.
     pub fn startup_tasks(&self, now: Timestamp) -> Result<StartupTasks> {
         let launch = self.launch_class()?;
+        let shell = self.shell();
         let store = self.read_store()?;
-        let whats_new = if launch.upgrade && !whats_new_acknowledged(&store) {
-            let topics = topics_since(launch.updated_from.as_deref());
+        let whats_new = if launch.upgrade && !whats_new_acknowledged(&store, shell)? {
+            let topics = topics_for(shell, launch.updated_from.as_deref());
             (!topics.is_empty()).then(|| WhatsNew {
                 since: launch.updated_from.clone(),
                 topics,
@@ -163,12 +209,11 @@ impl App {
         } else {
             None
         };
-        let prefs: UpdatePrefs = store.setting(PREFS_KEY).unwrap_or(None).unwrap_or_default();
-        let disclosed: bool = store
-            .setting(DISCLOSURE_KEY)
-            .unwrap_or(None)
-            .unwrap_or(false);
-        let last_check: Option<UpdateCheckRecord> = store.setting(LAST_CHECK_KEY).unwrap_or(None);
+        // A failed read fails the call (the app asks again on its timer): it must never look like
+        // "checks on", "disclosed" or "never checked".
+        let prefs = prefs_in(&store)?;
+        let disclosed: bool = store.setting_or_absent(DISCLOSURE_KEY)?.unwrap_or(false);
+        let last_check: Option<UpdateCheckRecord> = store.setting_or_absent(LAST_CHECK_KEY)?;
         let check_is_old = last_check.is_none_or(|check| now - check.at >= CHECK_INTERVAL);
         Ok(StartupTasks {
             update_check_due: prefs.auto_check && disclosed && whats_new.is_none() && check_is_old,
@@ -177,12 +222,14 @@ impl App {
         })
     }
 
-    /// The student closed What's new. Its update-check topic counts as the update disclosure.
+    /// The student closed this shell's What's new. The desktop app's update-check topic counts
+    /// as the update disclosure (the Mac app never shows that topic).
     pub fn acknowledge_whats_new(&self) -> Result<()> {
         let launch = self.launch_class()?;
+        let shell = self.shell();
         let store = self.write_store()?;
-        store.set_setting(WHATS_NEW_ACK_KEY, &env!("CARGO_PKG_VERSION"))?;
-        if topics_since(launch.updated_from.as_deref()).contains(&WhatsNewTopic::UpdateCheck) {
+        store.set_setting(shell.whats_new_ack_key(), &env!("CARGO_PKG_VERSION"))?;
+        if topics_for(shell, launch.updated_from.as_deref()).contains(&WhatsNewTopic::UpdateCheck) {
             store.set_setting(DISCLOSURE_KEY, &true)?;
         }
         Ok(())
@@ -199,7 +246,7 @@ impl App {
     }
 
     pub fn last_update_check(&self) -> Result<Option<UpdateCheckRecord>> {
-        Ok(self.read_store()?.setting(LAST_CHECK_KEY).unwrap_or(None))
+        Ok(self.read_store()?.setting_or_absent(LAST_CHECK_KEY)?)
     }
 
     /// Classify this launch once per process: a fresh install gets no What's new (its
@@ -211,8 +258,11 @@ impl App {
             return Ok(launch.clone());
         }
         let current = env!("CARGO_PKG_VERSION");
+        let shell = self.shell();
         let store = self.write_store()?;
-        let last_run: Option<String> = store.setting(LAST_RUN_KEY).unwrap_or(None);
+        // Before any write: a failed read leaves the launch unclassified, and the next call
+        // tries again.
+        let last_run: Option<String> = store.setting_or_absent(shell.last_run_key())?;
         let launch = match last_run {
             Some(last) if last == current => LaunchClass {
                 upgrade: false,
@@ -222,21 +272,22 @@ impl App {
                 upgrade: true,
                 updated_from: Some(last),
             },
-            // 0.1 never recorded a version: it is an update if 0.1 left data behind, as it
-            // was when this app opened the data dir (a new user's onboarding adds a source
-            // before the shell asks for its startup tasks).
+            // 0.1 never recorded a version: for the desktop app it is an update if 0.1 left
+            // data behind, as it was when this app opened the data dir (a new user's onboarding
+            // adds a source before the shell asks for its startup tasks). The Mac app never ran
+            // before: its first run, with nothing to show.
             None => {
-                let used_before = self.state.used_before_at_open;
-                if !used_before {
-                    store.set_setting(WHATS_NEW_ACK_KEY, &current)?;
+                let upgrade = shell == Shell::Desktop && self.state.used_before_at_open;
+                if !upgrade {
+                    store.set_setting(shell.whats_new_ack_key(), &current)?;
                 }
                 LaunchClass {
-                    upgrade: used_before,
+                    upgrade,
                     updated_from: None,
                 }
             }
         };
-        store.set_setting(LAST_RUN_KEY, &current)?;
+        store.set_setting(shell.last_run_key(), &current)?;
         *cached = Some(launch.clone());
         Ok(launch)
     }
@@ -264,11 +315,24 @@ fn topics_since(since: Option<&str>) -> Vec<WhatsNewTopic> {
         .collect()
 }
 
-fn whats_new_acknowledged(store: &Store) -> bool {
-    store
-        .setting::<String>(WHATS_NEW_ACK_KEY)
-        .unwrap_or(None)
-        .is_some_and(|version| version == env!("CARGO_PKG_VERSION"))
+/// `topics_since` as `shell` shows them: the Mac app never gets the update-check topic.
+fn topics_for(shell: Shell, since: Option<&str>) -> Vec<WhatsNewTopic> {
+    let mut topics = topics_since(since);
+    if shell != Shell::Desktop {
+        topics.retain(|topic| *topic != WhatsNewTopic::UpdateCheck);
+    }
+    topics
+}
+
+fn whats_new_acknowledged(store: &Store, shell: Shell) -> Result<bool> {
+    Ok(store
+        .setting_or_absent::<String>(shell.whats_new_ack_key())?
+        .is_some_and(|version| version == env!("CARGO_PKG_VERSION")))
+}
+
+/// The student's update settings in `store` (see `App::update_prefs`).
+fn prefs_in(store: &Store) -> Result<UpdatePrefs> {
+    Ok(store.setting_or_absent(PREFS_KEY)?.unwrap_or_default())
 }
 
 /// "2026-10-01 14:03 UTC (beta): up_to_date | available 0.3.0-alpha.2 | error network".

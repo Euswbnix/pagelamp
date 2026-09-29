@@ -1,6 +1,6 @@
 //! Removing finished courses in two stages (docs/design/v0.3-course-calendar.md §8.3–§8.7).
 //!
-//! The types come first (alpha.2 contract, agreed with frontend-2); the facade methods
+//! The types come first (the alpha.2 contract agreed with the desktop); the facade methods
 //! (`removal_preview`, `remove_courses`, `removed_courses`, `restore_course`,
 //! `purge_removed_courses`, `forget_removed_course`) arrive with the schema-v4 tombstones.
 
