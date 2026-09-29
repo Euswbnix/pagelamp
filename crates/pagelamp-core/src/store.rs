@@ -1171,14 +1171,32 @@ impl Store {
         expect_changed(changed, "material", material_id)
     }
 
-    /// Replace all chunks of a material (FTS kept in sync by triggers).
-    /// Errors: `Invalid` if a chunk's `material_id` is not `material_id`.
+    /// Replace all chunks of a material (FTS kept in sync by triggers). Chunks belong only to
+    /// an `ok` material (`set_text_state`): set its text state first, as the ingest does.
+    /// Errors: `Invalid` if a chunk's `material_id` is not `material_id`, or if `chunks` isn't
+    /// empty and the material isn't `ok`; `NotFound` if there is no such material.
     pub fn replace_chunks(&self, material_id: &str, chunks: &[Chunk]) -> Result<()> {
         if let Some(chunk) = chunks.iter().find(|c| c.material_id != material_id) {
             return Err(Error::Invalid(format!(
                 "chunk {} belongs to material '{}', not '{material_id}'",
                 chunk.ord, chunk.material_id
             )));
+        }
+        if !chunks.is_empty() {
+            let status: Option<String> = self.query_opt(
+                "SELECT text_status FROM materials WHERE id = ?1",
+                [material_id],
+                |row| row.get(0),
+            )?;
+            match status.as_deref() {
+                Some("ok") => {}
+                Some(status) => {
+                    return Err(Error::Invalid(format!(
+                        "material '{material_id}' is {status}, not ok: set its text state first"
+                    )));
+                }
+                None => return Err(Error::NotFound(format!("material '{material_id}'"))),
+            }
         }
         self.atomic(|| {
             self.conn

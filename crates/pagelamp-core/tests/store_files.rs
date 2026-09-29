@@ -625,6 +625,9 @@ fn indexed(store: &Store, local_path: &str, text: &str) -> String {
     let material = material_at(local_path);
     store.upsert_material(&material).unwrap();
     store
+        .set_text_state(&material.id, TextStatus::Ok, None, Some("hash"))
+        .unwrap();
+    store
         .replace_chunks(
             &material.id,
             &[Chunk {
@@ -634,9 +637,6 @@ fn indexed(store: &Store, local_path: &str, text: &str) -> String {
                 text: text.into(),
             }],
         )
-        .unwrap();
-    store
-        .set_text_state(&material.id, TextStatus::Ok, None, Some("hash"))
         .unwrap();
     material.id
 }
@@ -692,6 +692,28 @@ fn a_material_that_stops_being_readable_loses_its_text() {
         .set_text_state(&id, TextStatus::Ok, None, Some("hash"))
         .unwrap();
     assert_eq!(store.chunk_count(&id).unwrap(), 1);
+}
+
+#[test]
+fn only_a_readable_material_takes_chunks() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let id = indexed(&store, "/demo/DEMO101/notes.md", "Stomata open in light.");
+    store
+        .set_text_state(&id, TextStatus::NotDownloaded, None, None)
+        .unwrap();
+    let chunk = Chunk {
+        material_id: id.clone(),
+        ord: 0,
+        locator: None,
+        text: "Stale text.".into(),
+    };
+    assert!(matches!(
+        store.replace_chunks(&id, std::slice::from_ref(&chunk)),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(store.chunk_count(&id).unwrap(), 0);
+    store.replace_chunks(&id, &[]).unwrap();
 }
 
 #[test]
