@@ -31,6 +31,8 @@ globalThis.ResizeObserver ??= class {
 Element.prototype.scrollIntoView ??= () => {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
+// Sonner's toasts (e.g. clicking a toast's Undo) capture the pointer on pointerdown.
+Element.prototype.setPointerCapture ??= () => {};
 
 const initialUi = useUiStore.getState();
 
