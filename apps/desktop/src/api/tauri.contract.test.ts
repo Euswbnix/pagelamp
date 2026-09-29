@@ -55,6 +55,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setCourseHidden(COURSE, true);
   await api.mcpClientConfigs();
   await api.diagnosticReport();
+  await api.doctor();
   await api.lastCrash();
   await api.clearLastCrash();
   await api.revealDataDir();

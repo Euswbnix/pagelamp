@@ -47,7 +47,22 @@
     "openLogs": "打开日志文件夹",
     "logsHint": "{{product}} 的日志文件，帮你排查问题的人可能会需要。",
     "issueHint": "在浏览器中新建一个 issue，把诊断报告粘贴进去即可。",
-    "helpLink": "帮助与常见问题"
+    "helpLink": "帮助与常见问题",
+    "fileReader": {
+      "blocked": "{{product}} 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，较大的 PDF 会被跳过。",
+      "mismatch": "{{product}} 的文件读取程序和当前版本不一致。请重新安装 {{product}}。",
+      "unreadable": "{{product}} 没能读取的文件：{{list}}",
+      "separator": "、",
+      "kinds": {
+        "timed_out": "{{count}} 个耗时太久",
+        "cpu_limit": "{{count}} 个占用处理时间太多",
+        "memory_limit": "{{count}} 个太大，内存不够",
+        "crashed": "{{count}} 个导致读取程序崩溃",
+        "bad_output": "{{count}} 个的读取结果无法使用",
+        "spawn_failed": "{{count}} 个在等读取程序启动",
+        "protocol_mismatch": "{{count}} 个在等重新安装"
+      }
+    }
   },
   "about": {
     "title": "关于",

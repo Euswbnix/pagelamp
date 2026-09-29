@@ -20,7 +20,7 @@ pub struct Backend {
 
 impl Backend {
     pub fn open() -> Self {
-        Backend::open_with(App::open)
+        Backend::open_with(open_app)
     }
 
     fn open_with(open: fn() -> Result<App, AppError>) -> Self {
@@ -97,6 +97,16 @@ impl Backend {
             .await
             .map_err(|err| internal(format!("background task failed: {err}")))?
     }
+}
+
+/// Opens the facade and points it at the bundled `pagelamp` sidecar, so syncs read files in
+/// resource-limited `pagelamp extract-worker` processes (v0.3 M0.5). A retried open does the
+/// same. If the sidecar can't run, the facade falls back as designed (small non-PDF files are
+/// read directly, the rest wait) and `doctor` reports why.
+fn open_app() -> Result<App, AppError> {
+    let app = App::open()?;
+    app.set_extract_worker(Some(pagelamp_binary()));
+    Ok(app)
 }
 
 /// Open the facade; a panic inside the core must not kill the window, so it becomes an error.

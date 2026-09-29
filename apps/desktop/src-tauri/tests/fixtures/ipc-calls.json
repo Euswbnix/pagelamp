@@ -165,6 +165,10 @@
     "args": {}
   },
   {
+    "cmd": "doctor",
+    "args": {}
+  },
+  {
     "cmd": "last_crash",
     "args": {}
   },

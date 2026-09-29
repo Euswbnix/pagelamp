@@ -43,6 +43,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::set_course_hidden,
         commands::mcp_client_configs,
         commands::diagnostic_report,
+        commands::doctor,
         commands::last_crash,
         commands::clear_last_crash,
         commands::reveal_data_dir,

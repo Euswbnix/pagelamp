@@ -76,6 +76,7 @@ export function createTauriApi(): PageLampApi {
     lastUpdateCheck: () => call("last_update_check"),
 
     diagnosticReport: () => call("diagnostic_report"),
+    doctor: () => call("doctor"),
     lastCrash: () => call("last_crash"),
     clearLastCrash: () => call("clear_last_crash"),
 

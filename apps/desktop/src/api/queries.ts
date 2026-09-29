@@ -19,6 +19,7 @@ export const queryKeys = {
   studyPlan: () => [...queryKeys.all, "study-plan"] as const,
   mcpConfigs: () => [...queryKeys.all, "mcp-configs"] as const,
   lastCrash: () => [...queryKeys.all, "last-crash"] as const,
+  doctor: () => [...queryKeys.all, "doctor"] as const,
   // Deliberately outside `all`: a sync finishing (which invalidates `all`) must not swap the
   // text the student is reviewing before they copy it.
   diagnosticReport: () => ["diagnostic-report"] as const,
@@ -117,6 +118,16 @@ export function useRefreshOnWindowFocus() {
       }),
     [api, client],
   );
+}
+
+/** The setup check; refreshed after syncs (unreadable-file counts change). */
+export function useDoctor() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.doctor(),
+    queryFn: () => api.doctor(),
+    staleTime: 60_000,
+  });
 }
 
 /** What the panic hook recorded last time (null = nothing to report). */

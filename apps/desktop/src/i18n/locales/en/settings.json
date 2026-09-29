@@ -47,7 +47,22 @@
     "openLogs": "Open logs folder",
     "logsHint": "{{product}}'s log files, in case someone helping you asks for them.",
     "issueHint": "Opens a new issue in your browser. Paste the diagnostic report there.",
-    "helpLink": "Help and FAQ"
+    "helpLink": "Help and FAQ",
+    "fileReader": {
+      "blocked": "{{product}}'s file reader couldn't start (often blocked by antivirus or Smart App Control). Large PDFs are skipped until it can run.",
+      "mismatch": "{{product}}'s file reader is from a different version. Reinstall {{product}} to fix it.",
+      "unreadable": "Files {{product}} couldn't read: {{list}}",
+      "separator": " · ",
+      "kinds": {
+        "timed_out": "{{count}} took too long",
+        "cpu_limit": "{{count}} used too much processing time",
+        "memory_limit": "{{count}} too large for memory",
+        "crashed": "{{count}} crashed the reader",
+        "bad_output": "{{count}} gave unreadable output",
+        "spawn_failed": "{{count}} waiting for the reader to start",
+        "protocol_mismatch": "{{count}} waiting for a reinstall"
+      }
+    }
   },
   "about": {
     "title": "About",

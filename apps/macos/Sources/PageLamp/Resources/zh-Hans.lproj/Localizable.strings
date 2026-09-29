@@ -605,6 +605,17 @@
 "settings.data.revealFailed" = "无法打开文件夹";
 "settings.data.title" = "你的数据";
 "settings.help.description" = "遇到问题了？下面这些可以帮忙找出原因。除非你自己分享，否则不会发送任何内容。";
+"settings.help.fileReader.blocked" = "PageLamp 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，较大的 PDF 会被跳过。";
+"settings.help.fileReader.kinds.bad_output" = "%1$@ 个的读取结果无法使用";
+"settings.help.fileReader.kinds.cpu_limit" = "%1$@ 个占用处理时间太多";
+"settings.help.fileReader.kinds.crashed" = "%1$@ 个导致读取程序崩溃";
+"settings.help.fileReader.kinds.memory_limit" = "%1$@ 个太大，内存不够";
+"settings.help.fileReader.kinds.protocol_mismatch" = "%1$@ 个在等重新安装";
+"settings.help.fileReader.kinds.spawn_failed" = "%1$@ 个在等读取程序启动";
+"settings.help.fileReader.kinds.timed_out" = "%1$@ 个耗时太久";
+"settings.help.fileReader.mismatch" = "PageLamp 的文件读取程序和当前版本不一致。请重新安装 PageLamp。";
+"settings.help.fileReader.separator" = "、";
+"settings.help.fileReader.unreadable" = "PageLamp 没能读取的文件：%1$@";
 "settings.help.helpLink" = "帮助与常见问题";
 "settings.help.issueHint" = "在浏览器中新建一个 issue，把诊断报告粘贴进去即可。";
 "settings.help.logsHint" = "PageLamp 的日志文件，帮你排查问题的人可能会需要。";

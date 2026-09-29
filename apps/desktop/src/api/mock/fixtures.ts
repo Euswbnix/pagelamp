@@ -35,7 +35,9 @@ export type MockScenario =
   | "upgrader"
   | "upgrader-from-01"
   | "updated"
-  | "deb";
+  | "deb"
+  // The file reader (extraction worker) is blocked, e.g. by antivirus (M0.5).
+  | "worker-blocked";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -49,6 +51,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "upgrader-from-01",
   "updated",
   "deb",
+  "worker-blocked",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */

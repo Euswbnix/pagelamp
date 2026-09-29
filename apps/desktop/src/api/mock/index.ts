@@ -5,7 +5,7 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
-// update-available · upgrader · updated · deb.
+// update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -720,6 +720,43 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     lastUpdateCheck: () => respond(() => updates.lastCheck),
 
     diagnosticReport: () => respond(() => diagnosticReport(status(), db.lastCrash, now())),
+    doctor: () =>
+      respond(() => {
+        const s = status();
+        const blocked = scenario === "worker-blocked";
+        return {
+          version: s.version,
+          os: "macos",
+          arch: "aarch64",
+          data_dir: "~/Library/Application Support/dev.PageLamp.PageLamp",
+          logs_dir: "~/Library/Application Support/dev.PageLamp.PageLamp/logs",
+          schema_version: 3,
+          database_error: null,
+          keychain_available: true,
+          keychain_error: null,
+          sources: s.sources.map((source) => ({
+            kind: source.kind,
+            ok: !source.last_error_kind,
+            last_synced_at: source.last_synced_at ?? null,
+            last_error_kind: source.last_error_kind ?? null,
+          })),
+          courses: s.counts.courses,
+          hidden_courses: s.counts.hidden_courses,
+          materials: s.counts.materials,
+          events: s.counts.events,
+          mcp_clients: { claude_desktop: true, claude_code: false, codex: false },
+          last_crash: db.lastCrash,
+          extract_worker: blocked
+            ? { status: "spawn_failed" as const, spawn_ms: null }
+            : { status: "ok" as const, spawn_ms: 24 },
+          unreadable_files: blocked
+            ? [
+                { kind: "spawn_failed" as const, count: 3 },
+                { kind: "timed_out" as const, count: 1 },
+              ]
+            : [],
+        };
+      }),
     lastCrash: () => respond(() => db.lastCrash),
     clearLastCrash: () =>
       respond(() => {

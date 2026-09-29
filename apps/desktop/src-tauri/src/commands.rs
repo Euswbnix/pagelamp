@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
-use pagelamp_app::diagnostics::{self, CrashReport};
+use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
@@ -291,6 +291,15 @@ pub async fn diagnostic_report(backend: State<'_, Backend>) -> CmdResult<String>
             |app| app.diagnostic_report(),
             diagnostics::diagnostic_report,
         )
+        .await
+}
+
+/// The setup check (versions, database, keychain, the file reader, unreadable files). Works
+/// without an open core too. It may start the file reader once, so it runs off the UI thread.
+#[tauri::command]
+pub async fn doctor(backend: State<'_, Backend>) -> CmdResult<DoctorReport> {
+    backend
+        .diagnostics(|app| app.doctor(), diagnostics::doctor)
         .await
 }
 

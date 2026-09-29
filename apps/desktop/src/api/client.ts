@@ -5,6 +5,7 @@ import type {
   CourseSummary,
   CrashReport,
   Deadline,
+  DoctorReport,
   IsoDate,
   McpClientConfig,
   SearchHit,
@@ -123,6 +124,8 @@ export interface PageLampApi {
    * crash. Redacted and pseudonymised by the Rust side; the UI shows it before copying.
    */
   diagnosticReport(): Promise<string>;
+  /** The setup check (file reader, unreadable files, database, keychain…), as data. */
+  doctor(): Promise<DoctorReport>;
   /** The crash the panic hook recorded, until `clearLastCrash()`. */
   lastCrash(): Promise<CrashReport | null>;
   clearLastCrash(): Promise<void>;

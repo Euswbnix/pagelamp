@@ -6,6 +6,7 @@ import { ExternalLink } from "@/components/common/ExternalLink";
 import { DiagnosticReportButton } from "@/features/diagnostics/DiagnosticReportButton";
 import { ReportProblemButton } from "@/features/diagnostics/ReportProblemButton";
 import { isHttpUrl } from "@/lib/url";
+import { FileReaderStatus } from "./FileReaderStatus";
 import { RevealFolderButton } from "./RevealFolderButton";
 import { SettingsSection } from "./SettingsSection";
 
@@ -16,6 +17,7 @@ export function HelpSection() {
   const { help, issues } = brand.links;
   return (
     <SettingsSection title={t("help.title")} description={t("help.description")}>
+      <FileReaderStatus />
       <ul className="space-y-4">
         <HelpRow hint={t("help.reportHint")}>
           <DiagnosticReportButton />

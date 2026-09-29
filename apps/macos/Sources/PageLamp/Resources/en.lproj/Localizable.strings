@@ -605,6 +605,17 @@
 "settings.data.revealFailed" = "Couldn't open the folder";
 "settings.data.title" = "Your data";
 "settings.help.description" = "Something not working? These help find the cause. Nothing is sent anywhere unless you share it yourself.";
+"settings.help.fileReader.blocked" = "PageLamp's file reader couldn't start (often blocked by antivirus or Smart App Control). Large PDFs are skipped until it can run.";
+"settings.help.fileReader.kinds.bad_output" = "%1$@ gave unreadable output";
+"settings.help.fileReader.kinds.cpu_limit" = "%1$@ used too much processing time";
+"settings.help.fileReader.kinds.crashed" = "%1$@ crashed the reader";
+"settings.help.fileReader.kinds.memory_limit" = "%1$@ too large for memory";
+"settings.help.fileReader.kinds.protocol_mismatch" = "%1$@ waiting for a reinstall";
+"settings.help.fileReader.kinds.spawn_failed" = "%1$@ waiting for the reader to start";
+"settings.help.fileReader.kinds.timed_out" = "%1$@ took too long";
+"settings.help.fileReader.mismatch" = "PageLamp's file reader is from a different version. Reinstall PageLamp to fix it.";
+"settings.help.fileReader.separator" = " · ";
+"settings.help.fileReader.unreadable" = "Files PageLamp couldn't read: %1$@";
 "settings.help.helpLink" = "Help and FAQ";
 "settings.help.issueHint" = "Opens a new issue in your browser. Paste the diagnostic report there.";
 "settings.help.logsHint" = "PageLamp's log files, in case someone helping you asks for them.";
