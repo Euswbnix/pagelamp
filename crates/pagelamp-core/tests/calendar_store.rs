@@ -246,3 +246,30 @@ fn a_migrated_override_still_resolves_through_the_students_term_dates() {
     assert_eq!(timeline.term.anchor_origin, Some(CalendarOrigin::Legacy));
     assert_eq!(timeline.current_week, Some(3));
 }
+
+#[test]
+fn the_sharing_reminder_is_claimed_once_per_course() {
+    let (store, _) = demo_store();
+    assert!(
+        store
+            .claim_sharing_reminder(COURSE, at("2026-09-24"))
+            .unwrap()
+    );
+    assert!(
+        !store
+            .claim_sharing_reminder(COURSE, at("2026-09-25"))
+            .unwrap()
+    );
+    assert!(
+        store
+            .claim_sharing_reminder("canvas:lms.example.edu/course/202", at("2026-09-25"))
+            .unwrap()
+    );
+    // Removing all AI data starts over.
+    store.remove_all_ai_data().unwrap();
+    assert!(
+        store
+            .claim_sharing_reminder(COURSE, at("2026-09-26"))
+            .unwrap()
+    );
+}
