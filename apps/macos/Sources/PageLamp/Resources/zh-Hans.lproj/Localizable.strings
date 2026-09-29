@@ -18,6 +18,7 @@
 "calendar.breakKind.other" = "假期";
 "calendar.breakKind.reading_week" = "阅读周";
 "calendar.breakKind.winter_break" = "寒假";
+"calendar.card.setDates" = "设置第一天上课的日期即可修正";
 "calendar.checkDates.body" = "这些日期是你在旧版 PageLamp 中设置的，当时计算周数的方式不同。请确认现在显示的周数仍然正确。";
 "calendar.checkDates.confirm" = "日期没问题";
 "calendar.checkDates.confirmed" = "日期已确认";
@@ -63,7 +64,6 @@
 "calendar.form.end" = "最后一天上课（可不填）";
 "calendar.form.endHint" = "之后的三周算作考试期。";
 "calendar.form.invalid" = "这些日期有问题。请确认最后一天上课在第一天之后。";
-"calendar.form.notUsedTitle" = "没有采用的日期及原因";
 "calendar.form.prefilled" = "已填入 PageLamp 目前采用的日期。";
 "calendar.form.save" = "保存日期";
 "calendar.form.saved" = "课程日期已保存";
@@ -80,6 +80,7 @@
 "calendar.keep.hint" = "PageLamp 会把它当作进行中的课程，直到某个日期（之后可以修改）。";
 "calendar.keep.invalid" = "请选择今天或之后的日期。";
 "calendar.keep.kept" = "已移到进行中的课程";
+"calendar.keep.keptCourse" = "%1$@ 已移到进行中的课程";
 "calendar.keep.keptUntil" = "你已将这门课标为进行中，直到 %1$@。";
 "calendar.keep.saveDate" = "保存日期";
 "calendar.keep.undo" = "撤销";
@@ -129,6 +130,9 @@
 "calendar.status.title" = "课程状态";
 "calendar.where.breakItem" = "%1$@：%2$@";
 "calendar.where.breaks" = "假期";
+"calendar.where.confidence.high" = "这很可能是对的，依据列在下面。";
+"calendar.where.confidence.low" = "我们没法可靠地判断。在下面设置课程日期就能解决。";
+"calendar.where.confidence.medium" = "这是一个比较可靠的估计，但请确认看起来没错。";
 "calendar.where.datesNotUsed" = "没有采用的日期";
 "calendar.where.datesUsed" = "采用的日期";
 "calendar.where.evidence" = "我们是怎么判断的";

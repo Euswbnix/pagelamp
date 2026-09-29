@@ -18,6 +18,7 @@
 "calendar.breakKind.other" = "Break";
 "calendar.breakKind.reading_week" = "Reading week";
 "calendar.breakKind.winter_break" = "Winter break";
+"calendar.card.setDates" = "Set the first day of classes to fix this";
 "calendar.checkDates.body" = "You set these dates in an earlier version of PageLamp, which counted weeks differently. Check that the week shown is still right.";
 "calendar.checkDates.confirm" = "These dates are right";
 "calendar.checkDates.confirmed" = "Dates confirmed";
@@ -63,7 +64,6 @@
 "calendar.form.end" = "Last day of classes (optional)";
 "calendar.form.endHint" = "The three weeks after it count as the exam period.";
 "calendar.form.invalid" = "These dates don't work. Check that classes end after they start.";
-"calendar.form.notUsedTitle" = "Not used, and why";
 "calendar.form.prefilled" = "Filled in with the dates PageLamp is using now.";
 "calendar.form.save" = "Save dates";
 "calendar.form.saved" = "Course dates saved";
@@ -80,6 +80,7 @@
 "calendar.keep.hint" = "PageLamp will treat it as a current course until a date you can change.";
 "calendar.keep.invalid" = "Pick a date from today on.";
 "calendar.keep.kept" = "Moved to your current courses";
+"calendar.keep.keptCourse" = "%1$@ moved to your current courses";
 "calendar.keep.keptUntil" = "You marked this course as current until %1$@.";
 "calendar.keep.saveDate" = "Save date";
 "calendar.keep.undo" = "Undo";
@@ -129,6 +130,9 @@
 "calendar.status.title" = "Course status";
 "calendar.where.breakItem" = "%1$@: %2$@";
 "calendar.where.breaks" = "Breaks";
+"calendar.where.confidence.high" = "This is very likely right. The clues are listed below.";
+"calendar.where.confidence.low" = "We couldn't work this out reliably. Setting the course dates below fixes that.";
+"calendar.where.confidence.medium" = "This is a good estimate, but check that it looks right.";
 "calendar.where.datesNotUsed" = "Dates not used";
 "calendar.where.datesUsed" = "Dates used";
 "calendar.where.evidence" = "How we worked this out";

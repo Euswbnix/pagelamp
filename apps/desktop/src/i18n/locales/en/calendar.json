@@ -56,6 +56,11 @@
   },
   "where": {
     "title": "Where this course is",
+    "confidence": {
+      "high": "This is very likely right. The clues are listed below.",
+      "medium": "This is a good estimate, but check that it looks right.",
+      "low": "We couldn't work this out reliably. Setting the course dates below fixes that."
+    },
     "datesUsed": "Dates used",
     "datesNotUsed": "Dates not used",
     "source": "Source",
@@ -107,6 +112,7 @@
     "saveDate": "Save date",
     "undo": "Undo",
     "kept": "Moved to your current courses",
+    "keptCourse": "{{course}} moved to your current courses",
     "cleared": "{{product}} works out this course's status again",
     "invalid": "Pick a date from today on."
   },
@@ -125,7 +131,6 @@
     "start": "First day of classes",
     "end": "Last day of classes (optional)",
     "endHint": "The three weeks after it count as the exam period.",
-    "notUsedTitle": "Not used, and why",
     "save": "Save dates",
     "clear": "Clear my dates",
     "saved": "Course dates saved",
@@ -138,6 +143,9 @@
     "past": "Past courses ({{count}})",
     "pastHint": "Courses that look finished. They're left out of weekly views, and their deadlines still remind you.",
     "noCurrent": "No current courses. Finished ones are under Past courses."
+  },
+  "card": {
+    "setDates": "Set the first day of classes to fix this"
   },
   "pastBadge": {
     "ended": "This course looks finished.",
