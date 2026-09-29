@@ -50,11 +50,7 @@ export function RemindMeCard() {
           ) : (
             <Answered text={answer ? t("remind.onDone") : t("remind.offDone")} />
           )}
-          {save.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {t("settings.saveFailed")}
-            </p>
-          ) : null}
+          {save.isError ? <SaveFailed text={t("settings.saveFailed")} /> : null}
         </CardContent>
       </Card>
     </section>
@@ -66,6 +62,16 @@ function Answered({ text }: { text: string }) {
   const ref = useFocusOnMount<HTMLParagraphElement>();
   return (
     <p ref={ref} tabIndex={-1} role="status" className="text-sm text-muted-foreground outline-none">
+      {text}
+    </p>
+  );
+}
+
+/** Replaces the note that had the focus (the buttons come back), so it takes the focus. */
+function SaveFailed({ text }: { text: string }) {
+  const ref = useFocusOnMount<HTMLParagraphElement>();
+  return (
+    <p ref={ref} tabIndex={-1} role="alert" className="text-sm text-destructive outline-none">
       {text}
     </p>
   );

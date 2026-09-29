@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/features/settings/SettingsSection";
+import { settingsSections } from "@/lib/routes";
 import { useBackgroundStatus, useReminderSettings, useSetReminderSettings } from "./queries";
 
 /**
@@ -27,7 +28,11 @@ export function RemindersSection() {
   const settings = useReminderSettings();
   const background = useBackgroundStatus();
   return (
-    <SettingsSection title={t("settings.title")} description={t("settings.description")}>
+    <SettingsSection
+      id={settingsSections.reminders}
+      title={t("settings.title")}
+      description={t("settings.description")}
+    >
       {settings.data ? (
         <RemindersForm settings={settings.data} background={background.data ?? null} />
       ) : null}

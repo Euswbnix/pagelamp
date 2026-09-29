@@ -956,6 +956,7 @@
 "explain.result.sourcesLabel" = "出处";
 "explain.result.stale" = "这份讲解生成之后，资料有了变化。";
 "explain.result.stopped" = "已停止，没有保存任何内容。";
+"explain.running.leaveHint" = "切换标签页不会中断；离开这门课程会停止生成，不会保存任何内容。";
 "explain.running.stage.building_context" = "正在整理本周资料";
 "explain.running.stage.repairing" = "正在修正结果格式";
 "explain.running.stage.scheduling" = "正在整理结果";
@@ -1222,6 +1223,7 @@
 "plan.form.noteHint" = "例如「周五的期中考试」。它会和你的课程一起发送给模型。";
 "plan.form.nothingToPlan" = "现在没有进行中的课程（没有正在上课、也没有 14 天内开始的课程），所以没有可以规划的内容。";
 "plan.form.seeCourses" = "查看你的课程";
+"plan.running.leaveHint" = "离开此页面会停止生成，不会保存任何内容。";
 "plan.running.stage.building_context" = "正在整理你的课程";
 "plan.running.stage.repairing" = "正在修正结果格式";
 "plan.running.stage.scheduling" = "正在把任务安排到学习日";

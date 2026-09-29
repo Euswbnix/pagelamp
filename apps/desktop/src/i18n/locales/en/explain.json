@@ -26,7 +26,8 @@
     },
     "stop": "Stop",
     "stopping": "Stopping…",
-    "writingNow": "Writing the explanation"
+    "writingNow": "Writing the explanation",
+    "leaveHint": "Switching tabs keeps it going; leaving this course stops it, and nothing is saved."
   },
   "result": {
     "regionLabel": "Explanation of week {{week}}",

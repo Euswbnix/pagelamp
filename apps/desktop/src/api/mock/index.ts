@@ -971,8 +971,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             updates.disclosureSeen &&
             updates.whatsNewSeen &&
             (last === null || last <= now().getTime() - DAY),
-          updated_from:
-            scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
+          // The facade's launch.updated_from, which also gives What's new its `since`.
+          updated_from: upgradedFrom ?? (scenario === "updated" ? MOCK_PREVIOUS_VERSION : null),
           // What came due since the last launch (reminders-due); the purge: none in the mock yet.
           due_reminders: dueReminders(),
           purge_due: false,

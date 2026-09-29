@@ -26,7 +26,17 @@ export function DeleteExplanation({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" size="sm" variant="ghost" disabled={deleting}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          // Not `disabled`: the dialog gives the focus back here while the deletion runs.
+          aria-disabled={deleting || undefined}
+          className="aria-disabled:opacity-50"
+          onClick={(event) => {
+            if (deleting) event.preventDefault();
+          }}
+        >
           <Trash2 aria-hidden />
           {t("result.delete")}
         </Button>

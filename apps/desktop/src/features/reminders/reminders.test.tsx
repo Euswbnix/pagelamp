@@ -119,6 +119,14 @@ describe("onboarding: Remind me", () => {
     expect(notice).toHaveBeenCalledTimes(1);
   });
 
+  it("puts the focus on the error when the answer couldn't be saved", async () => {
+    const api = mockApi();
+    vi.spyOn(api, "setReminderSettings").mockRejectedValue(new Error("disk full"));
+    const { user } = renderWithProviders(<RemindMeCard />, { api });
+    await user.click(await screen.findByRole("button", { name: "Yes, remind me" }));
+    expect(await screen.findByRole("alert")).toHaveFocus();
+  });
+
   it("leaves it off with Not now, and sends no notification", async () => {
     const api = mockApi();
     const notice = vi.spyOn(api, "showRemindersOnNotice");
@@ -188,9 +196,15 @@ describe("reminders while they're off: the catch-up card", () => {
     expect(within(region).getByText(/^[A-Z]+\d+: Problem set 3$/)).toBeInTheDocument();
     expect(within(region).getByText("Your week in PageLamp")).toBeInTheDocument();
 
+    expect(
+      within(region).getByRole("link", { name: "Get these as notifications" }),
+    ).toHaveAttribute("href", "/settings#reminders");
+
     await user.click(within(region).getByRole("button", { name: "Dismiss" }));
     expect(mark).toHaveBeenCalledWith(["deadline_soon:demo-ps3:24", "weekly_digest:2026-W40"]);
     expect(screen.queryByRole("region", { name: "Since you last opened PageLamp" })).toBeNull();
+    // The card went with the focused button: the page's heading takes the focus.
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveFocus());
     expect((await api.startupTasks()).due_reminders).toEqual([]);
   });
 
@@ -204,6 +218,15 @@ describe("reminders while they're off: the catch-up card", () => {
     await user.click(open);
     expect(mark).toHaveBeenCalledWith(["deadline_soon:demo-ps3:24"]);
     await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/courses\/.+/));
+  });
+
+  it("keeps the focus in the card when an Open on this page leaves other rows", async () => {
+    const { user } = renderRoute("/courses", { scenario: "reminders-due" });
+    const region = await card();
+    await user.click(within(region).getByRole("link", { name: /^Open Your week in PageLamp$/ }));
+    await waitFor(() =>
+      expect(within(region).getByText("Since you last opened PageLamp")).toHaveFocus(),
+    );
   });
 
   it("isn't shown when reminders come as notifications", async () => {

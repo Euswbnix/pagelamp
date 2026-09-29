@@ -8,7 +8,8 @@ import { reminderText } from "./reminderText";
 /**
  * Delivers due reminders (design §5.3): once at launch (the catch-up) and whenever the shell asks
  * (every 15 minutes, after a sleep). The facade says what is due; this words it and the shell
- * shows it and marks it shown, so a reminder that couldn't be shown comes back next time.
+ * hands it to the system and marks it shown (one the shell couldn't hand over comes back next
+ * time; the system doesn't report whether it showed one).
  * Only after the student said "Remind me" (run_in_background): the first notification is where
  * the system asks whether PageLamp may notify, and that must follow their choice, never a launch.
  * Also keeps the tray menu in the student's language. Mount once, in the app shell.

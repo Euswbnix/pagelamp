@@ -1,5 +1,5 @@
 import { BellRing, X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useApi } from "@/api/context";
@@ -7,7 +7,8 @@ import { useStartupTasks } from "@/api/queries";
 import type { Reminder } from "@/api/reminders";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { paths } from "@/lib/routes";
+import { focusPageHeading } from "@/lib/focus";
+import { paths, settingsSections } from "@/lib/routes";
 import { REMINDERS_UI } from "./availability";
 import { useReminderSettings } from "./queries";
 import { reminderText } from "./reminderText";
@@ -18,25 +19,41 @@ import { reminderText } from "./reminderText";
  * Opening one, or dismissing the card, marks them shown, so they don't come back.
  */
 export function RemindersCatchUp() {
+  // Behind the switch before any query: a build without the reminder screens asks nothing.
+  return REMINDERS_UI ? <CatchUp /> : null;
+}
+
+function CatchUp() {
   const { t, i18n } = useTranslation("reminders");
   const api = useApi();
   const tasks = useStartupTasks();
   const settings = useReminderSettings();
   const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
   const titleId = useId();
-  if (!REMINDERS_UI || settings.data?.run_in_background !== false) return null;
+  const titleRef = useRef<HTMLDivElement>(null);
+  if (settings.data?.run_in_background !== false) return null;
   const due = (tasks.data?.due_reminders ?? []).filter((r) => !seen.has(r.id));
   if (due.length === 0) return null;
 
   function markShown(ids: string[]) {
     setSeen((before) => new Set([...before, ...ids]));
     api.markRemindersShown(ids).catch(() => {});
+    // The row (or the whole card) goes. A new page takes the focus itself (AppShell); on the
+    // same page it goes to the card's title, else the page's heading.
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      if (titleRef.current?.isConnected) titleRef.current.focus();
+      else focusPageHeading();
+    });
   }
 
   return (
     <Alert role="region" aria-labelledby={titleId} className="mb-6 px-4 py-3">
       <BellRing aria-hidden />
-      <AlertTitle id={titleId}>{t("catchUp.title")}</AlertTitle>
+      <AlertTitle id={titleId} ref={titleRef} tabIndex={-1} className="outline-none">
+        {t("catchUp.title")}
+      </AlertTitle>
       <div className="col-start-2 space-y-3">
         <ul className="divide-y text-sm">
           {due.map((reminder) => {
@@ -71,7 +88,10 @@ export function RemindersCatchUp() {
             <X aria-hidden />
             {t("catchUp.dismiss")}
           </Button>
-          <Link to={paths.settings} className="text-sm underline underline-offset-2">
+          <Link
+            to={`${paths.settings}#${settingsSections.reminders}`}
+            className="text-sm underline underline-offset-2"
+          >
             {t("catchUp.turnOn")}
           </Link>
         </div>

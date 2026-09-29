@@ -33,7 +33,8 @@
     },
     "stop": "Stop",
     "stopping": "Stopping…",
-    "writingNow": "Writing your plan"
+    "writingNow": "Writing your plan",
+    "leaveHint": "Leaving this page stops it; nothing is saved."
   },
   "draft": {
     "title": "Your draft plan",

@@ -199,6 +199,7 @@ export function PlanForm({
       <GenerateButton
         request={estimate}
         label={t("form.generate")}
+        describedBy={problem && listed.length > 0 ? ids.problem : undefined}
         onGenerate={({ overrideBudget }) => {
           if (request) onGenerate({ ...request, override_budget: overrideBudget });
         }}

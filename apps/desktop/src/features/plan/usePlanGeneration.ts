@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GenStage } from "@/api/ai";
 import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
@@ -30,6 +30,15 @@ export function usePlanGeneration() {
   const client = useQueryClient();
   const [state, setState] = useState<PlanRunState>({ phase: "idle" });
   const runId = useRef<string | null>(null);
+
+  // Leaving the page stops the run: nothing keeps writing (or costing) out of sight.
+  useEffect(
+    () => () => {
+      const id = runId.current;
+      if (id) void api.cancelGeneration(id).catch(() => {});
+    },
+    [api],
+  );
 
   const start = useCallback(
     async (request: StudyPlanRequest) => {

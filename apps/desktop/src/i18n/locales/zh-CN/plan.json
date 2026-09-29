@@ -33,7 +33,8 @@
     },
     "stop": "停止",
     "stopping": "正在停止…",
-    "writingNow": "正在生成你的计划"
+    "writingNow": "正在生成你的计划",
+    "leaveHint": "离开此页面会停止生成，不会保存任何内容。"
   },
   "draft": {
     "title": "计划草稿",

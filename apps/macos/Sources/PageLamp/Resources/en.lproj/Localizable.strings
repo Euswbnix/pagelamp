@@ -956,6 +956,7 @@
 "explain.result.sourcesLabel" = "Sources";
 "explain.result.stale" = "The materials changed since this was written.";
 "explain.result.stopped" = "Stopped. Nothing was saved.";
+"explain.running.leaveHint" = "Switching tabs keeps it going; leaving this course stops it, and nothing is saved.";
 "explain.running.stage.building_context" = "Gathering the week's materials";
 "explain.running.stage.repairing" = "Fixing the answer's format";
 "explain.running.stage.scheduling" = "Arranging the answer";
@@ -1222,6 +1223,7 @@
 "plan.form.noteHint" = "For example \"the midterm on Friday\". It is sent to the model with your courses.";
 "plan.form.nothingToPlan" = "No course is active right now (none is running or starts in the next 14 days), so there's nothing to plan.";
 "plan.form.seeCourses" = "See your courses";
+"plan.running.leaveHint" = "Leaving this page stops it; nothing is saved.";
 "plan.running.stage.building_context" = "Gathering your courses";
 "plan.running.stage.repairing" = "Fixing the answer's format";
 "plan.running.stage.scheduling" = "Placing tasks on your study days";

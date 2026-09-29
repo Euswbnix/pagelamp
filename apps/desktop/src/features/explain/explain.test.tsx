@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
 import { paths } from "@/lib/routes";
@@ -90,6 +90,51 @@ describe("Course → Explain", () => {
     expect(
       await screen.findByRole("tab", { name: "AI policy", selected: true }),
     ).toBeInTheDocument();
+    // The button went with its tab: the Policy panel takes the focus.
+    await waitFor(() => expect(screen.getByRole("tabpanel", { name: "AI policy" })).toHaveFocus());
+  });
+
+  it("keeps a run going on another tab, and stops it when the course is left", async () => {
+    const api = mockApi({ syncStepMs: 300 });
+    const cancel = vi.spyOn(api, "cancelGeneration");
+    const { user, router } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "This week" }));
+    await user.click(screen.getByRole("tab", { name: "Explain" }));
+    expect(screen.getByRole("button", { name: "Stop" })).toHaveAccessibleDescription(
+      /leaving this course stops it/,
+    );
+    expect(cancel).not.toHaveBeenCalled();
+    await act(() => router.navigate(paths.courses));
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
+  it("moves the focus to what Show shows, and to the heading when the last one is deleted", async () => {
+    const api = mockApi();
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    await screen.findByRole("region", { name: "Explanation of week 4" });
+    await user.click(await explainButton());
+    await screen.findByText("The explanation is ready.");
+    const show = await screen.findByRole("button", { name: /^Show / });
+    await user.click(show);
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Explanation of week 4" })).toHaveFocus(),
+    );
+    for (let i = 0; i < 2; i++) {
+      await user.click(await screen.findByRole("button", { name: "Delete…" }));
+      const dialog = await screen.findByRole("alertdialog", { name: "Delete this explanation?" });
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.queryByRole("region", { name: "Explanation of week 4" }) ??
+            screen.getByRole("heading", { level: 3, name: "Explain a week" }),
+        ),
+      );
+    }
+    expect(screen.queryByRole("region", { name: "Explanation of week 4" })).toBeNull();
   });
 });
 

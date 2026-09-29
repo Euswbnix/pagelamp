@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -85,6 +85,7 @@ function PlanProgress({
   const { t } = useTranslation("plan");
   // The button that started the run is gone: Stop takes the focus.
   const stopRef = useFocusOnMount<HTMLButtonElement>();
+  const leaveId = useId();
   return (
     <div className="space-y-2 text-sm">
       <p className="font-medium">
@@ -104,10 +105,14 @@ function PlanProgress({
         variant="outline"
         onClick={onStop}
         aria-disabled={state.stopping || undefined}
+        aria-describedby={leaveId}
         className="aria-disabled:opacity-50"
       >
         {state.stopping ? t("running.stopping") : t("running.stop")}
       </Button>
+      <p id={leaveId} className="text-xs text-muted-foreground">
+        {t("running.leaveHint")}
+      </p>
     </div>
   );
 }

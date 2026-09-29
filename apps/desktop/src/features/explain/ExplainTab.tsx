@@ -53,6 +53,10 @@ export function ExplainTab({
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const weekLabelId = useId();
   const resultRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  /** After the shown explanation changes or goes: its region, else the tab's heading. */
+  const focusResult = () =>
+    requestAnimationFrame(() => (resultRef.current ?? titleRef.current)?.focus());
   const { state } = run;
   // A run's explanation replaces its progress (and Stop): the focus goes to the result.
   useEffect(() => {
@@ -100,7 +104,9 @@ export function ExplainTab({
     <div className="space-y-6">
       <div className="space-y-3">
         <div className="space-y-1">
-          <h3 className="text-sm font-medium">{t("title")}</h3>
+          <h3 ref={titleRef} tabIndex={-1} className="text-sm font-medium outline-none">
+            {t("title")}
+          </h3>
           <p className="text-sm text-muted-foreground">{t("hint")}</p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -169,6 +175,8 @@ export function ExplainTab({
                       setDeleted((before) => new Set([...before, id]));
                       setShownId(null);
                       toast.success(t("result.deleted"));
+                      // Delete… went with it: the next one, else the heading.
+                      focusResult();
                     },
                     onError: () => toast.error(t("result.deleteFailed")),
                   })
@@ -210,7 +218,11 @@ export function ExplainTab({
                       size="sm"
                       variant="ghost"
                       aria-label={`${t("history.show")} ${formatDate(item.meta.created_at, i18n.language)}`}
-                      onClick={() => setShownId(item.meta.generation_id)}
+                      onClick={() => {
+                        setShownId(item.meta.generation_id);
+                        // "Show" becomes "Showing": the focus goes to what it shows.
+                        focusResult();
+                      }}
                     >
                       {t("history.show")}
                     </Button>
@@ -236,6 +248,7 @@ function ExplainProgress({
   const { t } = useTranslation("explain");
   // The button that started the run is gone: Stop takes the focus.
   const stopRef = useFocusOnMount<HTMLButtonElement>();
+  const leaveId = useId();
   return (
     <div className="space-y-2 text-sm">
       <p className="font-medium">
@@ -258,10 +271,14 @@ function ExplainProgress({
         variant="outline"
         onClick={onStop}
         aria-disabled={state.stopping || undefined}
+        aria-describedby={leaveId}
         className="aria-disabled:opacity-50"
       >
         {state.stopping ? t("running.stopping") : t("running.stop")}
       </Button>
+      <p id={leaveId} className="text-xs text-muted-foreground">
+        {t("running.leaveHint")}
+      </p>
     </div>
   );
 }

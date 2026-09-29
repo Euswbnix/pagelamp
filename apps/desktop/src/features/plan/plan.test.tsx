@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
 import { renderRoute } from "@/test/render";
@@ -92,6 +92,18 @@ describe("Plan your study", () => {
     expect(accept).not.toHaveBeenCalled();
   });
 
+  it("stops a run when the student leaves the page, and says so beforehand", async () => {
+    const api = mockApi({ syncStepMs: 300 });
+    const cancel = vi.spyOn(api, "cancelGeneration");
+    const { user, router } = renderRoute("/plan", { api });
+    await user.click(await planForm());
+    expect(await screen.findByRole("button", { name: "Stop" })).toHaveAccessibleDescription(
+      "Leaving this page stops it; nothing is saved.",
+    );
+    await act(() => router.navigate("/courses"));
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+  });
+
   it("discards a draft back to the form", async () => {
     const { user } = renderRoute("/plan", { api: mockApi() });
     await user.click(await planForm());
@@ -113,6 +125,10 @@ describe("Plan your study", () => {
     await user.type(days, "14");
     for (const course of screen.getAllByRole("checkbox")) await user.click(course);
     expect(screen.getByText("Choose at least one course.")).toBeInTheDocument();
+    // The disabled button says why, too.
+    expect(screen.getByRole("button", { name: "Write my plan" })).toHaveAccessibleDescription(
+      /Choose at least one course\./,
+    );
   });
 
   it("with no active course, says so instead of offering to write a plan", async () => {
