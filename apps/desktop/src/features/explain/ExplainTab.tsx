@@ -141,7 +141,10 @@ export function ExplainTab({
                 <SelectValue placeholder={t("recent")} />
               </SelectTrigger>
               <SelectContent>
-                {/* No week now (before or after the teaching weeks): the way back to it. */}
+                {/* No week now (before or after the teaching weeks): the way back to it. Once
+                    the course has a week (dates set, a sync), the facade explains that week for
+                    no week, so recent-materials explanations aren't offered any more (kept,
+                    unreachable here, until the course has no week again). */}
                 {defaultWeek === null ? (
                   <SelectItem value={RECENT}>{t("recent")}</SelectItem>
                 ) : null}

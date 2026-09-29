@@ -143,20 +143,6 @@
 			<string>模型给出的 %1$ld 处引用与你的资料对不上，已去掉。</string>
 		</dict>
 	</dict>
-	<key>explain.result.includeAgain</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%1$#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>other</key>
-			<string>不是计分作业？纳入这 %1$ld 份并重新生成</string>
-		</dict>
-	</dict>
 	<key>explain.running.reading</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

@@ -163,22 +163,6 @@
 			<string>%1$ld citations the model gave didn't match your materials and were removed.</string>
 		</dict>
 	</dict>
-	<key>explain.result.includeAgain</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%1$#@count@</string>
-		<key>count</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>one</key>
-			<string>Not graded work? Include it and write again</string>
-			<key>other</key>
-			<string>Not graded work? Include these %1$ld and write again</string>
-		</dict>
-	</dict>
 	<key>explain.running.reading</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

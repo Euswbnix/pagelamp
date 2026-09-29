@@ -236,9 +236,7 @@ pub async fn updates_check<R: Runtime>(
         .header("User-Agent", user_agent)
         .map_err(|err| app_error(&err))?
         .timeout(CHECK_TIMEOUT)
-        // Windows: the installer takes over from here (Install is refused during syncs). This
-        // replaces the plugin's own hook, so it cleans up as that one does: the tray icon goes
-        // with the process instead of staying behind, dead, until the mouse passes over it.
+        // Windows: the installer takes over from here (Install is refused during syncs).
         .on_before_exit({
             let app = app.clone();
             move || {
@@ -391,7 +389,10 @@ pub fn restart<R: Runtime>(app: &AppHandle<R>) -> ! {
     {
         RELAUNCH.store(true, std::sync::atomic::Ordering::SeqCst);
         if std::thread::current().name() == Some("main") {
-            // No Exit event would come while this thread waits (Tauri's restart does the same).
+            // No Exit event would come while this thread waits, so the plugins wouldn't see
+            // one: release the single-instance lock here, or the new process could hand over
+            // to this one as it goes and quit.
+            tauri_plugin_single_instance::destroy(app);
             app.cleanup_before_exit();
             relaunch_if_asked(app);
             std::process::exit(0);
@@ -429,7 +430,8 @@ pub fn relaunch_if_asked<R: Runtime>(app: &AppHandle<R>) {
 
 /// macOS: the new process gets a process group of its own. The updater replaced the bundle in
 /// place and its executable may have a new name, so it's read from Info.plist, as Tauri's
-/// restart does; `open -n` (Launch Services) is the last resort, in its own group too.
+/// restart does; `open -n` (Launch Services) is the last resort, only for a `.app` bundle and
+/// in its own group too.
 #[cfg(target_os = "macos")]
 fn relaunch(binary: &std::path::Path, args: &[std::ffi::OsString]) -> std::io::Result<u32> {
     use std::os::unix::process::CommandExt;
@@ -455,7 +457,10 @@ fn relaunch(binary: &std::path::Path, args: &[std::ffi::OsString]) -> std::io::R
         .process_group(0)
         .spawn()
         .map(|child| child.id());
-    match (spawned, contents.and_then(std::path::Path::parent)) {
+    let bundle = contents
+        .and_then(std::path::Path::parent)
+        .filter(|bundle| bundle.extension() == Some(std::ffi::OsStr::new("app")));
+    match (spawned, bundle) {
         (Err(error), Some(bundle)) => {
             tracing::warn!(target: "pagelamp::updates", %error, "restart: opening the bundle instead");
             Command::new("/usr/bin/open")

@@ -44,8 +44,8 @@
       "looks_like_assessment": "看起来是计分作业",
       "over_budget": "超出长度上限"
     },
-    "includeAgain_one": "不是计分作业？纳入它并重新生成",
-    "includeAgain_other": "不是计分作业？纳入这 {{count}} 份并重新生成",
+    "includeOne": "不是计分作业？纳入它并重新生成",
+    "includeSeveral": "不是计分作业？纳入这 {{count}} 份并重新生成",
     "droppedCitations_one": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "droppedCitations_other": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "citeAiUse": "你的课程要求注明 AI 的使用：请说明你在哪里用到了这份讲解。",

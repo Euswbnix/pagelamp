@@ -156,11 +156,14 @@ describe("Course → Explain: what the facade does", () => {
     expect(within(article).getByText(/Week 4 practice questions/)).toHaveTextContent(
       "(over the length limit)",
     );
-    await user.click(
-      within(article).getByRole("button", {
-        name: "Not graded work? Include it and write again",
-      }),
+    const includeButton = within(article).getByRole("button", {
+      name: "Not graded work? Include it and write again",
+    });
+    // What PageLamp does with it is said right there, and read with the button.
+    expect(includeButton).toHaveAccessibleDescription(
+      "PageLamp explains concepts; it doesn't answer assignments, quizzes or exams.",
     );
+    await user.click(includeButton);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
     const include = explain.mock.calls[1]?.[3].include ?? [];
     expect(include).toHaveLength(1);

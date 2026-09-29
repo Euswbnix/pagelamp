@@ -1,5 +1,5 @@
 import { FileText, TriangleAlert } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useApi } from "@/api/context";
@@ -30,6 +30,7 @@ export function ExplanationView({
   const { t, i18n } = useTranslation("explain");
   const { t: tai } = useTranslation("ai");
   const includable = explanation.left_out.filter((m) => m.reason === INCLUDABLE_REASON);
+  const includeNoteId = useId();
 
   return (
     <article className="space-y-5">
@@ -104,11 +105,17 @@ export function ExplanationView({
                 type="button"
                 size="sm"
                 variant="outline"
+                aria-describedby={includeNoteId}
                 onClick={() => onIncludeLeftOut(includable.map((m) => m.material_id))}
               >
-                {t("result.includeAgain", { count: includable.length })}
+                {/* Not a plural key: zh-CN has one form, and "it" needs no number. */}
+                {includable.length === 1
+                  ? t("result.includeOne")
+                  : t("result.includeSeveral", { count: includable.length })}
               </Button>
-              <p className="text-xs text-muted-foreground">{t("result.includeNote")}</p>
+              <p id={includeNoteId} className="text-xs text-muted-foreground">
+                {t("result.includeNote")}
+              </p>
             </div>
           ) : null}
         </section>

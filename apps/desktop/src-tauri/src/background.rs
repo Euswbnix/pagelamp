@@ -147,6 +147,10 @@ pub struct Background {
     tray_failed: AtomicBool,
     /// Saving the reminder settings and applying them happen one save at a time.
     pub(crate) settings_saves: tauri::async_runtime::Mutex<()>,
+    /// Building and removing the tray happen one at a time, each deciding from `on` and
+    /// `tray_shown` as they are then. Never taken on the main thread after launch: a build
+    /// holding it waits for the main thread.
+    tray_ops: Mutex<()>,
 }
 
 impl Background {
@@ -185,33 +189,60 @@ pub struct BackgroundStatus {
 /// turned off in the system's settings (Windows would mark it enabled again). An error from the
 /// login item is logged and shows in the status; turning the setting off and on tries again.
 pub fn apply<R: Runtime>(app: &AppHandle<R>, was: bool, on: bool) -> BackgroundStatus {
-    let state = app.state::<Background>();
-    state.on.store(on, Ordering::SeqCst);
-    state.known.store(true, Ordering::SeqCst);
-    let login_item = app.try_state::<AutoLaunchManager>();
-    update_login_item(
-        login_item.as_deref().map(|item| item as &dyn LoginItem),
-        was,
-        on,
-    );
-    if on {
-        ensure_tray(app);
-    } else {
-        remove_tray(app);
-    }
+    follow(app, after_save(was, on));
     status(app)
 }
 
 /// Once the stored setting can be read after a launch that couldn't (the core opened later):
-/// `on` and the tray follow it. The login item is left as it is.
+/// `on` and the tray follow it, never the login item. Skipped while a save is being applied,
+/// which sets it anyway.
 pub fn sync_stored<R: Runtime>(app: &AppHandle<R>, stored_on: bool) {
     let state = app.state::<Background>();
-    if state.known.swap(true, Ordering::SeqCst) {
+    let Ok(_no_save_running) = state.settings_saves.try_lock() else {
         return;
+    };
+    if let Some(change) = after_read(state.known.load(Ordering::SeqCst), stored_on) {
+        follow(app, change);
     }
-    state.on.store(stored_on, Ordering::SeqCst);
-    if stored_on {
+}
+
+/// What following the setting changes: `on` (the close button, notifications), the tray, and
+/// the login item when `login_item` says so.
+#[derive(Debug, PartialEq, Eq)]
+struct Change {
+    on: bool,
+    login_item: Option<bool>,
+}
+
+/// After a save (`was` stored before it): the login item changes only with the setting.
+fn after_save(was: bool, on: bool) -> Change {
+    Change {
+        on,
+        login_item: (was != on).then_some(on),
+    }
+}
+
+/// After the first read of a launch that couldn't read it at start: never the login item.
+fn after_read(known: bool, stored_on: bool) -> Option<Change> {
+    (!known).then_some(Change {
+        on: stored_on,
+        login_item: None,
+    })
+}
+
+fn follow<R: Runtime>(app: &AppHandle<R>, change: Change) {
+    let state = app.state::<Background>();
+    state.on.store(change.on, Ordering::SeqCst);
+    state.known.store(true, Ordering::SeqCst);
+    let login_item = app.try_state::<AutoLaunchManager>();
+    update_login_item(
+        login_item.as_deref().map(|item| item as &dyn LoginItem),
+        change.login_item,
+    );
+    if change.on {
         ensure_tray(app);
+    } else {
+        remove_tray(app);
     }
 }
 
@@ -226,12 +257,9 @@ impl LoginItem for AutoLaunchManager {
     }
 }
 
-/// Changes the login item only when the setting changed (`was` → `on`).
-fn update_login_item(login_item: Option<&dyn LoginItem>, was: bool, on: bool) {
-    if was == on {
-        return;
-    }
-    if let Some(login_item) = login_item
+/// Turns the login item on or off when `turn` says so.
+fn update_login_item(login_item: Option<&dyn LoginItem>, turn: Option<bool>) {
+    if let (Some(login_item), Some(on)) = (login_item, turn)
         && let Err(error) = login_item.set(on)
     {
         tracing::warn!(target: "pagelamp::background", %error, on, "login item");
@@ -372,9 +400,11 @@ fn hide_main<R: Runtime>(window: &WebviewWindow<R>) {
         .set_activation_policy(tauri::ActivationPolicy::Accessory);
 }
 
+/// Builds the tray if running in the background and it isn't there yet.
 fn ensure_tray<R: Runtime>(app: &AppHandle<R>) {
     let state = app.state::<Background>();
-    if state.tray_shown.load(Ordering::SeqCst) {
+    let _one_at_a_time = state.tray_ops.lock().unwrap_or_else(|e| e.into_inner());
+    if !state.is_on() || state.tray_shown.load(Ordering::SeqCst) {
         return;
     }
     if !tray_library_available() {
@@ -404,11 +434,9 @@ fn ensure_tray<R: Runtime>(app: &AppHandle<R>) {
 /// Removes the tray icon on the main thread: its platform teardown (DestroyWindow, the status
 /// bar item) must run there, and the tray list is the main thread's. Doesn't wait.
 fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
-    if !app
-        .state::<Background>()
-        .tray_shown
-        .swap(false, Ordering::SeqCst)
-    {
+    let state = app.state::<Background>();
+    let _one_at_a_time = state.tray_ops.lock().unwrap_or_else(|e| e.into_inner());
+    if !state.tray_shown.swap(false, Ordering::SeqCst) {
         return;
     }
     let handle = app.clone();
@@ -421,11 +449,9 @@ fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
 /// and wait for it (briefly), so no dead icon stays behind. Nothing else is torn down: if the
 /// installer can't start, PageLamp goes on as it was (`restore_tray`).
 pub fn remove_tray_before_exit<R: Runtime>(app: &AppHandle<R>) {
-    if !app
-        .state::<Background>()
-        .tray_shown
-        .swap(false, Ordering::SeqCst)
-    {
+    let state = app.state::<Background>();
+    let _one_at_a_time = state.tray_ops.lock().unwrap_or_else(|e| e.into_inner());
+    if !state.tray_shown.swap(false, Ordering::SeqCst) {
         return;
     }
     let (done, wait) = std::sync::mpsc::channel();
@@ -441,9 +467,7 @@ pub fn remove_tray_before_exit<R: Runtime>(app: &AppHandle<R>) {
 
 /// After an install that didn't take over: the tray comes back if running in the background.
 pub fn restore_tray<R: Runtime>(app: &AppHandle<R>) {
-    if app.state::<Background>().is_on() {
-        ensure_tray(app);
-    }
+    ensure_tray(app);
 }
 
 /// Linux shows the tray through an AppIndicator library that the tray loads when it is built,
@@ -485,7 +509,9 @@ fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder.build(app)?;
+    let tray = builder.build(app)?;
+    // The tray list keeps it; this handle's (non-atomic) count goes down on the main thread.
+    let _ = app.run_on_main_thread(move || drop(tray));
     Ok(())
 }
 
@@ -508,7 +534,8 @@ mod tests {
     use std::cell::RefCell;
 
     use super::{
-        HIDDEN_ARG, LoginItem, launch_hidden, show_window_marker, started_hidden, update_login_item,
+        Change, HIDDEN_ARG, LoginItem, after_read, after_save, launch_hidden, show_window_marker,
+        started_hidden, update_login_item,
     };
 
     /// Records what `update_login_item` asked of the login item.
@@ -523,15 +550,34 @@ mod tests {
     }
 
     #[test]
-    fn the_login_item_changes_only_with_the_setting() {
+    fn the_login_item_changes_only_with_the_stored_setting() {
         let item = FakeLoginItem::default();
         // Another reminder setting saved while stored on (or off): left as the system has it.
-        update_login_item(Some(&item), true, true);
-        update_login_item(Some(&item), false, false);
+        update_login_item(Some(&item), after_save(true, true).login_item);
+        update_login_item(Some(&item), after_save(false, false).login_item);
         assert!(item.0.borrow().is_empty());
-        update_login_item(Some(&item), false, true);
-        update_login_item(Some(&item), true, false);
+        update_login_item(Some(&item), after_save(false, true).login_item);
+        update_login_item(Some(&item), after_save(true, false).login_item);
         assert_eq!(*item.0.borrow(), vec![true, false]);
+    }
+
+    #[test]
+    fn reading_the_setting_late_never_touches_the_login_item() {
+        let item = FakeLoginItem::default();
+        for stored in [true, false] {
+            let change = after_read(false, stored).expect("not known yet");
+            assert_eq!(
+                change,
+                Change {
+                    on: stored,
+                    login_item: None
+                }
+            );
+            update_login_item(Some(&item), change.login_item);
+        }
+        assert!(item.0.borrow().is_empty());
+        // Known already (read at launch, or a save applied): nothing to follow.
+        assert_eq!(after_read(true, true), None);
     }
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {

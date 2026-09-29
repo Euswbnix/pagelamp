@@ -947,6 +947,8 @@
 "explain.result.done" = "讲解已生成。";
 "explain.result.failed" = "没能生成讲解。";
 "explain.result.includeNote" = "PageLamp 只讲解概念，不回答作业、测验或考试的题目。";
+"explain.result.includeOne" = "不是计分作业？纳入它并重新生成";
+"explain.result.includeSeveral" = "不是计分作业？纳入这 %1$@ 份并重新生成";
 "explain.result.leftOut" = "这次没有读取";
 "explain.result.leftOutReason.external_link" = "指向其他网站的链接";
 "explain.result.leftOutReason.looks_like_assessment" = "看起来是计分作业";

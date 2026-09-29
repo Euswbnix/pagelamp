@@ -120,7 +120,9 @@ export function useExplanation(courseId: string) {
 
 /**
  * The last 5 explanations of the course's week, newest first. Without a week, those of the
- * recent materials: the facade answers null with every week's, so the rest are left out.
+ * recent materials: the facade answers null with every week's (each with its staleness worked
+ * out), so the rest are left out here. That costs a read of every week, only while a course has
+ * no week; a facade call for the recent ones alone would save it.
  */
 export function useSavedExplanations(courseId: string, week: number | null) {
   const api = useApi();

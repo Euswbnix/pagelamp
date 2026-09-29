@@ -947,6 +947,8 @@
 "explain.result.done" = "The explanation is ready.";
 "explain.result.failed" = "The explanation couldn't be written.";
 "explain.result.includeNote" = "PageLamp explains concepts; it doesn't answer assignments, quizzes or exams.";
+"explain.result.includeOne" = "Not graded work? Include it and write again";
+"explain.result.includeSeveral" = "Not graded work? Include these %1$@ and write again";
 "explain.result.leftOut" = "Not read this time";
 "explain.result.leftOutReason.external_link" = "a link to another site";
 "explain.result.leftOutReason.looks_like_assessment" = "looks like graded work";

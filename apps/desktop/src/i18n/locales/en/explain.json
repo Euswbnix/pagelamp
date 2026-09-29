@@ -44,8 +44,8 @@
       "looks_like_assessment": "looks like graded work",
       "over_budget": "over the length limit"
     },
-    "includeAgain_one": "Not graded work? Include it and write again",
-    "includeAgain_other": "Not graded work? Include these {{count}} and write again",
+    "includeOne": "Not graded work? Include it and write again",
+    "includeSeveral": "Not graded work? Include these {{count}} and write again",
     "droppedCitations_one": "{{count}} citation the model gave didn't match your materials and was removed.",
     "droppedCitations_other": "{{count}} citations the model gave didn't match your materials and were removed.",
     "citeAiUse": "Your course asks you to cite AI use: say where you used this explanation.",
