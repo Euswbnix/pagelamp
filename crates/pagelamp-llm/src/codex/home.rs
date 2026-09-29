@@ -21,9 +21,13 @@ pub const LOCK_FILE: &str = "pagelamp.lock";
 /// `--strict-config` (the root, `[features]`, `[tools]` and the other tables allow no extra
 /// keys). Differences from the design's list: `view_image` is a feature (there is no
 /// `tools.view_image`), `code_mode` takes a plain boolean, and 0.158.0 has more tools to turn off
-/// (unified exec, JavaScript REPL, browser and computer use, image generation, plan updates, user
-/// input requests). The same tool switches are passed again as `-c` overrides on every run, and
-/// the JSONL tripwire kills a run that uses a tool anyway.
+/// (browser and computer use, image generation, plan updates, user input requests). Left out on
+/// purpose, because 0.158.0 ignores them: `unified_exec` (forced on unless managed requirements
+/// pin it; it only picks the shell backend, and `shell_tool = false` removes every shell tool),
+/// `js_repl` and `plugin_hooks` (skipped), and the legacy aliases `collab`, `codex_hooks` and
+/// `[features] web_search` (the top-level `web_search` is the real switch). The same tool
+/// switches are passed again as `-c` overrides on every run, and the JSONL tripwire kills a run
+/// that uses a tool anyway.
 pub const CONFIG_TOML: &str = r#"# Written by PageLamp before every Codex command it starts; changes here are overwritten.
 # This folder is PageLamp's own CODEX_HOME: your own Codex (~/.codex) is never used or changed.
 cli_auth_credentials_store = "auto"
@@ -49,19 +53,13 @@ enabled = false
 
 [features]
 shell_tool = false
-unified_exec = false
-js_repl = false
 apps = false
 plugins = false
 multi_agent = false
-collab = false
 code_mode = false
 hooks = false
-codex_hooks = false
-plugin_hooks = false
 view_image = false
 image_generation = false
-web_search = false
 standalone_web_search = false
 browser_use = false
 computer_use = false
@@ -75,19 +73,13 @@ sandbox = "unelevated"
 /// can't turn a tool back on. Each is also set in `CONFIG_TOML` (a test checks).
 pub const RUN_OVERRIDES: &[&str] = &[
     "features.shell_tool=false",
-    "features.unified_exec=false",
-    "features.js_repl=false",
     "features.apps=false",
     "features.plugins=false",
     "features.multi_agent=false",
-    "features.collab=false",
     "features.code_mode=false",
     "features.hooks=false",
-    "features.codex_hooks=false",
-    "features.plugin_hooks=false",
     "features.view_image=false",
     "features.image_generation=false",
-    "features.web_search=false",
     "features.standalone_web_search=false",
     "features.browser_use=false",
     "features.computer_use=false",
@@ -204,13 +196,23 @@ mod tests {
         );
         for tool in [
             "shell_tool",
-            "unified_exec",
             "apps",
             "multi_agent",
             "code_mode",
             "view_image",
         ] {
             assert!(features.contains_key(tool), "{tool}");
+        }
+        // Keys 0.158.0 ignores stay out (see CONFIG_TOML).
+        for ignored in [
+            "unified_exec",
+            "js_repl",
+            "plugin_hooks",
+            "collab",
+            "codex_hooks",
+            "web_search",
+        ] {
+            assert!(!features.contains_key(ignored), "{ignored}");
         }
         // No MCP server is ever configured here.
         assert!(!config.contains_key("mcp_servers"));
@@ -224,7 +226,7 @@ mod tests {
             let actual = path
                 .split('.')
                 .try_fold(&toml::Value::Table(config.clone()), |node, key| {
-                    node.get(key).map(|v| v)
+                    node.get(key)
                 })
                 .cloned();
             assert_eq!(actual, Some(expected), "{over}");

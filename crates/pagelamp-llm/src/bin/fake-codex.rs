@@ -5,7 +5,8 @@
 //! PageLamp clears a Codex command's environment except for an allow-list, so the only channel
 //! into this program is `$CODEX_HOME`:
 //! - it reads what to do from `$CODEX_HOME/fake-codex.json`: an object keyed by the command
-//!   (`"login"`, `"login --device-auth"`, `"login status"`, `"logout"`, `"--version"`, `"exec"`),
+//!   (`"login"`, `"login --device-auth"`, `"login status"`, `"logout"`, `"--version"`, `"exec"`,
+//!   or `"exec:<model>"` for a run with `--model <model>`),
 //!   each `{ "stdout": [lines], "stderr": [lines], "exit": code, "sleep_ms": ms,
 //!   "wait_for_stdin_eof": bool }`;
 //! - it appends what it got to `$CODEX_HOME/fake-codex-observed.jsonl`: its arguments, the names
@@ -30,7 +31,16 @@ fn main() {
         [first, ..] => first.clone(),
         [] => String::new(),
     };
-    let step = &script[&key];
+    let model = args
+        .iter()
+        .position(|a| a == "--model" || a == "-m")
+        .and_then(|i| args.get(i + 1));
+    let step = match model {
+        Some(model) if key == "exec" && !script[format!("exec:{model}")].is_null() => {
+            &script[format!("exec:{model}")]
+        }
+        _ => &script[&key],
+    };
 
     let mut stdin = String::new();
     if step["wait_for_stdin_eof"]

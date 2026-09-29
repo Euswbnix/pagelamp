@@ -97,6 +97,29 @@ pub(crate) fn command(
     command
 }
 
+/// Deletes a file or folder when dropped, unless disarmed.
+pub(crate) struct RemoveOnDrop(std::path::PathBuf);
+
+impl RemoveOnDrop {
+    pub(crate) fn new(path: std::path::PathBuf) -> RemoveOnDrop {
+        RemoveOnDrop(path)
+    }
+
+    pub(crate) fn disarm(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        if self.0.is_dir() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        } else {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+}
+
 /// Remove ANSI escape sequences (Codex colours its prompts).
 pub(crate) fn strip_ansi(line: &str) -> String {
     let mut out = String::with_capacity(line.len());

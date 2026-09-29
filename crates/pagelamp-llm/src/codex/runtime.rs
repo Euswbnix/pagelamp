@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use super::pin::{Pin, PinAsset, Version};
+use super::process::RemoveOnDrop;
 
 const LOCK_FILE: &str = "install.lock";
 const PARTIAL_PREFIX: &str = ".partial-";
@@ -178,7 +179,7 @@ impl Runtime {
         self.clean_leftovers();
 
         let partial = self.root.join(format!("{PARTIAL_PREFIX}{install_id}"));
-        let _partial_guard = RemoveOnDrop(partial.clone());
+        let _partial_guard = RemoveOnDrop::new(partial.clone());
         on_event(InstallEvent::DownloadStarted {
             total_bytes: asset.size,
         });
@@ -197,7 +198,7 @@ impl Runtime {
 
         on_event(InstallEvent::Installing);
         let staging = self.root.join(format!("{version}{TMP_SUFFIX}"));
-        let staging_guard = RemoveOnDrop(staging.clone());
+        let staging_guard = RemoveOnDrop::new(staging.clone());
         let binary_name = asset.binary_name();
         {
             let partial = partial.clone();
@@ -283,25 +284,6 @@ impl Runtime {
             if let Some(dir) = old.binary.parent() {
                 let _ = std::fs::remove_dir_all(dir);
             }
-        }
-    }
-}
-
-/// Deletes a file or folder when dropped, unless disarmed.
-struct RemoveOnDrop(PathBuf);
-
-impl RemoveOnDrop {
-    fn disarm(self) {
-        std::mem::forget(self);
-    }
-}
-
-impl Drop for RemoveOnDrop {
-    fn drop(&mut self) {
-        if self.0.is_dir() {
-            let _ = std::fs::remove_dir_all(&self.0);
-        } else {
-            let _ = std::fs::remove_file(&self.0);
         }
     }
 }

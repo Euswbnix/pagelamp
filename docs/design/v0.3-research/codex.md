@@ -86,10 +86,23 @@ afterwards) to settle the signature rule of the managed runtime (plan M2, `codex
   from design §2.3's list: there is no `tools.view_image` (it is `features.view_image`);
   `features.code_mode` takes a plain boolean; `[tools]` holds only `update_plan`,
   `experimental_request_user_input` and `web_search` (tables with `enabled`). 0.158.0 has more
-  tools PageLamp turns off: `unified_exec`, `js_repl`, `browser_use`, `computer_use`,
-  `image_generation`, `plugins`, `collab`, `codex_hooks` / `plugin_hooks`,
+  tools PageLamp turns off: `browser_use`, `computer_use`, `image_generation`, `plugins`,
   `standalone_web_search`. The generated config (`pagelamp-llm` `codex/home.rs`) was checked
   key by key against that schema.
+- **Keys 0.158.0 accepts but ignores** (source, `features/src/lib.rs` and
+  `core/src/config/managed_features.rs`): `unified_exec` is forced on unless *managed
+  requirements* pin it ("Only managed requirements may disable the remaining unified-exec
+  implementation"); it only selects the shell backend, and `features.shell_tool = false` makes
+  `add_shell_tools` (`core/src/tools/spec_plan.rs`) register no shell tool at all. `js_repl` and
+  `plugin_hooks` are skipped; `collab`, `codex_hooks` and `[features] web_search` are legacy
+  aliases (of `multi_agent`, `hooks`, and the deprecated `web_search_request`; top-level
+  `web_search = "disabled"` is the real switch). PageLamp leaves them all out. `sqlite` is a
+  Removed flag (always on): Codex keeps state/log databases in `CODEX_HOME` whatever the config.
+- **Code mode comes from the model catalog.** `requested_tool_mode` takes `model_info.tool_mode`
+  before `features.code_mode`, and 0.158.0's `models.json` gives every pinned model
+  `"tool_mode": "code_mode_only"`, so `features.code_mode = false` does not stop the model's
+  JavaScript `exec`/`wait` entry points. The documented `model_catalog_json` key replaces the
+  bundled catalog for the process (M2 follow-up, leader decision pending).
 - **Sign-in output (0.158.0 source).** Browser: stderr "Starting local login server on
   http://localhost:1455. If your browser did not open, navigate to this URL to authenticate:"
   then the URL. Device code: stdout "1. Open this link…" + URL, "2. Enter this one-time code
