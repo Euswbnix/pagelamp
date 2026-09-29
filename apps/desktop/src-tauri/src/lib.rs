@@ -23,6 +23,7 @@ pub use backend::Backend;
 pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.invoke_handler(tauri::generate_handler![
         commands::status,
+        commands::activity,
         commands::list_sources,
         commands::add_canvas_source,
         commands::add_folder_source,

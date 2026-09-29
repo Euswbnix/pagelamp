@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
+import type { ActivityItem } from "@/api/types";
 import { useSyncStore } from "@/stores/sync";
 import { renderRoute } from "@/test/render";
 
@@ -169,6 +170,34 @@ describe("installing an update", () => {
     );
     await user.click(button);
     expect(install).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["generation", "Available when the AI finishes reading a syllabus or writing a study plan"],
+    ["codex_install", "Available when the Codex download finishes"],
+  ] as const)("waits while a %s runs, and says so", async (kind, hint) => {
+    const api = mockApi({ scenario: "update-available" });
+    let items: ActivityItem[] = [
+      { kind, source_id: null, generation_id: null, started_at: "2026-09-28T10:00:00Z" },
+    ];
+    api.activity = async () => ({ items, other_process_syncing: false });
+    const install = vi.spyOn(api, "installUpdate");
+    const { user, queryClient } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+
+    const button = within(dialog).getByRole("button", { name: "Install and restart" });
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    expect(button).toHaveAccessibleDescription(hint);
+    expect(within(dialog).queryByRole("button", { name: "Stop the sync" })).not.toBeInTheDocument();
+    await user.click(button);
+    expect(install).not.toHaveBeenCalled();
+
+    // It ends (a reading refreshes every query when it does).
+    items = [];
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
   });
 
   it("hides the notice for this launch with Later", async () => {

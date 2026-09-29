@@ -19,7 +19,8 @@ use pagelamp_app::ai::{
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
-    AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
+    Activity, AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest,
+    SyncSummary,
 };
 use pagelamp_app::{
     CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput, LifecycleSummary,
@@ -46,6 +47,13 @@ type CmdResult<T> = Result<T, AppError>;
 #[tauri::command]
 pub async fn status(backend: State<'_, Backend>) -> CmdResult<AppStatus> {
     backend.blocking(|app| app.status()).await
+}
+
+/// What this app is doing (syncs, downloads, a Codex install, model runs) and whether another
+/// process syncs: "Install and restart" waits for all of it.
+#[tauri::command]
+pub async fn activity(backend: State<'_, Backend>) -> CmdResult<Activity> {
+    backend.blocking(|app| Ok(app.activity())).await
 }
 
 #[tauri::command]

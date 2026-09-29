@@ -2,7 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailableUpdate } from "@/api/client";
-import { useUpdaterStatus } from "@/api/queries";
+import { useActivity, useUpdaterStatus } from "@/api/queries";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -19,7 +19,8 @@ import { type InstallState, useInstallUpdate, useUpdateStore } from "@/stores/up
 
 /**
  * "Install PageLamp x.y.z?": the only way an update gets installed (decision D2: always ask).
- * Waits while any sync runs (the app's or the CLI's); on Windows it says PageLamp will close.
+ * Waits while anything runs that the restart would kill: a sync (the app's or the CLI's), an AI
+ * reading or a Codex download (App::activity). On Windows it says PageLamp will close.
  * Once installing, it can't be dismissed: the app restarts at the end.
  */
 export function InstallUpdateDialog({
@@ -36,7 +37,12 @@ export function InstallUpdateDialog({
   const status = useUpdaterStatus();
   const install = useUpdateStore((s) => s.install);
   const start = useInstallUpdate();
-  const { busy, external } = useSyncActivity();
+  const sync = useSyncActivity();
+  const activity = useActivity(open);
+  const running = activity.data?.items ?? [];
+  const generating = running.some((item) => item.kind === "generation");
+  const codexInstalling = running.some((item) => item.kind === "codex_install");
+  const busy = sync.busy || generating || codexInstalling;
   const stopping = useSyncStore((s) => s.stopping);
   const stopSync = useStopSync();
   const hintId = useId();
@@ -65,11 +71,17 @@ export function InstallUpdateDialog({
         <AlertDialogFooter className="items-center">
           {busy && !working ? (
             <span id={hintId} className="text-xs text-muted-foreground sm:mr-auto">
-              {external ? t("install.availableAfterOtherSync") : t("install.availableAfterSync")}
+              {sync.external
+                ? t("install.availableAfterOtherSync")
+                : sync.busy
+                  ? t("install.availableAfterSync")
+                  : generating
+                    ? t("install.availableAfterGeneration")
+                    : t("install.availableAfterCodexInstall")}
             </span>
           ) : null}
           {/* This window's sync can be stopped from here (design §7); the CLI's can't. */}
-          {busy && !external && !working ? (
+          {sync.busy && !sync.external && !working ? (
             <Button
               type="button"
               variant="outline"

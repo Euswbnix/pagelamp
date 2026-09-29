@@ -37,6 +37,7 @@
     "availableAfterSync": "同步结束后可用",
     "availableAfterOtherSync": "另一个同步（来自命令行或另一个窗口）结束后可用",
     "availableAfterGeneration": "AI 读完课程大纲或写完学习计划后可用",
+    "availableAfterCodexInstall": "Codex 下载完成后可用",
     "progressLabel": "更新进度",
     "stopSync": "停止同步"
   },

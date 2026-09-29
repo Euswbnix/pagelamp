@@ -32,6 +32,7 @@ import {
   type UpdateChannel,
   type UpdateCheckRecord,
 } from "../types";
+import { createMockActivity } from "./activity";
 import { createMockAi } from "./ai";
 import {
   defaultKeepUntil,
@@ -147,6 +148,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const now = options.now ?? (() => new Date());
   const db: MockDb = buildCalendarScenarioDb(now(), scenario) ?? buildMockDb(now(), scenario);
   let syncing = false;
+  const activity = createMockActivity(now);
   /** Set by cancelSync: the running sync stops at its next step. */
   let cancelRequested = false;
   let nextId = 1;
@@ -238,6 +240,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     db,
     scenario,
     now,
+    activity,
     respond,
     findCourse,
     step: () => sleep(syncStep),
@@ -378,7 +381,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     }));
   }
 
-  async function runSync(
+  /** A sync or a download, listed in activity() while it runs. */
+  function runSync(
+    sourceIds: string[],
+    onEvent: (event: SyncEvent) => void,
+    work: { kind: "sync" | "download"; source_id?: string } = { kind: "sync" },
+  ): Promise<SourceSyncResult[]> {
+    return activity.during(work.kind, { source_id: work.source_id }, () =>
+      syncSources(sourceIds, onEvent),
+    );
+  }
+
+  async function syncSources(
     sourceIds: string[],
     onEvent: (event: SyncEvent) => void,
   ): Promise<SourceSyncResult[]> {
@@ -485,6 +499,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const ai = createMockAi({
     scenario,
     now,
+    activity,
     // The extra delay imitates slow network calls in the demo; tests (latency 0) skip it, so a
     // loaded machine can't push them past their timeouts.
     delay: (extra = 0) => sleep(latency > 0 ? latency + extra : 0),
@@ -523,7 +538,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         await sleep(latency);
         throw new ApiError("invalid", "Only Canvas courses have files to download.");
       }
-      const [result] = await runSync([source.id], onEvent);
+      const [result] = await runSync([source.id], onEvent, {
+        kind: "download",
+        source_id: source.id,
+      });
       if (!result) throw new ApiError("internal", "Sync produced no result");
       let downloaded = 0;
       for (const m of c.materials) {
@@ -535,6 +553,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       return clone({ ...result, files_downloaded: downloaded, files_indexed: downloaded });
     },
     status: () => respond(status),
+    activity: () =>
+      respond(() => ({
+        items: activity.items(),
+        other_process_syncing: db.externalSyncRunning && !syncing,
+      })),
     listSources: () => respond(() => db.sources),
 
     addCanvasSource: async (baseUrl, token) => {
@@ -616,7 +639,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
     syncSource: async (sourceId, _req, onEvent) => {
       findSource(sourceId);
-      const [result] = await runSync([sourceId], onEvent);
+      const [result] = await runSync([sourceId], onEvent, { kind: "sync", source_id: sourceId });
       if (!result) throw new ApiError("internal", "Sync produced no result");
       return clone(result);
     },
@@ -631,7 +654,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           "Only Canvas courses have files to download; folder courses are always indexed.",
         );
       }
-      const [result] = await runSync([source.id], onEvent);
+      const [result] = await runSync([source.id], onEvent, {
+        kind: "download",
+        source_id: source.id,
+      });
       if (!result) throw new ApiError("internal", "Sync produced no result");
       let downloaded = 0;
       const warnings = [...result.warnings];

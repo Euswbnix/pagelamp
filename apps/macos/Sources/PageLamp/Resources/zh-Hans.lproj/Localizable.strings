@@ -1536,6 +1536,7 @@
 "sources.status.syncing" = "同步中";
 "sources.title" = "数据来源与同步";
 "updates.install.aiApp" = "更新完成后，请退出并重新打开你的 AI 应用，让它使用新的 PageLamp。";
+"updates.install.availableAfterCodexInstall" = "Codex 下载完成后可用";
 "updates.install.availableAfterGeneration" = "AI 读完课程大纲或写完学习计划后可用";
 "updates.install.availableAfterOtherSync" = "另一个同步（来自命令行或另一个窗口）结束后可用";
 "updates.install.availableAfterSync" = "同步结束后可用";

@@ -37,6 +37,7 @@
     "availableAfterSync": "Available when the sync finishes",
     "availableAfterOtherSync": "Available when the other sync (from the command line or another window) finishes",
     "availableAfterGeneration": "Available when the AI finishes reading a syllabus or writing a study plan",
+    "availableAfterCodexInstall": "Available when the Codex download finishes",
     "progressLabel": "Update progress",
     "stopSync": "Stop the sync"
   },
