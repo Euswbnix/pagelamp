@@ -244,6 +244,51 @@ impl MaterialSharing {
     }
 }
 
+/// A provider the student added, as stored (`model_providers`; the key is in the keychain).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProviderRow {
+    pub id: String,
+    pub preset: String,
+    pub label: String,
+    /// `pagelamp_llm::Wire::as_str`.
+    pub wire: String,
+    pub base_url: String,
+    pub created_at: crate::model::Timestamp,
+    /// The last "Test" as JSON (no key, no text).
+    pub last_probe_json: Option<String>,
+}
+
+/// One model call in the usage ledger (`ai_usage`): counts and cost only, never content.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UsageRecord {
+    pub at: crate::model::Timestamp,
+    /// `codex`, `claude_code` or `provider:<id>`.
+    pub backend: String,
+    pub model: String,
+    pub feature: AiFeature,
+    pub input_uncached: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub output: u64,
+    pub reasoning: Option<u64>,
+    /// `None`: the price is unknown, or the run counted against a plan.
+    pub micro_usd: Option<u64>,
+    /// `priced`, `free_on_device`, `unpriced` or `plan`.
+    pub cost_basis: String,
+    /// Counts estimated by PageLamp (a cancelled run).
+    pub estimated: bool,
+    /// `ok`, `failed` or `cancelled`.
+    pub outcome: String,
+}
+
+/// What `Store::remove_all_ai_data` deleted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AiDataRemoved {
+    pub providers: u32,
+    pub generations: u32,
+    pub usage_rows: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

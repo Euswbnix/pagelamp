@@ -177,6 +177,7 @@ pub struct Course {
     pub ai_policy: AiPolicy,
     pub ai_policy_note: Option<String>,
     pub ai_access: bool,
+    pub material_sharing: MaterialSharing,
     pub hidden: bool,
     pub enrollment_active: bool,
     pub updated_at: Timestamp,

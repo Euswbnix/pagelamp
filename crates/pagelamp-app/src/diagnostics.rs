@@ -823,7 +823,8 @@ mod tests {
             .lines()
             .find(|l| l.starts_with("- Last database update:"))
             .unwrap_or_else(|| panic!("no update line:\n{report}"));
-        assert!(line.contains("schema 2 → 3"), "{line}");
+        let expected = format!("schema 2 → {}", pagelamp_core::store::SCHEMA_VERSION);
+        assert!(line.contains(&expected), "{line}");
         assert!(line.ends_with("backup ok"), "{line}");
         assert!(
             !report.contains(".bak"),

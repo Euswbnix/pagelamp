@@ -248,6 +248,10 @@ pub struct Course {
     /// The student's switch "Let my AI app read this course's materials" (default on).
     /// Use `ai_materials()` for the effective state — a `prohibited` policy wins over it.
     pub ai_access: bool,
+    /// The student's answer to "May this course's materials be shared with an AI service?"
+    /// (question (b)). Only `not_allowed` keeps material text from cloud models PageLamp runs
+    /// itself; the student's own AI app over MCP is unaffected.
+    pub material_sharing: crate::ai::MaterialSharing,
     pub hidden: bool,
     /// False when the LMS no longer lists the course as active (e.g. the term ended). Such
     /// courses are kept with all their data; only the student removes them.
