@@ -241,6 +241,18 @@ struct LiveServiceTests {
         let activity = try await service.activity()
         #expect(activity.items.isEmpty && !activity.otherProcessSyncing)
         #expect(notNowDays() == 14 && keepCurrentDays() == 120 && keepForever() == "9999-12-31")
+
+        // The M1–M3 calls reach the core too.
+        #expect(try await service.reminderSettings().deadlineSoon)
+        #expect(try await service.removedCourses().isEmpty)
+        #expect(try await service.aiStatus().providers.isEmpty)
+        try await service.cancelGeneration(generationId: "never-ran")
+        do {
+            _ = try await service.courseCalendar(course: "NOPE")
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
     }
 }
 
@@ -320,5 +332,105 @@ struct ForwardingWrapperTests {
 private extension Result {
     var failure: Failure? {
         if case .failure(let error) = self { error } else { nil }
+    }
+}
+
+@Suite("MockService: M1–M3 calls")
+struct MockFeatureTests {
+    func mock(_ scenario: MockScenario = .demo) -> MockService {
+        MockService(scenario: scenario, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+    }
+
+    @Test("removing a course lists it with 7 days to undo; restoring puts it back")
+    func removal() async throws {
+        let service = mock()
+        let before = try await service.listCourses().count
+        let preview = try await service.removalPreview(courses: ["DEMO205"])
+        #expect(preview.items.map(\.code) == ["DEMO205"])
+        let report = try await service.removeCourses(
+            courses: ["DEMO205"],
+            options: RemoveOptions(reason: .ended, keepDownloadedFiles: false, purgeNow: false, deletePreUpdateBackup: false)
+        )
+        #expect(report.removed.map(\.state) == [.pending] && report.removed.first?.purgeInDays == 7)
+        #expect(try await service.listCourses().count == before - 1)
+        let removed = try await service.removedCourses()
+        #expect(removed.map(\.code) == ["DEMO205"])
+
+        // Not due yet: a purge of every due course leaves it.
+        #expect(try await service.purgeRemovedCourses(removedIds: nil, permanentIfNoTrash: false).purged.isEmpty)
+        let restored = try await service.restoreCourse(removedId: removed[0].removedId)
+        #expect(restored.restored)
+        #expect(try await service.listCourses().count == before)
+        #expect(try await service.removedCourses().isEmpty)
+
+        // Purged at once: can't be restored, only forgotten.
+        let gone = try await service.removeCourses(
+            courses: ["DEMO205"],
+            options: RemoveOptions(reason: nil, keepDownloadedFiles: false, purgeNow: true, deletePreUpdateBackup: false)
+        )
+        #expect(!(try await service.restoreCourse(removedId: gone.removed[0].removedId).restored))
+        try await service.forgetRemovedCourse(removedId: gone.removed[0].removedId)
+        #expect(try await service.removedCourses().isEmpty)
+    }
+
+    @Test("reminders: settings round-trip; due-soon reminders are due once, then shown")
+    func reminders() async throws {
+        let service = mock()
+        var settings = try await service.reminderSettings()
+        #expect(settings.deadlineSoon && settings.digestTime == "09:00")
+        let week = try await service.reminders(from: TestClock.now, to: TestClock.now.addingTimeInterval(7 * 86_400))
+        #expect(!week.isEmpty && week.allSatisfy { $0.kind == .deadlineSoon && $0.hoursBefore == 24 })
+        let later = week[0].fireAt.addingTimeInterval(60)
+        let due = try await service.dueReminders(now: later)
+        #expect(due.map(\.id).contains(week[0].id))
+        try await service.markRemindersShown(ids: due.map(\.id))
+        #expect(try await !service.dueReminders(now: later).contains { $0.id == week[0].id })
+
+        settings = ReminderSettings(
+            deadlineSoon: false, weeklyDigest: settings.weeklyDigest, digestDay: .friday, digestTime: "18:30",
+            planToday: settings.planToday, planTodayTime: settings.planTodayTime, runInBackground: true
+        )
+        try await service.setReminderSettings(settings: settings)
+        #expect(try await service.reminderSettings() == settings)
+        #expect(try await service.reminders(from: TestClock.now, to: TestClock.now.addingTimeInterval(7 * 86_400)).isEmpty)
+        #expect(try await service.weeklyDigest().generatedAt == TestClock.now)
+    }
+
+    @Test("AI settings stick; generations are blocked without a model")
+    func ai() async throws {
+        let service = mock()
+        try await service.setMonthlyBudget(microUsd: 2_000_000)
+        #expect(try await service.aiStatus().budget.monthlyMicroUsd == 2_000_000)
+        #expect(try await service.usageSummary(month: nil).month == "2026-09-01")
+        try await service.setAiOutputLanguage(language: .course)
+        #expect(try await service.aiOutputLanguage() == .course)
+        try await service.setCourseMaterialSharing(course: "DEMO101", answer: .allowed)
+        #expect(try await service.codexStatus().login.state == .signedOut)
+        do {
+            _ = try await service.explainWeek(
+                course: "DEMO101", week: nil, generationId: "g1", options: ExplainOptions(), observer: GenEventStream()
+            )
+            Issue.record("expected blocked")
+        } catch {
+            #expect(error.kind == .blocked)
+        }
+        try await service.cancelGeneration(generationId: "g1")
+        #expect(try await service.removeAllAiData().providersRemoved == 0)
+        #expect(try await service.aiStatus().budget.monthlyMicroUsd == nil)
+    }
+
+    @Test("a study plan item can be checked off")
+    func planItem() async throws {
+        let service = mock()
+        let plan = try #require(try await service.latestStudyPlan())
+        let checked = try await service.setStudyPlanItemDone(planId: plan.id, itemIndex: 0, done: !plan.plan.items[0].done)
+        #expect(checked.plan.items[0].done != plan.plan.items[0].done)
+        #expect(try await service.latestStudyPlan()?.plan.items[0].done == checked.plan.items[0].done)
+        do {
+            _ = try await service.setStudyPlanItemDone(planId: plan.id + 1, itemIndex: 0, done: true)
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
     }
 }
