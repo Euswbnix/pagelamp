@@ -177,10 +177,20 @@ pub fn run() {
         })
         .manage(Backend::open())
         .manage(background::Background::new(hidden));
-    with_commands(builder).run(context).unwrap_or_else(|err| {
+    let app = with_commands(builder).build(context).unwrap_or_else(|err| {
         panic!(
             "error while running the {} desktop app: {err}",
             pagelamp_core::brand::PRODUCT_NAME
         )
+    });
+    app.run(|_app, _event| {
+        // macOS doesn't start a second PageLamp when it's opened again (Finder, the Dock,
+        // Spotlight, a login item): the running one gets Reopen. Show its window, as the
+        // single-instance hand-over does elsewhere; a window in the tray would stay hidden.
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = _event {
+            tracing::info!(target: "pagelamp::background", "reopened: showing the window");
+            background::show_main(_app);
+        }
     });
 }

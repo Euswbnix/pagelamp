@@ -92,7 +92,9 @@ pub async fn due_reminders(backend: State<'_, Backend>) -> CmdResult<Vec<Reminde
     backend.blocking(|app| app.due_reminders(Utc::now())).await
 }
 
-/// Shows the notifications, then marks their reminders shown: one that failed to show stays due
+/// Shows the notifications, then marks their reminders shown. On desktop the plugin hands each
+/// one to the system without waiting for it, so what the system does with it can't be seen here:
+/// once handed over, a reminder counts as shown. Only one that couldn't be handed over stays due
 /// and comes back at the next check.
 #[tauri::command]
 pub async fn show_reminders<R: Runtime>(

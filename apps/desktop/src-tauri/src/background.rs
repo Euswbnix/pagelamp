@@ -7,8 +7,9 @@
 //! The webview gets no autostart permission: it changes the setting through our commands, which
 //! do the rest here. Login items: a LaunchAgent on macOS (never the AppleScript launcher, which
 //! asks for the Automation permission), the per-user Run key on Windows, an XDG autostart entry
-//! on Linux. One PageLamp runs at a time (tauri-plugin-single-instance): opening it again shows
-//! the running one's window.
+//! on Linux. One PageLamp runs at a time: opening it again shows the running one's window
+//! (tauri-plugin-single-instance hands a second process over; on macOS the system doesn't start
+//! one and sends the running app Reopen instead, see lib.rs).
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Mutex;
@@ -98,9 +99,18 @@ pub fn launch_hidden(args: impl Iterator<Item = String>, identifier: &str) -> bo
 /// login hours later stays in the tray.
 const SHOW_WINDOW_FOR: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
-/// Per user (the system's temp folder) and per build (the bundle identifier).
+/// Per user and per build (the bundle identifier). The temp folder is the user's own on macOS and
+/// Windows; on Linux it's the shared /tmp, where another user's marker couldn't be removed, so the
+/// user's runtime folder comes first there.
 fn show_window_marker(identifier: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("{identifier}.show-window"))
+    #[cfg(target_os = "linux")]
+    let folder = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .filter(|dir| dir.is_absolute())
+        .unwrap_or_else(std::env::temp_dir);
+    #[cfg(not(target_os = "linux"))]
+    let folder = std::env::temp_dir();
+    folder.join(format!("{identifier}.show-window"))
 }
 
 /// The tray menu's words, in the student's language (the page sends them; English until then).
@@ -188,6 +198,11 @@ pub fn start<R: Runtime>(app: &AppHandle<R>, stored_on: Option<bool>) {
     if stored_on == Some(true) {
         state.on.store(true, Ordering::SeqCst);
         ensure_tray(app);
+        // Started in the tray: no Dock icon until the window shows.
+        #[cfg(target_os = "macos")]
+        if !state.may_show() {
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        }
         return;
     }
     if stored_on == Some(false)
@@ -277,7 +292,7 @@ pub fn watch_close<R: Runtime>(window: &WebviewWindow<R>) {
     });
 }
 
-/// Shows and focuses the main window (tray, a second launch).
+/// Shows and focuses the main window (tray, a second launch, macOS Reopen).
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     app.state::<Background>()
         .hidden
@@ -310,7 +325,9 @@ fn ensure_tray<R: Runtime>(app: &AppHandle<R>) {
         state.tray_failed.store(true, Ordering::SeqCst);
         return;
     }
-    // A backstop only (the probe above is the check): release builds unwind, never abort.
+    // A backstop only (the probe above is the check): release builds unwind, never abort. It
+    // catches a panic only where the tray is built on this thread: at launch (setup runs on the
+    // main thread). From a command, Tauri builds it on the main thread and the probe is all.
     let built = expect_panics(|| std::panic::catch_unwind(AssertUnwindSafe(|| build_tray(app))));
     let failed = match built {
         Ok(Ok(())) => false,
