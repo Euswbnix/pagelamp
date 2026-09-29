@@ -30,6 +30,7 @@ import {
   diagnosticReport,
   MOCK_APP_VERSION,
   MOCK_BINARY_PATH,
+  MOCK_PREVIOUS_VERSION,
   MOCK_UPDATE_VERSION,
   type MockCourse,
   type MockDb,
@@ -136,8 +137,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const updates = {
     prefs: { auto_check: true, channel: null as UpdateChannel | null },
     disclosureSeen: scenario !== "empty",
-    whatsNewSeen: scenario !== "upgrader",
-    lastCheck: (offersUpdate || scenario === "upgrader"
+    whatsNewSeen: scenario !== "upgrader" && scenario !== "upgrader-from-01",
+    lastCheck: (offersUpdate || scenario === "upgrader" || scenario === "upgrader-from-01"
       ? null
       : {
           at: new Date(now().getTime() - 2 * 60 * 60 * 1000).toISOString(),
@@ -691,13 +692,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         return {
           whats_new: updates.whatsNewSeen
             ? null
-            : { since: "0.1.0", topics: ["update_check" as const, "course_weeks" as const] },
+            : {
+                // 0.1 never recorded its version, so upgraders from it have none.
+                since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
+                topics: ["update_check" as const, "course_weeks" as const],
+              },
           update_check_due:
             updates.prefs.auto_check &&
             updates.disclosureSeen &&
             updates.whatsNewSeen &&
             (last === null || last <= now().getTime() - DAY),
-          updated_from: scenario === "updated" || scenario === "upgrader" ? "0.1.0" : null,
+          updated_from:
+            scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
         };
       }),
     acknowledgeWhatsNew: () =>

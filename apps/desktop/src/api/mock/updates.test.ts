@@ -24,6 +24,7 @@ describe("mock updates", () => {
     const api = createMockApi({ ...fast, scenario: "upgrader" });
     const first = await api.startupTasks();
     expect(first.whats_new?.topics).toEqual(["update_check", "course_weeks"]);
+    expect(first.whats_new?.since).toBe("0.3.0-alpha.0");
     expect(first.update_check_due).toBe(false);
     await api.acknowledgeWhatsNew();
     const after = await api.startupTasks();

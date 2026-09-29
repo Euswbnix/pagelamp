@@ -33,6 +33,7 @@ export type MockScenario =
   // launch after an update / a deb or rpm install (download link only).
   | "update-available"
   | "upgrader"
+  | "upgrader-from-01"
   | "updated"
   | "deb";
 
@@ -45,12 +46,15 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "crashed",
   "update-available",
   "upgrader",
+  "upgrader-from-01",
   "updated",
   "deb",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */
 export const MOCK_APP_VERSION = "0.3.0-alpha.1";
+/** The earlier version the "upgrader" and "updated" scenarios come from (0.1 recorded none). */
+export const MOCK_PREVIOUS_VERSION = "0.3.0-alpha.0";
 /** The version mock mode offers as an update. */
 export const MOCK_UPDATE_VERSION = "0.3.0-alpha.2";
 

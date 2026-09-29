@@ -29,10 +29,11 @@ interface UpdateState {
   noticeDismissed: boolean;
   install: InstallState;
   /**
-   * The version this launch was updated from (post-update banner). Kept from the first
-   * startup_tasks answer, which a later refetch may no longer report.
+   * This launch is the first after an update or an upgrade (post-update banner). Kept from the
+   * first startup_tasks answer that says so, which a later answer may no longer report. Upgraders
+   * from 0.1 have no recorded "from" version, so the banner never names one.
    */
-  updatedFrom: string | null;
+  updated: boolean;
   updatedDismissed: boolean;
   dismissNotice: () => void;
   dismissUpdated: () => void;
@@ -46,7 +47,7 @@ const initial = {
   checked: false,
   noticeDismissed: false,
   install: { phase: "idle" },
-  updatedFrom: null,
+  updated: false,
   updatedDismissed: false,
 } satisfies Partial<UpdateState>;
 

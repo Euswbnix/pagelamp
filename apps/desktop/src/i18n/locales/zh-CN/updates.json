@@ -4,7 +4,7 @@
     "description": "{{product}} 会在 GitHub 上查找新版本，安装之前一定会先问你。",
     "version": "版本",
     "autoCheck": "自动检查更新",
-    "autoCheckHint": "启动时检查一次，之后每天一次。只有你的 IP 地址会发送给 GitHub，不涉及任何课程内容。",
+    "autoCheckHint": "启动时检查一次，之后每天一次。和任何下载一样，GitHub 会看到你的 IP 地址和 {{product}} 的版本号；不会发送任何课程内容。",
     "channel": "更新渠道",
     "channelStable": "正式版",
     "channelStableHint": "已经发布的正式版本。",
@@ -56,7 +56,7 @@
     "topics": {
       "update_check": {
         "title": "{{product}} 现在可以自己更新了",
-        "body": "它每天会向 GitHub 询问一次有没有新版本。只会发送你的 IP 地址，不涉及任何课程内容；安装任何更新之前一定会先问你。"
+        "body": "它每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 {{product}} 的版本号；不会发送任何课程内容。安装任何更新之前一定会先问你。"
       },
       "course_weeks": {
         "title": "每门课都有周次和阶段",
@@ -66,6 +66,6 @@
   },
   "onboarding": {
     "autoCheck": "自动检查更新",
-    "autoCheckHint": "{{product}} 每天会向 GitHub 询问一次有没有新版本（只会发送你的 IP 地址）。安装之前一定会先问你，之后也可以在设置里更改。"
+    "autoCheckHint": "{{product}} 每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 {{product}} 的版本号；不会发送任何课程内容。安装之前一定会先问你，之后也可以在设置里更改。"
   }
 }

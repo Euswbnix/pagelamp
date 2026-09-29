@@ -4,7 +4,7 @@
     "description": "{{product}} looks for new versions on GitHub. It always asks before installing one.",
     "version": "Version",
     "autoCheck": "Check for updates automatically",
-    "autoCheckHint": "At launch and once a day. Only your IP address reaches GitHub, nothing about your courses.",
+    "autoCheckHint": "At launch and once a day. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent.",
     "channel": "Update channel",
     "channelStable": "Stable",
     "channelStableHint": "Finished releases.",
@@ -56,7 +56,7 @@
     "topics": {
       "update_check": {
         "title": "{{product}} now updates itself",
-        "body": "Once a day it asks GitHub whether there's a new version. Only your IP address is sent, nothing about your courses, and it always asks before installing anything."
+        "body": "Once a day it downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent. It always asks before installing anything."
       },
       "course_weeks": {
         "title": "Weeks and phases for every course",
@@ -66,6 +66,6 @@
   },
   "onboarding": {
     "autoCheck": "Check for updates automatically",
-    "autoCheckHint": "Once a day {{product}} asks GitHub whether there's a new version (only your IP address is sent). It always asks before installing, and you can change this in Settings."
+    "autoCheckHint": "Once a day {{product}} downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent. It always asks before installing, and you can change this in Settings."
   }
 }

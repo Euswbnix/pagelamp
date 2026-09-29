@@ -12,12 +12,12 @@ import { useUpdateStore } from "@/stores/updates";
  */
 export function PostUpdateBanner() {
   const { t } = useTranslation("updates");
-  const updatedFrom = useUpdateStore((s) => s.updatedFrom);
+  const updated = useUpdateStore((s) => s.updated);
   const dismissed = useUpdateStore((s) => s.updatedDismissed);
   const dismiss = useUpdateStore((s) => s.dismissUpdated);
   const status = useUpdaterStatus();
   const titleId = useId();
-  if (!updatedFrom || dismissed || !status.data) return null;
+  if (!updated || dismissed || !status.data) return null;
 
   return (
     <Alert role="region" aria-labelledby={titleId} className="mb-6 px-4 py-3">

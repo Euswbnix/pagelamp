@@ -26,7 +26,9 @@ describe("onboarding", () => {
 
     const toggle = await screen.findByRole("switch", { name: "Check for updates automatically" });
     expect(toggle).toBeChecked();
-    expect(toggle).toHaveAccessibleDescription(/only your IP address is sent/);
+    expect(toggle).toHaveAccessibleDescription(
+      /GitHub sees your IP address and your PageLamp version, as with any download/,
+    );
     await user.click(toggle);
     await user.click(screen.getByRole("checkbox", { name: "I understand" }));
     await user.click(screen.getByRole("button", { name: "Get started" }));
@@ -55,7 +57,7 @@ describe("What's new (upgraders)", () => {
     const { user } = renderRoute("/courses", { api });
 
     const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
-    expect(within(sheet).getByText("Since version 0.1.0")).toBeInTheDocument();
+    expect(within(sheet).getByText("Since version 0.3.0-alpha.0")).toBeInTheDocument();
     expect(within(sheet).getByText("PageLamp now updates itself")).toBeInTheDocument();
     expect(within(sheet).getByText("Weeks and phases for every course")).toBeInTheDocument();
     expect(
@@ -87,6 +89,18 @@ describe("What's new (upgraders)", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(check).not.toHaveBeenCalled();
+  });
+
+  it("works for upgraders from 0.1, whose previous version is unknown", async () => {
+    const { user } = renderRoute("/courses", { scenario: "upgrader-from-01" });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    expect(within(sheet).getByText("PageLamp now updates itself")).toBeInTheDocument();
+    expect(within(sheet).queryByText(/^Since version/)).toBeNull();
+    await user.click(within(sheet).getByRole("button", { name: "Got it" }));
+    // They reinstalled: their AI app still runs the old PageLamp. No "from" version is shown.
+    expect(
+      await screen.findByRole("region", { name: `PageLamp was updated to ${MOCK_APP_VERSION}` }),
+    ).toBeInTheDocument();
   });
 
   it("isn't shown to anyone else", async () => {
