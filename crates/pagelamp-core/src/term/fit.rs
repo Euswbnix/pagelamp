@@ -341,6 +341,8 @@ mod tests {
             content_hash: None,
             text_status: TextStatus::Pending,
             text_error: None,
+            text_error_kind: None,
+            text_error_fingerprint: None,
             download_blocked: None,
             updated_at: at(when),
         };
