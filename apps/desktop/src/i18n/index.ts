@@ -8,6 +8,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { brand, type Locale, SUPPORTED_LOCALES } from "@/brand";
+import { neutralize, restoreValues } from "./safeValues";
 
 type Resources = Record<string, Record<string, Record<string, unknown>>>;
 
@@ -34,19 +35,27 @@ export function isSupportedLocale(value: unknown): value is Locale {
 
 export function initI18n(locale: Locale | null = null) {
   if (i18n.isInitialized) return i18n;
-  i18n.use(initReactI18next).init({
-    resources,
-    lng: locale ?? brand.defaultLocale,
-    fallbackLng: "en",
-    supportedLngs: [...SUPPORTED_LOCALES],
-    ns: NAMESPACES,
-    defaultNS: "common",
-    interpolation: {
-      escapeValue: false, // React already escapes
-      defaultVariables: { product: brand.productName },
-    },
-    returnNull: false,
-  });
+  i18n
+    .use(initReactI18next)
+    .use(restoreValues)
+    .init({
+      resources,
+      lng: locale ?? brand.defaultLocale,
+      fallbackLng: "en",
+      supportedLngs: [...SUPPORTED_LOCALES],
+      ns: NAMESPACES,
+      defaultNS: "common",
+      interpolation: {
+        // Not HTML escaping (React escapes text): values are neutralised so markup inside them
+        // ("{{when}}", "$t(…)") is never acted on — see safeValues.ts.
+        escapeValue: true,
+        escape: neutralize,
+        skipOnVariables: true,
+        defaultVariables: { product: brand.productName },
+      },
+      postProcess: ["restoreValues"],
+      returnNull: false,
+    });
   return i18n;
 }
 
