@@ -76,26 +76,32 @@ pub async fn login(
     let mut child = command
         .spawn()
         .map_err(|err| CodexError::Start(err.kind().to_string()))?;
-    let (sender, mut lines) = tokio::sync::mpsc::unbounded_channel::<String>();
-    for stream in [
-        child
-            .stdout
-            .take()
-            .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
-        child
-            .stderr
-            .take()
-            .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    // Each line with the stream it came from: the two are read concurrently, so their lines
+    // interleave in any order, and each stream's prompts are parsed on their own.
+    let (sender, mut lines) = tokio::sync::mpsc::unbounded_channel::<(Stream, String)>();
+    for (from, stream) in [
+        (
+            Stream::Stdout,
+            child
+                .stdout
+                .take()
+                .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
+        ),
+        (
+            Stream::Stderr,
+            child
+                .stderr
+                .take()
+                .map(|s| Box::new(s) as Box<dyn AsyncRead + Unpin + Send>),
+        ),
+    ] {
+        let Some(stream) = stream else { continue };
         let sender = sender.clone();
         tokio::spawn(async move {
             let mut reader = BufReader::new(stream).lines();
             while let Ok(Some(mut line)) = reader.next_line().await {
                 line.truncate(MAX_LINE);
-                if sender.send(line).is_err() {
+                if sender.send((from, line)).is_err() {
                     break;
                 }
             }
@@ -111,7 +117,7 @@ pub async fn login(
                 return Err(CodexError::Cancelled);
             }
             line = lines.recv() => match line {
-                Some(line) => parser.feed(&line).into_iter().for_each(on_event),
+                Some((from, line)) => parser.feed(from, &line).into_iter().for_each(on_event),
                 None => break,
             },
         }
@@ -229,12 +235,29 @@ fn classify_status(stderr: &str) -> LoginState {
 /// - device code: "1. Open this link…" then the URL, "2. Enter this one-time code (expires in 15
 ///   minutes)" then the code; "Device code login is not enabled; falling back to browser login."
 ///   switches to the browser flow.
+///
+/// Codex may print these on stdout or stderr, and the two are read concurrently: a line on one
+/// stream never clears what the other is expecting (an error line landing between "one-time
+/// code" and the code lost the code). Only "announced" is shared.
 #[derive(Default)]
 struct LoginParser {
+    streams: [PromptState; 2],
+    announced: bool,
+}
+
+/// Which of Codex's output streams a line came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// What one stream's prompt is waiting for.
+#[derive(Default)]
+struct PromptState {
     expecting: Option<Expecting>,
     device_url: Option<String>,
     expires_in_secs: Option<u32>,
-    announced: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -245,7 +268,9 @@ enum Expecting {
 }
 
 impl LoginParser {
-    fn feed(&mut self, raw: &str) -> Vec<LoginEvent> {
+    fn feed(&mut self, from: Stream, raw: &str) -> Vec<LoginEvent> {
+        let announced = &mut self.announced;
+        let state = &mut self.streams[from as usize];
         let line = process::strip_ansi(raw);
         let text = line.trim();
         if text.is_empty() {
@@ -253,21 +278,21 @@ impl LoginParser {
         }
         let lower = text.to_ascii_lowercase();
         if lower.contains("navigate to this url") {
-            self.expecting = Some(Expecting::BrowserUrl);
+            state.expecting = Some(Expecting::BrowserUrl);
             return Vec::new();
         }
         if lower.contains("open this link") {
-            self.expecting = Some(Expecting::DeviceUrl);
+            state.expecting = Some(Expecting::DeviceUrl);
             return Vec::new();
         }
         if lower.contains("one-time code") {
-            self.expecting = Some(Expecting::DeviceCode);
-            self.expires_in_secs = minutes_in(&lower).map(|m| m * 60);
+            state.expecting = Some(Expecting::DeviceCode);
+            state.expires_in_secs = minutes_in(&lower).map(|m| m * 60);
             return Vec::new();
         }
-        match self.expecting.take() {
-            Some(Expecting::BrowserUrl) if text.starts_with("https://") && !self.announced => {
-                self.announced = true;
+        match state.expecting.take() {
+            Some(Expecting::BrowserUrl) if text.starts_with("https://") && !*announced => {
+                *announced = true;
                 vec![
                     LoginEvent::BrowserOpened {
                         url: Some(text.to_string()),
@@ -276,17 +301,17 @@ impl LoginParser {
                 ]
             }
             Some(Expecting::DeviceUrl) if text.starts_with("https://") => {
-                self.device_url = Some(text.to_string());
+                state.device_url = Some(text.to_string());
                 Vec::new()
             }
-            Some(Expecting::DeviceCode) if !self.announced => match self.device_url.take() {
+            Some(Expecting::DeviceCode) if !*announced => match state.device_url.take() {
                 Some(verification_url) if is_code(text) => {
-                    self.announced = true;
+                    *announced = true;
                     vec![
                         LoginEvent::DeviceCode {
                             verification_url,
                             user_code: text.to_string(),
-                            expires_in_secs: self.expires_in_secs,
+                            expires_in_secs: state.expires_in_secs,
                         },
                         LoginEvent::Waiting,
                     ]
@@ -319,7 +344,10 @@ mod tests {
 
     fn feed_all(lines: &[&str]) -> Vec<LoginEvent> {
         let mut parser = LoginParser::default();
-        lines.iter().flat_map(|l| parser.feed(l)).collect()
+        lines
+            .iter()
+            .flat_map(|l| parser.feed(Stream::Stdout, l))
+            .collect()
     }
 
     #[test]
@@ -374,6 +402,54 @@ mod tests {
             "https://auth.openai.com/oauth/authorize?state=demo",
         ]);
         assert!(matches!(events[0], LoginEvent::BrowserOpened { .. }));
+    }
+
+    #[test]
+    fn a_line_on_the_other_stream_never_loses_the_code() {
+        // stderr lines landing anywhere between stdout's prompts (the streams are read
+        // concurrently; Windows CI saw the error line arrive between "one-time code" and the
+        // code).
+        let stdout = [
+            "1. Open this link in your browser and sign in to your account",
+            "   \u{1b}[94mhttps://auth.openai.com/codex/device\u{1b}[0m",
+            "2. Enter this one-time code \u{1b}[90m(expires in 15 minutes)\u{1b}[0m",
+            "   \u{1b}[94mDEMO-1234\u{1b}[0m",
+        ];
+        let expected = [
+            LoginEvent::DeviceCode {
+                verification_url: "https://auth.openai.com/codex/device".into(),
+                user_code: "DEMO-1234".into(),
+                expires_in_secs: Some(900),
+            },
+            LoginEvent::Waiting,
+        ];
+        for at in 0..=stdout.len() {
+            let mut parser = LoginParser::default();
+            let mut events = Vec::new();
+            for (i, line) in stdout.iter().enumerate() {
+                if i == at {
+                    events.extend(parser.feed(
+                        Stream::Stderr,
+                        "Error logging in with device code: demo failure",
+                    ));
+                }
+                events.extend(parser.feed(Stream::Stdout, line));
+            }
+            if at == stdout.len() {
+                events.extend(parser.feed(Stream::Stderr, "Error logging in: demo failure"));
+            }
+            assert_eq!(events, expected, "stderr line before stdout line {at}");
+        }
+        // The same prompt on stderr works too, and a code is announced once.
+        let mut parser = LoginParser::default();
+        let mut events = Vec::new();
+        for line in stdout {
+            events.extend(parser.feed(Stream::Stderr, line));
+        }
+        for line in stdout {
+            events.extend(parser.feed(Stream::Stdout, line));
+        }
+        assert_eq!(events, expected);
     }
 
     #[test]
