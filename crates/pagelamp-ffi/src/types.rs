@@ -26,10 +26,13 @@ use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, McpClientPresence, ProcessKind,
 };
 use pagelamp_app::{
-    Activity, ActivityItem, ActivityKind, AppStatus, CourseLifecycleEntry, InstallKind,
-    LifecycleSummary, McpClient, McpClientConfig, McpLaunch, McpNoteCode, SourceSyncResult,
-    StartupTasks, SyncEvent, SyncRequest, SyncSummary, TemporaryLocation, UpdateChannel,
-    UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew, WhatsNewTopic,
+    Activity, ActivityItem, ActivityKind, AppStatus, BackupInfo, BreakInput, CourseDatesInput,
+    CourseLifecycleEntry, InstallKind, LifecycleSummary, LostAfterPurge, McpClient,
+    McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, RemovalPreview, RemovalPreviewItem,
+    RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome,
+    SegmentInput, SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary,
+    TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+    UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarBreak, CalendarOrigin, CalendarStatus,
@@ -936,4 +939,142 @@ pub struct CourseLifecycleEntry {
     pub name: String,
     pub hidden: bool,
     pub lifecycle: CourseLifecycle,
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-app: removing courses, the dates form v2 (alpha.2 types)
+// ---------------------------------------------------------------------------------------------
+
+#[uniffi::remote(Enum)]
+pub enum RemovalReason {
+    Ended,
+    Inactive,
+    NotMine,
+    Other,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LostAfterPurge {
+    OldAnnouncements,
+    LockedFiles,
+    WholeCourse,
+    RedownloadCountsAsViewing,
+}
+
+#[uniffi::remote(Record)]
+pub struct BackupInfo {
+    pub age_days: u32,
+    pub delete_by_default: bool,
+    pub reason_code: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemovalPreviewItem {
+    pub course_id: String,
+    pub code: Option<String>,
+    pub name: String,
+    pub source_kind: SourceKind,
+    pub lifecycle: CourseLifecycle,
+    pub materials: u32,
+    pub downloaded_files: u32,
+    pub downloaded_bytes: u64,
+    pub deadlines: u32,
+    pub generated_items: u32,
+    pub custom_settings: bool,
+    pub own_folder_untouched: bool,
+    pub cannot_sync_again: bool,
+    pub lost_after_purge: Vec<LostAfterPurge>,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemovalPreview {
+    pub items: Vec<RemovalPreviewItem>,
+    pub backup: Option<BackupInfo>,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemoveOptions {
+    pub reason: Option<RemovalReason>,
+    pub keep_downloaded_files: bool,
+    pub purge_now: bool,
+    pub delete_pre_update_backup: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TombstoneState {
+    Pending,
+    Purged,
+    Restoring,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemovedCourse {
+    pub removed_id: String,
+    pub source_id: String,
+    pub source_kind: SourceKind,
+    pub external_id: String,
+    pub course_id: String,
+    pub code: Option<String>,
+    pub name: String,
+    pub reason: RemovalReason,
+    pub state: TombstoneState,
+    pub removed_at: Timestamp,
+    pub purge_after: Option<Timestamp>,
+    pub purged_at: Option<Timestamp>,
+    pub purge_in_days: Option<u32>,
+    pub keep_files: bool,
+    pub files_pending: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemovalReport {
+    pub removed: Vec<RemovedCourse>,
+    pub purged_now: bool,
+    pub backup_deleted: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum RestoreFailure {
+    NotListed,
+    AccessRestricted,
+    Offline,
+    Other,
+}
+
+#[uniffi::remote(Record)]
+pub struct RestoreOutcome {
+    pub restored: bool,
+    pub course_id: Option<String>,
+    pub failure: Option<RestoreFailure>,
+}
+
+#[uniffi::remote(Record)]
+pub struct PurgeReport {
+    pub purged: Vec<String>,
+    pub files_pending: Vec<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseDatesInput {
+    pub first_class: Option<IsoDate>,
+    pub last_class: Option<IsoDate>,
+    pub exams_end: Option<IsoDate>,
+    pub breaks: Vec<BreakInput>,
+    pub second_segment: Option<SegmentInput>,
+}
+
+#[uniffi::remote(Record)]
+pub struct BreakInput {
+    pub kind: BreakKind,
+    pub start: IsoDate,
+    pub end: IsoDate,
+    pub numbered: bool,
+    pub label: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SegmentInput {
+    pub first_class: IsoDate,
+    pub last_class: Option<IsoDate>,
+    pub restart_numbering: bool,
 }

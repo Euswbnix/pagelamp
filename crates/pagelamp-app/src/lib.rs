@@ -33,6 +33,11 @@ mod sync;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
+pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
+pub use course::removal::{
+    BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
+    RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, TombstoneState,
+};
 pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
@@ -1086,6 +1091,13 @@ struct AppTypes {
     snooze_kind: pagelamp_core::model::SnoozeKind,
     evidence_code: pagelamp_core::model::EvidenceCode,
     evidence_signal: pagelamp_core::model::EvidenceSignal,
+    // alpha.2 (types first; methods with schema v4)
+    removal_preview: RemovalPreview,
+    remove_options: RemoveOptions,
+    removal_report: RemovalReport,
+    restore_outcome: RestoreOutcome,
+    purge_report: PurgeReport,
+    course_dates_input: CourseDatesInput,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.
