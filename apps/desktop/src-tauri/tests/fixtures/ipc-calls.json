@@ -157,6 +157,32 @@
     }
   },
   {
+    "cmd": "keep_course_current",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "until": "2026-12-31"
+    }
+  },
+  {
+    "cmd": "keep_course_current",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "until": null
+    }
+  },
+  {
+    "cmd": "clear_keep_course_current",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101"
+    }
+  },
+  {
+    "cmd": "confirm_course_dates",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101"
+    }
+  },
+  {
     "cmd": "mcp_client_configs",
     "args": {}
   },
