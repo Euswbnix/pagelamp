@@ -366,7 +366,7 @@ describe("SourcesPage", () => {
     expect(screen.queryByRole("heading", { name: "Sync finished" })).not.toBeInTheDocument();
   });
 
-  it("leaves out the facade's English step text in Chinese, keeping the counter", async () => {
+  it("translates the step from its stage code, with the course as plain text", async () => {
     useUiStore.setState({ locale: "zh-CN" });
     await i18n.changeLanguage("zh-CN");
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
@@ -376,13 +376,27 @@ describe("SourcesPage", () => {
       release = resolve;
     });
     api.syncAll = async (req, onEvent: (event: SyncEvent) => void) => {
-      onEvent({ type: "source_started", source_id: "folder:demo-courses", label: "Course folder" });
+      const source_id = "folder:demo-courses";
+      onEvent({ type: "source_started", source_id, label: "Course folder" });
       onEvent({
         type: "progress",
-        source_id: "folder:demo-courses",
-        message: "DEMO101: indexing files",
+        source_id,
+        stage: "indexing_files",
+        course: "DEMO{{x}}101",
+        message: "DEMO{{x}}101: indexing files",
         current: 3,
         total: 12,
+      });
+      onEvent({
+        type: "source_started",
+        source_id: "ical:demo-calendar",
+        label: "Course calendar",
+      });
+      // An older facade: English text and no stage, so a Chinese UI leaves it out.
+      onEvent({
+        type: "progress",
+        source_id: "ical:demo-calendar",
+        message: "Saving 12 calendar events",
       });
       await gate;
       return realSyncAll(req, onEvent);
@@ -392,7 +406,8 @@ describe("SourcesPage", () => {
     await user.click(await screen.findByRole("button", { name: "全部同步" }));
     const row = (await screen.findByText("正在同步… · 3/12")).closest("li") as HTMLElement;
     expect(within(row).getByText("Course folder")).toBeInTheDocument();
-    expect(screen.queryByText("DEMO101: indexing files")).toBeNull();
+    expect(within(row).getByText("正在为 DEMO{{x}}101 的文件建立索引")).toBeInTheDocument();
+    expect(screen.queryByText("Saving 12 calendar events")).toBeNull();
     release();
     expect(await screen.findByRole("heading", { level: 2, name: "同步完成" })).toBeInTheDocument();
   });

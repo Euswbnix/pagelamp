@@ -1436,6 +1436,17 @@
 "sources.progress.fixOnSources" = "Fix on Sources & sync";
 "sources.progress.ok" = "Done";
 "sources.progress.running" = "Syncing…";
+"sources.progress.stage.checking_access" = "Checking access";
+"sources.progress.stage.downloading_feed" = "Downloading the calendar feed";
+"sources.progress.stage.downloading_files" = "Downloading files for %1$@";
+"sources.progress.stage.downloading_files_no_course" = "Downloading files";
+"sources.progress.stage.indexing_files" = "Indexing %1$@'s files";
+"sources.progress.stage.indexing_files_no_course" = "Indexing files";
+"sources.progress.stage.listing_courses" = "Listing courses";
+"sources.progress.stage.reading_course" = "Reading %1$@";
+"sources.progress.stage.reading_course_no_course" = "Reading a course";
+"sources.progress.stage.scanning_files" = "Scanning %1$@'s files";
+"sources.progress.stage.scanning_files_no_course" = "Scanning files";
 "sources.progress.starting" = "Starting…";
 "sources.progress.steps" = "%1$@ of %2$@";
 "sources.progress.stopped" = "Stopped";

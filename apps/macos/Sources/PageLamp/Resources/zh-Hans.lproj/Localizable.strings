@@ -1436,6 +1436,17 @@
 "sources.progress.fixOnSources" = "去“数据来源与同步”处理";
 "sources.progress.ok" = "已完成";
 "sources.progress.running" = "正在同步…";
+"sources.progress.stage.checking_access" = "正在检查访问权限";
+"sources.progress.stage.downloading_feed" = "正在下载日历订阅";
+"sources.progress.stage.downloading_files" = "正在下载 %1$@ 的文件";
+"sources.progress.stage.downloading_files_no_course" = "正在下载文件";
+"sources.progress.stage.indexing_files" = "正在为 %1$@ 的文件建立索引";
+"sources.progress.stage.indexing_files_no_course" = "正在为文件建立索引";
+"sources.progress.stage.listing_courses" = "正在列出课程";
+"sources.progress.stage.reading_course" = "正在读取 %1$@";
+"sources.progress.stage.reading_course_no_course" = "正在读取课程";
+"sources.progress.stage.scanning_files" = "正在扫描 %1$@ 的文件";
+"sources.progress.stage.scanning_files_no_course" = "正在扫描文件";
 "sources.progress.starting" = "正在准备…";
 "sources.progress.steps" = "%1$@/%2$@";
 "sources.progress.stopped" = "已中止";

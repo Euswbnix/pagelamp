@@ -166,6 +166,21 @@
     "warnings": "提示（{{n}} 条）",
     "expiredHint": "访问权限已过期。更换访问令牌或日历订阅地址后，才能继续同步这个来源。",
     "fixOnSources": "去“数据来源与同步”处理",
-    "stopped": "已中止"
+    "stopped": "已中止",
+    "stage": {
+      "checking_access": "正在检查访问权限",
+      "listing_courses": "正在列出课程",
+      "reading_course": "正在读取 {{course}}",
+      "reading_course_no_course": "正在读取课程",
+      "downloading_files": "正在下载 {{course}} 的文件",
+      "downloading_files_no_course": "正在下载文件",
+      "scanning_files": "正在扫描 {{course}} 的文件",
+      "scanning_files_no_course": "正在扫描文件",
+      "indexing_files": "正在为 {{course}} 的文件建立索引",
+      "indexing_files_no_course": "正在为文件建立索引",
+      "downloading_feed": "正在下载日历订阅",
+      "saving_events_one": "正在保存 {{count}} 个日历事件",
+      "saving_events_other": "正在保存 {{count}} 个日历事件"
+    }
   }
 }
