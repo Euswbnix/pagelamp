@@ -351,7 +351,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           onEvent({
             type: "progress",
             source_id: source.id,
-            message: step < total ? `Indexing materials (${step}/${total})` : "Updating timelines",
+            message: stepMessage(source, courses[Math.floor((step - 1) / 3)]?.course.code),
             current: step,
             total,
           });
@@ -852,4 +852,17 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     },
     logUiError: async () => {},
   };
+}
+
+/** A step text like the facade's: English, no counter (that is current/total). */
+function stepMessage(source: SourceRecord, courseCode: string | null | undefined): string {
+  const course = courseCode ?? source.label;
+  switch (source.kind) {
+    case "folder":
+      return `${course}: indexing files`;
+    case "canvas":
+      return `${course}: reading`;
+    case "ical":
+      return "Downloading the calendar feed";
+  }
 }

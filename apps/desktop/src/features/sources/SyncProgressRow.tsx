@@ -23,9 +23,12 @@ export function SyncProgressRow({
   /** Link to Sources & sync when access expired (the Sources screen has its own button). */
   showFixLink: boolean;
 }) {
-  const { t } = useTranslation("sources");
+  const { t, i18n } = useTranslation("sources");
   const { t: tc } = useTranslation();
   const { label, message, current, total, warnings, result, stopped } = progress;
+  // The facade's step text ("DEMO101: indexing files") is English with no stage code yet, so it
+  // shows only in an English UI; other languages keep the translated status and counter.
+  const detail = (i18n.resolvedLanguage ?? i18n.language).startsWith("en") ? message : null;
   const steps =
     current !== null && total !== null && total > 0
       ? t("progress.steps", { current, total })
@@ -62,11 +65,7 @@ export function SyncProgressRow({
           </span>
         </div>
 
-        {inProgress && message ? (
-          <p lang="en" className="text-xs text-muted-foreground">
-            {message}
-          </p>
-        ) : null}
+        {inProgress && detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
         {inProgress && percent !== null ? (
           // The shared Progress does not forward `value` to the progressbar role, so the
           // aria-value* attributes are passed explicitly.
