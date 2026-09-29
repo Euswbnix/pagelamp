@@ -262,6 +262,36 @@ export function useSetCourseHidden() {
   });
 }
 
+/** "I'm still taking this" (`until` null = the facade's default date). */
+export function useKeepCourseCurrent() {
+  const api = useApi();
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { courseId: string; until: IsoDate | null }) =>
+      api.keepCourseCurrent(v.courseId, v.until),
+    onSuccess: invalidate,
+  });
+}
+
+export function useClearKeepCourseCurrent() {
+  const api = useApi();
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { courseId: string }) => api.clearKeepCourseCurrent(v.courseId),
+    onSuccess: invalidate,
+  });
+}
+
+/** "These dates are right" for dates kept from version 0.1. */
+export function useConfirmCourseDates() {
+  const api = useApi();
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { courseId: string }) => api.confirmCourseDates(v.courseId),
+    onSuccess: invalidate,
+  });
+}
+
 export function useClearLastCrash() {
   const api = useApi();
   const client = useQueryClient();

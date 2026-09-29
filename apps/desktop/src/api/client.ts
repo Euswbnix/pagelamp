@@ -24,18 +24,31 @@ import type {
 import type {
   AiPolicy,
   AppStatus,
+  CalendarCandidate,
+  CalendarProposal,
+  CourseCalendarView,
+  CourseDatesInput,
   CourseOverview,
   CourseSummary,
   CrashReport,
   Deadline,
   DoctorReport,
   IsoDate,
+  LifecycleSummary,
   McpClientConfig,
+  PurgeReport,
+  RemovalPreview,
+  RemovalReport,
+  RemovedCourse,
+  RemoveOptions,
+  RestoreOutcome,
   SearchHit,
+  SnoozeKind,
   SourceRecord,
   SourceSyncResult,
   StartupTasks,
   StoredStudyPlan,
+  SyllabusOffer,
   SyncEvent,
   SyncRequest,
   SyncSummary,
@@ -140,6 +153,71 @@ export interface PageLampApi {
   setCoursePolicy(courseId: string, policy: AiPolicy, note: string | null): Promise<void>;
   setCourseTerm(courseId: string, start: IsoDate | null, end: IsoDate | null): Promise<void>;
   setCourseHidden(courseId: string, hidden: boolean): Promise<void>;
+  /**
+   * "I'm still taking this": the course counts as current until `until` (null = the facade's
+   * default: the end of the course's outer date frame, else today + 120 days).
+   */
+  keepCourseCurrent(courseId: string, until: IsoDate | null): Promise<void>;
+  /** Undo "I'm still taking this". */
+  clearKeepCourseCurrent(courseId: string): Promise<void>;
+  /** "These dates are right": the student checked dates kept from version 0.1. */
+  confirmCourseDates(courseId: string): Promise<void>;
+  /**
+   * The course dates form v2: first and last day of classes, end of exams, breaks and a second
+   * part for full-year courses. null = clear the student's dates (the calendar in force).
+   */
+  setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<void>;
+
+  // ----- course lifecycle and removal (calendar design §8) ---------------------------------
+  /** Every course's lifecycle, which ones are suggested for removal, and the banner state. */
+  lifecycleSummary(): Promise<LifecycleSummary>;
+  /** "Not now" on the "courses look finished" banner (14 days, computed by the facade). */
+  snoozeLifecycleBanner(): Promise<void>;
+  /** "Not now" (14 days) or "Keep" (never again) on some courses' removal suggestion. */
+  snoozeRemovalSuggestions(courseIds: string[], kind: SnoozeKind): Promise<void>;
+  clearRemovalSnooze(courseIds: string[]): Promise<void>;
+  /** What removing these courses would delete and keep. */
+  removalPreview(courseIds: string[]): Promise<RemovalPreview>;
+  /** Stage 1 at once (and stage 2 with `purge_now`). `busy` while a sync runs. */
+  removeCourses(courseIds: string[], options: RemoveOptions): Promise<RemovalReport>;
+  removedCourses(): Promise<RemovedCourse[]>;
+  /** Undo within 7 days, or restore by syncing again after the purge. */
+  restoreCourse(removedId: string): Promise<RestoreOutcome>;
+  /** "Delete now" (given ids) or every due purge (null). */
+  purgeRemovedCourses(
+    removedIds: string[] | null,
+    permanentIfNoTrash: boolean,
+  ): Promise<PurgeReport>;
+  /** Purged courses only: the next sync brings the course back. */
+  forgetRemovedCourse(removedId: string): Promise<void>;
+
+  // ----- course calendar proposals (calendar design §7; F3) --------------------------------
+  /** The calendar in force, pending proposals, candidates and why AI reading can't run. */
+  courseCalendar(courseId: string): Promise<CourseCalendarView>;
+  /** The student's add/remove of candidate materials. */
+  setCalendarSources(
+    courseId: string,
+    include: string[],
+    exclude: string[],
+  ): Promise<CalendarCandidate[]>;
+  /** Download chosen files only (counts as viewing them in Canvas; D46). */
+  downloadMaterialFiles(
+    courseId: string,
+    materialIds: string[],
+    onEvent: (event: SyncEvent) => void,
+  ): Promise<SourceSyncResult>;
+  /** The deterministic syllabus scan (no model). null = nothing new to propose. */
+  scanCourseCalendar(courseId: string): Promise<CalendarProposal | null>;
+  /** Accept a proposal, optionally with the student's edits and conflict choices. */
+  acceptCalendarProposal(
+    proposalId: number,
+    edits: CourseDatesInput | null,
+  ): Promise<CourseCalendarView>;
+  /** Accept several proposals that have no conflicts and aren't low quality. */
+  acceptPassingProposals(proposalIds: number[]): Promise<CourseCalendarView[]>;
+  dismissCalendarProposal(proposalId: number): Promise<void>;
+  /** The courses "Read syllabi for N courses" would read (the facade decides). */
+  syllabusReadingOffers(): Promise<SyllabusOffer[]>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 

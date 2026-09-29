@@ -323,7 +323,7 @@
     "title": "使用我的 ChatGPT 订阅（运行 OpenAI Codex）",
     "description": "PageLamp 会在这台电脑上运行 OpenAI 官方的 Codex，并用你的 ChatGPT 账户登录。PageLamp 永远看不到你的密码或登录凭据。",
     "download": {
-      "size": "Codex 需要从 OpenAI 在 GitHub 上的发布页单独下载：约 {{download}}，安装后在这台电脑上占用 {{disk}}。PageLamp 会先校验再安装。",
+      "size": "Codex 需要从 OpenAI 在 GitHub 上的发布页单独下载：约 70–80 MB，安装后在这台电脑上最多占用约 330 MB。PageLamp 会先校验再安装。",
       "button": "下载 Codex",
       "downloading": "正在下载 Codex… {{percent}}%",
       "downloadingUnknown": "正在下载 Codex…",
@@ -332,6 +332,7 @@
       "progress": "Codex 下载进度",
       "cancel": "取消下载",
       "failed": "Codex 安装失败。",
+      "busy": "另一个 PageLamp 窗口正在安装 Codex，请等它完成后再试。",
       "tryAgain": "重试",
       "untested": "Codex 可以在这台电脑（Arm 版 Windows）上运行，但 PageLamp 还没有在这种电脑上测试过。",
       "unsupported": "这台电脑无法使用 Codex。"

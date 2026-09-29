@@ -16,6 +16,8 @@ import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
+import { KeepCurrentCardButton } from "@/features/course/lifecycle/KeepCurrentCardButton";
+import { formatIsoDate } from "@/lib/format";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { deadlineTime } from "./lib/thisWeek";
@@ -25,6 +27,8 @@ interface CourseCardProps {
   summary: CourseSummary;
   /** Why this course's source last failed to sync, if it did. */
   sourceError: SourceErrorKind | null;
+  /** h4 when the card sits under a group heading (Current, Upcoming, Past). */
+  headingLevel?: "h3" | "h4";
 }
 
 /**
@@ -33,12 +37,15 @@ interface CourseCardProps {
  * card is clickable while the page still has exactly one link per course and nothing
  * interactive nested inside it.
  */
-export function CourseCard({ summary, sourceError }: CourseCardProps) {
+export function CourseCard({ summary, sourceError, headingLevel = "h3" }: CourseCardProps) {
+  const Heading = headingLevel;
   const { t } = useTranslation("courses");
   const { t: tc } = useTranslation();
-  const { course, timeline, counts, next_deadline: next } = summary;
+  const { t: tcal, i18n } = useTranslation("calendar");
+  const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
-  const weekUnknown = timeline.current_week == null && !timeline.outside_term;
+  const past = lifecycle.group === "past";
+  const weekUnknown = !past && timeline.phase === "unknown" && timeline.current_week == null;
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   return (
@@ -50,10 +57,11 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0">
+        <Heading className="min-w-0">
           <Link
             ref={linkRef}
             to={paths.course(course.id)}
+            data-course-id={course.id}
             className="outline-none after:absolute after:inset-0 after:rounded-xl"
           >
             <span className="block font-heading text-base font-semibold tracking-tight">
@@ -63,7 +71,7 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
               <span className="block text-muted-foreground">{course.name}</span>
             ) : null}
           </Link>
-        </h3>
+        </Heading>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <PolicyBadge policy={course.ai_policy} />
           {course.ai_policy === "unknown" ? (
@@ -77,9 +85,21 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
 
       <ul className="space-y-1.5">
         <Fact icon={CalendarDays}>
-          <WeekLabel timeline={timeline} />
+          {/* A past course's week doesn't matter; say what the lifecycle concluded instead. */}
+          {past ? (
+            <span className="text-muted-foreground">{tcal(`status.state.${lifecycle.state}`)}</span>
+          ) : (
+            <WeekLabel timeline={timeline} />
+          )}
           {weekUnknown ? (
-            <span className="block text-xs text-muted-foreground">{t("card.setTerm")}</span>
+            <span className="block text-xs text-muted-foreground">{tcal("card.setDates")}</span>
+          ) : null}
+          {lifecycle.kept_current_until ? (
+            <span className="block text-xs text-muted-foreground">
+              {tcal("card.keptUntil", {
+                date: formatIsoDate(lifecycle.kept_current_until, i18n.language),
+              })}
+            </span>
           ) : null}
         </Fact>
         <Fact icon={CalendarClock}>
@@ -118,7 +138,10 @@ export function CourseCard({ summary, sourceError }: CourseCardProps) {
             {tc(`sourceError.${sourceError}`)}
           </span>
         ) : null}
-        {course.enrollment_active ? null : <PastCourseBadge />}
+        <PastCourseBadge lifecycle={lifecycle} />
+        {past ? (
+          <KeepCurrentCardButton courseId={course.id} courseName={course.code ?? course.name} />
+        ) : null}
         {course.hidden ? (
           <>
             <Badge variant="outline">

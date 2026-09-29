@@ -11,7 +11,7 @@
 //!
 //!   ```text
 //!   GET /users/self
-//!   GET /courses?enrollment_state=active&include[]=term&include[]=syllabus_body&per_page=100
+//!   GET /courses?enrollment_state=active&include[]=term&include[]=syllabus_body&include[]=concluded&per_page=100
 //!   GET /courses/:id/tabs
 //!   GET /courses/:id/modules?include[]=items&include[]=content_details&per_page=100
 //!   GET /courses/:id/modules/:module_id/items?include[]=content_details&per_page=100 (fallback)

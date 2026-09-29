@@ -62,7 +62,9 @@
     "note": {
       "current_week_unknown": "We couldn't work out which week this course is in, so these are the materials from the last 14 days.",
       "outside_term": "Today is outside this course's term dates, so there's no current week.",
-      "no_materials_this_week": "There are no modules or materials for this week."
+      "no_materials_this_week": "There are no modules or materials for this week.",
+      "exam_period": "Classes are over, so there's no teaching week. These are the materials from the last 14 days.",
+      "break": "It's a break week. These are the materials of the week before it."
     }
   },
   "timeline": {
@@ -77,16 +79,9 @@
     "outsideTerm": "Today is outside this course's term dates. If the term is running, check the dates below."
   },
   "term": {
-    "title": "Wrong week? Set this course's term dates",
     "description": "{{product}} counts teaching weeks from the first day of term.",
     "breaksNote": "Reading weeks and breaks aren't taken into account yet.",
-    "start": "First day of term",
-    "end": "Last day of term (optional)",
-    "save": "Save dates",
-    "useSynced": "Use synced dates",
-    "saved": "Term dates saved",
-    "usedSynced": "Back to the synced term dates",
-    "invalid": "These dates don't work. Check that the term ends after it starts."
+    "start": "First day of term"
   },
   "deadlines": {
     "note": "These are titles and dates only. {{product}} never downloads assignment instructions to solve them.",

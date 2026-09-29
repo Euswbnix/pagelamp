@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/common/PageHeader";
 import { AiModelsSection } from "@/features/ai/AiModelsSection";
 import { UsageSection } from "@/features/ai/UsageSection";
+import { REMOVAL_UI } from "@/features/course/removal/availability";
+import { RemovedCoursesSection } from "@/features/course/removal/RemovedCoursesSection";
 import { AI_SETUP_ENABLED } from "@/lib/features";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
@@ -22,6 +24,7 @@ export function SettingsPage() {
       <div className="space-y-6">
         <AppearanceSection />
         <DataSection />
+        {REMOVAL_UI ? <RemovedCoursesSection /> : null}
         <PrivacySection />
         {AI_SETUP_ENABLED ? (
           <>

@@ -55,7 +55,7 @@ export function CourseTabs({ overview }: { overview: CourseOverview }) {
         forceMount
         hidden={tab !== "timeline"}
       >
-        <TimelineTab course={course} timeline={overview.timeline} />
+        <TimelineTab course={course} timeline={overview.timeline} lifecycle={overview.lifecycle} />
       </TabsContent>
       <TabsContent value="deadlines" className={PANEL}>
         <DeadlinesTab courseId={course.id} />
@@ -64,7 +64,7 @@ export function CourseTabs({ overview }: { overview: CourseOverview }) {
         <PolicyTab course={course} aiMaterials={overview.ai_materials} />
       </TabsContent>
       <TabsContent value="settings" className={PANEL}>
-        <SettingsTab course={course} />
+        <SettingsTab course={course} lifecycle={overview.lifecycle} />
       </TabsContent>
     </Tabs>
   );

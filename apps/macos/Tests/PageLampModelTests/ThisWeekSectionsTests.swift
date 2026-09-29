@@ -185,10 +185,7 @@ struct ThisWeekSectionsTests {
 // MARK: - Fixtures
 
 func thisWeekTimeline(week: UInt32?, outsideTerm: Bool = false) -> CourseTimeline {
-    CourseTimeline(
-        asOf: "2026-09-25", currentWeek: week, confidence: .high, evidence: [], currentModuleIds: [],
-        outsideTerm: outsideTerm
-    )
+    testTimeline(week: week, outsideTerm: outsideTerm)
 }
 
 func thisWeekSummary(
@@ -211,6 +208,7 @@ func thisWeekSummary(
         ),
         aiMaterials: materials,
         timeline: thisWeekTimeline(week: week),
+        lifecycle: testLifecycle(),
         counts: CourseCounts(modules: 0, materials: counts.total, indexedMaterials: counts.indexed, upcomingDeadlines: 0),
         nextDeadline: next,
         sourceLabel: "Course folder",

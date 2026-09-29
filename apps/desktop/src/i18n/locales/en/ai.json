@@ -323,7 +323,7 @@
     "title": "Use my ChatGPT plan (runs OpenAI Codex)",
     "description": "PageLamp runs OpenAI's official Codex on this computer, signed in with your ChatGPT account. It never sees your password or sign-in tokens.",
     "download": {
-      "size": "Codex is a separate download from OpenAI's releases on GitHub: about {{download}}, {{disk}} once installed on this computer. PageLamp checks it before installing it.",
+      "size": "Codex is a separate download from OpenAI's releases on GitHub: ≈70–80 MB, taking up to ≈330 MB once installed on this computer. PageLamp checks it before installing it.",
       "button": "Download Codex",
       "downloading": "Downloading Codex… {{percent}}%",
       "downloadingUnknown": "Downloading Codex…",
@@ -332,6 +332,7 @@
       "progress": "Codex download",
       "cancel": "Cancel download",
       "failed": "Codex couldn't be installed.",
+      "busy": "Codex is being installed in another PageLamp window. Try again when it's done.",
       "tryAgain": "Try again",
       "untested": "Codex runs on this computer (Windows on Arm), but PageLamp hasn't been tested on it.",
       "unsupported": "Codex isn't available for this computer."

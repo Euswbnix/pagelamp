@@ -145,6 +145,7 @@ pub fn pagelamp_binary() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use pagelamp_app::{App, AppError, AppErrorKind};
@@ -154,6 +155,9 @@ mod tests {
     #[test]
     fn a_failed_open_is_retried_and_success_is_kept() {
         static CALLS: AtomicUsize = AtomicUsize::new(0);
+        // A fresh directory per run: a fixed path in the shared temp dir could hold a database
+        // left by another checkout (e.g. a newer schema), which made this test fail.
+        static DIR: Mutex<Option<tempfile::TempDir>> = Mutex::new(None);
         fn flaky_open() -> Result<App, AppError> {
             match CALLS.fetch_add(1, Ordering::SeqCst) {
                 0 => Err(AppError::new(
@@ -162,8 +166,9 @@ mod tests {
                 )),
                 1 => panic!("core crashed"),
                 _ => {
-                    let dir = std::env::temp_dir().join("pagelamp-backend-retry-test");
-                    App::open_at(dir)
+                    let mut dir = DIR.lock().unwrap();
+                    let dir = dir.get_or_insert_with(|| tempfile::tempdir().expect("temp dir"));
+                    App::open_at(dir.path().to_path_buf())
                 }
             }
         }
@@ -179,6 +184,8 @@ mod tests {
             3,
             "an opened facade is kept, not reopened"
         );
+        drop(backend);
+        DIR.lock().unwrap().take();
     }
 
     #[test]

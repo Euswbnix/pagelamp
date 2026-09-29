@@ -17,6 +17,14 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
 use tauri::webview::InvokeRequest;
 
+/// Where the app's own page is served from, the only origin the ACL lets call app commands:
+/// Tauri serves it from `http://tauri.localhost` on Windows and `tauri://localhost` elsewhere.
+const APP_ORIGIN: &str = if cfg!(windows) {
+    "http://tauri.localhost"
+} else {
+    "tauri://localhost"
+};
+
 /// Commands with real side effects on the machine running the tests.
 /// (The updater ones would reach the network, install would restart the app, and the local
 /// server check connects to ports on this computer.)
@@ -59,7 +67,7 @@ fn every_ui_call_reaches_its_command() {
                 cmd: cmd.clone(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "tauri://localhost".parse().expect("url"),
+                url: APP_ORIGIN.parse().expect("url"),
                 body: InvokeBody::Json(call["args"].clone()),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),

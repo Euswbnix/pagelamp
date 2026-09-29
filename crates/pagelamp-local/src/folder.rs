@@ -13,7 +13,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use pagelamp_core::Store;
 use pagelamp_core::ingest::{self, Extractor, IndexOutcome};
 use pagelamp_core::model::{CourseUpsert, MaterialKind, MaterialUpsert, Module, TextStatus};
-use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress};
+use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress, SyncStage};
 use pagelamp_core::timeline::parse_week_hint;
 use regex::Regex;
 use walkdir::WalkDir;
@@ -127,6 +127,8 @@ impl CourseDir<'_> {
             message: format!("{label}: scanning files"),
             current: None,
             total: None,
+            stage: Some(SyncStage::ScanningFiles),
+            course: Some(label.clone()),
         });
 
         let (modules, files, walk_complete) = self.scan(|message| warn(report, message));
@@ -180,6 +182,8 @@ impl CourseDir<'_> {
                 message: format!("{label}: indexing files"),
                 current: Some(to_u32(index + 1)),
                 total: Some(to_u32(supported.len())),
+                stage: Some(SyncStage::IndexingFiles),
+                course: Some(label.clone()),
             });
             let mime = file.material.mime.as_deref();
             let outcome = ingest::index_file_using(

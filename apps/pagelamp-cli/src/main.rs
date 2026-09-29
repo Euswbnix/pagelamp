@@ -10,6 +10,7 @@
 //! (they would end up in shell history and process lists).
 
 mod ai;
+mod course;
 mod text;
 
 use std::io::{BufRead, IsTerminal, Write};
@@ -76,8 +77,17 @@ enum Command {
     },
     /// Data folder, sources, counts and last sync.
     Status,
-    /// Your courses: current week, next deadline, AI policy and access.
-    Courses,
+    /// Your courses by group (current, upcoming, past): week or phase, next deadline, AI
+    /// policy and access. With -v, why. Past courses are left out (also from --json) unless
+    /// you pass --past or --all.
+    Courses {
+        /// Only the past courses (ended, or inactive for months).
+        #[arg(long, conflicts_with = "all")]
+        past: bool,
+        /// Every course, past ones included (use this with --json for the full list).
+        #[arg(long)]
+        all: bool,
+    },
     /// Change a course's settings.
     #[command(subcommand)]
     Course(CourseCommand),
@@ -192,7 +202,24 @@ enum CourseCommand {
         #[arg(long)]
         note: Option<String>,
     },
-    /// Override the term dates (or --clear to use the synced ones).
+    /// Where a course is: week, phase, the dates used and not used, and why.
+    Timeline {
+        /// The course's code, name or id.
+        course: String,
+    },
+    /// "I'm still taking this": count the course as current (by default until its term ends).
+    Keep {
+        /// The course's code, name or id.
+        course: String,
+        /// Until this day (YYYY-MM-DD).
+        #[arg(long, value_parser = parse_date)]
+        until: Option<NaiveDate>,
+        /// Undo: the course follows its own dates again.
+        #[arg(long, conflicts_with = "until")]
+        clear: bool,
+    },
+    /// Override the term dates: first and last day of classes (or --clear to use the synced
+    /// ones).
     #[command(group = clap::ArgGroup::new("dates").required(true).multiple(true).args(["start", "end", "clear"]))]
     Term {
         /// The course's code, name or id.
@@ -557,48 +584,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Command::Courses => {
+        Command::Courses { past, all } => {
             let app = open_app()?;
-            let courses = app.list_courses()?;
-            if json {
-                return print_json(&courses);
-            }
-            if courses.is_empty() {
-                println!(
-                    "No courses yet: add a source, then run `{} sync`.",
-                    brand::CLI_NAME
-                );
-            }
-            for summary in &courses {
-                let course = &summary.course;
-                let week = match summary.timeline.current_week {
-                    Some(n) => format!("week {n} ({})", confidence(summary.timeline.confidence)),
-                    None => "week ?".to_string(),
-                };
-                let next = summary
-                    .next_deadline
-                    .as_ref()
-                    .and_then(|d| {
-                        d.event.when().map(|w| {
-                            format!(
-                                "next: {} {}",
-                                d.event.title,
-                                w.with_timezone(&chrono::Local).format("%b %-d")
-                            )
-                        })
-                    })
-                    .unwrap_or_default();
-                println!(
-                    "{:<40} {:<18} ai_policy={:<21} ai_materials={:<18} {}{}",
-                    course.display_name(),
-                    week,
-                    course.ai_policy.as_str(),
-                    ai_materials(summary.ai_materials),
-                    next,
-                    if course.hidden { "  [hidden]" } else { "" }
-                );
-            }
-            Ok(())
+            let groups = match (past, all) {
+                (true, _) => course::Groups::Past,
+                (_, true) => course::Groups::All,
+                _ => course::Groups::Active,
+            };
+            course::list(&app, groups, cli.verbose, json)
         }
         Command::Ai { command } => {
             let app = open_app()?;
@@ -607,6 +600,14 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Course(command) => {
             let app = open_app()?;
             match command {
+                CourseCommand::Timeline { course } => {
+                    return course::timeline(&app, &course, json);
+                }
+                CourseCommand::Keep {
+                    course,
+                    until,
+                    clear,
+                } => return course::keep(&app, &course, until, clear, json),
                 CourseCommand::Policy {
                     course,
                     policy,
