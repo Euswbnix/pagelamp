@@ -3606,6 +3606,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pagelamp-llm"
+version = "0.1.0"
+dependencies = [
+ "pagelamp-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "pagelamp-local"
 version = "0.1.0"
 dependencies = [

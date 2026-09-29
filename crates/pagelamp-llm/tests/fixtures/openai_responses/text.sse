@@ -1,0 +1,27 @@
+: SYNTHETIC fixture (no real API call): shaped after OpenAI's Responses streaming events,
+: https://developers.openai.com/api/reference/resources/responses/streaming-events (2026-09-29).
+
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_demo1","object":"response","status":"in_progress","model":"gpt-6-luna-2026-08-01","output":[],"usage":null}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"resp_demo1","object":"response","status":"in_progress","model":"gpt-6-luna-2026-08-01","output":[],"usage":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"id":"msg_demo1","type":"message","status":"in_progress","role":"assistant","content":[]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":3,"item_id":"msg_demo1","output_index":0,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":4,"item_id":"msg_demo1","output_index":0,"content_index":0,"delta":"Photosynthesis turns ","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":5,"item_id":"msg_demo1","output_index":0,"content_index":0,"delta":"light into sugar [c1].","logprobs":[]}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":6,"item_id":"msg_demo1","output_index":0,"content_index":0,"text":"Photosynthesis turns light into sugar [c1].","logprobs":[]}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":7,"response":{"id":"resp_demo1","object":"response","status":"completed","model":"gpt-6-luna-2026-08-01","output":[{"id":"msg_demo1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"Photosynthesis turns light into sugar [c1].","annotations":[]}]}],"usage":{"input_tokens":1200,"input_tokens_details":{"cached_tokens":1000},"output_tokens":90,"output_tokens_details":{"reasoning_tokens":64},"total_tokens":1290}}}
+

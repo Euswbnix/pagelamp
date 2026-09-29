@@ -1,0 +1,9 @@
+: SYNTHETIC fixture (no real API call): the answer hit max_output_tokens,
+: shaped after https://developers.openai.com/api/reference/resources/responses/streaming-events (2026-09-29).
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_demo3","output_index":0,"content_index":0,"delta":"Photosynthesis turns light","logprobs":[]}
+
+event: response.incomplete
+data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_demo3","object":"response","status":"incomplete","model":"gpt-6-luna-2026-08-01","incomplete_details":{"reason":"max_output_tokens"},"output":[],"usage":{"input_tokens":500,"input_tokens_details":{"cached_tokens":0},"output_tokens":16,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":516}}}
+

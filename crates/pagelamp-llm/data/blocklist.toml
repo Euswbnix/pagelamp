@@ -1,0 +1,43 @@
+# Coding-plan endpoints and keys (docs/design/v0.3-model-access.md §2.5). Their terms forbid use
+# from applications like PageLamp, so PageLamp refuses them and shows the vendor's own sentence,
+# quoted verbatim from `source` (checked 2026-09-29). PageLamp never works around a vendor's
+# client checks: it always sends an honest User-Agent.
+#
+# A rule matches when the base URL's host is in `hosts` and its path starts with one of
+# `path_prefixes` ("" = the whole host), OR when the key starts with one of `key_prefixes`.
+# `block = false` only warns (terms not checked yet); its `sentence` is then our own caution.
+#
+# Not listed yet: Volcengine / BytePlus coding plans. Their endpoints and terms could not be
+# verified (the docs render client-side); add them once a primary source is checked.
+
+[[rule]]
+vendor = "Z.ai GLM Coding Plan"
+hosts = ["api.z.ai"]
+path_prefixes = ["/api/coding/"]
+block = true
+sentence = "You shall not use the GLM Coding Plan quota for general-purpose API access … including … directly invoking model APIs from your own applications"
+source = "https://docs.z.ai/devpack/usage-policy"
+
+[[rule]]
+vendor = "Alibaba Cloud Model Studio Coding Plan"
+hosts = ["coding-intl.dashscope.aliyuncs.com"]
+path_prefixes = [""]
+key_prefixes = ["sk-sp-"]
+block = true
+sentence = "Do not use the plan's API key for automated scripts, application backends, or other non-interactive scenarios."
+source = "https://www.alibabacloud.com/help/en/model-studio/coding-plan"
+
+[[rule]]
+vendor = "Kimi Code"
+hosts = ["api.kimi.ai", "api.kimi.com"]
+path_prefixes = ["/coding"]
+block = true
+sentence = "Please maintain the tool's real identity identifier when using. Tampering with the client identifier (User-Agent) is considered a violation and may result in suspension of membership benefits."
+source = "https://www.kimi.com/code/docs/en/"
+
+[[rule]]
+vendor = "MiniMax Token Plan"
+key_prefixes = ["sk-cp-"]
+block = false
+sentence = "This looks like a MiniMax Token Plan key. PageLamp hasn't checked whether its terms allow use outside coding tools; check them before you use it here."
+source = "https://platform.minimax.io/docs/token-plan/openclaw"

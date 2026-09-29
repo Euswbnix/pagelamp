@@ -1,0 +1,12 @@
+: SYNTHETIC fixture (no real API call): a refusal streamed as refusal deltas,
+: shaped after https://developers.openai.com/api/reference/resources/responses/streaming-events (2026-09-29).
+
+event: response.refusal.delta
+data: {"type":"response.refusal.delta","sequence_number":1,"item_id":"msg_demo4","output_index":0,"content_index":0,"delta":"I can't write answers "}
+
+event: response.refusal.delta
+data: {"type":"response.refusal.delta","sequence_number":2,"item_id":"msg_demo4","output_index":0,"content_index":0,"delta":"to graded work."}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":3,"response":{"id":"resp_demo4","object":"response","status":"completed","model":"gpt-6-luna-2026-08-01","output":[],"usage":{"input_tokens":300,"input_tokens_details":{"cached_tokens":0},"output_tokens":12,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":312}}}
+

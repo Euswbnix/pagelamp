@@ -5,6 +5,7 @@ members = [
     "crates/pagelamp-extract",
     "crates/pagelamp-canvas",
     "crates/pagelamp-local",
+    "crates/pagelamp-llm",
     "crates/pagelamp-mcp",
     "crates/pagelamp-app",
     "crates/pagelamp-ffi",
@@ -24,6 +25,7 @@ pagelamp-core = { path = "crates/pagelamp-core" }
 pagelamp-extract = { path = "crates/pagelamp-extract" }
 pagelamp-canvas = { path = "crates/pagelamp-canvas" }
 pagelamp-local = { path = "crates/pagelamp-local" }
+pagelamp-llm = { path = "crates/pagelamp-llm" }
 pagelamp-mcp = { path = "crates/pagelamp-mcp" }
 pagelamp-app = { path = "crates/pagelamp-app" }
 

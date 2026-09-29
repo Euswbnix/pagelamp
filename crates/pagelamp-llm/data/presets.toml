@@ -1,0 +1,108 @@
+# Provider presets, in display order (docs/design/v0.3-model-access.md §2.5, §2.6; research
+# docs/design/v0.3-research/byok.md §3). Data, not code: re-check each vendor fact when it
+# changes. `data_policy` is shown at setup and in the disclosure (codes the UIs translate).
+#
+# No model ids here: the live model list and the probe decide what can be picked (§3.2), and
+# per-release suggestions live in their own data file. `quirks.models` only corrects how a
+# request is built for models whose id matches a pattern.
+
+[[preset]]
+id = "openai"
+display_name = "OpenAI"
+wire = "openai_responses"
+base_url = "https://api.openai.com/v1"
+auth = "bearer"
+key_hints = ["sk-"]
+# API data is not used for training unless the org opts in; abuse-monitoring logs are kept 30
+# days (every request also sends `store: false`). 13+, parental permission under 18.
+data_policy = { training = "no_training", retention = { stored_days = 30 }, min_age = 13, guardian_permission = true, location = "US", terms_url = "https://developers.openai.com/api/docs/guides/your-data" }
+
+[[preset]]
+id = "anthropic"
+display_name = "Anthropic"
+wire = "anthropic_messages"
+base_url = "https://api.anthropic.com"
+auth = "x_api_key"
+key_hints = ["sk-ant-"]
+# "never used for model training without your express permission"; retention per the terms.
+data_policy = { training = "no_training", retention = "provider_terms", location = "US", terms_url = "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention" }
+
+[[preset.quirks.models]]
+# Adaptive thinking can't be turned off; "lowest" is effort `low` with a reasoning allowance.
+pattern = "claude-opus-5-5*"
+thinking_always_on = true
+
+[[preset.quirks.models]]
+# Models without the effort parameter.
+pattern = "claude-haiku-4*"
+no_effort = true
+
+[[preset.quirks.models]]
+pattern = "claude-3*"
+no_effort = true
+
+[[preset]]
+id = "gemini"
+display_name = "Google Gemini"
+wire = "openai_chat"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+auth = "bearer"
+key_hints = ["AIza"]
+# Free tier: Google may use inputs, with human review. 18+ (owner decision D15: offered with an
+# explicit acknowledgement).
+data_policy = { training = "may_train_free_tier", retention = "provider_terms", min_age = 18, terms_url = "https://ai.google.dev/gemini-api/terms" }
+
+[preset.quirks]
+effort_param = "reasoning_effort"
+
+[[preset.quirks.models]]
+# Thinking can't be disabled on the 3.x Flash models.
+pattern = "gemini-3*flash*"
+thinking_always_on = true
+
+[[preset]]
+id = "openrouter"
+display_name = "OpenRouter"
+wire = "openai_chat"
+base_url = "https://openrouter.ai/api/v1"
+auth = "bearer"
+key_hints = ["sk-or-"]
+# Prompts are routed only to providers that don't collect data (D19); OpenRouter keeps metadata.
+data_policy = { training = "no_training", retention = "provider_terms", terms_url = "https://openrouter.ai/docs/guides/privacy/data-collection" }
+
+[preset.quirks]
+effort_param = "reasoning_object"
+extra_headers = [["X-OpenRouter-Title", "{product}"]]
+
+[preset.quirks.extra_body.provider]
+data_collection = "deny"
+require_parameters = true
+
+[[preset]]
+id = "ollama"
+display_name = "Ollama"
+wire = "ollama_native"
+base_url = "http://127.0.0.1:11434"
+base_url_editable = true
+auth = "none"
+local = true
+data_policy = { training = "no_training", retention = "on_device" }
+
+[[preset]]
+id = "lm_studio"
+display_name = "LM Studio"
+wire = "openai_chat"
+base_url = "http://127.0.0.1:1234/v1"
+base_url_editable = true
+auth = "none"
+local = true
+data_policy = { training = "no_training", retention = "on_device" }
+
+[[preset]]
+id = "custom"
+display_name = "Other (OpenAI-compatible)"
+wire = "openai_chat"
+base_url_editable = true
+auth = "bearer"
+# Unknown: the student is told to check the provider's terms.
+data_policy = { training = "unknown", retention = "provider_terms" }

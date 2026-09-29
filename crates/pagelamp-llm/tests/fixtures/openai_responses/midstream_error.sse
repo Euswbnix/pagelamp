@@ -1,0 +1,9 @@
+: SYNTHETIC fixture (no real API call): text, then an error event mid-stream,
+: shaped after https://developers.openai.com/api/reference/resources/responses/streaming-events (2026-09-29).
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":1,"item_id":"msg_demo5","output_index":0,"content_index":0,"delta":"Photosynthesis","logprobs":[]}
+
+event: error
+data: {"type":"error","sequence_number":2,"code":"server_error","message":"The server had an error while processing your request.","param":null}
+
