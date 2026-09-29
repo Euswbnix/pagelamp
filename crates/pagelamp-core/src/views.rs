@@ -791,11 +791,12 @@ pub fn sync_status(store: &Store, at: AsOf) -> Result<SyncStatus> {
 const READ_BATCH: u32 = 64;
 
 /// Everything one course view needs, loaded once.
-struct CourseData {
-    modules: Vec<Module>,
-    materials: Vec<Material>,
+/// One course's rows, loaded once for its views (and the calendar's candidates).
+pub(crate) struct CourseData {
+    pub(crate) modules: Vec<Module>,
+    pub(crate) materials: Vec<Material>,
     /// Every event of the course (deadlines, class events), any date.
-    events: Vec<Event>,
+    pub(crate) events: Vec<Event>,
     term_data: CourseTermData,
     dates_confirmed: bool,
     module_names: HashMap<String, String>,
@@ -813,7 +814,7 @@ fn confirmed_courses(store: &Store) -> BTreeSet<String> {
 }
 
 impl CourseData {
-    fn load(store: &Store, course: &Course) -> Result<Self> {
+    pub(crate) fn load(store: &Store, course: &Course) -> Result<Self> {
         let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
         Self::load_with(store, course, term_data, &confirmed_courses(store))
     }
@@ -865,14 +866,14 @@ impl CourseData {
     }
 
     /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`).
-    fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
+    pub(crate) fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
         let input = self.input(course, at);
         let resolved = resolve_term(&input);
         let timeline = timeline::infer_timeline(&input, &resolved);
         (resolved, timeline)
     }
 
-    fn chunks_of(&self, material_id: &str) -> u32 {
+    pub(crate) fn chunks_of(&self, material_id: &str) -> u32 {
         self.chunk_counts.get(material_id).copied().unwrap_or(0)
     }
 

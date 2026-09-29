@@ -35,16 +35,25 @@ use pagelamp_app::diagnostics::{
     McpClientPresence, ProcessKind, UnreadableFiles,
 };
 use pagelamp_app::{
-    Activity, ActivityItem, ActivityKind, AppStatus, BackupInfo, BreakInput, CourseDatesInput,
+    Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, BackupInfo, BreakInput,
+    CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput,
     CourseLifecycleEntry, InstallKind, LifecycleSummary, LostAfterPurge, McpClient,
-    McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, RemovalPreview, RemovalPreviewItem,
-    RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome,
-    SegmentInput, SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary,
-    TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
-    UpdatePrefs, WhatsNew, WhatsNewTopic,
+    McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, ReadCalendarOptions, RemovalPreview,
+    RemovalPreviewItem, RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure,
+    RestoreOutcome, SegmentInput, SourceSyncResult, StartupTasks, SyllabusOffer, SyncEvent,
+    SyncRequest, SyncSummary, TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome,
+    UpdateCheckRecord, UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind};
 use pagelamp_core::ai_gate::{ContextCourse, ContextSummary, LeftOutMaterial, LeftOutReason};
+use pagelamp_core::calendar::assemble::{
+    AlternativeDate, CalendarChange, CalendarConflict, ChangeCode, ConflictCode, DateKind,
+    ProposedDate,
+};
+use pagelamp_core::calendar::candidates::{CalendarCandidate, CandidateLeftOut, CandidateReason};
+use pagelamp_core::calendar::proposal::{AcceptedCalendar, CalendarProposal};
+use pagelamp_core::calendar::validate::{DateEvidence, DropCount, DropReason};
+use pagelamp_core::calendar::{CalendarWeek, CourseCalendar};
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarBreak, CalendarOrigin, CalendarStatus,
     Confidence, Course, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline, DateSpan,
@@ -1583,4 +1592,254 @@ pub struct SegmentInput {
     pub first_class: IsoDate,
     pub last_class: Option<IsoDate>,
     pub restart_numbering: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Course calendar proposals (v0.3 F3; calendar design §4, §7)
+// ---------------------------------------------------------------------------------------------
+
+/// The kind of a facade error, where a record carries one (`CalendarRunOutcome.error`); errors
+/// themselves arrive as `PageLampError`.
+#[uniffi::remote(Enum)]
+pub enum AppErrorKind {
+    Auth,
+    Network,
+    Invalid,
+    NotFound,
+    Ambiguous,
+    Busy,
+    SchemaTooNew,
+    SchemaTooOld,
+    Blocked,
+    Model,
+    Cancelled,
+    Internal,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseCalendar {
+    pub segments: Vec<TeachingSegment>,
+    pub breaks: Vec<CalendarBreak>,
+    pub exam_period: Option<DateSpan>,
+    pub final_exam_on: Option<IsoDate>,
+    pub weeks: Vec<CalendarWeek>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarWeek {
+    pub number: u32,
+    pub starts_on: IsoDate,
+    pub topic: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum DateKind {
+    FirstClass,
+    LastClass,
+    BreakSpan,
+    ExamPeriod,
+    FinalExam,
+    WeekStart,
+}
+
+#[uniffi::remote(Record)]
+pub struct DateEvidence {
+    pub material_id: String,
+    pub title: String,
+    pub locator: Option<String>,
+    pub quote: Option<String>,
+    pub url: Option<String>,
+    pub derived: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct AlternativeDate {
+    pub date: IsoDate,
+    pub end: Option<IsoDate>,
+    pub label: String,
+    pub evidence: Vec<DateEvidence>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ProposedDate {
+    pub kind: DateKind,
+    pub segment: u32,
+    pub date: IsoDate,
+    pub end: Option<IsoDate>,
+    pub label: String,
+    pub evidence: Vec<DateEvidence>,
+    pub alternatives: Vec<AlternativeDate>,
+    pub week: Option<u32>,
+    pub break_kind: Option<BreakKind>,
+    pub numbered: Option<bool>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ConflictCode {
+    SyllabusFromAnotherYear,
+    Inconsistent,
+    DisagreesWithNotes,
+    DisagreesWithLmsDates,
+    DisagreesWithClassEvent,
+    DiffersFromInstitutionCalendar,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarConflict {
+    pub code: ConflictCode,
+    pub kind: DateKind,
+    pub segment: u32,
+    pub options: Vec<AlternativeDate>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum DropReason {
+    UnknownSource,
+    UnsupportedQuote,
+    DateNotInQuote,
+    AmbiguousYear,
+    OutsideFrame,
+    Inconsistent,
+    TableDropped,
+}
+
+#[uniffi::remote(Record)]
+pub struct DropCount {
+    pub reason: DropReason,
+    pub count: u32,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ChangeCode {
+    NewCalendar,
+    FirstClassMoved,
+    LastClassMoved,
+    BreakAdded,
+    BreakRemoved,
+    ExamsEndMoved,
+    WeekTodayChanges,
+    PhaseChanges,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarChange {
+    pub code: ChangeCode,
+    pub params: Vec<EvidenceParam>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarProposal {
+    pub id: i64,
+    pub course_id: String,
+    pub origin: CalendarOrigin,
+    pub calendar: CourseCalendar,
+    pub dates: Vec<ProposedDate>,
+    pub conflicts: Vec<CalendarConflict>,
+    pub dropped: Vec<DropCount>,
+    pub low_quality: bool,
+    pub passing: bool,
+    pub ai_label: Option<AiLabel>,
+    pub sharing_reminder: bool,
+    pub resulting_week_today: Option<u32>,
+    pub resulting_phase: CoursePhase,
+    pub changes: Vec<CalendarChange>,
+    pub created_at: Timestamp,
+}
+
+#[uniffi::remote(Record)]
+pub struct AcceptedCalendar {
+    pub id: i64,
+    pub origin: CalendarOrigin,
+    pub calendar: CourseCalendar,
+    pub dates: Vec<ProposedDate>,
+    pub ai_label: Option<AiLabel>,
+    pub accepted_at: Timestamp,
+    pub stale: bool,
+    pub stale_since: Option<IsoDate>,
+    pub changed_materials: Vec<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CandidateReason {
+    Syllabus,
+    LinkedFromSyllabus,
+    TitleOutline,
+    TitleSchedule,
+    TitleInfo,
+    FrontPage,
+    StartModule,
+    Announcement,
+    NamedInCourseToml,
+    StudentAdded,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CandidateLeftOut {
+    NoText,
+    Scanned,
+    OverBudget,
+    ExcludedByStudent,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarCandidate {
+    pub material_id: String,
+    pub title: String,
+    pub kind: MaterialKind,
+    pub reason: CandidateReason,
+    pub included: bool,
+    pub student_choice: Option<bool>,
+    pub has_text: bool,
+    pub downloadable: bool,
+    pub left_out: Option<CandidateLeftOut>,
+    pub url: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseCalendarView {
+    pub course_id: String,
+    pub accepted: Option<AcceptedCalendar>,
+    pub proposals: Vec<CalendarProposal>,
+    pub status: CalendarStatus,
+    pub candidates: Vec<CalendarCandidate>,
+    pub blocked: Option<BlockReason>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SyllabusOffer {
+    pub course_id: String,
+    pub reason_code: String,
+    pub candidates: u32,
+    pub has_text: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct ReadCalendarOptions {
+    #[uniffi(default)]
+    pub override_budget: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarRunOutcome {
+    pub course_id: String,
+    pub proposal_id: Option<i64>,
+    pub passing: bool,
+    pub blocked: Option<BlockReason>,
+    pub error: Option<AppErrorKind>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CalendarBatchEvent {
+    CourseStarted {
+        course_id: String,
+        index: u32,
+        total: u32,
+    },
+    Gen {
+        course_id: String,
+        event: GenEvent,
+    },
+    CourseFinished {
+        outcome: CalendarRunOutcome,
+    },
 }

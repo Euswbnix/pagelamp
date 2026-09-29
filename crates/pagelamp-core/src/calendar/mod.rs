@@ -6,7 +6,9 @@
 //! `legacy_calendar`, which the schema-v4 migration calls for PageLamp 0.1 term overrides.
 
 pub mod assemble;
+pub mod candidates;
 pub mod extraction;
+pub mod proposal;
 pub mod scan;
 pub mod text;
 pub mod validate;

@@ -160,16 +160,17 @@ impl ChangeCode {
     }
 }
 
+/// One line of "what accepting would change": a code and its params (like `EvidenceItem`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CalendarChange {
-    pub code: String,
+    pub code: ChangeCode,
     pub params: Vec<EvidenceParam>,
 }
 
 impl CalendarChange {
     fn new(code: ChangeCode) -> Self {
         CalendarChange {
-            code: code.as_str().to_string(),
+            code,
             params: Vec::new(),
         }
     }

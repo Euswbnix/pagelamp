@@ -209,6 +209,186 @@ export type SourceKind = "canvas" | "folder" | "ical";
 export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
+ * Progress of `read_course_calendars`: one course after another, each with its `GenEvent`s.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarBatchEvent".
+ */
+export type CalendarBatchEvent =
+  | {
+      course_id: string;
+      /**
+       * 0-based.
+       */
+      index: number;
+      total: number;
+      type: "course_started";
+    }
+  | {
+      course_id: string;
+      event: GenEvent;
+      type: "gen";
+    }
+  | {
+      outcome: CalendarRunOutcome;
+      type: "course_finished";
+    };
+/**
+ * What a generation reports while it runs.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenEvent".
+ */
+export type GenEvent =
+  | {
+      backend_label: string;
+      generation_id: string;
+      model: string;
+      on_device: boolean;
+      type: "started";
+    }
+  | {
+      stage: GenStage;
+      type: "stage";
+    }
+  | {
+      text: string;
+      type: "text_delta";
+    }
+  | {
+      code: GenNoticeCode;
+      type: "notice";
+    }
+  | {
+      type: "usage";
+      usage: TokenUsage;
+    }
+  | {
+      ok: boolean;
+      type: "finished";
+    };
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenStage".
+ */
+export type GenStage =
+  "building_context" | "waiting_for_model" | "validating" | "repairing" | "scheduling";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "GenNoticeCode".
+ */
+export type GenNoticeCode =
+  | (
+      | "context_trimmed"
+      | "thinking_always_on"
+      | "json_fallback"
+      | "courses_structure_only"
+      | "materials_left_out"
+      | "api_key_billing"
+    )
+  | "material_sharing_reminder";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "MaterialKind".
+ */
+export type MaterialKind = ("announcement" | "syllabus") | "file" | "page" | "external_link";
+/**
+ * Why a candidate is not read.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CandidateLeftOut".
+ */
+export type CandidateLeftOut = "no_text" | "scanned" | "over_budget" | "excluded_by_student";
+/**
+ * Why a material is a candidate.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CandidateReason".
+ */
+export type CandidateReason =
+  | "announcement"
+  | "syllabus"
+  | "linked_from_syllabus"
+  | "title_outline"
+  | "title_schedule"
+  | "title_info"
+  | "front_page"
+  | "start_module"
+  | "named_in_course_toml"
+  | "student_added";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BreakKind".
+ */
+export type BreakKind = "reading_week" | "holiday" | "winter_break" | "other";
+/**
+ * What accepting would change (UIs translate the code; params follow the evidence-param
+ * conventions, plus `from_phase` / `to_phase` holding `CoursePhase` values).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ChangeCode".
+ */
+export type ChangeCode =
+  | "new_calendar"
+  | "first_class_moved"
+  | "last_class_moved"
+  | "break_added"
+  | "break_removed"
+  | "exams_end_moved"
+  | "week_today_changes"
+  | "phase_changes";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ConflictCode".
+ */
+export type ConflictCode =
+  | (
+      | "disagrees_with_lms_dates"
+      | "disagrees_with_class_event"
+      | "differs_from_institution_calendar"
+    )
+  | "syllabus_from_another_year"
+  | "inconsistent"
+  | "disagrees_with_notes";
+/**
+ * What a proposed date is.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DateKind".
+ */
+export type DateKind =
+  ("first_class" | "last_class" | "exam_period" | "final_exam") | "break_span" | "week_start";
+/**
+ * Why a claim or row was dropped.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DropReason".
+ */
+export type DropReason =
+  | "unknown_source"
+  | "unsupported_quote"
+  | "date_not_in_quote"
+  | "ambiguous_year"
+  | "outside_frame"
+  | "inconsistent"
+  | "table_dropped";
+/**
+ * Where a student-confirmed calendar came from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarOrigin".
+ */
+export type CalendarOrigin = ("scan" | "ai" | "ai_app" | "restored") | "user" | "legacy";
+/**
+ * Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
+ * (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoursePhase".
+ */
+export type CoursePhase =
+  "ended" | "not_started" | "teaching" | "break" | "exam_period" | "unknown";
+/**
  * How a usage row's cost is known (the UIs label it: "≈ $x", "Free", "price unknown", "your
  * plan").
  *
@@ -217,10 +397,13 @@ export type SourceErrorKind =
  */
 export type CostBasis = "priced" | "free_on_device" | "unpriced" | "plan";
 /**
+ * Whether the course has a calendar the student accepted (from alpha.2; always `None` in
+ * alpha.1).
+ *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "BreakKind".
+ * via the `definition` "CalendarStatus".
  */
-export type BreakKind = "reading_week" | "holiday" | "winter_break" | "other";
+export type CalendarStatus = ("proposed" | "accepted" | "accepted_stale") | "none";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "Confidence".
@@ -246,11 +429,6 @@ export type LifecycleState =
  * via the `definition` "DownloadBlock".
  */
 export type DownloadBlock = "locked" | "too_large";
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "MaterialKind".
- */
-export type MaterialKind = ("announcement" | "syllabus") | "file" | "page" | "external_link";
 /**
  * Why a material's text can't be read (`MaterialView::text_problem`). It is worked out when
  * the view is built, from `text_status`, the chunk count, `text_error_kind` and the
@@ -281,23 +459,6 @@ export type TextProblem =
  */
 export type TextStatus = "pending" | "ok" | "unsupported" | "not_downloaded" | "error";
 /**
- * Whether the course has a calendar the student accepted (from alpha.2; always `None` in
- * alpha.1).
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "CalendarStatus".
- */
-export type CalendarStatus = ("proposed" | "accepted" | "accepted_stale") | "none";
-/**
- * Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
- * (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "CoursePhase".
- */
-export type CoursePhase =
-  "ended" | "not_started" | "teaching" | "break" | "exam_period" | "unknown";
-/**
  * Which dates set week 1 (design §6.4; the first available one wins).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -311,13 +472,6 @@ export type TermAnchorSource =
   | "institution_calendar"
   | "published_week_labels"
   | "none";
-/**
- * Where a student-confirmed calendar came from.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "CalendarOrigin".
- */
-export type CalendarOrigin = ("scan" | "ai" | "ai_app" | "restored") | "user" | "legacy";
 /**
  * Why dates were not used (design §6.3).
  *
@@ -465,60 +619,6 @@ export type EvidenceCode =
  * via the `definition` "EvidenceSignal".
  */
 export type EvidenceSignal = ("module_unlock" | "recent_materials" | "latest_material") | "dates";
-/**
- * What a generation reports while it runs.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "GenEvent".
- */
-export type GenEvent =
-  | {
-      backend_label: string;
-      generation_id: string;
-      model: string;
-      on_device: boolean;
-      type: "started";
-    }
-  | {
-      stage: GenStage;
-      type: "stage";
-    }
-  | {
-      text: string;
-      type: "text_delta";
-    }
-  | {
-      code: GenNoticeCode;
-      type: "notice";
-    }
-  | {
-      type: "usage";
-      usage: TokenUsage;
-    }
-  | {
-      ok: boolean;
-      type: "finished";
-    };
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "GenStage".
- */
-export type GenStage =
-  "building_context" | "waiting_for_model" | "validating" | "repairing" | "scheduling";
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "GenNoticeCode".
- */
-export type GenNoticeCode =
-  | (
-      | "context_trimmed"
-      | "thinking_always_on"
-      | "json_fallback"
-      | "courses_structure_only"
-      | "materials_left_out"
-      | "api_key_billing"
-    )
-  | "material_sharing_reminder";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "LeftOutReason".
@@ -737,9 +837,14 @@ export interface PageLampAppTypes {
   backend_state: BackendState;
   block_reason: BlockReason;
   budget_status: BudgetStatus;
+  calendar_batch_event: CalendarBatchEvent;
+  calendar_candidate: CalendarCandidate;
+  calendar_proposal: CalendarProposal;
+  calendar_run_outcome: CalendarRunOutcome;
   cost_basis: CostBasis;
   cost_estimate: CostEstimate;
   cost_kind: CostKind;
+  course_calendar_view: CourseCalendarView;
   course_dates_input: CourseDatesInput;
   course_overview: CourseOverview;
   course_summary: CourseSummary;
@@ -774,6 +879,7 @@ export interface PageLampAppTypes {
   provider_preset: ProviderPreset;
   provider_wire: ProviderWire;
   purge_report: PurgeReport;
+  read_calendar_options: ReadCalendarOptions;
   recipient: Recipient;
   removal_preview: RemovalPreview;
   removal_report: RemovalReport;
@@ -790,6 +896,7 @@ export interface PageLampAppTypes {
   startup_tasks: StartupTasks;
   stored_study_plan: StoredStudyPlan;
   structured_output_tier: StructuredOutputTier;
+  syllabus_offer: SyllabusOffer;
   sync_event: SyncEvent;
   sync_request: SyncRequest;
   sync_summary: SyncSummary;
@@ -1067,6 +1174,316 @@ export interface SourceRecord {
   last_synced_at?: string | null;
 }
 /**
+ * Token counts of a run.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TokenUsage".
+ */
+export interface TokenUsage {
+  cached_input_tokens: number;
+  /**
+   * All input tokens, cached ones included.
+   */
+  input_tokens: number;
+  /**
+   * All output tokens, reasoning included.
+   */
+  output_tokens: number;
+  /**
+   * Of `output_tokens`, the ones spent thinking, if the provider says.
+   */
+  reasoning_tokens?: number | null;
+}
+/**
+ * How one course of "Read syllabi for N courses" ended.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarRunOutcome".
+ */
+export interface CalendarRunOutcome {
+  /**
+   * The gate stopped this course (each course is gated on its own).
+   */
+  blocked?: BlockReason | null;
+  course_id: string;
+  /**
+   * The run failed, or was stopped (`cancelled`).
+   */
+  error?: AppErrorKind | null;
+  /**
+   * The proposal has no conflicts and isn't low quality (`accept_passing_proposals`).
+   */
+  passing: boolean;
+  /**
+   * The proposal the run made; `None` when it was blocked, failed, stopped or found no dates.
+   */
+  proposal_id?: number | null;
+}
+/**
+ * A material a syllabus reading would use, and whether it does.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarCandidate".
+ */
+export interface CalendarCandidate {
+  /**
+   * A file not downloaded yet that can be ("Download (counts as viewing in Canvas)").
+   */
+  downloadable: boolean;
+  has_text: boolean;
+  /**
+   * Read by the scan and the AI (after the student's own choice, if any).
+   */
+  included: boolean;
+  kind: MaterialKind;
+  left_out?: CandidateLeftOut | null;
+  material_id: string;
+  reason: CandidateReason;
+  /**
+   * The student's add (true) or remove (false), if they chose.
+   */
+  student_choice?: boolean | null;
+  title: string;
+  url?: string | null;
+}
+/**
+ * A calendar proposed from the course's materials (scan, AI reading or the student's AI app).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarProposal".
+ */
+export interface CalendarProposal {
+  /**
+   * Set for origins `ai` and `ai_app`.
+   */
+  ai_label?: AiLabel | null;
+  calendar: CourseCalendar;
+  /**
+   * What accepting would change compared with the calendar in force.
+   */
+  changes: CalendarChange[];
+  /**
+   * Choices between two for the student (V5, V7, V8).
+   */
+  conflicts: CalendarConflict[];
+  course_id: string;
+  created_at: string;
+  dates: ProposedDate[];
+  /**
+   * What the checks dropped, by reason.
+   */
+  dropped: DropCount[];
+  /**
+   * The `course_calendars` row; accept or dismiss by it.
+   */
+  id: number;
+  /**
+   * Many claims dropped, the week table dropped, or the stated term from another year.
+   */
+  low_quality: boolean;
+  origin: CalendarOrigin;
+  /**
+   * No conflicts and not low quality: "accept all that pass" may take it.
+   */
+  passing: boolean;
+  resulting_phase: CoursePhase;
+  /**
+   * Today's week once accepted.
+   */
+  resulting_week_today?: number | null;
+  /**
+   * Show the one-time question (b) reminder with this proposal (D37 option 2, D49).
+   */
+  sharing_reminder: boolean;
+}
+/**
+ * "AI-generated · <backend> · <model> · <date>" for dates an AI read (from alpha.3).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiLabel".
+ */
+export interface AiLabel {
+  backend_label: string;
+  created_at: string;
+  model: string;
+}
+/**
+ * An accepted or proposed course calendar (built by core, stored as `calendar_json`).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseCalendar".
+ */
+export interface CourseCalendar {
+  breaks: CalendarBreak[];
+  exam_period?: DateSpan | null;
+  /**
+   * A fixed label only, never requirements (rule 4).
+   */
+  final_exam_on?: string | null;
+  /**
+   * One for a one-term course, two for a full-year course.
+   */
+  segments: TeachingSegment[];
+  /**
+   * Optional per-week rows from a schedule table.
+   */
+  weeks: CalendarWeek[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarBreak".
+ */
+export interface CalendarBreak {
+  kind: BreakKind;
+  /**
+   * Short label from the course material (material text, rule 8: never in structure
+   * outputs such as MCP or `evidence`). At most 80 characters.
+   */
+  label: string;
+  /**
+   * True when the break counts in the week numbering.
+   */
+  numbered: boolean;
+  span: DateSpan;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DateSpan".
+ */
+export interface DateSpan {
+  end: string;
+  start: string;
+}
+/**
+ * One stretch of teaching: one for a one-term course, two for a full-year course.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TeachingSegment".
+ */
+export interface TeachingSegment {
+  first_class: string;
+  /**
+   * The number of the segment's first week (0 is allowed: "Week 0").
+   */
+  first_week_number: number;
+  /**
+   * The last day of classes, when known.
+   */
+  last_class?: string | null;
+}
+/**
+ * One row of a schedule table.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarWeek".
+ */
+export interface CalendarWeek {
+  number: number;
+  starts_on: string;
+  /**
+   * Plain text from the course material (rule 8: material text), at most 120 characters.
+   */
+  topic?: string | null;
+}
+/**
+ * One line of "what accepting would change": a code and its params (like `EvidenceItem`).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarChange".
+ */
+export interface CalendarChange {
+  code: ChangeCode;
+  params: EvidenceParam[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EvidenceParam".
+ */
+export interface EvidenceParam {
+  key: string;
+  value: string;
+}
+/**
+ * "A choice between two": the options the student picks from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarConflict".
+ */
+export interface CalendarConflict {
+  code: ConflictCode;
+  kind: DateKind;
+  options: AlternativeDate[];
+  segment: number;
+}
+/**
+ * Another reading of the same field (V9), or an option in a conflict. Flat: no nesting.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AlternativeDate".
+ */
+export interface AlternativeDate {
+  date: string;
+  end?: string | null;
+  evidence: DateEvidence[];
+  /**
+   * Material text (rule 8); empty for dates from PageLamp's own evidence.
+   */
+  label: string;
+}
+/**
+ * Where a date's words are (design §4 `DateEvidence`). The quote is material text: shown to
+ * the student only, never in structure outputs (§7.11).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DateEvidence".
+ */
+export interface DateEvidence {
+  /**
+   * The date follows from other rows of a validated table, not from this row's words.
+   */
+  derived: boolean;
+  locator?: string | null;
+  material_id: string;
+  quote?: string | null;
+  title: string;
+  url?: string | null;
+}
+/**
+ * One date of a proposal, with its quotes and the other readings.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ProposedDate".
+ */
+export interface ProposedDate {
+  alternatives: AlternativeDate[];
+  /**
+   * For `break_span`.
+   */
+  break_kind?: BreakKind | null;
+  date: string;
+  end?: string | null;
+  evidence: DateEvidence[];
+  kind: DateKind;
+  label: string;
+  numbered?: boolean | null;
+  /**
+   * 0, or 1 for the second half of a full-year course.
+   */
+  segment: number;
+  /**
+   * For `week_start`.
+   */
+  week?: number | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DropCount".
+ */
+export interface DropCount {
+  count: number;
+  reason: DropReason;
+}
+/**
  * "≈ $x" before Generate: an upper bound.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1087,6 +1504,61 @@ export interface CostEstimate {
    * answered "not allowed", …).
    */
   would_block?: BlockReason | null;
+}
+/**
+ * Everything the Timeline tab shows about a course's calendar.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseCalendarView".
+ */
+export interface CourseCalendarView {
+  /**
+   * The calendar in force, if the student accepted or typed one.
+   */
+  accepted?: AcceptedCalendar | null;
+  /**
+   * Why AI reading can't run for this course now.
+   */
+  blocked?: BlockReason | null;
+  /**
+   * The materials a reading would use, and why (read first, then by score).
+   */
+  candidates: CalendarCandidate[];
+  course_id: string;
+  /**
+   * Pending proposals, at most one per origin.
+   */
+  proposals: CalendarProposal[];
+  status: CalendarStatus;
+}
+/**
+ * The calendar in force for a course, with where its dates came from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AcceptedCalendar".
+ */
+export interface AcceptedCalendar {
+  accepted_at: string;
+  ai_label?: AiLabel | null;
+  calendar: CourseCalendar;
+  /**
+   * Ids of the quoted materials that changed.
+   */
+  changed_materials: string[];
+  /**
+   * The dates with their quotes (empty for the student's own dates).
+   */
+  dates: ProposedDate[];
+  id: number;
+  origin: CalendarOrigin;
+  /**
+   * A quoted material changed and a quote is no longer in it (§7.8). Still in force.
+   */
+  stale: boolean;
+  /**
+   * When the first such change was seen.
+   */
+  stale_since?: string | null;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1272,14 +1744,6 @@ export interface EvidenceItem {
   params: EvidenceParam[];
 }
 /**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "EvidenceParam".
- */
-export interface EvidenceParam {
-  key: string;
-  value: string;
-}
-/**
  * A material as listed in views (no text; use `read_material` for text).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1414,42 +1878,6 @@ export interface TermResolution {
   week_one_monday?: string | null;
 }
 /**
- * "AI-generated · <backend> · <model> · <date>" for dates an AI read (from alpha.3).
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "AiLabel".
- */
-export interface AiLabel {
-  backend_label: string;
-  created_at: string;
-  model: string;
-}
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "CalendarBreak".
- */
-export interface CalendarBreak {
-  kind: BreakKind;
-  /**
-   * Short label from the course material (material text, rule 8: never in structure
-   * outputs such as MCP or `evidence`). At most 80 characters.
-   */
-  label: string;
-  /**
-   * True when the break counts in the week numbering.
-   */
-  numbered: boolean;
-  span: DateSpan;
-}
-/**
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "DateSpan".
- */
-export interface DateSpan {
-  end: string;
-  start: string;
-}
-/**
  * Dates a source offered that were not used, and why.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -1464,23 +1892,6 @@ export interface RejectedDates {
   reason: RejectReason;
   source: TermAnchorSource;
   start?: string | null;
-}
-/**
- * One stretch of teaching: one for a one-term course, two for a full-year course.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "TeachingSegment".
- */
-export interface TeachingSegment {
-  first_class: string;
-  /**
-   * The number of the segment's first week (0 is allowed: "Week 0").
-   */
-  first_week_number: number;
-  /**
-   * The last day of classes, when known.
-   */
-  last_class?: string | null;
 }
 /**
  * A deadline/event enriched with its course's code and name (all `Event` fields are
@@ -1710,27 +2121,6 @@ export interface DoctorSource {
 export interface UnreadableFiles {
   count: number;
   kind: TextErrorKind;
-}
-/**
- * Token counts of a run.
- *
- * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "TokenUsage".
- */
-export interface TokenUsage {
-  cached_input_tokens: number;
-  /**
-   * All input tokens, cached ones included.
-   */
-  input_tokens: number;
-  /**
-   * All output tokens, reasoning included.
-   */
-  output_tokens: number;
-  /**
-   * Of `output_tokens`, the ones spent thinking, if the provider says.
-   */
-  reasoning_tokens?: number | null;
 }
 /**
  * Provenance of every generated result (the "AI-generated · backend · model · date" label).
@@ -2000,6 +2390,18 @@ export interface PurgeReport {
   purged: string[];
 }
 /**
+ * Options of an AI reading run.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ReadCalendarOptions".
+ */
+export interface ReadCalendarOptions {
+  /**
+   * The student chose to go over the monthly budget for this run.
+   */
+  override_budget: boolean;
+}
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "RemovalPreview".
  */
@@ -2262,6 +2664,27 @@ export interface StudyPlanItem {
   material_ids?: string[];
   minutes?: number | null;
   title: string;
+}
+/**
+ * A course "Read syllabi for N courses" would read (the facade decides which).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SyllabusOffer".
+ */
+export interface SyllabusOffer {
+  /**
+   * How many candidate materials it has.
+   */
+  candidates: number;
+  course_id: string;
+  /**
+   * Some candidate has text to read.
+   */
+  has_text: boolean;
+  /**
+   * Why it is offered: `no_calendar`.
+   */
+  reason_code: string;
 }
 /**
  * Options for a sync run. All fields have defaults, so `{}` is a valid request.
