@@ -918,6 +918,12 @@ export interface Course {
   external_id: string;
   hidden: boolean;
   id: string;
+  /**
+   * The student's answer to "May this course's materials be shared with an AI service?"
+   * (question (b)). Only `not_allowed` keeps material text from cloud models PageLamp runs
+   * itself; the student's own AI app over MCP is unaffected.
+   */
+  material_sharing: "unanswered" | "allowed" | "not_sure" | "not_allowed";
   name: string;
   source_id: string;
   term_end?: string | null;
