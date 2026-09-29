@@ -11,6 +11,7 @@ pagelamp-core.workspace = true
 pagelamp-extract.workspace = true
 pagelamp-canvas.workspace = true
 pagelamp-local.workspace = true
+pagelamp-llm.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 regex.workspace = true

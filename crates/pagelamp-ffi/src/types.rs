@@ -22,6 +22,14 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::SystemTime;
 
+use pagelamp_app::ai::{
+    AiBackendStatus, AiStatus, BackendKind, BackendProblem, BackendRef, BackendState, BudgetStatus,
+    CostEstimate, CostKind, DisclosureFacts, EstimateRequest, FeatureRouting, GenEvent,
+    GenNoticeCode, GenStage, GenerationMeta, LocalServer, LocalServerKind, ModelChoice, ModelInfo,
+    ModelProviderRecord, ProbeReport, ProviderPreset, ProviderWire, Recipient, RemoveAiDataReport,
+    RetentionFact, SentData, StructuredOutputTier, TokenUsage, TrainingFact, UsageRow,
+    UsageSummary,
+};
 use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, ExtractWorkerCheck, ExtractWorkerStatus,
     McpClientPresence, ProcessKind, UnreadableFiles,
@@ -32,6 +40,8 @@ use pagelamp_app::{
     TemporaryLocation, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
     WhatsNewTopic,
 };
+use pagelamp_core::ai::{AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind};
+use pagelamp_core::ai_gate::{ContextCourse, ContextSummary, LeftOutMaterial, LeftOutReason};
 use pagelamp_core::model::{
     AiMaterialsState, AiPolicy, Confidence, Course, CourseTimeline, DownloadBlock, Event,
     EventKind, MaterialKind, Module, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
@@ -703,4 +713,417 @@ pub struct ActivityItem {
 pub struct Activity {
     pub items: Vec<ActivityItem>,
     pub other_process_syncing: bool,
+}
+
+// ----- AI (v0.3 M1; methods are wired by the leader) ------------------------------------------
+
+#[uniffi::remote(Enum)]
+pub enum AiFeature {
+    StudyPlan,
+    WeeklyExplanation,
+    WeeklyNote,
+    CourseCalendar,
+}
+
+/// Why a model call was refused before anything was sent.
+#[uniffi::remote(Enum)]
+pub enum BlockReason {
+    CoursePolicyProhibited,
+    CourseAiTurnedOff,
+    CourseHidden,
+    NoReadableMaterials,
+    MaterialSharingNotAllowed,
+    CodingPlanKey,
+    DisclosureNotAcknowledged,
+    NoModelChosen,
+    BudgetReached,
+    PriceUnknownNotAcknowledged,
+    WeeklyRunCapReached,
+    BackendDisabledInThisBuild,
+}
+
+/// Why a model call failed.
+#[uniffi::remote(Enum)]
+pub enum ModelErrorKind {
+    NotSignedIn,
+    AuthRejected,
+    BillingOrQuota,
+    UsageLimit,
+    RateLimited,
+    Overloaded,
+    InvalidRequest,
+    ModelNotFound,
+    ContextTooLong,
+    Refused,
+    ContentFiltered,
+    Network,
+    Timeout,
+    BadOutput,
+    RuntimeMissing,
+    RuntimeVerifyFailed,
+    RuntimeOutdated,
+    Unsupported,
+}
+
+#[uniffi::remote(Enum)]
+pub enum Effort {
+    Lowest,
+    Low,
+    Medium,
+    High,
+}
+
+#[uniffi::remote(Enum)]
+pub enum MaterialSharing {
+    Unanswered,
+    Allowed,
+    NotSure,
+    NotAllowed,
+}
+
+#[uniffi::remote(Enum)]
+pub enum BackendRef {
+    Codex,
+    ClaudeCode,
+    Provider { provider_id: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct ModelChoice {
+    pub backend: BackendRef,
+    pub model: String,
+    pub effort: Effort,
+}
+
+#[uniffi::remote(Record)]
+pub struct FeatureRouting {
+    pub feature: AiFeature,
+    pub choice: Option<ModelChoice>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum BackendKind {
+    ApiKey,
+    Local,
+    Codex,
+    ClaudeCode,
+}
+
+#[uniffi::remote(Enum)]
+pub enum BackendState {
+    Ready,
+    NeedsSetup,
+    NeedsDisclosure,
+    Unavailable,
+}
+
+#[uniffi::remote(Enum)]
+pub enum BackendProblem {
+    KeyMissing,
+    ServerNotRunning,
+    ModelMissing,
+    DisclosureChanged,
+}
+
+#[uniffi::remote(Record)]
+pub struct AiBackendStatus {
+    pub backend: BackendRef,
+    pub label: String,
+    pub kind: BackendKind,
+    pub state: BackendState,
+    pub problems: Vec<BackendProblem>,
+    pub disclosure: DisclosureFacts,
+    pub disclosure_acknowledged: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct AiStatus {
+    pub backends: Vec<AiBackendStatus>,
+    pub providers: Vec<ModelProviderRecord>,
+    pub features: Vec<FeatureRouting>,
+    pub budget: BudgetStatus,
+}
+
+#[uniffi::remote(Record)]
+pub struct BudgetStatus {
+    pub monthly_micro_usd: Option<u64>,
+    pub spent_micro_usd: u64,
+    pub warn_at_percent: u8,
+}
+
+#[uniffi::remote(Record)]
+pub struct DisclosureFacts {
+    pub version: u32,
+    pub sends: Vec<SentData>,
+    pub recipient: Recipient,
+    pub training: TrainingFact,
+    pub retention: RetentionFact,
+    pub admin_visibility: bool,
+    pub min_age: Option<u8>,
+    pub guardian_permission: bool,
+    pub cost: CostKind,
+    pub on_device: bool,
+    pub location: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum SentData {
+    Structure,
+    MaterialText,
+}
+
+#[uniffi::remote(Record)]
+pub struct Recipient {
+    pub name: String,
+    pub terms_url: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TrainingFact {
+    NoTraining,
+    MayTrain { how_to_turn_off_url: Option<String> },
+    MayTrainFreeTier,
+    Unknown,
+}
+
+#[uniffi::remote(Enum)]
+pub enum RetentionFact {
+    NotStored,
+    StoredDays { days: u32 },
+    ProviderTerms,
+    OnDevice,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CostKind {
+    ApiBilling,
+    PlanCredits,
+    FreeOnDevice,
+    CloudViaLocal,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ProviderWire {
+    OpenaiResponses,
+    OpenaiChat,
+    AnthropicMessages,
+    OllamaNative,
+}
+
+#[uniffi::remote(Record)]
+pub struct ProviderPreset {
+    pub id: String,
+    pub label: String,
+    pub wire: ProviderWire,
+    pub default_base_url: Option<String>,
+    pub needs_key: bool,
+    pub base_url_editable: bool,
+    pub local: bool,
+    pub data_policy: DisclosureFacts,
+}
+
+#[uniffi::remote(Record)]
+pub struct ModelProviderRecord {
+    pub provider_id: String,
+    pub preset: String,
+    pub label: String,
+    pub wire: ProviderWire,
+    pub base_url: String,
+    pub key_last4: Option<String>,
+    pub on_device: bool,
+    pub created_at: Timestamp,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LocalServerKind {
+    Ollama,
+    LmStudio,
+}
+
+#[uniffi::remote(Record)]
+pub struct LocalServer {
+    pub kind: LocalServerKind,
+    pub base_url: String,
+    pub running: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct ModelInfo {
+    pub id: String,
+    pub label: Option<String>,
+    pub on_device: bool,
+    pub runs_in_cloud: bool,
+    pub price_known: bool,
+    pub context_window: Option<u32>,
+    pub reasoning_always_on: bool,
+    pub suggested_for: Vec<AiFeature>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum StructuredOutputTier {
+    NativeSchema,
+    JsonObject,
+    PromptOnly,
+}
+
+#[uniffi::remote(Record)]
+pub struct ProbeReport {
+    pub ok: bool,
+    pub latency_ms: u32,
+    pub structured_output_tier: Option<StructuredOutputTier>,
+    pub thinking_always_on: bool,
+    pub error: Option<ModelErrorKind>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum EstimateRequest {
+    StudyPlan {
+        horizon_days: Option<u32>,
+        courses: Vec<String>,
+    },
+    WeeklyExplanation {
+        course: String,
+        week: Option<u32>,
+    },
+    WeeklyNote,
+    CourseCalendar {
+        courses: Vec<String>,
+    },
+}
+
+#[uniffi::remote(Record)]
+pub struct CostEstimate {
+    pub micro_usd_upper: Option<u64>,
+    pub input_tokens: u64,
+    pub max_output_tokens: u64,
+    pub reasoning_allowance: u64,
+    pub repair_possible: bool,
+    pub price_known: bool,
+    pub would_block: Option<BlockReason>,
+}
+
+#[uniffi::remote(Record)]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub cached_input_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_tokens: Option<u64>,
+}
+
+#[uniffi::remote(Record)]
+pub struct UsageRow {
+    pub backend_label: String,
+    pub model: String,
+    pub feature: AiFeature,
+    pub runs: u32,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub reasoning_tokens: u64,
+    pub micro_usd: u64,
+    pub estimated: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct UsageSummary {
+    pub month: IsoDate,
+    pub rows: Vec<UsageRow>,
+    pub total_micro_usd: u64,
+    pub budget: BudgetStatus,
+}
+
+#[uniffi::remote(Record)]
+pub struct RemoveAiDataReport {
+    pub providers_removed: u32,
+    pub generations_removed: u32,
+    pub usage_rows_removed: u32,
+    pub backup_removed: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum GenStage {
+    BuildingContext,
+    WaitingForModel,
+    Validating,
+    Repairing,
+    Scheduling,
+}
+
+#[uniffi::remote(Enum)]
+pub enum GenNoticeCode {
+    ContextTrimmed,
+    ThinkingAlwaysOn,
+    JsonFallback,
+    CoursesStructureOnly,
+    MaterialsLeftOut,
+    ApiKeyBilling,
+    MaterialSharingReminder,
+}
+
+#[uniffi::remote(Enum)]
+pub enum GenEvent {
+    Started {
+        generation_id: String,
+        backend_label: String,
+        model: String,
+        on_device: bool,
+    },
+    Stage {
+        stage: GenStage,
+    },
+    TextDelta {
+        text: String,
+    },
+    Notice {
+        code: GenNoticeCode,
+    },
+    Usage {
+        usage: TokenUsage,
+    },
+    Finished {
+        ok: bool,
+    },
+}
+
+#[uniffi::remote(Record)]
+pub struct GenerationMeta {
+    pub generation_id: String,
+    pub feature: AiFeature,
+    pub backend_label: String,
+    pub model: String,
+    pub created_at: Timestamp,
+    pub usage: TokenUsage,
+    pub est_cost_micro_usd: Option<u64>,
+    pub estimated: bool,
+    pub context: ContextSummary,
+    pub prompt_version: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct ContextSummary {
+    pub courses: Vec<ContextCourse>,
+    pub materials_included: u32,
+    pub materials_trimmed: u32,
+    pub left_out: Vec<LeftOutMaterial>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ContextCourse {
+    pub course_id: String,
+    pub state: AiMaterialsState,
+    pub text_included: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct LeftOutMaterial {
+    pub material_id: String,
+    pub title: String,
+    pub reason: LeftOutReason,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LeftOutReason {
+    LooksLikeAssessment,
+    ExternalLink,
+    NoText,
+    OverBudget,
 }

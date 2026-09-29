@@ -175,6 +175,75 @@ impl Effort {
     }
 }
 
+/// A feature that runs a model.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum AiFeature {
+    StudyPlan,
+    WeeklyExplanation,
+    WeeklyNote,
+    CourseCalendar,
+}
+
+impl AiFeature {
+    pub const ALL: [AiFeature; 4] = [
+        AiFeature::StudyPlan,
+        AiFeature::WeeklyExplanation,
+        AiFeature::WeeklyNote,
+        AiFeature::CourseCalendar,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AiFeature::StudyPlan => "study_plan",
+            AiFeature::WeeklyExplanation => "weekly_explanation",
+            AiFeature::WeeklyNote => "weekly_note",
+            AiFeature::CourseCalendar => "course_calendar",
+        }
+    }
+
+    /// Whether the feature sends course material text (else structure only).
+    pub fn sends_material_text(self) -> bool {
+        matches!(
+            self,
+            AiFeature::WeeklyExplanation | AiFeature::CourseCalendar
+        )
+    }
+}
+
+/// The student's answer to "May this course's materials be shared with an AI service?"
+/// (design §4.1, question (b); `courses.material_sharing`, schema v4). Only `not_allowed` stops
+/// material text from going to a cloud backend (owner decision D37, option 2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MaterialSharing {
+    #[default]
+    Unanswered,
+    Allowed,
+    NotSure,
+    NotAllowed,
+}
+
+impl MaterialSharing {
+    pub const ALL: [MaterialSharing; 4] = [
+        MaterialSharing::Unanswered,
+        MaterialSharing::Allowed,
+        MaterialSharing::NotSure,
+        MaterialSharing::NotAllowed,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MaterialSharing::Unanswered => "unanswered",
+            MaterialSharing::Allowed => "allowed",
+            MaterialSharing::NotSure => "not_sure",
+            MaterialSharing::NotAllowed => "not_allowed",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +258,12 @@ mod tests {
         }
         for effort in [Effort::Lowest, Effort::Low, Effort::Medium, Effort::High] {
             assert_eq!(serde_json::to_value(effort).unwrap(), effort.as_str());
+        }
+        for feature in AiFeature::ALL {
+            assert_eq!(serde_json::to_value(feature).unwrap(), feature.as_str());
+        }
+        for answer in MaterialSharing::ALL {
+            assert_eq!(serde_json::to_value(answer).unwrap(), answer.as_str());
         }
     }
 }

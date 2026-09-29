@@ -10,6 +10,7 @@
 //! and localise by case, never by message.
 
 use pagelamp_app::{AppError, AppErrorKind};
+use pagelamp_core::ai::{BlockReason, ModelErrorKind};
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum PageLampError {
@@ -34,6 +35,22 @@ pub enum PageLampError {
     /// The database schema is newer than this build understands, or older and not migrated.
     #[error("{message}")]
     Schema { message: String },
+    /// A model call was refused before anything was sent.
+    #[error("{message}")]
+    Blocked {
+        message: String,
+        reason: Option<BlockReason>,
+    },
+    /// A model call failed.
+    #[error("{message}")]
+    Model {
+        message: String,
+        kind: Option<ModelErrorKind>,
+        retry_after_secs: Option<u32>,
+    },
+    /// The call was cancelled (a sync, a generation, a download).
+    #[error("{message}")]
+    Cancelled { message: String },
     /// Anything else (database, keychain, I/O).
     #[error("{message}")]
     Internal { message: String },
@@ -44,7 +61,13 @@ pub enum PageLampError {
 
 impl From<AppError> for PageLampError {
     fn from(err: AppError) -> Self {
-        let AppError { kind, message } = err;
+        let AppError {
+            kind,
+            message,
+            blocked,
+            model_error,
+            retry_after_secs,
+        } = err;
         // Exhaustive on purpose: a new `AppErrorKind` must be mapped here.
         match kind {
             AppErrorKind::Auth => Self::Auth { message },
@@ -55,6 +78,16 @@ impl From<AppError> for PageLampError {
             AppErrorKind::Busy => Self::Busy { message },
             // One Swift case for both for now; the shell splits them later.
             AppErrorKind::SchemaTooNew | AppErrorKind::SchemaTooOld => Self::Schema { message },
+            AppErrorKind::Blocked => Self::Blocked {
+                message,
+                reason: blocked,
+            },
+            AppErrorKind::Model => Self::Model {
+                message,
+                kind: model_error,
+                retry_after_secs,
+            },
+            AppErrorKind::Cancelled => Self::Cancelled { message },
             AppErrorKind::Internal => Self::Internal { message },
         }
     }
@@ -106,6 +139,9 @@ mod tests {
             (AppErrorKind::Busy, "busy"),
             (AppErrorKind::SchemaTooNew, "schema_too_new"),
             (AppErrorKind::SchemaTooOld, "schema_too_old"),
+            (AppErrorKind::Blocked, "blocked"),
+            (AppErrorKind::Model, "model"),
+            (AppErrorKind::Cancelled, "cancelled"),
             (AppErrorKind::Internal, "internal"),
         ];
         for (kind, message) in cases {
@@ -132,6 +168,18 @@ mod tests {
                 AppErrorKind::SchemaTooNew | AppErrorKind::SchemaTooOld => PageLampError::Schema {
                     message: message.into(),
                 },
+                AppErrorKind::Blocked => PageLampError::Blocked {
+                    message: message.into(),
+                    reason: None,
+                },
+                AppErrorKind::Model => PageLampError::Model {
+                    message: message.into(),
+                    kind: None,
+                    retry_after_secs: None,
+                },
+                AppErrorKind::Cancelled => PageLampError::Cancelled {
+                    message: message.into(),
+                },
                 AppErrorKind::Internal => PageLampError::Internal {
                     message: message.into(),
                 },
@@ -139,6 +187,29 @@ mod tests {
             assert_eq!(mapped, expected);
             assert_eq!(mapped.to_string(), message, "Display is the message");
         }
+    }
+
+    #[test]
+    fn model_errors_keep_their_reason_kind_and_wait() {
+        let blocked = AppError::blocked(BlockReason::MaterialSharingNotAllowed, "not allowed");
+        assert_eq!(
+            PageLampError::from(blocked),
+            PageLampError::Blocked {
+                message: "not allowed".into(),
+                reason: Some(BlockReason::MaterialSharingNotAllowed),
+            }
+        );
+        let mut error = pagelamp_llm::ModelError::new(ModelErrorKind::RateLimited, "slow down");
+        error.retry_after = Some(std::time::Duration::from_secs(7));
+        let limited = AppError::from(pagelamp_llm::LlmError::Model(error));
+        assert_eq!(
+            PageLampError::from(limited),
+            PageLampError::Model {
+                message: "slow down".into(),
+                kind: Some(ModelErrorKind::RateLimited),
+                retry_after_secs: Some(7),
+            }
+        );
     }
 
     #[test]

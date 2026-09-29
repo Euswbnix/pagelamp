@@ -25,6 +25,7 @@
 //! `{ "kind": "...", "message": "..." }` and its message never contains a secret.
 
 mod activity;
+pub mod ai;
 pub mod diagnostics;
 mod lock;
 mod mcp_config;
@@ -83,6 +84,12 @@ pub enum AppErrorKind {
     /// The database was written by an older PageLamp and not updated yet: open the app once
     /// (or run any `pagelamp` command), which updates it.
     SchemaTooOld,
+    /// A model call was refused before anything was sent; see `blocked`.
+    Blocked,
+    /// A model call failed; see `model_error` (and `retry_after_secs`).
+    Model,
+    /// The caller cancelled (a sync, a generation, a download).
+    Cancelled,
     /// Anything else (database, keychain, I/O, bugs).
     Internal,
 }
@@ -93,6 +100,15 @@ pub struct AppError {
     pub kind: AppErrorKind,
     /// User-presentable; never contains a secret.
     pub message: String,
+    /// Why a model call was refused (kind `blocked`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<pagelamp_core::ai::BlockReason>,
+    /// Why a model call failed (kind `model`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_error: Option<pagelamp_core::ai::ModelErrorKind>,
+    /// How long the provider asked to wait before trying again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_after_secs: Option<u32>,
 }
 
 impl AppError {
@@ -100,6 +116,39 @@ impl AppError {
         AppError {
             kind,
             message: message.into(),
+            blocked: None,
+            model_error: None,
+            retry_after_secs: None,
+        }
+    }
+
+    /// A model call refused before anything was sent.
+    pub fn blocked(reason: pagelamp_core::ai::BlockReason, message: impl Into<String>) -> Self {
+        AppError {
+            blocked: Some(reason),
+            ..AppError::new(AppErrorKind::Blocked, message)
+        }
+    }
+
+    pub fn cancelled() -> Self {
+        AppError::new(AppErrorKind::Cancelled, "Cancelled.")
+    }
+}
+
+impl From<pagelamp_llm::LlmError> for AppError {
+    fn from(err: pagelamp_llm::LlmError) -> Self {
+        match err {
+            pagelamp_llm::LlmError::Cancelled => AppError::cancelled(),
+            pagelamp_llm::LlmError::Blocked { reason, message } => {
+                AppError::blocked(reason, message)
+            }
+            pagelamp_llm::LlmError::Model(error) => AppError {
+                model_error: Some(error.kind),
+                retry_after_secs: error
+                    .retry_after
+                    .map(|wait| u32::try_from(wait.as_secs()).unwrap_or(u32::MAX)),
+                ..AppError::new(AppErrorKind::Model, error.message)
+            },
         }
     }
 }
@@ -1112,6 +1161,45 @@ struct AppTypes {
     activity: Activity,
     activity_item: ActivityItem,
     activity_kind: ActivityKind,
+    // AI (v0.3 M1)
+    ai_feature: pagelamp_core::ai::AiFeature,
+    block_reason: pagelamp_core::ai::BlockReason,
+    model_error_kind: pagelamp_core::ai::ModelErrorKind,
+    effort: pagelamp_core::ai::Effort,
+    material_sharing: pagelamp_core::ai::MaterialSharing,
+    ai_status: ai::AiStatus,
+    ai_backend_status: ai::AiBackendStatus,
+    backend_ref: ai::BackendRef,
+    backend_kind: ai::BackendKind,
+    backend_state: ai::BackendState,
+    backend_problem: ai::BackendProblem,
+    model_choice: ai::ModelChoice,
+    feature_routing: ai::FeatureRouting,
+    budget_status: ai::BudgetStatus,
+    disclosure_facts: ai::DisclosureFacts,
+    sent_data: ai::SentData,
+    recipient: ai::Recipient,
+    training_fact: ai::TrainingFact,
+    retention_fact: ai::RetentionFact,
+    cost_kind: ai::CostKind,
+    provider_wire: ai::ProviderWire,
+    provider_preset: ai::ProviderPreset,
+    model_provider_record: ai::ModelProviderRecord,
+    local_server: ai::LocalServer,
+    local_server_kind: ai::LocalServerKind,
+    model_info: ai::ModelInfo,
+    structured_output_tier: ai::StructuredOutputTier,
+    probe_report: ai::ProbeReport,
+    estimate_request: ai::EstimateRequest,
+    cost_estimate: ai::CostEstimate,
+    token_usage: ai::TokenUsage,
+    usage_row: ai::UsageRow,
+    usage_summary: ai::UsageSummary,
+    remove_ai_data_report: ai::RemoveAiDataReport,
+    gen_stage: ai::GenStage,
+    gen_notice_code: ai::GenNoticeCode,
+    gen_event: ai::GenEvent,
+    generation_meta: ai::GenerationMeta,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.
