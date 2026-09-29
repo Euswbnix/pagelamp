@@ -33,9 +33,9 @@ public actor MockService: PageLampService {
 
     public nonisolated let scenario: MockScenario
     private let timing: Timing
-    private let now: @Sendable () -> Date
-    private let calendar: Calendar
-    private var db: MockDb
+    let now: @Sendable () -> Date
+    let calendar: Calendar
+    var db: MockDb
     private var syncing = false
     /// When the running sync started (`activity()`).
     private var syncStartedAt: Date?
@@ -83,7 +83,7 @@ public actor MockService: PageLampService {
 
     // MARK: - Helpers
 
-    private func respond(_ name: String) async {
+    func respond(_ name: String) async {
         calls[name, default: 0] += 1
         await pause(timing.latency)
     }
@@ -93,7 +93,7 @@ public actor MockService: PageLampService {
         try? await Task.sleep(for: duration)
     }
 
-    private func courseIndex(_ reference: String) throws(PageLampFailure) -> Int {
+    func courseIndex(_ reference: String) throws(PageLampFailure) -> Int {
         if let index = db.courses.firstIndex(where: { $0.course.id == reference || $0.course.code == reference }) {
             return index
         }
@@ -133,7 +133,7 @@ public actor MockService: PageLampService {
     }
 
     /// "YYYY-MM-DD" of the day `days` after today, in the mock's calendar.
-    private func isoDay(daysFromToday days: Int) -> String {
+    func isoDay(daysFromToday days: Int) -> String {
         let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: now())) ?? now()
         return IsoDate.string(from: day, calendar: calendar)
     }
@@ -151,7 +151,7 @@ public actor MockService: PageLampService {
         return weeks.sorted()
     }
 
-    private func summary(_ course: MockCourse) -> CourseSummary {
+    func summary(_ course: MockCourse) -> CourseSummary {
         let upcoming = deadlines(in: [course], daysAhead: 21, daysBack: 0).filter { $0.event.kind != .classEvent }
         let aiMaterials = Self.aiMaterials(course.course)
         // Like the facade: "readable by your AI app" is 0 unless the AI may read materials.

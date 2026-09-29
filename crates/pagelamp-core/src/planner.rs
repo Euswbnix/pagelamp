@@ -336,11 +336,12 @@ const STUDY_VERBS: [&str; 6] = ["review", "reviewing", "read", "reread", "study"
 /// solutions ("Review the quiz 3 solutions") are study (design §5.1; M3 DoD 1). The plan never
 /// contains such a task, whatever the model proposed.
 pub fn produces_graded_work(task: &PlanTask) -> bool {
-    let text = format!(
-        "{} {}",
-        task.title,
-        task.description.as_deref().unwrap_or("")
-    );
+    text_produces_graded_work(&task.title, task.description.as_deref())
+}
+
+/// `produces_graded_work` for any title and description (a weekly note's focus items too).
+pub fn text_produces_graded_work(title: &str, description: Option<&str>) -> bool {
+    let text = format!("{title} {}", description.unwrap_or(""));
     let words: Vec<String> = text
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())

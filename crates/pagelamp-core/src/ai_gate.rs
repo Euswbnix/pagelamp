@@ -165,6 +165,11 @@ impl GatedContext {
         }
     }
 
+    /// Whether it holds no course data at all (nothing to write about).
+    pub fn is_empty(&self) -> bool {
+        self.blocks.is_empty()
+    }
+
     pub fn summary(&self) -> &ContextSummary {
         &self.summary
     }

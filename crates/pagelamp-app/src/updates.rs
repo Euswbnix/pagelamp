@@ -158,6 +158,11 @@ pub struct StartupTasks {
     /// `STARTUP_LIST_MAX`, empty while the banner's "Not now" covers them.
     pub removal_suggestions: Vec<String>,
     pub removal_suggestions_total: u32,
+    /// Prepare the weekly note now (`write_weekly_note` with `automatic`): the student opted
+    /// in, the note's model is an API key or a model on this computer (never the ChatGPT or
+    /// Claude plan, plan D27), it is Monday in the reminder zone, no automatic note was tried
+    /// yet that Monday (one try, whatever its outcome) and no note was written that day.
+    pub prepare_weekly_note: bool,
 }
 
 /// The most items of each list in `StartupTasks` (the totals say how many there are).
@@ -267,6 +272,10 @@ impl App {
                 Vec::new()
             }
         };
+        let prepare_weekly_note = self.weekly_note_due(now).unwrap_or_else(|err| {
+            tracing::warn!(target: "pagelamp::ai", "weekly note check failed: {:?}", err.kind);
+            false
+        });
         let calendar_offers_total = u32::try_from(calendar_offers.len()).unwrap_or(u32::MAX);
         let removal_suggestions_total =
             u32::try_from(removal_suggestions.len()).unwrap_or(u32::MAX);
@@ -283,6 +292,7 @@ impl App {
             calendar_offers_total,
             removal_suggestions,
             removal_suggestions_total,
+            prepare_weekly_note,
         })
     }
 

@@ -151,16 +151,26 @@ impl Store {
         )
     }
 
-    /// Delete the runs of `course_id` (explanations, calendar readings, notes) or, with `None`,
-    /// every run (study plan drafts included); how many. A calendar that came from a run keeps
-    /// its dates and its own label (`generation_id` becomes NULL); an accepted plan keeps its
-    /// label.
+    /// Delete the runs of `course_id` (explanations, calendar readings, and the weekly notes
+    /// that covered it) or, with `None`, every run (study plan drafts included); how many. A
+    /// calendar that came from a run keeps its dates and its own label (`generation_id`
+    /// becomes NULL); an accepted plan keeps its label.
     pub fn delete_generations(&self, course_id: Option<&str>) -> Result<u32> {
         self.atomic(|| {
-            let removed = self.conn.execute(
+            let mut removed = self.conn.execute(
                 "DELETE FROM generations WHERE ?1 IS NULL OR course_id = ?1",
                 [course_id],
             )?;
+            if let Some(course_id) = course_id {
+                // A note covers several courses (`course_id` NULL): its summary lists them.
+                for note in self.course_free_generations(AiFeature::WeeklyNote, None)? {
+                    if summary_lists_course(note.summary_json.as_deref(), course_id) {
+                        removed += self
+                            .conn
+                            .execute("DELETE FROM generations WHERE id = ?1", [&note.id])?;
+                    }
+                }
+            }
             self.conn.execute(
                 "UPDATE study_plans SET generation_id = NULL
                  WHERE generation_id IS NOT NULL
@@ -190,6 +200,24 @@ impl Store {
         )
     }
 
+    /// A feature's runs that belong to no single course (weekly notes), with `status` or
+    /// (`None`) any, newest first.
+    pub fn course_free_generations(
+        &self,
+        feature: AiFeature,
+        status: Option<GenerationStatus>,
+    ) -> Result<Vec<GenerationRecord>> {
+        self.query_list(
+            &format!(
+                "SELECT {GENERATION_COLUMNS} FROM generations
+                 WHERE feature = ?1 AND course_id IS NULL AND (?2 IS NULL OR status = ?2)
+                 ORDER BY created_at DESC, rowid DESC"
+            ),
+            params![feature.as_str(), status.map(GenerationStatus::as_str)],
+            generation_from_row,
+        )
+    }
+
     /// A feature's runs with `status` for a course, of one week or (`None`) all, newest first.
     pub fn generations_of(
         &self,
@@ -208,6 +236,25 @@ impl Store {
             params![feature.as_str(), course_id, week, status.as_str()],
             generation_from_row,
         )
+    }
+}
+
+/// Whether a run's summary (`{"context": {"courses": [{"course_id": …}]}}`) lists
+/// `course_id`. A summary that can't be read lists every course, so it is deleted too.
+fn summary_lists_course(summary_json: Option<&str>, course_id: &str) -> bool {
+    let Some(summary) =
+        summary_json.and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+    else {
+        return true;
+    };
+    match summary
+        .pointer("/context/courses")
+        .and_then(|courses| courses.as_array())
+    {
+        Some(courses) => courses
+            .iter()
+            .any(|course| course.get("course_id").and_then(|id| id.as_str()) == Some(course_id)),
+        None => true,
     }
 }
 
@@ -301,5 +348,47 @@ mod tests {
         elsewhere.course_id = None;
         store.record_generation(&elsewhere).unwrap();
         assert!(store.generation("gen-3").unwrap().is_some());
+    }
+
+    /// A note covers several courses: deleting one course's runs deletes the notes whose
+    /// summary lists it (and any whose summary can't be read), not the others.
+    #[test]
+    fn a_course_s_runs_include_the_notes_that_covered_it() {
+        let store = demo_store();
+        let note = |id: &str, minutes, summary: Option<&str>| GenerationRecord {
+            feature: AiFeature::WeeklyNote,
+            course_id: None,
+            week: None,
+            summary_json: summary.map(str::to_string),
+            ..run(id, minutes)
+        };
+        let covers = |ids: &[&str]| {
+            json!({"context": {"courses": ids.iter().map(|id| json!({"course_id": id})).collect::<Vec<_>>()}})
+                .to_string()
+        };
+        store
+            .record_generation(&note("with", 1, Some(&covers(&[COURSE, "other"]))))
+            .unwrap();
+        store
+            .record_generation(&note("without", 2, Some(&covers(&["other"]))))
+            .unwrap();
+        store
+            .record_generation(&note("unreadable", 3, Some("{")))
+            .unwrap();
+        assert_eq!(
+            store
+                .course_free_generations(AiFeature::WeeklyNote, None)
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(store.delete_generations(Some(COURSE)).unwrap(), 2);
+        let left: Vec<String> = store
+            .course_free_generations(AiFeature::WeeklyNote, Some(GenerationStatus::Accepted))
+            .unwrap()
+            .into_iter()
+            .map(|record| record.id)
+            .collect();
+        assert_eq!(left, ["without"]);
     }
 }

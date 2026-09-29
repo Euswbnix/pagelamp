@@ -136,7 +136,7 @@ impl App {
     }
 
     /// `now` with the student's date in the reminder zone.
-    fn local_as_of(&self, now: Timestamp) -> AsOf {
+    pub(crate) fn local_as_of(&self, now: Timestamp) -> AsOf {
         let tz = self.zone();
         AsOf {
             now,

@@ -141,6 +141,16 @@ enum Command {
         #[arg(long)]
         saved: bool,
     },
+    /// Write your weekly note (a few sentences and three things to focus on) from your courses'
+    /// structure and your plan's progress, with your chosen model. No material text is sent.
+    Note {
+        /// Go over the monthly budget for this run.
+        #[arg(long)]
+        over_budget: bool,
+        /// List the saved notes instead.
+        #[arg(long)]
+        saved: bool,
+    },
     /// Reminders due now and the weekly digest (quiet when nothing is due; for cron).
     Remind {
         /// Print the weekly digest now.
@@ -840,6 +850,10 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 json,
             )
             .await
+        }
+        Command::Note { over_budget, saved } => {
+            let app = open_app()?;
+            features::note(&app, over_budget, saved, json).await
         }
         Command::Remind { digest } => {
             let app = open_app()?;
