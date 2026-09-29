@@ -133,12 +133,19 @@ pub fn run() {
     // the core below is logged and a crash is recorded for the next launch's notice.
     pagelamp_app::diagnostics::init(pagelamp_app::diagnostics::ProcessKind::App, false);
     updates::remove_old_sidecar();
-    let hidden = background::started_hidden(std::env::args());
-    let builder = tauri::Builder::default()
+    let context = tauri::generate_context!();
+    let identifier = context.config().identifier.clone();
+    let hidden = background::launch_hidden(std::env::args(), &identifier);
+    let mut builder = tauri::Builder::default();
+    // First: a second launch hands over to the running PageLamp before anything else starts.
+    if let Some(single_instance) = background::single_instance_plugin() {
+        builder = builder.plugin(single_instance);
+    }
+    let builder = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updates::plugin())
-        .plugin(background::autostart_plugin())
+        .plugin(background::autostart_plugin(&identifier))
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             updates::manage(app.handle());
@@ -153,16 +160,16 @@ pub fn run() {
                 .ok();
             background::start(app.handle(), run_in_background);
             reminders::start(app.handle().clone());
+            #[cfg(debug_assertions)]
+            background::debug_restart_once(app.handle());
             Ok(())
         })
         .manage(Backend::open())
         .manage(background::Background::new(hidden));
-    with_commands(builder)
-        .run(tauri::generate_context!())
-        .unwrap_or_else(|err| {
-            panic!(
-                "error while running the {} desktop app: {err}",
-                pagelamp_core::brand::PRODUCT_NAME
-            )
-        });
+    with_commands(builder).run(context).unwrap_or_else(|err| {
+        panic!(
+            "error while running the {} desktop app: {err}",
+            pagelamp_core::brand::PRODUCT_NAME
+        )
+    });
 }

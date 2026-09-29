@@ -335,6 +335,8 @@ pub async fn updates_install<R: Runtime>(
     );
     let install = |bytes: &[u8]| {
         let _ = installing.send(UpdateEvent::Installing);
+        // The updated app shows its window, even if this launch came from the login item.
+        crate::background::show_window_at_next_launch(&app);
         update.install(bytes)
     };
     let result = fetch_and_install(
@@ -357,6 +359,8 @@ pub async fn updates_install<R: Runtime>(
     };
     tracing::info!(target: "pagelamp::updates", version = %update.version, "update installed; restarting");
     let _ = on_event.send(UpdateEvent::Restarting);
+    // Off the main thread (an async command), so the plugins see Exit before the new process
+    // starts: the single-instance lock is released first and the app comes back exactly once.
     app.restart()
 }
 

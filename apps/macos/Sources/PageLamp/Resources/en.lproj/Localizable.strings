@@ -1301,7 +1301,7 @@
 "reminders.settings.saveFailed" = "Your reminder settings couldn't be saved.";
 "reminders.settings.time" = "Time";
 "reminders.settings.title" = "Reminders";
-"reminders.settings.trayUnavailable" = "This system can't show a tray icon. PageLamp still starts at login and reminds you; open it again to see its window.";
+"reminders.settings.trayUnavailable" = "The tray isn't available on this system; install libayatana-appindicator3-1 to get it. PageLamp still starts at login and reminds you; open it again to see its window.";
 "reminders.settings.weeklyDigest" = "Your week";
 "reminders.settings.weeklyDigestHint" = "The deadlines of the next 7 days, once a week.";
 "reminders.tray.open" = "Open PageLamp";

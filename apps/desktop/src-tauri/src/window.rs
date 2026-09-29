@@ -69,10 +69,15 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     }
     // The Windows build tells a tester's "no Mica" apart: gated (Windows 10, 21H2) or DWM's own
     // solid fallback (Battery Saver, transparency off, an inactive window).
+    // `hidden`: a login launch (`--hidden`) waiting in the tray.
+    let hidden = app
+        .try_state::<Background>()
+        .is_some_and(|state| !state.may_show());
     tracing::info!(
         target: "pagelamp::window",
         backdrop = backdrop.name(),
         os_build = ?os_build,
+        hidden,
         "main window"
     );
     Ok(())

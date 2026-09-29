@@ -1301,7 +1301,7 @@
 "reminders.settings.saveFailed" = "提醒设置没能保存。";
 "reminders.settings.time" = "时间";
 "reminders.settings.title" = "提醒";
-"reminders.settings.trayUnavailable" = "这个系统无法显示托盘图标。PageLamp 仍会在登录时启动并提醒你；再次打开它即可看到窗口。";
+"reminders.settings.trayUnavailable" = "这个系统无法显示托盘图标；安装 libayatana-appindicator3-1 即可。PageLamp 仍会在登录时启动并提醒你；再次打开它即可看到窗口。";
 "reminders.settings.weeklyDigest" = "本周概览";
 "reminders.settings.weeklyDigestHint" = "每周一次，列出未来 7 天的截止日期。";
 "reminders.tray.open" = "打开 PageLamp";

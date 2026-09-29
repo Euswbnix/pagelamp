@@ -91,7 +91,9 @@ describe("Settings → Reminders", () => {
     renderRoute("/settings", { scenario: "reminders-no-tray" });
     const section = await remindersSection();
     expect(
-      await within(section).findByText(/This system can't show a tray icon/),
+      await within(section).findByText(
+        /The tray isn't available on this system; install libayatana-appindicator3-1/,
+      ),
     ).toBeInTheDocument();
   });
 });
