@@ -52,7 +52,7 @@ describe("CoursesPage — course list", () => {
     const c310 = within(card(list, "DEMO310"));
     expect(c310.getByText("No AI")).toBeInTheDocument();
     expect(c310.getByText("Week unknown")).toBeInTheDocument();
-    expect(c310.getByText("Set the term start to fix this")).toBeInTheDocument();
+    expect(c310.getByText("Set the first day of classes to fix this")).toBeInTheDocument();
 
     // Sorted by code; the hidden DEMO099 is not shown.
     const links = within(list).getAllByRole("link");

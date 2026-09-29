@@ -16,6 +16,7 @@ import { PolicyBadge } from "@/components/common/PolicyBadge";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
+import { KeepCurrentCardButton } from "@/features/course/lifecycle/KeepCurrentCardButton";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { deadlineTime } from "./lib/thisWeek";
@@ -39,9 +40,11 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
   const Heading = headingLevel;
   const { t } = useTranslation("courses");
   const { t: tc } = useTranslation();
+  const { t: tcal } = useTranslation("calendar");
   const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
-  const weekUnknown = timeline.phase === "unknown" && timeline.current_week == null;
+  const past = lifecycle.group === "past";
+  const weekUnknown = !past && timeline.phase === "unknown" && timeline.current_week == null;
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   return (
@@ -57,6 +60,7 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
           <Link
             ref={linkRef}
             to={paths.course(course.id)}
+            data-course-id={course.id}
             className="outline-none after:absolute after:inset-0 after:rounded-xl"
           >
             <span className="block font-heading text-base font-semibold tracking-tight">
@@ -80,9 +84,14 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
 
       <ul className="space-y-1.5">
         <Fact icon={CalendarDays}>
-          <WeekLabel timeline={timeline} />
+          {/* A past course's week doesn't matter; say what the lifecycle concluded instead. */}
+          {past ? (
+            <span className="text-muted-foreground">{tcal(`status.state.${lifecycle.state}`)}</span>
+          ) : (
+            <WeekLabel timeline={timeline} />
+          )}
           {weekUnknown ? (
-            <span className="block text-xs text-muted-foreground">{t("card.setTerm")}</span>
+            <span className="block text-xs text-muted-foreground">{tcal("card.setDates")}</span>
           ) : null}
         </Fact>
         <Fact icon={CalendarClock}>
@@ -122,6 +131,9 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
           </span>
         ) : null}
         <PastCourseBadge lifecycle={lifecycle} />
+        {past ? (
+          <KeepCurrentCardButton courseId={course.id} courseName={course.code ?? course.name} />
+        ) : null}
         {course.hidden ? (
           <>
             <Badge variant="outline">

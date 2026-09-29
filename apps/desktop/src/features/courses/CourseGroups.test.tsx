@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { createMockApi } from "@/api/mock";
 import { useUiStore } from "@/stores/ui";
@@ -58,5 +58,26 @@ describe("course list groups and phases", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  it("moves a past course back to Current from its card, keeping focus on it", async () => {
+    useUiStore.setState({ showPastCourses: true });
+    const api = createMockApi({ latencyMs: 0, scenario: "all-past" });
+    const { user } = renderRoute("/courses", { api });
+    const list = await coursesRegion();
+    const past = group(list, /^Past courses \(4\)/);
+    // The action is a sibling of the card's link, not nested inside it.
+    const keep = within(card(past, "PHS150")).getByRole("button", {
+      name: "I'm still taking this",
+    });
+    expect(keep.closest("a")).toBeNull();
+
+    await user.click(keep);
+    expect(await screen.findByText("PHS150 moved to your current courses")).toBeInTheDocument();
+    const current = group(list, "Current");
+    await waitFor(() =>
+      expect(within(current).getByRole("link", { name: /^PHS150\b/ })).toHaveFocus(),
+    );
+    expect(within(card(current, "PHS150")).queryByText("Past course")).toBeNull();
   });
 });
