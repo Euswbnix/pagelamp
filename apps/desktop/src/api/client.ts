@@ -1,4 +1,19 @@
 import type {
+  AiFeature,
+  AiStatus,
+  BackendRef,
+  CostEstimate,
+  EstimateRequest,
+  LocalServer,
+  MaterialSharing,
+  ModelChoice,
+  ModelInfo,
+  ModelProviderRecord,
+  ProbeReport,
+  ProviderPreset,
+  UsageSummary,
+} from "./provisional/ai";
+import type {
   AiPolicy,
   AppStatus,
   CourseOverview,
@@ -113,6 +128,45 @@ export interface PageLampApi {
   setCourseHidden(courseId: string, hidden: boolean): Promise<void>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
+
+  /** Question (b): may this course's materials be shared with an AI service? (D37) */
+  setCourseMaterialSharing(courseId: string, answer: MaterialSharing): Promise<void>;
+
+  // ----- AI setup (M1; design §3.8) -----------------------------------------------------------
+  /** Backends in priority order with their disclosure facts, feature routing and budget. Local. */
+  aiStatus(): Promise<AiStatus>;
+  modelProviderPresets(): Promise<ProviderPreset[]>;
+  /**
+   * Validates the key with a free call, then stores it in the keychain. The key is passed
+   * through and never stored by the UI; the record carries only its last 4 characters.
+   */
+  addModelProvider(
+    preset: string,
+    baseUrl: string | null,
+    apiKey: string | null,
+  ): Promise<ModelProviderRecord>;
+  updateModelProviderKey(providerId: string, apiKey: string): Promise<ModelProviderRecord>;
+  /** Removes the provider, its keychain entry and the feature choices that used it. */
+  removeModelProvider(providerId: string): Promise<void>;
+  /** Looks for Ollama and LM Studio on this computer (loopback only). */
+  detectLocalServers(): Promise<LocalServer[]>;
+  /** The live model list, joined with the price catalog and the on-device rule. */
+  listModels(backend: BackendRef): Promise<ModelInfo[]>;
+  /** A tiny real call: does this model answer, with structured output? */
+  testModel(backend: BackendRef, model: string): Promise<ProbeReport>;
+  setFeatureModel(feature: AiFeature, choice: ModelChoice | null): Promise<void>;
+  /** The student read the disclosure sheet for this backend; `version` is the facts' hash. */
+  acknowledgeAiDisclosure(backend: BackendRef, version: number): Promise<void>;
+  /** "The budget is not enforced for this model" (no price in the catalog). */
+  acknowledgeUnpricedModel(backend: BackendRef, model: string): Promise<void>;
+  /** The soft monthly cap for API keys, in micro-USD; null = no cap. */
+  setMonthlyBudget(microUsd: number | null): Promise<void>;
+  /** "≈ $x" before Generate, and whether the run would be blocked. Local; call it debounced. */
+  estimateGeneration(req: EstimateRequest): Promise<CostEstimate>;
+  /** `month` = any day of the month (null = this month). Counts only, never content. */
+  usageSummary(month: IsoDate | null): Promise<UsageSummary>;
+  /** Keys, generated content, the usage ledger and AI settings. */
+  removeAllAiData(): Promise<void>;
 
   // ----- "connect your AI app" -------------------------------------------------------------
   /** The Rust side decides which `pagelamp` binary the snippets point at. */

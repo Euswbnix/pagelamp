@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { ApiError } from "@/api/errors";
-import type { AppErrorKind } from "@/api/types";
+import type { ApiError, ErrorKind } from "@/api/errors";
 import { FieldError } from "@/components/ui/field";
 
 /**
@@ -14,8 +13,8 @@ export type AddTarget = "folder" | "feed" | "canvas" | "token";
 const FIELD_KINDS = ["invalid", "not_found", "network", "auth"] as const;
 type FieldKind = (typeof FIELD_KINDS)[number];
 
-function isFieldKind(kind: AppErrorKind): kind is FieldKind {
-  return (FIELD_KINDS as readonly AppErrorKind[]).includes(kind);
+function isFieldKind(kind: ErrorKind): kind is FieldKind {
+  return (FIELD_KINDS as readonly ErrorKind[]).includes(kind);
 }
 
 /** Explanation of a failed add/replace, chosen by `error.kind` (never by the message). */

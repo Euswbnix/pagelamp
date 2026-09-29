@@ -64,6 +64,30 @@ export function createTauriApi(): PageLampApi {
     setCourseHidden: (courseId, hidden) => call("set_course_hidden", { course: courseId, hidden }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
+    setCourseMaterialSharing: (courseId, answer) =>
+      call("set_course_material_sharing", { course: courseId, answer }),
+
+    // AI setup (M1). PROVISIONAL: the Rust commands arrive with the backend's facade; until then
+    // AI_SETUP_ENABLED keeps these screens to mock mode, and the contract test doesn't call them.
+    aiStatus: () => call("ai_status"),
+    modelProviderPresets: () => call("model_provider_presets"),
+    addModelProvider: (preset, baseUrl, apiKey) =>
+      call("add_model_provider", { preset, baseUrl, apiKey }),
+    updateModelProviderKey: (providerId, apiKey) =>
+      call("update_model_provider_key", { providerId, apiKey }),
+    removeModelProvider: (providerId) => call("remove_model_provider", { providerId }),
+    detectLocalServers: () => call("detect_local_servers"),
+    listModels: (backend) => call("list_models", { backend }),
+    testModel: (backend, model) => call("test_model", { backend, model }),
+    setFeatureModel: (feature, choice) => call("set_feature_model", { feature, choice }),
+    acknowledgeAiDisclosure: (backend, version) =>
+      call("acknowledge_ai_disclosure", { backend, disclosureVersion: version }),
+    acknowledgeUnpricedModel: (backend, model) =>
+      call("acknowledge_unpriced_model", { backend, model }),
+    setMonthlyBudget: (microUsd) => call("set_monthly_budget", { microUsd }),
+    estimateGeneration: (req) => call("estimate_generation", { req }),
+    usageSummary: (month) => call("usage_summary", { month }),
+    removeAllAiData: () => call("remove_all_ai_data"),
 
     mcpClientConfigs: () => call("mcp_client_configs"),
 

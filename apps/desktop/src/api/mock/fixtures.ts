@@ -2,6 +2,7 @@
 // §3.7): no real courses, people, schools or tokens. Dates are relative to `now` so the demo
 // always looks "live" (a deadline in 2 days, week 4 of term, …).
 
+import type { CourseWithSharing, MaterialSharing } from "../provisional/ai";
 import type {
   AiPolicy,
   AppStatus,
@@ -37,7 +38,16 @@ export type MockScenario =
   | "updated"
   | "deb"
   // The file reader (extraction worker) is blocked, e.g. by antivirus (M0.5).
-  | "worker-blocked";
+  | "worker-blocked"
+  // AI setup (M1): an API key at 40% of the budget / Ollama on this computer / a model with no
+  // price / 99% of the budget / a disclosure that changed since it was acknowledged / a custom
+  // endpoint whose model list and test fail. The demo has no model set up.
+  | "ai-key"
+  | "ai-local"
+  | "ai-unpriced"
+  | "ai-budget"
+  | "ai-disclosure-changed"
+  | "ai-errors";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -52,6 +62,12 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "updated",
   "deb",
   "worker-blocked",
+  "ai-key",
+  "ai-local",
+  "ai-unpriced",
+  "ai-budget",
+  "ai-disclosure-changed",
+  "ai-errors",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */
@@ -170,6 +186,8 @@ interface CourseSpec {
   aiAccess?: boolean;
   /** False = Canvas no longer lists the course as active (term over). */
   enrollmentActive?: boolean;
+  /** Question (b) (M1); unanswered when left out. */
+  materialSharing?: MaterialSharing;
   termStartDays: number | null;
   week: number | null;
   confidence: Confidence;
@@ -178,7 +196,7 @@ interface CourseSpec {
 }
 
 function course(spec: CourseSpec, now: Date): Course {
-  return {
+  const c: CourseWithSharing = {
     id: spec.id,
     source_id: spec.sourceId,
     external_id: spec.code,
@@ -195,6 +213,8 @@ function course(spec: CourseSpec, now: Date): Course {
     hidden: spec.hidden,
     updated_at: at(now, -1, 9),
   };
+  if (spec.materialSharing) c.material_sharing = spec.materialSharing;
+  return c;
 }
 
 /** Assemble a MockCourse, remembering the synced term so an override can be undone. */
@@ -407,6 +427,7 @@ function demo205(now: Date): MockCourse {
     policy: "unknown",
     policyNote: null,
     hidden: false,
+    materialSharing: "not_allowed",
     termStartDays: -24,
     week: 4,
     confidence: "medium",
@@ -461,6 +482,7 @@ function demo310(now: Date): MockCourse {
     policy: "prohibited",
     policyNote: "Syllabus p. 2: no generative AI for any part of this course.",
     hidden: false,
+    materialSharing: "not_sure",
     termStartDays: null,
     week: null,
     confidence: "low",
@@ -491,6 +513,7 @@ function demo099(now: Date): MockCourse {
     policy: "unknown",
     policyNote: null,
     hidden: true,
+    materialSharing: "allowed",
     enrollmentActive: false,
     termStartDays: -30,
     week: 5,

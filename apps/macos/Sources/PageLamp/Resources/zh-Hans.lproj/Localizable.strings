@@ -50,9 +50,12 @@
 "common.downloadBlock.too_large" = "文件太大，无法下载";
 "common.errors.ambiguous" = "匹配到了不止一门课程。";
 "common.errors.auth" = "访问令牌或日历订阅地址被拒绝，可能已过期或被撤销。";
+"common.errors.blocked" = "PageLamp 没有把这次请求发给模型。";
 "common.errors.busy" = "已经有一个同步在进行，请等它结束后再试。";
+"common.errors.cancelled" = "已取消。";
 "common.errors.internal" = "发生了意外错误。";
 "common.errors.invalid" = "请检查输入的内容。";
+"common.errors.model" = "模型没能给出回答。";
 "common.errors.network" = "连不上服务器。请检查网络连接和地址是否正确。";
 "common.errors.not_found" = "没有找到对应的内容。";
 "common.errors.schema_too_new" = "这些数据是由更新版本的 PageLamp 写入的。请更新 PageLamp 后再打开。";

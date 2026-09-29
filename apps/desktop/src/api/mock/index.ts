@@ -5,7 +5,8 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
-// update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5).
+// update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
+// (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors.
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -26,6 +27,7 @@ import {
   type UpdateChannel,
   type UpdateCheckRecord,
 } from "../types";
+import { createMockAi } from "./ai";
 import {
   buildMockDb,
   diagnosticReport,
@@ -399,7 +401,16 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return results;
   }
 
+  const ai = createMockAi({
+    scenario,
+    now,
+    delay: (extra = 0) => sleep(latency + extra),
+    courses: () => db.courses,
+    findCourse,
+  });
+
   return {
+    ...ai,
     status: () => respond(status),
     listSources: () => respond(() => db.sources),
 

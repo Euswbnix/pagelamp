@@ -74,6 +74,9 @@
     "busy": "已经有一个同步在进行，请等它结束后再试。",
     "schema_too_new": "这些数据是由更新版本的 {{product}} 写入的。请更新 {{product}} 后再打开。",
     "schema_too_old": "这些数据来自太旧的 {{product}} 版本，无法打开。可以用数据文件夹里的备份（pagelamp.db.v….bak 文件）恢复，或者到“设置 → 帮助与反馈”寻求帮助。",
+    "blocked": "PageLamp 没有把这次请求发给模型。",
+    "model": "模型没能给出回答。",
+    "cancelled": "已取消。",
     "internal": "发生了意外错误。"
   },
   "schema": {
