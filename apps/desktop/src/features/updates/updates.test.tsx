@@ -242,3 +242,51 @@ describe("Settings → Updates", () => {
     expect(await within(section).findByText("Couldn't check for updates.")).toBeInTheDocument();
   });
 });
+
+describe("database from another version", () => {
+  it("offers the update that can open data saved by a newer PageLamp", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    vi.spyOn(api, "status").mockRejectedValue(
+      new ApiError("schema_too_new", "The database is at schema 4; this build reads 3."),
+    );
+    const { user } = renderRoute("/", { api });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "This data needs a newer PageLamp" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/nothing has been changed/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(
+      await screen.findByText(`PageLamp ${MOCK_UPDATE_VERSION} is available.`),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Install and restart…" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: `Install PageLamp ${MOCK_UPDATE_VERSION}?` }),
+    ).toBeInTheDocument();
+  });
+
+  it("says so when no newer version is out yet", async () => {
+    const api = mockApi();
+    vi.spyOn(api, "status").mockRejectedValue(new ApiError("schema_too_new", "schema 4 > 3"));
+    const { user } = renderRoute("/", { api });
+    await user.click(await screen.findByRole("button", { name: "Check for updates" }));
+    expect(
+      await screen.findByText(/No newer version is available on your update channel yet/),
+    ).toBeInTheDocument();
+    // Still a way to get help.
+    expect(screen.getByRole("button", { name: "Copy diagnostic report…" })).toBeInTheDocument();
+  });
+
+  it("points data too old to open at the backups", async () => {
+    const api = mockApi();
+    vi.spyOn(api, "status").mockRejectedValue(new ApiError("schema_too_old", "schema 1 < 3"));
+    const reveal = vi.spyOn(api, "revealDataDir");
+    const { user } = renderRoute("/", { api });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "This data is too old to open" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/pagelamp\.db\.v….bak/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show data folder" }));
+    expect(reveal).toHaveBeenCalledTimes(1);
+  });
+});

@@ -40,6 +40,17 @@ pub fn current_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).expect("the crate version is valid semver")
 }
 
+/// The channel when the facade can't say (it can't open, e.g. a database written by a newer
+/// PageLamp, which is exactly when an update is needed): the facade's own default rule (D3),
+/// beta for a pre-release build, else stable.
+pub fn default_channel(version: &Version) -> UpdateChannel {
+    if version.pre.is_empty() {
+        UpdateChannel::Stable
+    } else {
+        UpdateChannel::Beta
+    }
+}
+
 /// Whether `remote` is newer than `current` by full semver, pre-releases included:
 /// `0.3.0-beta.2 < 0.3.0`, and an equal version is not an update.
 pub fn is_newer(current: &Version, remote: &Version) -> bool {
@@ -177,9 +188,16 @@ pub async fn updates_check<R: Runtime>(
     backend: State<'_, Backend>,
     pending: State<'_, PendingUpdate>,
 ) -> CmdResult<Option<AvailableUpdate>> {
-    let channel = backend
+    let channel = match backend
         .blocking(|facade| facade.effective_update_channel())
-        .await?;
+        .await
+    {
+        Ok(channel) => channel,
+        Err(err) => {
+            tracing::info!(target: "pagelamp::updates", "no stored channel ({}); using the default", err.message);
+            default_channel(&current_version())
+        }
+    };
     let config = channels_config(&app)?;
     let release_page = config.release_page.clone();
     let mode = install_mode();
@@ -267,12 +285,16 @@ pub async fn updates_install<R: Runtime>(
             "This install updates by downloading the new package.",
         ));
     }
-    let activity = backend.app()?.activity();
-    if !activity.items.is_empty() || activity.other_process_syncing {
-        return Err(AppError::new(
-            AppErrorKind::Busy,
-            "A sync is running. Install the update when it finishes.",
-        ));
+    // Without an open core (e.g. its database is from a newer PageLamp) nothing of ours can be
+    // syncing, and installing the update is the way out.
+    if let Ok(facade) = backend.app() {
+        let activity = facade.activity();
+        if !activity.items.is_empty() || activity.other_process_syncing {
+            return Err(AppError::new(
+                AppErrorKind::Busy,
+                "A sync is running. Install the update when it finishes.",
+            ));
+        }
     }
     let update = pending
         .0
@@ -362,6 +384,20 @@ mod tests {
         assert!(is_newer(&v("0.3.0-alpha.1"), &v("0.3.0-alpha.2")));
         assert!(is_newer(&v("0.3.0-alpha.9"), &v("0.3.0-beta.1")));
         assert!(is_newer(&v("0.3.0"), &v("0.3.1")));
+    }
+
+    #[test]
+    fn without_the_facade_a_pre_release_checks_beta() {
+        use super::default_channel;
+        use pagelamp_app::UpdateChannel;
+        assert!(matches!(
+            default_channel(&v("0.3.0-alpha.1")),
+            UpdateChannel::Beta
+        ));
+        assert!(matches!(
+            default_channel(&v("0.3.0")),
+            UpdateChannel::Stable
+        ));
     }
 
     #[test]

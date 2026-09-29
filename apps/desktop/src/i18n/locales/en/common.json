@@ -76,6 +76,15 @@
     "schema_too_old": "This data is from a version of {{product}} too old to open. Restore a backup from the data folder (the pagelamp.db.v….bak files), or get help in Settings → Help & feedback.",
     "internal": "Something unexpected went wrong."
   },
+  "schema": {
+    "tooNewTitle": "This data needs a newer {{product}}",
+    "tooNewBody": "Your data was saved by a newer version of {{product}}. Update {{product}} to open it; nothing has been changed.",
+    "checkForUpdates": "Check for updates",
+    "noUpdate": "No newer version is available on your update channel yet. Try again later, or report the problem below.",
+    "tooOldTitle": "This data is too old to open",
+    "tooOldBody": "It was saved by a version of {{product}} this one can't upgrade. Restore a backup from the data folder (the pagelamp.db.v….bak files), or get help below.",
+    "showFolder": "Show data folder"
+  },
   "sourceKind": {
     "canvas": "Canvas",
     "folder": "Course folder",

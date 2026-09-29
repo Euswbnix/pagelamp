@@ -1,9 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
+import { isApiError } from "@/api/errors";
 import { useStatus } from "@/api/queries";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Spinner } from "@/components/ui/spinner";
 import { ProblemActions } from "@/features/diagnostics/ProblemActions";
+import { SchemaErrorScreen } from "@/features/updates/SchemaErrorScreen";
 import { paths } from "@/lib/routes";
 import { useUiStore } from "@/stores/ui";
 
@@ -20,6 +22,12 @@ export function StartGate() {
         <Spinner className="size-6 text-muted-foreground" aria-label={t("states.loading")} />
       </div>
     );
+  }
+  if (
+    status.isError &&
+    (isApiError(status.error, "schema_too_new") || isApiError(status.error, "schema_too_old"))
+  ) {
+    return <SchemaErrorScreen error={status.error} />;
   }
   if (status.isError) {
     return (

@@ -268,10 +268,17 @@ pub async fn reveal_data_dir<R: tauri::Runtime>(
     backend: State<'_, Backend>,
     window: tauri::WebviewWindow<R>,
 ) -> CmdResult<()> {
-    let app = backend.app()?;
+    // Also when the core can't open (e.g. a database from another version): that's when the
+    // student may need the folder, to restore a backup.
+    let dir = backend
+        .diagnostics(
+            |app| Ok(app.data_dir().to_path_buf()),
+            || pagelamp_core::paths::data_dir().map_err(AppError::from),
+        )
+        .await?;
     window
         .opener()
-        .reveal_item_in_dir(app.data_dir())
+        .reveal_item_in_dir(dir)
         .map_err(|err| internal(format!("couldn't open the data folder: {err}")))
 }
 
