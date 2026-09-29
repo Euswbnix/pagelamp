@@ -42,6 +42,20 @@ const SCREENS = {
     hash: `#/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}`,
     scenario: "demo",
   },
+  policy: {
+    hash: `#/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}?tab=policy`,
+    scenario: "demo",
+  },
+  // The policy tab's lower half: AI access and question (b).
+  "policy-access": {
+    hash: `#/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}?tab=policy`,
+    scenario: "demo",
+    act: `document.querySelector("main").scrollTop = 1e6; await wait(400);`,
+  },
+  "course-settings": {
+    hash: `#/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}?tab=settings`,
+    scenario: "demo",
+  },
   sources: { hash: "#/sources", scenario: "demo" },
   connect: { hash: "#/connect", scenario: "demo" },
   settings: { hash: "#/settings", scenario: "demo" },
