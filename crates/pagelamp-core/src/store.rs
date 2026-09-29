@@ -317,6 +317,7 @@ ALTER TABLE courses   ADD COLUMN calendar_sources     TEXT;     -- the student's
 ALTER TABLE courses   ADD COLUMN institution          TEXT;     -- sync-written (course.toml), never by setters
 ALTER TABLE materials ADD COLUMN linked_from_syllabus INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE materials ADD COLUMN is_front_page        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE materials ADD COLUMN named_outline        INTEGER NOT NULL DEFAULT 0;  -- course.toml `outline` (folders)
 
 -- Additive only: a v3 reader still reads this database.
 UPDATE schema_meta SET value = '3' WHERE key = 'min_reader_version';
@@ -1258,6 +1259,16 @@ impl Store {
             .collect::<rusqlite::Result<Vec<(TextErrorKind, u32)>>>()?;
         counts.sort();
         Ok(counts)
+    }
+
+    /// The outline a folder's `course.toml` names (`outline = "…"`): that material is flagged,
+    /// the course's others not (`None`: none named).
+    pub fn set_named_outline(&self, course_id: &str, material_id: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE materials SET named_outline = (id IS ?2) WHERE course_id = ?1",
+            params![course_id, material_id],
+        )?;
+        Ok(())
     }
 
     /// Record why a file cannot be downloaded on request (`None` clears it).

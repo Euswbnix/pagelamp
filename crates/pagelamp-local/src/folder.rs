@@ -147,6 +147,26 @@ impl CourseDir<'_> {
         });
 
         let (modules, files, walk_complete) = self.scan(|message| warn(report, message));
+        // course.toml `outline = "…"`: the file it names, as a material of this course.
+        let outline = match meta.outline.as_deref() {
+            Some(path) => {
+                let path = path.trim_start_matches("./").replace('\\', "/");
+                let id = format!("{}/file/{}/{path}", self.source_id, self.dir_name);
+                if files.iter().any(|f| f.material.id == id) {
+                    Some(id)
+                } else {
+                    warn(
+                        report,
+                        format!(
+                            "{}: course.toml names the outline {path:?}, which isn't in the folder",
+                            self.dir_name
+                        ),
+                    );
+                    None
+                }
+            }
+            None => None,
+        };
         let upsert = CourseUpsert {
             id: self.course_id.to_string(),
             source_id: self.source_id.to_string(),
@@ -175,6 +195,7 @@ impl CourseDir<'_> {
                 let keep: Vec<String> = files.iter().map(|f| f.material.id.clone()).collect();
                 store.prune_materials(self.course_id, &keep)?;
             }
+            store.set_named_outline(self.course_id, outline.as_deref())?;
             Ok(())
         })?;
         if !walk_complete {
@@ -379,12 +400,14 @@ pub(crate) struct CourseMeta {
     pub name: Option<String>,
     pub term_start: Option<NaiveDate>,
     pub term_end: Option<NaiveDate>,
+    /// The course's outline, a path inside the course folder (a syllabus-reading candidate).
+    pub outline: Option<String>,
     /// One message per setting we don't know (a typo would otherwise be silently ignored).
     pub warnings: Vec<String>,
 }
 
 /// The settings `course.toml` / `course.json` may contain.
-const COURSE_KEYS: [&str; 4] = ["code", "name", "term_start", "term_end"];
+const COURSE_KEYS: [&str; 5] = ["code", "name", "term_start", "term_end", "outline"];
 
 /// Warnings for known settings whose value is not text (or a date), e.g. `code = 101`.
 fn wrong_types(file: &str, wrong: impl Fn(&str) -> bool) -> Vec<String> {
@@ -535,6 +558,7 @@ fn meta_from(get: impl Fn(&str) -> Option<String>) -> Result<CourseMeta, String>
         name: text("name"),
         term_start: date("term_start")?,
         term_end: date("term_end")?,
+        outline: text("outline"),
         warnings: Vec::new(),
     })
 }
