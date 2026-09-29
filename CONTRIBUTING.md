@@ -17,7 +17,7 @@ Thanks for helping! Bug reports, ideas, docs fixes and code are all welcome.
 
 ## Development setup
 
-- Rust 1.89+ (`rustup`), Node 24, pnpm 12 (`corepack enable`).
+- Rust 1.90+ (`rustup`), Node 24, pnpm 12 (`corepack enable`).
 - macOS: Xcode Command Line Tools · Windows: Visual Studio Build Tools (+ NASM or
   `AWS_LC_SYS_PREBUILT_NASM=1`) · Linux: `build-essential pkg-config libdbus-1-dev
   libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`.

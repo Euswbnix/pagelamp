@@ -19,6 +19,8 @@ env:
   AWS_LC_SYS_PREBUILT_NASM: 1
   RUST_BACKTRACE: 1
 
+# Every action is pinned to a full commit SHA (the release-config job fails otherwise). To update
+# one, take the commit its version tag points at and keep the version in the comment.
 jobs:
   # Rust core, sources, MCP server and CLI on every desktop OS we ship to.
   rust:
@@ -29,11 +31,12 @@ jobs:
         os: [ubuntu-22.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
+          toolchain: stable
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Linux system libraries
         if: runner.os == 'Linux'
         run: |
@@ -48,30 +51,37 @@ jobs:
         run: cargo test --workspace --exclude pagelamp-desktop
 
   # Desktop app: frontend checks, then the Tauri crate (needs the built frontend and the sidecar).
+  # Unsigned; the release builds are signed in release.yml. Windows too, since the app ships there.
   desktop:
     name: Desktop (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-latest]
+        os: [ubuntu-22.04, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: apps/desktop
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      # Windows runners check out with CRLF line endings, which Biome's formatter check rejects.
+      - name: Check out with LF line endings
+        if: runner.os == 'Windows'
+        working-directory: ${{ github.workspace }}
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6 as of 2026-09-27
         with:
           package_json_file: apps/desktop/package.json
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
+          toolchain: stable
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Linux system libraries (Tauri)
         if: runner.os == 'Linux'
         run: |
@@ -98,7 +108,14 @@ jobs:
       - name: Clippy (desktop crate)
         run: cargo clippy -p pagelamp-desktop --all-targets -- -D warnings
       - name: Test (desktop crate)
+        # Windows: Tauri test executables have no Common Controls v6 manifest and exit with
+        # STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) at load, so they are only compiled there until
+        # src-tauri's build.rs embeds the manifest for tests too (frontend, tracked in the plan).
+        if: runner.os != 'Windows'
         run: cargo test -p pagelamp-desktop
+      - name: Build the desktop crate's tests (Windows)
+        if: runner.os == 'Windows'
+        run: cargo test -p pagelamp-desktop --no-run
 
   # The native macOS app (apps/macos, preview): the Rust core as an xcframework, then the Swift
   # package's build and tests (including a small headless snapshot render), the Mac lint (glass
@@ -115,7 +132,7 @@ jobs:
     name: macOS app
     runs-on: ${{ vars.MACOS_APP_RUNNER || 'xcode-27' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Select Xcode 27
         run: |
           os_version="$(sw_vers -productVersion)"
@@ -150,11 +167,12 @@ jobs:
           echo "DEVELOPER_DIR=$xcode/Contents/Developer" >>"$GITHUB_ENV"
           DEVELOPER_DIR="$xcode/Contents/Developer" xcodebuild -version
           DEVELOPER_DIR="$xcode/Contents/Developer" swift --version
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable branch as of 2026-09-27
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v7
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
       - name: Rust core for Swift (xcframework + bindings)
@@ -171,11 +189,36 @@ jobs:
         run: node --test apps/macos/scripts/test/*.test.mjs design/tokens/test/*.test.mjs
 
   # Dependency licences must stay compatible with Apache-2.0 (docs/ARCHITECTURE.md §7).
+  # release.yml checks advisories too, before a release.
   licenses:
     name: Licences
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
+          # The action's image has Rust 1.85; the workspace needs 1.90.
+          rust-version: stable
           command: check licenses
+
+  # The release configuration, on every push and pull request (.github/scripts/release-config.mjs):
+  # errors for secrets (or github.token) outside a step's env/with in any workflow, unpinned
+  # actions, macOS entitlements, a beforeBundleCommand, a Cargo.lock that doesn't carry the
+  # workspace version, and failing tests of the release scripts; warnings only for what
+  # release.yml enforces on a tag (a tauri.conf.json version that doesn't fit the Cargo version, an
+  # MSI or "all" in bundle.targets, and with the updater on a placeholder updater key).
+  release-config:
+    name: Release config
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Release script tests
+        run: node --test .github/scripts/*.test.mjs
+      - name: Check the release configuration
+        run: node .github/scripts/release-config.mjs

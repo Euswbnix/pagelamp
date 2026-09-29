@@ -34,9 +34,11 @@ or *"Make me a study plan for the next two weeks"* — without re-uploading anyt
 ### Desktop app (recommended)
 
 Download the installer for your system from the
-[latest release](https://github.com/Euswbnix/pagelamp/releases): `.dmg` for macOS
-(`aarch64` = Apple silicon, `x64` = Intel), `.msi`/`.exe` for Windows, `.deb`/`.rpm` for Linux.
-The desktop app includes the `pagelamp` command-line tool your AI app needs.
+[latest release](https://github.com/Euswbnix/pagelamp/releases): for macOS the `.dmg`
+(`PageLamp_<version>_universal.dmg`, one disk image for Apple silicon and Intel; v0.1.0 has
+`aarch64` = Apple silicon and `x64` = Intel instead), for Windows the `-setup.exe` (v0.1.0 also
+has an `.msi`), for Linux the `.deb`, `.rpm` or `.AppImage`. The desktop app includes the
+`pagelamp` command-line tool your AI app needs.
 
 - **macOS:** open the `.dmg` and **drag PageLamp into Applications**, then open it from there —
   your AI app is pointed at that location, so don't run PageLamp from the disk image or Downloads.
@@ -66,7 +68,7 @@ is signed and notarized from v0.1.0; macOS checks that with Apple the first time
 online for that first run. On Windows `pagelamp.exe` is signed from v0.1.0. Check with
 `pagelamp --version`.
 
-**From source.** You need Rust 1.89 or newer ([rustup.rs](https://rustup.rs)) and a C compiler
+**From source.** You need Rust 1.90 or newer ([rustup.rs](https://rustup.rs)) and a C compiler
 (Xcode Command Line Tools on macOS, Visual Studio Build Tools on Windows, `build-essential` on
 Linux). On Windows also install NASM, or set `AWS_LC_SYS_PREBUILT_NASM=1`. Then:
 

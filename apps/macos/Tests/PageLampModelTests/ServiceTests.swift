@@ -105,6 +105,9 @@ struct LiveServiceTests {
             (.Ambiguous(message: "m"), .ambiguous),
             (.Busy(message: "b"), .busy),
             (.Schema(message: "s"), .schema),
+            (.Blocked(message: "k", reason: .courseHidden), .blocked),
+            (.Model(message: "o", kind: .authRejected, retryAfterSecs: nil), .model),
+            (.Cancelled(message: "c"), .cancelled),
             (.Internal(message: "x"), .internal),
             (.Panic(message: "p"), .panic),
         ]
