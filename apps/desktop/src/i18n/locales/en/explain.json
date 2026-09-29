@@ -44,8 +44,8 @@
       "looks_like_assessment": "looks like graded work",
       "over_budget": "over the length limit"
     },
-    "includeAgain_one": "Include the {{count}} that looks like graded work and write again",
-    "includeAgain_other": "Include the {{count}} that look like graded work and write again",
+    "includeAgain_one": "Not graded work? Include it and write again",
+    "includeAgain_other": "Not graded work? Include these {{count}} and write again",
     "droppedCitations_one": "{{count}} citation the model gave didn't match your materials and was removed.",
     "droppedCitations_other": "{{count}} citations the model gave didn't match your materials and were removed.",
     "citeAiUse": "Your course asks you to cite AI use: say where you used this explanation.",
@@ -59,7 +59,8 @@
     "deleteConfirm": "Delete",
     "deleted": "Explanation deleted.",
     "deleteFailed": "The explanation couldn't be deleted.",
-    "regionLabelRecent": "Explanation of the recent materials"
+    "regionLabelRecent": "Explanation of the recent materials",
+    "includeNote": "{{product}} explains concepts; it doesn't answer assignments, quizzes or exams."
   },
   "history": {
     "title": "Earlier explanations",
@@ -74,5 +75,5 @@
   },
   "generateRecent": "Explain the recent materials",
   "recent": "Recent materials",
-  "weeksUnknown": "This course's weeks aren't known, so PageLamp explains its materials of the last 14 days."
+  "weeksUnknown": "This course's weeks aren't known, so {{product}} explains its materials of the last 14 days."
 }

@@ -174,9 +174,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Include the %1$ld that looks like graded work and write again</string>
+			<string>Not graded work? Include it and write again</string>
 			<key>other</key>
-			<string>Include the %1$ld that look like graded work and write again</string>
+			<string>Not graded work? Include these %1$ld and write again</string>
 		</dict>
 	</dict>
 	<key>explain.running.reading</key>

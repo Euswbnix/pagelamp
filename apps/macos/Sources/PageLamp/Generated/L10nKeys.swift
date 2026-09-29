@@ -969,6 +969,7 @@ nonisolated enum L10nKeys {
         "explain.result.droppedCitations",
         "explain.result.failed",
         "explain.result.includeAgain",
+        "explain.result.includeNote",
         "explain.result.leftOut",
         "explain.result.leftOutReason.external_link",
         "explain.result.leftOutReason.looks_like_assessment",

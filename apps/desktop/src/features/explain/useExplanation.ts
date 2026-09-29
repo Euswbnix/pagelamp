@@ -19,6 +19,8 @@ export type ExplainRunState =
       backend: string | null;
       model: string | null;
       stage: GenStage | null;
+      /** The model runs on this computer (the `started` event); null until then. */
+      onDevice: boolean | null;
       /** Materials whose text is read (the `context` event). */
       materials: number | null;
       stopping: boolean;
@@ -59,6 +61,7 @@ export function useExplanation(courseId: string) {
         backend: null,
         model: null,
         stage: null,
+        onDevice: null,
         materials: null,
         stopping: false,
       });
@@ -74,9 +77,11 @@ export function useExplanation(courseId: string) {
           },
           (event) => {
             if (event.type === "started") {
-              const { backend_label, model } = event;
+              const { backend_label, model, on_device } = event;
               setState((s) =>
-                s.phase === "running" ? { ...s, backend: backend_label, model } : s,
+                s.phase === "running"
+                  ? { ...s, backend: backend_label, model, onDevice: on_device }
+                  : s,
               );
             } else if (event.type === "stage") {
               const { stage } = event;
@@ -106,22 +111,23 @@ export function useExplanation(courseId: string) {
     const id = runId.current;
     if (!id) return;
     setState((s) => (s.phase === "running" ? { ...s, stopping: true } : s));
-    await api.cancelGeneration(id);
+    // A failed cancel leaves the run going: its Stop stays, and it ends as it would.
+    await api.cancelGeneration(id).catch(() => {});
   }, [api]);
 
   return { state, start, stop };
 }
 
 /**
- * The last 5 explanations of the course's week, newest first. Not asked without a week: the
- * facade reads null as every week's.
+ * The last 5 explanations of the course's week, newest first. Without a week, those of the
+ * recent materials: the facade answers null with every week's, so the rest are left out.
  */
 export function useSavedExplanations(courseId: string, week: number | null) {
   const api = useApi();
   return useQuery({
     queryKey: explainKeys.saved(courseId, week),
     queryFn: () => api.savedExplanations(courseId, week),
-    enabled: week !== null,
+    select: (list) => (week === null ? list.filter((e) => e.week == null) : list),
   });
 }
 

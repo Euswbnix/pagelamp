@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { EstimateRequest } from "@/api/ai";
+import { type EstimateRequest, materialSharing } from "@/api/ai";
 import type { WeeklyExplanation } from "@/api/explain";
 import { useWeekMaterials } from "@/api/queries";
 import type { CourseOverview } from "@/api/types";
@@ -27,6 +27,9 @@ import {
   useSavedExplanations,
 } from "./useExplanation";
 
+/** The week picker's "Recent materials" (no week). */
+const RECENT = "recent";
+
 /**
  * Course → Explain (design §5.2, §7): a week, "≈ $x" and Explain, the run's stages with Stop
  * (no text arrives before the end), the explanation with its citations, and the last 5 of the
@@ -44,7 +47,8 @@ export function ExplainTab({
   const current = timeline.current_week ?? null;
   const [picked, setPicked] = useState<number | null>(null);
   const weeks = useWeekMaterials(course.id, null);
-  const week = picked ?? timeline.default_week ?? current;
+  const defaultWeek = timeline.default_week ?? current;
+  const week = picked ?? defaultWeek;
   const saved = useSavedExplanations(course.id, week);
   const run = useExplanation(course.id);
   const remove = useDeleteExplanation(course.id);
@@ -68,12 +72,15 @@ export function ExplainTab({
     : overview.ai_materials !== "readable"
       ? overview.ai_materials
       : null;
-  // Hidden, or AI access turned off, while a run goes on (from another tab): the student's
-  // choice ends it; the blocked view below has no Stop.
+  // Hidden, AI access turned off, or sharing with AI services answered "not allowed" for a run
+  // that isn't on this computer, while it goes on (from another tab): the student's choice ends
+  // it (the blocked view below has no Stop).
   const running = state.phase === "running";
+  const sharingRefused =
+    materialSharing(course) === "not_allowed" && running && state.onDevice === false;
   useEffect(() => {
-    if (blocked && running) void stop();
-  }, [blocked, running, stop]);
+    if ((blocked || sharingRefused) && running) void stop();
+  }, [blocked, sharingRefused, running, stop]);
   if (blocked) {
     return (
       <div className="space-y-3">
@@ -123,9 +130,9 @@ export function ExplainTab({
               {t("week")}
             </p>
             <Select
-              value={week === null ? "" : String(week)}
+              value={week === null ? RECENT : String(week)}
               onValueChange={(value) => {
-                setPicked(Number(value));
+                setPicked(value === RECENT ? null : Number(value));
                 setShownId(null);
               }}
               disabled={state.phase === "running"}
@@ -134,6 +141,10 @@ export function ExplainTab({
                 <SelectValue placeholder={t("recent")} />
               </SelectTrigger>
               <SelectContent>
+                {/* No week now (before or after the teaching weeks): the way back to it. */}
+                {defaultWeek === null ? (
+                  <SelectItem value={RECENT}>{t("recent")}</SelectItem>
+                ) : null}
                 {weekOptions.map((w) => (
                   <SelectItem key={w} value={String(w)}>
                     {w === current ? t("thisWeek", { week: w }) : t("weekOption", { week: w })}
@@ -142,7 +153,7 @@ export function ExplainTab({
               </SelectContent>
             </Select>
           </div>
-        ) : weeks.isPending ? null : (
+        ) : weeks.isPending || weeks.isError ? null : (
           <p className="text-sm text-muted-foreground">{t("weeksUnknown")}</p>
         )}
         {state.phase === "running" ? (

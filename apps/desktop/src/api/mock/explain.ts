@@ -102,11 +102,16 @@ export function createExplainMock(deps: {
         blocked: "course_ai_turned_off",
       });
     }
-    const week = requestedWeek ?? c.timeline.default_week ?? c.timeline.current_week ?? null;
-    const since = now().getTime() - 14 * DAY;
+    // pagelamp-core's week_materials: `week.or(timeline.default_week)`, else the last 14 days.
+    const week = requestedWeek ?? c.timeline.default_week ?? null;
+    const until = now().getTime();
+    const since = until - 14 * DAY;
     const materials =
       week === null
-        ? c.materials.filter((m) => !!m.published_at && Date.parse(m.published_at) >= since)
+        ? c.materials.filter((m) => {
+            const at = m.published_at ? Date.parse(m.published_at) : Number.NaN;
+            return at >= since && at <= until;
+          })
         : c.materials.filter((m) => m.week_hint === week);
     const assessment = (m: MaterialView) => looksLikeAssessment(m.title) && !include.includes(m.id);
     const readable = materials.filter((m) => m.text_status === "ok" && !assessment(m));

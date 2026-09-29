@@ -44,8 +44,8 @@
       "looks_like_assessment": "看起来是计分作业",
       "over_budget": "超出长度上限"
     },
-    "includeAgain_one": "纳入 {{count}} 份看起来像作业的资料并重新生成",
-    "includeAgain_other": "纳入 {{count}} 份看起来像作业的资料并重新生成",
+    "includeAgain_one": "不是计分作业？纳入它并重新生成",
+    "includeAgain_other": "不是计分作业？纳入这 {{count}} 份并重新生成",
     "droppedCitations_one": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "droppedCitations_other": "模型给出的 {{count}} 处引用与你的资料对不上，已去掉。",
     "citeAiUse": "你的课程要求注明 AI 的使用：请说明你在哪里用到了这份讲解。",
@@ -59,7 +59,8 @@
     "deleteConfirm": "删除",
     "deleted": "讲解已删除。",
     "deleteFailed": "没能删除这份讲解。",
-    "regionLabelRecent": "最近资料的讲解"
+    "regionLabelRecent": "最近资料的讲解",
+    "includeNote": "{{product}} 只讲解概念，不回答作业、测验或考试的题目。"
   },
   "history": {
     "title": "以前的讲解",
@@ -74,5 +75,5 @@
   },
   "generateRecent": "讲解最近的资料",
   "recent": "最近的资料",
-  "weeksUnknown": "这门课的周次未知，PageLamp 会讲解最近 14 天的资料。"
+  "weeksUnknown": "这门课的周次未知，{{product}} 会讲解最近 14 天的资料。"
 }

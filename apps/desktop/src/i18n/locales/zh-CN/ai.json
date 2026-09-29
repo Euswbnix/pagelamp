@@ -261,7 +261,7 @@
     "course_policy_prohibited": "这门课的规则是“禁止使用 AI”，所以 {{product}} 不会发送它的任何内容。",
     "course_ai_turned_off": "你已经为这门课的资料关闭了 AI。",
     "course_hidden": "这门课已被隐藏。",
-    "no_readable_materials": "这一周没有 {{product}} 能读取的资料。",
+    "no_readable_materials": "没有 {{product}} 能读取的资料。",
     "material_sharing_not_allowed": "你表示这门课的资料不能分享给 AI 服务，所以没有发送任何内容。",
     "coding_plan_key": "这个密钥属于编程订阅，{{product}} 不能使用。",
     "disclosure_not_acknowledged": "先查看这个服务会收到哪些内容，然后启用它。",

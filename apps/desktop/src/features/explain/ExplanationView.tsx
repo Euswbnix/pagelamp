@@ -98,14 +98,18 @@ export function ExplanationView({
             ))}
           </ul>
           {onIncludeLeftOut && includable.length > 0 ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => onIncludeLeftOut(includable.map((m) => m.material_id))}
-            >
-              {t("result.includeAgain", { count: includable.length })}
-            </Button>
+            // Correcting a title that only looks like graded work; not a way to get answers.
+            <div className="space-y-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onIncludeLeftOut(includable.map((m) => m.material_id))}
+              >
+                {t("result.includeAgain", { count: includable.length })}
+              </Button>
+              <p className="text-xs text-muted-foreground">{t("result.includeNote")}</p>
+            </div>
           ) : null}
         </section>
       ) : null}

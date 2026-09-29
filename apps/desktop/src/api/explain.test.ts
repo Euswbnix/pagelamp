@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { INCLUDABLE_REASON } from "./explain";
 import { ASSESSMENT_WORDS, looksLikeAssessment, STUDY_WORDS } from "./mock/explain";
 
-// Vitest runs from apps/desktop (vite.config.ts); the facade's rules are in pagelamp-core.
+// The facade's rules, in pagelamp-core: found from this test file, wherever the tests run from.
+const testFile = expect.getState().testPath ?? "";
 const builders = readFileSync(
-  join(process.cwd(), "../../crates/pagelamp-core/src/ai_gate/builders.rs"),
+  join(dirname(testFile), "../../../../crates/pagelamp-core/src/ai_gate/builders.rs"),
   "utf8",
 );
 const snake = (name: string) => name.replace(/(?<!^)([A-Z])/g, "_$1").toLowerCase();

@@ -46,7 +46,7 @@
 "ai.blocked.disclosure_not_acknowledged" = "先查看这个服务会收到哪些内容，然后启用它。";
 "ai.blocked.material_sharing_not_allowed" = "你表示这门课的资料不能分享给 AI 服务，所以没有发送任何内容。";
 "ai.blocked.no_model_chosen" = "请在“设置 → AI 模型”中为这项功能选择模型。";
-"ai.blocked.no_readable_materials" = "这一周没有 PageLamp 能读取的资料。";
+"ai.blocked.no_readable_materials" = "没有 PageLamp 能读取的资料。";
 "ai.blocked.price_unknown_not_acknowledged" = "PageLamp 没有这个模型的价格。确认后可在不执行预算的情况下使用。";
 "ai.blocked.weekly_run_cap_reached" = "已达到本周的运行次数上限。";
 "ai.budget.amount" = "预算（美元）";
@@ -946,6 +946,7 @@
 "explain.result.deleted" = "讲解已删除。";
 "explain.result.done" = "讲解已生成。";
 "explain.result.failed" = "没能生成讲解。";
+"explain.result.includeNote" = "PageLamp 只讲解概念，不回答作业、测验或考试的题目。";
 "explain.result.leftOut" = "这次没有读取";
 "explain.result.leftOutReason.external_link" = "指向其他网站的链接";
 "explain.result.leftOutReason.looks_like_assessment" = "看起来是计分作业";

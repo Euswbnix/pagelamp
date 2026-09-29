@@ -154,7 +154,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>纳入 %1$ld 份看起来像作业的资料并重新生成</string>
+			<string>不是计分作业？纳入这 %1$ld 份并重新生成</string>
 		</dict>
 	</dict>
 	<key>explain.running.reading</key>

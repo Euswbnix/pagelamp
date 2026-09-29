@@ -46,7 +46,7 @@
 "ai.blocked.disclosure_not_acknowledged" = "Read what this service receives, then turn it on.";
 "ai.blocked.material_sharing_not_allowed" = "You said this course's materials may not be shared with AI services, so nothing was sent.";
 "ai.blocked.no_model_chosen" = "Choose a model for this in Settings → AI models.";
-"ai.blocked.no_readable_materials" = "This week has no materials PageLamp can read.";
+"ai.blocked.no_readable_materials" = "No materials PageLamp can read.";
 "ai.blocked.price_unknown_not_acknowledged" = "PageLamp has no price for this model. Confirm to use it without a budget.";
 "ai.blocked.weekly_run_cap_reached" = "You've reached this week's run limit.";
 "ai.budget.amount" = "Budget in US dollars";
@@ -946,6 +946,7 @@
 "explain.result.deleted" = "Explanation deleted.";
 "explain.result.done" = "The explanation is ready.";
 "explain.result.failed" = "The explanation couldn't be written.";
+"explain.result.includeNote" = "PageLamp explains concepts; it doesn't answer assignments, quizzes or exams.";
 "explain.result.leftOut" = "Not read this time";
 "explain.result.leftOutReason.external_link" = "a link to another site";
 "explain.result.leftOutReason.looks_like_assessment" = "looks like graded work";

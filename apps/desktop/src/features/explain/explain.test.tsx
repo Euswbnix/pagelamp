@@ -158,7 +158,7 @@ describe("Course → Explain: what the facade does", () => {
     );
     await user.click(
       within(article).getByRole("button", {
-        name: "Include the 1 that looks like graded work and write again",
+        name: "Not graded work? Include it and write again",
       }),
     );
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
@@ -172,6 +172,7 @@ describe("Course → Explain: what the facade does", () => {
 
   it("stops a run when AI access is turned off from the policy tab", async () => {
     const api = mockApi({ syncStepMs: 300 });
+    const explain = vi.spyOn(api, "explainWeek");
     const cancel = vi.spyOn(api, "cancelGeneration");
     const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
     await user.click(await explainButton());
@@ -180,33 +181,59 @@ describe("Course → Explain: what the facade does", () => {
     await user.click(
       await screen.findByRole("switch", { name: "Let my AI app read this course's materials" }),
     );
+    // The run that was started, and no other.
     await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+    expect(cancel).toHaveBeenCalledWith(explain.mock.calls[0]?.[2]);
   });
 
-  it("explains the recent materials when the course has no week now", async () => {
-    const api = mockApi();
-    const overview = api.courseOverview;
-    vi.spyOn(api, "courseOverview").mockImplementation(async (id) => {
-      const o = await overview(id);
-      return { ...o, timeline: { ...o.timeline, current_week: null, default_week: null } };
-    });
-    const saved = vi.spyOn(api, "savedExplanations");
+  it("stops a cloud run when sharing the materials is answered “not allowed”", async () => {
+    // Slow enough to outlast the answer's save (it waits 600 ms for a change of mind).
+    const api = mockApi({ syncStepMs: 1500 });
     const explain = vi.spyOn(api, "explainWeek");
+    const cancel = vi.spyOn(api, "cancelGeneration");
     const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    // The API key's model runs in the cloud (the `started` event says so).
+    expect(
+      await screen.findByText(/^Writing with /, undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "AI policy" }));
+    await user.click(await screen.findByRole("radio", { name: /^No, it's not allowed/ }));
+    await waitFor(() => expect(cancel).toHaveBeenCalledWith(explain.mock.calls[0]?.[2]), {
+      timeout: 5000,
+    });
+  });
+
+  it("explains the recent materials of a course with no week, and keeps them", async () => {
+    const NO_WEEK = "canvas:canvas.demo.test/course/240"; // "proposals": weeks unknown
+    const api = mockApi();
+    const explain = vi.spyOn(api, "explainWeek");
+    const first = renderRoute(`${paths.course(NO_WEEK)}?tab=explain`, { api });
     const button = await screen.findByRole("button", { name: "Explain the recent materials" });
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
-    // null would be every week's explanations: never asked for.
-    expect(saved.mock.calls.filter(([, week]) => week === null)).toEqual([]);
-    await user.click(button);
-    await waitFor(() =>
-      expect(explain).toHaveBeenCalledWith(
-        READABLE,
-        null,
-        expect.any(String),
-        expect.anything(),
-        expect.any(Function),
+    expect(
+      screen.getByText(
+        "This course's weeks aren't known, so PageLamp explains its materials of the last 14 days.",
       ),
+    ).toBeInTheDocument();
+    await first.user.click(button);
+    expect(
+      await screen.findByRole("region", { name: "Explanation of the recent materials" }),
+    ).toBeInTheDocument();
+    expect(explain).toHaveBeenCalledWith(
+      NO_WEEK,
+      null,
+      expect.any(String),
+      expect.anything(),
+      expect.any(Function),
     );
+    first.unmount();
+
+    // Saved and billed: still there when the course is opened again.
+    renderRoute(`${paths.course(NO_WEEK)}?tab=explain`, { api });
+    expect(
+      await screen.findByRole("region", { name: "Explanation of the recent materials" }),
+    ).toBeInTheDocument();
   });
 
   it("tells same-day explanations apart by their time", async () => {
