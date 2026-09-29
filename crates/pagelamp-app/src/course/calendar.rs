@@ -287,8 +287,15 @@ impl App {
     /// The courses "Read syllabi for N courses" would read: current, upcoming or unknown
     /// courses, not hidden, without a calendar in force, whose materials AI may read and that
     /// have a candidate to read. Model setup doesn't matter here (the button then says "Set up
-    /// AI to read syllabi").
+    /// AI to read syllabi"). Empty while "Not now" covers every one of them
+    /// (`snooze_calendar_offers`); a course offered later brings all of them back. The Courses
+    /// page and `startup_tasks().calendar_offers` show the same offers.
     pub fn syllabus_reading_offers(&self) -> Result<Vec<SyllabusOffer>> {
+        self.unsnoozed_calendar_offers()
+    }
+
+    /// Every offer, snoozed or not (what "Not now" records).
+    pub(crate) fn all_syllabus_reading_offers(&self) -> Result<Vec<SyllabusOffer>> {
         let store = self.read_store()?;
         let at = AsOf::now_local();
         let mut offers = Vec::new();

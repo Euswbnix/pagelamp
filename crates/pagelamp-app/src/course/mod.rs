@@ -149,11 +149,12 @@ impl App {
     }
 
     /// "Not now" on the banner: hidden for 14 days, until another course becomes a suggestion.
-    /// "Not now" on the syllabus reading offers (`startup_tasks().calendar_offers`): silent for
-    /// 14 days for the courses offered now; a course offered later shows them again.
+    /// "Not now" on the syllabus reading offers (`syllabus_reading_offers`, which
+    /// `startup_tasks().calendar_offers` lists): silent for 14 days for the courses offered
+    /// now; a course offered later shows them again.
     pub fn snooze_calendar_offers(&self) -> Result<()> {
         let offered: Vec<String> = self
-            .syllabus_reading_offers()?
+            .all_syllabus_reading_offers()?
             .into_iter()
             .map(|offer| offer.course_id)
             .collect();
@@ -171,7 +172,7 @@ impl App {
     /// The offers to show now: every current offer when one of them isn't covered by an
     /// unexpired "Not now" (like the lifecycle banner), else none.
     pub(crate) fn unsnoozed_calendar_offers(&self) -> Result<Vec<calendar::SyllabusOffer>> {
-        let offers = self.syllabus_reading_offers()?;
+        let offers = self.all_syllabus_reading_offers()?;
         let snooze: BannerSnooze = self
             .read_store()?
             .setting(OFFERS_KEY)
