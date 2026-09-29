@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { todayIso } from "@/lib/format";
 import { DEMO101, DEMO310, openCourse } from "../testing";
 
+// These tests cover the dates form a real alpha.1 build shows (v1: first and last day of
+// classes). Form v2 is behind REMOVAL_UI (CourseDatesForm.test.tsx).
+vi.mock("../removal/availability", () => ({ REMOVAL_UI: false, removalUiEnabled: () => false }));
+
 /** "YYYY-MM-DD" shifted by whole days (UTC arithmetic, so no DST surprises). */
 function shiftIso(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];

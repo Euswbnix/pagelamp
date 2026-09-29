@@ -143,6 +143,28 @@
     "cleared": "Your dates were cleared",
     "invalid": "These dates don't work. Check that classes end after they start."
   },
+  "form2": {
+    "description": "Set when classes run, the breaks and the end of exams. Your dates come before everything else.",
+    "exams": "End of exams (optional)",
+    "examsHint": "Without it, the three weeks after the last day of classes count as the exam period.",
+    "breaks": "Breaks",
+    "breaksHint": "Reading weeks and holidays. A break with its own week number is counted in the week numbers.",
+    "noBreaks": "No breaks added.",
+    "addBreak": "Add a break",
+    "breakLegend": "Break {{index}}",
+    "breakKind": "Kind",
+    "breakStart": "First day",
+    "breakEnd": "Last day",
+    "breakNumbered": "Has its own week number",
+    "breakLabel": "Name (optional)",
+    "removeBreak": "Remove break {{index}}",
+    "secondPart": "This course has a second part (full-year course)",
+    "secondLegend": "Second part",
+    "numbering": "Week numbers in the second part",
+    "continue": "Continue from the first part",
+    "restart": "Start again at week 1",
+    "invalid": "These dates are out of order. Each date must come after the one before it, and every break must end after it starts."
+  },
   "groups": {
     "current": "Current",
     "upcoming": "Upcoming",

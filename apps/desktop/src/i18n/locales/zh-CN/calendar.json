@@ -143,6 +143,28 @@
     "cleared": "已清除你设置的日期",
     "invalid": "这些日期有问题。请确认最后一天上课在第一天之后。"
   },
+  "form2": {
+    "description": "设置上课的时间、假期和考试结束日期。你设置的日期优先于其他一切来源。",
+    "exams": "考试结束（可不填）",
+    "examsHint": "不填的话，最后一天上课之后的三周算作考试期。",
+    "breaks": "假期",
+    "breaksHint": "阅读周和节假日。有自己周数的假期会计入周数。",
+    "noBreaks": "还没有添加假期。",
+    "addBreak": "添加假期",
+    "breakLegend": "假期 {{index}}",
+    "breakKind": "类型",
+    "breakStart": "第一天",
+    "breakEnd": "最后一天",
+    "breakNumbered": "有自己的周数",
+    "breakLabel": "名称（可不填）",
+    "removeBreak": "删除假期 {{index}}",
+    "secondPart": "这门课还有第二部分（全年课程）",
+    "secondLegend": "第二部分",
+    "numbering": "第二部分的周数",
+    "continue": "接着第一部分往下数",
+    "restart": "从第 1 周重新开始",
+    "invalid": "这些日期顺序不对。每个日期都要在前一个之后，每个假期的结束日期要在开始日期之后。"
+  },
   "groups": {
     "current": "进行中",
     "upcoming": "即将开课",

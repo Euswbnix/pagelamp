@@ -1,7 +1,9 @@
 import { useRef } from "react";
 import type { Course, CourseLifecycle, CourseTimeline } from "@/api/types";
 import { Separator } from "@/components/ui/separator";
+import { REMOVAL_UI } from "../removal/availability";
 import { CheckDatesPrompt } from "./CheckDatesPrompt";
+import { CourseDatesForm } from "./CourseDatesForm";
 import { TermDatesForm } from "./TermDatesForm";
 import { WhereCourseIsCard } from "./WhereCourseIsCard";
 
@@ -42,7 +44,12 @@ export function TimelineTab({
 
       <Separator />
 
-      <TermDatesForm course={course} timeline={timeline} startRef={startRef} />
+      {/* Form v2 (breaks, exams, second part) needs set_course_dates (alpha.2). */}
+      {REMOVAL_UI ? (
+        <CourseDatesForm course={course} timeline={timeline} startRef={startRef} />
+      ) : (
+        <TermDatesForm course={course} timeline={timeline} startRef={startRef} />
+      )}
     </div>
   );
 }
