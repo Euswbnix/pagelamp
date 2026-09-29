@@ -1595,6 +1595,7 @@ nonisolated enum L10nKeys {
         "updates.install.downloading",
         "updates.install.downloadingUnknown",
         "updates.install.failed",
+        "updates.install.held",
         "updates.install.installing",
         "updates.install.progressLabel",
         "updates.install.restarting",

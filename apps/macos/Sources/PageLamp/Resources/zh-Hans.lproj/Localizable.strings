@@ -1541,6 +1541,7 @@
 "updates.install.downloading" = "正在下载… %1$@%%";
 "updates.install.downloadingUnknown" = "正在下载…";
 "updates.install.failed" = "更新没能安装。";
+"updates.install.held" = "同步结束后，PageLamp 会接着安装这个更新。";
 "updates.install.installing" = "正在安装…";
 "updates.install.progressLabel" = "更新进度";
 "updates.install.restarting" = "正在重启 PageLamp…";

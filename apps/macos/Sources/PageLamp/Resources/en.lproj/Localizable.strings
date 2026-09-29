@@ -1541,6 +1541,7 @@
 "updates.install.downloading" = "Downloading… %1$@%%";
 "updates.install.downloadingUnknown" = "Downloading…";
 "updates.install.failed" = "The update couldn't be installed.";
+"updates.install.held" = "PageLamp will install the update when the sync finishes.";
 "updates.install.installing" = "Installing…";
 "updates.install.progressLabel" = "Update progress";
 "updates.install.restarting" = "Restarting PageLamp…";
