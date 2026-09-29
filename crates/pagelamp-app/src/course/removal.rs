@@ -344,6 +344,8 @@ impl App {
         store.set_tombstone_state(removed_id, TombstoneState::Purged)?;
         let failure = if result.error_kind == Some(SourceErrorKind::Network) {
             RestoreFailure::Offline
+        } else if tombstone.settings.access_restricted {
+            RestoreFailure::AccessRestricted
         } else if !result.ok {
             RestoreFailure::Other
         } else {
@@ -358,7 +360,9 @@ impl App {
 
     /// Stage 2 now: the removals in `removed_ids` ("Delete now", or trying a failed Trash move
     /// again), or every due purge (`None`). `permanent_if_no_trash`: the student chose "Delete
-    /// permanently" after the Trash failed. `Busy` while a sync runs.
+    /// permanently" after the Trash failed. It is never true by default anywhere: the CLI sets
+    /// it only with `--permanent`, a shell only from the student's explicit choice in the
+    /// removal dialog, worded as something that can't be undone. `Busy` while a sync runs.
     pub async fn purge_removed_courses(
         &self,
         removed_ids: Option<Vec<String>>,

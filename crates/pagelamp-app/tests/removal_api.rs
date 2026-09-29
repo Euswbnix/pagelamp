@@ -13,7 +13,7 @@ use pagelamp_app::{
 };
 use pagelamp_core::model::*;
 use pagelamp_core::paths;
-use pagelamp_core::secrets::MemorySecrets;
+use pagelamp_core::secrets::{MemorySecrets, SecretBackend};
 use pagelamp_core::store::Store;
 use serde_json::json;
 
@@ -439,4 +439,112 @@ async fn a_removed_course_leaves_the_study_plan_until_it_comes_back() {
         .await
         .unwrap();
     assert_eq!(titles(&f.app).len(), 2);
+}
+
+/// A Canvas course removed and purged, on a source at `base_url`, with its token stored.
+async fn purged_canvas_course(temp: &Path, base_url: &str, restricted: bool) -> (App, String) {
+    let secrets = Arc::new(MemorySecrets::new());
+    let app = App::open_at_with_secrets(temp.join("data"), secrets.clone()).unwrap();
+    app.set_trash(Arc::new(MockTrash {
+        bin: temp.to_path_buf(),
+        ..MockTrash::default()
+    }));
+    secrets.set(CANVAS, "demo-token-not-real").unwrap();
+    let store = Store::open(&app.db_path()).unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: CANVAS.into(),
+            kind: SourceKind::Canvas,
+            label: "Demo LMS".into(),
+            config: json!({ "base_url": base_url }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    let course_id = format!("{CANVAS}/course/404");
+    store
+        .upsert_course(&CourseUpsert {
+            id: course_id.clone(),
+            source_id: CANVAS.into(),
+            external_id: "404".into(),
+            code: Some("DEMO404".into()),
+            name: "Demo Archive".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    if restricted {
+        store
+            .set_course_access_restricted(&course_id, true)
+            .unwrap();
+    }
+    let report = app
+        .remove_courses(
+            vec!["DEMO404".into()],
+            RemoveOptions {
+                purge_now: true,
+                ..options()
+            },
+        )
+        .await
+        .unwrap();
+    (app, report.removed[0].removed_id.clone())
+}
+
+/// A Canvas that lists no course at all.
+async fn empty_canvas() -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, ResponseTemplate};
+    let server = wiremock::MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": 1, "name": "Demo"})))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .with_priority(10)
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn a_restore_that_cant_bring_the_course_back_says_why() {
+    // Canvas no longer lists it.
+    let temp = tempfile::tempdir().unwrap();
+    let canvas = empty_canvas().await;
+    let (app, id) = purged_canvas_course(temp.path(), &canvas.uri(), false).await;
+    let outcome = app.restore_course(&id).await.unwrap();
+    assert_eq!(
+        (outcome.restored, outcome.failure),
+        (false, Some(pagelamp_app::RestoreFailure::NotListed))
+    );
+    let removed = &app.removed_courses().unwrap()[0];
+    assert_eq!(removed.state, TombstoneState::Purged, "back to purged");
+
+    // It was restricted by date when it was removed: that is the reason.
+    let temp = tempfile::tempdir().unwrap();
+    let (app, id) = purged_canvas_course(temp.path(), &canvas.uri(), true).await;
+    let outcome = app.restore_course(&id).await.unwrap();
+    assert_eq!(
+        outcome.failure,
+        Some(pagelamp_app::RestoreFailure::AccessRestricted)
+    );
+
+    // Canvas can't be reached.
+    let closed = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        probe.local_addr().unwrap().port()
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let (app, id) =
+        purged_canvas_course(temp.path(), &format!("http://127.0.0.1:{closed}"), true).await;
+    let outcome = app.restore_course(&id).await.unwrap();
+    assert_eq!(outcome.failure, Some(pagelamp_app::RestoreFailure::Offline));
 }
