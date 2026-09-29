@@ -678,6 +678,7 @@ function studyPlan(now: Date, courses: MockCourse[]): StoredStudyPlan {
   return {
     id: 1,
     created_at: at(now, -2, 20, 15),
+    origin: "ai_app",
     plan: {
       horizon_start: dateOnly(now, -1),
       horizon_end: dateOnly(now, 12),

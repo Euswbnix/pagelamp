@@ -202,12 +202,20 @@ const MIRRORED: &[&str] = &[
     "Activity",
     // v0.3 M3: reminders and the weekly digest
     "ReminderKind",
-    "DigestDay",
+    "DayOfWeek",
     "ReminderSettings",
     "Reminder",
     "DigestCourse",
     "DigestPlan",
     "WeeklyDigest",
+    // v0.3 M3: study plans
+    "PlanOrigin",
+    "StudyPlanRequest",
+    "UnscheduledReason",
+    "UnscheduledTask",
+    "PlanWarningCode",
+    "PlanWarning",
+    "GeneratedStudyPlan",
     // AI (v0.3 M1)
     "AiFeature",
     "BlockReason",

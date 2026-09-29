@@ -758,11 +758,35 @@ pub struct StudyPlan {
     pub notes: Option<String>,
 }
 
+/// Who made a saved plan.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum PlanOrigin {
+    /// The student's AI app, over MCP (`save_study_plan`).
+    #[default]
+    #[serde(rename = "ai_app")]
+    AiApp,
+    /// PageLamp's own model run, accepted by the student (`accept_study_plan`).
+    #[serde(rename = "pagelamp")]
+    PageLamp,
+}
+
+impl PlanOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PlanOrigin::AiApp => "ai_app",
+            PlanOrigin::PageLamp => "pagelamp",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StoredStudyPlan {
     pub id: i64,
     pub created_at: Timestamp,
     pub plan: StudyPlan,
+    pub origin: PlanOrigin,
+    /// The PageLamp run it came from (`origin = pagelamp`), until "Remove all AI data".
+    pub generation_id: Option<String>,
 }
 
 #[cfg(test)]

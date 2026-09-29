@@ -50,7 +50,7 @@ pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
 pub use material_file::LocalFileUse;
-pub use reminders::{DigestDay, Reminder, ReminderKind, ReminderSettings};
+pub use reminders::{DayOfWeek, Reminder, ReminderKind, ReminderSettings};
 pub use updates::{
     StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
     WhatsNewTopic,
@@ -1321,7 +1321,15 @@ struct AppTypes {
     reminder: Reminder,
     reminder_kind: ReminderKind,
     reminder_settings: ReminderSettings,
-    digest_day: DigestDay,
+    day_of_week: DayOfWeek,
+    // M3: study plans
+    study_plan_request: ai::StudyPlanRequest,
+    generated_study_plan: ai::GeneratedStudyPlan,
+    plan_warning: ai::PlanWarning,
+    plan_warning_code: ai::PlanWarningCode,
+    plan_origin: pagelamp_core::model::PlanOrigin,
+    unscheduled_task: pagelamp_core::planner::UnscheduledTask,
+    unscheduled_reason: pagelamp_core::planner::UnscheduledReason,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

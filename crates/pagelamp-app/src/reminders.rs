@@ -19,7 +19,7 @@ use chrono::Duration;
 use pagelamp_core::dates::Tz;
 use pagelamp_core::model::Timestamp;
 use pagelamp_core::reminders::{self, CATCH_UP_DAYS, REMINDER_ID_PREFIXES, ReminderInputs};
-pub use pagelamp_core::reminders::{DigestDay, Reminder, ReminderKind, ReminderSettings};
+pub use pagelamp_core::reminders::{DayOfWeek, Reminder, ReminderKind, ReminderSettings};
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, WeeklyDigest};
 

@@ -555,7 +555,7 @@ impl App {
         let plan = super::run::Billing::Plan;
         match result {
             Ok(outcome) => {
-                let usage = self.record_run_usage(
+                let cost = self.record_run_usage(
                     USAGE_BACKEND,
                     &outcome.model,
                     request.feature,
@@ -563,7 +563,7 @@ impl App {
                     plan,
                     "ok",
                 )?;
-                on_event(super::GenEvent::Usage { usage });
+                on_event(super::GenEvent::Usage { usage: cost.usage });
                 let json = match schema {
                     Some(_) => Some(serde_json::from_str(&outcome.text).map_err(|_| {
                         model_error(
@@ -578,6 +578,7 @@ impl App {
                     backend_label: CODEX_LABEL.to_string(),
                     model: outcome.model,
                     on_device: false,
+                    cost,
                 })
             }
             Err(err) => {
