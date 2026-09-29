@@ -22,8 +22,10 @@
 //! dialect), `backend` (the closed `Backend` enum that runs a request), `error`.
 
 pub mod backend;
+pub mod catalog;
 mod client;
 pub mod error;
+pub mod estimate;
 pub mod output;
 pub mod profile;
 pub mod request;

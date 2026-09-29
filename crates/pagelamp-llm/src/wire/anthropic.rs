@@ -62,7 +62,7 @@ impl Dialect for AnthropicMessages {
             "stream": true,
         });
         let mut output_config = serde_json::Map::new();
-        if !profile.quirks.for_model(&req.model).no_effort {
+        if !profile.model_quirks(&req.model).no_effort {
             let effort = match req.effort {
                 Effort::Lowest | Effort::Low => "low",
                 Effort::Medium => "medium",

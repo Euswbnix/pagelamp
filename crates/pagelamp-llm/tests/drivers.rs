@@ -152,7 +152,8 @@ async fn openai_streams_text_and_usage_with_store_off() {
     assert_eq!(sent["stream"], true);
     assert_eq!(sent["instructions"], "Explain the week. Cite handles.");
     assert_eq!(sent["input"][0]["content"][0]["text"], MATERIAL);
-    assert_eq!(sent["reasoning"]["effort"], "low");
+    // "Lowest" is the cheapest value the price snapshot lists for the model.
+    assert_eq!(sent["reasoning"]["effort"], "none");
     assert_eq!(sent["max_output_tokens"], 1000);
     for absent in [
         "temperature",
@@ -165,6 +166,36 @@ async fn openai_streams_text_and_usage_with_store_off() {
     }
     let agent = received[0].headers["user-agent"].to_str().unwrap();
     assert!(agent.starts_with("PageLamp/"), "{agent}");
+}
+
+#[test]
+fn lowest_effort_comes_from_the_snapshot_and_falls_back_to_low() {
+    let openai = preset("openai").unwrap();
+    let body = |model: &str| {
+        let profile = openai.with_base_url(check_base_url("https://api.openai.com/v1").unwrap());
+        HttpDriver::new(profile, Some(ApiKey::new(KEY)))
+            .unwrap()
+            .request_body(&request(model, OutputSpec::Text))
+    };
+    assert_eq!(body("gpt-6-luna")["reasoning"]["effort"], "none");
+    assert_eq!(
+        body("gpt-6-astra")["reasoning"]["effort"],
+        "low",
+        "no none/minimal"
+    );
+    assert_eq!(
+        body("gpt-9-unknown")["reasoning"]["effort"],
+        "low",
+        "not in the snapshot"
+    );
+    // A model without an effort setting gets none sent.
+    let anthropic = preset("anthropic")
+        .unwrap()
+        .with_base_url(check_base_url("https://api.anthropic.com").unwrap());
+    let sent = HttpDriver::new(anthropic, Some(ApiKey::new(KEY)))
+        .unwrap()
+        .request_body(&request("claude-haiku-4-5-20251001", OutputSpec::Text));
+    assert!(sent.get("output_config").is_none(), "{sent}");
 }
 
 #[tokio::test]
@@ -625,7 +656,7 @@ async fn openrouter_streams_with_privacy_routing_attribution_and_usage() {
     assert_eq!(sent["stream_options"]["include_usage"], true);
     assert_eq!(sent["provider"]["data_collection"], "deny");
     assert_eq!(sent["provider"]["require_parameters"], true);
-    assert_eq!(sent["reasoning"]["effort"], "low");
+    assert_eq!(sent["reasoning"]["effort"], "none");
     assert_eq!(sent["max_tokens"], 1000);
     for absent in ["temperature", "tools", "tool_choice", "reasoning_effort"] {
         assert!(sent.get(absent).is_none(), "{absent} sent: {sent}");
@@ -658,7 +689,7 @@ async fn gemini_and_lm_studio_send_effort_only_where_the_preset_says() {
 
     let received = server.received_requests().await.unwrap();
     let gemini_sent = body_of(&received[0]);
-    assert_eq!(gemini_sent["reasoning_effort"], "low");
+    assert_eq!(gemini_sent["reasoning_effort"], "minimal");
     assert_eq!(gemini_sent["response_format"]["type"], "json_schema");
     assert_eq!(
         gemini_sent["response_format"]["json_schema"]["strict"],

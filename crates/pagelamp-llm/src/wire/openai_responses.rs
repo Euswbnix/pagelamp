@@ -55,7 +55,7 @@ impl Dialect for OpenAiResponses {
             "store": false,
             "max_output_tokens": req.max_output_tokens,
         });
-        let quirks = profile.quirks.for_model(&req.model);
+        let quirks = profile.model_quirks(&req.model);
         if !quirks.no_effort {
             let effort = match req.effort {
                 Effort::Lowest => quirks.lowest_effort.as_deref().unwrap_or("low"),

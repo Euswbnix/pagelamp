@@ -289,7 +289,7 @@ impl HttpDriver {
         Ok(ProbeReport {
             latency: started.elapsed(),
             json_tier,
-            thinking_always_on: self.profile.quirks.for_model(model).thinking_always_on,
+            thinking_always_on: self.profile.model_quirks(model).thinking_always_on,
             usage: outcome.usage,
             model_reported: outcome.model_reported,
         })

@@ -224,6 +224,20 @@ impl ProviderProfile {
     pub fn on_device(&self) -> bool {
         self.base_url.as_ref().is_some_and(is_loopback)
     }
+
+    /// How requests for `model` differ: the preset's own patterns first, then what the price
+    /// snapshot knows about the model (its effort values, whether it always thinks).
+    pub fn model_quirks(&self, model: &str) -> ModelQuirks {
+        let mut quirks = self.quirks.for_model(model);
+        if let Some(entry) = crate::catalog::lookup(&self.id, model) {
+            quirks.no_effort |= !entry.effort;
+            quirks.thinking_always_on |= entry.thinking_always_on;
+            if quirks.lowest_effort.is_none() {
+                quirks.lowest_effort = entry.lowest_effort.clone();
+            }
+        }
+        quirks
+    }
 }
 
 fn optional_url<'de, D: serde::Deserializer<'de>>(

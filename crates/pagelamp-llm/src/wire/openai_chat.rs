@@ -67,7 +67,7 @@ impl Dialect for OpenAiChat {
         if !profile.quirks.no_stream_usage {
             body["stream_options"] = json!({ "include_usage": true });
         }
-        let quirks = profile.quirks.for_model(&req.model);
+        let quirks = profile.model_quirks(&req.model);
         if !quirks.no_effort {
             let effort = match req.effort {
                 Effort::Lowest => quirks.lowest_effort.as_deref().unwrap_or("low"),
