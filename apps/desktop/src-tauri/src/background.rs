@@ -139,6 +139,8 @@ pub struct Background {
     labels: Mutex<TrayLabels>,
     /// The tray couldn't be created (Linux without an AppIndicator library).
     tray_failed: AtomicBool,
+    /// Saving the reminder settings and applying them happen one save at a time.
+    pub(crate) settings_saves: tauri::async_runtime::Mutex<()>,
 }
 
 impl Background {
@@ -146,6 +148,11 @@ impl Background {
         let background = Background::default();
         background.hidden.store(started_hidden, Ordering::SeqCst);
         background
+    }
+
+    /// Whether the student said "Remind me" (as last applied): notifications may be shown.
+    pub fn is_on(&self) -> bool {
+        self.on.load(Ordering::SeqCst)
     }
 
     /// Whether a page load may show the window.
@@ -170,9 +177,11 @@ pub struct BackgroundStatus {
 /// Errors from the login item are logged and show in the status, never fail the setting.
 pub fn apply<R: Runtime>(app: &AppHandle<R>, on: bool) -> BackgroundStatus {
     let state = app.state::<Background>();
-    state.on.store(on, Ordering::SeqCst);
-    if let Some(login_item) = app.try_state::<AutoLaunchManager>() {
-        let result = if on {
+    let was = state.on.swap(on, Ordering::SeqCst);
+    if let Some(turn_on) = login_item_change(was, on)
+        && let Some(login_item) = app.try_state::<AutoLaunchManager>()
+    {
+        let result = if turn_on {
             login_item.enable()
         } else {
             login_item.disable()
@@ -183,10 +192,19 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, on: bool) -> BackgroundStatus {
     }
     if on {
         ensure_tray(app);
-    } else {
-        let _ = app.remove_tray_by_id(TRAY_ID);
+    } else if let Some(tray) = app.remove_tray_by_id(TRAY_ID) {
+        // Its platform teardown (DestroyWindow, the status bar item) must run on the main
+        // thread; this is an async command's.
+        let _ = app.run_on_main_thread(move || drop(tray));
     }
     status(app)
+}
+
+/// What the login item needs when the setting goes from `was` to `on`: nothing unless it
+/// changed. Saving another reminder setting never brings back a login item the student turned
+/// off in the system's settings (Windows would mark it enabled again).
+fn login_item_change(was: bool, on: bool) -> Option<bool> {
+    (was != on).then_some(on)
 }
 
 /// At launch, before the page loads: follow the stored setting. Off, a login item left over from
@@ -262,7 +280,7 @@ pub fn debug_restart_once<R: Runtime>(app: &AppHandle<R>) {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(2));
         show_window_at_next_launch(&app);
-        app.restart();
+        crate::updates::restart(&app);
     });
 }
 
@@ -407,7 +425,16 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 mod tests {
     use std::time::{Duration, SystemTime};
 
-    use super::{HIDDEN_ARG, launch_hidden, show_window_marker, started_hidden};
+    use super::{HIDDEN_ARG, launch_hidden, login_item_change, show_window_marker, started_hidden};
+
+    #[test]
+    fn the_login_item_changes_only_with_the_setting() {
+        // Another reminder setting saved while on: the login item is left as the system has it.
+        assert_eq!(login_item_change(true, true), None);
+        assert_eq!(login_item_change(false, false), None);
+        assert_eq!(login_item_change(false, true), Some(true));
+        assert_eq!(login_item_change(true, false), Some(false));
+    }
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {
         list.iter()

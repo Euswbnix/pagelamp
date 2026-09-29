@@ -236,10 +236,16 @@ pub async fn updates_check<R: Runtime>(
         .header("User-Agent", user_agent)
         .map_err(|err| app_error(&err))?
         .timeout(CHECK_TIMEOUT)
-        // Windows: the installer takes over from here (Install is refused during syncs).
-        .on_before_exit(
-            || tracing::info!(target: "pagelamp::updates", "exiting for the installer"),
-        );
+        // Windows: the installer takes over from here (Install is refused during syncs). This
+        // replaces the plugin's own hook, so it cleans up as that one does: the tray icon goes
+        // with the process instead of staying behind, dead, until the mouse passes over it.
+        .on_before_exit({
+            let app = app.clone();
+            move || {
+                tracing::info!(target: "pagelamp::updates", "exiting for the installer");
+                app.cleanup_before_exit();
+            }
+        });
     if mode == InstallMode::DownloadOnly {
         builder = builder.target(DOWNLOAD_ONLY_TARGET);
     }
@@ -359,9 +365,63 @@ pub async fn updates_install<R: Runtime>(
     };
     tracing::info!(target: "pagelamp::updates", version = %update.version, "update installed; restarting");
     let _ = on_event.send(UpdateEvent::Restarting);
-    // Off the main thread (an async command), so the plugins see Exit before the new process
-    // starts: the single-instance lock is released first and the app comes back exactly once.
+    restart(&app)
+}
+
+/// Set when the app is to come back after it exits (macOS: see `restart`).
+#[cfg(target_os = "macos")]
+static RELAUNCH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Restarts PageLamp (an installed update, the debug restart). Called off the main thread (an
+/// async command), so the plugins see Exit before the new process starts: the single-instance
+/// lock is released first and the app comes back exactly once.
+///
+/// macOS: a PageLamp the login item started is launchd's job, and when it exits launchd kills
+/// the job's process group, with a new process started the usual way (`AppHandle::restart`) in
+/// it. So the app exits first and `relaunch_if_asked` starts the new one in its own group.
+pub fn restart<R: Runtime>(app: &AppHandle<R>) -> ! {
+    #[cfg(target_os = "macos")]
+    {
+        RELAUNCH.store(true, std::sync::atomic::Ordering::SeqCst);
+        app.exit(0);
+        loop {
+            std::thread::sleep(Duration::MAX);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
     app.restart()
+}
+
+/// At `RunEvent::Exit`, after the plugins saw it: starts the new PageLamp if `restart` asked,
+/// with the same arguments, in a process group of its own, so launchd's cleanup of a login-item
+/// job doesn't take it along. The updater replaced the bundle in place; if its executable has a
+/// new name, Launch Services opens the bundle instead (without the arguments).
+#[cfg(target_os = "macos")]
+pub fn relaunch_if_asked<R: Runtime>(app: &AppHandle<R>) {
+    use std::os::unix::process::CommandExt;
+    if !RELAUNCH.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let Ok(binary) = tauri::process::current_binary(&app.env()) else {
+        tracing::warn!(target: "pagelamp::updates", "restart: no binary path");
+        return;
+    };
+    let started = if binary.exists() {
+        std::process::Command::new(&binary)
+            .args(std::env::args_os().skip(1))
+            .process_group(0)
+            .spawn()
+    } else {
+        let bundle = binary.ancestors().nth(3).unwrap_or(&binary);
+        std::process::Command::new("/usr/bin/open")
+            .arg("-n")
+            .arg(bundle)
+            .spawn()
+    };
+    match started {
+        Ok(child) => tracing::info!(target: "pagelamp::updates", pid = child.id(), "restarted"),
+        Err(error) => tracing::warn!(target: "pagelamp::updates", %error, "restart failed"),
+    }
 }
 
 /// Why `fetch_and_install` stopped.

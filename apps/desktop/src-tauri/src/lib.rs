@@ -184,13 +184,18 @@ pub fn run() {
         )
     });
     app.run(|_app, _event| {
-        // macOS doesn't start a second PageLamp when it's opened again (Finder, the Dock,
-        // Spotlight, a login item): the running one gets Reopen. Show its window, as the
-        // single-instance hand-over does elsewhere; a window in the tray would stay hidden.
         #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Reopen { .. } = _event {
-            tracing::info!(target: "pagelamp::background", "reopened: showing the window");
-            background::show_main(_app);
+        match _event {
+            // macOS doesn't start a second PageLamp when it's opened again (Finder, the Dock,
+            // Spotlight, a login item): the running one gets Reopen. Show its window, as the
+            // single-instance hand-over does elsewhere; a window in the tray would stay hidden.
+            tauri::RunEvent::Reopen { .. } => {
+                tracing::info!(target: "pagelamp::background", "reopened: showing the window");
+                background::show_main(_app);
+            }
+            // The plugins have seen Exit (the single-instance lock is gone): an update's restart.
+            tauri::RunEvent::Exit => updates::relaunch_if_asked(_app),
+            _ => {}
         }
     });
 }

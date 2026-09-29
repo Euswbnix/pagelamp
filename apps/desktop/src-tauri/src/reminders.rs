@@ -10,12 +10,12 @@ use std::time::Duration;
 use chrono::{DateTime, TimeDelta, Utc};
 use pagelamp_app::{AppError, Reminder, ReminderSettings};
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 use crate::backend::Backend;
-use crate::background::{self, BackgroundStatus};
+use crate::background::{self, Background, BackgroundStatus};
 
 type CmdResult<T> = Result<T, AppError>;
 
@@ -81,6 +81,9 @@ pub async fn set_reminder_settings<R: Runtime>(
     settings: ReminderSettings,
 ) -> CmdResult<BackgroundStatus> {
     let on = settings.run_in_background;
+    // One save at a time, so quick toggles end with the tray and the login item as last saved.
+    let background = app.state::<Background>();
+    let _one_at_a_time = background.settings_saves.lock().await;
     backend
         .blocking(move |facade| facade.set_reminder_settings(&settings))
         .await?;
@@ -92,16 +95,20 @@ pub async fn due_reminders(backend: State<'_, Backend>) -> CmdResult<Vec<Reminde
     backend.blocking(|app| app.due_reminders(Utc::now())).await
 }
 
-/// Shows the notifications, then marks their reminders shown. On desktop the plugin hands each
-/// one to the system without waiting for it, so what the system does with it can't be seen here:
-/// once handed over, a reminder counts as shown. Only one that couldn't be handed over stays due
-/// and comes back at the next check.
+/// Shows the notifications, then marks their reminders shown. Nothing unless the student said
+/// "Remind me" (checked here too: an opt-out can land between the page's check and this call).
+/// On desktop the plugin hands each notification to the system without waiting and reports no
+/// failure, so every one handed over counts as shown; the Err branch covers only a failure to
+/// build it (Windows: finding the executable).
 #[tauri::command]
 pub async fn show_reminders<R: Runtime>(
     app: AppHandle<R>,
     backend: State<'_, Backend>,
     notifications: Vec<NotificationText>,
 ) -> CmdResult<()> {
+    if !app.state::<Background>().is_on() {
+        return Ok(());
+    }
     let mut shown = Vec::new();
     for notification in notifications {
         match notify(&app, &notification.title, &notification.body) {
@@ -131,6 +138,9 @@ pub async fn mark_reminders_shown(backend: State<'_, Backend>, ids: Vec<String>)
 /// PageLamp may notify (desktop systems have no other way to ask). Marks nothing.
 #[tauri::command]
 pub fn show_reminders_on_notice<R: Runtime>(app: AppHandle<R>, title: String, body: String) {
+    if !app.state::<Background>().is_on() {
+        return;
+    }
     if let Err(error) = notify(&app, &title, &body) {
         tracing::warn!(target: "pagelamp::reminders", %error, "notice not shown");
     }
