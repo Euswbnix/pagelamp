@@ -15,7 +15,9 @@ describe("mock calendar proposals", () => {
     const [proposal] = view.proposals;
     expect(proposal).toMatchObject({ origin: "ai", passing: false, resulting_week_today: 4 });
     expect(proposal?.conflicts[0]?.options).toHaveLength(2);
-    expect(proposal?.dates[0]?.alternatives).toHaveLength(1);
+    // The schedule page's date, and PageLamp's own (no label, no quote).
+    expect(proposal?.dates[0]?.alternatives).toHaveLength(2);
+    expect(proposal?.conflicts.map((c) => c.options.length)).toEqual([2, 0]);
     expect(view.candidates.map((c) => c.reason).sort()).toEqual(["syllabus", "title_schedule"]);
     expect(view.blocked ?? null).toBeNull();
   });

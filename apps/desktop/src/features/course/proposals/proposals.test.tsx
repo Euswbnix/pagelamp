@@ -68,6 +68,15 @@ describe("calendar proposal cards", () => {
     expect(acceptButton).toHaveAttribute("aria-disabled", "true");
     expect(c.getByText("Choose a date for each question above first.")).toBeInTheDocument();
 
+    // A conflict with nothing to choose from is a notice, and doesn't hold Accept back.
+    expect(
+      c.getByText(
+        "Final exam: This date looks like it's from another year's syllabus. Check these dates, or edit them before accepting.",
+      ),
+    ).toBeInTheDocument();
+    // An option from PageLamp's own evidence says so instead of quoting a material.
+    expect(c.getByText(/ — from the dates PageLamp worked out$/)).toBeInTheDocument();
+
     const firstClass = c.getByRole("radiogroup", {
       name: /^First day of classes: The materials give different dates/,
     });

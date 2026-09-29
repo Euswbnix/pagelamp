@@ -86,14 +86,17 @@ export function ProposalCard({
         ],
         required: false,
       })),
-    ...proposal.conflicts.map((c, i) => ({
-      key: `conflict-${i}`,
-      kind: c.kind,
-      segment: c.segment,
-      legend: `${kindLabel(c)}: ${t(`conflict.${c.code}`)}`,
-      options: c.options,
-      required: true,
-    })),
+    // A conflict without options (a date no year fits, too many breaks) is only a notice.
+    ...proposal.conflicts
+      .filter((c) => c.options.length > 0)
+      .map((c, i) => ({
+        key: `conflict-${i}`,
+        kind: c.kind,
+        segment: c.segment,
+        legend: `${kindLabel(c)}: ${t(`conflict.${c.code}`)} ${t("card.chooseRight")}`,
+        options: c.options,
+        required: true,
+      })),
   ];
   const unanswered = questions.some((q) => q.required && answers[q.key] === undefined);
   const chose = questions.some(
@@ -207,7 +210,7 @@ export function ProposalCard({
                 <li key={`${d.kind}-${d.segment}-${d.date}`} className="space-y-1.5">
                   <p className="text-sm">
                     <span className="font-medium">{kindLabel(d)}</span>
-                    {d.kind === "break" && d.break_kind ? (
+                    {d.kind === "break_span" && d.break_kind ? (
                       <span className="text-muted-foreground">
                         {" "}
                         · {tcal(`breakKind.${d.break_kind}`)}
@@ -223,6 +226,17 @@ export function ProposalCard({
               ))}
             </ul>
           </section>
+
+          {proposal.conflicts
+            .filter((c) => c.options.length === 0)
+            .map((c) => (
+              <Alert key={`${c.code}-${c.kind}-${c.segment}`} role="status">
+                <TriangleAlert aria-hidden />
+                <AlertDescription>
+                  {kindLabel(c)}: {t(`conflict.${c.code}`)} {t("card.checkOrEdit")}
+                </AlertDescription>
+              </Alert>
+            ))}
 
           {questions.map((q) => (
             <ChoiceQuestion
@@ -323,7 +337,9 @@ function ChoiceQuestion({
               <div className="flex items-center gap-2">
                 <RadioGroupItem id={id} value={String(i)} />
                 <Label htmlFor={id} className="font-normal">
-                  {from ? t("card.optionFrom", { date: when(option), title: from }) : when(option)}
+                  {from
+                    ? t("card.optionFrom", { date: when(option), title: from })
+                    : t("card.optionOwn", { date: when(option) })}
                 </Label>
               </div>
               <div className="pl-6">

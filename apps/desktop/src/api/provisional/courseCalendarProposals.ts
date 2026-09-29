@@ -46,10 +46,11 @@ export interface CalendarWeek {
   topic?: string | null;
 }
 
+// "break_span", not "break": the facade's name ("break" is a Swift keyword).
 export type DateKind =
   | "first_class"
   | "last_class"
-  | "break"
+  | "break_span"
   | "exam_period"
   | "final_exam"
   | "week_start";
@@ -67,6 +68,7 @@ export interface DateEvidence {
   derived: boolean;
 }
 
+/** An option from PageLamp's own evidence (materials fit, LMS start) has no label or evidence. */
 export interface AlternativeDate {
   date: IsoDate;
   end?: IsoDate | null;
@@ -97,7 +99,10 @@ export type ConflictCode =
   | "disagrees_with_class_event"
   | "differs_from_institution_calendar";
 
-/** A choice between two for the student (V5, V7, V8). */
+/**
+ * A choice between two for the student (V5, V7, V8). `options` can be empty (a date that fits no
+ * year, a course over 36 weeks, too many breaks): then there is only the notice.
+ */
 export interface CalendarConflict {
   code: ConflictCode;
   kind: DateKind;
@@ -120,11 +125,12 @@ export interface DropCount {
 }
 
 export type ChangeCode =
+  | "new_calendar"
   | "first_class_moved"
   | "last_class_moved"
+  | "exams_end_moved"
   | "break_added"
   | "break_removed"
-  | "exams_end_set"
   | "week_today_changes"
   | "phase_changes";
 

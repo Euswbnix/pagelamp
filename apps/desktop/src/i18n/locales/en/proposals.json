@@ -18,7 +18,7 @@
     "kind": {
       "first_class": "First day of classes",
       "last_class": "Last day of classes",
-      "break": "Break",
+      "break_span": "Break",
       "exam_period": "Exam period",
       "final_exam": "Final exam",
       "week_start": "Week {{week}} starts"
@@ -30,7 +30,10 @@
     "derived": "Worked out from the schedule table",
     "open": "Open {{title}}",
     "choose": "The materials give different dates for this. Which is right?",
+    "chooseRight": "Choose the one that's right.",
+    "checkOrEdit": "Check these dates, or edit them before accepting.",
     "optionFrom": "{{date}} — from {{title}}",
+    "optionOwn": "{{date}} — from the dates {{product}} worked out",
     "dropped_one": "{{count}} date was left out because it couldn't be checked against the materials:",
     "dropped_other": "{{count}} dates were left out because they couldn't be checked against the materials:",
     "droppedReason": {
@@ -47,13 +50,16 @@
     "after": "Today will be: {{label}}",
     "changesTitle": "What changes",
     "change": {
+      "new_calendar": "Sets this course's dates for the first time",
       "first_class_moved": "First day of classes: {{from}} → {{to}}",
       "last_class_moved": "Last day of classes: {{from}} → {{to}}",
+      "last_class_moved_no_from": "Last day of classes: {{to}}",
+      "exams_end_moved": "End of exams: {{from}} → {{to}}",
+      "exams_end_moved_no_from": "End of exams: {{to}}",
       "break_added": "{{kind}} added: {{start}} – {{end}}",
       "break_removed": "{{kind}} removed: {{start}} – {{end}}",
-      "exams_end_set": "Exams end {{date}}",
       "week_today_changes": "Today's week: {{from}} → {{to}}",
-      "phase_changes": "Where the course is: {{from}} → {{to}}",
+      "phase_changes": "Where the course is: {{from_phase}} → {{to_phase}}",
       "unknown": "Another change this version of {{product}} can't show"
     },
     "accept": "Accept",
@@ -76,12 +82,12 @@
     }
   },
   "conflict": {
-    "syllabus_from_another_year": "This date looks like it's from another year's syllabus. Choose the one that's right.",
-    "inconsistent": "These dates don't fit together. Choose the one that's right.",
-    "disagrees_with_notes": "This disagrees with the week numbers in the professor's materials. Choose the one that's right.",
-    "disagrees_with_lms_dates": "This disagrees with the Canvas course dates. Choose the one that's right.",
-    "disagrees_with_class_event": "This disagrees with the class times in your calendar. Choose the one that's right.",
-    "differs_from_institution_calendar": "This differs from the university's calendar. Choose the one that's right."
+    "syllabus_from_another_year": "This date looks like it's from another year's syllabus.",
+    "inconsistent": "These dates don't fit together.",
+    "disagrees_with_notes": "This disagrees with the week numbers in the professor's materials.",
+    "disagrees_with_lms_dates": "This disagrees with the Canvas course dates.",
+    "disagrees_with_class_event": "This disagrees with the class times in your calendar.",
+    "differs_from_institution_calendar": "This differs from the university's calendar."
   },
   "stale": {
     "title": "The syllabus changed on {{date}}",

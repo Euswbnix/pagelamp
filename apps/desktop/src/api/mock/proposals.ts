@@ -237,7 +237,7 @@ export function createProposalsMock(deps: {
         alternatives: [],
       },
       {
-        kind: "break",
+        kind: "break_span",
         segment: 0,
         break_kind: "reading_week",
         numbered: false,
@@ -358,6 +358,15 @@ export function createProposalsMock(deps: {
           ],
         },
       ];
+      // A date no year fits: only a notice, nothing to choose between.
+      base.conflicts.push({
+        code: "syllabus_from_another_year",
+        kind: "final_exam",
+        segment: 0,
+        options: [],
+      });
+      // An option from PageLamp's own evidence (the materials fit): no label, no quote.
+      first?.alternatives.push({ date: on(-3), label: "", evidence: [] });
       base.passing = false;
       base.dropped = [
         { reason: "unsupported_quote", count: 2 },
@@ -372,7 +381,7 @@ export function createProposalsMock(deps: {
             { key: "end", value: on(3, 4) },
           ],
         },
-        { code: "exams_end_set", params: [{ key: "date", value: on(12, 1) }] },
+        { code: "exams_end_moved", params: [{ key: "to", value: on(12, 1) }] },
       ];
       stateOf(fitted.course.id).proposals.push(base);
       sync(fitted);
@@ -386,18 +395,10 @@ export function createProposalsMock(deps: {
         changes: [
           {
             code: "week_today_changes",
-            params: [
-              { key: "from", value: "unknown" },
-              { key: "to", value: "4" },
-            ],
+            // Unknown today: no `from`.
+            params: [{ key: "to", value: "4" }],
           },
-          {
-            code: "first_class_moved",
-            params: [
-              { key: "from", value: "" },
-              { key: "to", value: on(-3, 1) },
-            ],
-          },
+          { code: "new_calendar", params: [] },
         ],
       });
       stateOf(unlabelled.course.id).proposals.push(scan);

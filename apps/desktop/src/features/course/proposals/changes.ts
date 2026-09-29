@@ -25,13 +25,19 @@ export function changeText(
     if (ISO.test(value)) params[key] = formatIsoDate(value, locale);
     else if (key === "kind")
       params[key] = tcal(`breakKind.${value}` as "breakKind.other", { defaultValue: value });
-    else if (change.code === "week_today_changes")
-      params[key] = /^\d+$/.test(value)
-        ? tcal("phase.teaching", { week: value })
-        : tcal("phase.unknown");
-    else if (change.code === "phase_changes")
+    else if (key === "from_phase" || key === "to_phase")
       params[key] = t(`card.phase.${value}` as "card.phase.unknown", { defaultValue: value });
+    else if (change.code === "week_today_changes" && /^\d+$/.test(value))
+      params[key] = tcal("phase.teaching", { week: value });
     else params[key] = value || "—";
   }
-  return translateWithText(t, `card.change.${change.code}`, params);
+  const present = new Set(change.params.map((p) => p.key));
+  // Optional params: an unknown week reads "Week unknown"; a first date has no "from".
+  if (change.code === "week_today_changes") {
+    for (const name of ["from", "to"]) if (!present.has(name)) params[name] = tcal("phase.unknown");
+  }
+  const variant = `${change.code}_no_from`;
+  const key =
+    !present.has("from") && Object.hasOwn(en.card.change, variant) ? variant : change.code;
+  return translateWithText(t, `card.change.${key}`, params);
 }
