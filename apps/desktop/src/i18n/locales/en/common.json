@@ -72,6 +72,8 @@
     "not_found": "We couldn't find that.",
     "ambiguous": "That matches more than one course.",
     "busy": "A sync is already running. Try again when it finishes.",
+    "schema_too_new": "This data was written by a newer version of {{product}}. Update {{product}} to open it.",
+    "schema_too_old": "This data is from a version of {{product}} too old to open. Restore a backup from the data folder (the pagelamp.db.v….bak files), or get help in Settings → Help & feedback.",
     "internal": "Something unexpected went wrong."
   },
   "sourceKind": {

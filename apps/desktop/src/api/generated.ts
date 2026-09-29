@@ -29,7 +29,15 @@ export type AiPolicy =
  * via the `definition` "AppErrorKind".
  */
 export type AppErrorKind =
-  "auth" | "network" | "invalid" | "not_found" | "ambiguous" | "busy" | "internal";
+  | "auth"
+  | "network"
+  | "invalid"
+  | "not_found"
+  | "ambiguous"
+  | "busy"
+  | "schema_too_new"
+  | "schema_too_old"
+  | "internal";
 /**
  * Where course data comes from.
  *
