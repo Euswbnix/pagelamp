@@ -51,7 +51,7 @@ export function RemovedCoursesSection() {
         ) : removed.data.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("removed.empty")}</p>
         ) : (
-          <ul aria-label={t("removed.listLabel")} className="divide-y rounded-lg border">
+          <ul aria-label={t("removed.listLabel")} className="divide-y border-y">
             {removed.data.map((course) => (
               <RemovedRow key={course.removed_id} course={course} onGone={focusList} />
             ))}
@@ -126,7 +126,7 @@ function RemovedRow({ course, onGone }: { course: RemovedCourse; onGone: () => v
           });
 
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
+    <li className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm">
       <div className="min-w-0 space-y-0.5">
         <p className="font-medium">
           {name}
