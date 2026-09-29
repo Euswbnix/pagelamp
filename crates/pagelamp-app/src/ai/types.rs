@@ -483,6 +483,8 @@ pub struct GenerationMeta {
     pub feature: AiFeature,
     pub backend_label: String,
     pub model: String,
+    /// The model ran on this computer.
+    pub on_device: bool,
     pub created_at: Timestamp,
     pub usage: TokenUsage,
     pub est_cost_micro_usd: Option<u64>,

@@ -619,6 +619,8 @@ pub struct StoredStudyPlan {
     pub origin: PlanOrigin,
     #[uniffi(default)]
     pub generation_id: Option<String>,
+    #[uniffi(default)]
+    pub ai_label: Option<AiLabel>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1651,6 +1653,8 @@ pub struct GenerationMeta {
     pub feature: AiFeature,
     pub backend_label: String,
     pub model: String,
+    #[uniffi(default)]
+    pub on_device: bool,
     pub created_at: Timestamp,
     pub usage: TokenUsage,
     pub est_cost_micro_usd: Option<u64>,

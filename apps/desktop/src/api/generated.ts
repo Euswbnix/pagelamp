@@ -2559,6 +2559,10 @@ export interface GenerationMeta {
   feature: AiFeature;
   generation_id: string;
   model: string;
+  /**
+   * The model ran on this computer.
+   */
+  on_device: boolean;
   prompt_version: number;
   usage: TokenUsage;
 }
@@ -3158,6 +3162,11 @@ export interface WhatsNew {
  * via the `definition` "StoredStudyPlan".
  */
 export interface StoredStudyPlan {
+  /**
+   * "AI-generated · backend · model · date" (`origin = pagelamp`): kept with the plan, also
+   * after "Remove all AI data" (compliance item 4). `None` for a plan from the AI app.
+   */
+  ai_label?: AiLabel | null;
   created_at: string;
   /**
    * The PageLamp run it came from (`origin = pagelamp`), until "Remove all AI data".

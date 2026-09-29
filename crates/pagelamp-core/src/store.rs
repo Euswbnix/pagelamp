@@ -1550,15 +1550,17 @@ impl Store {
     /// Plans are written by AI clients over MCP, so storage is bounded: only the newest
     /// `MAX_STORED_STUDY_PLANS` plans are kept (older ones are deleted in the same step).
     pub fn save_study_plan(&self, plan: &StudyPlan) -> Result<StoredStudyPlan> {
-        self.save_study_plan_as(plan, PlanOrigin::AiApp, None)
+        self.save_study_plan_as(plan, PlanOrigin::AiApp, None, None)
     }
 
-    /// `save_study_plan` with its origin: a plan PageLamp generated is saved with the run's id.
+    /// `save_study_plan` with its origin: a plan PageLamp generated is saved with the run's id
+    /// and its AI label.
     pub fn save_study_plan_as(
         &self,
         plan: &StudyPlan,
         origin: PlanOrigin,
         generation_id: Option<&str>,
+        ai_label: Option<&crate::term::AiLabel>,
     ) -> Result<StoredStudyPlan> {
         validate_study_plan(plan)?;
         let plan_json = serde_json::to_string(plan)?;
@@ -1574,13 +1576,15 @@ impl Store {
         let created_at = Utc::now().trunc_subsecs(0);
         let id = self.atomic(|| {
             self.conn.execute(
-                "INSERT INTO study_plans (created_at, plan_json, origin, generation_id)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO study_plans (created_at, plan_json, origin, generation_id,
+                                          ai_label_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     ts_text(created_at),
                     plan_json,
                     origin.as_str(),
-                    generation_id
+                    generation_id,
+                    ai_label.map(serde_json::to_string).transpose()?
                 ],
             )?;
             let id = self.conn.last_insert_rowid();
@@ -1597,6 +1601,7 @@ impl Store {
             plan: plan.clone(),
             origin,
             generation_id: generation_id.map(str::to_string),
+            ai_label: ai_label.cloned(),
         })
     }
 
@@ -1655,7 +1660,8 @@ impl Store {
     /// Plan `id`, or the latest (`None`), as stored.
     fn stored_study_plan(&self, id: Option<i64>) -> Result<Option<StoredStudyPlan>> {
         let row = self.query_opt(
-            "SELECT id, created_at, plan_json, origin, generation_id FROM study_plans
+            "SELECT id, created_at, plan_json, origin, generation_id, ai_label_json
+             FROM study_plans
              WHERE ?1 IS NULL OR id = ?1 ORDER BY id DESC LIMIT 1",
             [id],
             |row| {
@@ -1664,10 +1670,11 @@ impl Store {
                 let plan_json: String = row.get("plan_json")?;
                 let origin: String = row.get("origin")?;
                 let generation_id: Option<String> = row.get("generation_id")?;
-                Ok((id, created_at, plan_json, origin, generation_id))
+                let ai_label: Option<String> = row.get("ai_label_json")?;
+                Ok((id, created_at, plan_json, origin, generation_id, ai_label))
             },
         )?;
-        let Some((id, created_at, plan_json, origin, generation_id)) = row else {
+        let Some((id, created_at, plan_json, origin, generation_id, ai_label)) = row else {
             return Ok(None);
         };
         Ok(Some(StoredStudyPlan {
@@ -1680,6 +1687,8 @@ impl Store {
                 PlanOrigin::AiApp
             },
             generation_id,
+            // An unreadable label only loses the label.
+            ai_label: ai_label.and_then(|json| serde_json::from_str(&json).ok()),
         }))
     }
 

@@ -20,6 +20,7 @@ use pagelamp_core::planner::{
 };
 use pagelamp_core::reminders::DayOfWeek;
 use pagelamp_core::store::{GenerationRecord, GenerationStatus};
+use pagelamp_core::term::AiLabel;
 use pagelamp_core::views::AsOf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -124,9 +125,19 @@ impl App {
                     "The study plan draft can't be read.",
                 )
             })?;
+        let label = AiLabel {
+            backend_label: draft.meta.backend_label.clone(),
+            model: draft.meta.model.clone(),
+            created_at: draft.meta.created_at,
+            on_device: draft.meta.on_device,
+        };
         Ok(store.in_transaction(|store| {
-            let stored =
-                store.save_study_plan_as(&draft.plan, PlanOrigin::PageLamp, Some(generation_id))?;
+            let stored = store.save_study_plan_as(
+                &draft.plan,
+                PlanOrigin::PageLamp,
+                Some(generation_id),
+                Some(&label),
+            )?;
             store.record_generation(&GenerationRecord {
                 status: GenerationStatus::Accepted,
                 ..record
@@ -324,6 +335,7 @@ impl App {
                 feature: AiFeature::StudyPlan,
                 backend_label: run.backend_label,
                 model: run.model,
+                on_device: run.on_device,
                 created_at: started,
                 usage: run.cost.usage,
                 est_cost_micro_usd: run.cost.micro_usd,

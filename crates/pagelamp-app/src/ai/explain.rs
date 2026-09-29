@@ -383,6 +383,7 @@ impl App {
                 feature: AiFeature::WeeklyExplanation,
                 backend_label: run.backend_label,
                 model: run.model,
+                on_device: run.on_device,
                 created_at: started,
                 usage: run.cost.usage,
                 est_cost_micro_usd: run.cost.micro_usd,

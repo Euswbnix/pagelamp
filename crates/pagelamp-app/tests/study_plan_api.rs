@@ -310,9 +310,23 @@ async fn a_draft_is_scheduled_filtered_accepted_and_ticked() {
         GenerationStatus::Draft
     );
     assert!(app.latest_study_plan().unwrap().is_none());
+    assert!(draft.meta.on_device);
     let stored = app.accept_study_plan("plan-1").unwrap();
     assert_eq!(stored.origin, PlanOrigin::PageLamp);
     assert_eq!(stored.generation_id.as_deref(), Some("plan-1"));
+    let label = stored
+        .ai_label
+        .clone()
+        .expect("an accepted plan is labelled");
+    assert_eq!(
+        (
+            label.backend_label.as_str(),
+            label.model.as_str(),
+            label.created_at,
+            label.on_device
+        ),
+        ("Ollama", "local-model", draft.meta.created_at, true)
+    );
     assert_eq!(stored.plan.items.len(), draft.plan.items.len());
     assert_eq!(
         store.generation("plan-1").unwrap().unwrap().status,
@@ -333,6 +347,16 @@ async fn a_draft_is_scheduled_filtered_accepted_and_ticked() {
         .set_study_plan_item_done(stored.id, 99, true)
         .unwrap_err();
     assert_eq!(err.kind, AppErrorKind::NotFound);
+    assert_eq!(ticked.ai_label.as_ref(), Some(&label));
+
+    // "Remove all AI data": the run and its link go, the plan keeps its label (compliance 4).
+    app.remove_all_ai_data().unwrap();
+    assert!(store.generation("plan-1").unwrap().is_none());
+    let kept = app.latest_study_plan().unwrap().unwrap();
+    assert_eq!(
+        (kept.origin, kept.generation_id, kept.ai_label),
+        (PlanOrigin::PageLamp, None, Some(label))
+    );
 }
 
 #[tokio::test]
@@ -359,6 +383,10 @@ async fn ticking_counts_items_as_readers_see_them() {
         })
         .unwrap();
     assert_eq!(stored.origin, PlanOrigin::AiApp);
+    assert!(
+        stored.ai_label.is_none(),
+        "the AI app's plan has no PageLamp label"
+    );
     let rt_remove = app
         .remove_courses(
             vec!["DEMO303".into()],

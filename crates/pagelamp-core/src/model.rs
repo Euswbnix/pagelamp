@@ -787,6 +787,9 @@ pub struct StoredStudyPlan {
     pub origin: PlanOrigin,
     /// The PageLamp run it came from (`origin = pagelamp`), until "Remove all AI data".
     pub generation_id: Option<String>,
+    /// "AI-generated · backend · model · date" (`origin = pagelamp`): kept with the plan, also
+    /// after "Remove all AI data" (compliance item 4). `None` for a plan from the AI app.
+    pub ai_label: Option<crate::term::AiLabel>,
 }
 
 #[cfg(test)]
