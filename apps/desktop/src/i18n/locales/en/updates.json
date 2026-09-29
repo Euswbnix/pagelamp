@@ -74,7 +74,7 @@
       },
       "syllabus_reading": {
         "title": "Course dates from the syllabus",
-        "body": "With a model you set up, {{product}} can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them. Your ChatGPT plan, an API key or a model on this computer all work."
+        "body": "With a model you set up, {{product}} can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them."
       },
       "ai_writing": {
         "title": "Study plans and weekly explanations",

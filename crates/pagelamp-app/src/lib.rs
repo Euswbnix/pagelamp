@@ -958,7 +958,11 @@ impl App {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
         let note = note.map(str::trim).filter(|n| !n.is_empty());
-        Ok(store.set_course_policy(&course.id, policy, note)?)
+        store.set_course_policy(&course.id, policy, note)?;
+        if policy == AiPolicy::Prohibited {
+            self.stop_course_runs(&course.id, false);
+        }
+        Ok(())
     }
 
     /// Set/clear the student's term override (`None, None` falls back to the synced dates).
@@ -981,16 +985,26 @@ impl App {
 
     /// The per-course switch "Let my AI app read this course's materials" (docs/ARCHITECTURE.md
     /// §3 rule 8). A `prohibited` AI policy withholds text regardless of this switch.
+    /// Turning it off stops this app's model runs that read the course (`stop_course_runs`).
     pub fn set_course_ai_access(&self, course: &str, allowed: bool) -> Result<()> {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
-        Ok(store.set_course_ai_access(&course.id, allowed)?)
+        store.set_course_ai_access(&course.id, allowed)?;
+        if !allowed {
+            self.stop_course_runs(&course.id, false);
+        }
+        Ok(())
     }
 
+    /// Hiding it stops this app's model runs that read the course (`stop_course_runs`).
     pub fn set_course_hidden(&self, course: &str, hidden: bool) -> Result<()> {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
-        Ok(store.set_course_hidden(&course.id, hidden)?)
+        store.set_course_hidden(&course.id, hidden)?;
+        if hidden {
+            self.stop_course_runs(&course.id, false);
+        }
+        Ok(())
     }
 
     // ----- diagnostics (see the `diagnostics` module; these use this App's data dir) ----------

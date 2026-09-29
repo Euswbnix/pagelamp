@@ -1611,7 +1611,7 @@
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.reminders.body" = "在截止日期前和每周发送通知提醒。默认关闭，可以在「设置 → 提醒」里开启；开启后 PageLamp 会常驻托盘，并在登录时启动。";
 "updates.whatsNew.topics.reminders.title" = "提醒";
-"updates.whatsNew.topics.syllabus_reading.body" = "用你设置的模型，PageLamp 可以读取课程的教学大纲并提出课程日期，每个日期都引用原文出处。在你确认之前，什么都不会改变。ChatGPT 订阅、API 密钥或这台电脑上的模型都可以用。";
+"updates.whatsNew.topics.syllabus_reading.body" = "用你设置的模型，PageLamp 可以读取课程的教学大纲并提出课程日期，每个日期都引用原文出处。在你确认之前，什么都不会改变。";
 "updates.whatsNew.topics.syllabus_reading.title" = "从教学大纲读出课程日期";
 "updates.whatsNew.topics.update_check.body" = "它每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 PageLamp 的版本号；不会发送任何课程内容。安装任何更新之前一定会先问你。";
 "updates.whatsNew.topics.update_check.title" = "PageLamp 现在可以自己更新了";

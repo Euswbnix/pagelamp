@@ -442,6 +442,10 @@ impl App {
         let (course, choice, destination, context, prompt, inputs, by_handle) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
+            // From here a change to the course's AI settings stops this reading; the gate
+            // reads them again after that, so no change slips between the two.
+            self.run_reads_course(generation_id, &course.id, None);
+            let course = store.resolve_course_with(&course.id, true)?;
             // The gate's order: the course's own state before the model setup.
             if let Some(reason) = course_block(&course) {
                 return Err(blocked(reason));
@@ -450,6 +454,8 @@ impl App {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
             let (_, destination) = self.estimate_profile(&choice)?;
+            // Before calendar_context reads question (b) (`stop_course_runs`, cloud only).
+            self.run_reads_course(generation_id, &course.id, Some(destination));
             let signals = store.calendar_signals(&course.id)?;
             let context = match calendar_context(
                 &store,

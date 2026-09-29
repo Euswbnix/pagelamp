@@ -63,11 +63,29 @@ cargo run -p pagelamp-cli -- mcp-config claude-desktop
 | `apps/pagelamp-cli` | the `pagelamp` command |
 | `apps/desktop` | Tauri 2 + React app (copy in `src/i18n`, brand in `src/brand`) |
 
+## Before you open a pull request
+
+This is the Definition of Done from [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §8; run the checks for
+what you changed. CI runs all of them except the last one.
+
+- [ ] Rust: `cargo fmt --all --check`,
+      `cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings`,
+      `cargo test --workspace --exclude pagelamp-desktop`.
+- [ ] Desktop (in `apps/desktop`): `pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build`;
+      for the desktop crate, `pnpm run build:sidecar`, then
+      `cargo clippy -p pagelamp-desktop --all-targets -- -D warnings && cargo test -p pagelamp-desktop`.
+- [ ] Changed a facade type: `pnpm run gen:types`, then commit `apps/desktop/src/api/generated.ts`.
+- [ ] Changed UI text: English and 简体中文 both updated, then (from the repository root)
+      `node apps/macos/scripts/gen-strings.mjs` and commit the regenerated Mac strings;
+      `node apps/macos/scripts/gen-strings.mjs --check` must pass.
+- [ ] No secrets, real course materials, names, tokens or calendar links anywhere in the diff.
+
 ## Pull requests
 
 - Small, focused PRs with tests. CI must be green (Linux, macOS, Windows).
 - Commit subject: imperative, ≤ 72 characters, area prefix — `core:`, `extract:`, `canvas:`,
-  `local:`, `mcp:`, `app:`, `cli:`, `desktop:`, `docs:`, `ci:`. Explain *why* in the body.
+  `local:`, `mcp:`, `llm:`, `app:`, `ffi:`, `cli:`, `desktop:`, `macos:`, `docs:`, `ci:`. Explain *why*
+  in the body.
 - User-facing text changes need both English and 简体中文.
 
 ## 中文
@@ -77,3 +95,4 @@ cargo run -p pagelamp-cli -- mcp-config claude-desktop
 测试和截图只能用合成数据，不能出现真实课件、姓名、令牌或日历链接。贡献按 Apache-2.0 授权，新依赖必须与之兼容。
 给 AI 看的所有文字都在 `crates/pagelamp-mcp/src/text.rs`，界面文案在 `apps/desktop/src/i18n`，不会 Rust 也能改。
 面向用户的文字改动需要同时提供英文和简体中文。
+提交 PR 前请按上面 “Before you open a pull request” 的清单检查一遍。
