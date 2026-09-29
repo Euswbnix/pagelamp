@@ -20,6 +20,7 @@ import type {
   RuntimeEvent,
   UsageSummary,
 } from "./ai";
+import type { GeneratedStudyPlan, StudyPlanRequest } from "./plan";
 import type {
   BackgroundStatus,
   NotificationText,
@@ -247,6 +248,21 @@ export interface PageLampApi {
   ): Promise<CalendarRunOutcome[]>;
   /** Stop a running generation or batch (by its id); the run ends with `cancelled`. */
   cancelGeneration(generationId: string): Promise<void>;
+
+  // ----- study plans written by PageLamp (M3; design §5.1) ------------------------------------
+  /**
+   * A draft plan: a model run like the syllabus reading (`cancelGeneration(generationId)` stops
+   * it), its dates set by PageLamp's scheduler. Nothing is saved until `acceptStudyPlan`.
+   */
+  generateStudyPlan(
+    request: StudyPlanRequest,
+    generationId: string,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<GeneratedStudyPlan>;
+  /** Saves the draft as the latest plan (origin "pagelamp"). */
+  acceptStudyPlan(generationId: string): Promise<StoredStudyPlan>;
+  /** Ticks an item off (or back on); the index counts the items as `latestStudyPlan` lists them. */
+  setStudyPlanItemDone(planId: number, itemIndex: number, done: boolean): Promise<StoredStudyPlan>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 

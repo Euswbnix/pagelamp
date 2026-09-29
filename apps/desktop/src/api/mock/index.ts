@@ -15,7 +15,7 @@
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
-import { sameBackend } from "../ai";
+import { type EstimateRequest, sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
@@ -55,7 +55,8 @@ import {
   type MockScenario,
   mcpClientConfigs,
 } from "./fixtures";
-import { createProposalsMock } from "./proposals";
+import { createPlanMock } from "./plan";
+import { createProposalsMock, type MockAiRun } from "./proposals";
 import { createRemindersMock } from "./reminders";
 import { createLifecycleMock } from "./removal";
 
@@ -237,6 +238,44 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   // taking this" and snoozes, as the facade computes them per read.
   const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
   const lifecycleOf = courseLifecycle.lifecycleOf;
+  /**
+   * The AI gate of one run, as in the facade: the AI mock's estimate (its blocks; the student may
+   * override a reached budget), then who the feature's model runs on. `ai` is created below;
+   * this is only called later.
+   */
+  async function aiGate(request: EstimateRequest, overrideBudget: boolean): Promise<MockAiRun> {
+    const estimate = await ai.estimateGeneration(request);
+    const block = estimate.would_block ?? null;
+    if (block && !(block === "budget_reached" && overrideBudget)) {
+      throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+    }
+    const status = await ai.aiStatus();
+    const choice = status.features.find((f) => f.feature === request.feature)?.choice;
+    const backend = choice
+      ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
+      : undefined;
+    if (!choice || !backend) {
+      throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
+    }
+    return {
+      backend_label: backend.label,
+      model: choice.model,
+      on_device: backend.kind === "local",
+    };
+  }
+
+  // Study plans written by PageLamp (plan.ts).
+  const studyPlans = createPlanMock({
+    db,
+    now,
+    respond,
+    step: () => sleep(syncStep),
+    activity,
+    gate: (courses, horizonDays, overrideBudget) =>
+      aiGate({ feature: "study_plan", courses, horizon_days: horizonDays }, overrideBudget),
+    findCourse,
+  });
+
   // Calendar proposals, candidates and syllabus reading (proposals.ts).
   const courseProposals = createProposalsMock({
     db,
@@ -247,29 +286,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     findCourse,
     step: () => sleep(syncStep),
     // The AI mock's estimate is the gate, as in the facade (created below; called later).
-    aiGate: async (courseId, overrideBudget) => {
-      const estimate = await ai.estimateGeneration({
-        feature: "course_calendar",
-        courses: [courseId],
-      });
-      const block = estimate.would_block ?? null;
-      if (block && !(block === "budget_reached" && overrideBudget)) {
-        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
-      }
-      const status = await ai.aiStatus();
-      const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
-      const backend = choice
-        ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
-        : undefined;
-      if (!choice || !backend) {
-        throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
-      }
-      return {
-        backend_label: backend.label,
-        model: choice.model,
-        on_device: backend.kind === "local",
-      };
-    },
+    aiGate: (courseId, overrideBudget) =>
+      aiGate({ feature: "course_calendar", courses: [courseId] }, overrideBudget),
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));
       c.timeline = {
@@ -532,6 +550,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     ...ai,
     ...courseLifecycle.api,
     ...courseProposals.api,
+    // One Stop for every run: a syllabus reading or a study plan.
+    cancelGeneration: async (generationId) => {
+      studyPlans.cancel(generationId);
+      await courseProposals.api.cancelGeneration(generationId);
+    },
+    generateStudyPlan: studyPlans.generateStudyPlan,
+    acceptStudyPlan: studyPlans.acceptStudyPlan,
+    setStudyPlanItemDone: studyPlans.setStudyPlanItemDone,
     ...createRemindersMock({ scenario, now, respond, courses: () => db.courses }),
 
     downloadMaterialFiles: async (courseId, materialIds, onEvent) => {

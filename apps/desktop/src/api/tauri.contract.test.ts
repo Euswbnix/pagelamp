@@ -108,6 +108,20 @@ it("sends the commands and arguments the Rust side expects", async () => {
     () => {},
   );
   await api.cancelGeneration("contract-test-generation");
+  await api.generateStudyPlan(
+    {
+      horizon_days: 14,
+      hours_per_week: 10,
+      days_off: ["saturday"],
+      courses: [COURSE],
+      note: "contract test",
+      override_budget: false,
+    },
+    "contract-test-plan",
+    onEvent,
+  );
+  await api.acceptStudyPlan("contract-test-plan");
+  await api.setStudyPlanItemDone(1, 0, true);
   await api.openMaterial("contract-test-material");
   await api.revealMaterial("contract-test-material");
   await api.clearKeepCourseCurrent(COURSE);

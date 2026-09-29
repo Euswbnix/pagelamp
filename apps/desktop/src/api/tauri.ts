@@ -114,6 +114,15 @@ export function createTauriApi(): PageLampApi {
         onEvent: eventChannel(onEvent),
       }),
     cancelGeneration: (generationId) => call("cancel_generation", { generationId }),
+    generateStudyPlan: (request, generationId, onEvent) =>
+      call("generate_study_plan", {
+        request,
+        generationId,
+        onEvent: eventChannel(onEvent),
+      }),
+    acceptStudyPlan: (generationId) => call("accept_study_plan", { generationId }),
+    setStudyPlanItemDone: (planId, itemIndex, done) =>
+      call("set_study_plan_item_done", { planId, itemIndex, done }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
     setCourseMaterialSharing: (courseId, answer) =>

@@ -372,6 +372,39 @@
     }
   },
   {
+    "cmd": "generate_study_plan",
+    "args": {
+      "request": {
+        "horizon_days": 14,
+        "hours_per_week": 10,
+        "days_off": [
+          "saturday"
+        ],
+        "courses": [
+          "folder:contract-test/course/DEMO101"
+        ],
+        "note": "contract test",
+        "override_budget": false
+      },
+      "generationId": "contract-test-plan",
+      "onEvent": "__CHANNEL__:0"
+    }
+  },
+  {
+    "cmd": "accept_study_plan",
+    "args": {
+      "generationId": "contract-test-plan"
+    }
+  },
+  {
+    "cmd": "set_study_plan_item_done",
+    "args": {
+      "planId": 1,
+      "itemIndex": 0,
+      "done": true
+    }
+  },
+  {
     "cmd": "open_material",
     "args": {
       "materialId": "contract-test-material"

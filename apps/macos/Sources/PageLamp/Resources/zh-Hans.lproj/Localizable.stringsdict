@@ -297,6 +297,62 @@
 			<string>今天有 %1$ld 项学习任务</string>
 		</dict>
 	</dict>
+	<key>plan.draft.minutes</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 分钟</string>
+		</dict>
+	</dict>
+	<key>plan.draft.summary</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 项任务，%2$@ 至 %3$@</string>
+		</dict>
+	</dict>
+	<key>plan.warnings.graded_work_left_out</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>PageLamp 去掉了 %1$ld 项会替你完成计分作业的任务。</string>
+		</dict>
+	</dict>
+	<key>plan.warnings.unknown_materials_dropped</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>模型提到的 %1$ld 份资料不在你的课程里，已去掉。</string>
+		</dict>
+	</dict>
 	<key>proposals.batch.acceptPassing</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

@@ -13,9 +13,9 @@ use chrono::NaiveDate;
 use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
-    EstimateRequest, GenEvent, LocalServer, LoginEvent, ModelChoice, ModelInfo,
+    EstimateRequest, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent, ModelChoice, ModelInfo,
     ModelProviderRecord, ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent,
-    UsageSummary,
+    StudyPlanRequest, UsageSummary,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
@@ -573,6 +573,48 @@ pub async fn read_course_calendars(
             })
             .await
         })
+        .await
+}
+
+// ----- study plans written by PageLamp (v0.3 M3; design §5.1) ------------------------------------
+
+/// A draft plan: a model run (the install gate holds it back; `cancel_generation` stops it).
+#[tauri::command]
+pub async fn generate_study_plan(
+    backend: State<'_, Backend>,
+    request: StudyPlanRequest,
+    generation_id: String,
+    on_event: Channel<GenEvent>,
+) -> CmdResult<GeneratedStudyPlan> {
+    backend
+        .spawn_work(|app| async move {
+            app.generate_study_plan(request, &generation_id, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn accept_study_plan(
+    backend: State<'_, Backend>,
+    generation_id: String,
+) -> CmdResult<StoredStudyPlan> {
+    backend
+        .blocking(move |app| app.accept_study_plan(&generation_id))
+        .await
+}
+
+#[tauri::command]
+pub async fn set_study_plan_item_done(
+    backend: State<'_, Backend>,
+    plan_id: i64,
+    item_index: u32,
+    done: bool,
+) -> CmdResult<StoredStudyPlan> {
+    backend
+        .blocking(move |app| app.set_study_plan_item_done(plan_id, item_index, done))
         .await
 }
 
