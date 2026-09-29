@@ -12,7 +12,6 @@
 
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import type { UpdateChannel, UpdateCheckRecord } from "../provisional";
 import {
   type AppStatus,
   aiMaterialsState,
@@ -24,6 +23,8 @@ import {
   type SyncEvent,
   type SyncRequest,
   type SyncSummary,
+  type UpdateChannel,
+  type UpdateCheckRecord,
 } from "../types";
 import {
   buildMockDb,
@@ -681,7 +682,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
     mcpClientConfigs: () => respond(() => mcpClientConfigs(MOCK_BINARY_PATH)),
 
-    updatePrefs: () => respond(() => ({ ...updates.prefs, effective_channel: effectiveChannel() })),
+    updatePrefs: () => respond(() => ({ ...updates.prefs })),
+    effectiveUpdateChannel: () => respond(effectiveChannel),
     setUpdatePrefs: (prefs) =>
       respond(() => {
         updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };

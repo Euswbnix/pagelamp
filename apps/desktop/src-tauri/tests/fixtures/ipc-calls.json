@@ -193,5 +193,52 @@
       "message": "contract-test error without a stack",
       "stack": null
     }
+  },
+  {
+    "cmd": "update_prefs",
+    "args": {}
+  },
+  {
+    "cmd": "set_update_prefs",
+    "args": {
+      "prefs": {
+        "auto_check": true,
+        "channel": "beta"
+      }
+    }
+  },
+  {
+    "cmd": "effective_update_channel",
+    "args": {}
+  },
+  {
+    "cmd": "startup_tasks",
+    "args": {}
+  },
+  {
+    "cmd": "acknowledge_whats_new",
+    "args": {}
+  },
+  {
+    "cmd": "acknowledge_update_disclosure",
+    "args": {}
+  },
+  {
+    "cmd": "last_update_check",
+    "args": {}
+  },
+  {
+    "cmd": "updates_status",
+    "args": {}
+  },
+  {
+    "cmd": "updates_check",
+    "args": {}
+  },
+  {
+    "cmd": "updates_install",
+    "args": {
+      "onEvent": "__CHANNEL__:0"
+    }
   }
 ]

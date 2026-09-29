@@ -50,5 +50,21 @@
       "signingIdentity": "-",
       "minimumSystemVersion": "11.0"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "PLACEHOLDER: the owner's minisign public key (A4, by 2026-10-09)",
+      "windows": {
+        "installMode": "passive"
+      }
+    },
+    "pagelamp-updates": {
+      "stable": [
+        "https://euswbnix.github.io/pagelamp/updates/stable.json",
+        "https://github.com/Euswbnix/pagelamp/releases/latest/download/latest.json"
+      ],
+      "beta": ["https://euswbnix.github.io/pagelamp/updates/beta.json"],
+      "releasePage": "https://github.com/Euswbnix/pagelamp/releases/tag/v{version}"
+    }
   }
 }

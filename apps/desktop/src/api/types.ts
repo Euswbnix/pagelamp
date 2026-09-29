@@ -9,6 +9,9 @@
 // - Instants are RFC 3339 strings; calendar dates are "YYYY-MM-DD" strings.
 
 export type {
+  Activity,
+  ActivityItem,
+  ActivityKind,
   AiMaterialsState,
   AiPolicy,
   AppError,
@@ -37,6 +40,7 @@ export type {
   SourceKind,
   SourceRecord,
   SourceSyncResult,
+  StartupTasks,
   StoreCounts,
   StoredStudyPlan,
   StudyPlan,
@@ -47,8 +51,14 @@ export type {
   TemporaryLocation,
   TermSource,
   TextStatus,
+  UpdateChannel,
+  UpdateCheckOutcome,
+  UpdateCheckRecord,
+  UpdatePrefs,
   WeekMaterials,
   WeekNoteKind,
+  WhatsNew,
+  WhatsNewTopic,
 } from "./generated";
 
 import type { AiMaterialsState, AiPolicy, Course } from "./generated";

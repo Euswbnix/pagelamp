@@ -1,4 +1,3 @@
-import type { StartupTasks, UpdateCheckRecord, UpdatePrefs, UpdatePrefsView } from "./provisional";
 import type {
   AiPolicy,
   AppStatus,
@@ -11,10 +10,14 @@ import type {
   SearchHit,
   SourceRecord,
   SourceSyncResult,
+  StartupTasks,
   StoredStudyPlan,
   SyncEvent,
   SyncRequest,
   SyncSummary,
+  UpdateChannel,
+  UpdateCheckRecord,
+  UpdatePrefs,
   WeekMaterials,
 } from "./types";
 
@@ -124,9 +127,11 @@ export interface PageLampApi {
   lastCrash(): Promise<CrashReport | null>;
   clearLastCrash(): Promise<void>;
 
-  // ----- updates (facade: preferences and what's due at launch; provisional types) ----------
-  updatePrefs(): Promise<UpdatePrefsView>;
+  // ----- updates (facade: preferences, what's due now, the last check) ---------------------
+  updatePrefs(): Promise<UpdatePrefs>;
   setUpdatePrefs(prefs: UpdatePrefs): Promise<void>;
+  /** The chosen channel, else beta for a pre-release build, else stable (decision D3). */
+  effectiveUpdateChannel(): Promise<UpdateChannel>;
   /** What to do at launch: the "What's new" sheet, an automatic check, the post-update banner. */
   startupTasks(): Promise<StartupTasks>;
   acknowledgeWhatsNew(): Promise<void>;

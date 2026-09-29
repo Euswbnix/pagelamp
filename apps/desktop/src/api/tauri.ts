@@ -69,6 +69,7 @@ export function createTauriApi(): PageLampApi {
 
     updatePrefs: () => call("update_prefs"),
     setUpdatePrefs: (prefs) => call("set_update_prefs", { prefs }),
+    effectiveUpdateChannel: () => call("effective_update_channel"),
     startupTasks: () => call("startup_tasks"),
     acknowledgeWhatsNew: () => call("acknowledge_whats_new"),
     acknowledgeUpdateDisclosure: () => call("acknowledge_update_disclosure"),

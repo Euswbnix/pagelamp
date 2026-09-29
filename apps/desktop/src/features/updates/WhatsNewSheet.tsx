@@ -1,13 +1,13 @@
 import { CalendarRange, type LucideIcon, RefreshCw } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { WhatsNewTopic } from "@/api/provisional";
 import {
   useAcknowledgeWhatsNew,
   useSetUpdatePrefs,
   useStartupTasks,
   useUpdatePrefs,
 } from "@/api/queries";
+import type { WhatsNewTopic } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

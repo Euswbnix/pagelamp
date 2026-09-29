@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "pagelamp-updates": {
+      "stable": ["https://euswbnix.github.io/pagelamp/updates/test.json"],
+      "beta": ["https://euswbnix.github.io/pagelamp/updates/test.json"]
+    }
+  }
+}

@@ -13,6 +13,7 @@
 
 pub mod backend;
 mod commands;
+pub mod updates;
 
 pub use backend::Backend;
 
@@ -47,6 +48,16 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::reveal_data_dir,
         commands::reveal_logs_dir,
         commands::log_ui_error,
+        commands::update_prefs,
+        commands::set_update_prefs,
+        commands::effective_update_channel,
+        commands::startup_tasks,
+        commands::acknowledge_whats_new,
+        commands::acknowledge_update_disclosure,
+        commands::last_update_check,
+        updates::updates_status,
+        updates::updates_check,
+        updates::updates_install,
     ])
 }
 
@@ -54,9 +65,15 @@ pub fn run() {
     // First of all: log files, redacted stderr and the panic hook, so a failure while opening
     // the core below is logged and a crash is recorded for the next launch's notice.
     pagelamp_app::diagnostics::init(pagelamp_app::diagnostics::ProcessKind::App, false);
+    updates::remove_old_sidecar();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(updates::plugin())
+        .setup(|app| {
+            updates::manage(app.handle());
+            Ok(())
+        })
         .manage(Backend::open());
     with_commands(builder)
         .run(tauri::generate_context!())

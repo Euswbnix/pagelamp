@@ -8,16 +8,11 @@ const fast = { latencyMs: 0, syncStepMs: 0 };
 describe("mock updates", () => {
   it("uses beta by default for a pre-release build, and remembers a chosen channel", async () => {
     const api = createMockApi(fast);
-    expect(await api.updatePrefs()).toEqual({
-      auto_check: true,
-      channel: null,
-      effective_channel: "beta",
-    });
+    expect(await api.updatePrefs()).toEqual({ auto_check: true, channel: null });
+    expect(await api.effectiveUpdateChannel()).toBe("beta");
     await api.setUpdatePrefs({ auto_check: false, channel: "stable" });
-    expect(await api.updatePrefs()).toMatchObject({
-      auto_check: false,
-      effective_channel: "stable",
-    });
+    expect(await api.updatePrefs()).toEqual({ auto_check: false, channel: "stable" });
+    expect(await api.effectiveUpdateChannel()).toBe("stable");
   });
 
   it("shows upgraders 'What's new' first and only then makes a check due", async () => {

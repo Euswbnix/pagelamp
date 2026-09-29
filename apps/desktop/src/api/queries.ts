@@ -4,8 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
-import type { StartupTasks, UpdatePrefs } from "./provisional";
-import type { AiPolicy, IsoDate } from "./types";
+import type { AiPolicy, IsoDate, StartupTasks, UpdatePrefs } from "./types";
 
 export const queryKeys = {
   all: ["pagelamp"] as const,
@@ -24,6 +23,7 @@ export const queryKeys = {
   // text the student is reviewing before they copy it.
   diagnosticReport: () => ["diagnostic-report"] as const,
   updatePrefs: () => [...queryKeys.all, "update-prefs"] as const,
+  updateChannel: () => [...queryKeys.all, "update-channel"] as const,
   lastUpdateCheck: () => [...queryKeys.all, "last-update-check"] as const,
   // Once per launch, outside `all`: a sync finishing must not bring back "What's new" or start
   // another automatic check.
@@ -267,12 +267,25 @@ export function useUpdatePrefs() {
   return useQuery({ queryKey: queryKeys.updatePrefs(), queryFn: () => api.updatePrefs() });
 }
 
+/** The channel actually used (the choice, else the default for this build). */
+export function useEffectiveUpdateChannel() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.updateChannel(),
+    queryFn: () => api.effectiveUpdateChannel(),
+  });
+}
+
 export function useSetUpdatePrefs() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
     mutationFn: (prefs: UpdatePrefs) => api.setUpdatePrefs(prefs),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.updatePrefs() }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.updatePrefs() }),
+        client.invalidateQueries({ queryKey: queryKeys.updateChannel() }),
+      ]),
   });
 }
 

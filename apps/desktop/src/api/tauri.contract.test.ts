@@ -61,6 +61,16 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.revealLogsDir();
   await api.logUiError("contract-test error", "Error: contract-test error\n    at render");
   await api.logUiError("contract-test error without a stack", null);
+  await api.updatePrefs();
+  await api.setUpdatePrefs({ auto_check: true, channel: "beta" });
+  await api.effectiveUpdateChannel();
+  await api.startupTasks();
+  await api.acknowledgeWhatsNew();
+  await api.acknowledgeUpdateDisclosure();
+  await api.lastUpdateCheck();
+  await api.updaterStatus();
+  await api.checkForUpdate();
+  await api.installUpdate(() => {});
 
   // Channels serialise as "__CHANNEL__:<callback id>"; the id is irrelevant to the contract.
   const json = JSON.stringify(calls, null, 2).replace(/"__CHANNEL__:\d+"/g, '"__CHANNEL__:0"');

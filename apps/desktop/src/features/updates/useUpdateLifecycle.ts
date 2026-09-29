@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { StartupTasks } from "@/api/provisional";
 import { useStartupTasks } from "@/api/queries";
+import type { StartupTasks } from "@/api/types";
 import { useCheckForUpdate, useUpdateStore } from "@/stores/updates";
 
 /**

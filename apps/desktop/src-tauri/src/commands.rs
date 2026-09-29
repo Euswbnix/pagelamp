@@ -14,6 +14,7 @@ use pagelamp_app::diagnostics::{self, CrashReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
+use pagelamp_app::{StartupTasks, UpdateChannel, UpdateCheckRecord, UpdatePrefs};
 use pagelamp_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
 use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 use tauri::State;
@@ -320,4 +321,49 @@ pub async fn reveal_logs_dir<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn log_ui_error(message: String, stack: Option<String>) {
     diagnostics::log_ui_error(&message, stack.as_deref());
+}
+
+// ----- updates: preferences and what's due (the updater itself is in updates.rs) ----------------
+
+#[tauri::command]
+pub async fn update_prefs(backend: State<'_, Backend>) -> CmdResult<UpdatePrefs> {
+    backend.blocking(|app| app.update_prefs()).await
+}
+
+#[tauri::command]
+pub async fn set_update_prefs(backend: State<'_, Backend>, prefs: UpdatePrefs) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_update_prefs(prefs))
+        .await
+}
+
+#[tauri::command]
+pub async fn effective_update_channel(backend: State<'_, Backend>) -> CmdResult<UpdateChannel> {
+    backend.blocking(|app| app.effective_update_channel()).await
+}
+
+#[tauri::command]
+pub async fn startup_tasks(backend: State<'_, Backend>) -> CmdResult<StartupTasks> {
+    backend
+        .blocking(|app| app.startup_tasks(chrono::Utc::now()))
+        .await
+}
+
+#[tauri::command]
+pub async fn acknowledge_whats_new(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend.blocking(|app| app.acknowledge_whats_new()).await
+}
+
+#[tauri::command]
+pub async fn acknowledge_update_disclosure(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend
+        .blocking(|app| app.acknowledge_update_disclosure())
+        .await
+}
+
+#[tauri::command]
+pub async fn last_update_check(
+    backend: State<'_, Backend>,
+) -> CmdResult<Option<UpdateCheckRecord>> {
+    backend.blocking(|app| app.last_update_check()).await
 }

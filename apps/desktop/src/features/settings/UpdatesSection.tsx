@@ -2,13 +2,14 @@ import { ArrowDownToLine, Download, LoaderCircle, RefreshCw } from "lucide-react
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailableUpdate, UpdaterStatus } from "@/api/client";
-import type { UpdateChannel, UpdatePrefsView } from "@/api/provisional";
 import {
+  useEffectiveUpdateChannel,
   useLastUpdateCheck,
   useSetUpdatePrefs,
   useUpdatePrefs,
   useUpdaterStatus,
 } from "@/api/queries";
+import type { UpdateChannel, UpdatePrefs } from "@/api/types";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export function UpdatesSection() {
   const { t } = useTranslation("updates");
   const status = useUpdaterStatus();
   const prefs = useUpdatePrefs();
+  const channel = useEffectiveUpdateChannel();
   return (
     <SettingsSection title={t("settings.title")} description={t("settings.description")}>
       {status.data ? (
@@ -38,13 +40,21 @@ export function UpdatesSection() {
           <dd className="font-mono">{status.data.current_version}</dd>
         </dl>
       ) : null}
-      {prefs.data ? <Preferences prefs={prefs.data} /> : null}
+      {prefs.data && channel.data ? (
+        <Preferences prefs={prefs.data} effectiveChannel={channel.data} />
+      ) : null}
       <CheckNow status={status.data ?? null} />
     </SettingsSection>
   );
 }
 
-function Preferences({ prefs }: { prefs: UpdatePrefsView }) {
+function Preferences({
+  prefs,
+  effectiveChannel,
+}: {
+  prefs: UpdatePrefs;
+  effectiveChannel: UpdateChannel;
+}) {
   const { t } = useTranslation("updates");
   const setPrefs = useSetUpdatePrefs();
   const switchId = useId();
@@ -74,7 +84,7 @@ function Preferences({ prefs }: { prefs: UpdatePrefsView }) {
         </p>
         <RadioGroup
           aria-labelledby={channelLabelId}
-          value={prefs.effective_channel}
+          value={prefs.channel ?? effectiveChannel}
           onValueChange={(value) =>
             setPrefs.mutate({ auto_check: prefs.auto_check, channel: value as UpdateChannel })
           }
