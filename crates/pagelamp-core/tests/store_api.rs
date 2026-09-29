@@ -1114,8 +1114,12 @@ fn lms_course_facts_follow_each_sync_while_student_answers_survive_it() {
     let id = course_id("101");
     assert_eq!(
         store.course_term_data(&id).unwrap(),
-        Some(CourseTermData::default()),
-        "nothing known yet"
+        Some(CourseTermData {
+            synced_term_start: Some(date("2026-09-08")),
+            synced_term_end: Some(date("2026-12-18")),
+            ..CourseTermData::default()
+        }),
+        "no LMS facts or student answers yet"
     );
     let lms = LmsCourseInfo {
         term_name: Some("Fall 2026".into()),
@@ -1155,6 +1159,20 @@ fn lms_course_facts_follow_each_sync_while_student_answers_survive_it() {
     assert_eq!(data.lms.access_restricted, Some(true));
     assert_eq!(data.keep_current_until, Some(date("2027-01-15")));
     assert_eq!(data.removal_snoozed_until, Some(date("9999-12-31")));
+
+    // The student's term overrides are read raw, apart from the synced dates.
+    store
+        .set_course_term(&id, None, Some(date("2026-12-08")))
+        .unwrap();
+    let data = store.course_term_data(&id).unwrap().unwrap();
+    assert_eq!(
+        (data.user_term_start, data.user_term_end),
+        (None, Some(date("2026-12-08")))
+    );
+    assert_eq!(
+        (data.synced_term_start, data.synced_term_end),
+        (Some(date("2026-09-08")), Some(date("2026-12-18")))
+    );
 
     // Clearing, the bulk read, and unknown ids.
     store.set_keep_current_until(&id, None).unwrap();

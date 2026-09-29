@@ -75,6 +75,8 @@ pub struct CourseSummary {
     /// Effective AI access to this course's material text (`Course::ai_materials`).
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    /// Upcoming / current / finishing / ended, the Past group and removal suggestions.
+    pub lifecycle: CourseLifecycle,
     pub counts: CourseCounts,
     pub next_deadline: Option<Deadline>,
     /// Label of the source this course came from (e.g. "Quercus", "~/Courses").
@@ -112,6 +114,7 @@ pub struct CourseOverview {
     /// Effective AI access to this course's material text (`Course::ai_materials`).
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    pub lifecycle: CourseLifecycle,
     pub current_modules: Vec<Module>,
     /// Materials published in the last `RECENT_DAYS` days, newest first (announcements excluded).
     pub recent_materials: Vec<MaterialView>,
@@ -160,6 +163,11 @@ pub enum WeekNoteKind {
     OutsideTerm,
     /// The week is known but has no modules or materials.
     NoMaterialsThisWeek,
+    /// No week requested and the course is in its exam period (no teaching week): showing the
+    /// materials of the last `RECENT_DAYS` days (`week` is None).
+    ExamPeriod,
+    /// No week requested and the course is in a break: showing the week before it.
+    Break,
 }
 
 /// A window of a material's text chunks (pagination via `next_chunk`).
@@ -268,6 +276,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
         summaries.push(CourseSummary {
             ai_materials,
             timeline,
+            lifecycle: CourseLifecycle::unknown(),
             counts,
             next_deadline,
             source_label,
@@ -334,6 +343,7 @@ pub fn course_overview(
     Ok(CourseOverview {
         ai_materials: course.ai_materials(),
         timeline,
+        lifecycle: CourseLifecycle::unknown(),
         current_modules,
         recent_materials: recent(false),
         upcoming_deadlines,
@@ -801,6 +811,13 @@ fn week_note_text(kind: WeekNoteKind, week: Option<u32>) -> String {
         WeekNoteKind::NoMaterialsThisWeek => match week {
             Some(n) => format!("No modules or materials are assigned to week {n}."),
             None => "No modules or materials found.".to_string(),
+        },
+        WeekNoteKind::ExamPeriod => format!(
+            "The course is in its exam period; showing materials published in the last {RECENT_DAYS} days."
+        ),
+        WeekNoteKind::Break => match week {
+            Some(n) => format!("The course is on a break; showing week {n}."),
+            None => "The course is on a break.".to_string(),
         },
     }
 }

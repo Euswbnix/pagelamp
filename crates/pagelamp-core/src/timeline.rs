@@ -55,7 +55,10 @@ use std::sync::LazyLock;
 use chrono::NaiveDate;
 use regex::Regex;
 
-use crate::model::{Confidence, Course, CourseTimeline, Event, Material, Module, Timestamp};
+use crate::model::{
+    CalendarStatus, Confidence, Course, CoursePhase, CourseTimeline, Event, Material, Module,
+    TermResolution, Timestamp,
+};
 
 /// Largest week number `parse_week_hint` accepts (and the calendar may produce). A term has
 /// ~12–15 teaching weeks and a year-long course ~26; anything bigger is almost certainly a
@@ -243,6 +246,7 @@ pub fn infer_timeline(
             .collect(),
     };
 
+    // Placeholders until the term resolver lands (course lane M0.10, B2).
     CourseTimeline {
         as_of: today,
         current_week,
@@ -250,6 +254,16 @@ pub fn infer_timeline(
         evidence,
         current_module_ids,
         outside_term,
+        phase: CoursePhase::Unknown,
+        phase_confidence: Confidence::Low,
+        default_week: current_week,
+        break_after_week: None,
+        last_teaching_week: None,
+        current_break_kind: None,
+        notes_week: None,
+        term: TermResolution::default(),
+        calendar: CalendarStatus::None,
+        evidence_items: Vec::new(),
     }
 }
 

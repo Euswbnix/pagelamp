@@ -26,15 +26,18 @@ use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, McpClientPresence, ProcessKind,
 };
 use pagelamp_app::{
-    Activity, ActivityItem, ActivityKind, AppStatus, InstallKind, McpClient, McpClientConfig,
-    McpLaunch, McpNoteCode, SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary,
-    TemporaryLocation, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
-    WhatsNewTopic,
+    Activity, ActivityItem, ActivityKind, AppStatus, CourseLifecycleEntry, InstallKind,
+    LifecycleSummary, McpClient, McpClientConfig, McpLaunch, McpNoteCode, SourceSyncResult,
+    StartupTasks, SyncEvent, SyncRequest, SyncSummary, TemporaryLocation, UpdateChannel,
+    UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::model::{
-    AiMaterialsState, AiPolicy, Confidence, Course, CourseTimeline, DownloadBlock, Event,
-    EventKind, MaterialKind, Module, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
-    StoreCounts, StoredStudyPlan, StudyPlan, StudyPlanItem, TermSource, TextStatus,
+    AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarBreak, CalendarOrigin, CalendarStatus,
+    Confidence, Course, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline, DateSpan,
+    DownloadBlock, Event, EventKind, EvidenceCode, EvidenceItem, EvidenceParam, EvidenceSignal,
+    LifecycleState, MaterialKind, Module, RejectReason, RejectedDates, SearchHit, SnoozeKind,
+    SourceErrorKind, SourceKind, SourceRecord, StoreCounts, StoredStudyPlan, StudyPlan,
+    StudyPlanItem, TeachingSegment, TermAnchorSource, TermResolution, TermSource, TextStatus,
 };
 use pagelamp_core::source::CourseSyncSummary;
 use pagelamp_core::views::{
@@ -275,6 +278,249 @@ pub struct CourseTimeline {
     pub evidence: Vec<String>,
     pub current_module_ids: Vec<String>,
     pub outside_term: bool,
+    pub phase: CoursePhase,
+    pub phase_confidence: Confidence,
+    pub default_week: Option<u32>,
+    pub break_after_week: Option<u32>,
+    pub last_teaching_week: Option<u32>,
+    pub current_break_kind: Option<BreakKind>,
+    pub notes_week: Option<u32>,
+    pub term: TermResolution,
+    pub calendar: CalendarStatus,
+    pub evidence_items: Vec<EvidenceItem>,
+}
+
+// ----- course calendar (pagelamp-core term) -----
+
+#[uniffi::remote(Enum)]
+pub enum CoursePhase {
+    NotStarted,
+    Teaching,
+    Break,
+    ExamPeriod,
+    Ended,
+    Unknown,
+}
+
+#[uniffi::remote(Enum)]
+pub enum TermAnchorSource {
+    StudentConfirmed,
+    LmsCourseDates,
+    LmsTerm,
+    FolderConfig,
+    InstitutionCalendar,
+    PublishedWeekLabels,
+    None,
+}
+
+#[uniffi::remote(Enum)]
+pub enum RejectReason {
+    LongerThanTeachingTerm,
+    ShorterThanTeachingTerm,
+    StartsLongBeforeActivity,
+    StartsBeforeSessionWindow,
+    EndOutsideSessionWindow,
+    StartsAfterEnd,
+    ConflictsWithStrongerSource,
+}
+
+#[uniffi::remote(Record)]
+pub struct RejectedDates {
+    pub source: TermAnchorSource,
+    pub start: Option<IsoDate>,
+    pub end: Option<IsoDate>,
+    pub reason: RejectReason,
+    pub end_only: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum BreakKind {
+    ReadingWeek,
+    Holiday,
+    WinterBreak,
+    Other,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CalendarOrigin {
+    User,
+    Legacy,
+    Scan,
+    Ai,
+    AiApp,
+    Restored,
+}
+
+#[uniffi::remote(Record)]
+pub struct AiLabel {
+    pub backend_label: String,
+    pub model: String,
+    pub created_at: Timestamp,
+}
+
+#[uniffi::remote(Record)]
+pub struct TeachingSegment {
+    pub first_class: IsoDate,
+    pub last_class: Option<IsoDate>,
+    pub first_week_number: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct DateSpan {
+    pub start: IsoDate,
+    pub end: IsoDate,
+}
+
+#[uniffi::remote(Record)]
+pub struct CalendarBreak {
+    pub kind: BreakKind,
+    pub span: DateSpan,
+    pub numbered: bool,
+    pub label: String,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CalendarStatus {
+    None,
+    Proposed,
+    Accepted,
+    AcceptedStale,
+}
+
+#[uniffi::remote(Record)]
+pub struct TermResolution {
+    pub week_one_monday: Option<IsoDate>,
+    pub teaching: Vec<TeachingSegment>,
+    pub breaks: Vec<CalendarBreak>,
+    pub exams_end: Option<IsoDate>,
+    pub anchor: TermAnchorSource,
+    pub anchor_confidence: Confidence,
+    pub anchor_origin: Option<CalendarOrigin>,
+    pub ai_label: Option<AiLabel>,
+    pub outer_frame: Option<DateSpan>,
+    pub not_used: Vec<RejectedDates>,
+    pub student_start: Option<IsoDate>,
+    pub student_end: Option<IsoDate>,
+}
+
+#[uniffi::remote(Record)]
+pub struct EvidenceParam {
+    pub key: String,
+    pub value: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct EvidenceItem {
+    pub code: String,
+    pub params: Vec<EvidenceParam>,
+}
+
+/// Every `EvidenceItem.code` (the item carries the code as a string; this enum lets Swift check
+/// its translations are complete).
+#[uniffi::remote(Enum)]
+pub enum EvidenceCode {
+    StudentDates,
+    LegacyDates,
+    StudentEndUsed,
+    LmsCourseDates,
+    LmsTermDates,
+    FolderDates,
+    InstitutionCalendar,
+    WeekLabelsFit,
+    NoCourseDates,
+    TermLooksLikeEnrollmentWindow,
+    DatesNotUsed,
+    EndNotUsed,
+    DatesAgree,
+    DatesMayBeWrong,
+    SessionWindow,
+    WeekFromDates,
+    WeekFromModuleUnlock,
+    WeekFromRecentMaterials,
+    WeekFromLatestMaterial,
+    SignalAgrees,
+    SignalDisagrees,
+    ModulesReleasedTogether,
+    UnlockTooOld,
+    UnlockWithoutWeek,
+    BulkPublish,
+    NotesAhead,
+    CalendarDisagreesWithNotes,
+    NumberingOffset,
+    BreaksUnknown,
+    NoWeekSignal,
+    StartsOn,
+    InBreak,
+    NoClassToday,
+    ExamPeriod,
+    ExamPeriodEstimated,
+    EndedOn,
+    StartTooOld,
+    KeptCurrent,
+    LmsConcluded,
+    LmsCompleted,
+    NoLongerListed,
+    ExamsOver,
+    CourseEndPassed,
+    DatesEnded,
+    TermEndPassed,
+    SessionEnded,
+    QuietSince,
+    NoActivity,
+    RecentActivity,
+    NextEvent,
+    SessionStarts,
+    NoDatesInactive,
+    MayHaveEnded,
+    RemovalSnoozed,
+    RemovalKept,
+}
+
+#[uniffi::remote(Enum)]
+pub enum EvidenceSignal {
+    ModuleUnlock,
+    Dates,
+    RecentMaterials,
+    LatestMaterial,
+}
+
+// ----- course lifecycle (pagelamp-core lifecycle) -----
+
+#[uniffi::remote(Enum)]
+pub enum LifecycleState {
+    Upcoming,
+    Current,
+    Finishing,
+    Ended,
+    Inactive,
+    Unknown,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CourseGroup {
+    Current,
+    Upcoming,
+    Past,
+}
+
+#[uniffi::remote(Enum)]
+pub enum SnoozeKind {
+    NotNow,
+    Keep,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseLifecycle {
+    pub state: LifecycleState,
+    pub group: CourseGroup,
+    pub confidence: Confidence,
+    pub since: Option<IsoDate>,
+    pub starts_on: Option<IsoDate>,
+    pub last_activity: Option<IsoDate>,
+    pub next_event: Option<IsoDate>,
+    pub evidence_items: Vec<EvidenceItem>,
+    pub suggest_removal: bool,
+    pub kept_current_until: Option<IsoDate>,
 }
 
 #[uniffi::remote(Record)]
@@ -340,6 +586,7 @@ pub struct CourseSummary {
     pub course: Course,
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    pub lifecycle: CourseLifecycle,
     pub counts: CourseCounts,
     pub next_deadline: Option<Deadline>,
     pub source_label: String,
@@ -368,6 +615,7 @@ pub struct CourseOverview {
     pub course: Course,
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    pub lifecycle: CourseLifecycle,
     pub current_modules: Vec<Module>,
     pub recent_materials: Vec<MaterialView>,
     pub upcoming_deadlines: Vec<Deadline>,
@@ -382,6 +630,8 @@ pub enum WeekNoteKind {
     CurrentWeekUnknown,
     OutsideTerm,
     NoMaterialsThisWeek,
+    ExamPeriod,
+    Break,
 }
 
 #[uniffi::remote(Record)]
@@ -665,4 +915,25 @@ pub struct ActivityItem {
 pub struct Activity {
     pub items: Vec<ActivityItem>,
     pub other_process_syncing: bool,
+}
+
+// ---------------------------------------------------------------------------------------------
+// pagelamp-app: course lifecycle
+// ---------------------------------------------------------------------------------------------
+
+#[uniffi::remote(Record)]
+pub struct LifecycleSummary {
+    pub courses: Vec<CourseLifecycleEntry>,
+    pub suggested: Vec<String>,
+    pub show_banner: bool,
+    pub banner_snoozed_until: Option<IsoDate>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CourseLifecycleEntry {
+    pub course_id: String,
+    pub code: Option<String>,
+    pub name: String,
+    pub hidden: bool,
+    pub lifecycle: CourseLifecycle,
 }
