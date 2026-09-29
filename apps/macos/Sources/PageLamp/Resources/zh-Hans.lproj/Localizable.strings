@@ -946,6 +946,7 @@
 "explain.result.notOnComputer" = "「%1$@」不在这台电脑上，也没有可以打开的链接。";
 "explain.result.questions" = "检验一下理解";
 "explain.result.regenerate" = "重新生成";
+"explain.result.regionLabel" = "第 %1$@ 周的讲解";
 "explain.result.sourcesLabel" = "出处";
 "explain.result.stale" = "这份讲解生成之后，资料有了变化。";
 "explain.result.stopped" = "已停止，没有保存任何内容。";
@@ -1398,6 +1399,7 @@
 "reminders.settings.deadlineSoon" = "即将到来的截止日期";
 "reminders.settings.deadlineSoonHint" = "在截止前两天和前一天各提醒一次。";
 "reminders.settings.description" = "在这台电脑上用通知提醒你截止日期和本周安排。通知里只有课程代码和标题，不会出现资料内容。";
+"reminders.settings.fieldOf" = "%2$@的%1$@";
 "reminders.settings.invalidTime" = "请输入类似 09:00 的时间。";
 "reminders.settings.loginItemOff" = "系统设置里关闭了登录时启动，所以要在你打开 PageLamp 之后才会开始提醒。";
 "reminders.settings.notSeeing" = "收不到提醒？请在系统的通知设置里允许 PageLamp。";

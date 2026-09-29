@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { courseLabelFor } from "@/features/courses/lib/courses";
 import { groupPlanByDate } from "@/features/courses/lib/plan";
 import { formatIsoDate, formatIsoDay } from "@/lib/format";
+import { useFocusOnMount } from "@/lib/useFocusOnMount";
 
 /**
  * The draft to review (design §5.1, §7): by day and course, with what PageLamp left out and why,
@@ -30,6 +31,12 @@ export function PlanDraft({
   const { t, i18n } = useTranslation("plan");
   const courses = useCourses();
   const headingId = useId();
+  // Cells name their day and column explicitly (`headers`): rowgroup scope isn't read everywhere.
+  const tableId = useId();
+  const col = (name: string) => `${tableId}-${name}`;
+  const dayId = (date: string) => `${tableId}-day-${date}`;
+  // The draft replaces the progress (and its Stop): the focus goes to its heading.
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
   const { plan, unscheduled, warnings, meta } = draft;
   const days = groupPlanByDate(plan.items);
   const label = (id: string | null | undefined) => courseLabelFor(id, courses.data);
@@ -41,7 +48,12 @@ export function PlanDraft({
   return (
     <section aria-labelledby={headingId} className="space-y-5">
       <div className="space-y-1">
-        <h2 id={headingId} className="font-heading text-lg font-medium">
+        <h2
+          id={headingId}
+          ref={headingRef}
+          tabIndex={-1}
+          className="font-heading text-lg font-medium outline-none"
+        >
           {t("draft.title")}
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -79,16 +91,16 @@ export function PlanDraft({
           <caption className="sr-only">{t("draft.title")}</caption>
           <thead className="text-left text-xs text-muted-foreground">
             <tr className="border-b">
-              <th scope="col" className="py-2 pr-3 font-medium">
+              <th id={col("day")} scope="col" className="py-2 pr-3 font-medium">
                 {t("draft.day")}
               </th>
-              <th scope="col" className="py-2 pr-3 font-medium">
+              <th id={col("course")} scope="col" className="py-2 pr-3 font-medium">
                 {t("draft.course")}
               </th>
-              <th scope="col" className="py-2 pr-3 font-medium">
+              <th id={col("task")} scope="col" className="py-2 pr-3 font-medium">
                 {t("draft.task")}
               </th>
-              <th scope="col" className="py-2 text-right font-medium">
+              <th id={col("time")} scope="col" className="py-2 text-right font-medium">
                 {t("draft.time")}
               </th>
             </tr>
@@ -99,6 +111,8 @@ export function PlanDraft({
                 <tr key={position} className="align-top">
                   {index === 0 ? (
                     <th
+                      id={dayId(day.date)}
+                      headers={col("day")}
                       scope="rowgroup"
                       rowSpan={day.entries.length}
                       className="py-2 pr-3 text-left font-medium whitespace-nowrap"
@@ -106,8 +120,13 @@ export function PlanDraft({
                       {formatIsoDay(day.date, i18n.language)}
                     </th>
                   ) : null}
-                  <td className="py-2 pr-3 text-muted-foreground">{label(item.course_id)}</td>
-                  <td className="py-2 pr-3">
+                  <td
+                    headers={`${dayId(day.date)} ${col("course")}`}
+                    className="py-2 pr-3 text-muted-foreground"
+                  >
+                    {label(item.course_id)}
+                  </td>
+                  <td headers={`${dayId(day.date)} ${col("task")}`} className="py-2 pr-3">
                     <span className="font-medium">{item.title}</span>
                     {item.description ? (
                       <span className="block text-xs text-muted-foreground">
@@ -115,7 +134,10 @@ export function PlanDraft({
                       </span>
                     ) : null}
                   </td>
-                  <td className="py-2 text-right text-muted-foreground whitespace-nowrap">
+                  <td
+                    headers={`${dayId(day.date)} ${col("time")}`}
+                    className="py-2 text-right text-muted-foreground whitespace-nowrap"
+                  >
                     {item.minutes ? t("draft.minutes", { count: item.minutes }) : null}
                   </td>
                 </tr>

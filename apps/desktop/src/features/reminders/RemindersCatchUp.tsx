@@ -48,7 +48,12 @@ export function RemindersCatchUp() {
                   {text.body ? <span className="text-muted-foreground"> · {text.body}</span> : null}
                 </span>
                 <Button asChild variant="ghost" size="sm" className="shrink-0">
-                  <Link to={destination(reminder)} onClick={() => markShown([reminder.id])}>
+                  <Link
+                    to={destination(reminder)}
+                    // "Open" alone, once per row, says nothing about which one.
+                    aria-label={`${t("catchUp.open")} ${text.title}`}
+                    onClick={() => markShown([reminder.id])}
+                  >
                     {t("catchUp.open")}
                   </Link>
                 </Button>

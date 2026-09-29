@@ -8,6 +8,7 @@
     "weeklyDigestHint": "每周一次，列出未来 7 天的截止日期。",
     "day": "星期",
     "time": "时间",
+    "fieldOf": "{{item}}的{{field}}",
     "planToday": "今天的学习计划",
     "planTodayHint": "已保存的学习计划里今天要做的事。",
     "invalidTime": "请输入类似 09:00 的时间。",

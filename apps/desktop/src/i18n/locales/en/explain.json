@@ -29,6 +29,7 @@
     "writingNow": "Writing the explanation"
   },
   "result": {
+    "regionLabel": "Explanation of week {{week}}",
     "done": "The explanation is ready.",
     "stopped": "Stopped. Nothing was saved.",
     "failed": "The explanation couldn't be written.",

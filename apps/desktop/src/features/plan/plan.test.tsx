@@ -74,13 +74,20 @@ describe("Plan your study", () => {
     expect(tick).toHaveBeenCalledWith(expect.any(Number), 0, true);
   });
 
+  it("keeps the focus where the run is: Stop while it runs, then the draft's heading", async () => {
+    const { user } = renderRoute("/plan", { api: mockApi({ syncStepMs: 100 }) });
+    await user.click(await planForm());
+    expect(await screen.findByRole("button", { name: "Stop" })).toHaveFocus();
+    expect(await screen.findByRole("heading", { level: 2, name: "Your draft plan" })).toHaveFocus();
+  });
+
   it("stops a run, and nothing is saved", async () => {
     const api = mockApi({ syncStepMs: 200 });
     const accept = vi.spyOn(api, "acceptStudyPlan");
     const { user } = renderRoute("/plan", { api });
     await user.click(await planForm());
     await user.click(await screen.findByRole("button", { name: "Stop" }));
-    expect(await screen.findByText("Stopped. Nothing was saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Stopped. Nothing was saved.")).toHaveFocus();
     expect(screen.getByRole("button", { name: "Write my plan" })).toBeInTheDocument();
     expect(accept).not.toHaveBeenCalled();
   });

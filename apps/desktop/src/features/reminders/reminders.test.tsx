@@ -63,7 +63,7 @@ describe("Settings → Reminders", () => {
     const { user } = renderRoute("/settings", { api });
     const section = await remindersSection();
 
-    const time = await within(section).findByLabelText("Time");
+    const time = await within(section).findByLabelText("Time for Your week");
     expect(time).toHaveValue("09:00");
     await user.clear(time);
     expect(within(section).getByText("Use a time like 09:00.")).toBeInTheDocument();
@@ -196,7 +196,7 @@ describe("reminders while they're off: the catch-up card", () => {
     const mark = vi.spyOn(api, "markRemindersShown");
     const { user, router } = renderRoute("/courses", { api });
     const region = await card();
-    const [open] = within(region).getAllByRole("link", { name: "Open" });
+    const [open] = within(region).getAllByRole("link", { name: /^Open [A-Z]+\d+: Problem set 3$/ });
     if (!open) throw new Error("no Open link");
     await user.click(open);
     expect(mark).toHaveBeenCalledWith(["deadline_soon:demo-ps3:24"]);

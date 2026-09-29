@@ -25,6 +25,7 @@ describe("Course → Explain", () => {
     await user.click(await explainButton());
 
     expect(await screen.findByText("The explanation is ready.")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("region", { name: "Explanation of week 4" })).toHaveFocus();
     expect(explain).toHaveBeenCalledWith(
       READABLE,
       4,
@@ -60,7 +61,9 @@ describe("Course → Explain", () => {
     const api = mockApi({ syncStepMs: 200 });
     const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
     await user.click(await explainButton());
-    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    const stop = await screen.findByRole("button", { name: "Stop" });
+    expect(stop).toHaveFocus();
+    await user.keyboard("{Enter}");
     expect(await screen.findByText("Stopped. Nothing was saved.")).toBeInTheDocument();
     expect(await api.savedExplanations(READABLE, 4)).toEqual([]);
   });

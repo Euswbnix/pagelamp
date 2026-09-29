@@ -29,6 +29,7 @@
     "writingNow": "正在生成讲解"
   },
   "result": {
+    "regionLabel": "第 {{week}} 周的讲解",
     "done": "讲解已生成。",
     "stopped": "已停止，没有保存任何内容。",
     "failed": "没能生成讲解。",

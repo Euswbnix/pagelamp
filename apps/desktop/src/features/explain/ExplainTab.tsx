@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EstimateRequest } from "@/api/ai";
 import type { WeeklyExplanation } from "@/api/explain";
@@ -16,6 +16,7 @@ import { GenerateButton } from "@/features/ai/GenerateButton";
 import { MaterialSharingReminder } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { formatDate } from "@/lib/format";
+import { useFocusOnMount } from "@/lib/useFocusOnMount";
 import { ExplanationView } from "./ExplanationView";
 import { type ExplainRunState, useExplanation, useSavedExplanations } from "./useExplanation";
 
@@ -42,7 +43,12 @@ export function ExplainTab({
   const [shownId, setShownId] = useState<string | null>(null);
   const [reminderClosed, setReminderClosed] = useState<string | null>(null);
   const weekLabelId = useId();
+  const resultRef = useRef<HTMLDivElement>(null);
   const { state } = run;
+  // A run's explanation replaces its progress (and Stop): the focus goes to the result.
+  useEffect(() => {
+    if (state.phase === "done") resultRef.current?.focus();
+  }, [state.phase]);
 
   const blocked = course.hidden
     ? "course_hidden"
@@ -123,7 +129,12 @@ export function ExplainTab({
       </div>
 
       {shown ? (
-        <div className="space-y-4 border-t pt-4">
+        <section
+          ref={resultRef}
+          tabIndex={-1}
+          aria-label={t("result.regionLabel", { week: shown.week ?? week ?? "" })}
+          className="space-y-4 border-t pt-4 outline-none"
+        >
           {shown.stale ? (
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <p>{t("result.stale")}</p>
@@ -141,7 +152,7 @@ export function ExplainTab({
               onClose={() => setReminderClosed(shown.meta.generation_id)}
             />
           ) : null}
-        </div>
+        </section>
       ) : null}
 
       {list.length > 1 ? (
@@ -166,6 +177,7 @@ export function ExplainTab({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      aria-label={`${t("history.show")} ${formatDate(item.meta.created_at, i18n.language)}`}
                       onClick={() => setShownId(item.meta.generation_id)}
                     >
                       {t("history.show")}
@@ -190,6 +202,8 @@ function ExplainProgress({
   onStop: () => void;
 }) {
   const { t } = useTranslation("explain");
+  // The button that started the run is gone: Stop takes the focus.
+  const stopRef = useFocusOnMount<HTMLButtonElement>();
   return (
     <div className="space-y-2 text-sm">
       <p className="font-medium">
@@ -206,6 +220,7 @@ function ExplainProgress({
         </p>
       ) : null}
       <Button
+        ref={stopRef}
         type="button"
         size="sm"
         variant="outline"
@@ -223,6 +238,13 @@ function ExplainProgress({
 function ExplainOutcome({ state }: { state: ExplainRunState }) {
   const { t } = useTranslation("explain");
   const errorText = useAiErrorText();
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  // A stop or a failure brings Explain back: the focus goes to what happened.
+  useEffect(() => {
+    if (state.phase === "failed") alertRef.current?.focus();
+    else if (state.phase === "stopped") statusRef.current?.focus();
+  }, [state.phase]);
   const text =
     state.phase === "running"
       ? state.stage
@@ -235,11 +257,16 @@ function ExplainOutcome({ state }: { state: ExplainRunState }) {
           : "";
   return (
     <>
-      <p role="status" className={state.phase === "stopped" ? "text-sm" : "sr-only"}>
+      <p
+        ref={statusRef}
+        tabIndex={-1}
+        role="status"
+        className={state.phase === "stopped" ? "text-sm outline-none" : "sr-only"}
+      >
         {text}
       </p>
       {state.phase === "failed" ? (
-        <div role="alert" className="text-sm">
+        <div ref={alertRef} tabIndex={-1} role="alert" className="text-sm outline-none">
           <p className="font-medium">{t("result.failed")}</p>
           <p className="text-muted-foreground">{errorText(state.error)}</p>
         </div>

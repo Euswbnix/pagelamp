@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { paths } from "@/lib/routes";
 import { useApiErrorText } from "@/lib/useApiErrorText";
+import { useFocusOnMount } from "@/lib/useFocusOnMount";
 import { PlanDraft } from "./PlanDraft";
 import { PlanForm } from "./PlanForm";
 import { type PlanRunState, useAcceptStudyPlan, usePlanGeneration } from "./usePlanGeneration";
@@ -82,6 +83,8 @@ function PlanProgress({
   onStop: () => void;
 }) {
   const { t } = useTranslation("plan");
+  // The button that started the run is gone: Stop takes the focus.
+  const stopRef = useFocusOnMount<HTMLButtonElement>();
   return (
     <div className="space-y-2 text-sm">
       <p className="font-medium">
@@ -95,6 +98,7 @@ function PlanProgress({
         </p>
       ) : null}
       <Button
+        ref={stopRef}
         type="button"
         size="sm"
         variant="outline"
@@ -110,11 +114,20 @@ function PlanProgress({
 
 /**
  * The live region (design §7, accessibility): the stages and how the run ended, never more; a
- * failure is an alert.
+ * failure is an alert. When a run stops, fails or its draft is discarded, the form comes back
+ * and the focus goes to what happened.
  */
 function PlanOutcome({ state, discarded }: { state: PlanRunState; discarded: boolean }) {
   const { t } = useTranslation("plan");
   const errorText = useAiErrorText();
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (state.phase === "failed") alertRef.current?.focus();
+    else if (state.phase === "stopped" || (state.phase === "idle" && discarded)) {
+      statusRef.current?.focus();
+    }
+  }, [state.phase, discarded]);
   const text =
     state.phase === "running"
       ? state.stage
@@ -130,11 +143,16 @@ function PlanOutcome({ state, discarded }: { state: PlanRunState; discarded: boo
   const visible = state.phase === "stopped" || (state.phase === "idle" && discarded);
   return (
     <>
-      <p role="status" className={visible ? "text-sm" : "sr-only"}>
+      <p
+        ref={statusRef}
+        tabIndex={-1}
+        role="status"
+        className={visible ? "text-sm outline-none" : "sr-only"}
+      >
         {text}
       </p>
       {state.phase === "failed" ? (
-        <div role="alert" className="text-sm">
+        <div ref={alertRef} tabIndex={-1} role="alert" className="text-sm outline-none">
           <p className="font-medium">{t("draft.failed")}</p>
           <p className="text-muted-foreground">{errorText(state.error)}</p>
         </div>

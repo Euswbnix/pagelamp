@@ -87,10 +87,12 @@ function RemindersForm({
               {settings.weekly_digest ? (
                 <div className="flex flex-wrap items-end gap-3 pt-2">
                   <DayField
+                    context={t("settings.weeklyDigest")}
                     value={settings.digest_day}
                     onChange={(day) => set({ digest_day: day })}
                   />
                   <TimeField
+                    context={t("settings.weeklyDigest")}
                     value={settings.digest_time}
                     onChange={(time) => set({ digest_time: time })}
                   />
@@ -108,6 +110,7 @@ function RemindersForm({
               {settings.plan_today ? (
                 <div className="pt-2">
                   <TimeField
+                    context={t("settings.planToday")}
                     value={settings.plan_today_time}
                     onChange={(time) => set({ plan_today_time: time })}
                   />
@@ -183,7 +186,16 @@ function SwitchRow({
 }
 
 /** Weekday names come from the system, in the student's language (no strings to translate). */
-function DayField({ value, onChange }: { value: Weekday; onChange: (day: Weekday) => void }) {
+function DayField({
+  context,
+  value,
+  onChange,
+}: {
+  /** The reminder it belongs to, in the accessible name ("Day for Your week"). */
+  context: string;
+  value: Weekday;
+  onChange: (day: Weekday) => void;
+}) {
   const { t, i18n } = useTranslation("reminders");
   const id = useId();
   const name = (index: number) =>
@@ -202,7 +214,11 @@ function DayField({ value, onChange }: { value: Weekday; onChange: (day: Weekday
           if ((WEEKDAYS as readonly string[]).includes(day)) onChange(day as Weekday);
         }}
       >
-        <SelectTrigger id={id} className="w-40">
+        <SelectTrigger
+          id={id}
+          aria-label={t("settings.fieldOf", { field: t("settings.day"), item: context })}
+          className="w-40"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -220,7 +236,16 @@ function DayField({ value, onChange }: { value: Weekday; onChange: (day: Weekday
 const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** "HH:MM", saved when the field is left with a valid time. */
-function TimeField({ value, onChange }: { value: string; onChange: (time: string) => void }) {
+function TimeField({
+  context,
+  value,
+  onChange,
+}: {
+  /** As in DayField: "Time for Your week" and "Time for Today's study plan", not two "Time"s. */
+  context: string;
+  value: string;
+  onChange: (time: string) => void;
+}) {
   const { t } = useTranslation("reminders");
   const id = useId();
   const errorId = useId();
@@ -234,6 +259,7 @@ function TimeField({ value, onChange }: { value: string; onChange: (time: string
       <Input
         id={id}
         type="time"
+        aria-label={t("settings.fieldOf", { field: t("settings.time"), item: context })}
         value={draft}
         className="w-32"
         aria-invalid={invalid || undefined}
