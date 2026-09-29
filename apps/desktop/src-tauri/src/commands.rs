@@ -16,6 +16,7 @@ use pagelamp_app::ai::{
     EstimateRequest, ExplainOptions, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent,
     ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, ProbeReport, ProviderPreset,
     RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary, WeeklyExplanation,
+    WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
@@ -679,6 +680,57 @@ pub async fn set_study_plan_item_done(
 ) -> CmdResult<StoredStudyPlan> {
     backend
         .blocking(move |app| app.set_study_plan_item_done(plan_id, item_index, done))
+        .await
+}
+
+// ----- the weekly note (v0.3 beta.2; design §5.3) ------------------------------------------------
+
+/// A weekly note: a model run (the install gate holds it back; `cancel_generation` stops it).
+/// Monday's note is the same call with `automatic`, started by the UI from `startup_tasks`.
+#[tauri::command]
+pub async fn write_weekly_note(
+    backend: State<'_, Backend>,
+    generation_id: String,
+    options: WeeklyNoteOptions,
+    on_event: Channel<GenEvent>,
+) -> CmdResult<WeeklyNote> {
+    backend
+        .spawn_work(|app| async move {
+            app.write_weekly_note(&generation_id, options, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn weekly_notes(backend: State<'_, Backend>) -> CmdResult<Vec<WeeklyNote>> {
+    backend.blocking(|app| app.weekly_notes()).await
+}
+
+#[tauri::command]
+pub async fn delete_weekly_note(
+    backend: State<'_, Backend>,
+    generation_id: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.delete_weekly_note(&generation_id))
+        .await
+}
+
+#[tauri::command]
+pub async fn weekly_note_settings(backend: State<'_, Backend>) -> CmdResult<WeeklyNoteSettings> {
+    backend.blocking(|app| app.weekly_note_settings()).await
+}
+
+#[tauri::command]
+pub async fn set_prepare_weekly_note_on_monday(
+    backend: State<'_, Backend>,
+    on: bool,
+) -> CmdResult<WeeklyNoteSettings> {
+    backend
+        .blocking(move |app| app.set_prepare_weekly_note_on_monday(on))
         .await
 }
 
