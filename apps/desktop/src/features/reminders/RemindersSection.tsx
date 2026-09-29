@@ -43,12 +43,14 @@ function RemindersForm({
   const save = useSetReminderSettings();
   const set = (patch: Partial<ReminderSettings>) => save.mutate({ ...settings, ...patch });
   const on = settings.run_in_background;
-  const note =
-    on && background?.tray_unavailable
-      ? t("settings.trayUnavailable")
-      : on && background && !background.login_item
-        ? t("settings.loginItemOff")
-        : null;
+  // Only a status that answers the current setting: while turning it on, the old one would say
+  // the login item is missing.
+  const status = on && background?.run_in_background ? background : null;
+  const note = status?.tray_unavailable
+    ? t("settings.trayUnavailable")
+    : status && !status.login_item
+      ? t("settings.loginItemOff")
+      : null;
 
   return (
     <div className="space-y-5">

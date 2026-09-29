@@ -12,7 +12,7 @@
     "planTodayHint": "已保存的学习计划里今天要做的事。",
     "invalidTime": "请输入类似 09:00 的时间。",
     "background": "让 {{product}} 常驻托盘，并在登录时启动",
-    "backgroundHint": "只有 {{product}} 在运行时才会提醒。关闭这一项后，关闭窗口就会退出 {{product}}，期间到期的提醒会在你下次打开时显示。",
+    "backgroundHint": "只有开启这一项、并且 {{product}} 在运行时才会提醒。关闭时，关闭窗口就会退出 {{product}}。",
     "trayUnavailable": "这个系统无法显示托盘图标。{{product}} 仍会在登录时启动并提醒你；再次打开它即可看到窗口。",
     "loginItemOff": "系统设置里关闭了登录时启动，所以要在你打开 {{product}} 之后才会开始提醒。",
     "saveFailed": "提醒设置没能保存。"
@@ -23,7 +23,7 @@
     "yes": "好，提醒我",
     "no": "暂不",
     "onDone": "{{product}} 会提醒你。可以在「设置 → 提醒」里更改。",
-    "offDone": "不在后台提醒：到期的提醒会在你打开 {{product}} 时显示。可以在「设置 → 提醒」里更改。"
+    "offDone": "不提醒。可以在「设置 → 提醒」里开启。"
   },
   "notify": {
     "deadlineTitle": "{{code}}：{{title}}",

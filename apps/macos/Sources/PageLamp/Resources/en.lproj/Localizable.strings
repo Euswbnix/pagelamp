@@ -1283,13 +1283,13 @@
 "reminders.notify.onTitle" = "Reminders are on";
 "reminders.notify.planTitle" = "Today's study plan";
 "reminders.remind.no" = "Not now";
-"reminders.remind.offDone" = "No reminders in the background: PageLamp shows what came due when you open it. You can change this in Settings → Reminders.";
+"reminders.remind.offDone" = "No reminders. You can turn them on in Settings → Reminders.";
 "reminders.remind.onDone" = "PageLamp will remind you. You can change this in Settings → Reminders.";
 "reminders.remind.question" = "Keep PageLamp in the tray and start it at login, so it can remind you about deadlines and your week?";
 "reminders.remind.title" = "Remind me";
 "reminders.remind.yes" = "Yes, remind me";
 "reminders.settings.background" = "Keep PageLamp in the tray and start it at login";
-"reminders.settings.backgroundHint" = "Reminders only come while PageLamp runs. Off, closing the window quits PageLamp, and what came due shows the next time you open it.";
+"reminders.settings.backgroundHint" = "PageLamp reminds you only with this on, and only while it runs. Off, closing the window quits PageLamp.";
 "reminders.settings.day" = "Day";
 "reminders.settings.deadlineSoon" = "Deadlines coming up";
 "reminders.settings.deadlineSoonHint" = "Two days and one day before something is due.";

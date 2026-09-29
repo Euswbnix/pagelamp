@@ -71,6 +71,22 @@ describe("Settings → Reminders", () => {
     expect((await api.reminderSettings()).digest_time).toBe("07:30");
   });
 
+  it("says when the student removed the login item in the system's settings", async () => {
+    const api = mockApi();
+    await api.setReminderSettings({ ...(await api.reminderSettings()), run_in_background: true });
+    api.backgroundStatus = async () => ({
+      run_in_background: true,
+      tray: true,
+      tray_unavailable: false,
+      login_item: false,
+    });
+    renderRoute("/settings", { api });
+    const section = await remindersSection();
+    expect(
+      await within(section).findByText(/Starting at login is turned off in your system's settings/),
+    ).toBeInTheDocument();
+  });
+
   it("says when this system can't show a tray icon", async () => {
     renderRoute("/settings", { scenario: "reminders-no-tray" });
     const section = await remindersSection();
@@ -98,7 +114,9 @@ describe("onboarding: Remind me", () => {
     const notice = vi.spyOn(api, "showRemindersOnNotice");
     const { user } = renderWithProviders(<RemindMeCard />, { api });
     await user.click(await screen.findByRole("button", { name: "Not now" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/No reminders in the background/);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "No reminders. You can turn them on in Settings → Reminders.",
+    );
     expect((await api.reminderSettings()).run_in_background).toBe(false);
     expect(notice).not.toHaveBeenCalled();
   });
