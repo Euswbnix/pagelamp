@@ -21,6 +21,13 @@ import type {
   UsageSummary,
 } from "./ai";
 import type {
+  BackgroundStatus,
+  NotificationText,
+  Reminder,
+  ReminderSettings,
+  TrayLabels,
+} from "./reminders";
+import type {
   Activity,
   AiPolicy,
   AppStatus,
@@ -329,6 +336,28 @@ export interface PageLampApi {
   /** The student saw (in onboarding) that PageLamp checks for updates. */
   acknowledgeUpdateDisclosure(): Promise<void>;
   lastUpdateCheck(): Promise<UpdateCheckRecord | null>;
+
+  // ----- reminders (M3; design §5.3): what is due is the facade's, showing it the shell's ----
+  reminderSettings(): Promise<ReminderSettings>;
+  /**
+   * Saves the settings; the shell then follows `run_in_background` (the tray, the login item and
+   * the close button) and answers with how that went.
+   */
+  setReminderSettings(settings: ReminderSettings): Promise<BackgroundStatus>;
+  backgroundStatus(): Promise<BackgroundStatus>;
+  /** The tray menu in the student's language. */
+  setTrayLabels(labels: TrayLabels): Promise<void>;
+  /** What is due now: catch-up, dedupe and maximum age are the facade's. */
+  dueReminders(): Promise<Reminder[]>;
+  /** Shows these notifications, then marks their reminders shown. */
+  showReminders(notifications: NotificationText[]): Promise<void>;
+  /**
+   * The one notification when reminders are turned on: where the system asks whether PageLamp
+   * may notify (desktop systems have no other way to ask). Marks nothing.
+   */
+  showRemindersOnNotice(title: string, body: string): Promise<void>;
+  /** Calls `onCheck` whenever the shell asks for a delivery (every 15 min, after a sleep). */
+  onReminderCheck(onCheck: () => void): () => void;
 
   // ----- desktop helpers (not part of the facade) --------------------------------------------
   /** Native folder picker. Resolves null when cancelled. */

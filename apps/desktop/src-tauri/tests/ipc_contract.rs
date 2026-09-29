@@ -44,6 +44,10 @@ const SKIPPED: &[&str] = &[
     // The login item and the tray: this computer's real ones, never from a test.
     "background_status",
     "set_tray_labels",
+    "set_reminder_settings",
+    // Real notifications on this computer.
+    "show_reminders",
+    "show_reminders_on_notice",
 ];
 
 /// The removal commands' Trash here: moves nothing, so a changed fixture can never reach this

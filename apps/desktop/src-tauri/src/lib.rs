@@ -20,6 +20,8 @@ pub mod window;
 
 pub use backend::Backend;
 
+use tauri::Manager;
+
 /// Every command the UI can call (see `src/api/tauri.ts`). Kept apart from `run` so the IPC
 /// contract test (`tests/ipc_contract.rs`) builds the app with exactly the same handlers.
 pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
@@ -115,6 +117,11 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::set_codex_source,
         background::background_status,
         background::set_tray_labels,
+        reminders::reminder_settings,
+        reminders::set_reminder_settings,
+        reminders::due_reminders,
+        reminders::show_reminders,
+        reminders::show_reminders_on_notice,
         updates::updates_status,
         updates::updates_check,
         updates::updates_install,
@@ -137,7 +144,14 @@ pub fn run() {
             updates::manage(app.handle());
             // Built here, not from the config, so Windows 11 can get Mica (window.rs).
             window::create_main(app)?;
-            background::start(app.handle(), None);
+            // The stored "Remind me" answer; unknown while the core can't open.
+            let run_in_background = app
+                .state::<Backend>()
+                .app()
+                .and_then(|facade| facade.reminder_settings())
+                .map(|settings| settings.run_in_background)
+                .ok();
+            background::start(app.handle(), run_in_background);
             reminders::start(app.handle().clone());
             Ok(())
         })

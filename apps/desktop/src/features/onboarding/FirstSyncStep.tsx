@@ -6,6 +6,8 @@ import type { SyncSummary } from "@/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { TemporaryLocationWarning } from "@/features/connect/TemporaryLocationWarning";
+import { REMINDERS_UI } from "@/features/reminders/availability";
+import { RemindMeCard } from "@/features/reminders/RemindMeCard";
 import { SyncProgressPanel } from "@/features/sources/SyncProgressPanel";
 import { useSyncOutcome } from "@/features/sources/useSyncOutcome";
 import { paths } from "@/lib/routes";
@@ -67,6 +69,8 @@ export function FirstSyncStep({ onBack }: { onBack: () => void }) {
       <PageHeader title={t(copy.title)} description={description} />
       <div className="space-y-6">
         <SyncProgressPanel onRetry={run} showFixLink />
+
+        {REMINDERS_UI ? <RemindMeCard /> : null}
 
         {(view === "done" || view === "doneWithErrors") && summary ? (
           <SummaryStats summary={summary} />

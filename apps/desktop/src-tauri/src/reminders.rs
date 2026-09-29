@@ -8,7 +8,15 @@
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tauri::{AppHandle, Emitter, Runtime};
+use pagelamp_app::{AppError, Reminder, ReminderSettings};
+use serde::Deserialize;
+use tauri::{AppHandle, Emitter, Runtime, State};
+use tauri_plugin_notification::NotificationExt;
+
+use crate::backend::Backend;
+use crate::background::{self, BackgroundStatus};
+
+type CmdResult<T> = Result<T, AppError>;
 
 /// The event the page answers with a delivery.
 pub const CHECK_EVENT: &str = "reminders:check";
@@ -48,6 +56,81 @@ impl Ticker {
         }
         due || woke
     }
+}
+
+/// A notification as the page words it (course code and titles only).
+#[derive(Clone, Debug, Deserialize)]
+pub struct NotificationText {
+    /// The reminder's id, marked shown once the notification is out.
+    pub id: String,
+    pub title: String,
+    pub body: String,
+}
+
+#[tauri::command]
+pub async fn reminder_settings(backend: State<'_, Backend>) -> CmdResult<ReminderSettings> {
+    backend.blocking(|app| app.reminder_settings()).await
+}
+
+/// Saves the settings, then follows `run_in_background` (tray, login item, close button).
+#[tauri::command]
+pub async fn set_reminder_settings<R: Runtime>(
+    app: AppHandle<R>,
+    backend: State<'_, Backend>,
+    settings: ReminderSettings,
+) -> CmdResult<BackgroundStatus> {
+    let on = settings.run_in_background;
+    backend
+        .blocking(move |facade| facade.set_reminder_settings(&settings))
+        .await?;
+    Ok(background::apply(&app, on))
+}
+
+#[tauri::command]
+pub async fn due_reminders(backend: State<'_, Backend>) -> CmdResult<Vec<Reminder>> {
+    backend.blocking(|app| app.due_reminders(Utc::now())).await
+}
+
+/// Shows the notifications, then marks their reminders shown: one that failed to show stays due
+/// and comes back at the next check.
+#[tauri::command]
+pub async fn show_reminders<R: Runtime>(
+    app: AppHandle<R>,
+    backend: State<'_, Backend>,
+    notifications: Vec<NotificationText>,
+) -> CmdResult<()> {
+    let mut shown = Vec::new();
+    for notification in notifications {
+        match notify(&app, &notification.title, &notification.body) {
+            Ok(()) => shown.push(notification.id),
+            Err(error) => {
+                tracing::warn!(target: "pagelamp::reminders", %error, "notification not shown")
+            }
+        }
+    }
+    if shown.is_empty() {
+        return Ok(());
+    }
+    backend
+        .blocking(move |facade| facade.mark_reminders_shown(&shown))
+        .await
+}
+
+/// The one notification when the student turns reminders on: where the system asks whether
+/// PageLamp may notify (desktop systems have no other way to ask). Marks nothing.
+#[tauri::command]
+pub fn show_reminders_on_notice<R: Runtime>(app: AppHandle<R>, title: String, body: String) {
+    if let Err(error) = notify(&app, &title, &body) {
+        tracing::warn!(target: "pagelamp::reminders", %error, "notice not shown");
+    }
+}
+
+fn notify<R: Runtime>(
+    app: &AppHandle<R>,
+    title: &str,
+    body: &str,
+) -> tauri_plugin_notification::Result<()> {
+    app.notification().builder().title(title).body(body).show()
 }
 
 /// Starts the ticker for the app's lifetime.

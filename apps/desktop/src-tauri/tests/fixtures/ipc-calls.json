@@ -471,6 +471,60 @@
     "args": {}
   },
   {
+    "cmd": "reminder_settings",
+    "args": {}
+  },
+  {
+    "cmd": "set_reminder_settings",
+    "args": {
+      "settings": {
+        "deadline_soon": true,
+        "weekly_digest": true,
+        "digest_day": "monday",
+        "digest_time": "09:00",
+        "plan_today": false,
+        "plan_today_time": "08:00",
+        "run_in_background": false
+      }
+    }
+  },
+  {
+    "cmd": "background_status",
+    "args": {}
+  },
+  {
+    "cmd": "set_tray_labels",
+    "args": {
+      "labels": {
+        "open": "Open PageLamp",
+        "quit": "Quit PageLamp"
+      }
+    }
+  },
+  {
+    "cmd": "due_reminders",
+    "args": {}
+  },
+  {
+    "cmd": "show_reminders",
+    "args": {
+      "notifications": [
+        {
+          "id": "contract-test-reminder",
+          "title": "DEMO101: Quiz",
+          "body": "Due"
+        }
+      ]
+    }
+  },
+  {
+    "cmd": "show_reminders_on_notice",
+    "args": {
+      "title": "Reminders are on",
+      "body": "contract test"
+    }
+  },
+  {
     "cmd": "ai_status",
     "args": {}
   },

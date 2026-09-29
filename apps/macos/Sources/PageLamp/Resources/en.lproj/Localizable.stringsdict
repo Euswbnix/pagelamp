@@ -467,6 +467,38 @@
 			<string>%1$ld dates were left out because they couldn't be checked against the materials:</string>
 		</dict>
 	</dict>
+	<key>reminders.notify.digestBody</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld deadline in the next 7 days</string>
+			<key>other</key>
+			<string>%1$ld deadlines in the next 7 days</string>
+		</dict>
+	</dict>
+	<key>reminders.notify.planBody</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld thing to do today</string>
+			<key>other</key>
+			<string>%1$ld things to do today</string>
+		</dict>
+	</dict>
 	<key>removal.banner.title</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

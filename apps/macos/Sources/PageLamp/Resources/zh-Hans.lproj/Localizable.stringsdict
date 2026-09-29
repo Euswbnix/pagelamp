@@ -409,6 +409,34 @@
 			<string>有 %1$ld 个日期没能和资料核对上，所以没有采用：</string>
 		</dict>
 	</dict>
+	<key>reminders.notify.digestBody</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未来 7 天有 %1$ld 个截止日期</string>
+		</dict>
+	</dict>
+	<key>reminders.notify.planBody</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>今天有 %1$ld 件事要做</string>
+		</dict>
+	</dict>
 	<key>removal.banner.title</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

@@ -8,6 +8,7 @@
 // ───────────────────────────────────────────────────────────────────────────────────────────
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -189,11 +190,33 @@ export function createTauriApi(): PageLampApi {
         throw toApiError(error);
       }
     },
+    reminderSettings: () => call("reminder_settings"),
+    setReminderSettings: (settings) => call("set_reminder_settings", { settings }),
+    backgroundStatus: () => call("background_status"),
+    setTrayLabels: (labels) => call("set_tray_labels", { labels }),
+    dueReminders: () => call("due_reminders"),
+    showReminders: (notifications) => call("show_reminders", { notifications }),
+    showRemindersOnNotice: (title, body) => call("show_reminders_on_notice", { title, body }),
+    onReminderCheck: (onCheck) => {
+      let unlisten: (() => void) | null = null;
+      let stopped = false;
+      // Needs core:event:default only. If listening fails, reminders still come at launch.
+      listen("reminders:check", () => onCheck())
+        .then((stop) => {
+          if (stopped) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        stopped = true;
+        unlisten?.();
+      };
+    },
     revealDataDir: () => call("reveal_data_dir"),
     onWindowFocus: (onFocus) => {
       let unlisten: (() => void) | null = null;
       let stopped = false;
-      // Events need no extra capability (core:default). If listening fails, the UI just
+      // Events need no extra capability (core:event:default). If listening fails, the UI just
       // doesn't refresh on focus; that's not worth an error.
       Promise.resolve()
         .then(() =>

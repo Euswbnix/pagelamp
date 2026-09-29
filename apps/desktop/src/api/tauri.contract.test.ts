@@ -128,6 +128,21 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.acknowledgeWhatsNew();
   await api.acknowledgeUpdateDisclosure();
   await api.lastUpdateCheck();
+  await api.reminderSettings();
+  await api.setReminderSettings({
+    deadline_soon: true,
+    weekly_digest: true,
+    digest_day: "monday",
+    digest_time: "09:00",
+    plan_today: false,
+    plan_today_time: "08:00",
+    run_in_background: false,
+  });
+  await api.backgroundStatus();
+  await api.setTrayLabels({ open: "Open PageLamp", quit: "Quit PageLamp" });
+  await api.dueReminders();
+  await api.showReminders([{ id: "contract-test-reminder", title: "DEMO101: Quiz", body: "Due" }]);
+  await api.showRemindersOnNotice("Reminders are on", "contract test");
   await api.aiStatus();
   await api.modelProviderPresets();
   await api.addModelProvider("custom", OFFLINE_LLM_URL, "contract-test-key");

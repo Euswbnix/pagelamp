@@ -9,7 +9,8 @@
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
 // codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed);
-// course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts).
+// course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts);
+// reminders (M3): reminders-due · reminders-no-tray (see reminders.ts).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -55,6 +56,7 @@ import {
   mcpClientConfigs,
 } from "./fixtures";
 import { createProposalsMock } from "./proposals";
+import { createRemindersMock } from "./reminders";
 import { createLifecycleMock } from "./removal";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
@@ -530,6 +532,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     ...ai,
     ...courseLifecycle.api,
     ...courseProposals.api,
+    ...createRemindersMock({ scenario, now, respond, courses: () => db.courses }),
 
     downloadMaterialFiles: async (courseId, materialIds, onEvent) => {
       const c = findCourse(courseId);
