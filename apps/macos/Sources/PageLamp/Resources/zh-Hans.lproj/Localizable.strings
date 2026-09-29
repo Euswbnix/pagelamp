@@ -310,6 +310,10 @@
 "ai.usage.title" = "AI 用量";
 "ai.usage.tokens" = "输入 %1$@，输出 %2$@";
 "ai.usage.total" = "合计";
+"chrome.appearance.contrast" = "增强对比度";
+"chrome.appearance.contrastHint" = "文字和边框更深，并且不使用半透明的玻璃效果。";
+"chrome.appearance.transparency" = "减少透明效果";
+"chrome.appearance.transparencyHint" = "用实色背景代替半透明的玻璃效果。PageLamp 也会遵循系统的设置。";
 "common.a11y.notifications" = "通知";
 "common.actions.back" = "返回";
 "common.actions.cancel" = "取消";

@@ -6,9 +6,20 @@ import { App } from "@/App";
 import { API_MODE, createApi } from "@/api";
 import { applyBrandTheme, brand } from "@/brand";
 import { initI18n } from "@/i18n";
+import { applyStaticAppearance, staticAppearance } from "@/lib/appearance";
 import { useUiStore } from "@/stores/ui";
 
 applyBrandTheme();
+// Platform and backdrop before the first render, so the first paint has the right fonts and radii.
+applyStaticAppearance(
+  document.documentElement,
+  staticAppearance({
+    mock: API_MODE === "mock",
+    search: window.location.search,
+    userAgent: navigator.userAgent,
+    windowBackdrop: window.__PAGELAMP_WINDOW__?.backdrop,
+  }),
+);
 document.title = brand.productName;
 if (API_MODE === "tauri") {
   // The native window title follows the brand too (permission: core:window:allow-set-title).

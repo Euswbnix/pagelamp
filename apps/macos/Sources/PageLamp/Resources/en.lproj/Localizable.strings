@@ -310,6 +310,10 @@
 "ai.usage.title" = "AI usage";
 "ai.usage.tokens" = "%1$@ in, %2$@ out";
 "ai.usage.total" = "Total";
+"chrome.appearance.contrast" = "Increase contrast";
+"chrome.appearance.contrastHint" = "Darker text and borders, and no see-through glass.";
+"chrome.appearance.transparency" = "Reduce transparency";
+"chrome.appearance.transparencyHint" = "Solid backgrounds instead of see-through glass. PageLamp also follows your system's setting.";
 "common.a11y.notifications" = "Notifications";
 "common.actions.back" = "Back";
 "common.actions.cancel" = "Cancel";
