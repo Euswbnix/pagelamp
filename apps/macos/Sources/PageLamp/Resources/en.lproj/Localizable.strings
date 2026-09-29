@@ -1607,7 +1607,7 @@
 "updates.whatsNew.topics.course_removal.title" = "Remove finished courses";
 "updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to a “Past” group.";
 "updates.whatsNew.topics.course_weeks.title" = "Weeks and phases for every course";
-"updates.whatsNew.topics.syllabus_reading.body" = "With a model you set up, PageLamp can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them. Your ChatGPT plan, an API key or a model on this computer all work.";
+"updates.whatsNew.topics.syllabus_reading.body" = "With a model you set up, PageLamp can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them.";
 "updates.whatsNew.topics.syllabus_reading.title" = "Course dates from the syllabus";
 "updates.whatsNew.topics.update_check.body" = "Once a day it downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing anything.";
 "updates.whatsNew.topics.update_check.title" = "PageLamp now updates itself";
