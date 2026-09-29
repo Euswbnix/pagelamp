@@ -2,7 +2,6 @@
   "title": "课程",
   "description": "看看每门课这周上到哪儿了，接下来有什么要交。",
   "banner": {
-    "runningHint": "同步完成后，课程信息会自动更新。",
     "externalTitle": "已有另一个同步在进行",
     "externalHint": "可能是从命令行启动的。等它结束后，点“重新检查”刷新一下。",
     "checkAgain": "重新检查"

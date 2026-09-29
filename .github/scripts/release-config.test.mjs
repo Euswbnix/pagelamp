@@ -17,6 +17,7 @@ import {
   secretProblems,
   tauriFindings,
   workspaceMembers,
+  contextProblems,
 } from "./release-config.mjs";
 
 function realPubkey() {
@@ -288,5 +289,18 @@ describe("run", () => {
     const result = run({ root: repo({ config, lockVersion: "0.1.0" }), log: () => {} });
     assert.equal(result.errors.length, 1);
     assert.match(result.errors[0], /Cargo\.lock has pagelamp-desktop 0\.1\.0, but the workspace version is 0\.3\.0-alpha\.1/);
+  });
+});
+
+describe("contextProblems", () => {
+  it("rejects runner, steps and job expressions in workflow- or job-level env", () => {
+    const job = "jobs:\n  c:\n    runs-on: ubuntu-22.04\n    env:\n      WORK: ${{ runner.temp }}\n    steps:\n      - run: echo hi\n";
+    assert.match(contextProblems("w.yml", job).join("\n"), /w\.yml:5: the runner context isn't available in jobs\.c\.env\.WORK/);
+    const top = "env:\n  X: ${{ steps.a.outputs.b }}\njobs: {}\n";
+    assert.match(contextProblems("w.yml", top).join("\n"), /the steps context isn't available in env\.X/);
+  });
+  it("allows those contexts inside steps, and other contexts at job level", () => {
+    const ok = "jobs:\n  c:\n    env:\n      OS: ${{ matrix.os }}\n      REF: ${{ github.ref }}\n    steps:\n      - env:\n          WORK: ${{ runner.temp }}\n        run: echo hi\n      - with:\n          path: ${{ runner.temp }}/x\n        uses: ./local\n";
+    assert.deepEqual(contextProblems("w.yml", ok), []);
   });
 });

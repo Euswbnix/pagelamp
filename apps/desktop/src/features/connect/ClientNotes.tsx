@@ -66,7 +66,7 @@ export function ClientNotes({
   return (
     // role="note" instead of Alert's default role="alert": this is static advice, not an
     // urgent message, so screen readers shouldn't interrupt with it on page load.
-    <Alert role="note" className="border-info/30 bg-info/5 px-3 py-2.5 *:[svg]:text-info">
+    <Alert role="note" className="*:[svg]:text-info">
       <Info aria-hidden />
       <AlertTitle>{t("notes.title")}</AlertTitle>
       <AlertDescription className="text-foreground">

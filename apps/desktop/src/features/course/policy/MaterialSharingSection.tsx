@@ -79,7 +79,7 @@ export function MaterialSharingSection({ course }: { course: Course }) {
   }
 
   return (
-    <section aria-labelledby={ids.heading} className="max-w-2xl space-y-3 rounded-lg border p-4">
+    <section aria-labelledby={ids.heading} className="pl-callout max-w-2xl space-y-3 p-4">
       <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
         {t("sharing.title")}
       </h2>
@@ -91,6 +91,7 @@ export function MaterialSharingSection({ course }: { course: Course }) {
       </div>
       <RadioGroup
         aria-labelledby={ids.question}
+        className="gap-0 divide-y"
         aria-describedby={answer === "unanswered" ? ids.note : undefined}
         value={answer === "unanswered" ? "" : answer}
         onValueChange={choose}
@@ -100,7 +101,7 @@ export function MaterialSharingSection({ course }: { course: Course }) {
           return (
             <div
               key={option}
-              className="relative flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 has-data-checked:border-primary/40 has-data-checked:bg-primary/5"
+              className="relative flex items-start gap-3 rounded-row px-3 py-3 transition-colors hover:bg-muted has-data-checked:bg-ink/9"
             >
               <RadioGroupItem
                 id={id}

@@ -32,7 +32,7 @@ function Prompt({ label, text }: { label: string; text: string }) {
   return (
     <div className="space-y-1">
       <p className="text-muted-foreground">{label}</p>
-      <blockquote className="rounded-lg border bg-background px-3 py-2 font-medium">
+      <blockquote className="pl-concentric bg-muted px-3 py-2 font-medium [--pl-pad:1rem]">
         {text}
       </blockquote>
     </div>

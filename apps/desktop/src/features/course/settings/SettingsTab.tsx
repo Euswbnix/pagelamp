@@ -18,7 +18,7 @@ export function SettingsTab({ course, lifecycle }: { course: Course; lifecycle: 
       <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
         {t("settings.title")}
       </h2>
-      <div className="flex items-start justify-between gap-6 rounded-lg border bg-card p-4">
+      <div className="pl-callout flex items-start justify-between gap-6 p-4">
         <div className="grid gap-1">
           <Label htmlFor={ids.hide}>{t("settings.hideLabel")}</Label>
           <p id={ids.hideHelp} className="text-sm text-muted-foreground">

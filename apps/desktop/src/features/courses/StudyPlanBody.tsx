@@ -32,7 +32,7 @@ export function StudyPlanBody({ plan, courses }: StudyPlanBodyProps) {
   return (
     <div className="space-y-4">
       {plan.notes ? (
-        <div className="rounded-lg bg-muted/50 p-3 text-sm">
+        <div className="pl-callout p-3 text-sm">
           <p className="text-xs font-medium text-muted-foreground">{t("plan.notesLabel")}</p>
           <p className="mt-1 whitespace-pre-line">{plan.notes}</p>
         </div>
@@ -94,8 +94,9 @@ function PlanDayGroup({
   return (
     <li
       className={cn(
-        "rounded-lg px-3 py-2",
-        isToday ? "bg-primary/5 ring-1 ring-primary/25" : "ring-1 ring-transparent",
+        // Today gets a quiet row fill (an ink wash, radius.row), not an accent box.
+        "rounded-row px-3 py-2",
+        isToday && "bg-muted",
       )}
     >
       <h3 className="text-sm font-medium">

@@ -176,7 +176,7 @@ function Available({ update, status }: { update: AvailableUpdate; status: Update
   const [open, setOpen] = useState(false);
   const downloadOnly = status?.install === "download_only";
   return (
-    <div className="space-y-3 rounded-lg border p-3">
+    <div className="space-y-3 rounded-row bg-muted p-3">
       <p className="font-medium">{t("settings.available", { version: update.version })}</p>
       {update.notes ? (
         <details className="text-muted-foreground">

@@ -116,8 +116,8 @@ export function AddCanvasForm({ submitLabel, onAdded, footerStart }: AddFormProp
           />
           <FieldDescription id={ids.urlHint}>{t("canvasForm.urlHint")}</FieldDescription>
           {isPlainHttp(baseUrl) ? (
-            <FieldDescription id={ids.urlHttp} className="flex items-start gap-1.5 text-warning">
-              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <FieldDescription id={ids.urlHttp} className="flex items-start gap-1.5 text-foreground">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
               {t("canvasForm.httpWarning")}
             </FieldDescription>
           ) : null}

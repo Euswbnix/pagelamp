@@ -45,7 +45,7 @@ export function SyllabusSources({ course }: { course: Course }) {
       {data.candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("sources.none")}</p>
       ) : (
-        <ul aria-label={t("sources.listLabel")} className="divide-y rounded-lg border">
+        <ul aria-label={t("sources.listLabel")} className="divide-y border-y">
           {data.candidates.map((candidate) => (
             <CandidateRow key={candidate.material_id} course={course} candidate={candidate} />
           ))}
@@ -103,7 +103,7 @@ function CandidateRow({ course, candidate }: { course: Course; candidate: Calend
   }
 
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
+    <li className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm">
       <div className="flex min-w-0 items-start gap-3">
         <Checkbox
           id={id}

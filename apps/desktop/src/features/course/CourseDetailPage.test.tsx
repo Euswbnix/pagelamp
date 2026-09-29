@@ -54,6 +54,8 @@ describe("CourseDetailPage", () => {
           sourceId: SOURCE_FOLDER,
           label: "Course folder",
           message: null,
+          stage: null,
+          course: null,
           current: null,
           total: null,
           warnings: [],

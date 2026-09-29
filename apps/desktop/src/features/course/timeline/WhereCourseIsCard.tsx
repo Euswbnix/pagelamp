@@ -37,10 +37,7 @@ export function WhereCourseIsCard({
   const notesWeek = running ? (timeline.notes_week ?? null) : null;
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="space-y-5 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10"
-    >
+    <section aria-labelledby={headingId} className="pl-callout space-y-5 p-5 text-card-foreground">
       <div className="space-y-1">
         <h2
           id={headingId}

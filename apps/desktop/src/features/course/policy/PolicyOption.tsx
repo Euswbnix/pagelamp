@@ -11,7 +11,7 @@ export function PolicyOption({ policy, idPrefix }: { policy: AiPolicy; idPrefix:
   const descriptionId = `${id}-description`;
   const Icon = POLICY_ICON[policy];
   return (
-    <div className="relative flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 has-data-checked:border-primary/40 has-data-checked:bg-primary/5">
+    <div className="relative flex items-start gap-3 rounded-row px-3 py-3 transition-colors hover:bg-muted has-data-checked:bg-ink/9">
       <RadioGroupItem id={id} value={policy} aria-describedby={descriptionId} className="mt-0.5" />
       <div className="grid gap-1">
         {/* The label's ::after covers the whole card, so clicking anywhere selects it. */}

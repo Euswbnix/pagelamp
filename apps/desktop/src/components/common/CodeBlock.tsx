@@ -12,7 +12,7 @@ interface CodeBlockProps {
  */
 export function CodeBlock({ code, copyLabel }: CodeBlockProps) {
   return (
-    <div className="overflow-hidden rounded-lg border bg-muted/50">
+    <div className="pl-concentric overflow-hidden bg-muted [--pl-pad:1rem]">
       <div className="flex justify-end border-b bg-muted/60 px-2 py-1.5">
         <CopyButton text={code} label={copyLabel} variant="ghost" />
       </div>
