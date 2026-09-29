@@ -30,7 +30,8 @@ use crate::request::Usage;
 
 /// No JSONL line for this long: the run is stuck.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-/// After SIGINT, how long Codex gets to stop before it is killed.
+/// After SIGINT, how long Codex gets to stop before it is killed (Unix only).
+#[cfg(unix)]
 const INTERRUPT_GRACE: Duration = Duration::from_secs(3);
 /// Stdout beyond this is not an answer.
 const MAX_STDOUT: usize = 16 << 20;
@@ -313,7 +314,8 @@ fn reasoning_effort(effort: Effort) -> &'static str {
     }
 }
 
-/// SIGINT (Unix) or TerminateProcess (Windows), then a kill after `INTERRUPT_GRACE`.
+/// Unix: SIGINT, then a kill after `INTERRUPT_GRACE`. Windows: a kill (TerminateProcess) at
+/// once.
 async fn interrupt(child: &mut tokio::process::Child) {
     #[cfg(unix)]
     if let Some(pid) = child.id().and_then(|id| i32::try_from(id).ok()) {
