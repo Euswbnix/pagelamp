@@ -72,6 +72,7 @@
 "ai.codex.costLine" = "使用你的 ChatGPT 订阅";
 "ai.codex.costLineRuns" = "使用你的 ChatGPT 订阅 · 本周 %1$@/%2$@ 次";
 "ai.codex.description" = "PageLamp 会在这台电脑上运行 OpenAI 官方的 Codex，并用你的 ChatGPT 账户登录。PageLamp 永远看不到你的密码或登录凭据。";
+"ai.codex.download.busy" = "另一个 PageLamp 窗口正在安装 Codex，请等它完成后再试。";
 "ai.codex.download.button" = "下载 Codex";
 "ai.codex.download.cancel" = "取消下载";
 "ai.codex.download.downloading" = "正在下载 Codex… %1$@%%";
@@ -79,7 +80,7 @@
 "ai.codex.download.failed" = "Codex 安装失败。";
 "ai.codex.download.installing" = "正在安装…";
 "ai.codex.download.progress" = "Codex 下载进度";
-"ai.codex.download.size" = "Codex 需要从 OpenAI 在 GitHub 上的发布页单独下载：约 %1$@，安装后在这台电脑上占用 %2$@。PageLamp 会先校验再安装。";
+"ai.codex.download.size" = "Codex 需要从 OpenAI 在 GitHub 上的发布页单独下载：约 70–80 MB，安装后在这台电脑上最多占用约 330 MB。PageLamp 会先校验再安装。";
 "ai.codex.download.tryAgain" = "重试";
 "ai.codex.download.unsupported" = "这台电脑无法使用 Codex。";
 "ai.codex.download.untested" = "Codex 可以在这台电脑（Arm 版 Windows）上运行，但 PageLamp 还没有在这种电脑上测试过。";
