@@ -1,16 +1,18 @@
 //! The AI weekly note through the facade (model-access design §5.3; beta.2): the courses'
 //! structure and the plan's progress only (the policy golden), the answer checked (graded work
-//! and made-up course ids dropped, bad output), kept notes and their deletion, and "prepare it
-//! when I open PageLamp on Monday" for API keys and local models only (plan D27), on the
-//! student's Monday across a DST change. Synthetic data only; no run leaves this computer.
+//! and made-up course ids dropped, bad output), kept notes and their deletion, a run listed in
+//! `activity()`, and "prepare it when I open PageLamp on Monday" for API keys and local models
+//! only (plan D27): once a Monday whatever the outcome, never over the budget, on the student's
+//! Monday across a DST change. Synthetic data only; no run leaves this computer.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
-use chrono::{Datelike, Duration, Local, NaiveDate, SubsecRound, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, SubsecRound, TimeZone, Utc};
 use pagelamp_app::ai::{BackendRef, GenEvent, ModelChoice, WeeklyNoteOptions};
 use pagelamp_app::{App, AppErrorKind, BreakInput, CourseDatesInput};
-use pagelamp_core::ai::{AiFeature, Effort, ModelErrorKind, ProviderRow};
+use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
 use pagelamp_core::model::*;
 use pagelamp_core::secrets::{MemorySecrets, SecretBackend};
 use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
@@ -32,6 +34,14 @@ fn day(offset: i64) -> NaiveDate {
 fn this_monday() -> NaiveDate {
     let today = Local::now().date_naive();
     today - Duration::days(i64::from(today.weekday().num_days_from_monday()))
+}
+
+/// Next Monday at 14:00 UTC: a Monday morning in Toronto, inside every fixture term.
+fn next_monday() -> DateTime<Utc> {
+    (this_monday() + Duration::days(7))
+        .and_hms_opt(14, 0, 0)
+        .unwrap()
+        .and_utc()
 }
 
 fn add_course(store: &Store, external: &str, start: NaiveDate, end: NaiveDate) {
@@ -102,9 +112,26 @@ fn open(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
     (app, secrets)
 }
 
+fn deadline(id: &str, external: &str, title: &str, days: i64) -> Event {
+    Event {
+        id: format!("{SOURCE}/assignment/{id}"),
+        source_id: SOURCE.into(),
+        course_id: Some(course_id(external)),
+        kind: EventKind::AssignmentDue,
+        title: title.into(),
+        starts_at: None,
+        ends_at: None,
+        due_at: Some(Utc::now() + Duration::days(days)),
+        url: None,
+        updated_at: Utc::now(),
+        course_hint: None,
+    }
+}
+
 /// DEMO101 readable (in a reading week the student labelled), DEMO202 prohibited, DEMO303
-/// turned off, DEMO404 hidden, DEMO505 over long ago; every course has canary text. A deadline
-/// in two days and a study plan with last week's progress.
+/// turned off, DEMO404 hidden, DEMO505 over long ago, DEMO606 starting in two months (not
+/// active) but with a deadline this week; every course has canary text. A deadline in two
+/// days and a study plan with last week's progress.
 fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
     let (app, secrets) = open(dir);
     let store = Store::open(&app.db_path()).unwrap();
@@ -113,23 +140,17 @@ fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
         canary_material(&store, external);
     }
     add_course(&store, "505", day(-400), day(-300));
-    canary_material(&store, "505");
+    add_course(&store, "606", day(60), day(150));
+    for external in ["505", "606"] {
+        canary_material(&store, external);
+    }
     store
         .replace_events(
             SOURCE,
-            &[Event {
-                id: format!("{SOURCE}/assignment/ps2"),
-                source_id: SOURCE.into(),
-                course_id: Some(course_id("101")),
-                kind: EventKind::AssignmentDue,
-                title: "Problem Set 2".into(),
-                starts_at: None,
-                ends_at: None,
-                due_at: Some(Utc::now() + Duration::days(2)),
-                url: None,
-                updated_at: Utc::now(),
-                course_hint: None,
-            }],
+            &[
+                deadline("ps2", "101", "Problem Set 2", 2),
+                deadline("survey", "606", "Pre-course survey", 3),
+            ],
         )
         .unwrap();
     let item = |date: NaiveDate, title: &str, done: bool| StudyPlanItem {
@@ -304,7 +325,7 @@ async fn a_note_is_written_from_structure_and_progress_only() {
         .unwrap();
 
     let body = sent(&server, 0).await;
-    for external in ["101", "202", "303", "404", "505"] {
+    for external in ["101", "202", "303", "404", "505", "606"] {
         assert!(
             !body.contains(&format!("Canary {external}")),
             "{external}: {body}"
@@ -318,7 +339,11 @@ async fn a_note_is_written_from_structure_and_progress_only() {
         );
     }
     assert!(!body.contains("Demo course 404"), "hidden");
-    assert!(!body.contains("Demo course 505"), "ended");
+    assert!(!body.contains("Demo course 505"), "ended, no deadline");
+    // Not active, but a deadline this week: its deadlines only, like the digest.
+    assert!(body.contains("Demo course 606"), "{body}");
+    assert!(body.contains("not active: its deadlines only"), "{body}");
+    assert!(body.contains("Pre-course survey"), "{body}");
     assert!(body.contains("no (the course does not allow AI use)"));
     assert!(body.contains("no (turned off by the student)"));
     assert!(body.contains("Phase: break (reading_week)"), "{body}");
@@ -362,7 +387,12 @@ async fn a_note_is_written_from_structure_and_progress_only() {
         .collect();
     assert_eq!(
         courses,
-        [course_id("101"), course_id("202"), course_id("303")]
+        [
+            course_id("101"),
+            course_id("202"),
+            course_id("303"),
+            course_id("606")
+        ]
     );
     assert!(note.meta.context.courses.iter().all(|c| !c.text_included));
     assert_eq!(
@@ -394,7 +424,8 @@ async fn an_empty_answer_is_bad_output_and_no_active_course_is_refused() {
     assert_eq!(err.model_error, Some(ModelErrorKind::BadOutput));
     assert!(app.weekly_notes().unwrap().is_empty());
 
-    // Only a course that ended long ago: nothing to write about, nothing sent.
+    // Only a course that ended long ago, no deadline and no plan: nothing to write about,
+    // nothing sent.
     let other = tempfile::tempdir().unwrap();
     let (app, _) = open(other.path());
     add_course(
@@ -546,7 +577,8 @@ async fn preparing_on_monday_is_for_api_keys_and_local_models_only() {
             .prepare_on_monday
     );
 
-    // Once a day: a note started that Monday (even one that failed) means no second one.
+    // A note the student wrote that Monday is the week's: nothing more is prepared. One that
+    // failed doesn't count (only an automatic try does, see below).
     choose(
         &app,
         BackendRef::Provider {
@@ -555,26 +587,170 @@ async fn preparing_on_monday_is_for_api_keys_and_local_models_only() {
         "local-model",
     );
     app.set_prepare_weekly_note_on_monday(true).unwrap();
-    Store::open(&app.db_path())
-        .unwrap()
-        .record_generation(&GenerationRecord {
-            id: "monday-note".into(),
-            feature: AiFeature::WeeklyNote,
-            course_id: None,
-            week: None,
-            backend: "provider:ollama".into(),
-            model: "local-model".into(),
-            status: GenerationStatus::Failed,
-            created_at: monday - Duration::hours(1),
-            prompt_version: 4,
-            output_json: None,
-            summary_json: None,
-            error_kind: Some("timeout".into()),
-            week_starts_on: None,
-        })
+    let record = |id: &str, status| GenerationRecord {
+        id: id.into(),
+        feature: AiFeature::WeeklyNote,
+        course_id: None,
+        week: None,
+        backend: "provider:ollama".into(),
+        model: "local-model".into(),
+        status,
+        created_at: monday - Duration::hours(1),
+        prompt_version: 4,
+        output_json: None,
+        summary_json: None,
+        error_kind: None,
+        week_starts_on: None,
+    };
+    let store = Store::open(&app.db_path()).unwrap();
+    store
+        .record_generation(&record("failed", GenerationStatus::Failed))
+        .unwrap();
+    assert!(prepare(monday));
+    store
+        .record_generation(&record("written", GenerationStatus::Accepted))
         .unwrap();
     assert!(!prepare(monday));
     assert!(prepare(monday + Duration::days(7)), "the next Monday");
+}
+
+/// An automatic note is tried once a Monday whatever its outcome: it is recorded as it
+/// starts, so a surface that asks again every hour never repeats a failed (paid) run.
+#[tokio::test]
+async fn an_automatic_note_is_tried_once_a_monday_whatever_the_outcome() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    app.set_time_zone(Some("America/Toronto")).unwrap();
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&json!({"note": "", "focus": []})))
+        .mount(&server)
+        .await;
+    app.set_prepare_weekly_note_on_monday(true).unwrap();
+    let monday = next_monday();
+    let prepare = |at| app.startup_tasks(at).unwrap().prepare_weekly_note;
+    let automatic = || WeeklyNoteOptions {
+        automatic: true,
+        ..click()
+    };
+
+    assert!(prepare(monday));
+    let err = app
+        .write_weekly_note_at(monday, "auto-1", automatic(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.model_error, Some(ModelErrorKind::BadOutput));
+    assert!(!prepare(monday + Duration::hours(1)), "tried once");
+    let again = app
+        .write_weekly_note_at(monday + Duration::hours(1), "auto-2", automatic(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(again.kind, AppErrorKind::Invalid);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    // A click still works that Monday.
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    let note = app
+        .write_weekly_note_at(monday + Duration::hours(2), "click", click(), |_| {})
+        .await
+        .unwrap();
+    assert!(!note.automatic);
+
+    // The next Monday: prepared once, and it says so.
+    let next = monday + Duration::days(7);
+    assert!(prepare(next));
+    let note = app
+        .write_weekly_note_at(next, "auto-3", automatic(), |_| {})
+        .await
+        .unwrap();
+    assert!(note.automatic);
+    assert!(
+        !prepare(next + Duration::hours(1)),
+        "this week's note exists"
+    );
+}
+
+/// An automatic run never goes over the monthly budget, whatever its options say.
+#[tokio::test]
+async fn an_automatic_note_never_goes_over_the_budget() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_with_courses(temp.path());
+    app.set_time_zone(Some("America/Toronto")).unwrap();
+    Store::open(&app.db_path())
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "openai".into(),
+            preset: "openai".into(),
+            label: "OpenAI".into(),
+            wire: "openai_responses".into(),
+            base_url: "https://api.openai.com/v1".into(),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    secrets.set("llm:openai", "sk-demo-not-a-real-key").unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: "openai".into(),
+    };
+    choose(&app, backend.clone(), "gpt-6-luna");
+    acknowledge(&app, &backend);
+    app.set_prepare_weekly_note_on_monday(true).unwrap();
+    app.set_monthly_budget(Some(1)).unwrap();
+    let err = app
+        .write_weekly_note_at(
+            next_monday(),
+            "auto-over",
+            WeeklyNoteOptions {
+                automatic: true,
+                override_budget: true,
+                ..click()
+            },
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::BudgetReached));
+    // The try counts: nothing more that Monday.
+    assert!(
+        !app.startup_tasks(next_monday() + Duration::hours(1))
+            .unwrap()
+            .prepare_weekly_note
+    );
+}
+
+/// A note run is a generation in `activity()` (the install gate waits for it) until it ends.
+#[tokio::test]
+async fn a_note_run_is_listed_in_activity_while_it_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()).set_delay(std::time::Duration::from_millis(800)))
+        .mount(&server)
+        .await;
+    let task = {
+        let app = app.clone();
+        tokio::spawn(async move { app.write_weekly_note("note-busy", click(), |_| {}).await })
+    };
+    let listed = |app: &App| {
+        app.activity()
+            .items
+            .iter()
+            .any(|item| item.generation_id.as_deref() == Some("note-busy"))
+    };
+    let deadline = Instant::now() + std::time::Duration::from_secs(10);
+    while !listed(&app) {
+        assert!(
+            Instant::now() < deadline,
+            "the run never showed in activity()"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    task.await.unwrap().unwrap();
+    assert!(!listed(&app), "gone once it ends");
 }
 
 /// "Monday" is the student's wall-clock Monday in the reminder zone, as for the digest: Toronto
@@ -584,7 +760,7 @@ async fn monday_is_the_student_s_monday_across_the_end_of_dst() {
     let temp = tempfile::tempdir().unwrap();
     let (app, _) = open(temp.path());
     app.set_time_zone(Some("America/Toronto")).unwrap();
-    let _server = with_local_model(&app).await;
+    let server = with_local_model(&app).await;
     app.set_prepare_weekly_note_on_monday(true).unwrap();
     let prepare = |y, m, d, h, min| {
         app.startup_tasks(Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap())
@@ -597,4 +773,35 @@ async fn monday_is_the_student_s_monday_across_the_end_of_dst() {
     // The Monday before (UTC-4): 04:30 UTC is already Monday 00:30.
     assert!(!prepare(2026, 10, 26, 3, 30));
     assert!(prepare(2026, 10, 26, 4, 30));
+
+    // The automatic run itself checks the same Monday: refused on Sunday 23:30, run at Monday
+    // 00:30 (a course with fixed dates, so the note has something to say then).
+    add_course(
+        &Store::open(&app.db_path()).unwrap(),
+        "101",
+        NaiveDate::from_ymd_opt(2026, 9, 8).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 12, 18).unwrap(),
+    );
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    let automatic = WeeklyNoteOptions {
+        automatic: true,
+        ..click()
+    };
+    let sunday_night = Utc.with_ymd_and_hms(2026, 11, 2, 4, 30, 0).unwrap();
+    let err = app
+        .write_weekly_note_at(sunday_night, "auto-sunday", automatic.clone(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Invalid);
+    assert!(server.received_requests().await.unwrap().is_empty());
+    let monday_night = Utc.with_ymd_and_hms(2026, 11, 2, 5, 30, 0).unwrap();
+    let note = app
+        .write_weekly_note_at(monday_night, "auto-monday", automatic, |_| {})
+        .await
+        .unwrap();
+    assert!(note.automatic);
+    assert_eq!(note.week_of, NaiveDate::from_ymd_opt(2026, 11, 2).unwrap());
 }

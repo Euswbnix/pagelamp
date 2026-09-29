@@ -75,6 +75,9 @@ pub enum GateError {
     Store(#[from] crate::Error),
 }
 
+/// The days of deadlines a weekly note lists.
+const NOTE_DEADLINE_DAYS: u32 = 7;
+
 /// Which courses a study plan covers.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PlanScope {
@@ -110,20 +113,47 @@ pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedC
         .map_err(GateError::from)
 }
 
-/// Structure and study-plan progress, for the weekly note: every visible, active course
-/// (lifecycle `is_active`; the calendar design §9.7 skips inactive ones) with its lifecycle
-/// and phase, deadlines in the next 7 days, and last week's and today's plan items. A break
-/// appears as its kind, never its label.
+/// Structure and study-plan progress, for the weekly note, chosen like the weekly digest:
+/// every visible, active course (lifecycle `is_active`) with its week, lifecycle and phase, its
+/// materials' titles and its deadlines in the next 7 days; every other visible course with
+/// deadlines in those 7 days, with those deadlines only (a course wrongly judged finished still
+/// counts); last week's plan progress and today's plan items. Hidden and removed courses are
+/// left out. A break appears as its kind, never its label. Empty (`is_empty`) when there is
+/// nothing to write about.
 pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> {
     store
         .in_read_transaction(|store| {
-            let active: Vec<_> = views::list_courses(store, false, at)?
-                .into_iter()
-                .filter(|summary| is_active(&summary.lifecycle, at.today))
-                .collect();
             let mut context = GatedContext::empty();
-            for summary in &active {
-                let mut text = course_structure(store, &summary.course, at, 7, &mut context)?;
+            for summary in views::list_courses(store, false, at)? {
+                if !is_active(&summary.lifecycle, at.today) {
+                    let deadlines = views::deadlines(
+                        store,
+                        Some(&summary.course.id),
+                        NOTE_DEADLINE_DAYS,
+                        0,
+                        true,
+                        at,
+                    )?;
+                    if deadlines.is_empty() {
+                        continue;
+                    }
+                    context.summary.courses.push(ContextCourse {
+                        course_id: summary.course.id.clone(),
+                        state: summary.course.ai_materials(),
+                        text_included: false,
+                    });
+                    let mut text = format!(
+                        "Course: {} [course_id: {}]\nLifecycle: {} (not active: its deadlines only)\n",
+                        summary.course.display_name(),
+                        summary.course.id,
+                        summary.lifecycle.state.as_str(),
+                    );
+                    list_deadlines(&mut text, &deadlines, NOTE_DEADLINE_DAYS);
+                    context.blocks.push(Block::Structure(text));
+                    continue;
+                }
+                let mut text =
+                    course_structure(store, &summary.course, at, NOTE_DEADLINE_DAYS, &mut context)?;
                 let timeline = &summary.timeline;
                 let _ = write!(
                     text,
@@ -148,29 +178,31 @@ pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> 
                     .iter()
                     .filter(|item| item.date >= week_ago && item.date < at.today)
                     .collect();
-                let done = last_week.iter().filter(|item| item.done).count();
-                let mut text = format!(
-                    "Study plan progress: last 7 days {done} of {} items done.\nToday:",
-                    last_week.len()
-                );
                 let today: Vec<_> = plan
                     .plan
                     .items
                     .iter()
                     .filter(|i| i.date == at.today)
                     .collect();
-                if today.is_empty() {
-                    text.push_str(" nothing planned.");
-                }
-                for item in today {
-                    let _ = write!(
-                        text,
-                        "\n- {}{}",
-                        item.title,
-                        if item.done { " (done)" } else { "" }
+                if !last_week.is_empty() || !today.is_empty() {
+                    let done = last_week.iter().filter(|item| item.done).count();
+                    let mut text = format!(
+                        "Study plan progress: last 7 days {done} of {} items done.\nToday:",
+                        last_week.len()
                     );
+                    if today.is_empty() {
+                        text.push_str(" nothing planned.");
+                    }
+                    for item in today {
+                        let _ = write!(
+                            text,
+                            "\n- {}{}",
+                            item.title,
+                            if item.done { " (done)" } else { "" }
+                        );
+                    }
+                    context.blocks.push(Block::Structure(text));
                 }
-                context.blocks.push(Block::Structure(text));
             }
             Ok(context)
         })
@@ -405,6 +437,11 @@ fn course_structure(
         }
     }
     let deadlines = views::deadlines(store, Some(&course.id), days, 0, true, at)?;
+    list_deadlines(&mut text, &deadlines, days);
+    Ok(text)
+}
+
+fn list_deadlines(text: &mut String, deadlines: &[views::Deadline], days: u32) {
     let _ = writeln!(text, "Deadlines in the next {days} days:");
     if deadlines.is_empty() {
         text.push_str("- none\n");
@@ -419,7 +456,6 @@ fn course_structure(
             deadline.event.kind.as_str()
         );
     }
-    Ok(text)
 }
 
 fn list_materials(

@@ -3163,8 +3163,8 @@ export interface StartupTasks {
   /**
    * Prepare the weekly note now (`write_weekly_note` with `automatic`): the student opted
    * in, the note's model is an API key or a model on this computer (never the ChatGPT or
-   * Claude plan, plan D27), it is Monday in the reminder zone and no note was started yet
-   * today.
+   * Claude plan, plan D27), it is Monday in the reminder zone, no automatic note was tried
+   * yet that Monday (one try, whatever its outcome) and no note was written that day.
    */
   prepare_weekly_note: boolean;
   /**
