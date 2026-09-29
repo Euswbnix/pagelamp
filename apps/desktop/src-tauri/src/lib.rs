@@ -184,6 +184,11 @@ pub fn run() {
         )
     });
     app.run(|_app, _event| {
+        // The plugins have seen Exit (the single-instance lock is gone): an update's restart.
+        #[cfg(target_os = "linux")]
+        if let tauri::RunEvent::Exit = _event {
+            updates::relaunch_if_asked(_app);
+        }
         #[cfg(target_os = "macos")]
         match _event {
             // macOS doesn't start a second PageLamp when it's opened again (Finder, the Dock,

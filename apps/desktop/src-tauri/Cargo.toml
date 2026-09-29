@@ -40,6 +40,11 @@ tracing.workspace = true
 # tree through the tray's libappindicator-sys.
 libloading = "0.7"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The restart after an update reads the new bundle's executable name, as Tauri's own restart
+# does (updates.rs); already in the tree through Tauri.
+plist = "1"
+
 [target.'cfg(windows)'.dependencies]
 # The build number gates Mica (window.rs); already in the tree through Tauri.
 windows-version = "0.1"

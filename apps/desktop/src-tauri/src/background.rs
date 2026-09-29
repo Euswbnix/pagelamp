@@ -26,6 +26,8 @@ use tauri_plugin_autostart::AutoLaunchManager;
 /// Given by the login item: start in the tray without opening the window.
 pub const HIDDEN_ARG: &str = "--hidden";
 const TRAY_ID: &str = "main";
+const MENU_OPEN: &str = "open";
+const MENU_QUIT: &str = "quit";
 
 /// Whether this launch came from the login item.
 pub fn started_hidden(mut args: impl Iterator<Item = String>) -> bool {
@@ -134,6 +136,10 @@ impl Default for TrayLabels {
 pub struct Background {
     /// `run_in_background` as last applied: the close button hides the window.
     on: AtomicBool,
+    /// `on` follows the stored setting (read at launch, or once the core opened later).
+    known: AtomicBool,
+    /// The tray icon is shown (kept here: the tray list is the main thread's).
+    tray_shown: AtomicBool,
     /// Launched by the login item and not shown yet: page loads keep the window hidden.
     hidden: AtomicBool,
     labels: Mutex<TrayLabels>,
@@ -173,38 +179,63 @@ pub struct BackgroundStatus {
     pub login_item: bool,
 }
 
-/// Turns running in the background on or off: the tray, the login item and the close button.
-/// Errors from the login item are logged and show in the status, never fail the setting.
-pub fn apply<R: Runtime>(app: &AppHandle<R>, on: bool) -> BackgroundStatus {
+/// Turns running in the background on or off after a save: the tray, the login item and the
+/// close button. `was` is the stored setting before the save. The login item changes only when
+/// the setting did: saving another reminder setting never brings back a login item the student
+/// turned off in the system's settings (Windows would mark it enabled again). An error from the
+/// login item is logged and shows in the status; turning the setting off and on tries again.
+pub fn apply<R: Runtime>(app: &AppHandle<R>, was: bool, on: bool) -> BackgroundStatus {
     let state = app.state::<Background>();
-    let was = state.on.swap(on, Ordering::SeqCst);
-    if let Some(turn_on) = login_item_change(was, on)
-        && let Some(login_item) = app.try_state::<AutoLaunchManager>()
-    {
-        let result = if turn_on {
-            login_item.enable()
-        } else {
-            login_item.disable()
-        };
-        if let Err(error) = result {
-            tracing::warn!(target: "pagelamp::background", %error, on, "login item");
-        }
-    }
+    state.on.store(on, Ordering::SeqCst);
+    state.known.store(true, Ordering::SeqCst);
+    let login_item = app.try_state::<AutoLaunchManager>();
+    update_login_item(
+        login_item.as_deref().map(|item| item as &dyn LoginItem),
+        was,
+        on,
+    );
     if on {
         ensure_tray(app);
-    } else if let Some(tray) = app.remove_tray_by_id(TRAY_ID) {
-        // Its platform teardown (DestroyWindow, the status bar item) must run on the main
-        // thread; this is an async command's.
-        let _ = app.run_on_main_thread(move || drop(tray));
+    } else {
+        remove_tray(app);
     }
     status(app)
 }
 
-/// What the login item needs when the setting goes from `was` to `on`: nothing unless it
-/// changed. Saving another reminder setting never brings back a login item the student turned
-/// off in the system's settings (Windows would mark it enabled again).
-fn login_item_change(was: bool, on: bool) -> Option<bool> {
-    (was != on).then_some(on)
+/// Once the stored setting can be read after a launch that couldn't (the core opened later):
+/// `on` and the tray follow it. The login item is left as it is.
+pub fn sync_stored<R: Runtime>(app: &AppHandle<R>, stored_on: bool) {
+    let state = app.state::<Background>();
+    if state.known.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    state.on.store(stored_on, Ordering::SeqCst);
+    if stored_on {
+        ensure_tray(app);
+    }
+}
+
+/// The login item as `apply` uses it: the autostart plugin's, or a fake in tests.
+trait LoginItem {
+    fn set(&self, on: bool) -> Result<(), String>;
+}
+
+impl LoginItem for AutoLaunchManager {
+    fn set(&self, on: bool) -> Result<(), String> {
+        if on { self.enable() } else { self.disable() }.map_err(|error| error.to_string())
+    }
+}
+
+/// Changes the login item only when the setting changed (`was` → `on`).
+fn update_login_item(login_item: Option<&dyn LoginItem>, was: bool, on: bool) {
+    if was == on {
+        return;
+    }
+    if let Some(login_item) = login_item
+        && let Err(error) = login_item.set(on)
+    {
+        tracing::warn!(target: "pagelamp::background", %error, on, "login item");
+    }
 }
 
 /// At launch, before the page loads: follow the stored setting. Off, a login item left over from
@@ -212,7 +243,15 @@ fn login_item_change(was: bool, on: bool) -> Option<bool> {
 /// open), nothing is changed and a login launch ends quietly: the window would only show the
 /// error, and the next login tries again.
 pub fn start<R: Runtime>(app: &AppHandle<R>, stored_on: Option<bool>) {
+    // The tray menu's handler, once for the app's lifetime (a handler given to each tray built
+    // would stay registered after its tray goes, and run again for every later one).
+    app.on_menu_event(|app, event| match event.id.as_ref() {
+        MENU_OPEN => show_main(app),
+        MENU_QUIT => app.exit(0),
+        _ => {}
+    });
     let state = app.state::<Background>();
+    state.known.store(stored_on.is_some(), Ordering::SeqCst);
     if stored_on == Some(true) {
         state.on.store(true, Ordering::SeqCst);
         ensure_tray(app);
@@ -240,7 +279,7 @@ pub fn status<R: Runtime>(app: &AppHandle<R>) -> BackgroundStatus {
     let on = state.on.load(Ordering::SeqCst);
     BackgroundStatus {
         run_in_background: on,
-        tray: app.tray_by_id(TRAY_ID).is_some(),
+        tray: state.tray_shown.load(Ordering::SeqCst),
         tray_unavailable: on && state.tray_failed.load(Ordering::SeqCst),
         login_item: app
             .try_state::<AutoLaunchManager>()
@@ -334,10 +373,10 @@ fn hide_main<R: Runtime>(window: &WebviewWindow<R>) {
 }
 
 fn ensure_tray<R: Runtime>(app: &AppHandle<R>) {
-    if app.tray_by_id(TRAY_ID).is_some() {
+    let state = app.state::<Background>();
+    if state.tray_shown.load(Ordering::SeqCst) {
         return;
     }
-    let state = app.state::<Background>();
     if !tray_library_available() {
         tracing::info!(target: "pagelamp::background", "no AppIndicator library: no tray");
         state.tray_failed.store(true, Ordering::SeqCst);
@@ -359,6 +398,52 @@ fn ensure_tray<R: Runtime>(app: &AppHandle<R>) {
         }
     };
     state.tray_failed.store(failed, Ordering::SeqCst);
+    state.tray_shown.store(!failed, Ordering::SeqCst);
+}
+
+/// Removes the tray icon on the main thread: its platform teardown (DestroyWindow, the status
+/// bar item) must run there, and the tray list is the main thread's. Doesn't wait.
+fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
+    if !app
+        .state::<Background>()
+        .tray_shown
+        .swap(false, Ordering::SeqCst)
+    {
+        return;
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = handle.remove_tray_by_id(TRAY_ID);
+    });
+}
+
+/// The Windows installer is about to take over: remove the tray icon now, on the main thread,
+/// and wait for it (briefly), so no dead icon stays behind. Nothing else is torn down: if the
+/// installer can't start, PageLamp goes on as it was (`restore_tray`).
+pub fn remove_tray_before_exit<R: Runtime>(app: &AppHandle<R>) {
+    if !app
+        .state::<Background>()
+        .tray_shown
+        .swap(false, Ordering::SeqCst)
+    {
+        return;
+    }
+    let (done, wait) = std::sync::mpsc::channel();
+    let handle = app.clone();
+    let queued = app.run_on_main_thread(move || {
+        let _ = handle.remove_tray_by_id(TRAY_ID);
+        let _ = done.send(());
+    });
+    if queued.is_ok() {
+        let _ = wait.recv_timeout(std::time::Duration::from_secs(2));
+    }
+}
+
+/// After an install that didn't take over: the tray comes back if running in the background.
+pub fn restore_tray<R: Runtime>(app: &AppHandle<R>) {
+    if app.state::<Background>().is_on() {
+        ensure_tray(app);
+    }
 }
 
 /// Linux shows the tray through an AppIndicator library that the tray loads when it is built,
@@ -387,11 +472,6 @@ fn build_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         .tooltip(pagelamp_core::brand::PRODUCT_NAME)
         .menu(&tray_menu(app)?)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_main(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
@@ -416,8 +496,8 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
-    let open = MenuItem::with_id(app, "open", labels.open, true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
+    let open = MenuItem::with_id(app, MENU_OPEN, labels.open, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, MENU_QUIT, labels.quit, true, None::<&str>)?;
     Menu::with_items(app, &[&open, &quit])
 }
 
@@ -425,15 +505,33 @@ fn tray_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 mod tests {
     use std::time::{Duration, SystemTime};
 
-    use super::{HIDDEN_ARG, launch_hidden, login_item_change, show_window_marker, started_hidden};
+    use std::cell::RefCell;
+
+    use super::{
+        HIDDEN_ARG, LoginItem, launch_hidden, show_window_marker, started_hidden, update_login_item,
+    };
+
+    /// Records what `update_login_item` asked of the login item.
+    #[derive(Default)]
+    struct FakeLoginItem(RefCell<Vec<bool>>);
+
+    impl LoginItem for FakeLoginItem {
+        fn set(&self, on: bool) -> Result<(), String> {
+            self.0.borrow_mut().push(on);
+            Ok(())
+        }
+    }
 
     #[test]
     fn the_login_item_changes_only_with_the_setting() {
-        // Another reminder setting saved while on: the login item is left as the system has it.
-        assert_eq!(login_item_change(true, true), None);
-        assert_eq!(login_item_change(false, false), None);
-        assert_eq!(login_item_change(false, true), Some(true));
-        assert_eq!(login_item_change(true, false), Some(false));
+        let item = FakeLoginItem::default();
+        // Another reminder setting saved while stored on (or off): left as the system has it.
+        update_login_item(Some(&item), true, true);
+        update_login_item(Some(&item), false, false);
+        assert!(item.0.borrow().is_empty());
+        update_login_item(Some(&item), false, true);
+        update_login_item(Some(&item), true, false);
+        assert_eq!(*item.0.borrow(), vec![true, false]);
     }
 
     fn args(list: &[&str]) -> impl Iterator<Item = String> {

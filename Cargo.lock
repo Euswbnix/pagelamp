@@ -3781,6 +3781,7 @@ dependencies = [
  "libloading",
  "pagelamp-app",
  "pagelamp-core",
+ "plist",
  "semver",
  "serde",
  "serde_json",

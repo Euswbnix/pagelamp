@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use pagelamp_app::{AppError, Reminder, ReminderSettings};
+use pagelamp_app::{App, AppError, Reminder, ReminderSettings};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
@@ -69,11 +69,20 @@ pub struct NotificationText {
 }
 
 #[tauri::command]
-pub async fn reminder_settings(backend: State<'_, Backend>) -> CmdResult<ReminderSettings> {
-    backend.blocking(|app| app.reminder_settings()).await
+pub async fn reminder_settings<R: Runtime>(
+    app: AppHandle<R>,
+    backend: State<'_, Backend>,
+) -> CmdResult<ReminderSettings> {
+    let settings = backend
+        .blocking(|facade| facade.reminder_settings())
+        .await?;
+    // A launch that couldn't read it (the core opened later): the tray follows it now.
+    background::sync_stored(&app, settings.run_in_background);
+    Ok(settings)
 }
 
-/// Saves the settings, then follows `run_in_background` (tray, login item, close button).
+/// Saves the settings, then follows `run_in_background` (tray, login item, close button), from
+/// what was stored before: the login item changes only when that setting does.
 #[tauri::command]
 pub async fn set_reminder_settings<R: Runtime>(
     app: AppHandle<R>,
@@ -84,10 +93,17 @@ pub async fn set_reminder_settings<R: Runtime>(
     // One save at a time, so quick toggles end with the tray and the login item as last saved.
     let background = app.state::<Background>();
     let _one_at_a_time = background.settings_saves.lock().await;
-    backend
-        .blocking(move |facade| facade.set_reminder_settings(&settings))
+    let was = backend
+        .blocking(move |facade| save_settings(facade, &settings))
         .await?;
-    Ok(background::apply(&app, on))
+    Ok(background::apply(&app, was, on))
+}
+
+/// Saves the settings; returns `run_in_background` as it was stored before.
+fn save_settings(facade: &App, settings: &ReminderSettings) -> Result<bool, AppError> {
+    let was = facade.reminder_settings()?.run_in_background;
+    facade.set_reminder_settings(settings)?;
+    Ok(was)
 }
 
 #[tauri::command]
@@ -96,7 +112,8 @@ pub async fn due_reminders(backend: State<'_, Backend>) -> CmdResult<Vec<Reminde
 }
 
 /// Shows the notifications, then marks their reminders shown. Nothing unless the student said
-/// "Remind me" (checked here too: an opt-out can land between the page's check and this call).
+/// "Remind me", as stored (checked here too: an opt-out can land between the page's check and
+/// this call).
 /// On desktop the plugin hands each notification to the system without waiting and reports no
 /// failure, so every one handed over counts as shown; the Err branch covers only a failure to
 /// build it (Windows: finding the executable).
@@ -106,7 +123,11 @@ pub async fn show_reminders<R: Runtime>(
     backend: State<'_, Backend>,
     notifications: Vec<NotificationText>,
 ) -> CmdResult<()> {
-    if !app.state::<Background>().is_on() {
+    let on = backend
+        .blocking(|facade| facade.reminder_settings().map(|s| s.run_in_background))
+        .await?;
+    background::sync_stored(&app, on);
+    if !on {
         return Ok(());
     }
     let mut shown = Vec::new();
@@ -205,6 +226,29 @@ mod tests {
     use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
     use super::Ticker;
+
+    #[test]
+    fn a_save_returns_what_was_stored_so_the_login_item_stays_put() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let facade = super::App::open_at_with_secrets(
+            dir.path().to_path_buf(),
+            std::sync::Arc::new(pagelamp_core::secrets::MemorySecrets::new()),
+        )
+        .expect("open App in a temp dir");
+        let on = super::ReminderSettings {
+            run_in_background: true,
+            ..super::ReminderSettings::default()
+        };
+        // Turning it on: nothing was stored before.
+        assert!(!super::save_settings(&facade, &on).expect("save"));
+        // Another setting saved while on (the digest time): stored on before, so apply() gets
+        // true → true and leaves the login item alone, whatever `Background.on` says.
+        let digest = super::ReminderSettings {
+            digest_time: "10:00".into(),
+            ..on.clone()
+        };
+        assert!(super::save_settings(&facade, &digest).expect("save"));
+    }
 
     fn at(minutes: i64) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 31, 23, 0, 0).unwrap() + TimeDelta::minutes(minutes)
