@@ -244,7 +244,7 @@ actor CallHold {
 }
 
 /// The mock, with `status()` and `mcpClientConfigs(…)` going through a `CallHold` each (if given).
-struct HeldService: PageLampService {
+struct HeldService: ForwardingService {
     let base: any PageLampService
     var statusHold: CallHold?
     var configsHold: CallHold?
@@ -255,31 +255,9 @@ struct HeldService: PageLampService {
         return status
     }
 
-    func listCourses() async throws(PageLampFailure) -> [CourseSummary] { try await base.listCourses() }
-    func listSources() async throws(PageLampFailure) -> [SourceRecord] { try await base.listSources() }
-    func listDeadlines(course: String?, daysAhead: UInt32, daysBack: UInt32) async throws(PageLampFailure) -> [Deadline] {
-        try await base.listDeadlines(course: course, daysAhead: daysAhead, daysBack: daysBack)
-    }
-    func latestStudyPlan() async throws(PageLampFailure) -> StoredStudyPlan? { try await base.latestStudyPlan() }
-    func courseOverview(course: String) async throws(PageLampFailure) -> CourseOverview { try await base.courseOverview(course: course) }
-    func weekMaterials(course: String, week: UInt32?) async throws(PageLampFailure) -> WeekMaterials {
-        try await base.weekMaterials(course: course, week: week)
-    }
-    func syncAll(request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SyncSummary {
-        try await base.syncAll(request: request, observer: observer)
-    }
-    func syncSource(sourceId: String, request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SourceSyncResult {
-        try await base.syncSource(sourceId: sourceId, request: request, observer: observer)
-    }
     func mcpClientConfigs(pagelampBinary: String) async throws(PageLampFailure) -> [McpClientConfig] {
         let configs = try await base.mcpClientConfigs(pagelampBinary: pagelampBinary)
         if let failure = await configsHold?.pass() { throw failure }
         return configs
     }
-    func mcpLaunch(pagelampBinary: String) async throws(PageLampFailure) -> McpLaunch { try await base.mcpLaunch(pagelampBinary: pagelampBinary) }
-    func doctor() async throws(PageLampFailure) -> DoctorReport { try await base.doctor() }
-    func diagnosticReport() async throws(PageLampFailure) -> String { try await base.diagnosticReport() }
-    func logsDir() async throws(PageLampFailure) -> String { try await base.logsDir() }
-    func lastCrash() async throws(PageLampFailure) -> CrashReport? { try await base.lastCrash() }
-    func clearLastCrash() async throws(PageLampFailure) { try await base.clearLastCrash() }
 }

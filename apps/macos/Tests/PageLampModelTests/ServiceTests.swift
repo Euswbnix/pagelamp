@@ -79,6 +79,78 @@ struct MockServiceTests {
         }
     }
 
+    @Test("course lane: timeline, lifecycle summary, I'm still taking this, snoozes")
+    func courseLane() async throws {
+        let service = mock(.demo)
+        #expect(try await service.courseTimeline(course: "DEMO101").currentWeek == 4)
+        let kept = try await service.keepCourseCurrent(course: "DEMO101", until: "2027-01-31")
+        #expect(kept.code == "DEMO101")
+        var summary = try await service.lifecycleSummary()
+        let courseCount = try await service.listCourses().count
+        #expect(summary.courses.count == courseCount)
+        let entry = summary.courses.first { $0.code == "DEMO101" }
+        #expect(entry?.lifecycle.keptCurrentUntil == "2027-01-31")
+        #expect(entry?.lifecycle.state == .current && entry?.lifecycle.confidence == .high)
+        #expect(summary.suggested.isEmpty && !summary.showBanner)
+        _ = try await service.clearKeepCourseCurrent(course: "DEMO101")
+        let listed = try await service.listCourses().first { $0.course.code == "DEMO101" }
+        #expect(listed?.lifecycle.keptCurrentUntil == nil)
+        // Without a date: today + keepCurrentDays() (the mock has no term dates).
+        _ = try await service.keepCourseCurrent(course: "DEMO205", until: nil)
+        summary = try await service.lifecycleSummary()
+        #expect(summary.courses.first { $0.code == "DEMO205" }?.lifecycle.keptCurrentUntil?.hasPrefix("2027-01-") == true)
+
+        try await service.snoozeRemovalSuggestions(courses: ["DEMO099"], kind: .keep)
+        try await service.clearRemovalSnooze(courses: ["DEMO099"])
+        try await service.snoozeLifecycleBanner()
+        #expect(try await service.lifecycleSummary().bannerSnoozedUntil == "2026-10-09")
+        #expect(try await service.confirmCourseDates(course: "DEMO101").currentWeek == 4)
+        do {
+            _ = try await service.courseTimeline(course: "NOPE")
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
+    }
+
+    @Test("updates: a fresh install checks after the disclosure; an upgrade shows What's new first")
+    func updates() async throws {
+        let service = mock(.demo)
+        let now = TestClock.now
+        #expect(try await service.effectiveUpdateChannel() == .beta, "0.1.0-mock is a pre-release")
+        var tasks = try await service.startupTasks(now: now)
+        #expect(tasks.whatsNew == nil && tasks.updatedFrom == nil && !tasks.updateCheckDue)
+        try await service.acknowledgeUpdateDisclosure()
+        #expect(try await service.startupTasks(now: now).updateCheckDue)
+
+        let record = UpdateCheckRecord(at: now, channel: .beta, outcome: .upToDate)
+        try await service.recordUpdateCheck(record: record)
+        #expect(try await service.lastUpdateCheck() == record)
+        #expect(try await !service.startupTasks(now: now).updateCheckDue)
+        #expect(try await service.startupTasks(now: now.addingTimeInterval(24 * 3600)).updateCheckDue)
+
+        await service.simulateUpgrade(from: "0.3.0-alpha.1")
+        tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
+        #expect(tasks.whatsNew?.topics == [.updateCheck, .courseWeeks])
+        #expect(tasks.updatedFrom == "0.3.0-alpha.1")
+        #expect(!tasks.updateCheckDue, "not while What's new waits")
+        try await service.acknowledgeWhatsNew()
+        tasks = try await service.startupTasks(now: now.addingTimeInterval(24 * 3600))
+        #expect(tasks.whatsNew == nil && tasks.updateCheckDue)
+
+        try await service.setUpdatePrefs(prefs: UpdatePrefs(autoCheck: false, channel: .stable))
+        #expect(try await service.updatePrefs() == UpdatePrefs(autoCheck: false, channel: .stable))
+        #expect(try await service.effectiveUpdateChannel() == .stable)
+        #expect(try await !service.startupTasks(now: now.addingTimeInterval(48 * 3600)).updateCheckDue)
+    }
+
+    @Test("activity: nothing running here; another process's sync shows")
+    func activity() async throws {
+        let idle = try await mock(.demo).activity()
+        #expect(idle.items.isEmpty && !idle.otherProcessSyncing)
+        #expect(try await mock(.busy).activity().otherProcessSyncing)
+    }
+
     @Test("empty scenario: no sources; Connect and diagnostics still answer")
     func emptyScenario() async throws {
         let service = mock(.empty)
@@ -144,5 +216,24 @@ struct LiveServiceTests {
         } catch {
             #expect(error.kind == .notFound)
         }
+
+        // The course lane and the update facade reach the core.
+        let summary = try await service.lifecycleSummary()
+        #expect(summary.courses.isEmpty && !summary.showBanner)
+        do {
+            _ = try await service.courseTimeline(course: "NOPE")
+            Issue.record("expected notFound")
+        } catch {
+            #expect(error.kind == .notFound)
+        }
+        #expect(try await service.updatePrefs().autoCheck)
+        let tasks = try await service.startupTasks(now: Date())
+        #expect(tasks.whatsNew == nil, "a fresh data folder is a fresh install")
+        try await service.acknowledgeUpdateDisclosure()
+        #expect(try await service.startupTasks(now: Date()).updateCheckDue)
+        #expect(try await service.lastUpdateCheck() == nil)
+        let activity = try await service.activity()
+        #expect(activity.items.isEmpty && !activity.otherProcessSyncing)
+        #expect(notNowDays() == 14 && keepCurrentDays() == 120 && keepForever() == "9999-12-31")
     }
 }
