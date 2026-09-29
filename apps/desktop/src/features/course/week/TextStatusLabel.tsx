@@ -9,7 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { DownloadBlock, TextStatus } from "@/api/types";
+import type { DownloadBlock, TextProblem, TextStatus } from "@/api/types";
 import { cn } from "@/lib/utils";
 
 const STYLE: Record<TextStatus, { icon: LucideIcon; className: string }> = {
@@ -35,12 +35,15 @@ export function TextStatusLabel({
   chunks,
   aiReadable,
   blocked,
+  problem,
 }: {
   status: TextStatus;
   chunks: number;
   aiReadable: boolean;
   /** Why a not-downloaded file can't be downloaded on request (Canvas). */
   blocked?: DownloadBlock | null;
+  /** Why there is no text (MaterialView.text_problem): a scan reads "No text found". */
+  problem?: TextProblem | null;
 }) {
   const { t } = useTranslation("course");
   const { t: tc } = useTranslation();
@@ -51,6 +54,15 @@ export function TextStatusLabel({
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <BlockedIcon className={cn("size-3.5 shrink-0", className)} aria-hidden />
         {tc(`downloadBlock.${blocked}`)}
+      </span>
+    );
+  }
+  // Read without errors, but nothing in it (a scan): not a success, and not "0 sections".
+  if (status === "ok" && problem === "no_text") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+        <CircleAlert className="size-3.5 shrink-0 text-warning" aria-hidden />
+        {tc("textStatus.noText")}
       </span>
     );
   }

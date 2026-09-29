@@ -222,10 +222,11 @@ impl App {
                 upgrade: true,
                 updated_from: Some(last),
             },
-            // 0.1 never recorded a version: it is an update if 0.1 left data behind.
+            // 0.1 never recorded a version: it is an update if 0.1 left data behind, as it
+            // was when this app opened the data dir (a new user's onboarding adds a source
+            // before the shell asks for its startup tasks).
             None => {
-                let used_before =
-                    !store.list_sources()?.is_empty() || store.last_migration_backup()?.is_some();
+                let used_before = self.state.used_before_at_open;
                 if !used_before {
                     store.set_setting(WHATS_NEW_ACK_KEY, &current)?;
                 }

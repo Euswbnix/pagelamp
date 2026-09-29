@@ -76,6 +76,8 @@ fn fenced_code(code: &str, language: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FailureKind;
+    use crate::test_support::kind_of;
 
     #[test]
     fn markdown_and_code_cells_with_cell_locators() {
@@ -149,10 +151,9 @@ mod tests {
     #[test]
     fn invalid_notebooks_are_failed() {
         for json in ["not json", "[]", r#"{"worksheets": []}"#, r#"{"cells": 3}"#] {
-            assert!(
-                matches!(extract(json), Err(ExtractError::Failed(_))),
-                "{json}"
-            );
+            let result = extract(json);
+            assert!(matches!(result, Err(ExtractError::Failed(_))), "{json}");
+            assert_eq!(kind_of(&result), Some(FailureKind::Malformed), "{json}");
         }
     }
 

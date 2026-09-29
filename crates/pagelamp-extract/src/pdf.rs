@@ -85,7 +85,7 @@ fn load(bytes: &[u8]) -> Result<(Document, Vec<(u32, ObjectId)>), ExtractError> 
     if document.is_encrypted() {
         document
             .decrypt("")
-            .map_err(|_| failed("PDF is password-protected"))?;
+            .map_err(|_| failed(crate::failure::PASSWORD_PROTECTED))?;
     }
     let pages = document.get_pages().into_iter().collect();
     Ok((document, pages))
@@ -145,8 +145,9 @@ fn page_text(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::FailureKind;
     use crate::Limits;
-    use crate::test_support::{PdfFixture, pdf_bytes, pdf_bytes_with_broken_page};
+    use crate::test_support::{PdfFixture, kind_of, pdf_bytes, pdf_bytes_with_broken_page};
     use lopdf::dictionary;
     use pdf_extract::Dictionary;
 
@@ -420,6 +421,7 @@ mod tests {
             matches!(&result, Err(ExtractError::Failed(m)) if m == "PDF has more than 2 pages (it has 3), so it was not indexed"),
             "{result:?}"
         );
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
     }
 
     #[test]

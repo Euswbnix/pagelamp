@@ -21,6 +21,7 @@ import type {
   SourceErrorKind,
   SourceRecord,
   StoredStudyPlan,
+  TextProblem,
   TextStatus,
 } from "../types";
 import {
@@ -345,6 +346,8 @@ export function material(
     chunks?: number;
     module?: Module;
     error?: string;
+    /** Why there is no text (the facade's MaterialView.text_problem). */
+    problem?: TextProblem;
     url?: string;
     /** A Canvas file that can't be downloaded on request. */
     blocked?: DownloadBlock;
@@ -363,6 +366,7 @@ export function material(
     url: opts.url ?? `https://canvas.demo.test/files/${materialSeq}`,
     text_status: opts.status ?? "ok",
     text_error: opts.error ?? null,
+    text_problem: opts.problem ?? null,
     download_blocked: opts.blocked ?? null,
     chunk_count: (opts.status ?? "ok") === "ok" ? (opts.chunks ?? 8) : 0,
   };
@@ -493,10 +497,12 @@ function demo101(now: Date): MockCourse {
       status: "not_downloaded",
     }),
     material(c.id, "Week 4 practice questions", "page", 4, -1, now, { module: m4, chunks: 3 }),
+    // A scan: read without errors, but no text in it (like pagelamp-core's ingest).
     material(c.id, "Scanned handout — sampling frames", "file", 4, -1, now, {
       module: m4,
-      status: "error",
-      error: "The PDF contains only images; no text could be extracted.",
+      chunks: 0,
+      error: "no extractable text (scanned?)",
+      problem: "no_text",
     }),
   ];
   const announcements = [

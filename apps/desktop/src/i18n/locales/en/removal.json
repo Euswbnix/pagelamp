@@ -2,7 +2,7 @@
   "banner": {
     "title_one": "{{count}} course looks finished",
     "title_other": "{{count}} courses look finished",
-    "body": "Finished courses are already out of your weekly views. Remove them from {{product}} to stop syncing them and free up space.",
+    "body": "Their deadlines are still listed. Remove them from {{product}} to stop syncing them and free up space.",
     "review": "Review",
     "notNow": "Not now",
     "snoozed": "We'll ask again in two weeks."

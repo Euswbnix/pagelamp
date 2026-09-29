@@ -13,17 +13,24 @@ use chrono::NaiveDate;
 use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
-    EstimateRequest, LocalServer, LoginEvent, ModelChoice, ModelInfo, ModelProviderRecord,
-    ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent, UsageSummary,
+    EstimateRequest, GenEvent, LocalServer, LoginEvent, ModelChoice, ModelInfo,
+    ModelProviderRecord, ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent,
+    UsageSummary,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
+use pagelamp_app::{
+    CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput, LifecycleSummary,
+    ReadCalendarOptions, SyllabusOffer,
+};
 use pagelamp_app::{StartupTasks, UpdateChannel, UpdateCheckRecord, UpdatePrefs};
 use pagelamp_core::ai::{AiFeature, MaterialSharing};
+use pagelamp_core::calendar::candidates::CalendarCandidate;
+use pagelamp_core::calendar::proposal::CalendarProposal;
 use pagelamp_core::model::{
-    AiPolicy, Course, CourseTimeline, SearchHit, SourceRecord, StoredStudyPlan,
+    AiPolicy, Course, CourseTimeline, SearchHit, SnoozeKind, SourceRecord, StoredStudyPlan,
 };
 use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 use tauri::State;
@@ -312,6 +319,191 @@ pub async fn confirm_course_dates(
 ) -> CmdResult<CourseTimeline> {
     backend
         .blocking(move |app| app.confirm_course_dates(&course))
+        .await
+}
+
+/// The student's course dates (the dates form); `None` clears them.
+#[tauri::command]
+pub async fn set_course_dates(
+    backend: State<'_, Backend>,
+    course: String,
+    dates: Option<CourseDatesInput>,
+) -> CmdResult<CourseCalendarView> {
+    backend
+        .blocking(move |app| app.set_course_dates(&course, dates))
+        .await
+}
+
+// ----- course lifecycle (calendar design §8) --------------------------------------------------------
+
+#[tauri::command]
+pub async fn lifecycle_summary(backend: State<'_, Backend>) -> CmdResult<LifecycleSummary> {
+    backend.blocking(|app| app.lifecycle_summary()).await
+}
+
+#[tauri::command]
+pub async fn snooze_lifecycle_banner(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend.blocking(|app| app.snooze_lifecycle_banner()).await
+}
+
+#[tauri::command]
+pub async fn snooze_removal_suggestions(
+    backend: State<'_, Backend>,
+    courses: Vec<String>,
+    kind: SnoozeKind,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.snooze_removal_suggestions(courses, kind))
+        .await
+}
+
+#[tauri::command]
+pub async fn clear_removal_snooze(
+    backend: State<'_, Backend>,
+    courses: Vec<String>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.clear_removal_snooze(courses))
+        .await
+}
+
+// ----- course calendar (calendar design §7; F3) -----------------------------------------------------
+// Reading a syllabus with AI streams GenEvents (one course) or CalendarBatchEvents (several)
+// through a Channel, like sync events; `generation_id` / `batch_id` are made by the UI so
+// `cancel_generation` can stop a run before it returns.
+
+#[tauri::command]
+pub async fn course_calendar(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<CourseCalendarView> {
+    backend
+        .blocking(move |app| app.course_calendar(&course))
+        .await
+}
+
+#[tauri::command]
+pub async fn set_calendar_sources(
+    backend: State<'_, Backend>,
+    course: String,
+    include: Vec<String>,
+    exclude: Vec<String>,
+) -> CmdResult<Vec<CalendarCandidate>> {
+    backend
+        .blocking(move |app| app.set_calendar_sources(&course, include, exclude))
+        .await
+}
+
+/// Downloads the chosen outline files only on the student's click (D46): through Canvas, a
+/// download can count as viewing the file.
+#[tauri::command]
+pub async fn download_material_files(
+    backend: State<'_, Backend>,
+    course: String,
+    material_ids: Vec<String>,
+    on_event: Channel<SyncEvent>,
+) -> CmdResult<SourceSyncResult> {
+    backend
+        .spawn(|app| async move {
+            app.download_material_files(&course, material_ids, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+/// The deterministic syllabus scan (no model).
+#[tauri::command]
+pub async fn scan_course_calendar(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<Option<CalendarProposal>> {
+    backend
+        .blocking(move |app| app.scan_course_calendar(&course))
+        .await
+}
+
+#[tauri::command]
+pub async fn accept_calendar_proposal(
+    backend: State<'_, Backend>,
+    proposal_id: i64,
+    edits: Option<CourseDatesInput>,
+) -> CmdResult<CourseCalendarView> {
+    backend
+        .blocking(move |app| app.accept_calendar_proposal(proposal_id, edits))
+        .await
+}
+
+#[tauri::command]
+pub async fn accept_passing_proposals(
+    backend: State<'_, Backend>,
+    proposal_ids: Vec<i64>,
+) -> CmdResult<Vec<CourseCalendarView>> {
+    backend
+        .blocking(move |app| app.accept_passing_proposals(proposal_ids))
+        .await
+}
+
+#[tauri::command]
+pub async fn dismiss_calendar_proposal(
+    backend: State<'_, Backend>,
+    proposal_id: i64,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.dismiss_calendar_proposal(proposal_id))
+        .await
+}
+
+#[tauri::command]
+pub async fn syllabus_reading_offers(backend: State<'_, Backend>) -> CmdResult<Vec<SyllabusOffer>> {
+    backend.blocking(|app| app.syllabus_reading_offers()).await
+}
+
+#[tauri::command]
+pub async fn read_course_calendar(
+    backend: State<'_, Backend>,
+    course: String,
+    generation_id: String,
+    options: ReadCalendarOptions,
+    on_event: Channel<GenEvent>,
+) -> CmdResult<CalendarProposal> {
+    backend
+        .spawn(|app| async move {
+            app.read_course_calendar(&course, &generation_id, options, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn read_course_calendars(
+    backend: State<'_, Backend>,
+    courses: Vec<String>,
+    batch_id: String,
+    options: ReadCalendarOptions,
+    on_event: Channel<CalendarBatchEvent>,
+) -> CmdResult<Vec<CalendarRunOutcome>> {
+    backend
+        .spawn(|app| async move {
+            app.read_course_calendars(courses, &batch_id, options, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+/// Stop a model run (one course or a batch) by the id the UI gave it.
+#[tauri::command]
+pub async fn cancel_generation(
+    backend: State<'_, Backend>,
+    generation_id: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.cancel_generation(&generation_id))
         .await
 }
 

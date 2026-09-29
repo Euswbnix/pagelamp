@@ -182,6 +182,150 @@
     }
   },
   {
+    "cmd": "set_course_dates",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "dates": {
+        "first_class": "2026-09-08",
+        "last_class": "2026-12-04",
+        "exams_end": null,
+        "breaks": [],
+        "second_segment": null
+      }
+    }
+  },
+  {
+    "cmd": "set_course_dates",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "dates": null
+    }
+  },
+  {
+    "cmd": "lifecycle_summary",
+    "args": {}
+  },
+  {
+    "cmd": "snooze_lifecycle_banner",
+    "args": {}
+  },
+  {
+    "cmd": "snooze_removal_suggestions",
+    "args": {
+      "courses": [
+        "folder:contract-test/course/DEMO101"
+      ],
+      "kind": "not_now"
+    }
+  },
+  {
+    "cmd": "clear_removal_snooze",
+    "args": {
+      "courses": [
+        "folder:contract-test/course/DEMO101"
+      ]
+    }
+  },
+  {
+    "cmd": "course_calendar",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101"
+    }
+  },
+  {
+    "cmd": "set_calendar_sources",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "include": [
+        "contract-test-material"
+      ],
+      "exclude": []
+    }
+  },
+  {
+    "cmd": "download_material_files",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "materialIds": [
+        "contract-test-material"
+      ],
+      "onEvent": "__CHANNEL__:0"
+    }
+  },
+  {
+    "cmd": "scan_course_calendar",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101"
+    }
+  },
+  {
+    "cmd": "accept_calendar_proposal",
+    "args": {
+      "proposalId": 1,
+      "edits": null
+    }
+  },
+  {
+    "cmd": "accept_passing_proposals",
+    "args": {
+      "proposalIds": [
+        1
+      ]
+    }
+  },
+  {
+    "cmd": "dismiss_calendar_proposal",
+    "args": {
+      "proposalId": 1
+    }
+  },
+  {
+    "cmd": "syllabus_reading_offers",
+    "args": {}
+  },
+  {
+    "cmd": "read_course_calendar",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "generationId": "contract-test-generation",
+      "options": {
+        "override_budget": false
+      },
+      "onEvent": "__CHANNEL__:0"
+    }
+  },
+  {
+    "cmd": "read_course_calendars",
+    "args": {
+      "courses": [
+        "folder:contract-test/course/DEMO101"
+      ],
+      "batchId": "contract-test-batch",
+      "options": {
+        "override_budget": false
+      },
+      "onEvent": "__CHANNEL__:0"
+    }
+  },
+  {
+    "cmd": "cancel_generation",
+    "args": {
+      "generationId": "contract-test-generation"
+    }
+  },
+  {
+    "cmd": "open_material",
+    "args": {
+      "materialId": "contract-test-material"
+    }
+  },
+  {
+    "cmd": "reveal_material",
+    "args": {
+      "materialId": "contract-test-material"
+    }
+  },
+  {
     "cmd": "clear_keep_course_current",
     "args": {
       "course": "folder:contract-test/course/DEMO101"

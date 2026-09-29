@@ -55,7 +55,7 @@ export function ChatGptCard({
       // Focusable from code only: after signing in and turning it on, focus lands here.
       tabIndex={-1}
       data-backend="codex"
-      className="space-y-3 rounded-lg border p-4 outline-hidden focus-visible:ring-3 focus-visible:ring-ring"
+      className="space-y-3 border-b pb-5 outline-hidden focus-visible:rounded-row focus-visible:ring-3 focus-visible:ring-ring"
     >
       <div className="space-y-1">
         <h3 id={headingId} className="font-medium">
@@ -166,7 +166,7 @@ function CardBody({
 
       <SystemCodex status={status} />
 
-      <div className="flex flex-wrap gap-2 border-t pt-3">
+      <div className="flex flex-wrap gap-2 pt-1">
         {signedIn ? <SignOutButton /> : null}
         <RemoveCodexButton />
       </div>

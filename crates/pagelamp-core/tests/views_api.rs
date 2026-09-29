@@ -3,9 +3,10 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use pagelamp_core::Error;
+use pagelamp_core::ingest::NO_TEXT_NOTE;
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
-use pagelamp_core::views::{self, AsOf, WeekNoteKind};
+use pagelamp_core::views::{self, AsOf, TextProblem, WeekNoteKind};
 use serde_json::json;
 
 // ----- fixtures -----------------------------------------------------------------------------
@@ -725,4 +726,85 @@ fn sync_status_flags_stale_and_failing_sources() {
 
     let empty = Store::open_in_memory().unwrap();
     assert!(views::sync_status(&empty, at()).unwrap().stale);
+}
+
+#[test]
+fn text_problem_says_why_a_material_has_no_text() {
+    let store = demo_store();
+    add_course(&store, "DEMO303", Some("DEMO303"), "Demo Methods", true);
+    let add = |name: &str, texts: &[&str]| {
+        add_material(
+            &store,
+            "DEMO303",
+            name,
+            MaterialKind::File,
+            None,
+            Some(3),
+            "2026-09-22T12:00:00Z",
+            texts,
+        )
+    };
+    add("read", &["Stomata open in light."]);
+    add("waiting", &[]);
+    let scanned = add("scanned", &[]);
+    store
+        .set_text_state(&scanned, TextStatus::Ok, Some(NO_TEXT_NOTE), Some("h"))
+        .unwrap();
+    let video = add("video", &[]);
+    store
+        .set_text_state(&video, TextStatus::Unsupported, None, Some("h"))
+        .unwrap();
+    for (name, message) in [
+        (
+            "big",
+            "file is too large to index (250 MB; the limit is 200 MB)",
+        ),
+        ("locked", "PDF is password-protected"),
+        (
+            "broken",
+            "malformed XML in word/document.xml at byte 3: bad",
+        ),
+        ("odd", "something PageLamp's extractor never says"),
+    ] {
+        let id = add(name, &[]);
+        store
+            .set_text_state(&id, TextStatus::Error, Some(message), Some("h"))
+            .unwrap();
+    }
+    // A worker failure's kind wins over its message.
+    let slow = add("slow", &[]);
+    store
+        .set_text_state(&slow, TextStatus::Error, Some("took too long"), Some("h"))
+        .unwrap();
+    store
+        .set_text_error_kind(&slow, TextErrorKind::TimedOut, "demo")
+        .unwrap();
+
+    let week = views::week_materials(&store, "DEMO303", Some(3), false, at()).unwrap();
+    let mut problems: Vec<(&str, Option<TextProblem>)> = week
+        .materials
+        .iter()
+        .map(|m| (m.title.as_str(), m.text_problem))
+        .collect();
+    problems.sort_by_key(|(title, _)| *title);
+    assert_eq!(
+        problems,
+        [
+            ("big", Some(TextProblem::TooLarge)),
+            ("broken", Some(TextProblem::Malformed)),
+            ("locked", Some(TextProblem::PasswordProtected)),
+            ("odd", Some(TextProblem::Other)),
+            ("read", None),
+            ("scanned", Some(TextProblem::NoText)),
+            ("slow", Some(TextProblem::TimedOut)),
+            ("video", None),
+            ("waiting", None),
+        ]
+    );
+    // The message stays for the CLI, logs and MCP.
+    let locked = week.materials.iter().find(|m| m.title == "locked").unwrap();
+    assert_eq!(
+        locked.text_error.as_deref(),
+        Some("PDF is password-protected")
+    );
 }

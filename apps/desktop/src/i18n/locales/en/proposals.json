@@ -11,7 +11,6 @@
       "other": "Proposed dates"
     },
     "created": "Proposed {{date}}",
-    "aiLabel": "AI-generated · {{backend}} · {{model}} · {{date}}",
     "scanNote": "Found by {{product}} without AI. Confidence is at most medium.",
     "stripLabel": "The proposed term at a glance",
     "datesTitle": "Dates and where they come from",
@@ -79,7 +78,13 @@
       "exam_period": "exam period",
       "ended": "ended",
       "unknown": "unknown"
-    }
+    },
+    "openFile": "Open file",
+    "revealFile": "Show in folder",
+    "fileUnavailable": "{{title}} isn't on this computer, or it isn't a document {{product}} opens.",
+    "onDevice": "Read by a model on this computer: check the dates before you accept.",
+    "openFileLabel": "Open {{title}}",
+    "revealFileLabel": "Show {{title}} in its folder"
   },
   "conflict": {
     "syllabus_from_another_year": "This date looks like it's from another year's syllabus.",
@@ -91,7 +96,8 @@
   },
   "stale": {
     "title": "The syllabus changed on {{date}}",
-    "body": "Some quoted words aren't in {{materials}} any more. The dates stay in force until you read it again or change them."
+    "body": "Some quoted words aren't in {{materials}} any more. The dates stay in force until you read it again or change them.",
+    "reread": "Read the syllabus again"
   },
   "sources": {
     "title": "Materials to read dates from",
@@ -135,6 +141,60 @@
   },
   "reading": {
     "title": "Read the dates from the syllabus",
-    "description": "The scan and AI can find this course's dates in its outline and schedule. Nothing changes until you accept what they propose."
+    "description": "The scan and AI can find this course's dates in its outline and schedule. Nothing changes until you accept what they propose.",
+    "scan": "Find dates without AI",
+    "scanHint": "Looks for dates written in these materials, on this computer. Nothing is sent anywhere.",
+    "scanning": "Looking for dates…",
+    "scanFound": "Found dates. Check the proposal at the top of this tab.",
+    "scanNothing": "No new dates found in these materials.",
+    "aiTitle": "Read with AI",
+    "aiHint": "The AI copies each date together with the words it came from, so you can check it. Nothing changes until you accept.",
+    "readWithAi": "Read the syllabus with AI",
+    "starting": "Starting…",
+    "running": "Reading with {{backend}} · {{model}}",
+    "readingNow": "Reading the syllabus…",
+    "stage": {
+      "building_context": "Picking the parts of the outline and schedule to send…",
+      "waiting_for_model": "Waiting for the model…",
+      "validating": "Checking every date against the course's own words…",
+      "repairing": "Asking the model to fix its answer…",
+      "scheduling": "Putting the dates in order…"
+    },
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "done": "Dates read. Check the proposal at the top of this tab.",
+    "stopped": "Stopped. Nothing was changed.",
+    "failed": "The syllabus couldn't be read",
+    "setUp": "Set up AI to read syllabi",
+    "runningOnDevice": "Reading on this computer with {{backend}} · {{model}}"
+  },
+  "batch": {
+    "title": "Read syllabi with AI",
+    "description_one": "{{count}} course has no confirmed dates yet. AI can read its outline and propose dates for you to check.",
+    "description_other": "{{count}} courses have no confirmed dates yet. AI can read their outlines and propose dates for you to check.",
+    "read_one": "Read the syllabus for {{count}} course",
+    "read_other": "Read syllabi for {{count}} courses",
+    "started_one": "Reading the syllabus for {{count}} course…",
+    "started_other": "Reading syllabi for {{count}} courses…",
+    "progress": "Reading {{done}} of {{total}} · {{course}}",
+    "stop": "Stop the rest",
+    "finished_one": "Done: {{count}} course has dates to check.",
+    "finished_other": "Done: {{count}} courses have dates to check.",
+    "stopped_one": "Stopped. {{count}} course has dates to check; the rest weren't read.",
+    "stopped_other": "Stopped. {{count}} courses have dates to check; the rest weren't read.",
+    "outcome": {
+      "passing": "Dates found; they passed every check",
+      "choose": "Dates found; some need your choice",
+      "accepted": "Dates accepted",
+      "stopped": "Not read (stopped)",
+      "failed": "Couldn't be read",
+      "nothing": "No dates found"
+    },
+    "acceptPassing_one": "Accept the {{count}} that passed every check",
+    "acceptPassing_other": "Accept the {{count}} that passed every check",
+    "accepted_one": "Dates accepted for {{count}} course.",
+    "accepted_other": "Dates accepted for {{count}} courses.",
+    "done": "Done",
+    "failed": "The syllabi couldn't be read"
   }
 }

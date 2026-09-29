@@ -1,9 +1,13 @@
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, FileText, FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { useApi } from "@/api/context";
 import type { DateEvidence } from "@/api/types";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { Button } from "@/components/ui/button";
 import { isHttpUrl } from "@/lib/url";
+import { useApiErrorText } from "@/lib/useApiErrorText";
+import { translateWithText } from "../timeline/evidence";
 
 /**
  * Where a date comes from: the material's own words (plain text, never Markdown or links),
@@ -33,8 +37,52 @@ export function QuoteCard({ evidence }: { evidence: DateEvidence }) {
             <ExternalLink aria-hidden />
             {t("card.open", { title: evidence.title })}
           </Button>
-        ) : null}
+        ) : (
+          // A material on this computer (a course folder, the Canvas download cache): the shell
+          // opens it, the page never sees the path.
+          <LocalFileButtons materialId={evidence.material_id} title={evidence.title} />
+        )}
       </figcaption>
     </figure>
+  );
+}
+
+function LocalFileButtons({ materialId, title }: { materialId: string; title: string }) {
+  const { t } = useTranslation("proposals");
+  const api = useApi();
+  const errorText = useApiErrorText();
+  // The material's title is plain text from the source: never interpolated.
+  const named = (key: string) => translateWithText(t, key, {}, { title });
+  async function run(open: boolean) {
+    try {
+      const done = open ? await api.openMaterial(materialId) : await api.revealMaterial(materialId);
+      if (!done) toast(named("card.fileUnavailable"));
+    } catch (error) {
+      toast.error(errorText(error));
+    }
+  }
+  return (
+    <>
+      <Button
+        variant="link"
+        size="xs"
+        className="h-auto p-0"
+        aria-label={named("card.openFileLabel")}
+        onClick={() => void run(true)}
+      >
+        <FileText aria-hidden />
+        {t("card.openFile")}
+      </Button>
+      <Button
+        variant="link"
+        size="xs"
+        className="h-auto p-0"
+        aria-label={named("card.revealFileLabel")}
+        onClick={() => void run(false)}
+      >
+        <FolderOpen aria-hidden />
+        {t("card.revealFile")}
+      </Button>
+    </>
   );
 }

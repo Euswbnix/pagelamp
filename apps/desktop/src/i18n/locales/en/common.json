@@ -142,7 +142,8 @@
     "pending": "Waiting to be indexed",
     "unsupported": "Can't be read (e.g. video)",
     "not_downloaded": "Not downloaded",
-    "error": "Couldn't extract text"
+    "error": "Couldn't extract text",
+    "noText": "No text found"
   },
   "downloadBlock": {
     "locked": "Locked in Canvas",
@@ -194,5 +195,19 @@
   "pastCourse": {
     "badge": "Past course",
     "hint": "Canvas no longer lists this course as active. Its data is kept."
+  },
+  "textProblem": {
+    "no_text": "No text found in it: it may be a scan or images only.",
+    "too_large": "It's too large to read.",
+    "password_protected": "It's password-protected.",
+    "malformed": "It may be damaged, password-protected or in an old format.",
+    "timed_out": "Reading it took too long, so it was stopped. It's tried again when the file changes or the app is updated.",
+    "cpu_limit": "Reading it needed too much processing time, so it was stopped. It's tried again when the file changes or the app is updated.",
+    "memory_limit": "Reading it needed too much memory, so it was stopped. It's tried again when the file changes or the app is updated.",
+    "crashed": "The text reader stopped unexpectedly on it. It's tried again when the file changes or the app is updated.",
+    "bad_output": "The text reader gave an unreadable answer for it. It's tried again on the next sync.",
+    "spawn_failed": "The text reader couldn't start. It's tried again on the next sync.",
+    "protocol_mismatch": "The text reader belongs to another version of {{product}}. It's tried again on the next sync.",
+    "other": "Its text couldn't be read."
   }
 }

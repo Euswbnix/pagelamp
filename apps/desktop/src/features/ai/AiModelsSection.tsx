@@ -68,7 +68,8 @@ export function AiModelsSection() {
           {providerBackends.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("settings.empty")}</p>
           ) : (
-            <ul aria-label={t("settings.backendsLabel")} className="space-y-3">
+            // The ChatGPT card's closing hairline is this list's top rule.
+            <ul aria-label={t("settings.backendsLabel")} className="divide-y border-b">
               {providerBackends.map((backend) => (
                 <BackendRow
                   key={backendKey(backend.backend)}

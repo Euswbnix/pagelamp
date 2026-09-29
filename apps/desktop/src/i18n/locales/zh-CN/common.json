@@ -142,7 +142,8 @@
     "pending": "等待处理",
     "unsupported": "无法读取（如视频）",
     "not_downloaded": "未下载",
-    "error": "文字提取失败"
+    "error": "文字提取失败",
+    "noText": "没有找到文字"
   },
   "downloadBlock": {
     "locked": "在 Canvas 中被锁定",
@@ -194,5 +195,19 @@
   "pastCourse": {
     "badge": "往期课程",
     "hint": "Canvas 已不再把这门课列为进行中，它的数据会继续保留。"
+  },
+  "textProblem": {
+    "no_text": "里面没有找到文字，可能是扫描件或只有图片。",
+    "too_large": "文件太大，无法读取。",
+    "password_protected": "文件有密码保护。",
+    "malformed": "文件可能已损坏、有密码保护，或是旧格式。",
+    "timed_out": "读取耗时过长，已停止。文件有变动或应用更新后会再试。",
+    "cpu_limit": "读取需要的处理时间过长，已停止。文件有变动或应用更新后会再试。",
+    "memory_limit": "读取需要的内存过多，已停止。文件有变动或应用更新后会再试。",
+    "crashed": "文字读取程序意外停止。文件有变动或应用更新后会再试。",
+    "bad_output": "文字读取程序返回了无法使用的结果。下次同步时会再试。",
+    "spawn_failed": "文字读取程序无法启动。下次同步时会再试。",
+    "protocol_mismatch": "文字读取程序与当前版本的 {{product}} 不匹配。下次同步时会再试。",
+    "other": "无法读取其中的文字。"
   }
 }

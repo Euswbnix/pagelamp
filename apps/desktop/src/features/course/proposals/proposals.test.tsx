@@ -1,6 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { PageLampApi } from "@/api/client";
+import { createMockApi } from "@/api/mock";
+import { brand } from "@/brand";
 import { DEMO310, openCourse } from "../testing";
 
 // Courses of the "proposals" mock scenario (src/api/mock/proposals.ts).
@@ -12,8 +15,8 @@ beforeEach(() => {
   toast.dismiss();
 });
 
-async function openProposals(courseId: string) {
-  const result = await openCourse(courseId, { query: "tab=timeline", scenario: "proposals" });
+async function openProposals(courseId: string, api?: PageLampApi) {
+  const result = await openCourse(courseId, { query: "tab=timeline", scenario: "proposals", api });
   const section = await screen.findByRole("region", { name: "Proposed dates" });
   return { ...result, section };
 }
@@ -125,6 +128,52 @@ describe("calendar proposal cards", () => {
     expect(
       within(section).getByText(
         /^Some quoted words aren't in Course outline \(updated\) any more\./,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("proposal quotes and labels", () => {
+  it("opens a quoted local file through the shell, or says it can't", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "proposals" });
+    const open = vi.spyOn(api, "openMaterial");
+    const { user, section } = await openProposals(FITTED, api);
+    const card = within(section).getByRole("article", {
+      name: "Dates read from the syllabus by AI",
+    });
+    await user.click(
+      within(card).getAllByRole("button", { name: "Open Course outline" })[0] as HTMLElement,
+    );
+    expect(open).toHaveBeenCalledWith(expect.stringContaining("/material/"));
+    expect(await open.mock.results[0]?.value).toBe(true);
+
+    // The schedule is a page: nothing to open on this computer.
+    await user.click(
+      within(card).getAllByRole("button", { name: "Open Lecture schedule" })[0] as HTMLElement,
+    );
+    expect(
+      await screen.findByText(
+        `Lecture schedule isn't on this computer, or it isn't a document ${brand.productName} opens.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("asks for a check when a model on this computer read the dates", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "proposals" });
+    const real = api.courseCalendar.bind(api);
+    api.courseCalendar = async (courseId) => {
+      const view = await real(courseId);
+      return {
+        ...view,
+        proposals: view.proposals.map((p) =>
+          p.ai_label ? { ...p, ai_label: { ...p.ai_label, on_device: true } } : p,
+        ),
+      };
+    };
+    const { section } = await openProposals(FITTED, api);
+    expect(
+      within(section).getByText(
+        "Read by a model on this computer: check the dates before you accept.",
       ),
     ).toBeInTheDocument();
   });

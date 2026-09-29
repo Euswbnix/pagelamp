@@ -39,6 +39,7 @@
 //! - `pdf_inflate` — refuses PDFs whose streams would inflate past `Limits`;
 //! - `ooxml` — zip + XML plumbing shared by `.pptx` and `.docx` (zip-bomb limits live here);
 //! - `chunk` — `chunk_segments`;
+//! - `failure` — `failure_kind`, the kind of a `Failed` message;
 //! - `util` — text decoding, whitespace normalisation, panic isolation.
 //!
 //! "MB" means 1024 × 1024 bytes. Text is never split inside a UTF-8 character.
@@ -51,6 +52,7 @@ use thiserror::Error;
 
 mod chunk;
 mod docx;
+mod failure;
 mod format;
 mod html;
 mod notebook;
@@ -65,6 +67,7 @@ mod text;
 mod util;
 pub mod worker;
 
+pub use failure::{FailureKind, failure_kind};
 pub use util::panic_is_expected;
 
 use format::{FileFormat, describe_file_type};
@@ -286,8 +289,8 @@ fn truncation_note(max_text_bytes: usize) -> Segment {
 mod tests {
     use super::*;
     use crate::test_support::{
-        document_xml, notes_xml, para, pdf_bytes, pdf_bytes_compressed, presentation_xml, rels_xml,
-        slide_xml, styles_xml, write_file, zip_text,
+        document_xml, kind_of, notes_xml, para, pdf_bytes, pdf_bytes_compressed, presentation_xml,
+        rels_xml, slide_xml, styles_xml, write_file, zip_text,
     };
 
     fn locators(segments: &[Segment]) -> Vec<Option<&str>> {
@@ -335,6 +338,7 @@ mod tests {
                 matches!(result, Err(ExtractError::Failed(_))),
                 "{name}: {result:?}"
             );
+            assert_eq!(kind_of(&result), Some(FailureKind::Malformed), "{name}");
         }
     }
 
@@ -505,6 +509,7 @@ mod tests {
             matches!(&result, Err(ExtractError::Failed(m)) if m.contains("binary")),
             "{result:?}"
         );
+        assert_eq!(kind_of(&result), Some(FailureKind::Malformed));
     }
 
     #[test]
@@ -536,6 +541,7 @@ mod tests {
             ..Limits::DEFAULT
         };
         let result = extract_file_with_limits(&path, None, &limits);
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
         assert!(matches!(result, Err(ExtractError::Failed(m)) if m.contains("too large")));
     }
 
@@ -555,6 +561,7 @@ mod tests {
             matches!(&result, Err(ExtractError::Failed(m)) if m.contains("would expand")),
             "{result:?}"
         );
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
         // Within the default limits the same file is read normally.
         let segments = extract_file_with_limits(&path, None, &Limits::DEFAULT).unwrap();
         assert!(segments[0].text.contains("Alpha Alpha"));
@@ -572,6 +579,7 @@ mod tests {
         };
         let result = extract_file_with_limits(&path, None, &limits);
         assert!(matches!(result, Err(ExtractError::Failed(_))), "{result:?}");
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
     }
 
     #[test]

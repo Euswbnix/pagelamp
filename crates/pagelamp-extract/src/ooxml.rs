@@ -357,7 +357,8 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::test_support::{zip_bytes, zip_text};
+    use crate::FailureKind;
+    use crate::test_support::{kind_of, zip_bytes, zip_text};
 
     fn small_limits() -> Limits {
         Limits {
@@ -491,6 +492,7 @@ mod tests {
             "{:?}",
             result.err()
         );
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
         // Opening may read the end-of-archive search area plus ~1 KB per allowed entry.
         let allowed = open_read_budget(&small_limits());
         assert!(
@@ -523,18 +525,16 @@ mod tests {
     fn too_many_entries_is_refused() {
         let entries: Vec<(String, &str)> = (0..6).map(|i| (format!("{i}.xml"), "x")).collect();
         let entries: Vec<(&str, &str)> = entries.iter().map(|(n, t)| (n.as_str(), *t)).collect();
-        assert!(matches!(
-            open(zip_text(&entries), &small_limits()),
-            Err(ExtractError::Failed(_))
-        ));
+        let result = open(zip_text(&entries), &small_limits());
+        assert!(matches!(result, Err(ExtractError::Failed(_))));
+        assert_eq!(kind_of(&result), Some(FailureKind::TooLarge));
     }
 
     #[test]
     fn not_a_zip_is_failed() {
-        assert!(matches!(
-            open(b"not a zip at all".to_vec(), &Limits::DEFAULT),
-            Err(ExtractError::Failed(_))
-        ));
+        let result = open(b"not a zip at all".to_vec(), &Limits::DEFAULT);
+        assert!(matches!(result, Err(ExtractError::Failed(_))));
+        assert_eq!(kind_of(&result), Some(FailureKind::Malformed));
     }
 
     #[test]
@@ -556,6 +556,7 @@ mod tests {
     #[test]
     fn malformed_xml_is_failed() {
         let result = for_each_event("<a><b></a>", "x.xml", |_| {});
+        assert_eq!(kind_of(&result), Some(FailureKind::Malformed));
         assert!(matches!(result, Err(ExtractError::Failed(m)) if m.contains("x.xml")));
     }
 

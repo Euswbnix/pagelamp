@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useCourseCalendar } from "@/api/proposalQueries";
 import type { AcceptedCalendar, Course, CourseTimeline } from "@/api/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { formatIsoDate } from "@/lib/format";
 import { ProposalCard } from "./ProposalCard";
+import { READ_SYLLABUS_HEADING } from "./ReadSyllabus";
 
 /**
  * On the Timeline tab (F3): the stale banner for the calendar in force, and every pending
@@ -78,6 +80,18 @@ function StaleBanner({ accepted }: { accepted: AcceptedCalendar }) {
       <AlertDescription>
         {t("stale.body", { materials: list.format(accepted.changed_materials) })}
       </AlertDescription>
+      <div className="col-start-2 mt-2">
+        <Button type="button" size="sm" variant="outline" onClick={goToReading}>
+          {t("stale.reread")}
+        </Button>
+      </div>
     </Alert>
   );
+}
+
+/** To the scan and "Read with AI", further down the Timeline tab. */
+function goToReading() {
+  const heading = document.getElementById(READ_SYLLABUS_HEADING);
+  heading?.scrollIntoView({ block: "center" });
+  heading?.focus({ preventScroll: true });
 }

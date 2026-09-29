@@ -59,6 +59,42 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setCourseMaterialSharing(COURSE, "not_sure");
   await api.keepCourseCurrent(COURSE, "2026-12-31");
   await api.keepCourseCurrent(COURSE, null);
+  await api.setCourseDates(COURSE, {
+    first_class: "2026-09-08",
+    last_class: "2026-12-04",
+    exams_end: null,
+    breaks: [],
+    second_segment: null,
+  });
+  await api.setCourseDates(COURSE, null);
+  await api.lifecycleSummary();
+  await api.snoozeLifecycleBanner();
+  await api.snoozeRemovalSuggestions([COURSE], "not_now");
+  await api.clearRemovalSnooze([COURSE]);
+  // Calendar: made-up material and proposal ids, which the facade refuses before any network.
+  await api.courseCalendar(COURSE);
+  await api.setCalendarSources(COURSE, ["contract-test-material"], []);
+  await api.downloadMaterialFiles(COURSE, ["contract-test-material"], onEvent);
+  await api.scanCourseCalendar(COURSE);
+  await api.acceptCalendarProposal(1, null);
+  await api.acceptPassingProposals([1]);
+  await api.dismissCalendarProposal(1);
+  await api.syllabusReadingOffers();
+  await api.readCourseCalendar(
+    COURSE,
+    "contract-test-generation",
+    { override_budget: false },
+    () => {},
+  );
+  await api.readCourseCalendars(
+    [COURSE],
+    "contract-test-batch",
+    { override_budget: false },
+    () => {},
+  );
+  await api.cancelGeneration("contract-test-generation");
+  await api.openMaterial("contract-test-material");
+  await api.revealMaterial("contract-test-material");
   await api.clearKeepCourseCurrent(COURSE);
   await api.confirmCourseDates(COURSE);
   await api.mcpClientConfigs();
