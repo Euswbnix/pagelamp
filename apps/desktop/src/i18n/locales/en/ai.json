@@ -234,7 +234,7 @@
     "total": "Total"
   },
   "estimate": {
-    "label": "Estimated cost",
+    "label": "Estimated cost:",
     "upTo": "≈ {{amount}} at most",
     "lessThan": "≈ less than {{amount}}",
     "free": "Free, on this computer",

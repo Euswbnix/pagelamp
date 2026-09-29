@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { AI_SETUP_ENABLED } from "@/lib/features";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { AiAccessSection } from "./AiAccessSection";
+import { MaterialSharingSection } from "./MaterialSharingSection";
 import { PolicyOption } from "./PolicyOption";
 
 function isAiPolicy(value: string): value is AiPolicy {
@@ -19,8 +21,8 @@ function isAiPolicy(value: string): value is AiPolicy {
 }
 
 /**
- * The course's AI-use rule, which the student's AI app reads and follows, and whether the AI app
- * may read the course's materials at all.
+ * The course's AI-use rule, which the student's AI app reads and follows, whether the AI app
+ * may read the course's materials at all, and (M1) whether they may be shared with an AI service.
  */
 export function PolicyTab({
   course,
@@ -33,6 +35,7 @@ export function PolicyTab({
     <div className="space-y-8">
       <PolicyForm course={course} />
       <AiAccessSection course={course} state={aiMaterials} />
+      {AI_SETUP_ENABLED ? <MaterialSharingSection course={course} /> : null}
     </div>
   );
 }

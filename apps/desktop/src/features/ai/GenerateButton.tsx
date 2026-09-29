@@ -1,0 +1,180 @@
+import { useId, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
+import { useAcknowledgeUnpricedModel, useAiStatus, useCostEstimate } from "@/api/ai-queries";
+import {
+  type AiStatus,
+  backendKey,
+  type CostEstimate,
+  type EstimateRequest,
+} from "@/api/provisional/ai";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { paths } from "@/lib/routes";
+import { estimateAmount, formatTokens } from "./lib/money";
+import { useAiErrorText } from "./useAiErrorText";
+
+/** Blocks the student resolves in Settings → AI models. */
+const SETTINGS_BLOCKS = new Set(["no_model_chosen", "disclosure_not_acknowledged"]);
+
+/**
+ * "≈ $x" and Generate (design §3.5, §7): the facade's upper-bound estimate for this request,
+ * refreshed as the request changes, and the pre-flight blocks it reports (`would_block`). The
+ * blocks the student can settle here are settled here: an unpriced model is acknowledged once,
+ * and going over the budget is an explicit, per-run choice. Everything else disables Generate
+ * with the reason.
+ */
+export function GenerateButton({
+  request,
+  onGenerate,
+  label,
+}: {
+  /** null = the form isn't complete yet. */
+  request: EstimateRequest | null;
+  onGenerate: (options: { overrideBudget: boolean }) => void;
+  label?: string;
+}) {
+  const { t, i18n } = useTranslation("ai");
+  const estimate = useCostEstimate(request);
+  const status = useAiStatus();
+  const errorText = useAiErrorText();
+  const [overrideBudget, setOverrideBudget] = useState(false);
+  const ids = { line: useId(), override: useId() };
+
+  const data = estimate.data ?? null;
+  const block = data?.would_block ?? null;
+  const blocked = block !== null && !(block === "budget_reached" && overrideBudget);
+  const disabled = request === null || !data || blocked || estimate.isFetching;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          aria-disabled={disabled || undefined}
+          aria-describedby={ids.line}
+          className="aria-disabled:opacity-50"
+          onClick={() => {
+            if (!disabled) onGenerate({ overrideBudget: block === "budget_reached" });
+          }}
+        >
+          {label ?? t("estimate.generate")}
+        </Button>
+        <p id={ids.line} className="text-sm text-muted-foreground" aria-live="polite">
+          {estimate.isPending && request ? <Spinner aria-hidden /> : null}
+          {data && request ? (
+            <CostLine estimate={data} status={status.data ?? null} feature={request.feature} />
+          ) : null}
+        </p>
+      </div>
+      {data && request ? (
+        <p className="text-xs text-muted-foreground">
+          {t("estimate.details", {
+            input: formatTokens(data.input_tokens, i18n.language),
+            output: formatTokens(data.max_output_tokens + data.reasoning_allowance, i18n.language),
+          })}
+        </p>
+      ) : null}
+      {estimate.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {errorText(estimate.error)}
+        </p>
+      ) : null}
+      {block === "budget_reached" ? (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">{t("estimate.overBudget")}</p>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id={ids.override}
+              checked={overrideBudget}
+              onCheckedChange={(v) => setOverrideBudget(v === true)}
+            />
+            <Label htmlFor={ids.override} className="font-normal">
+              {t("estimate.overrideBudget")}
+            </Label>
+          </div>
+        </div>
+      ) : null}
+      {block === "price_unknown_not_acknowledged" && request ? (
+        <UnpricedAcknowledgement status={status.data ?? null} feature={request.feature} />
+      ) : null}
+      {block && block !== "budget_reached" && block !== "price_unknown_not_acknowledged" ? (
+        <p className="text-sm">
+          {t(`blocked.${block}`)}{" "}
+          {SETTINGS_BLOCKS.has(block) ? (
+            <Link to={paths.settings} className="underline underline-offset-4">
+              {t("settings.title")}
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function CostLine({
+  estimate,
+  status,
+  feature,
+}: {
+  estimate: CostEstimate;
+  status: AiStatus | null;
+  feature: EstimateRequest["feature"];
+}) {
+  const { t, i18n } = useTranslation("ai");
+  const upper = estimate.micro_usd_upper ?? null;
+  if (upper === 0) return <>{t("estimate.free")}</>;
+  if (upper !== null) {
+    const shown = estimateAmount(upper, i18n.language);
+    return (
+      <>
+        <span className="sr-only">{t("estimate.label")}</span>{" "}
+        {shown.kind === "lessThan"
+          ? t("estimate.lessThan", { amount: shown.amount })
+          : t("estimate.upTo", { amount: shown.amount })}
+      </>
+    );
+  }
+  const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
+  const backend = choice
+    ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
+    : undefined;
+  if (backend?.kind === "local") return <>{t("estimate.cloudNoPrice")}</>;
+  if (backend?.kind === "api_key") return <>{t("estimate.noPrice")}</>;
+  return null;
+}
+
+function UnpricedAcknowledgement({
+  status,
+  feature,
+}: {
+  status: AiStatus | null;
+  feature: EstimateRequest["feature"];
+}) {
+  const { t } = useTranslation("ai");
+  const acknowledge = useAcknowledgeUnpricedModel();
+  const errorText = useAiErrorText();
+  const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
+  if (!choice) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm">{t("estimate.useUnpricedHint")}</p>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={acknowledge.isPending}
+        onClick={() => acknowledge.mutate({ backend: choice.backend, model: choice.model })}
+      >
+        {t("estimate.useUnpriced")}
+      </Button>
+      {acknowledge.error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {errorText(acknowledge.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}

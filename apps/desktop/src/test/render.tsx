@@ -10,6 +10,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { PageLampApi } from "@/api/client";
 import { createMockApi, type MockOptions } from "@/api/mock";
@@ -27,6 +28,25 @@ export function renderRoute(path: string, options: RenderRouteOptions = {}) {
     defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
   });
   const router = createMemoryRouter(routes, { initialEntries: [path] });
+  const user = userEvent.setup();
+  const result = render(
+    <Providers api={api} queryClient={queryClient}>
+      <RouterProvider router={router} />
+    </Providers>,
+  );
+  return { ...result, api, router, user, queryClient };
+}
+
+/**
+ * Render one component (not a route) with every provider and a router around it — for
+ * components no screen uses yet, e.g. the M1 AI building blocks.
+ */
+export function renderWithProviders(ui: ReactElement, options: RenderRouteOptions = {}) {
+  const api = options.api ?? createMockApi({ latencyMs: 0, syncStepMs: 0, ...options });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
+  });
+  const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: ["/"] });
   const user = userEvent.setup();
   const result = render(
     <Providers api={api} queryClient={queryClient}>

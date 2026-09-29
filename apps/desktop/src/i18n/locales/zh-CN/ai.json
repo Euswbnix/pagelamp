@@ -234,7 +234,7 @@
     "total": "合计"
   },
   "estimate": {
-    "label": "预估费用",
+    "label": "预估费用：",
     "upTo": "≈ 最多 {{amount}}",
     "lessThan": "≈ 不到 {{amount}}",
     "free": "免费，在这台电脑上运行",

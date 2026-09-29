@@ -99,7 +99,7 @@
 "ai.estimate.details" = "最多输入 %1$@ 个 token，输出 %2$@ 个";
 "ai.estimate.free" = "免费，在这台电脑上运行";
 "ai.estimate.generate" = "生成";
-"ai.estimate.label" = "预估费用";
+"ai.estimate.label" = "预估费用：";
 "ai.estimate.lessThan" = "≈ 不到 %1$@";
 "ai.estimate.noPrice" = "这个模型没有价格";
 "ai.estimate.overBudget" = "这次运行会超出本月预算。";

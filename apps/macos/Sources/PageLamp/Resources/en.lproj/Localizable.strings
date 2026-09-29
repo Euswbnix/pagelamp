@@ -99,7 +99,7 @@
 "ai.estimate.details" = "Up to %1$@ tokens in and %2$@ out";
 "ai.estimate.free" = "Free, on this computer";
 "ai.estimate.generate" = "Generate";
-"ai.estimate.label" = "Estimated cost";
+"ai.estimate.label" = "Estimated cost:";
 "ai.estimate.lessThan" = "≈ less than %1$@";
 "ai.estimate.noPrice" = "No price for this model";
 "ai.estimate.overBudget" = "This would go over this month's budget.";
