@@ -45,6 +45,7 @@ mod ai;
 mod calendars;
 mod generations;
 mod migrate_v4;
+mod reminders;
 mod tombstones;
 
 pub use ai::USAGE_KEEP_DAYS;
@@ -54,6 +55,7 @@ pub use calendars::{
 };
 pub use generations::{GenerationRecord, GenerationStatus, KEEP_GENERATIONS};
 pub use migrate_v4::{COURSE_DATES_CONFIRMED, MIGRATED_FINGERPRINT};
+pub use reminders::REMINDERS_SHOWN_DAYS;
 
 pub const SCHEMA_VERSION: i64 = 4;
 

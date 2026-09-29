@@ -40,12 +40,13 @@ use pagelamp_app::diagnostics::{
 use pagelamp_app::{
     Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, BackupInfo, BreakInput,
     CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput,
-    CourseLifecycleEntry, InstallKind, LifecycleSummary, LocalFileUse, LostAfterPurge, McpClient,
-    McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, ReadCalendarOptions, RemovalPreview,
-    RemovalPreviewItem, RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure,
-    RestoreOutcome, SegmentInput, SourceSyncResult, StartupTasks, SyllabusOffer, SyncEvent,
-    SyncRequest, SyncSummary, TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome,
-    UpdateCheckRecord, UpdatePrefs, WhatsNew, WhatsNewTopic,
+    CourseLifecycleEntry, DigestDay, InstallKind, LifecycleSummary, LocalFileUse, LostAfterPurge,
+    McpClient, McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, ReadCalendarOptions, Reminder,
+    ReminderKind, ReminderSettings, RemovalPreview, RemovalPreviewItem, RemovalReason,
+    RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, SegmentInput,
+    SourceSyncResult, StartupTasks, SyllabusOffer, SyncEvent, SyncRequest, SyncSummary,
+    TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+    UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind};
 use pagelamp_core::ai_gate::{ContextCourse, ContextSummary, LeftOutMaterial, LeftOutReason};
@@ -68,8 +69,8 @@ use pagelamp_core::model::{
 };
 use pagelamp_core::source::{CourseSyncSummary, SyncStage};
 use pagelamp_core::views::{
-    CourseCounts, CourseOverview, CourseSummary, Deadline, MaterialView, TextProblem,
-    WeekMaterials, WeekNoteKind,
+    CourseCounts, CourseOverview, CourseSummary, Deadline, DigestCourse, DigestPlan, MaterialView,
+    TextProblem, WeekMaterials, WeekNoteKind, WeeklyDigest,
 };
 
 use crate::PageLampError;
@@ -1005,6 +1006,86 @@ pub struct StartupTasks {
     pub whats_new: Option<WhatsNew>,
     pub update_check_due: bool,
     pub updated_from: Option<String>,
+    #[uniffi(default)]
+    pub due_reminders: Vec<Reminder>,
+    #[uniffi(default)]
+    pub purge_due: bool,
+    #[uniffi(default)]
+    pub removed_files_waiting: u32,
+}
+
+// ----- reminders and the weekly digest (v0.3 M3; methods are wired by the leader) -------------
+
+#[uniffi::remote(Enum)]
+pub enum ReminderKind {
+    DeadlineSoon,
+    WeeklyDigest,
+    PlanToday,
+}
+
+#[uniffi::remote(Enum)]
+pub enum DigestDay {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+#[uniffi::remote(Record)]
+pub struct ReminderSettings {
+    pub deadline_soon: bool,
+    pub weekly_digest: bool,
+    pub digest_day: DigestDay,
+    pub digest_time: String,
+    pub plan_today: bool,
+    pub plan_today_time: String,
+    pub run_in_background: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct Reminder {
+    pub id: String,
+    pub kind: ReminderKind,
+    pub local_time: String,
+    pub time_zone: String,
+    pub fire_at: Timestamp,
+    pub title: Option<String>,
+    pub course_id: Option<String>,
+    pub course_code: Option<String>,
+    pub course_name: Option<String>,
+    pub due_at: Option<Timestamp>,
+    pub hours_before: Option<u32>,
+    pub count: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DigestCourse {
+    pub course_id: String,
+    pub code: Option<String>,
+    pub name: String,
+    pub active: bool,
+    pub week: Option<u32>,
+    pub confidence: Confidence,
+    pub material_count: u32,
+    pub material_titles: Vec<String>,
+    pub deadlines: Vec<Deadline>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DigestPlan {
+    pub last_week_planned: u32,
+    pub last_week_done: u32,
+    pub today: Vec<StudyPlanItem>,
+}
+
+#[uniffi::remote(Record)]
+pub struct WeeklyDigest {
+    pub generated_at: Timestamp,
+    pub courses: Vec<DigestCourse>,
+    pub plan: Option<DigestPlan>,
 }
 
 #[uniffi::remote(Enum)]

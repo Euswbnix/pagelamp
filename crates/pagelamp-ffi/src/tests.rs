@@ -200,6 +200,14 @@ const MIRRORED: &[&str] = &[
     "ActivityKind",
     "ActivityItem",
     "Activity",
+    // v0.3 M3: reminders and the weekly digest
+    "ReminderKind",
+    "DigestDay",
+    "ReminderSettings",
+    "Reminder",
+    "DigestCourse",
+    "DigestPlan",
+    "WeeklyDigest",
     // AI (v0.3 M1)
     "AiFeature",
     "BlockReason",
