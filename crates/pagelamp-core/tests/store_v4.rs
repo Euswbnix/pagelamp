@@ -289,11 +289,30 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
             [],
         )
         .unwrap();
+    // A plan PageLamp generated keeps its label (compliance item 4); only the run link goes.
+    let label = r#"{"backend_label":"OpenAI","model":"gpt-6-luna","created_at":"2026-10-01T00:00:00Z","on_device":false}"#;
+    store
+        .conn()
+        .execute(
+            "INSERT INTO study_plans (created_at, plan_json, origin, generation_id, ai_label_json)
+             VALUES ('2026-10-01T00:00:00Z', '{}', 'pagelamp', 'g1', ?1)",
+            [label],
+        )
+        .unwrap();
     let removed = store.remove_all_ai_data().unwrap();
     assert_eq!(
         (removed.providers, removed.generations, removed.usage_rows),
         (1, 1, 1)
     );
+    let (generation_id, kept): (Option<String>, Option<String>) = store
+        .conn()
+        .query_row(
+            "SELECT generation_id, ai_label_json FROM study_plans",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((generation_id, kept.as_deref()), (None, Some(label)));
     assert!(store.model_providers().unwrap().is_empty());
     assert_eq!(
         store.list_courses(true).unwrap().len(),

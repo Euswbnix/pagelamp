@@ -214,7 +214,8 @@ UPDATE courses SET user_term_end   = NULL WHERE user_term_end   = term_end;
 /// - AI: `model_providers` (no keys: those live in the keychain), `generations` (validated
 ///   output and a summary without text), the usage ledger `ai_usage` (counts and micro-USD
 ///   only), `reminders_shown`, `courses.material_sharing` (question (b), written only by the
-///   student), `study_plans.origin` / `generation_id`;
+///   student), `study_plans.origin` / `generation_id` / `ai_label_json` (the plan's
+///   "AI-generated · backend · model · date" label, kept with the plan);
 /// - course lane: `course_calendars` (proposed / accepted calendars, with evidence), the
 ///   removal `course_tombstones`, `courses.calendar_sources` and `institution` (sync-written),
 ///   `materials.linked_from_syllabus` / `is_front_page`; plus the data step
@@ -273,6 +274,7 @@ CREATE TABLE reminders_shown (
 ALTER TABLE courses     ADD COLUMN material_sharing TEXT NOT NULL DEFAULT 'unanswered';
 ALTER TABLE study_plans ADD COLUMN origin           TEXT NOT NULL DEFAULT 'ai_app';
 ALTER TABLE study_plans ADD COLUMN generation_id    TEXT;
+ALTER TABLE study_plans ADD COLUMN ai_label_json    TEXT;     -- origin pagelamp: AiLabel (JSON); stays after "Remove all AI data"
 
 CREATE TABLE course_calendars (
     id              INTEGER PRIMARY KEY,
