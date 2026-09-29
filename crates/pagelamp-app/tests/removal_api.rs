@@ -393,3 +393,50 @@ async fn a_due_purge_runs_when_a_sync_starts_and_forgetting_needs_a_purge() {
     assert!(codes(&f.app).contains(&"DEMO202".to_string()));
     assert!(f.app.removed_courses().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_removed_course_leaves_the_study_plan_until_it_comes_back() {
+    let f = fixture().await;
+    let item = |course: &str, title: &str| StudyPlanItem {
+        date: Utc::now().date_naive(),
+        course_id: Some(format!("{CANVAS}/course/{course}")),
+        title: title.into(),
+        description: None,
+        material_ids: Vec::new(),
+        minutes: Some(30),
+        done: false,
+    };
+    Store::open(&f.app.db_path())
+        .unwrap()
+        .save_study_plan(&StudyPlan {
+            horizon_start: Utc::now().date_naive(),
+            horizon_end: Utc::now().date_naive() + Duration::days(7),
+            items: vec![
+                item("303", "Read the seminar slides"),
+                item("999", "Other course"),
+            ],
+            notes: None,
+        })
+        .unwrap();
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO303".into()], options())
+        .await
+        .unwrap();
+    let titles = |app: &App| -> Vec<String> {
+        app.latest_study_plan()
+            .unwrap()
+            .unwrap()
+            .plan
+            .items
+            .into_iter()
+            .map(|i| i.title)
+            .collect()
+    };
+    assert_eq!(titles(&f.app), ["Other course"]);
+    f.app
+        .restore_course(&report.removed[0].removed_id)
+        .await
+        .unwrap();
+    assert_eq!(titles(&f.app).len(), 2);
+}

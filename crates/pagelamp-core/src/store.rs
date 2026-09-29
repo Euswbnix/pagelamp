@@ -1570,7 +1570,10 @@ impl Store {
         })
     }
 
-    /// The most recently saved plan (highest id).
+    /// The most recently saved plan (highest id), without the items of removed courses: the
+    /// stored JSON keeps them (calendar design §8.3), every reader (the app, the MCP server,
+    /// the digest, the weekly note) leaves them out. A write by item index must read the
+    /// stored plan itself.
     pub fn latest_study_plan(&self) -> Result<Option<StoredStudyPlan>> {
         let row = self.query_opt(
             "SELECT id, created_at, plan_json FROM study_plans ORDER BY id DESC LIMIT 1",
@@ -1585,10 +1588,20 @@ impl Store {
         let Some((id, created_at, plan_json)) = row else {
             return Ok(None);
         };
+        let mut plan: StudyPlan = serde_json::from_str(&plan_json)?;
+        let removed: Vec<String> =
+            self.query_list("SELECT course_id FROM course_tombstones", [], |row| {
+                row.get(0)
+            })?;
+        plan.items.retain(|item| {
+            item.course_id
+                .as_ref()
+                .is_none_or(|id| !removed.contains(id))
+        });
         Ok(Some(StoredStudyPlan {
             id,
             created_at,
-            plan: serde_json::from_str(&plan_json)?,
+            plan,
         }))
     }
 
