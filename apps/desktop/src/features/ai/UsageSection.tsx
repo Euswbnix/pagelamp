@@ -130,7 +130,7 @@ function UsageTable({ summary }: { summary: UsageSummary }) {
                 <td className="py-2 pr-4 text-right tabular-nums">
                   {t("usage.tokens", {
                     input: formatTokens(row.input_tokens, locale),
-                    output: formatTokens(row.output_tokens + row.reasoning_tokens, locale),
+                    output: formatTokens(row.output_tokens, locale),
                   })}
                 </td>
                 <td className="py-2 text-right tabular-nums">

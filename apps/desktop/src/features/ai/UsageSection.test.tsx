@@ -27,7 +27,7 @@ describe("Settings → AI usage", () => {
     const plans = within(table).getByRole("row", { name: /gpt-6-luna/ });
     expect(within(plans).getByText("Study plans")).toBeInTheDocument();
     expect(within(plans).getByText("6")).toBeInTheDocument();
-    expect(within(plans).getByText("45K in, 18K out")).toBeInTheDocument();
+    expect(within(plans).getByText("45K in, 14.4K out")).toBeInTheDocument();
     expect(within(plans).getByText("$0.40")).toBeInTheDocument();
     // An estimated cost is marked, and so is the total that includes it.
     expect(within(table).getByRole("row", { name: /gpt-5\.4-mini/ })).toHaveTextContent("≈ $1.60");

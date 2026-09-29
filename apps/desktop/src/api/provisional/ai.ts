@@ -274,8 +274,11 @@ export interface UsageRow {
   model: string;
   feature: AiFeature;
   runs: number;
+  /** The total, cached ones included. */
   input_tokens: number;
+  /** The total, reasoning included. */
   output_tokens: number;
+  /** Of the output, how much was reasoning. */
   reasoning_tokens: number;
   /** None when the price is unknown (tokens only). 0 on device. */
   micro_usd?: number | null;
