@@ -9,6 +9,7 @@ pub mod assemble;
 pub mod candidates;
 pub mod extraction;
 pub mod proposal;
+pub mod reading;
 pub mod scan;
 pub mod text;
 pub mod validate;

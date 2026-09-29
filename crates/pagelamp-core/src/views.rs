@@ -797,7 +797,7 @@ pub(crate) struct CourseData {
     pub(crate) materials: Vec<Material>,
     /// Every event of the course (deadlines, class events), any date.
     pub(crate) events: Vec<Event>,
-    term_data: CourseTermData,
+    pub(crate) term_data: CourseTermData,
     dates_confirmed: bool,
     module_names: HashMap<String, String>,
     module_weeks: HashMap<String, u32>,

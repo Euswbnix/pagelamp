@@ -42,6 +42,7 @@ use crate::dates::parse::find_dates;
 use crate::dates::{Tz, course_date, days_between};
 use crate::model::{Chunk, Course, Material, MaterialKind, TextStatus};
 use crate::store::Store;
+use crate::term::ResolvedTerm;
 use crate::views::{AsOf, CourseData};
 
 /// Candidates with text that a reading uses (the student's adds may go past it).
@@ -378,6 +379,16 @@ pub fn course_candidates(
 ) -> crate::Result<Vec<ScoredCandidate>> {
     let data = CourseData::load(store, course)?;
     let (resolved, _) = data.timeline(course, at);
+    candidates_in(store, &data, &resolved, signals)
+}
+
+/// `course_candidates` over rows already loaded.
+pub(crate) fn candidates_in(
+    store: &Store,
+    data: &CourseData,
+    resolved: &ResolvedTerm,
+    signals: &CandidateSignals,
+) -> crate::Result<Vec<ScoredCandidate>> {
     let resolution = &resolved.resolution;
     let teaching_start = resolution
         .teaching

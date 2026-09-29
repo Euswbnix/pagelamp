@@ -113,6 +113,10 @@ pub struct ResolvedTerm {
     pub calendar: CalendarStatus,
     /// Non-bulk per-day week observations (§6.5), oldest first.
     pub(crate) observations: Vec<Observation>,
+    /// Week 1 fitted from the professor's materials, whether or not it is the anchor.
+    pub(crate) fitted: Option<fit::Fit>,
+    /// The LMS course's own start, when plausible (a calendar proposal's V8 check).
+    pub plausible_lms_start: Option<NaiveDate>,
     pub notes_week: Option<u32>,
     /// Evidence about the dates, in order.
     pub evidence: Vec<EvidenceItem>,
@@ -423,6 +427,10 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             ..TermResolution::default()
         },
     };
+    let plausible_lms_start = plausible
+        .iter()
+        .find(|a| a.source == TermAnchorSource::LmsCourseDates)
+        .map(|a| a.start);
     let plausible_end = plausible
         .iter()
         .filter(|a| a.source != TermAnchorSource::PublishedWeekLabels && !a.end_clipped)
@@ -457,6 +465,8 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         last_activity,
         notes_week: fit::notes_week(&observations),
         observations,
+        fitted,
+        plausible_lms_start,
         evidence,
         english,
     }

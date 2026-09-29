@@ -10,8 +10,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::CourseCalendar;
-use super::assemble::{CalendarChange, CalendarConflict, ProposedDate};
+use super::assemble::{Assembled, CalendarChange, CalendarConflict, ProposedDate};
 use super::validate::DropCount;
+use crate::ai_gate::ManifestEntry;
 use crate::model::Timestamp;
 use crate::term::{AiLabel, CalendarOrigin, CoursePhase};
 
@@ -60,4 +61,44 @@ pub struct AcceptedCalendar {
     pub stale_since: Option<NaiveDate>,
     /// Ids of the quoted materials that changed.
     pub changed_materials: Vec<String>,
+}
+
+/// A proposal checked and assembled, before storage gives it an id (schema v4
+/// `course_calendars`, state `proposed`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NewProposal {
+    pub course_id: String,
+    pub origin: CalendarOrigin,
+    pub assembled: Assembled,
+    /// Set for origins `ai` and `ai_app`.
+    pub ai_label: Option<AiLabel>,
+    pub sharing_reminder: bool,
+    /// The materials read: content hash and chunks (`manifest_json`).
+    pub manifest: Vec<ManifestEntry>,
+    /// The candidate set's fingerprint (`ReadingInputs::fingerprint`).
+    pub fingerprint: String,
+}
+
+impl NewProposal {
+    /// The proposal as the facade shows it, once stored as row `id`.
+    pub fn into_proposal(self, id: i64, created_at: Timestamp) -> CalendarProposal {
+        let assembled = self.assembled;
+        CalendarProposal {
+            id,
+            course_id: self.course_id,
+            origin: self.origin,
+            calendar: assembled.calendar,
+            dates: assembled.dates,
+            conflicts: assembled.conflicts,
+            dropped: assembled.dropped,
+            low_quality: assembled.low_quality,
+            passing: assembled.passing,
+            ai_label: self.ai_label,
+            sharing_reminder: self.sharing_reminder,
+            resulting_week_today: assembled.resulting_week_today,
+            resulting_phase: assembled.resulting_phase,
+            changes: assembled.changes,
+            created_at,
+        }
+    }
 }
