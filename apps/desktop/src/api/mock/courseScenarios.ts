@@ -8,8 +8,14 @@
 // - all-past: only past courses.
 // Every course, code and date is made up; dates are relative to `now`.
 
-import type { CourseLifecycle, RejectedDates } from "../provisional/courseCalendar";
-import type { Confidence, Course, Deadline, MaterialView } from "../types";
+import type {
+  Confidence,
+  Course,
+  CourseLifecycle,
+  Deadline,
+  MaterialView,
+  RejectedDates,
+} from "../types";
 import {
   type CalendarFields,
   calendarFields,
@@ -142,7 +148,8 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       }),
       evidence_items: [
         wideEvidence,
-        ev("week_fit_from_materials", { weeks: 3, monday: on(-3) }),
+        ev("week_labels_fit", { weeks: 3, monday: on(-3) }),
+        ev("week_from_dates", { week: 4, monday: on(-3) }),
         ev("breaks_unknown"),
       ],
     },
@@ -171,7 +178,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       phase: "unknown",
       phase_confidence: "low",
       term: resolution({ outer_frame: wide, not_used: [wideNotUsed] }),
-      evidence_items: [wideEvidence, ev("no_week_labels")],
+      evidence_items: [wideEvidence, ev("no_week_signal")],
     },
     lifecycle: lifecycle({ state: "unknown", confidence: "low", last_activity: on(-1, 3) }),
     materials: (c) => [
@@ -206,8 +213,9 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         student_start: on(-3, 1),
       }),
       evidence_items: [
-        ev("student_first_class", { date: on(-3, 1) }),
-        ev("signal_agrees", { source: "published_week_labels", week: 4 }),
+        ev("legacy_dates", { start: on(-3, 1) }),
+        ev("dates_agree", { source: "published_week_labels", monday: on(-3) }),
+        ev("week_from_dates", { week: 4, monday: on(-3) }),
       ],
     },
     lifecycle: lifecycle({ state: "current", confidence: "high", last_activity: on(0) }),
@@ -225,15 +233,15 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       phase: "unknown",
       phase_confidence: "low",
       term: resolution({ not_used: [] }),
-      evidence_items: [ev("no_signal")],
+      evidence_items: [ev("no_week_signal")],
     },
     lifecycle: lifecycle({
       state: "ended",
       since: `${fy - 2}-09-21`,
       last_activity: `${fy - 2}-06-20`,
       evidence_items: [
-        ev("session_ended", { date: `${fy - 2}-06-30` }),
-        ev("no_activity_since", { date: `${fy - 2}-06-20` }),
+        ev("session_ended", { session: `${fy - 2}5`, end: `${fy - 2}-06-30` }),
+        ev("quiet_since", { date: `${fy - 2}-06-20`, days: 800 }),
       ],
     }),
   });
@@ -252,14 +260,17 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         outer_frame: { start: `${fy - 1}-05-04`, end: `${fy}-01-31` },
         not_used: [{ ...wideNotUsed, start: `${fy - 1}-05-04`, end: `${fy}-01-31` }],
       }),
-      evidence_items: [ev("no_signal")],
+      evidence_items: [ev("no_week_signal")],
     },
     lifecycle: lifecycle({
       state: "ended",
       confidence: "high",
       since: `${fy - 1}-12-31`,
       last_activity: `${fy - 1}-12-18`,
-      evidence_items: [ev("lms_concluded"), ev("no_activity_since", { date: `${fy - 1}-12-18` })],
+      evidence_items: [
+        ev("lms_concluded"),
+        ev("quiet_since", { date: `${fy - 1}-12-18`, days: 280 }),
+      ],
     }),
   });
 
@@ -277,8 +288,8 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       since: `${fy}-05-21`,
       last_activity: `${fy}-04-22`,
       evidence_items: [
-        ev("term_ended", { date: `${fy}-04-30` }),
-        ev("no_activity_since", { date: `${fy}-04-22` }),
+        ev("term_end_passed", { term_name: `Winter ${fy}`, end: `${fy}-04-30` }),
+        ev("quiet_since", { date: `${fy}-04-22`, days: 150 }),
       ],
     }),
   });
@@ -309,7 +320,10 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       default_week: 6,
       notes_week: 7,
       term: userTerm(on(-5), on(7, 4)),
-      evidence_items: [ev("student_first_class", { date: on(-5) }), ev("notes_ahead", { week: 7 })],
+      evidence_items: [
+        ev("student_dates", { start: on(-5), end: on(7, 4) }),
+        ev("notes_ahead", { week: 7 }),
+      ],
     },
     lifecycle: lifecycle({ state: "current", confidence: "high", next_event: dayFrom(now, 2) }),
     deadlines: (c) => [deadline(c, "Essay draft", "assignment_due", 2, now)],
@@ -338,7 +352,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
           },
         ],
       }),
-      evidence_items: [ev("in_break", { kind: "reading_week", end: on(0, 4) })],
+      evidence_items: [ev("in_break", { kind: "reading_week", start: on(0), end: on(0, 4) })],
     },
     lifecycle: lifecycle({ state: "current", confidence: "high" }),
   });
@@ -367,7 +381,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
           },
         ],
       }),
-      evidence_items: [ev("in_break", { kind: "reading_week", end: on(0, 4) })],
+      evidence_items: [ev("in_break", { kind: "reading_week", start: on(0), end: on(0, 4) })],
     },
     lifecycle: lifecycle({ state: "current", confidence: "high" }),
   });
@@ -389,14 +403,14 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         anchor: "lms_course_dates",
         anchor_confidence: "medium",
       }),
-      evidence_items: [ev("classes_ended", { date: dayFrom(now, -5) })],
+      evidence_items: [ev("exam_period_estimated", { days: 21 })],
     },
     lifecycle: lifecycle({
       state: "finishing",
       next_event: dayFrom(now, 6),
       evidence_items: [
-        ev("classes_ended", { date: dayFrom(now, -5) }),
-        ev("next_event", { date: dayFrom(now, 6) }),
+        ev("exam_period_estimated", { days: 21 }),
+        ev("next_event", { date: dayFrom(now, 6), title: "Final exam" }),
       ],
     }),
     deadlines: (c) => [deadline(c, "Final exam", "exam", 6, now, 9, 0)],
@@ -420,7 +434,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         anchor: "lms_course_dates",
         anchor_confidence: "medium",
       }),
-      evidence_items: [ev("exams_ended", { date: dayFrom(now, -30) })],
+      evidence_items: [ev("ended_on", { date: dayFrom(now, -30) })],
     },
     lifecycle: lifecycle({
       state: "ended",
@@ -428,8 +442,8 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       since: dayFrom(now, -23),
       last_activity: dayFrom(now, -33),
       evidence_items: [
-        ev("exams_ended", { date: dayFrom(now, -30) }),
-        ev("no_activity_since", { date: dayFrom(now, -33) }),
+        ev("dates_ended", { date: dayFrom(now, -30) }),
+        ev("quiet_since", { date: dayFrom(now, -33), days: 33 }),
       ],
     }),
   });
@@ -465,7 +479,14 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
       phase: "unknown",
       phase_confidence: "low",
       default_week: 3,
-      evidence_items: [ev("latest_material_week", { week: 3 })],
+      evidence_items: [
+        ev("week_from_latest_material", {
+          week: 3,
+          title: "Week 3 reading",
+          date: dayFrom(now, -12),
+          days: 10,
+        }),
+      ],
     },
     lifecycle: lifecycle({ state: "unknown", confidence: "low" }),
   });
@@ -506,7 +527,8 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         },
       }),
       evidence_items: [
-        ev("calendar_week", { source: "student_confirmed", date: on(-4, 1), week: 5 }),
+        ev("student_dates", { start: on(-4, 1), end: on(25, 3) }),
+        ev("week_from_dates", { week: 5, monday: on(-4) }),
       ],
     },
     lifecycle: lifecycle({ state: "current", confidence: "high" }),
@@ -522,14 +544,14 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
     lifecycle: lifecycle({
       state: "inactive",
       last_activity: dayFrom(now, -150),
-      evidence_items: [ev("no_dates"), ev("no_activity_since", { date: dayFrom(now, -150) })],
+      evidence_items: [ev("no_dates_inactive", { days: 150 })],
     }),
   });
 
   const keptBase = lifecycle({
     state: "ended",
     since: dayFrom(now, -8),
-    evidence_items: [ev("term_ended", { date: dayFrom(now, -29) })],
+    evidence_items: [ev("course_end_passed", { source: "lms_term", end: dayFrom(now, -29) })],
   });
   const kept = build(now, {
     key: "PHS200",
@@ -571,8 +593,9 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         anchor_confidence: "low",
       }),
       evidence_items: [
-        ev("calendar_week", { source: "lms_course_dates", date: on(-2, 1), week: 3 }),
-        ev("dates_may_be_wrong", { source: "published_week_labels", monday: on(-4) }),
+        ev("lms_course_dates", { start: on(-2, 1), end: on(10, 4) }),
+        ev("week_from_dates", { week: 3, monday: on(-2) }),
+        ev("dates_may_be_wrong", { source: "published_week_labels", monday: on(-4), days: 14 }),
       ],
     },
     lifecycle: lifecycle({ state: "current", confidence: "low" }),

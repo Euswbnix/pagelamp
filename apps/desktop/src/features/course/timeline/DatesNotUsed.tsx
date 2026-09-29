@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { RejectedDates } from "@/api/provisional/courseCalendar";
+import type { RejectedDates } from "@/api/types";
 import { formatIsoDate } from "@/lib/format";
 import { useSpanText } from "./DatesUsed";
 

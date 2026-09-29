@@ -7,10 +7,11 @@ import type { Confidence, CourseTimeline } from "../generated";
 import type {
   CourseGroup,
   CourseLifecycle,
+  EvidenceCode,
   EvidenceItem,
   LifecycleState,
   TermResolution,
-} from "../provisional/courseCalendar";
+} from "../types";
 
 export type CalendarFields = Pick<
   CourseTimeline,
@@ -67,7 +68,7 @@ function daysBetween(from: string, to: string): number {
 }
 
 /** An evidence item; numbers become strings, as the facade sends them. */
-export function ev(code: string, params: Record<string, string | number> = {}): EvidenceItem {
+export function ev(code: EvidenceCode, params: Record<string, string | number> = {}): EvidenceItem {
   return {
     code,
     params: Object.entries(params).map(([key, value]) => ({ key, value: String(value) })),
@@ -145,7 +146,7 @@ export function keptCurrent(base: CourseLifecycle, until: string): CourseLifecyc
     confidence: "high",
     suggest_removal: false,
     kept_current_until: until,
-    evidence_items: [ev("kept_current_until", { until })],
+    evidence_items: [ev("kept_current", { until })],
   };
 }
 
@@ -180,8 +181,7 @@ export function withStudentDates(
     student_end: end,
   });
   const evidence = [
-    ...(start ? [ev("student_first_class", { date: start })] : []),
-    ...(end ? [ev("student_last_class", { date: end })] : []),
+    ev("student_dates", { ...(start ? { start } : {}), ...(end ? { end } : {}) }),
     ...base.evidence_items.filter((item) => item.code === "term_looks_like_enrollment_window"),
   ];
   const week =
@@ -215,7 +215,7 @@ export function withStudentDates(
         }),
         lifecycle: lifecycle({
           state: "finishing",
-          evidence_items: [ev("classes_ended", { date: end })],
+          evidence_items: [ev("exam_period_estimated", { days: 21 })],
         }),
       };
     }
@@ -225,7 +225,7 @@ export function withStudentDates(
         state: "ended",
         confidence: "high",
         since: addDays(end, 21),
-        evidence_items: [ev("classes_ended", { date: end })],
+        evidence_items: [ev("exams_over", { date: addDays(end, 21) })],
       }),
     };
   }
@@ -268,7 +268,9 @@ export function withoutStudentDates(
         phase: "unknown",
         phase_confidence: "low",
         term: resolution({ outer_frame: term.outer_frame, not_used: term.not_used }),
-        evidence_items: synced.evidence_items.filter((item) => !item.code.startsWith("student_")),
+        evidence_items: synced.evidence_items.filter(
+          (item) => !["student_dates", "legacy_dates", "student_end_used"].includes(item.code),
+        ),
       }),
     },
     lifecycle: lifecycle({ state: "unknown", confidence: "low", suggest_removal: false }),

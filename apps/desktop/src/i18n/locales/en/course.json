@@ -62,7 +62,9 @@
     "note": {
       "current_week_unknown": "We couldn't work out which week this course is in, so these are the materials from the last 14 days.",
       "outside_term": "Today is outside this course's term dates, so there's no current week.",
-      "no_materials_this_week": "There are no modules or materials for this week."
+      "no_materials_this_week": "There are no modules or materials for this week.",
+      "exam_period": "Classes are over, so there's no teaching week. These are the materials from the last 14 days.",
+      "break": "It's a break week. These are the materials of the week before it."
     }
   },
   "timeline": {

@@ -1,6 +1,5 @@
 import { useRef } from "react";
-import type { CourseLifecycle } from "@/api/provisional/courseCalendar";
-import type { Course, CourseTimeline } from "@/api/types";
+import type { Course, CourseLifecycle, CourseTimeline } from "@/api/types";
 import { Separator } from "@/components/ui/separator";
 import { CheckDatesPrompt } from "./CheckDatesPrompt";
 import { TermDatesForm } from "./TermDatesForm";

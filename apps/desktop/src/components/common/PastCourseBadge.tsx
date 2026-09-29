@@ -1,6 +1,6 @@
 import { Archive } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { CourseLifecycle } from "@/api/provisional/courseCalendar";
+import type { CourseLifecycle } from "@/api/types";
 import { Badge } from "@/components/ui/badge";
 
 /**

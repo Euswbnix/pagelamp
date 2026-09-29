@@ -63,6 +63,24 @@ export type SourceKind = "canvas" | "folder" | "ical";
 export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Confidence".
+ */
+export type Confidence = "high" | "medium" | "low";
+/**
+ * How course lists group courses (the same in Tauri, Swift and the CLI).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseGroup".
+ */
+export type CourseGroup = "current" | "upcoming" | "past";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LifecycleState".
+ */
+export type LifecycleState =
+  ("upcoming" | "current" | "ended" | "unknown") | "finishing" | "inactive";
+/**
  * Why a file that is recorded `NotDownloaded` cannot be downloaded by asking again.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -82,10 +100,61 @@ export type MaterialKind = ("announcement" | "syllabus") | "file" | "page" | "ex
  */
 export type TextStatus = "pending" | "ok" | "unsupported" | "not_downloaded" | "error";
 /**
+ * Whether the course has a calendar the student accepted (from alpha.2; always `None` in
+ * alpha.1).
+ *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
- * via the `definition` "Confidence".
+ * via the `definition` "CalendarStatus".
  */
-export type Confidence = "high" | "medium" | "low";
+export type CalendarStatus = "none" | "proposed" | "accepted" | "accepted_stale";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "BreakKind".
+ */
+export type BreakKind = "reading_week" | "holiday" | "winter_break" | "other";
+/**
+ * Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
+ * (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoursePhase".
+ */
+export type CoursePhase =
+  "ended" | "not_started" | "teaching" | "break" | "exam_period" | "unknown";
+/**
+ * Which dates set week 1 (design §6.4; the first available one wins).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TermAnchorSource".
+ */
+export type TermAnchorSource =
+  | "none"
+  | "student_confirmed"
+  | "lms_course_dates"
+  | "lms_term"
+  | "folder_config"
+  | "institution_calendar"
+  | "published_week_labels";
+/**
+ * Where a student-confirmed calendar came from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarOrigin".
+ */
+export type CalendarOrigin = ("scan" | "ai" | "ai_app" | "restored") | "user" | "legacy";
+/**
+ * Why dates were not used (design §6.3).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RejectReason".
+ */
+export type RejectReason =
+  | ("starts_after_end" | "conflicts_with_stronger_source")
+  | "longer_than_teaching_term"
+  | "shorter_than_teaching_term"
+  | "starts_long_before_activity"
+  | "starts_before_session_window"
+  | "end_outside_session_window";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "EventKind".
@@ -99,6 +168,76 @@ export type EventKind =
  * via the `definition` "ProcessKind".
  */
 export type ProcessKind = "app" | "mcp";
+/**
+ * Every `EvidenceItem.code`. Exported in the facade schema so UIs can check their
+ * translations are complete; the item itself carries the code as a string.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EvidenceCode".
+ */
+export type EvidenceCode =
+  | "student_dates"
+  | "legacy_dates"
+  | "student_end_used"
+  | "lms_course_dates"
+  | "lms_term_dates"
+  | "folder_dates"
+  | "institution_calendar"
+  | "week_labels_fit"
+  | "no_course_dates"
+  | "term_looks_like_enrollment_window"
+  | "dates_not_used"
+  | "end_not_used"
+  | "dates_agree"
+  | "dates_may_be_wrong"
+  | "session_window"
+  | "week_from_dates"
+  | "week_from_module_unlock"
+  | "week_from_recent_materials"
+  | "week_from_latest_material"
+  | "signal_agrees"
+  | "signal_disagrees"
+  | "modules_released_together"
+  | "unlock_too_old"
+  | "unlock_without_week"
+  | "bulk_publish"
+  | "notes_ahead"
+  | "calendar_disagrees_with_notes"
+  | "numbering_offset"
+  | "breaks_unknown"
+  | "no_week_signal"
+  | "starts_on"
+  | "in_break"
+  | "no_class_today"
+  | "exam_period"
+  | "exam_period_estimated"
+  | "ended_on"
+  | "start_too_old"
+  | "kept_current"
+  | "lms_concluded"
+  | "lms_completed"
+  | "no_longer_listed"
+  | "exams_over"
+  | "course_end_passed"
+  | "dates_ended"
+  | "term_end_passed"
+  | "session_ended"
+  | "quiet_since"
+  | "no_activity"
+  | "recent_activity"
+  | "next_event"
+  | "session_starts"
+  | "no_dates_inactive"
+  | "may_have_ended"
+  | "removal_snoozed"
+  | "removal_kept";
+/**
+ * Which week signal an evidence item talks about (`signal` parameter).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EvidenceSignal".
+ */
+export type EvidenceSignal = ("module_unlock" | "recent_materials" | "latest_material") | "dates";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "McpClient".
@@ -135,6 +274,13 @@ export type McpNoteCode =
   | "custom_data_dir"
   | "generic_stdio_client"
   | "run_from_temporary_location";
+/**
+ * The answer to a removal suggestion.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SnoozeKind".
+ */
+export type SnoozeKind = "not_now" | "keep";
 /**
  * A topic of the one-time What's new sheet shown after an update.
  *
@@ -209,7 +355,8 @@ export type UpdateCheckOutcome =
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "WeekNoteKind".
  */
-export type WeekNoteKind = "current_week_unknown" | "outside_term" | "no_materials_this_week";
+export type WeekNoteKind =
+  "current_week_unknown" | "outside_term" | "no_materials_this_week" | "exam_period" | "break";
 
 /**
  * Container whose only purpose is to pull every facade type into one schema document
@@ -226,12 +373,17 @@ export interface PageLampAppTypes {
   course_overview: CourseOverview;
   course_summary: CourseSummary;
   course_sync_summary: CourseSyncSummary;
+  course_timeline: CourseTimeline;
   crash_report: CrashReport;
   deadline: Deadline;
   doctor_report: DoctorReport;
+  evidence_code: EvidenceCode;
+  evidence_signal: EvidenceSignal;
+  lifecycle_summary: LifecycleSummary;
   mcp_client_config: McpClientConfig;
   process_kind: ProcessKind;
   search_hit: SearchHit;
+  snooze_kind: SnoozeKind;
   source_error_kind: SourceErrorKind;
   source_record: SourceRecord;
   source_sync_result: SourceSyncResult;
@@ -387,6 +539,7 @@ export interface CourseOverview {
    */
   downloadable_files: number;
   last_synced_at?: string | null;
+  lifecycle: CourseLifecycle;
   /**
    * Announcements posted in the last `RECENT_DAYS` days, newest first (titles + ids only).
    */
@@ -461,6 +614,58 @@ export interface Module {
   week_hint?: number | null;
 }
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseLifecycle".
+ */
+export interface CourseLifecycle {
+  confidence: Confidence;
+  evidence_items: EvidenceItem[];
+  group: CourseGroup;
+  /**
+   * "I'm still taking this" until this date, when set.
+   */
+  kept_current_until?: string | null;
+  /**
+   * The latest material, announcement, event or module unlock date on or before today.
+   */
+  last_activity?: string | null;
+  /**
+   * The earliest course event (any kind but "other") from today to today + 30 days.
+   */
+  next_event?: string | null;
+  /**
+   * Since when the state holds, when known (e.g. the day an Ended course ended).
+   */
+  since?: string | null;
+  /**
+   * When classes start (Upcoming courses: "Starts Jan 11"), when known.
+   */
+  starts_on?: string | null;
+  state: LifecycleState;
+  /**
+   * Ended or Inactive, and the suggestion isn't snoozed. Hidden courses are suggested too.
+   */
+  suggest_removal: boolean;
+}
+/**
+ * One reason, as a code (an `EvidenceCode` value) and its parameters.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EvidenceItem".
+ */
+export interface EvidenceItem {
+  code: string;
+  params: EvidenceParam[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "EvidenceParam".
+ */
+export interface EvidenceParam {
+  key: string;
+  value: string;
+}
+/**
  * A material as listed in views (no text; use `read_material` for text).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -500,20 +705,158 @@ export interface MaterialView {
  */
 export interface CourseTimeline {
   as_of: string;
-  confidence: Confidence;
+  /**
+   * During a break that doesn't count in the numbering: the last teaching week before it.
+   */
+  break_after_week?: number | null;
+  calendar: CalendarStatus;
+  /**
+   * Confidence of `current_week` (Low when it is None).
+   */
+  confidence: "high" | "medium" | "low";
+  /**
+   * During a break: its kind.
+   */
+  current_break_kind?: BreakKind | null;
   /**
    * Modules considered current (most recently unlocked / matching current week).
    */
   current_module_ids: string[];
   current_week?: number | null;
   /**
-   * Human-readable reasons, e.g. "module 'Week 4: Backprop' unlocked 2026-09-29".
+   * The week features and `week_materials` use by default: the current teaching week, the
+   * week before an unnumbered break, None in the exam period and outside the term.
+   */
+  default_week?: number | null;
+  /**
+   * Human-readable reasons, e.g. "module 'Week 4: Backprop' unlocked 2026-09-29". English,
+   * for MCP and the CLI; UIs translate `evidence_items`. Never contains break labels, week
+   * topics or quotes.
    */
   evidence: string[];
+  evidence_items: EvidenceItem[];
   /**
-   * True when the date is outside the known term (before start / after end).
+   * During the exam period: the last teaching week ("Exams (after week 12)").
+   */
+  last_teaching_week?: number | null;
+  /**
+   * How far the professor's (non-bulk) week-numbered materials have got.
+   */
+  notes_week?: number | null;
+  /**
+   * True when the phase is `not_started` or `ended` (the exam period is not outside).
    */
   outside_term: boolean;
+  phase: CoursePhase;
+  phase_confidence: Confidence;
+  term: TermResolution;
+}
+/**
+ * The dates that count the weeks, and the dates that were not used.
+ */
+export interface TermResolution {
+  /**
+   * Set when the accepted calendar came from an AI (from alpha.3).
+   */
+  ai_label?: AiLabel | null;
+  anchor: TermAnchorSource;
+  /**
+   * Low when `anchor` is `None`.
+   */
+  anchor_confidence: "high" | "medium" | "low";
+  /**
+   * For `StudentConfirmed`: where the student's dates came from.
+   */
+  anchor_origin?: CalendarOrigin | null;
+  breaks: CalendarBreak[];
+  exams_end?: string | null;
+  not_used: RejectedDates[];
+  /**
+   * Bounds the course lies within: the LMS term (plausible or not) ∪ the session window.
+   * Never used to count weeks.
+   */
+  outer_frame?: DateSpan | null;
+  student_end?: string | null;
+  /**
+   * The student's own first/last day of classes as saved (the raw overrides, whichever
+   * are set). The dates form prefills from `teaching` and sends these back unchanged for
+   * the fields the student didn't edit.
+   */
+  student_start?: string | null;
+  teaching: TeachingSegment[];
+  /**
+   * Monday of teaching week 1 (weeks run Monday to Sunday).
+   */
+  week_one_monday?: string | null;
+}
+/**
+ * "AI-generated · <backend> · <model> · <date>" for dates an AI read (from alpha.3).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "AiLabel".
+ */
+export interface AiLabel {
+  backend_label: string;
+  created_at: string;
+  model: string;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CalendarBreak".
+ */
+export interface CalendarBreak {
+  kind: BreakKind;
+  /**
+   * Short label from the course material (material text, rule 8: never in structure
+   * outputs such as MCP or `evidence`). At most 80 characters.
+   */
+  label: string;
+  /**
+   * True when the break counts in the week numbering.
+   */
+  numbered: boolean;
+  span: DateSpan;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "DateSpan".
+ */
+export interface DateSpan {
+  end: string;
+  start: string;
+}
+/**
+ * Dates a source offered that were not used, and why.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "RejectedDates".
+ */
+export interface RejectedDates {
+  end?: string | null;
+  /**
+   * True when only the end was not used (the start still counts weeks).
+   */
+  end_only: boolean;
+  reason: RejectReason;
+  source: TermAnchorSource;
+  start?: string | null;
+}
+/**
+ * One stretch of teaching: one for a one-term course, two for a full-year course.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TeachingSegment".
+ */
+export interface TeachingSegment {
+  first_class: string;
+  /**
+   * The number of the segment's first week (0 is allowed: "Week 0").
+   */
+  first_week_number: number;
+  /**
+   * The last day of classes, when known.
+   */
+  last_class?: string | null;
 }
 /**
  * A deadline/event enriched with its course's code and name (all `Event` fields are
@@ -553,6 +896,7 @@ export interface CourseSummary {
    * When that source last synced successfully (data freshness).
    */
   last_synced_at?: string | null;
+  lifecycle: CourseLifecycle1;
   next_deadline?: Deadline | null;
   /**
    * Label of the source this course came from (e.g. "Quercus", "~/Courses").
@@ -578,6 +922,39 @@ export interface CourseCounts {
    * Deadlines due in the next `UPCOMING_DAYS` days.
    */
   upcoming_deadlines: number;
+}
+/**
+ * Upcoming / current / finishing / ended, the Past group and removal suggestions.
+ */
+export interface CourseLifecycle1 {
+  confidence: Confidence;
+  evidence_items: EvidenceItem[];
+  group: CourseGroup;
+  /**
+   * "I'm still taking this" until this date, when set.
+   */
+  kept_current_until?: string | null;
+  /**
+   * The latest material, announcement, event or module unlock date on or before today.
+   */
+  last_activity?: string | null;
+  /**
+   * The earliest course event (any kind but "other") from today to today + 30 days.
+   */
+  next_event?: string | null;
+  /**
+   * Since when the state holds, when known (e.g. the day an Ended course ended).
+   */
+  since?: string | null;
+  /**
+   * When classes start (Upcoming courses: "Starts Jan 11"), when known.
+   */
+  starts_on?: string | null;
+  state: LifecycleState;
+  /**
+   * Ended or Inactive, and the suggestion isn't snoozed. Hidden courses are suggested too.
+   */
+  suggest_removal: boolean;
 }
 /**
  * What one sync did for one course (the `pagelamp sync` summary; desktop status screens).
@@ -677,6 +1054,41 @@ export interface DoctorSource {
    * The last sync succeeded (false when it failed or never ran).
    */
   ok: boolean;
+}
+/**
+ * Every course's lifecycle, and whether the Courses page shows "N courses look finished".
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LifecycleSummary".
+ */
+export interface LifecycleSummary {
+  /**
+   * Until when "Not now" on the banner holds, if it was pressed and hasn't expired.
+   */
+  banner_snoozed_until?: string | null;
+  /**
+   * Every course, hidden ones included (hidden past courses are most of the backlog).
+   */
+  courses: CourseLifecycleEntry[];
+  /**
+   * True when some suggested course is not covered by a snoozed banner.
+   */
+  show_banner: boolean;
+  /**
+   * Ids of the courses suggested for removal (`lifecycle.suggest_removal`).
+   */
+  suggested: string[];
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseLifecycleEntry".
+ */
+export interface CourseLifecycleEntry {
+  code?: string | null;
+  course_id: string;
+  hidden: boolean;
+  lifecycle: CourseLifecycle;
+  name: string;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -960,4 +1372,45 @@ export interface WeekMaterials {
    * The week actually shown (None when no week could be determined; see `note`).
    */
   week?: number | null;
+}
+/**
+ * The dates that count the course's weeks, and the dates that were not used (design §3.3).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TermResolution".
+ */
+export interface TermResolution1 {
+  /**
+   * Set when the accepted calendar came from an AI (from alpha.3).
+   */
+  ai_label?: AiLabel | null;
+  anchor: TermAnchorSource;
+  /**
+   * Low when `anchor` is `None`.
+   */
+  anchor_confidence: "high" | "medium" | "low";
+  /**
+   * For `StudentConfirmed`: where the student's dates came from.
+   */
+  anchor_origin?: CalendarOrigin | null;
+  breaks: CalendarBreak[];
+  exams_end?: string | null;
+  not_used: RejectedDates[];
+  /**
+   * Bounds the course lies within: the LMS term (plausible or not) ∪ the session window.
+   * Never used to count weeks.
+   */
+  outer_frame?: DateSpan | null;
+  student_end?: string | null;
+  /**
+   * The student's own first/last day of classes as saved (the raw overrides, whichever
+   * are set). The dates form prefills from `teaching` and sends these back unchanged for
+   * the fields the student didn't edit.
+   */
+  student_start?: string | null;
+  teaching: TeachingSegment[];
+  /**
+   * Monday of teaching week 1 (weeks run Monday to Sunday).
+   */
+  week_one_monday?: string | null;
 }

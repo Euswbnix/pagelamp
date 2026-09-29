@@ -1,8 +1,7 @@
 import type { Ref } from "react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { CourseLifecycle } from "@/api/provisional/courseCalendar";
-import type { CourseTimeline } from "@/api/types";
+import type { CourseLifecycle, CourseTimeline } from "@/api/types";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Separator } from "@/components/ui/separator";
 import { describePhase } from "@/lib/phase";

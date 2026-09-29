@@ -1,6 +1,6 @@
 import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { TermResolution } from "@/api/provisional/courseCalendar";
+import type { TermResolution } from "@/api/types";
 import { formatIsoDate } from "@/lib/format";
 import { translateWithText } from "./evidence";
 

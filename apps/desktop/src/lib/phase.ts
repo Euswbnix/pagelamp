@@ -2,8 +2,7 @@
 // "Starts Jan 11", …). The facade decides the phase and the numbers (calendar design §6.6);
 // this only picks the words for them.
 
-import type { BreakKind } from "@/api/provisional/courseCalendar";
-import type { Confidence, CourseTimeline } from "@/api/types";
+import type { BreakKind, Confidence, CourseTimeline } from "@/api/types";
 
 export type PhaseLabel =
   | { kind: "teaching"; week: number; confidence: Confidence }

@@ -2,12 +2,12 @@
 // §3.7): no real courses, people, schools or tokens. Dates are relative to `now` so the demo
 // always looks "live" (a deadline in 2 days, week 4 of term, …).
 
-import type { CourseLifecycle } from "../provisional/courseCalendar";
 import type {
   AiPolicy,
   AppStatus,
   Confidence,
   Course,
+  CourseLifecycle,
   CourseTimeline,
   CrashReport,
   Deadline,
@@ -247,7 +247,7 @@ function defaultCalendar(spec: CourseSpec, now: Date): CalendarFields {
     return calendarFields({
       phase: "unknown",
       phase_confidence: "low",
-      evidence_items: [ev("no_signal")],
+      evidence_items: [ev("no_week_signal")],
     });
   }
   const start = dayFrom(now, spec.termStartDays);
@@ -381,12 +381,12 @@ function demo101(now: Date): MockCourse {
     calendar: {
       notes_week: 4,
       evidence_items: [
-        ev("module_unlocked", {
+        ev("week_from_module_unlock", {
           title: "Week 4: Sampling and Surveys",
           date: dateOnly(now, -2),
           week: 4,
         }),
-        ev("signal_agrees", { source: "folder_config", week: 4 }),
+        ev("signal_agrees", { signal: "dates", week: 4 }),
         ev("breaks_unknown"),
       ],
     },
@@ -496,7 +496,8 @@ function demo205(now: Date): MockCourse {
     calendar: {
       notes_week: 3,
       evidence_items: [
-        ev("calendar_week", { source: "lms_course_dates", date: dateOnly(now, -24), week: 4 }),
+        ev("lms_course_dates", { start: dateOnly(now, -24), end: dateOnly(now, -24 + 12 * 7 + 4) }),
+        ev("week_from_dates", { week: 4, monday: dateOnly(now, -24) }),
         ev("breaks_unknown"),
       ],
     },
@@ -601,7 +602,7 @@ function demo099(now: Date): MockCourse {
       confidence: "high",
       since: dateOnly(now, -3),
       last_activity: dateOnly(now, -30),
-      evidence_items: [ev("not_listed_active")],
+      evidence_items: [ev("no_longer_listed")],
     }),
     modules: [],
     materials: [material(c.id, "Welcome page", "page", 1, -30, now, { chunks: 2 })],

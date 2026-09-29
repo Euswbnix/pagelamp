@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { EvidenceItem } from "@/api/provisional/courseCalendar";
+import type { EvidenceItem } from "@/api/types";
 import { evidenceText } from "./evidence";
 
 /**

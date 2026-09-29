@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { CourseLifecycle } from "@/api/provisional/courseCalendar";
+import type { CourseLifecycle } from "@/api/types";
 import { formatIsoDate } from "@/lib/format";
 import { EvidenceList } from "../timeline/EvidenceList";
 import { KeepCurrentControl } from "./KeepCurrentControl";
@@ -21,7 +21,7 @@ export function CourseStatus({
   const date = (iso: string) => formatIsoDate(iso, i18n.language);
   const kept = !!lifecycle.kept_current_until;
   const evidence = kept
-    ? lifecycle.evidence_items.filter((item) => item.code !== "kept_current_until")
+    ? lifecycle.evidence_items.filter((item) => item.code !== "kept_current")
     : lifecycle.evidence_items;
   const facts = [
     lifecycle.since ? t("status.since", { date: date(lifecycle.since) }) : null,

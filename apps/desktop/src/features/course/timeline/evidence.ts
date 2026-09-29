@@ -1,16 +1,20 @@
 // Evidence items (code + params) → translated sentences (calendar design §3.3; CAL-53).
-// Params follow backend-2's key conventions: dates are ISO dates, `source`/`kind`/`reason` are
-// enum values we translate, numbers stay numbers, anything else (a module title, a term name)
-// is instructor-written text shown as plain text. That text never goes through i18next's
+// Params follow the facade's key conventions: dates are ISO dates; `source`, `kind`, `reason`
+// and `signal` are enum values we translate; counts and weeks are integers; anything else
+// (a module title, a term name, a session code) is text written elsewhere, shown as is.
+// A code with an optional param that is absent uses the variant "<code>_no_<param>". That text never goes through i18next's
 // interpolation (a title like "{{week}}" would be filled in there): it is swapped in afterwards.
 
 import type { TFunction } from "i18next";
-import type { EvidenceItem } from "@/api/provisional/courseCalendar";
+import type { EvidenceCode, EvidenceItem } from "@/api/types";
 import en from "@/i18n/locales/en/calendar.json";
 import { formatIsoDate } from "@/lib/format";
 
-/** Codes with a translation. Provisional until the facade exports its EvidenceCode enum. */
-export type EvidenceCode = Exclude<keyof typeof en.evidence, "unknown">;
+// Compile-time half of CAL-53: every code the facade can send has English text (and the i18n
+// test keeps zh-CN's keys equal to English's).
+en.evidence satisfies Record<EvidenceCode | "unknown", string>;
+
+const TEMPLATES: Record<string, string> = en.evidence;
 
 const DATE_KEYS = new Set(["date", "start", "end", "since", "until", "monday"]);
 
@@ -19,7 +23,24 @@ export function isDateKey(key: string): boolean {
 }
 
 export function isKnownCode(code: string): code is EvidenceCode {
-  return code !== "unknown" && Object.hasOwn(en.evidence, code);
+  return code !== "unknown" && Object.hasOwn(TEMPLATES, code);
+}
+
+function placeholders(template: string): string[] {
+  return [...template.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1] ?? "");
+}
+
+/**
+ * The template key for `code` given the params present: "<code>_no_a_no_b" when the params
+ * a and b the full sentence needs are absent (and that variant exists), else `code`. Also
+ * returns the params still missing, which are then shown as "…" rather than "{{a}}".
+ */
+export function templateFor(code: EvidenceCode, present: Set<string>) {
+  const needed = placeholders(TEMPLATES[code] ?? "").filter((p) => p !== "product");
+  const missing = [...new Set(needed.filter((p) => !present.has(p)))].sort();
+  if (missing.length === 0) return { key: code, missing };
+  const variant = `${code}${missing.map((p) => `_no_${p}`).join("")}`;
+  return Object.hasOwn(TEMPLATES, variant) ? { key: variant, missing: [] } : { key: code, missing };
 }
 
 // Marks where a plain-text param goes. The translations contain no control characters, and the
@@ -68,6 +89,8 @@ export function evidenceParams(
       params[key] = t(`breakKind.${value}` as "breakKind.other", { defaultValue: value });
     } else if (key === "reason") {
       params[key] = t(`reject.${value}` as "reject.starts_after_end", { defaultValue: value });
+    } else if (key === "signal") {
+      params[key] = t(`signal.${value}` as "signal.dates", { defaultValue: value });
     } else if (/^\d+$/.test(value)) {
       params[key] = value;
     } else {
@@ -81,5 +104,7 @@ export function evidenceParams(
 export function evidenceText(item: EvidenceItem, t: TFunction<"calendar">, locale: string): string {
   if (!isKnownCode(item.code)) return t("evidence.unknown");
   const { params, texts } = evidenceParams(item, t, locale);
-  return translateWithText(t, `evidence.${item.code}`, params, texts);
+  const { key, missing } = templateFor(item.code, new Set(item.params.map((p) => p.key)));
+  for (const name of missing) params[name] = "…";
+  return translateWithText(t, `evidence.${key}`, params, texts);
 }
