@@ -17,6 +17,9 @@ key_hints = ["sk-"]
 # days (every request also sends `store: false`). 13+, parental permission under 18.
 data_policy = { training = "no_training", retention = { stored_days = 30 }, min_age = 13, guardian_permission = true, location = "US", terms_url = "https://developers.openai.com/api/docs/guides/your-data" }
 
+[preset.quirks]
+hide_models = ["*embedding*", "*tts*", "whisper*", "*transcribe*", "dall-e*", "gpt-image*", "*moderation*", "*realtime*", "*audio*", "sora*", "babbage*", "davinci*", "*search*"]
+
 [[preset]]
 id = "anthropic"
 display_name = "Anthropic"
@@ -54,6 +57,7 @@ data_policy = { training = "may_train_free_tier", retention = "provider_terms", 
 
 [preset.quirks]
 effort_param = "reasoning_effort"
+hide_models = ["*embedding*", "imagen*", "veo*", "aqa*", "*tts*", "*native-audio*", "*image*"]
 
 [[preset.quirks.models]]
 # Thinking can't be disabled on the 3.x Flash models.

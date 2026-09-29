@@ -952,3 +952,182 @@ async fn ollama_json_uses_the_schema_as_format_and_maps_errors() {
     let error = model_error(run(&backend, request("nope", OutputSpec::Text)).await.0);
     assert_eq!(error.kind, ModelErrorKind::ModelNotFound);
 }
+
+// ----- model lists and "Test" -------------------------------------------------------------------
+
+#[tokio::test]
+async fn model_lists_check_the_key_and_hide_what_isnt_a_text_model() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("authorization", format!("Bearer {KEY}").as_str()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"object": "list", "data": [
+            {"id": "gpt-6-luna", "object": "model", "created": 1790000000, "owned_by": "openai"},
+            {"id": "text-embedding-3-small", "object": "model", "created": 1, "owned_by": "openai"},
+            {"id": "whisper-1", "object": "model", "created": 1, "owned_by": "openai"},
+            {"id": "gpt-4o-mini-tts", "object": "model", "created": 1, "owned_by": "openai"},
+            {"id": "gpt-6-astra", "object": "model", "created": 1790000000, "owned_by": "openai"}
+        ]})))
+        .mount(&server)
+        .await;
+    let backend = driver("openai", &format!("{}/v1", server.uri()));
+    let models = backend
+        .list_models(&CancellationToken::new())
+        .await
+        .unwrap();
+    let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, ["gpt-6-astra", "gpt-6-luna"]);
+
+    // A rejected key.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(
+            json!({"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}}),
+        ))
+        .mount(&server)
+        .await;
+    let backend = driver("anthropic", &server.uri());
+    match backend.list_models(&CancellationToken::new()).await {
+        Err(LlmError::Model(error)) => assert_eq!(error.kind, ModelErrorKind::AuthRejected),
+        other => panic!("{other:?}"),
+    }
+}
+
+async fn list(preset: &str, base: String) -> Vec<pagelamp_llm::request::ModelInfo> {
+    driver(preset, &base)
+        .list_models(&CancellationToken::new())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn each_wire_reads_its_own_model_list() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(wiremock::matchers::query_param("limit", "1000"))
+        .and(header("anthropic-version", "2023-06-01"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+            {"type": "model", "id": "claude-sonnet-5", "display_name": "Claude Sonnet 5", "created_at": "2026-08-01T00:00:00Z", "max_input_tokens": 1000000}
+        ], "has_more": false})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1beta/openai/models"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"object": "list", "data": [
+                {"id": "models/gemini-3.1-flash-lite", "object": "model", "owned_by": "google"},
+                {"id": "models/text-embedding-004", "object": "model", "owned_by": "google"},
+                {"id": "models/imagen-4.0-generate", "object": "model", "owned_by": "google"}
+            ]})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+            {"id": "openai/gpt-6-luna", "name": "OpenAI: GPT-6 Luna", "context_length": 400000}
+        ]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": [
+            {"name": "qwen3.5:9b", "model": "qwen3.5:9b", "size": 6600000000u64},
+            {"name": "gpt-oss:120b-cloud", "model": "gpt-oss:120b-cloud", "remote_host": "https://ollama.com:443"},
+            {"name": "kimi-k2:1t-cloud", "model": "kimi-k2:1t-cloud"}
+        ]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"object": "list", "data": [
+                {"id": "qwen3.5-9b", "object": "model"}
+            ]})),
+        )
+        .mount(&server)
+        .await;
+    let anthropic = list("anthropic", server.uri()).await;
+    assert_eq!(
+        anthropic[0].display_name.as_deref(),
+        Some("Claude Sonnet 5")
+    );
+    assert_eq!(anthropic[0].context_window, Some(1_000_000));
+    let gemini = list("gemini", format!("{}/v1beta/openai", server.uri())).await;
+    let ids: Vec<&str> = gemini.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, ["gemini-3.1-flash-lite"]);
+    let openrouter = list("openrouter", format!("{}/api/v1", server.uri())).await;
+    assert_eq!(openrouter[0].context_window, Some(400_000));
+    assert_eq!(
+        openrouter[0].display_name.as_deref(),
+        Some("OpenAI: GPT-6 Luna")
+    );
+    // Ollama on loopback: local models are on-device, cloud ones are not.
+    let ollama = list("ollama", server.uri()).await;
+    let on_device: Vec<(&str, bool)> = ollama
+        .iter()
+        .map(|m| (m.id.as_str(), m.on_device))
+        .collect();
+    assert_eq!(
+        on_device,
+        [
+            ("gpt-oss:120b-cloud", false),
+            ("kimi-k2:1t-cloud", false),
+            ("qwen3.5:9b", true)
+        ]
+    );
+    let lm_studio = list("lm_studio", format!("{}/v1", server.uri())).await;
+    assert!(lm_studio[0].on_device);
+}
+
+#[tokio::test]
+async fn a_test_sends_no_course_data_and_reports_the_json_tier() {
+    let server = MockServer::start().await;
+    let stream = "event: response.output_text.delta\n\
+        data: {\"type\":\"response.output_text.delta\",\"delta\":\"{\\\"ok\\\":true}\"}\n\n\
+        event: response.completed\n\
+        data: {\"type\":\"response.completed\",\"response\":{\"model\":\"gpt-6-luna-2026-08-01\",\"usage\":{\"input_tokens\":60,\"output_tokens\":5}}}\n\n";
+    Mock::given(method("POST"))
+        .respond_with(sse(stream.to_string()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let backend = driver("openai", &format!("{}/v1", server.uri()));
+    let report = backend
+        .probe("gpt-6-luna", CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(
+        report.json_tier,
+        pagelamp_llm::request::JsonTier::NativeSchema
+    );
+    assert!(!report.thinking_always_on);
+    assert_eq!(report.usage.input_uncached, 60);
+    assert_eq!(
+        report.model_reported.as_deref(),
+        Some("gpt-6-luna-2026-08-01")
+    );
+    let sent = body_of(&server.received_requests().await.unwrap()[0]);
+    assert_eq!(
+        sent["input"][0]["content"][0]["text"],
+        "<student_note>\nConnection test.\n</student_note>\n"
+    );
+    assert!(!sent.to_string().contains("course_material"));
+    assert_eq!(sent["text"]["format"]["name"], "connection_test");
+
+    // Opus 5.5 always thinks: the report says so.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(sse(fixture("anthropic/json.sse")
+            .replace("{\\\"summary\\\":\\\"Week 3 ", "{\\\"ok\\\":true}")
+            .replace("covers stomata.\\\",\\\"citations\\\":[\\\"c1\\\"]}", "")))
+        .mount(&server)
+        .await;
+    let backend = driver("anthropic", &server.uri());
+    let report = backend
+        .probe("claude-opus-5-5", CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(report.thinking_always_on);
+}

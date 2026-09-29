@@ -136,6 +136,14 @@ impl Dialect for OpenAiResponses {
         })
     }
 
+    fn models_path() -> &'static str {
+        "/models"
+    }
+
+    fn parse_models(body: &Value) -> Vec<super::ListedModel> {
+        super::openai_style_models(body)
+    }
+
     fn map_error(status: u16, body: &str) -> ModelError {
         let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         let error = &parsed["error"];

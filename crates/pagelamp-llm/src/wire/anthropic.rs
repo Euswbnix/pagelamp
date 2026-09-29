@@ -128,6 +128,31 @@ impl Dialect for AnthropicMessages {
         })
     }
 
+    fn models_path() -> &'static str {
+        "/v1/models?limit=1000"
+    }
+
+    fn parse_models(body: &Value) -> Vec<super::ListedModel> {
+        body["data"]
+            .as_array()
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|model| {
+                        Some(super::ListedModel {
+                            id: model["id"].as_str()?.to_string(),
+                            display_name: model["display_name"].as_str().map(str::to_string),
+                            context_window: model["max_input_tokens"]
+                                .as_u64()
+                                .and_then(|n| u32::try_from(n).ok()),
+                            remote: false,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn map_error(status: u16, body: &str) -> ModelError {
         let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         let error = &parsed["error"];

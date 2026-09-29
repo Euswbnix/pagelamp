@@ -134,3 +134,27 @@ pub struct Outcome {
     /// A repair call was made (its usage is included).
     pub repaired: bool,
 }
+
+/// A model a provider offers (from its live list).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelInfo {
+    pub id: String,
+    pub display_name: Option<String>,
+    /// Input context in tokens, if the provider says.
+    pub context_window: Option<u32>,
+    /// Runs on this computer: a loopback provider, and for Ollama not a cloud model
+    /// (`remote_host`, a `-cloud` tag).
+    pub on_device: bool,
+}
+
+/// What a "Test" of a model found out.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProbeReport {
+    pub latency: std::time::Duration,
+    /// The JSON tier the model answered in.
+    pub json_tier: JsonTier,
+    /// Thinking can't be turned off for this model ("lowest" still thinks).
+    pub thinking_always_on: bool,
+    pub usage: Usage,
+    pub model_reported: Option<String>,
+}

@@ -98,6 +98,8 @@ pub struct Quirks {
     pub extra_headers: Vec<(String, String)>,
     /// Per-model differences, first matching pattern wins.
     pub models: Vec<ModelQuirks>,
+    /// Models the live list leaves out (embeddings, speech, images: not text generators).
+    pub hide_models: Vec<String>,
 }
 
 /// How the Chat Completions wire sends effort.
@@ -127,6 +129,13 @@ pub struct ModelQuirks {
 }
 
 impl Quirks {
+    /// Whether the live model list leaves `model` out.
+    pub fn hides(&self, model: &str) -> bool {
+        self.hide_models
+            .iter()
+            .any(|pattern| glob_match(pattern, model))
+    }
+
     /// The quirks of `model` (defaults when no pattern matches).
     pub fn for_model(&self, model: &str) -> ModelQuirks {
         self.models

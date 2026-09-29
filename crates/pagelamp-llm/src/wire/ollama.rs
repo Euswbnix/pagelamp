@@ -102,6 +102,34 @@ impl Dialect for OllamaNative {
         Ok(steps)
     }
 
+    fn models_path() -> &'static str {
+        "/api/tags"
+    }
+
+    /// Cloud models are served through the local daemon: `remote_host`, or a `-cloud` tag.
+    fn parse_models(body: &Value) -> Vec<super::ListedModel> {
+        body["models"]
+            .as_array()
+            .map(|models| {
+                models
+                    .iter()
+                    .filter_map(|model| {
+                        let id = model["name"].as_str().or(model["model"].as_str())?;
+                        let remote = model.get("remote_host").is_some_and(|h| !h.is_null())
+                            || id.ends_with("-cloud")
+                            || id.ends_with(":cloud");
+                        Some(super::ListedModel {
+                            id: id.to_string(),
+                            display_name: None,
+                            context_window: None,
+                            remote,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn map_error(status: u16, body: &str) -> ModelError {
         let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         let mut mapped = from_message(

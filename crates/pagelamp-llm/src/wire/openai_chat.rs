@@ -149,6 +149,14 @@ impl Dialect for OpenAiChat {
         state.finish.is_some().then(|| state.done())
     }
 
+    fn models_path() -> &'static str {
+        "/models"
+    }
+
+    fn parse_models(body: &Value) -> Vec<super::ListedModel> {
+        super::openai_style_models(body)
+    }
+
     fn map_error(status: u16, body: &str) -> ModelError {
         let parsed: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         // `{"error": {...}}`, or (some servers) `[{"error": {...}}]`, or `{"error": "text"}`.

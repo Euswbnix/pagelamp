@@ -15,7 +15,8 @@ use crate::client::{
 use crate::error::{LlmError, ModelError};
 use crate::profile::{ApiKey, EndpointCheck, ProviderProfile, Wire, check_endpoint};
 use crate::request::{
-    GenerateRequest, JsonTier, Notice, Outcome, OutputSpec, StopReason, StreamEvent, Usage,
+    GenerateRequest, JsonTier, ModelInfo, Notice, Outcome, OutputSpec, ProbeReport, StopReason,
+    StreamEvent, Usage,
 };
 use crate::retry::delay_before_retry;
 use crate::sse::EventParser;
@@ -29,6 +30,24 @@ use crate::wire::{BodyOptions, Dialect, Step};
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 /// The most error-response body read (it only carries a code and a message).
 const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
+/// The most model-list body read (OpenRouter lists hundreds of models).
+const MAX_LIST_BYTES: usize = 16 * 1024 * 1024;
+/// How long a model list may take.
+const LIST_TIMEOUT: Duration = Duration::from_secs(30);
+/// The fixed wording of a "Test": no course data, a tiny JSON answer.
+const PROBE_INSTRUCTIONS: &str = "This is a connection test from PageLamp. Answer with the JSON \
+     object {\"ok\": true} and nothing else.";
+/// The probe's own (static) user text, sent through the gate like a student's note.
+const PROBE_NOTE: &str = "Connection test.";
+/// Output budget of a probe: room for a little thinking on models that always think.
+const PROBE_MAX_OUTPUT_TOKENS: u32 = 1024;
+
+/// The probe's answer.
+#[allow(dead_code)]
+#[derive(schemars::JsonSchema)]
+struct ProbeAnswer {
+    ok: bool,
+}
 
 /// How long a call may be silent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,6 +83,27 @@ impl Backend {
     ) -> Result<Outcome, LlmError> {
         match self {
             Backend::Http(driver) => driver.generate(request, on_event, cancel).await,
+        }
+    }
+
+    /// The models on offer (a free call that also checks the key).
+    pub async fn list_models(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ModelInfo>, LlmError> {
+        match self {
+            Backend::Http(driver) => driver.list_models(cancel).await,
+        }
+    }
+
+    /// Try `model` with a tiny JSON request ("Test").
+    pub async fn probe(
+        &self,
+        model: &str,
+        cancel: CancellationToken,
+    ) -> Result<ProbeReport, LlmError> {
+        match self {
+            Backend::Http(driver) => driver.probe(model, cancel).await,
         }
     }
 }
@@ -149,6 +189,110 @@ impl HttpDriver {
                     .await
             }
         }
+    }
+
+    /// The models this provider offers, minus the hidden ones (embeddings, speech, …).
+    pub async fn list_models(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ModelInfo>, LlmError> {
+        match self.profile.wire {
+            Wire::OpenAiResponses => self.list_with::<OpenAiResponses>(cancel).await,
+            Wire::AnthropicMessages => self.list_with::<AnthropicMessages>(cancel).await,
+            Wire::OpenAiChat => self.list_with::<OpenAiChat>(cancel).await,
+            Wire::OllamaNative => self.list_with::<OllamaNative>(cancel).await,
+        }
+    }
+
+    async fn list_with<D: Dialect>(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ModelInfo>, LlmError> {
+        let path = D::models_path();
+        let (path, query) = path.split_once('?').unwrap_or((path, ""));
+        let mut url = join_path(&self.base_url, path);
+        if !query.is_empty() {
+            url.set_query(Some(query));
+        }
+        let request = self.client.get(url).headers(self.headers::<D>()?).send();
+        let mut response = tokio::select! {
+            _ = cancel.cancelled() => return Err(LlmError::Cancelled),
+            result = tokio::time::timeout(LIST_TIMEOUT, request) => match result {
+                Err(_) => return Err(timed_out().into()),
+                Ok(Err(error)) => return Err(transport_error(&error).into()),
+                Ok(Ok(response)) => response,
+            },
+        };
+        let status = response.status().as_u16();
+        let body = match read_body(&mut response, LIST_TIMEOUT, MAX_LIST_BYTES, cancel).await {
+            Ok(body) => body,
+            Err(Attempt::Cancelled) => return Err(LlmError::Cancelled),
+            Err(Attempt::Failed(error)) => return Err(error.into()),
+        };
+        if !response.status().is_success() {
+            return Err(D::map_error(status, &body).into());
+        }
+        let parsed: serde_json::Value = serde_json::from_str(&body).map_err(|_| {
+            ModelError::new(
+                ModelErrorKind::BadOutput,
+                "the model list is not valid JSON",
+            )
+        })?;
+        let local = self.profile.on_device();
+        let mut models: Vec<ModelInfo> = D::parse_models(&parsed)
+            .into_iter()
+            .filter(|model| !self.profile.quirks.hides(&model.id))
+            .map(|model| ModelInfo {
+                on_device: local && !model.remote,
+                id: model.id,
+                display_name: model.display_name,
+                context_window: model.context_window,
+            })
+            .collect();
+        models.sort_by(|a, b| a.id.cmp(&b.id));
+        models.dedup_by(|a, b| a.id == b.id);
+        Ok(models)
+    }
+
+    /// "Test": a tiny JSON request with no course data, through the gate like any other.
+    pub async fn probe(
+        &self,
+        model: &str,
+        cancel: CancellationToken,
+    ) -> Result<ProbeReport, LlmError> {
+        let note = pagelamp_core::ai_gate::StudentNote::new(PROBE_NOTE);
+        let prompt = pagelamp_core::ai_gate::assemble(
+            PROBE_INSTRUCTIONS,
+            &pagelamp_core::ai_gate::GatedContext::empty(),
+            note.as_ref(),
+        );
+        let output = OutputSpec::for_type::<ProbeAnswer>("connection_test").map_err(|_| {
+            ModelError::new(ModelErrorKind::Unsupported, "the test format is not usable")
+        })?;
+        let request = GenerateRequest {
+            model: model.to_string(),
+            prompt,
+            output,
+            effort: pagelamp_core::ai::Effort::Lowest,
+            max_output_tokens: PROBE_MAX_OUTPUT_TOKENS,
+        };
+        let started = std::time::Instant::now();
+        let outcome = self.generate(request, &|_| {}, cancel).await?;
+        let json_tier = outcome.json_tier.unwrap_or(JsonTier::PromptOnly);
+        if outcome.json.is_none() {
+            return Err(ModelError::new(
+                ModelErrorKind::BadOutput,
+                "the model answered, but not in the requested format",
+            )
+            .into());
+        }
+        Ok(ProbeReport {
+            latency: started.elapsed(),
+            json_tier,
+            thinking_always_on: self.profile.quirks.for_model(model).thinking_always_on,
+            usage: outcome.usage,
+            model_reported: outcome.model_reported,
+        })
     }
 
     /// The full request body for `request` on this provider, as first sent (also used by the
@@ -352,7 +496,13 @@ impl HttpDriver {
         let request_id = request_id(response.headers());
         if !response.status().is_success() {
             let wait = retry_after(response.headers());
-            let body = read_error_body(&mut response, self.timeouts.idle, cancel).await?;
+            let body = read_body(
+                &mut response,
+                self.timeouts.idle,
+                MAX_ERROR_BODY_BYTES,
+                cancel,
+            )
+            .await?;
             return Err(D::map_error(status, &body)
                 .with_retry_after(wait)
                 .with_request_id(request_id)
@@ -505,10 +655,11 @@ fn after(mut error: ModelError, text: &str) -> ModelError {
     error
 }
 
-/// The body of an error response, capped (it only carries a code and a message).
-async fn read_error_body(
+/// A response body, capped at `max` bytes (an error body only carries a code and a message).
+async fn read_body(
     response: &mut reqwest::Response,
     limit: Duration,
+    max: usize,
     cancel: &CancellationToken,
 ) -> Result<String, Attempt> {
     let mut body = Vec::new();
@@ -520,7 +671,7 @@ async fn read_error_body(
         match chunk {
             Ok(Ok(Some(bytes))) => {
                 body.extend_from_slice(&bytes);
-                if body.len() >= MAX_ERROR_BODY_BYTES {
+                if body.len() >= max {
                     break;
                 }
             }
@@ -528,7 +679,7 @@ async fn read_error_body(
             Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
         }
     }
-    body.truncate(MAX_ERROR_BODY_BYTES);
+    body.truncate(max);
     Ok(String::from_utf8_lossy(&body).into_owned())
 }
 

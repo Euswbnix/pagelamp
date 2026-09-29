@@ -3766,6 +3766,7 @@ dependencies = [
  "jsonschema",
  "pagelamp-core",
  "reqwest",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

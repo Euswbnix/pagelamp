@@ -29,6 +29,16 @@ pub(crate) struct BodyOptions<'a> {
     pub repair: Option<&'a str>,
 }
 
+/// One entry of a provider's model list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ListedModel {
+    pub id: String,
+    pub display_name: Option<String>,
+    pub context_window: Option<u32>,
+    /// The provider says it runs elsewhere (Ollama cloud models).
+    pub remote: bool,
+}
+
 /// What one stream event means.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Step {
@@ -65,6 +75,38 @@ pub(crate) trait Dialect {
     }
     /// An error response (`status` ≥ 400) as a model error.
     fn map_error(status: u16, body: &str) -> ModelError;
+    /// The path under the base URL that lists models (a free call; also checks the key).
+    fn models_path() -> &'static str;
+    /// The models in a list response.
+    fn parse_models(body: &serde_json::Value) -> Vec<ListedModel>;
+}
+
+/// The `data: [{id, …}]` list of the OpenAI-style APIs.
+pub(crate) fn openai_style_models(body: &serde_json::Value) -> Vec<ListedModel> {
+    body["data"]
+        .as_array()
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|model| {
+                    let id = model["id"].as_str()?;
+                    Some(ListedModel {
+                        // Gemini's compatible endpoint lists `models/<id>`.
+                        id: id.strip_prefix("models/").unwrap_or(id).to_string(),
+                        display_name: model["name"]
+                            .as_str()
+                            .or(model["display_name"].as_str())
+                            .map(str::to_string),
+                        context_window: model["context_length"]
+                            .as_u64()
+                            .or(model["context_window"].as_u64())
+                            .and_then(|n| u32::try_from(n).ok()),
+                        remote: false,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The kind an HTTP status means when the body says nothing more specific.

@@ -24,6 +24,7 @@
 pub mod backend;
 mod client;
 pub mod error;
+pub mod output;
 pub mod profile;
 pub mod request;
 mod retry;
