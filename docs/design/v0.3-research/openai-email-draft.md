@@ -16,6 +16,10 @@ optionally generate study plans and weekly explanations of their own course mate
 - run `codex exec` locally, only when the student asks, with a read-only sandbox, no tools, no MCP
   servers and a JSON output schema: one run per generation, capped per week, with the token count shown
   to the student.
+- turn the model's tools off only through Codex's documented configuration: `features.shell_tool = false`,
+  web search disabled, and a `model_catalog_json` file that repeats the bundled catalog entries of the
+  models we use with `tool_mode = "direct"` and `shell_type = "disabled"` (so no code-mode or shell tool
+  is offered). The Codex binary itself is never modified.
 
 Your documentation says "Use API key authentication for programmatic Codex CLI workflows, such as CI/CD
 jobs" and "API keys are the right default for automation". Our case is interactive (the student clicks
@@ -30,7 +34,9 @@ we would like written confirmation on these questions:
    (runs OpenAI Codex)")?
 3. Which ChatGPT plans may use `codex exec` this way (Free, Go, Plus, Pro, Business, Edu)? Can usage
    beyond a plan's limits draw ChatGPT credits without the student taking an explicit action?
-4. Is there anything we should change in the design to stay within your policies?
+4. Is overriding those catalog entries through `model_catalog_json` an acceptable way to run Codex with
+   no tools, or is there a supported setting we should use instead? Is there anything else we should
+   change in the design to stay within your policies?
 5. May we quote your reply in our public documentation?
 
 We're happy to adjust the design or join a short call. Thank you.
