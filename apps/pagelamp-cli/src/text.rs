@@ -108,6 +108,7 @@ pub fn disclosure(facts: &DisclosureFacts) -> String {
         CostKind::CloudViaLocal => {
             "  • It is served by an app on this computer but runs in the cloud.".into()
         }
+        CostKind::SelfHosted => "  • Costs, if any, are set by whoever runs this server.".into(),
     });
     if let Some(location) = &facts.location {
         lines.push(format!("  • Processed in: {location}."));

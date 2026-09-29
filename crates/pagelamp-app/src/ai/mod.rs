@@ -421,6 +421,8 @@ pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
         guardian_permission: policy.guardian_permission,
         cost: if on_device {
             CostKind::FreeOnDevice
+        } else if elsewhere {
+            CostKind::SelfHosted
         } else {
             CostKind::ApiBilling
         },

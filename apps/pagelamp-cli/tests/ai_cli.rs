@@ -309,6 +309,7 @@ fn a_not_allowed_course_is_blocked_for_a_cloud_model_from_the_cli() {
     );
     ok(&chosen);
     assert!(stderr(&chosen).contains("It goes to LM Studio under your account"));
+    assert!(stderr(&chosen).contains("Costs, if any, are set by whoever runs this server"));
     assert!(stderr(&chosen).contains("If PageLamp doesn't know this model's price"));
 
     let estimate = [

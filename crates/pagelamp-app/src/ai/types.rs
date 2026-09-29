@@ -170,6 +170,9 @@ pub enum CostKind {
     FreeOnDevice,
     /// A cloud model served through the local app (Ollama cloud models).
     CloudViaLocal,
+    /// A server someone else runs (a school's or a friend's Ollama or LM Studio): costs, if
+    /// any, are set by whoever runs it.
+    SelfHosted,
 }
 
 // ----- providers and models -----------------------------------------------------------------------

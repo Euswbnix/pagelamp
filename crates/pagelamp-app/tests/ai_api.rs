@@ -720,7 +720,7 @@ async fn a_local_app_on_another_computer_is_disclosed_as_leaving_this_one() {
         (
             RetentionFact::ProviderTerms,
             TrainingFact::Unknown,
-            CostKind::ApiBilling
+            CostKind::SelfHosted
         )
     );
 }

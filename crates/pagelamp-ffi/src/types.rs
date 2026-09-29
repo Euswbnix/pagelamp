@@ -901,6 +901,7 @@ pub enum CostKind {
     PlanCredits,
     FreeOnDevice,
     CloudViaLocal,
+    SelfHosted,
 }
 
 #[uniffi::remote(Enum)]
