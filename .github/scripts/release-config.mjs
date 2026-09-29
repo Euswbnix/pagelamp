@@ -14,9 +14,9 @@
 // - `createUpdaterArtifacts: "v1Compatible"` (only for apps migrating from Tauri v1).
 // Warnings in CI, errors with --strict (release.yml, tags only; rehearsals run without it):
 // - the updater is switched on (`bundle.createUpdaterArtifacts: true`) but
-//   `plugins.updater.pubkey` isn't a real updater public key, or `tauri.conf.json`'s version isn't
-//   the full Cargo workspace version (Tauri binds each updater signature to it, and the updater
-//   refuses a manifest that announces another version);
+//   `plugins.updater.pubkey` isn't a real updater public key;
+// - `tauri.conf.json`'s version is neither the Cargo workspace version nor its numeric part (the
+//   check of release.yml's create step, earlier);
 // - `bundle.targets` is "all" (the default) or has "msi" (NSIS only, D4). Strict only once the
 //   updater is switched on: a release made without the updater still builds what v0.1.0 did.
 //
@@ -198,8 +198,9 @@ export function tauriFindings({ configs, cargoVersion, strict }) {
   if (switchedOn && !realKey) {
     release(`${TAURI_DIR}/tauri.conf.json: the updater is on (createUpdaterArtifacts) but plugins.updater.pubkey isn't a real updater public key (the content of the .key.pub file from \`tauri signer generate\`); the release builds no updater artifacts until it is`);
   }
-  if (switchedOn && base.version !== undefined && base.version !== cargoVersion) {
-    release(`${TAURI_DIR}/tauri.conf.json: version ${base.version} isn't the Cargo workspace version ${cargoVersion}. Tauri binds every updater signature to the tauri.conf.json version and the manifest announces ${cargoVersion}, so the updater would refuse the update; set "version" to "${cargoVersion}" or leave it out`);
+  // As release.yml's create step: the full Cargo version, its numeric part, or none (Cargo's).
+  if (base.version !== undefined && cargoVersion && base.version !== cargoVersion && base.version !== cargoVersion.split("-")[0]) {
+    release(`${TAURI_DIR}/tauri.conf.json: version ${base.version} is neither the Cargo workspace version ${cargoVersion} nor its numeric part`);
   }
 
   // What Windows builds: tauri.windows.conf.json's targets replace the base ones there.

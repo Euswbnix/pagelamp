@@ -43,14 +43,17 @@ name: Release
 # real `plugins.updater.pubkey`. Then the macOS, Windows and Linux app jobs also sign the updater
 # artifacts (PageLamp_<version>_universal.app.tar.gz, the -setup.exe, the .AppImage) with the
 # updater key, from the `release` secrets TAURI_SIGNING_PRIVATE_KEY and
-# TAURI_SIGNING_PRIVATE_KEY_PASSWORD (only in the step that signs), `updater-manifest` checks every
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD (only in the steps that sign: the macOS bundle step, which
+# makes the archive, and one `tauri signer sign` step per job), `updater-manifest` checks every
 # signature and writes latest.json (.github/scripts/updater-manifest.mjs), and SHA256SUMS covers
-# them all. Linux builds in its own signing job (`app-linux`) instead of `app`. When the updater
-# is off, nothing of this runs and a release builds what v0.1.0 did (plus the universal .dmg):
-# tauri.conf.json is bundled with createUpdaterArtifacts off, and `checksums` deletes any stray
-# .app.tar.gz. For a tag, preflight fails if the updater is on without a real key, with a
-# tauri.conf.json version other than the Cargo version (Tauri binds each signature to it), or
-# with an MSI (D4); without the updater an MSI only warns.
+# them all. Tauri binds each updater signature to a version, and the updater refuses a manifest
+# that announces another one; `tauri bundle` would bind tauri.conf.json's (numeric) version, so
+# every updater file is signed with `tauri signer sign --app-version <Cargo version>`, the
+# version latest.json announces. Linux builds in its own signing job (`app-linux`) instead of
+# `app`. When the updater is off, nothing of this runs and a release builds what v0.1.0 did (plus
+# the universal .dmg): tauri.conf.json is bundled with createUpdaterArtifacts off, and `checksums`
+# deletes any stray .app.tar.gz. For a tag, preflight fails if the updater is on without a real
+# key or with an MSI (D4); without the updater an MSI only warns.
 #
 # The signing jobs (app-macos, app-windows, app-linux, cli-macos, cli-windows) are the only ones
 # that use the environment `release`, and only the two Windows jobs may request an OIDC token for
@@ -141,8 +144,8 @@ jobs:
           package-manager-cache: false
       - name: Test the release scripts
         run: node --test .github/scripts/*.test.mjs
-      # Strict for a release: a placeholder updater key, a numeric tauri.conf.json version with the
-      # updater on, or an MSI with the updater on fail here instead of warning.
+      # Strict for a release: a tauri.conf.json version that doesn't fit the Cargo version, and
+      # with the updater on a placeholder updater key or an MSI, fail here instead of warning.
       - name: Check the release configuration
         id: config
         run: |
@@ -361,16 +364,15 @@ jobs:
           echo "APPIMAGE_PATH=$PWD/${appimages[0]}" >> "$GITHUB_ENV"
           echo "DEB_PATH=$PWD/${debs[0]}" >> "$GITHUB_ENV"
           echo "RPM_PATH=$PWD/${rpms[0]}" >> "$GITHUB_ENV"
-      # The same signature `tauri bundle` makes with createUpdaterArtifacts, bound to the version
-      # Tauri binds it to (tauri.conf.json's, else Cargo's).
+      # The signature `tauri bundle` makes with createUpdaterArtifacts, but bound to the Cargo
+      # version, which latest.json announces (see "Updater" at the top).
       - name: Sign the AppImage for the updater (Tauri CLI)
         working-directory: apps/desktop
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          app_version=$(jq -r '.version // empty' src-tauri/tauri.conf.json)
-          pnpm tauri signer sign --app-version "${app_version:-$VERSION}" "$APPIMAGE_PATH"
+          pnpm tauri signer sign --app-version "$VERSION" "$APPIMAGE_PATH"
           if [ ! -s "$APPIMAGE_PATH.sig" ]; then
             echo "::error::tauri signer sign wrote no $APPIMAGE_PATH.sig"
             exit 1
@@ -411,8 +413,8 @@ jobs:
   # signs the sidecar and then the app with the hardened runtime, and notarizes and staples the
   # .app, when the APPLE_* variables are set; it signs the .dmg but doesn't notarize it, so that
   # happens here. With the updater on, Tauri also archives the stapled app as the updater's
-  # .app.tar.gz and signs it with the updater key. Nothing is uploaded before every check has
-  # passed (in a rehearsal the files become workflow artifacts).
+  # .app.tar.gz, which is then signed with the updater key for the release version. Nothing is
+  # uploaded before every check has passed (in a rehearsal the files become workflow artifacts).
   app-macos:
     needs: [preflight, create-release]
     if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
@@ -429,6 +431,7 @@ jobs:
       # Public (it's in every signature); the checks make sure this team signed each file.
       DEVELOPER_TEAM_ID: CBU69BX7M8
       UPDATER: ${{ needs.preflight.outputs.updater }}
+      VERSION: ${{ needs.preflight.outputs.version }}
       TEST_OVERLAY: ${{ inputs.rehearsal && needs.preflight.outputs.test_overlay == 'true' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -601,6 +604,21 @@ jobs:
           if [ "$UPDATER" = true ]; then
             bash .github/scripts/macos-signing.sh verify-updater-archive "$UPDATER_ARCHIVE"
           fi
+      # `tauri bundle` bound its signature to tauri.conf.json's version; this one is bound to the
+      # Cargo version, which latest.json announces (see "Updater" at the top). Same key, same bytes.
+      - name: Sign the updater archive for the release version (Tauri CLI)
+        if: ${{ needs.preflight.outputs.updater == 'true' }}
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          rm -f "$UPDATER_SIG"
+          pnpm tauri signer sign --app-version "$VERSION" "$UPDATER_ARCHIVE"
+          if [ ! -s "$UPDATER_SIG" ]; then
+            echo "::error::tauri signer sign wrote no $UPDATER_SIG"
+            exit 1
+          fi
       # For `checksums`, as in `app-windows`.
       - name: Record the hashes
         id: sums
@@ -669,10 +687,10 @@ jobs:
   # (bundle.windows.signCommand, from a config file written on the runner) signs the `pagelamp`
   # sidecar, the app executable (once per installer), the NSIS plugins and uninstaller, the WiX
   # extension DLLs it uses locally (not shipped), the -setup.exe and the .msi (if still built),
-  # and each signature is checked as it is made; with the updater on it then signs the -setup.exe
-  # with the updater key too. Afterwards the installers are checked, the -setup.exe is installed
-  # on the runner (and the .msi extracted), and every .exe and .dll in them must be signed too.
-  # Only then is anything uploaded (in a rehearsal they become workflow artifacts).
+  # and each signature is checked as it is made. Afterwards the installers are checked, the
+  # -setup.exe is installed on the runner (and the .msi extracted), and every .exe and .dll in
+  # them must be signed too; with the updater on, the Tauri CLI then signs the -setup.exe with the
+  # updater key. Only then is anything uploaded (in a rehearsal they become workflow artifacts).
   app-windows:
     needs: [preflight, create-release]
     if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
@@ -694,6 +712,7 @@ jobs:
       # Every signature must carry this CN (the owner's validated name; public in each signature).
       AZURE_ARTIFACT_SIGNING_PUBLISHER: ${{ vars.AZURE_ARTIFACT_SIGNING_PUBLISHER }}
       UPDATER: ${{ needs.preflight.outputs.updater }}
+      VERSION: ${{ needs.preflight.outputs.version }}
       TEST_OVERLAY: ${{ inputs.rehearsal && needs.preflight.outputs.test_overlay == 'true' }}
     defaults:
       run:
@@ -795,19 +814,14 @@ jobs:
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 check-azure
       # Signs the sidecar, the app executable (for each installer), the NSIS plugins and the
       # uninstaller, and the installers, each through `windows-signing.ps1 sign`, which checks
-      # every signature it makes; with the updater on, Tauri then signs the finished -setup.exe
-      # with the updater key (-setup.exe.sig). Which installers are built is up to tauri.conf.json.
+      # every signature it makes. Which installers are built is up to tauri.conf.json. Always
+      # without updater artifacts: the -setup.exe is the same either way, and the updater key is
+      # used only in its own step below, not in this long one (Azure token, NSIS downloads).
       - name: Bundle and sign the installers (Tauri)
         working-directory: apps/desktop
-        env:
-          # The updater key only while the updater is on; empty otherwise.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ needs.preflight.outputs.updater == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: |
-          $configs = @('--config', $env:PAGELAMP_TAURI_SIGNING_CONFIG)
+          $configs = @('--config', $env:PAGELAMP_TAURI_SIGNING_CONFIG, '--config', (Join-Path $env:GITHUB_WORKSPACE '.github/tauri/updater-off.json'))
           if ($env:TEST_OVERLAY -eq 'true') { $configs += @('--config', (Join-Path $env:GITHUB_WORKSPACE 'apps/desktop/src-tauri/tauri.rehearsal.conf.json')) }
-          # Updater off: no updater signature, whatever tauri.conf.json says.
-          if ($env:UPDATER -ne 'true') { $configs += @('--config', (Join-Path $env:GITHUB_WORKSPACE '.github/tauri/updater-off.json')) }
           pnpm tauri bundle --target x86_64-pc-windows-msvc @configs
       - name: Sign out of Azure
         if: ${{ always() }}
@@ -830,15 +844,6 @@ jobs:
           "SETUP_PATH=$($setup[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
           $msiPath = if ($msi.Count -eq 1) { $msi[0].FullName } else { '' }
           "MSI_PATH=$msiPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-          $setupSig = ''
-          if ($env:UPDATER -eq 'true') {
-            $setupSig = "$($setup[0].FullName).sig"
-            if (-not (Test-Path -LiteralPath $setupSig -PathType Leaf) -or (Get-Item -LiteralPath $setupSig).Length -eq 0) {
-              "::error::The updater signature $(Split-Path -Leaf $setupSig) is missing next to the installer"
-              exit 1
-            }
-          }
-          "SETUP_SIG_PATH=$setupSig" | Out-File -FilePath $env:GITHUB_ENV -Append
       # signtool verify /pa /all /tw (chain to Microsoft's Public Trust root) and
       # Get-AuthenticodeSignature (Valid, publisher CN, timestamp) on each installer, then on every
       # .exe/.dll the -setup.exe installs (the app, pagelamp.exe, uninstall.exe) and the .msi
@@ -846,6 +851,24 @@ jobs:
       # uninstaller signature.
       - name: Check the installers and everything they install
         run: pwsh -NoProfile -File .github/scripts/windows-signing.ps1 verify-installers "$env:SETUP_PATH" "$env:MSI_PATH"
+      # With the updater on: the -setup.exe is also the Windows update. The updater signature
+      # (-setup.exe.sig) covers the finished, Authenticode-signed installer and is bound to the
+      # Cargo version, which latest.json announces (see "Updater" at the top). Tauri CLI only.
+      - name: Sign the installer for the updater (Tauri CLI)
+        if: ${{ needs.preflight.outputs.updater == 'true' }}
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pnpm tauri signer sign --app-version $env:VERSION $env:SETUP_PATH
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sig = "$($env:SETUP_PATH).sig"
+          if (-not (Test-Path -LiteralPath $sig -PathType Leaf) -or (Get-Item -LiteralPath $sig).Length -eq 0) {
+            "::error::tauri signer sign wrote no $(Split-Path -Leaf $sig)"
+            exit 1
+          }
+          "SETUP_SIG_PATH=$sig" | Out-File -FilePath $env:GITHUB_ENV -Append
       # For `checksums`, which makes sure the draft still holds exactly these files before it
       # writes SHA256SUMS: the Linux jobs can upload to the release too, and they restore caches.
       - name: Record the installers' hashes

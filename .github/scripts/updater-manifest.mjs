@@ -243,7 +243,7 @@ export function manifestSignature(content, asset, version) {
   }
   if (signed.replace(/^v/, "") !== version) {
     fail(
-      `The signature of ${asset} was made for version ${signed} (the version in tauri.conf.json when it was bundled), but the manifest announces ${version}. tauri-plugin-updater refuses that update (SignedVersionMismatch). Set tauri.conf.json's "version" to the full Cargo workspace version (${version}) or leave it out so it follows Cargo.toml.`,
+      `The signature of ${asset} was made for version ${signed}, but the manifest announces ${version}; tauri-plugin-updater refuses that update (SignedVersionMismatch). \`tauri bundle\` binds its signatures to tauri.conf.json's version, so release.yml signs every updater file again with \`tauri signer sign --app-version ${version}\`.`,
     );
   }
   return signature;

@@ -43,8 +43,9 @@ the Linux packages from tauri-action, and the channels don't move.
      - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password.
 
      Only in the environment `release`, never as repository secrets. The workflows give them only
-     to the step that signs updater files (the macOS and Windows bundle steps, the Linux
-     `tauri signer sign` step), and every signing job checks first that both exist.
+     to the steps that sign updater files (the macOS bundle step, which makes the updater archive,
+     and one `tauri signer sign` step per platform), and every signing job checks first that both
+     exist.
    - Send the content of `pagelamp-updater.key.pub` (public, one line) to the frontend: it goes into
      `tauri.conf.json` → `plugins.updater.pubkey`.
 2. **GitHub Pages** (A10). The branch `gh-pages` has to exist first: run Actions → **Update
@@ -60,14 +61,14 @@ the Linux packages from tauri-action, and the channels don't move.
 ## Before a tag
 
 - CI on `main` is green, including **Release config** and **Licences**. Release config warnings
-  are errors for a tag once the updater is on: a placeholder `plugins.updater.pubkey`, a
-  `tauri.conf.json` version other than the Cargo version, or `msi` / `"all"` in
+  are errors for a tag: a `tauri.conf.json` version that doesn't fit the Cargo version, and once
+  the updater is on a placeholder `plugins.updater.pubkey` or `msi` / `"all"` in
   `bundle.targets` (NSIS only, D4).
 - `docs/release-notes/<tag>.md` exists (it is the release text and the update's notes).
 - The versions agree: `[workspace.package] version` in the root `Cargo.toml` is the tag without
-  its `v` (e.g. `0.3.0-alpha.1`). With the updater on, `tauri.conf.json`'s `version` is exactly
-  that too, or absent: Tauri binds every updater signature to it, and the updater refuses an
-  update whose `latest.json` announces another version.
+  its `v` (e.g. `0.3.0-alpha.1`); `tauri.conf.json`'s `version` is the same, its numeric part
+  (`0.3.0`), or absent. `latest.json` announces the Cargo version, and the workflow signs every
+  updater file for that version (the updater refuses a signature made for another version).
 - A rehearsal of that commit passed (next section).
 
 ## Rehearsal from main
@@ -173,14 +174,14 @@ still checked in every rehearsal.
 ## When a check fails
 
 - **preflight:** the message names the file and the rule. Secrets outside a step's `env:`/`with:`,
-  unpinned actions and macOS entitlements always fail; for a tag, so do the updater-key, version
+  unpinned actions and macOS entitlements always fail; for a tag, so do the version, updater-key
   and MSI rules above.
 - **deny:** a known vulnerability in a dependency. Update the crate (`cargo update -p <crate>`,
   then commit `Cargo.lock`), or, if the advisory can't affect PageLamp, add it to `deny.toml`
   under `[advisories] ignore` with the reason. Unmaintained crates only warn.
-- **updater-manifest:** "made for version X … announces Y" means `tauri.conf.json`'s version
-  isn't the Cargo version (see "Before a tag"); "another key" means the secret and
-  `plugins.updater.pubkey` aren't a pair.
+- **updater-manifest:** "made for version X … announces Y" means an updater file wasn't signed
+  again for the Cargo version (a `tauri signer sign --app-version` step was skipped or changed);
+  "another key" means the secret and `plugins.updater.pubkey` aren't a pair.
 - **checksums:** a signed file in the draft changed after its job checked it, or an unexpected
   updater file appeared. Don't publish; find in the run's logs which job uploaded it.
 

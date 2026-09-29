@@ -175,7 +175,7 @@ describe("build", () => {
 
   it("fails when a signature was made for another version or none", () => {
     const numeric = { ...signatures, [WIN]: key.signData(Buffer.from(content[WIN]), WIN, "0.3.0") };
-    assert.throws(() => release({ signatures: numeric }), /made for version 0\.3\.0 .* announces 0\.3\.0-beta\.1/);
+    assert.throws(() => release({ signatures: numeric }), /made for version 0\.3\.0, but the manifest announces 0\.3\.0-beta\.1/);
     const unbound = { ...signatures, [MAC]: key.signData(Buffer.from(content[MAC]), MAC, undefined) };
     assert.throws(() => release({ signatures: unbound }), /isn't bound to a version/);
   });

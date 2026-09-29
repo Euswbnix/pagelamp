@@ -134,12 +134,14 @@ describe("Tauri config", () => {
     assert.deepEqual(check(allButNsisOnWindows, { strict: true, more: windowsOverride }).errors, []);
   });
 
-  it("requires the full version in tauri.conf.json once the updater is on", () => {
-    const numeric = updater({ version: "0.3.0" });
-    assert.match(check(numeric, { strict: true }).errors.join("\n"), /version 0\.3\.0 isn't the Cargo workspace version 0\.3\.0-alpha\.1/);
-    assert.match(check(numeric).warnings.join("\n"), /isn't the Cargo workspace version/);
+  it("accepts the Cargo version, its numeric part or no version in tauri.conf.json", () => {
+    // release.yml signs updater files with the Cargo version, whatever tauri.conf.json says.
+    assert.deepEqual(check(updater({ version: "0.3.0" }), { strict: true }).errors, []);
     const { version: _omitted, ...inherits } = updater();
     assert.deepEqual(check(inherits, { strict: true }).errors, []);
+    const other = updater({ version: "0.2.0" });
+    assert.match(check(other, { strict: true }).errors.join("\n"), /version 0\.2\.0 is neither the Cargo workspace version 0\.3\.0-alpha\.1 nor its numeric part/);
+    assert.match(check(other).warnings.join("\n"), /is neither the Cargo workspace version/);
   });
 
   it("always rejects entitlements, v1Compatible and overlays that switch the updater", () => {
