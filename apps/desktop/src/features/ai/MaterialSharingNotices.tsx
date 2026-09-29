@@ -29,7 +29,7 @@ export function MaterialSharingReminder({
   const { t } = useTranslation("ai");
   const save = useSetCourseMaterialSharing();
   const errorText = useAiErrorText();
-  const ids = { heading: useId(), answer: useId() };
+  const headingId = useId();
 
   async function answer(value: (typeof SHARING_ANSWERS)[number]) {
     if (save.isPending) return;
@@ -44,35 +44,37 @@ export function MaterialSharingReminder({
 
   return (
     <section
-      aria-labelledby={ids.heading}
+      aria-labelledby={headingId}
       className="flex gap-3 rounded-lg border bg-muted/40 p-4 text-sm"
     >
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-2">
-        <h3 id={ids.heading} className="font-medium">
+        <h3 id={headingId} className="font-medium">
           {t("sharing.reminder.title")}
         </h3>
         <p className="text-muted-foreground">
           {t("sharing.reminder.body", { course: courseName, service })}
         </p>
-        <p id={ids.answer}>{t("sharing.reminder.answer")}</p>
-        <div role="group" aria-labelledby={ids.answer} className="flex flex-wrap gap-2">
-          {SHARING_ANSWERS.map((value) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={save.isPending}
-              onClick={() => void answer(value)}
-            >
-              {t(`sharing.option.${value}`)}
-            </Button>
-          ))}
-          <Button type="button" size="sm" variant="ghost" onClick={onClose}>
-            {t("sharing.reminder.dismiss")}
-          </Button>
-        </div>
+        <fieldset className="space-y-2">
+          <legend className="mb-2">{t("sharing.reminder.answer")}</legend>
+          <div className="flex flex-wrap gap-2">
+            {SHARING_ANSWERS.map((value) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={save.isPending}
+                onClick={() => void answer(value)}
+              >
+                {t(`sharing.option.${value}`)}
+              </Button>
+            ))}
+          </div>
+        </fieldset>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+          {t("sharing.reminder.dismiss")}
+        </Button>
         {save.error ? (
           <p role="alert" className="text-destructive">
             {errorText(save.error)}
