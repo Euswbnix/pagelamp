@@ -570,6 +570,8 @@ pub struct CourseLifecycle {
     pub evidence_items: Vec<EvidenceItem>,
     pub suggest_removal: bool,
     pub kept_current_until: Option<IsoDate>,
+    #[uniffi(default)]
+    pub is_active: bool,
 }
 
 #[uniffi::remote(Record)]

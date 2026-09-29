@@ -2025,6 +2025,10 @@ export interface CourseLifecycle {
   evidence_items: EvidenceItem[];
   group: CourseGroup;
   /**
+   * `is_active` on the day it was computed: the courses week-by-week features cover.
+   */
+  is_active: boolean;
+  /**
    * "I'm still taking this" until this date, when set.
    */
   kept_current_until?: string | null;
@@ -2285,6 +2289,10 @@ export interface CourseLifecycle1 {
   confidence: Confidence;
   evidence_items: EvidenceItem[];
   group: CourseGroup;
+  /**
+   * `is_active` on the day it was computed: the courses week-by-week features cover.
+   */
+  is_active: boolean;
   /**
    * "I'm still taking this" until this date, when set.
    */
