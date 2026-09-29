@@ -107,11 +107,7 @@ describe("CoursesPage — course list", () => {
     expect(useUiStore.getState().showPastCourses).toBe(true);
     expect(within(card(list, "DEMO099")).getByText("Past course")).toBeInTheDocument();
     expect(within(card(list, "DEMO101")).queryByText("Past course")).not.toBeInTheDocument();
-    expect(
-      within(list).getByText(
-        /They're left out of weekly views, and their deadlines still remind you\./,
-      ),
-    ).toBeInTheDocument();
+    expect(within(list).getByText(/Their deadlines are still listed/)).toBeInTheDocument();
   });
 
   it("puts a hidden course back in the list from its card", async () => {

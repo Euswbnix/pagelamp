@@ -442,7 +442,7 @@
 "calendar.groups.current" = "Current";
 "calendar.groups.noCurrent" = "No current courses. Finished ones are under Past courses.";
 "calendar.groups.past" = "Past courses (%1$@)";
-"calendar.groups.pastHint" = "Courses that look finished. They're left out of weekly views, and their deadlines still remind you.";
+"calendar.groups.pastHint" = "Courses whose dates have passed. Their deadlines are still listed; \"I'm still taking this\" moves one back.";
 "calendar.groups.upcoming" = "Upcoming";
 "calendar.keep.button" = "I'm still taking this";
 "calendar.keep.change" = "Change date";
@@ -487,7 +487,7 @@
 "calendar.signal.module_unlock" = "the latest unlocked module";
 "calendar.signal.recent_materials" = "recent materials";
 "calendar.status.hint.current" = "Classes are running.";
-"calendar.status.hint.ended" = "This course looks finished. It's listed under Past courses and left out of weekly views. Its deadlines still remind you.";
+"calendar.status.hint.ended" = "This course looks finished. It's listed under Past courses; its deadlines are still listed.";
 "calendar.status.hint.finishing" = "Classes are over, but exams or other events are still coming up.";
 "calendar.status.hint.inactive" = "Nothing has happened in this course for a long time, and it has no dates. It's listed under Past courses.";
 "calendar.status.hint.unknown" = "We can't tell yet whether this course is running.";

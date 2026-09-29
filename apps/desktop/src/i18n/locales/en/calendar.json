@@ -101,7 +101,7 @@
       "upcoming": "Classes haven't started yet.",
       "current": "Classes are running.",
       "finishing": "Classes are over, but exams or other events are still coming up.",
-      "ended": "This course looks finished. It's listed under Past courses and left out of weekly views. Its deadlines still remind you.",
+      "ended": "This course looks finished. It's listed under Past courses; its deadlines are still listed.",
       "inactive": "Nothing has happened in this course for a long time, and it has no dates. It's listed under Past courses.",
       "unknown": "We can't tell yet whether this course is running."
     },
@@ -169,7 +169,7 @@
     "current": "Current",
     "upcoming": "Upcoming",
     "past": "Past courses ({{count}})",
-    "pastHint": "Courses that look finished. They're left out of weekly views, and their deadlines still remind you.",
+    "pastHint": "Courses whose dates have passed. Their deadlines are still listed; \"I'm still taking this\" moves one back.",
     "noCurrent": "No current courses. Finished ones are under Past courses."
   },
   "card": {

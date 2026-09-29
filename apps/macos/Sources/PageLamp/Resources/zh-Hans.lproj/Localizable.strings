@@ -442,7 +442,7 @@
 "calendar.groups.current" = "进行中";
 "calendar.groups.noCurrent" = "没有进行中的课程。已结束的课程在“往期课程”里。";
 "calendar.groups.past" = "往期课程（%1$@）";
-"calendar.groups.pastHint" = "看起来已经结束的课程。它们不会出现在按周显示的内容中，截止日期仍会提醒你。";
+"calendar.groups.pastHint" = "日期已经过去的课程。它们的截止日期仍会列出；点“我还在上这门课”可以移回来。";
 "calendar.groups.upcoming" = "即将开课";
 "calendar.keep.button" = "我还在上这门课";
 "calendar.keep.change" = "修改日期";
@@ -487,7 +487,7 @@
 "calendar.signal.module_unlock" = "最近解锁的模块";
 "calendar.signal.recent_materials" = "最近的资料";
 "calendar.status.hint.current" = "正在上课。";
-"calendar.status.hint.ended" = "这门课看起来已经结束。它会列在“往期课程”里，不再出现在按周显示的内容中；它的截止日期仍会提醒你。";
+"calendar.status.hint.ended" = "这门课看起来已经结束，已归入“往期课程”；它的截止日期仍会列出。";
 "calendar.status.hint.finishing" = "课已经上完，但还有考试或其他安排。";
 "calendar.status.hint.inactive" = "这门课很久没有动静，也没有日期。它会列在“往期课程”里。";
 "calendar.status.hint.unknown" = "暂时判断不出这门课是否在进行。";
