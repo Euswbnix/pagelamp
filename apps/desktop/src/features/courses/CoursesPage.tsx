@@ -50,7 +50,6 @@ export function CoursesPage() {
   return (
     <>
       <PageHeader
-        lit
         title={t("title")}
         description={t("description")}
         // The empty state has its own "Sync now"; don't show two.

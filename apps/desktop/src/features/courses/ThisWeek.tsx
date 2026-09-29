@@ -61,7 +61,8 @@ export function ThisWeek() {
   }
 
   return (
-    <Section title={t("thisWeek.title")} description={summary}>
+    // The one light: only once this week's deadlines are there (never on a skeleton or error).
+    <Section title={t("thisWeek.title")} description={summary} lit={deadlines.isSuccess}>
       {body}
     </Section>
   );
