@@ -158,6 +158,16 @@ struct DownloadJob {
     had_copy: bool,
 }
 
+/// A cached copy (same version) to read again because the text reader could not read it last
+/// time for a reason that may have gone away (`ingest::needs_retry`). Not downloaded again:
+/// every download counts as a view.
+struct ReindexJob {
+    material_id: String,
+    title: String,
+    path: PathBuf,
+    mime: Option<String>,
+}
+
 impl<T: CanvasTransport> Syncer<'_, T> {
     fn ids(&self) -> Ids<'_> {
         Ids {
@@ -168,6 +178,34 @@ impl<T: CanvasTransport> Syncer<'_, T> {
     fn warn(&self, report: &mut SyncReport, message: String) {
         (self.progress)(SyncProgress::Warning(message.clone()));
         report.warnings.push(message);
+    }
+
+    /// After indexing one file: warn about it if it could not be read (and, once per sync,
+    /// when the text reader could not start). True when its text is indexed.
+    fn record_index(
+        &self,
+        report: &mut SyncReport,
+        label: &str,
+        title: &str,
+        outcome: IndexOutcome,
+    ) -> bool {
+        if let Some(message) = self.options.extractor.take_warning() {
+            self.warn(report, message);
+        }
+        match outcome {
+            IndexOutcome::Indexed { .. } | IndexOutcome::Unchanged | IndexOutcome::Empty => true,
+            IndexOutcome::Failed(message) => {
+                self.warn(report, format!("{label}: {title}: {message}"));
+                false
+            }
+            IndexOutcome::Skipped(kind) => {
+                let message = ingest::worker_failure_message(kind);
+                self.warn(report, format!("{label}: {title}: {message}"));
+                false
+            }
+            // Tried again next sync; the extractor's warning covers every such file.
+            IndexOutcome::Unsupported | IndexOutcome::Deferred(_) => false,
+        }
     }
 
     fn step(&self, message: String, current: Option<usize>, total: Option<usize>) {
@@ -724,6 +762,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             &upsert.external_id,
         );
         let mut downloads: Vec<DownloadJob> = Vec::new();
+        let mut reindex: Vec<ReindexJob> = Vec::new();
         let mut not_downloaded: Vec<String> = Vec::new();
         // Why a not-downloaded file can't be downloaded on request; other files are cleared.
         let mut blocked: HashMap<String, DownloadBlock> = HashMap::new();
@@ -745,6 +784,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             let same_version = copy.is_some_and(|m| m.published_at == material.published_at);
             if same_version {
                 material.local_path = copy.and_then(|m| m.local_path.clone());
+                if let Some(old) = copy.filter(|m| ingest::needs_retry(m))
+                    && let Some(path) = &old.local_path
+                {
+                    reindex.push(ReindexJob {
+                        material_id: id.clone(),
+                        title: material.title.clone(),
+                        path: PathBuf::from(path),
+                        mime: material.mime.clone(),
+                    });
+                }
                 continue;
             }
             let downloadable = self.options.download_files
@@ -936,6 +985,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 Ok(_) => {
                     files_downloaded += 1;
                     let (material, dest) = (job.material, job.dest);
+                    let extractor = self.options.extractor.clone();
                     let outcome = with_store(self.db, move |store| {
                         // Point the row at the new copy, index it, and only then record the
                         // new version date (upsert keeps the text state it just got).
@@ -947,11 +997,12 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         // Record the new version unless the copy couldn't even be read (then
                         // retry next time). A file whose text can't be extracted is not
                         // downloaded again and again: each download counts as a view.
-                        let outcome = match ingest::index_file(
+                        let outcome = match ingest::index_file_using(
                             store,
                             &material.id,
                             &dest,
                             material.mime.as_deref(),
+                            &extractor,
                         ) {
                             Ok(outcome) => {
                                 store.upsert_material(&material)?;
@@ -965,14 +1016,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         Ok(outcome)
                     })
                     .await?;
-                    match outcome {
-                        IndexOutcome::Indexed { .. }
-                        | IndexOutcome::Unchanged
-                        | IndexOutcome::Empty => files_indexed += 1,
-                        IndexOutcome::Failed(message) => {
-                            self.warn(report, format!("{label}: {title}: {message}"))
-                        }
-                        IndexOutcome::Unsupported => {}
+                    if self.record_index(report, label, &title, outcome) {
+                        files_indexed += 1;
                     }
                 }
                 // An expired token aborts; anything else about ONE file is a warning.
@@ -996,6 +1041,34 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         format!("{label}: {title} could not be downloaded ({err}){note}"),
                     );
                 }
+            }
+        }
+
+        // ---- read cached copies again that the text reader couldn't read last time --------------
+        for job in reindex {
+            let extractor = self.options.extractor.clone();
+            let ReindexJob {
+                material_id,
+                title,
+                path,
+                mime,
+            } = job;
+            let outcome = with_store(self.db, move |store| {
+                match ingest::index_file_using(
+                    store,
+                    &material_id,
+                    &path,
+                    mime.as_deref(),
+                    &extractor,
+                ) {
+                    Ok(outcome) => Ok(outcome),
+                    Err(pagelamp_core::Error::Io(err)) => Ok(IndexOutcome::Failed(err.to_string())),
+                    Err(other) => Err(other),
+                }
+            })
+            .await?;
+            if self.record_index(report, label, &title, outcome) {
+                files_indexed += 1;
             }
         }
 

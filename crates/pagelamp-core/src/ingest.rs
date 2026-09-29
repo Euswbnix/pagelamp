@@ -13,16 +13,25 @@
 //!
 //! Because of step 4, these functions must not be called inside `Store::in_transaction`
 //! (SQLite transactions do not nest; the call would fail with a database error).
+//!
+//! Files are read by an `Extractor`: in `pagelamp extract-worker` processes (v0.3 M0.5) when
+//! the surface set a worker, else in this process. A file the worker could not read because of
+//! the file itself (`TextErrorKind::is_hard`) is recorded with `failure_fingerprint` and not
+//! tried again while its content, the worker protocol and the app version stay the same.
 
 use std::fs::File;
 use std::io::{ErrorKind, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
+use pagelamp_extract::worker::{self, WorkerFailure, WorkerLimits};
 use pagelamp_extract::{DEFAULT_CHUNK_CHARS, ExtractError, Segment, chunk_segments};
 use sha2::{Digest, Sha256};
 
-use crate::model::{Chunk, Material, TextStatus};
+use crate::brand;
+use crate::model::{Chunk, Material, TextErrorKind, TextStatus};
 use crate::store::Store;
 use crate::{Error, Result};
 
@@ -51,11 +60,206 @@ pub enum IndexOutcome {
     /// Supported but no text (e.g. scanned PDF). text_status = ok with 0 chunks,
     /// text_error = "no extractable text (scanned?)".
     Empty,
-    /// Extraction error. text_status = error, text_error = message, chunks cleared.
+    /// Extraction error. text_status = error, text_error = message, chunks cleared; for a
+    /// worker failure also `text_error_kind` and its fingerprint.
     Failed(String),
+    /// The worker already failed on this content (a hard `TextErrorKind`) with the same worker
+    /// protocol and app version — nothing done.
+    Skipped(TextErrorKind),
+    /// The worker could not run (`spawn_failed` / `protocol_mismatch`) and the file may not be
+    /// read in this process: recorded like `Failed` and tried again on the next sync. Not worth
+    /// a warning per file: `Extractor::take_warning` gives one for the whole sync.
+    Deferred(TextErrorKind),
 }
 
-/// Index a file at `path` for `material_id` (material row must exist).
+/// The worker protocol and app version a worker failure is recorded with
+/// (`materials.text_error_fingerprint`), e.g. "worker1/0.3.0".
+pub fn failure_fingerprint() -> String {
+    format!("worker{}/{}", worker::PROTOCOL, env!("CARGO_PKG_VERSION"))
+}
+
+/// Whether a stored worker failure should be tried again although the content is unchanged:
+/// the worker could not run at all (not the file's fault), or the failure was recorded by
+/// another worker protocol or app version. (Callers that re-read files only when they change,
+/// like the Canvas sync with its cached copies, use this to re-index them.)
+pub fn needs_retry(material: &Material) -> bool {
+    material.text_status == TextStatus::Error
+        && material.text_error_kind.is_some_and(|kind| {
+            !kind.is_hard()
+                || material.text_error_fingerprint.as_deref() != Some(&failure_fingerprint())
+        })
+}
+
+/// A user-facing sentence for a worker failure (stored as `text_error`, shown as a warning).
+pub fn worker_failure_message(kind: TextErrorKind) -> &'static str {
+    match kind {
+        TextErrorKind::TimedOut => {
+            "reading this file took too long, so it was stopped; it is tried again when the \
+             file changes or the app is updated"
+        }
+        TextErrorKind::CpuLimit => {
+            "reading this file needed too much processing time, so it was stopped; it is tried \
+             again when the file changes or the app is updated"
+        }
+        TextErrorKind::MemoryLimit => {
+            "reading this file needed too much memory, so it was stopped; it is tried again \
+             when the file changes or the app is updated"
+        }
+        TextErrorKind::Crashed => {
+            "the text reader stopped unexpectedly on this file; it is tried again when the file \
+             changes or the app is updated"
+        }
+        TextErrorKind::BadOutput => {
+            "the text reader gave an unreadable answer for this file; it is tried again on the \
+             next sync"
+        }
+        TextErrorKind::SpawnFailed => {
+            "the text reader could not start; this file is tried again on the next sync"
+        }
+        TextErrorKind::ProtocolMismatch => {
+            "the text reader belongs to another version; this file is tried again on the next \
+             sync"
+        }
+    }
+}
+
+/// How files are turned into text: in `pagelamp extract-worker` processes, or in this process.
+///
+/// Create one per sync and share it (clones share its state): after the first
+/// `spawn_failed` / `protocol_mismatch` it stops starting workers for the rest of the sync
+/// (each attempt can be slow when antivirus is involved) and applies the fallback rule to every
+/// later file: small non-PDF files are read in-process
+/// (`worker::in_process_fallback_allowed`), everything else is marked and retried on the next
+/// sync. `take_warning` then returns one warning for the sync.
+#[derive(Clone, Debug, Default)]
+pub struct Extractor {
+    inner: Arc<ExtractorInner>,
+}
+
+#[derive(Debug, Default)]
+struct ExtractorInner {
+    /// `None`: in this process.
+    worker: Option<(PathBuf, WorkerLimits)>,
+    /// Why the worker could not run in this sync, once it failed to.
+    unavailable: Mutex<Option<WorkerFailure>>,
+    /// Whether `take_warning` already returned the warning.
+    warned: AtomicBool,
+}
+
+impl Extractor {
+    /// Extract in this process (tests, and surfaces that did not set a worker).
+    pub fn in_process() -> Extractor {
+        Extractor::default()
+    }
+
+    /// Extract in `<exe> extract-worker` processes with the default limits.
+    pub fn worker(exe: PathBuf) -> Extractor {
+        Extractor::worker_with_limits(exe, WorkerLimits::default())
+    }
+
+    pub fn worker_with_limits(exe: PathBuf, limits: WorkerLimits) -> Extractor {
+        Extractor {
+            inner: Arc::new(ExtractorInner {
+                worker: Some((exe, limits)),
+                ..ExtractorInner::default()
+            }),
+        }
+    }
+
+    /// The worker executable, when files are extracted in worker processes.
+    pub fn worker_exe(&self) -> Option<&Path> {
+        self.inner.worker.as_ref().map(|(exe, _)| exe.as_path())
+    }
+
+    /// Once per extractor: a warning that the worker could not run in this sync, if so.
+    pub fn take_warning(&self) -> Option<String> {
+        let failure = (*self.unavailable())?;
+        if self.inner.warned.swap(true, Ordering::Relaxed) {
+            return None;
+        }
+        let product = brand::PRODUCT_NAME;
+        let why = match failure {
+            WorkerFailure::ProtocolMismatch => format!(
+                "{product}'s text reader belongs to another version (reinstalling {product} \
+                 fixes this)"
+            ),
+            _ => format!(
+                "{product}'s text reader could not start (security software may be blocking it)"
+            ),
+        };
+        Some(format!(
+            "{why}. Small files other than PDFs were read directly; the rest are tried again on \
+             the next sync."
+        ))
+    }
+
+    fn unavailable(&self) -> std::sync::MutexGuard<'_, Option<WorkerFailure>> {
+        self.inner
+            .unavailable
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Extract `path` (of `size` bytes).
+    fn extract(&self, path: &Path, mime: Option<&str>, size: u64) -> Extracted {
+        let Some((exe, limits)) = &self.inner.worker else {
+            return Extracted::Done(pagelamp_extract::extract_file(path, mime));
+        };
+        let known = *self.unavailable();
+        let failure = match known {
+            Some(failure) => failure,
+            None => match worker::extract_in_worker(exe, path, mime, *limits) {
+                Ok(result) => return Extracted::Done(result),
+                Err(failure @ (WorkerFailure::SpawnFailed | WorkerFailure::ProtocolMismatch)) => {
+                    *self.unavailable() = Some(failure);
+                    failure
+                }
+                Err(failure) => return Extracted::Worker(failure.into()),
+            },
+        };
+        if worker::in_process_fallback_allowed(path, mime, size) {
+            Extracted::Done(pagelamp_extract::extract_file(path, mime))
+        } else {
+            Extracted::Worker(failure.into())
+        }
+    }
+}
+
+impl From<WorkerFailure> for TextErrorKind {
+    fn from(failure: WorkerFailure) -> Self {
+        match failure {
+            WorkerFailure::TimedOut => TextErrorKind::TimedOut,
+            WorkerFailure::CpuLimit => TextErrorKind::CpuLimit,
+            WorkerFailure::MemoryLimit => TextErrorKind::MemoryLimit,
+            WorkerFailure::Crashed => TextErrorKind::Crashed,
+            WorkerFailure::BadOutput => TextErrorKind::BadOutput,
+            WorkerFailure::SpawnFailed => TextErrorKind::SpawnFailed,
+            WorkerFailure::ProtocolMismatch => TextErrorKind::ProtocolMismatch,
+        }
+    }
+}
+
+/// What extracting one file gave.
+#[derive(Debug)]
+enum Extracted {
+    /// The extractor's own answer (from the worker or this process).
+    Done(std::result::Result<Vec<Segment>, ExtractError>),
+    /// The worker failed, and the file was not read in this process.
+    Worker(TextErrorKind),
+}
+
+/// Index a file at `path` for `material_id` (material row must exist), extracting it in this
+/// process. Syncs use `index_file_using` with the surface's `Extractor`.
+pub fn index_file(
+    store: &Store,
+    material_id: &str,
+    path: &Path,
+    mime: Option<&str>,
+) -> Result<IndexOutcome> {
+    index_file_using(store, material_id, path, mime, &Extractor::in_process())
+}
+
+/// Index a file at `path` for `material_id` (material row must exist) with `extractor`.
 /// Only `Err` for store/IO problems; extraction problems are reported via `IndexOutcome`.
 ///
 /// `mime` is a hint for the extractor (see `pagelamp_extract::extract_file`). A missing or
@@ -63,29 +267,26 @@ pub enum IndexOutcome {
 /// simply tries again; the same goes for a file whose size or modification time changed
 /// while it was being indexed. In every other case the file's hash is stored, whatever the
 /// outcome.
-pub fn index_file(
+pub fn index_file_using(
     store: &Store,
     material_id: &str,
     path: &Path,
     mime: Option<&str>,
+    extractor: &Extractor,
 ) -> Result<IndexOutcome> {
-    index_file_with(
-        store,
-        material_id,
-        path,
-        mime,
-        pagelamp_extract::extract_file,
-    )
+    index_file_with(store, material_id, path, mime, |path, mime, size| {
+        extractor.extract(path, mime, size)
+    })
 }
 
-/// `index_file` with the extractor passed in (always `pagelamp_extract::extract_file`,
-/// except in tests, which use this to change the file while it is being extracted).
+/// `index_file_using` with the extraction passed in (always `Extractor::extract`, except in
+/// tests, which use this to change the file while it is being extracted).
 fn index_file_with(
     store: &Store,
     material_id: &str,
     path: &Path,
     mime: Option<&str>,
-    extract: impl FnOnce(&Path, Option<&str>) -> std::result::Result<Vec<Segment>, ExtractError>,
+    extract: impl FnOnce(&Path, Option<&str>, u64) -> Extracted,
 ) -> Result<IndexOutcome> {
     let material = require_material(store, material_id)?;
     let stamp_before = file_stamp(path)?;
@@ -93,8 +294,11 @@ fn index_file_with(
     if is_indexed(&material, &hash) {
         return Ok(IndexOutcome::Unchanged);
     }
+    if let Some(kind) = known_failure(&material, &hash) {
+        return Ok(IndexOutcome::Skipped(kind));
+    }
     // Slow step, deliberately outside any transaction (see the module docs).
-    let extracted = extract(path, mime);
+    let extracted = extract(path, mime, stamp_before.0);
     // Hashing and extracting are two separate reads of the file. If it was rewritten in
     // between, the hash may not describe the stored text, and a matching hash would then
     // keep that wrong text forever ("unchanged"). So store nothing; the next sync retries.
@@ -118,7 +322,7 @@ pub fn index_html(store: &Store, material_id: &str, html: &str) -> Result<IndexO
         return Ok(IndexOutcome::Unchanged);
     }
     let segments = pagelamp_extract::extract_html(html);
-    save_extraction(store, material_id, &hash, Ok(segments))
+    save_extraction(store, material_id, &hash, Extracted::Done(Ok(segments)))
 }
 
 /// Index plain text (e.g. already-converted content).
@@ -137,7 +341,7 @@ pub fn index_text(store: &Store, material_id: &str, text: &str) -> Result<IndexO
         locator: None,
         text: capped_text(text, MAX_TEXT_BYTES),
     }];
-    save_extraction(store, material_id, &hash, Ok(segments))
+    save_extraction(store, material_id, &hash, Extracted::Done(Ok(segments)))
 }
 
 /// Lower-case hex SHA-256.
@@ -204,6 +408,13 @@ fn is_indexed(material: &Material, hash: &str) -> bool {
     material.text_status == TextStatus::Ok && material.content_hash.as_deref() == Some(hash)
 }
 
+/// The hard worker failure stored for content `hash`, unless it should be tried again
+/// (`needs_retry`: another protocol or app version).
+fn known_failure(material: &Material, hash: &str) -> Option<TextErrorKind> {
+    let kind = material.text_error_kind?;
+    (material.content_hash.as_deref() == Some(hash) && !needs_retry(material)).then_some(kind)
+}
+
 /// Turn an extraction result into the material's new text state (one row of the
 /// `IndexOutcome` table) and store it together with the content `hash`.
 ///
@@ -214,8 +425,25 @@ fn save_extraction(
     store: &Store,
     material_id: &str,
     hash: &str,
-    extracted: std::result::Result<Vec<Segment>, ExtractError>,
+    extracted: Extracted,
 ) -> Result<IndexOutcome> {
+    let extracted = match extracted {
+        Extracted::Done(result) => result,
+        Extracted::Worker(kind) => {
+            let message = worker_failure_message(kind);
+            store.in_transaction(|store| {
+                store.set_text_state(material_id, TextStatus::Error, Some(message), Some(hash))?;
+                store.set_text_error_kind(material_id, kind, &failure_fingerprint())?;
+                store.replace_chunks(material_id, &[])
+            })?;
+            return Ok(match kind {
+                TextErrorKind::SpawnFailed | TextErrorKind::ProtocolMismatch => {
+                    IndexOutcome::Deferred(kind)
+                }
+                _ => IndexOutcome::Failed(message.to_string()),
+            });
+        }
+    };
     match extracted {
         Ok(segments) => {
             let chunks = to_chunks(material_id, &segments);
@@ -386,7 +614,12 @@ mod tests {
         let before = state(&store);
 
         let gone = ExtractError::Io(std::io::Error::other("gone"));
-        let result = save_extraction(&store, MATERIAL, &sha256_hex(b"new"), Err(gone));
+        let result = save_extraction(
+            &store,
+            MATERIAL,
+            &sha256_hex(b"new"),
+            Extracted::Done(Err(gone)),
+        );
 
         assert!(matches!(result, Err(Error::Io(_))), "{result:?}");
         assert_eq!(state(&store), before);
@@ -397,7 +630,12 @@ mod tests {
         let store = demo_store();
         let missing = "folder:demo/course/DEMO101/material/deleted.txt";
 
-        let result = save_extraction(&store, missing, "hash", Ok(one_segment("Demo text")));
+        let result = save_extraction(
+            &store,
+            missing,
+            "hash",
+            Extracted::Done(Ok(one_segment("Demo text"))),
+        );
 
         assert!(matches!(result, Err(Error::NotFound(_))), "{result:?}");
         assert_eq!(store.counts().unwrap().chunks, 0);
@@ -414,9 +652,9 @@ mod tests {
 
         // An editor rewrites the file while it is being extracted: the extractor sees
         // other bytes than the ones that were hashed.
-        let result = index_file_with(&store, MATERIAL, &path, None, |path, mime| {
+        let result = index_file_with(&store, MATERIAL, &path, None, |path, mime, _| {
             std::fs::write(path, "Third draft, longer, about sigmaword.").unwrap();
-            pagelamp_extract::extract_file(path, mime)
+            Extracted::Done(pagelamp_extract::extract_file(path, mime))
         });
 
         assert!(matches!(result, Err(Error::Io(_))), "{result:?}");
@@ -429,18 +667,236 @@ mod tests {
         assert_eq!(state(&store).2, Some(sha256_file(&path).unwrap()));
     }
 
+    /// Text status, error kind and fingerprint of `id`.
+    fn failure(store: &Store, id: &str) -> (TextStatus, Option<TextErrorKind>, Option<String>) {
+        let material = store.get_material(id).unwrap().unwrap();
+        (
+            material.text_status,
+            material.text_error_kind,
+            material.text_error_fingerprint,
+        )
+    }
+
+    /// A second material (a PDF) in the demo course.
+    fn add_material(store: &Store, name: &str) -> String {
+        let id = format!("folder:demo/course/DEMO101/material/{name}");
+        store
+            .upsert_material(&MaterialUpsert {
+                id: id.clone(),
+                course_id: COURSE.to_string(),
+                module_id: None,
+                kind: MaterialKind::File,
+                title: name.to_string(),
+                url: None,
+                local_path: None,
+                mime: None,
+                published_at: None,
+                week_hint: None,
+            })
+            .unwrap();
+        id
+    }
+
+    fn not_again(_: &Path, _: Option<&str>, _: u64) -> Extracted {
+        panic!("the file was extracted again")
+    }
+
+    #[test]
+    fn a_hard_worker_failure_is_not_retried_until_something_changes() {
+        let store = demo_store();
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_notes(&dir, "Demo notes about upsilonword.");
+        let timed_out =
+            |_: &Path, _: Option<&str>, _: u64| Extracted::Worker(TextErrorKind::TimedOut);
+
+        let outcome = index_file_with(&store, MATERIAL, &path, None, timed_out).unwrap();
+        assert_eq!(
+            outcome,
+            IndexOutcome::Failed(worker_failure_message(TextErrorKind::TimedOut).to_string())
+        );
+        assert_eq!(
+            failure(&store, MATERIAL),
+            (
+                TextStatus::Error,
+                Some(TextErrorKind::TimedOut),
+                Some(failure_fingerprint())
+            )
+        );
+        assert_eq!(state(&store).2, Some(sha256_file(&path).unwrap()));
+
+        // Same content, protocol and version: skipped without extracting.
+        let again = index_file_with(&store, MATERIAL, &path, None, not_again).unwrap();
+        assert_eq!(again, IndexOutcome::Skipped(TextErrorKind::TimedOut));
+        assert!(!needs_retry(
+            &store.get_material(MATERIAL).unwrap().unwrap()
+        ));
+
+        // Another app version or worker protocol recorded it: tried again.
+        store
+            .set_text_error_kind(MATERIAL, TextErrorKind::TimedOut, "worker0/0.0.1")
+            .unwrap();
+        assert!(needs_retry(&store.get_material(MATERIAL).unwrap().unwrap()));
+        assert_eq!(
+            index_file(&store, MATERIAL, &path, None).unwrap(),
+            IndexOutcome::Indexed { chunks: 1 }
+        );
+        assert_eq!(failure(&store, MATERIAL), (TextStatus::Ok, None, None));
+
+        // New content after a failure is extracted too.
+        index_file_with(&store, MATERIAL, &path, None, timed_out).unwrap();
+        std::fs::write(&path, "Revised demo notes about phiword.").unwrap();
+        assert_eq!(
+            index_file(&store, MATERIAL, &path, None).unwrap(),
+            IndexOutcome::Indexed { chunks: 1 }
+        );
+    }
+
+    #[test]
+    fn worker_failures_that_are_not_the_files_fault_are_retried() {
+        let store = demo_store();
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_notes(&dir, "Demo notes about chiword.");
+        for kind in [
+            TextErrorKind::SpawnFailed,
+            TextErrorKind::ProtocolMismatch,
+            TextErrorKind::BadOutput,
+        ] {
+            let failed = index_file_with(&store, MATERIAL, &path, None, |_, _, _| {
+                Extracted::Worker(kind)
+            })
+            .unwrap();
+            let expected = match kind {
+                TextErrorKind::BadOutput => {
+                    IndexOutcome::Failed(worker_failure_message(kind).to_string())
+                }
+                _ => IndexOutcome::Deferred(kind),
+            };
+            assert_eq!(failed, expected);
+            assert_eq!(failure(&store, MATERIAL).1, Some(kind));
+            assert!(needs_retry(&store.get_material(MATERIAL).unwrap().unwrap()));
+        }
+        assert_eq!(
+            index_file(&store, MATERIAL, &path, None).unwrap(),
+            IndexOutcome::Indexed { chunks: 1 }
+        );
+        assert_eq!(failure(&store, MATERIAL), (TextStatus::Ok, None, None));
+    }
+
+    #[test]
+    fn a_worker_that_cannot_start_falls_back_for_small_non_pdf_files_only() {
+        let store = demo_store();
+        let dir = tempfile::tempdir().unwrap();
+        let notes = write_notes(&dir, "Demo notes about psiword.");
+        let slides_id = add_material(&store, "slides.pdf");
+        let slides = dir.path().join("slides.pdf");
+        std::fs::write(&slides, b"%PDF-1.4 demo").unwrap();
+        let extractor = Extractor::worker(dir.path().join("no-such-pagelamp"));
+        assert!(extractor.take_warning().is_none());
+
+        // The PDF first: the spawn fails, and a PDF is never parsed in-process.
+        let outcome = index_file_using(&store, &slides_id, &slides, None, &extractor).unwrap();
+        assert_eq!(outcome, IndexOutcome::Deferred(TextErrorKind::SpawnFailed));
+        assert_eq!(
+            failure(&store, &slides_id),
+            (
+                TextStatus::Error,
+                Some(TextErrorKind::SpawnFailed),
+                Some(failure_fingerprint())
+            )
+        );
+        let warning = extractor.take_warning().expect("one warning");
+        assert!(warning.contains("could not start"), "{warning}");
+
+        // A small text file is read in this process; no second warning.
+        assert_eq!(
+            index_file_using(&store, MATERIAL, &notes, None, &extractor).unwrap(),
+            IndexOutcome::Indexed { chunks: 1 }
+        );
+        assert!(extractor.take_warning().is_none());
+        assert!(
+            extractor.clone().take_warning().is_none(),
+            "clones share it"
+        );
+
+        // The next sync tries the PDF again.
+        let next = Extractor::worker(dir.path().join("no-such-pagelamp"));
+        let outcome = index_file_using(&store, &slides_id, &slides, None, &next).unwrap();
+        assert_eq!(outcome, IndexOutcome::Deferred(TextErrorKind::SpawnFailed));
+        assert!(next.take_warning().is_some());
+    }
+
+    #[test]
+    fn a_new_text_state_or_a_moved_file_clears_the_worker_failure() {
+        let store = demo_store();
+        store
+            .set_text_error_kind(MATERIAL, TextErrorKind::CpuLimit, &failure_fingerprint())
+            .unwrap();
+        store
+            .set_text_state(MATERIAL, TextStatus::Error, Some("x"), None)
+            .unwrap();
+        assert_eq!(failure(&store, MATERIAL), (TextStatus::Error, None, None));
+
+        store
+            .set_text_error_kind(MATERIAL, TextErrorKind::CpuLimit, &failure_fingerprint())
+            .unwrap();
+        let mut moved = MaterialUpsert {
+            id: MATERIAL.to_string(),
+            course_id: COURSE.to_string(),
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "notes.txt".to_string(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        };
+        store.upsert_material(&moved).unwrap();
+        assert_eq!(failure(&store, MATERIAL).1, Some(TextErrorKind::CpuLimit));
+        moved.local_path = Some("/demo/courses/DEMO101/notes.txt".to_string());
+        store.upsert_material(&moved).unwrap();
+        assert_eq!(failure(&store, MATERIAL), (TextStatus::Pending, None, None));
+    }
+
+    #[test]
+    fn unreadable_files_are_counted_by_kind() {
+        let store = demo_store();
+        assert!(store.unreadable_file_counts().unwrap().is_empty());
+        let slides = add_material(&store, "slides.pdf");
+        let deck = add_material(&store, "deck.pdf");
+        for (id, kind) in [
+            (MATERIAL, TextErrorKind::MemoryLimit),
+            (slides.as_str(), TextErrorKind::TimedOut),
+            (deck.as_str(), TextErrorKind::MemoryLimit),
+        ] {
+            store
+                .set_text_state(id, TextStatus::Error, Some("x"), Some("hash"))
+                .unwrap();
+            store
+                .set_text_error_kind(id, kind, &failure_fingerprint())
+                .unwrap();
+        }
+        assert_eq!(
+            store.unreadable_file_counts().unwrap(),
+            vec![
+                (TextErrorKind::TimedOut, 1),
+                (TextErrorKind::MemoryLimit, 2)
+            ]
+        );
+    }
+
     #[test]
     fn same_size_rewrite_during_extraction_is_noticed_by_its_mtime() {
         let store = demo_store();
         let dir = tempfile::tempdir().unwrap();
         let path = write_notes(&dir, "Draft about tauword.");
 
-        let result = index_file_with(&store, MATERIAL, &path, None, |path, mime| {
+        let result = index_file_with(&store, MATERIAL, &path, None, |path, mime, _| {
             // Same length, different time: like saving an undo of the same size.
             let file = std::fs::File::options().write(true).open(path).unwrap();
             let earlier = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1);
             file.set_modified(earlier).unwrap();
-            pagelamp_extract::extract_file(path, mime)
+            Extracted::Done(pagelamp_extract::extract_file(path, mime))
         });
 
         assert!(matches!(result, Err(Error::Io(_))), "{result:?}");

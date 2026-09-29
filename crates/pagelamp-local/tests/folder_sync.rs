@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
+use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::*;
 use pagelamp_core::source::{SyncProgress, no_progress};
 use pagelamp_core::store::Store;
@@ -91,9 +92,14 @@ fn syncs_courses_modules_and_materials() {
     demo_tree(temp.path());
     let store = store();
     let events = Mutex::new(Vec::new());
-    let report = sync_folder(&store, SOURCE, temp.path(), None, &|p| {
-        events.lock().unwrap().push(p)
-    })
+    let report = sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &|p| events.lock().unwrap().push(p),
+    )
     .unwrap();
 
     assert_eq!(report.courses, 2);
@@ -187,9 +193,25 @@ fn resync_is_cheap_and_prunes_what_disappeared() {
     let temp = tempfile::tempdir().unwrap();
     demo_tree(temp.path());
     let store = store();
-    sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
 
-    let again = sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    let again = sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     assert_eq!(again.files_indexed, 0);
     assert_eq!(again.files_unchanged, 5);
 
@@ -204,7 +226,15 @@ fn resync_is_cheap_and_prunes_what_disappeared() {
         "DEMO101H1 Intro to Demo Studies/Week 1/notes.md",
         "# Basics\nstomata only",
     );
-    let third = sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    let third = sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     assert_eq!(third.courses, 1);
     assert_eq!(third.files_indexed, 1);
     assert!(!material_titles(&store, DEMO).contains(&"methods.txt".to_string()));
@@ -220,14 +250,30 @@ fn ids_survive_moving_the_root_and_user_settings_survive_resync() {
     let first_root = temp.path().join("Fall");
     demo_tree(&first_root);
     let store = store();
-    sync_folder(&store, SOURCE, &first_root, None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        &first_root,
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     store
         .set_course_policy(DEMO, AiPolicy::LearningAid, None)
         .unwrap();
 
     let moved = temp.path().join("Fall 2026 (moved)");
     fs::rename(&first_root, &moved).unwrap();
-    sync_folder(&store, SOURCE, &moved, None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        &moved,
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     let course = store.get_course(DEMO).unwrap().unwrap();
     assert_eq!(course.ai_policy, AiPolicy::LearningAid);
     assert_eq!(store.list_materials(DEMO).unwrap().len(), 5);
@@ -241,7 +287,15 @@ fn source_term_start_is_the_fallback_and_bad_course_files_only_warn() {
     write(temp.path(), "DEMO303 Seminar/notes.txt", "seminar topics");
     let store = store();
     let default = chrono::NaiveDate::from_ymd_opt(2026, 9, 8);
-    let report = sync_folder(&store, SOURCE, temp.path(), default, &no_progress).unwrap();
+    let report = sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        default,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     assert!(
         report.warnings.iter().any(|w| w.contains("course.json")),
         "{:?}",
@@ -257,12 +311,21 @@ fn missing_root_is_not_found_and_changes_nothing() {
     let temp = tempfile::tempdir().unwrap();
     demo_tree(temp.path());
     let store = store();
-    sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     let err = sync_folder(
         &store,
         SOURCE,
         &temp.path().join("gone"),
         None,
+        &Extractor::default(),
         &no_progress,
     )
     .unwrap_err();
@@ -290,7 +353,15 @@ fn symlinks_are_not_followed() {
     .unwrap();
     std::os::unix::fs::symlink(&outside, root.join("Linked Course")).unwrap();
     let store = store();
-    sync_folder(&store, SOURCE, &root, None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        &root,
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     assert_eq!(store.list_courses(true).unwrap().len(), 1);
     assert!(store.search("diary", None, 10).unwrap().is_empty());
 }
@@ -311,14 +382,30 @@ fn unreadable_subfolders_warn_and_prevent_pruning() {
         "week two notes",
     );
     let store = store();
-    sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     let course_id = "folder:demo/course/DEMO101 Intro";
     assert_eq!(store.list_materials(course_id).unwrap().len(), 2);
 
     let locked = temp.path().join("DEMO101 Intro/Week 2");
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let readable_as_root = fs::read_dir(&locked).is_ok(); // e.g. tests running as root
-    let report = sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+    let report = sync_folder(
+        &store,
+        SOURCE,
+        temp.path(),
+        None,
+        &Extractor::default(),
+        &no_progress,
+    )
+    .unwrap();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
     if !readable_as_root {
         assert!(
@@ -347,7 +434,15 @@ fn published_at_is_the_file_modification_time_not_the_sync_time() {
 
     let store = store();
     for _ in 0..2 {
-        sync_folder(&store, SOURCE, temp.path(), None, &no_progress).unwrap();
+        sync_folder(
+            &store,
+            SOURCE,
+            temp.path(),
+            None,
+            &Extractor::default(),
+            &no_progress,
+        )
+        .unwrap();
         let materials = store
             .list_materials(&format!("{SOURCE}/course/DEMO101 Intro"))
             .unwrap();

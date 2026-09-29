@@ -381,6 +381,8 @@ pub(crate) struct AppState {
     launch: std::sync::Mutex<Option<updates::LaunchClass>>,
     /// Running syncs and downloads (`activity`).
     activity: activity::Registry,
+    /// The `pagelamp` executable that runs extraction workers (`set_extract_worker`).
+    extract_worker: std::sync::RwLock<Option<PathBuf>>,
 }
 
 impl std::fmt::Debug for App {
@@ -427,6 +429,37 @@ impl App {
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+
+    /// Where `pagelamp extract-worker` is (v0.3 M0.5). Syncs then read every file in a
+    /// separate, resource-limited process started from it, so a hostile or broken file costs
+    /// that process, never the app. `None` (the default) reads files in this process. Each
+    /// surface sets it once at start-up: the desktop app its `pagelamp` sidecar, the CLI
+    /// `current_exe()`, the macOS app `Bundle.main.url(forAuxiliaryExecutable:)`. Shared by
+    /// every clone of this `App`.
+    pub fn set_extract_worker(&self, path: Option<PathBuf>) {
+        *self
+            .state
+            .extract_worker
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = path;
+    }
+
+    /// The executable set with `set_extract_worker`.
+    pub fn extract_worker(&self) -> Option<PathBuf> {
+        self.state
+            .extract_worker
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    /// A fresh extractor for one sync (`ingest::Extractor`).
+    pub(crate) fn extractor(&self) -> pagelamp_core::ingest::Extractor {
+        match self.extract_worker() {
+            Some(exe) => pagelamp_core::ingest::Extractor::worker(exe),
+            None => pagelamp_core::ingest::Extractor::in_process(),
+        }
     }
 
     /// `<data_dir>/pagelamp.db`
@@ -872,10 +905,13 @@ impl App {
         diagnostics::last_migration_backup_in(self.data_dir())
     }
 
+    /// Facts for helping a student, including a check of the extraction worker (it is started
+    /// once, which takes a moment).
     pub fn doctor(&self) -> Result<diagnostics::DoctorReport> {
         Ok(diagnostics::doctor_in(
             &self.data_dir,
             self.secrets.as_ref(),
+            self.extract_worker().as_deref(),
         ))
     }
 
@@ -885,6 +921,7 @@ impl App {
         Ok(diagnostics::report_in(
             &self.data_dir,
             self.secrets.as_ref(),
+            self.extract_worker().as_deref(),
         ))
     }
 
@@ -1058,6 +1095,10 @@ struct AppTypes {
     term_source: TermSource,
     mcp_client_config: McpClientConfig,
     doctor_report: diagnostics::DoctorReport,
+    extract_worker_check: diagnostics::ExtractWorkerCheck,
+    extract_worker_status: diagnostics::ExtractWorkerStatus,
+    unreadable_files: diagnostics::UnreadableFiles,
+    text_error_kind: pagelamp_core::model::TextErrorKind,
     crash_report: diagnostics::CrashReport,
     process_kind: diagnostics::ProcessKind,
     course_sync_summary: CourseSyncSummary,

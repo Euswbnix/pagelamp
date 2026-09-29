@@ -1098,3 +1098,91 @@ async fn canvas_source_is_validated_before_its_token_is_stored() {
     assert_eq!(updated.config["account_name"], json!("Other Demo Student"));
     assert_eq!(updated.config["base_url"], json!(canvas.uri()));
 }
+
+// ----- the extraction worker (v0.3 M0.5) ---------------------------------------------------------
+
+#[test]
+fn the_extract_worker_is_shared_by_clones_and_checked_by_doctor() {
+    use pagelamp_app::diagnostics::ExtractWorkerStatus;
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    assert_eq!(app.extract_worker(), None);
+    let doctor = app.doctor().unwrap();
+    assert_eq!(doctor.extract_worker.status, ExtractWorkerStatus::NotSet);
+    assert_eq!(doctor.extract_worker.spawn_ms, None);
+    assert!(doctor.unreadable_files.is_empty());
+
+    let missing = temp.path().join("no-such-pagelamp");
+    app.clone().set_extract_worker(Some(missing.clone()));
+    assert_eq!(app.extract_worker(), Some(missing));
+    let doctor = app.doctor().unwrap();
+    assert_eq!(
+        doctor.extract_worker.status,
+        ExtractWorkerStatus::SpawnFailed
+    );
+    let report = app.diagnostic_report().unwrap();
+    assert!(
+        report.contains("- Extraction worker: could not start (spawn_failed"),
+        "{report}"
+    );
+    assert!(!report.contains("Unreadable files"), "{report}");
+
+    app.set_extract_worker(None);
+    assert_eq!(app.extract_worker(), None);
+}
+
+#[tokio::test]
+async fn a_blocked_extract_worker_warns_once_and_reads_only_small_non_pdf_files() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    app.set_extract_worker(Some(temp.path().join("no-such-pagelamp")));
+    let courses = temp.path().join("Courses");
+    write(
+        &courses,
+        "DEMO101 Intro/notes.md",
+        "# Basics\nphotosynthesis basics",
+    );
+    write(&courses, "DEMO101 Intro/slides.pdf", "%PDF-1.4 demo");
+    write(&courses, "DEMO101 Intro/deck.pdf", "%PDF-1.4 demo deck");
+    app.add_folder_source(&courses, None, None).unwrap();
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = events.clone();
+    let summary = app
+        .sync_all(SyncRequest::default(), move |e| {
+            sink.lock().unwrap().push(e)
+        })
+        .await
+        .unwrap();
+    assert!(summary.ok, "{summary:?}");
+    assert_eq!(summary.results[0].files_indexed, 1);
+    assert_eq!(app.search("photosynthesis", None, 5).unwrap().len(), 1);
+    let warnings: Vec<String> = events
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|e| match e {
+            SyncEvent::Warning { message, .. } => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    let blocked: Vec<&String> = warnings
+        .iter()
+        .filter(|w| w.contains("text reader could not start"))
+        .collect();
+    assert_eq!(blocked.len(), 1, "{warnings:?}");
+
+    let doctor = app.doctor().unwrap();
+    assert_eq!(
+        doctor.unreadable_files,
+        vec![pagelamp_app::diagnostics::UnreadableFiles {
+            kind: TextErrorKind::SpawnFailed,
+            count: 2
+        }]
+    );
+    let report = app.diagnostic_report().unwrap();
+    assert!(
+        report.contains("- Unreadable files: 2 spawn_failed"),
+        "{report}"
+    );
+}

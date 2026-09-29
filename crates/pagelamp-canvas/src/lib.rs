@@ -86,6 +86,8 @@ pub struct SyncOptions {
     pub files_dir: PathBuf,
     /// Only sync these course ids/codes (empty = all active courses).
     pub only_courses: Vec<String>,
+    /// How downloaded files are read (`ingest::Extractor`; one per sync).
+    pub extractor: pagelamp_core::ingest::Extractor,
 }
 
 #[derive(Clone, Debug, Default)]

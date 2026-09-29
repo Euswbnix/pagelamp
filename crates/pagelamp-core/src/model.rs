@@ -381,6 +381,67 @@ impl TextStatus {
     }
 }
 
+/// Why the extraction worker (`pagelamp extract-worker`, v0.3 M0.5) could not read a file:
+/// `materials.text_error_kind`, next to `text_status = error`. Same names as
+/// `pagelamp_extract::worker::WorkerFailure`.
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum TextErrorKind {
+    /// Still running at the wall-clock limit.
+    TimedOut,
+    /// Used up its CPU-time budget.
+    CpuLimit,
+    /// Went past its memory cap.
+    MemoryLimit,
+    /// Died without an answer (a signal, an abort).
+    Crashed,
+    /// Answered something unreadable.
+    BadOutput,
+    /// Could not be started (e.g. blocked by antivirus).
+    SpawnFailed,
+    /// A worker binary from another version answered.
+    ProtocolMismatch,
+}
+
+impl TextErrorKind {
+    pub const ALL: [TextErrorKind; 7] = [
+        TextErrorKind::TimedOut,
+        TextErrorKind::CpuLimit,
+        TextErrorKind::MemoryLimit,
+        TextErrorKind::Crashed,
+        TextErrorKind::BadOutput,
+        TextErrorKind::SpawnFailed,
+        TextErrorKind::ProtocolMismatch,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TextErrorKind::TimedOut => "timed_out",
+            TextErrorKind::CpuLimit => "cpu_limit",
+            TextErrorKind::MemoryLimit => "memory_limit",
+            TextErrorKind::Crashed => "crashed",
+            TextErrorKind::BadOutput => "bad_output",
+            TextErrorKind::SpawnFailed => "spawn_failed",
+            TextErrorKind::ProtocolMismatch => "protocol_mismatch",
+        }
+    }
+
+    /// A limit or crash caused by the file itself: not tried again while the file's content,
+    /// the worker protocol and the app version stay the same (`materials.text_error_fingerprint`).
+    /// The other kinds are about the worker, not the file, and are retried on the next sync.
+    pub fn is_hard(self) -> bool {
+        matches!(
+            self,
+            TextErrorKind::TimedOut
+                | TextErrorKind::CpuLimit
+                | TextErrorKind::MemoryLimit
+                | TextErrorKind::Crashed
+        )
+    }
+}
+
 /// Why a file that is recorded `NotDownloaded` cannot be downloaded by asking again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -437,6 +498,10 @@ pub struct Material {
     pub content_hash: Option<String>,
     pub text_status: TextStatus,
     pub text_error: Option<String>,
+    /// Why the extraction worker failed on this content (with `text_status = error`).
+    pub text_error_kind: Option<TextErrorKind>,
+    /// The worker protocol and app version that failed (`ingest::failure_fingerprint`).
+    pub text_error_fingerprint: Option<String>,
     /// Set (by the Canvas sync) when a `NotDownloaded` file cannot be downloaded on request.
     pub download_blocked: Option<DownloadBlock>,
     pub updated_at: Timestamp,

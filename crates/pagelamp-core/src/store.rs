@@ -253,7 +253,8 @@ const TERM_DATA_COLUMNS: &str = "lms_term_name, lms_term_start, lms_term_end, \
      lms_access_restricted, keep_current_until, removal_snoozed_until";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
-     published_at, week_hint, content_hash, text_status, text_error, download_blocked, updated_at";
+     published_at, week_hint, content_hash, text_status, text_error, text_error_kind, \
+     text_error_fingerprint, download_blocked, updated_at";
 const CHUNK_COLUMNS: &str = "material_id, ord, locator, text";
 const EVENT_COLUMNS: &str = "id, source_id, course_id, kind, title, starts_at, ends_at, due_at, url, \
                              updated_at, course_hint";
@@ -974,9 +975,9 @@ impl Store {
     // ----- materials & chunks ------------------------------------------------------------
 
     /// Insert (text_status = pending) or update the synced columns of a material.
-    /// On update, content_hash/text_status/text_error are preserved — EXCEPT when
+    /// On update, content_hash/text_status/text_error(_kind) are preserved — EXCEPT when
     /// `local_path` changed, in which case text_status is reset to pending (and the now
-    /// stale text_error is cleared). Sets updated_at = now.
+    /// stale text_error, text_error_kind and fingerprint are cleared). Sets updated_at = now.
     pub fn upsert_material(&self, material: &MaterialUpsert) -> Result<()> {
         // In the DO UPDATE clause `materials.x` is the stored (old) value and `excluded.x`
         // the new one; `IS` compares NULLs as equal.
@@ -997,6 +998,10 @@ impl Store {
                                     THEN materials.text_status ELSE excluded.text_status END,
                  text_error = CASE WHEN materials.local_path IS excluded.local_path
                                    THEN materials.text_error ELSE NULL END,
+                 text_error_kind = CASE WHEN materials.local_path IS excluded.local_path
+                                        THEN materials.text_error_kind ELSE NULL END,
+                 text_error_fingerprint = CASE WHEN materials.local_path IS excluded.local_path
+                                          THEN materials.text_error_fingerprint ELSE NULL END,
                  local_path = excluded.local_path,
                  updated_at = excluded.updated_at",
             params![
@@ -1051,6 +1056,7 @@ impl Store {
     }
 
     /// Update index state of one material. `content_hash = None` leaves the stored hash as is.
+    /// Clears the worker failure (`set_text_error_kind` records one after this call).
     /// Errors: `NotFound` if there is no such material.
     pub fn set_text_state(
         &self,
@@ -1061,11 +1067,45 @@ impl Store {
     ) -> Result<()> {
         let changed = self.conn.execute(
             "UPDATE materials
-             SET text_status = ?2, text_error = ?3, content_hash = COALESCE(?4, content_hash)
+             SET text_status = ?2, text_error = ?3, content_hash = COALESCE(?4, content_hash),
+                 text_error_kind = NULL, text_error_fingerprint = NULL
              WHERE id = ?1",
             params![material_id, status.as_str(), error, content_hash],
         )?;
         expect_changed(changed, "material", material_id)
+    }
+
+    /// Record why the extraction worker failed on the material's current content, and the
+    /// worker protocol and app version that failed (`ingest::failure_fingerprint`).
+    /// Errors: `NotFound` if there is no such material.
+    pub fn set_text_error_kind(
+        &self,
+        material_id: &str,
+        kind: TextErrorKind,
+        fingerprint: &str,
+    ) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE materials SET text_error_kind = ?2, text_error_fingerprint = ?3 WHERE id = ?1",
+            params![material_id, kind.as_str(), fingerprint],
+        )?;
+        expect_changed(changed, "material", material_id)
+    }
+
+    /// How many materials the extraction worker could not read, per failure kind (kinds
+    /// without files are left out), in `TextErrorKind` order.
+    pub fn unreadable_file_counts(&self) -> Result<Vec<(TextErrorKind, u32)>> {
+        let mut statement = self.conn.prepare(
+            "SELECT text_error_kind, COUNT(*) FROM materials
+             WHERE text_status = 'error' AND text_error_kind IS NOT NULL
+             GROUP BY text_error_kind",
+        )?;
+        let mut counts = statement
+            .query_map([], |row| {
+                Ok((get_value(row, "text_error_kind")?, row.get::<_, u32>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<(TextErrorKind, u32)>>>()?;
+        counts.sort();
+        Ok(counts)
     }
 
     /// Record why a file cannot be downloaded on request (`None` clears it).
@@ -1904,6 +1944,8 @@ fn material_from_row(row: &Row<'_>) -> rusqlite::Result<Material> {
         content_hash: row.get("content_hash")?,
         text_status: get_value(row, "text_status")?,
         text_error: row.get("text_error")?,
+        text_error_kind: get_opt_value(row, "text_error_kind")?,
+        text_error_fingerprint: row.get("text_error_fingerprint")?,
         download_blocked: get_opt_value(row, "download_blocked")?,
         updated_at: get_value(row, "updated_at")?,
     })
@@ -2064,6 +2106,12 @@ impl TextValue for TextStatus {
             TextStatus::Error,
         ];
         variant_named(text, &all, TextStatus::as_str)
+    }
+}
+
+impl TextValue for TextErrorKind {
+    fn parse_text(text: &str) -> Option<Self> {
+        variant_named(text, &TextErrorKind::ALL, TextErrorKind::as_str)
     }
 }
 
@@ -2255,6 +2303,7 @@ mod tests {
             &[DownloadBlock::Locked, DownloadBlock::TooLarge],
             DownloadBlock::as_str,
         );
+        round_trip(&TextErrorKind::ALL, TextErrorKind::as_str);
     }
 
     #[test]
@@ -2266,6 +2315,9 @@ mod tests {
         assert_eq!(json, TextStatus::NotDownloaded.as_str());
         let json = serde_json::to_value(DownloadBlock::TooLarge).unwrap();
         assert_eq!(json, DownloadBlock::TooLarge.as_str());
+        for kind in TextErrorKind::ALL {
+            assert_eq!(serde_json::to_value(kind).unwrap(), kind.as_str());
+        }
     }
 
     #[test]

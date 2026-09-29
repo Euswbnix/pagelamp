@@ -30,13 +30,16 @@ mod limits_windows;
 mod parent;
 mod protocol;
 
+use std::path::Path;
 use std::time::Duration;
+
+use crate::format::FileFormat;
 
 pub use alloc::CountingAllocator;
 pub use child::serve_stdio;
 #[doc(hidden)]
 pub use parent::run as extract_in_worker_with;
-pub use parent::{WorkerFailure, extract_in_worker};
+pub use parent::{WorkerFailure, check, extract_in_worker};
 
 /// Version of the request/response protocol. The worker refuses other versions
 /// (`WorkerFailure::ProtocolMismatch`), which happens when a stale binary is found.
@@ -73,6 +76,15 @@ pub fn wall_timeout(size: u64) -> Duration {
     let secs =
         limits::WALL_BASE_SECONDS.saturating_add(mb.saturating_mul(limits::WALL_SECONDS_PER_MB));
     Duration::from_secs(secs.min(limits::WALL_MAX_SECONDS))
+}
+
+/// Whether a file may be extracted in the app's own process when the worker can't be started
+/// (`WorkerFailure::SpawnFailed` / `ProtocolMismatch`, usually antivirus or Smart App Control):
+/// only small files of a supported type other than PDF, the format whose parser is most
+/// exposed to hostile input.
+pub fn in_process_fallback_allowed(path: &Path, mime: Option<&str>, size: u64) -> bool {
+    size <= limits::IN_PROCESS_FALLBACK_MAX_BYTES
+        && FileFormat::detect(path, mime).is_some_and(|format| format != FileFormat::Pdf)
 }
 
 /// What the parent asks the worker to enforce (the wall clock stays with the parent).
@@ -122,5 +134,41 @@ mod tests {
         assert_eq!(wall_timeout(1), Duration::from_secs(122));
         assert_eq!(wall_timeout(10 * 1024 * 1024), Duration::from_secs(140));
         assert_eq!(wall_timeout(u64::MAX), Duration::from_secs(300));
+    }
+
+    #[test]
+    fn only_small_non_pdf_files_fall_back_in_process() {
+        let max = limits::IN_PROCESS_FALLBACK_MAX_BYTES;
+        assert!(in_process_fallback_allowed(
+            Path::new("notes.md"),
+            None,
+            max
+        ));
+        assert!(in_process_fallback_allowed(
+            Path::new("deck.pptx"),
+            None,
+            10
+        ));
+        assert!(!in_process_fallback_allowed(
+            Path::new("notes.md"),
+            None,
+            max + 1
+        ));
+        assert!(!in_process_fallback_allowed(
+            Path::new("slides.pdf"),
+            None,
+            10
+        ));
+        // The MIME type wins over a misleading extension.
+        assert!(!in_process_fallback_allowed(
+            Path::new("download"),
+            Some("application/pdf"),
+            10
+        ));
+        assert!(!in_process_fallback_allowed(
+            Path::new("clip.mp4"),
+            None,
+            10
+        ));
     }
 }

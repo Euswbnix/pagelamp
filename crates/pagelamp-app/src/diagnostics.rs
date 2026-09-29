@@ -15,7 +15,8 @@ use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics as core_diag;
 use pagelamp_core::model::{
-    Course, MigrationBackupOutcome, MigrationBackupRecord, SourceErrorKind, SourceKind, Timestamp,
+    Course, MigrationBackupOutcome, MigrationBackupRecord, SourceErrorKind, SourceKind,
+    TextErrorKind, Timestamp,
 };
 use pagelamp_core::paths;
 use pagelamp_core::secrets::{KeychainSecrets, SecretBackend};
@@ -54,6 +55,39 @@ pub struct McpClientPresence {
     pub codex: bool,
 }
 
+/// Whether the extraction worker (`pagelamp extract-worker`, v0.3 M0.5) works.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtractWorkerStatus {
+    /// It started and answered.
+    Ok,
+    /// This surface set no worker (`App::set_extract_worker`, or `doctor` ran without an
+    /// `App`): files are read in the app's own process.
+    NotSet,
+    /// It could not be started: missing, or blocked by antivirus / Smart App Control. Syncs
+    /// then read only small non-PDF files and retry the others on the next sync.
+    SpawnFailed,
+    /// A worker of another PageLamp version answered (a broken install; reinstalling fixes it).
+    ProtocolMismatch,
+    /// It started but did not answer properly.
+    Failed,
+}
+
+/// `doctor`'s check of the extraction worker: it is started once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ExtractWorkerCheck {
+    pub status: ExtractWorkerStatus,
+    /// How long starting it and getting its answer took (`ok` only).
+    pub spawn_ms: Option<u32>,
+}
+
+/// How many files the extraction worker could not read for one reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct UnreadableFiles {
+    pub kind: TextErrorKind,
+    pub count: u32,
+}
+
 /// `pagelamp doctor`: the facts a maintainer needs to help, and nothing personal.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DoctorReport {
@@ -75,6 +109,10 @@ pub struct DoctorReport {
     pub events: u32,
     pub mcp_clients: McpClientPresence,
     pub last_crash: Option<CrashReport>,
+    pub extract_worker: ExtractWorkerCheck,
+    /// Files the extraction worker could not read, per reason (reasons without files left
+    /// out; empty when the database can't be read).
+    pub unreadable_files: Vec<UnreadableFiles>,
 }
 
 fn data_dir() -> Result<PathBuf> {
@@ -101,14 +139,15 @@ pub fn clear_last_crash() -> Result<()> {
     Ok(core_diag::clear_last_crash(&data_dir()?)?)
 }
 
+/// Without an `App` there is no extraction worker to check (`ExtractWorkerStatus::NotSet`).
 pub fn doctor() -> Result<DoctorReport> {
-    Ok(doctor_in(&data_dir()?, &KeychainSecrets))
+    Ok(doctor_in(&data_dir()?, &KeychainSecrets, None))
 }
 
 /// Markdown for an issue: doctor + last crash + the last ~200 log lines, redacted and with
 /// course codes/names pseudonymised.
 pub fn diagnostic_report() -> Result<String> {
-    Ok(report_in(&data_dir()?, &KeychainSecrets))
+    Ok(report_in(&data_dir()?, &KeychainSecrets, None))
 }
 
 /// One ERROR line from the desktop UI (message + optional stack, capped and redacted).
@@ -134,7 +173,12 @@ pub(crate) fn logs_dir_in(data_dir: &Path) -> Result<PathBuf> {
     Ok(dir)
 }
 
-pub(crate) fn doctor_in(data_dir: &Path, secrets: &dyn SecretBackend) -> DoctorReport {
+/// `worker`: the extraction worker to check (`App::extract_worker`).
+pub(crate) fn doctor_in(
+    data_dir: &Path,
+    secrets: &dyn SecretBackend,
+    worker: Option<&Path>,
+) -> DoctorReport {
     let keychain = secrets.check();
     let mut report = DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -153,6 +197,8 @@ pub(crate) fn doctor_in(data_dir: &Path, secrets: &dyn SecretBackend) -> DoctorR
         events: 0,
         mcp_clients: mcp_client_presence(),
         last_crash: core_diag::last_crash(data_dir).ok().flatten(),
+        extract_worker: check_extract_worker(worker),
+        unreadable_files: Vec::new(),
     };
     let db = paths::db_path_in(data_dir);
     let read = Store::open_read_only(&db).and_then(|store| {
@@ -160,10 +206,15 @@ pub(crate) fn doctor_in(data_dir: &Path, secrets: &dyn SecretBackend) -> DoctorR
             store.schema_version()?,
             store.counts()?,
             store.list_sources()?,
+            store.unreadable_file_counts()?,
         ))
     });
     match read {
-        Ok((version, counts, sources)) => {
+        Ok((version, counts, sources, unreadable)) => {
+            report.unreadable_files = unreadable
+                .into_iter()
+                .map(|(kind, count)| UnreadableFiles { kind, count })
+                .collect();
             report.schema_version = Some(version);
             report.courses = counts.courses;
             report.hidden_courses = counts.hidden_courses;
@@ -182,6 +233,54 @@ pub(crate) fn doctor_in(data_dir: &Path, secrets: &dyn SecretBackend) -> DoctorR
         Err(err) => report.database_error = Some(core_diag::redact(&err.to_string())),
     }
     report
+}
+
+/// Start the extraction worker once (`pagelamp_extract::worker::check`).
+fn check_extract_worker(worker: Option<&Path>) -> ExtractWorkerCheck {
+    use pagelamp_extract::worker::{self, WorkerFailure};
+    let Some(exe) = worker else {
+        return ExtractWorkerCheck {
+            status: ExtractWorkerStatus::NotSet,
+            spawn_ms: None,
+        };
+    };
+    let (status, spawn_ms) = match worker::check(exe) {
+        Ok(took) => (
+            ExtractWorkerStatus::Ok,
+            Some(u32::try_from(took.as_millis()).unwrap_or(u32::MAX)),
+        ),
+        Err(WorkerFailure::SpawnFailed) => (ExtractWorkerStatus::SpawnFailed, None),
+        Err(WorkerFailure::ProtocolMismatch) => (ExtractWorkerStatus::ProtocolMismatch, None),
+        Err(_) => (ExtractWorkerStatus::Failed, None),
+    };
+    ExtractWorkerCheck { status, spawn_ms }
+}
+
+/// "ok (14 ms)", "could not start (spawn_failed; …)": the worker check in one line.
+pub fn describe_worker_check(check: &ExtractWorkerCheck) -> String {
+    match check.status {
+        ExtractWorkerStatus::Ok => match check.spawn_ms {
+            Some(ms) => format!("ok ({ms} ms)"),
+            None => "ok".to_string(),
+        },
+        ExtractWorkerStatus::NotSet => "not set (files are read in the app's process)".to_string(),
+        ExtractWorkerStatus::SpawnFailed => {
+            "could not start (spawn_failed; security software may block it)".to_string()
+        }
+        ExtractWorkerStatus::ProtocolMismatch => {
+            "another version answered (protocol_mismatch; reinstall)".to_string()
+        }
+        ExtractWorkerStatus::Failed => "started but did not answer properly (failed)".to_string(),
+    }
+}
+
+/// "2 timed_out, 1 memory_limit" (codes only).
+pub fn describe_unreadable(files: &[UnreadableFiles]) -> String {
+    let counts: Vec<String> = files
+        .iter()
+        .map(|files| format!("{} {}", files.count, files.kind.as_str()))
+        .collect();
+    counts.join(", ")
 }
 
 /// The last migration's backup record (`Store::last_migration_backup`), if the database can
@@ -208,8 +307,12 @@ pub fn describe_update(record: &MigrationBackupRecord) -> String {
     )
 }
 
-pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String {
-    let doctor = doctor_in(data_dir, secrets);
+pub(crate) fn report_in(
+    data_dir: &Path,
+    secrets: &dyn SecretBackend,
+    worker: Option<&Path>,
+) -> String {
+    let doctor = doctor_in(data_dir, secrets, worker);
     let names = course_names(data_dir);
     let yes = |b: bool| if b { "yes" } else { "no" };
     let mut out = String::new();
@@ -252,6 +355,16 @@ pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String 
         "- Courses: {} ({} hidden) · materials: {} · events: {}\n",
         doctor.courses, doctor.hidden_courses, doctor.materials, doctor.events
     ));
+    out.push_str(&format!(
+        "- Extraction worker: {}\n",
+        describe_worker_check(&doctor.extract_worker)
+    ));
+    if !doctor.unreadable_files.is_empty() {
+        out.push_str(&format!(
+            "- Unreadable files: {}\n",
+            describe_unreadable(&doctor.unreadable_files)
+        ));
+    }
     out.push_str(&format!(
         "- AI apps configured: Claude Desktop {} · Claude Code {} · Codex {}\n",
         yes(doctor.mcp_clients.claude_desktop),
@@ -631,7 +744,7 @@ mod tests {
     fn doctor_reports_facts_but_no_urls_ids_or_labels() {
         let temp = tempfile::tempdir().unwrap();
         seeded(temp.path());
-        let doctor = doctor_in(temp.path(), &MemorySecrets::new());
+        let doctor = doctor_in(temp.path(), &MemorySecrets::new(), None);
         assert_eq!(
             doctor.schema_version,
             Some(pagelamp_core::store::SCHEMA_VERSION)
@@ -657,7 +770,7 @@ mod tests {
 
         // Without a database it still answers, and says why.
         let empty = tempfile::tempdir().unwrap();
-        let doctor = doctor_in(empty.path(), &MemorySecrets::new());
+        let doctor = doctor_in(empty.path(), &MemorySecrets::new(), None);
         assert!(doctor.database_error.is_some() && doctor.schema_version.is_none());
     }
 
@@ -675,7 +788,7 @@ mod tests {
              2026-09-26T10:00:03Z pid=1 INFO pagelamp: feed https://calendar.example.edu/feeds/calendars/user_T0K3N.ics\n",
         )
         .unwrap();
-        let report = report_in(temp.path(), &MemorySecrets::new());
+        let report = report_in(temp.path(), &MemorySecrets::new(), None);
         for secret in [
             "S3CR3T",
             "AbCdEfGh",
@@ -705,7 +818,7 @@ mod tests {
         plain.pragma_update(None, "user_version", 2).unwrap();
         drop(plain);
         drop(Store::open(&db).unwrap()); // migrates, with a backup
-        let report = report_in(temp.path(), &MemorySecrets::new());
+        let report = report_in(temp.path(), &MemorySecrets::new(), None);
         let line = report
             .lines()
             .find(|l| l.starts_with("- Last database update:"))
@@ -825,7 +938,7 @@ mod tests {
              2026-09-26T10:00:02Z pid=1 WARN pagelamp: Canvas answered HTTP 404 at 12:00 UTC\n",
         )
         .unwrap();
-        let report = report_in(temp.path(), &MemorySecrets::new());
+        let report = report_in(temp.path(), &MemorySecrets::new(), None);
         for name in ["Intro to Demo Studies", "intro TO demo", "XYZ 204H1", "XYZ"] {
             assert!(!report.contains(name), "{name} leaked:\n{report}");
         }

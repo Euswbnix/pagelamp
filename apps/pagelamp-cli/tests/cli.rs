@@ -419,6 +419,11 @@ fn doctor_report_and_log_files() {
     assert!(doctor.contains("Courses: 2"), "{doctor}");
     let doctor_json = json_out(&pagelamp(&home, &["--json", "doctor"]));
     assert_eq!(doctor_json["courses"], 2);
+    // The CLI is its own extraction worker, and the sync above read the files through it.
+    assert!(doctor.contains("Extraction worker: ok ("), "{doctor}");
+    assert_eq!(doctor_json["extract_worker"]["status"], "ok");
+    assert!(doctor_json["extract_worker"]["spawn_ms"].is_u64());
+    assert_eq!(doctor_json["unreadable_files"], serde_json::json!([]));
 
     // The app log file exists, has the sync line, and no course names at info level.
     let logs = home.join("logs");
@@ -446,6 +451,7 @@ fn doctor_report_and_log_files() {
         "{report}"
     );
     assert!(report.contains("- folder: ok"), "{report}");
+    assert!(report.contains("- Extraction worker: ok ("), "{report}");
     assert!(
         !report.contains("DEMO101") && !report.contains("Intro to Demo Studies"),
         "{report}"

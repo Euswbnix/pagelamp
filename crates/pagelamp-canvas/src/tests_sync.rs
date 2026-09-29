@@ -84,6 +84,7 @@ impl Fixture {
             max_file_bytes: 1024,
             files_dir: self.files.clone(),
             only_courses: Vec::new(),
+            extractor: Default::default(),
         }
     }
 
@@ -666,6 +667,7 @@ fn sync_future_is_send() {
         max_file_bytes: 1,
         files_dir: PathBuf::from("/demo"),
         only_courses: Vec::new(),
+        extractor: Default::default(),
     };
     assert_send(&crate::sync(
         Path::new("/demo/db"),
@@ -1175,6 +1177,48 @@ async fn m_an_interrupted_download_is_retried_next_time() {
     let revised = f.store().search("revised", None, 5).unwrap();
     assert_eq!(revised.len(), 1, "{revised:?}");
     assert_eq!(f.store().search("relocated", None, 5).unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn o_a_cached_copy_the_text_reader_could_not_read_is_read_again_without_downloading() {
+    use pagelamp_core::ingest::failure_fingerprint;
+    let f = Fixture::new().await;
+    f.standard().await;
+    f.downloads().await; // each file may be downloaded once (`expect(1)`, checked on drop)
+    f.sync(&f.options(true)).await.unwrap();
+    let materials = f.store().list_materials(&course101(&f)).unwrap();
+    let slides = material(&materials, "/file/501").id.clone();
+    let notes = material(&materials, "/file/502").id.clone();
+    // Last time the worker couldn't start for the slides, and the notes hit a limit.
+    let store = f.store();
+    for (id, kind) in [
+        (&slides, TextErrorKind::SpawnFailed),
+        (&notes, TextErrorKind::TimedOut),
+    ] {
+        store
+            .set_text_state(id, TextStatus::Error, Some("demo"), None)
+            .unwrap();
+        store.replace_chunks(id, &[]).unwrap();
+        store
+            .set_text_error_kind(id, kind, &failure_fingerprint())
+            .unwrap();
+    }
+
+    let report = f.sync(&f.options(true)).await.unwrap();
+    assert_eq!(report.files_downloaded, 0);
+    let store = f.store();
+    assert_eq!(store.search("chlorophyll", None, 5).unwrap().len(), 1);
+    assert_eq!(store.search("stomata", None, 5).unwrap().len(), 0);
+    let notes_row = store.get_material(&notes).unwrap().unwrap();
+    assert_eq!(notes_row.text_error_kind, Some(TextErrorKind::TimedOut));
+
+    // Recorded by another app version: read again too.
+    store
+        .set_text_error_kind(&notes, TextErrorKind::TimedOut, "worker0/0.0.1")
+        .unwrap();
+    let report = f.sync(&f.options(true)).await.unwrap();
+    assert_eq!(report.files_downloaded, 0);
+    assert_eq!(f.store().search("stomata", None, 5).unwrap().len(), 1);
 }
 
 #[tokio::test]

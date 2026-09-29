@@ -334,7 +334,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Command::ExtractWorker { .. } => anyhow::bail!("the extraction worker runs on its own"),
         Command::Doctor => {
             // Works even when the database can't be opened.
-            let (doctor, last_update) = match App::open() {
+            let (doctor, last_update) = match open_app() {
                 Ok(app) => (app.doctor()?, app.last_migration_backup()),
                 Err(_) => (diagnostics::doctor()?, None),
             };
@@ -351,7 +351,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Report { out } => {
-            let report = match App::open() {
+            let report = match open_app() {
                 Ok(app) => app.diagnostic_report()?,
                 Err(_) => diagnostics::diagnostic_report()?,
             };
@@ -372,7 +372,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::McpConfig { client } => {
-            let app = App::open()?;
+            let app = open_app()?;
             let binary = std::env::current_exe()?;
             let binary = std::fs::canonicalize(&binary).unwrap_or(binary);
             let configs: Vec<McpClientConfig> = app
@@ -391,7 +391,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Canvas(CanvasCommand::Add { base_url }) => {
-            let app = App::open()?;
+            let app = open_app()?;
             eprintln!("{}\n", text::canvas_personal_use());
             first_add_disclosure(&app)?;
             eprintln!("{}", text::CANVAS_TOKEN_HOWTO);
@@ -412,20 +412,20 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             term_start,
             label,
         }) => {
-            let app = App::open()?;
+            let app = open_app()?;
             first_add_disclosure(&app)?;
             let source = app.add_folder_source(&path, term_start, label.as_deref())?;
             print_added(&source, json)
         }
         Command::Ical(IcalCommand::Add { label }) => {
-            let app = App::open()?;
+            let app = open_app()?;
             first_add_disclosure(&app)?;
             let url = read_secret("Calendar feed URL: ")?;
             let source = app.add_ical_source(&url, label.as_deref()).await?;
             print_added(&source, json)
         }
         Command::Sources { command } => {
-            let app = App::open()?;
+            let app = open_app()?;
             match command.unwrap_or(SourcesCommand::List) {
                 SourcesCommand::List => {
                     let sources = app.list_sources()?;
@@ -468,7 +468,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             download_files,
             max_file_mb,
         } => {
-            let app = App::open()?;
+            let app = open_app()?;
             if download_files {
                 eprintln!("{}", text::CANVAS_DOWNLOAD_NOTICE);
             }
@@ -496,7 +496,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             }
         }
         Command::Status => {
-            let app = App::open()?;
+            let app = open_app()?;
             let status = app.status()?;
             if json {
                 return print_json(&status);
@@ -524,7 +524,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Courses => {
-            let app = App::open()?;
+            let app = open_app()?;
             let courses = app.list_courses()?;
             if json {
                 return print_json(&courses);
@@ -567,7 +567,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             Ok(())
         }
         Command::Course(command) => {
-            let app = App::open()?;
+            let app = open_app()?;
             match command {
                 CourseCommand::Policy {
                     course,
@@ -599,7 +599,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             course,
             limit,
         } => {
-            let app = App::open()?;
+            let app = open_app()?;
             let hits = app.search(&query, course.as_deref(), limit)?;
             if json {
                 return print_json(&hits);
@@ -746,6 +746,13 @@ fn finish_sync(results: &[SourceSyncResult], json: bool, verbose: bool) -> anyho
     Ok(())
 }
 
+/// The app, with this executable as its extraction worker (`pagelamp extract-worker`).
+fn open_app() -> pagelamp_app::Result<App> {
+    let app = App::open()?;
+    app.set_extract_worker(std::env::current_exe().ok());
+    Ok(app)
+}
+
 fn print_doctor(doctor: &diagnostics::DoctorReport) {
     let yes = |b: bool| if b { "yes" } else { "no" };
     println!(
@@ -801,6 +808,16 @@ fn print_doctor(doctor: &diagnostics::DoctorReport) {
         yes(doctor.mcp_clients.claude_code),
         yes(doctor.mcp_clients.codex)
     );
+    println!(
+        "Extraction worker: {}",
+        diagnostics::describe_worker_check(&doctor.extract_worker)
+    );
+    if !doctor.unreadable_files.is_empty() {
+        println!(
+            "Unreadable files: {}",
+            diagnostics::describe_unreadable(&doctor.unreadable_files)
+        );
+    }
     if let Some(crash) = &doctor.last_crash {
         println!(
             "Last crash: {} ({}); run `{} report` to include it in an issue",

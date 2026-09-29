@@ -148,13 +148,21 @@ fn spawn_cost_is_measured() {
         .collect();
     times.sort();
     let median = times[times.len() / 2];
-    println!(
+    let line = format!(
         "extract-worker spawn cost on {}: median {} ms, min {} ms, max {} ms",
         std::env::consts::OS,
         median.as_millis(),
         times[0].as_millis(),
         times[times.len() - 1].as_millis()
     );
+    // Written to the real stdout, past the test harness's capture, so every CI log shows it;
+    // on GitHub Actions as a notice in the run summary.
+    let line = if std::env::var_os("GITHUB_ACTIONS").is_some() {
+        format!("::notice title=extract-worker spawn cost::{line}\n")
+    } else {
+        format!("{line}\n")
+    };
+    let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
     assert!(median < Duration::from_millis(1500), "median {median:?}");
 }
 
@@ -251,6 +259,93 @@ mod faults {
             WorkerFailure::BadOutput,
         );
     }
+}
+
+/// A store with one course and one material for `index_file_using`.
+fn store_with_material(id: &str) -> pagelamp_core::Store {
+    use pagelamp_core::model::*;
+    let store = pagelamp_core::Store::open_in_memory().unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: "folder:demo".into(),
+            kind: SourceKind::Folder,
+            label: "Demo courses".into(),
+            config: serde_json::json!({ "path": "/demo/courses" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: "folder:demo/course/DEMO101".into(),
+            source_id: "folder:demo".into(),
+            external_id: "DEMO101".into(),
+            code: Some("DEMO101".into()),
+            name: "Intro to Demo Studies".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store
+        .upsert_material(&MaterialUpsert {
+            id: id.into(),
+            course_id: "folder:demo/course/DEMO101".into(),
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "dense.pdf".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        })
+        .unwrap();
+    store
+}
+
+#[test]
+fn a_hard_failure_is_not_extracted_again_on_the_next_sync() {
+    use pagelamp_core::ingest::{self, Extractor, IndexOutcome};
+    use pagelamp_core::model::{TextErrorKind, TextStatus};
+    let id = "folder:demo/course/DEMO101/material/dense.pdf";
+    let store = store_with_material(id);
+    let dir = tempfile::tempdir().unwrap();
+    let bomb = write(&dir, "dense.pdf", &pdf(1, &b"0 0 m ".repeat(3_500_000)));
+
+    let capped = Extractor::worker_with_limits(worker(), limits(64, 120));
+    let first = ingest::index_file_using(&store, id, &bomb, None, &capped).unwrap();
+    assert!(matches!(first, IndexOutcome::Failed(_)), "{first:?}");
+    let material = store.get_material(id).unwrap().unwrap();
+    assert_eq!(material.text_status, TextStatus::Error);
+    assert_eq!(material.text_error_kind, Some(TextErrorKind::MemoryLimit));
+    assert_eq!(
+        material.text_error_fingerprint,
+        Some(ingest::failure_fingerprint())
+    );
+
+    // The next sync doesn't start a worker for it at all: one that can't even start would
+    // have made this a `Deferred(SpawnFailed)`.
+    let next = Extractor::worker(dir.path().join("no-such-pagelamp"));
+    assert_eq!(
+        ingest::index_file_using(&store, id, &bomb, None, &next).unwrap(),
+        IndexOutcome::Skipped(TextErrorKind::MemoryLimit)
+    );
+    assert!(next.take_warning().is_none());
+}
+
+#[test]
+fn doctor_checks_a_real_worker() {
+    let took = pagelamp_extract::worker::check(&worker()).unwrap();
+    assert!(took < Duration::from_secs(15), "{took:?}");
+    let missing = std::env::temp_dir().join("no-such-pagelamp-worker");
+    assert_eq!(
+        pagelamp_extract::worker::check(&missing).unwrap_err(),
+        WorkerFailure::SpawnFailed
+    );
 }
 
 #[test]

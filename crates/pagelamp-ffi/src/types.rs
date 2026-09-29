@@ -23,7 +23,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::SystemTime;
 
 use pagelamp_app::diagnostics::{
-    CrashReport, DoctorReport, DoctorSource, McpClientPresence, ProcessKind,
+    CrashReport, DoctorReport, DoctorSource, ExtractWorkerCheck, ExtractWorkerStatus,
+    McpClientPresence, ProcessKind, UnreadableFiles,
 };
 use pagelamp_app::{
     Activity, ActivityItem, ActivityKind, AppStatus, InstallKind, McpClient, McpClientConfig,
@@ -34,7 +35,7 @@ use pagelamp_app::{
 use pagelamp_core::model::{
     AiMaterialsState, AiPolicy, Confidence, Course, CourseTimeline, DownloadBlock, Event,
     EventKind, MaterialKind, Module, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
-    StoreCounts, StoredStudyPlan, StudyPlan, StudyPlanItem, TermSource, TextStatus,
+    StoreCounts, StoredStudyPlan, StudyPlan, StudyPlanItem, TermSource, TextErrorKind, TextStatus,
 };
 use pagelamp_core::source::CourseSyncSummary;
 use pagelamp_core::views::{
@@ -217,6 +218,18 @@ pub enum TextStatus {
 pub enum DownloadBlock {
     Locked,
     TooLarge,
+}
+
+/// Why the extraction worker could not read a file.
+#[uniffi::remote(Enum)]
+pub enum TextErrorKind {
+    TimedOut,
+    CpuLimit,
+    MemoryLimit,
+    Crashed,
+    BadOutput,
+    SpawnFailed,
+    ProtocolMismatch,
 }
 
 #[uniffi::remote(Enum)]
@@ -599,6 +612,31 @@ pub struct DoctorReport {
     pub events: u32,
     pub mcp_clients: McpClientPresence,
     pub last_crash: Option<CrashReport>,
+    pub extract_worker: ExtractWorkerCheck,
+    pub unreadable_files: Vec<UnreadableFiles>,
+}
+
+/// Whether the extraction worker works (`spawn_failed`: blocked by antivirus or Smart App
+/// Control, or missing).
+#[uniffi::remote(Enum)]
+pub enum ExtractWorkerStatus {
+    Ok,
+    NotSet,
+    SpawnFailed,
+    ProtocolMismatch,
+    Failed,
+}
+
+#[uniffi::remote(Record)]
+pub struct ExtractWorkerCheck {
+    pub status: ExtractWorkerStatus,
+    pub spawn_ms: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct UnreadableFiles {
+    pub kind: TextErrorKind,
+    pub count: u32,
 }
 
 // ----- updates and activity (v0.3 M0.4; methods are wired by the leader) ----------------------

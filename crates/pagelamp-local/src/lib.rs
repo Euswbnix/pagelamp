@@ -49,6 +49,7 @@ use std::path::Path;
 
 use chrono::NaiveDate;
 use pagelamp_core::Store;
+use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::{Course, Event};
 use pagelamp_core::source::{ProgressFn, SourceError};
 
@@ -72,6 +73,7 @@ pub struct IcalSyncReport {
 /// Sync a course-folder root into the store under `source_id` (row must exist).
 /// Prunes courses/materials that disappeared from disk. `default_term_start` is the
 /// source-level fallback (`config.term_start`) for courses without their own course.toml/json.
+/// Files are read with `extractor` (`ingest::Extractor`; one per sync).
 ///
 /// Blocking (walks the disk, extracts text): async callers run it inside `spawn_blocking`
 /// with their own `Store`. Must not be called inside `Store::in_transaction` (ingest opens
@@ -81,9 +83,17 @@ pub fn sync_folder(
     source_id: &str,
     root: &Path,
     default_term_start: Option<NaiveDate>,
+    extractor: &Extractor,
     progress: ProgressFn<'_>,
 ) -> Result<FolderSyncReport, SourceError> {
-    folder::sync_folder(store, source_id, root, default_term_start, progress)
+    folder::sync_folder(
+        store,
+        source_id,
+        root,
+        default_term_start,
+        extractor,
+        progress,
+    )
 }
 
 /// Parse iCalendar text into events (pure; used by `sync_ical` and tests). All-day and

@@ -12,6 +12,7 @@
 
 use chrono::{NaiveDate, Utc};
 use pagelamp_canvas::{CanvasConfig, SyncOptions};
+use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::{SourceKind, SourceRecord};
 use pagelamp_core::paths;
 use pagelamp_core::source::{CourseSyncSummary, SourceError, SyncProgress};
@@ -54,8 +55,9 @@ impl App {
         // Stable: keeps the label order within each group.
         sources.sort_by_key(|source| source.kind == SourceKind::Ical);
         let mut results = Vec::with_capacity(sources.len());
+        let extractor = self.extractor();
         for source in &sources {
-            results.push(self.sync_one(source, &req, &on_event).await);
+            results.push(self.sync_one(source, &req, &extractor, &on_event).await);
         }
         Ok(SyncSummary {
             started_at,
@@ -76,7 +78,9 @@ impl App {
         let _lock = self.acquire_sync_lock()?;
         let _activity = self.begin_activity(ActivityKind::Sync, Some(source_id));
         let source = self.source(source_id)?;
-        Ok(self.sync_one(&source, &req, &on_event).await)
+        Ok(self
+            .sync_one(&source, &req, &self.extractor(), &on_event)
+            .await)
     }
 
     /// Explicit "download & index this course's files" action for an LMS course: a sync of
@@ -103,7 +107,9 @@ impl App {
             only_courses: vec![course.id],
             ..SyncRequest::default()
         };
-        Ok(self.sync_one(&source, &req, &on_event).await)
+        Ok(self
+            .sync_one(&source, &req, &self.extractor(), &on_event)
+            .await)
     }
 
     fn acquire_sync_lock(&self) -> Result<SyncLock> {
@@ -117,10 +123,12 @@ impl App {
     }
 
     /// Run one source and record the outcome. Never fails: problems become `ok: false`.
+    /// `extractor` reads the files of this sync (one per sync, see `ingest::Extractor`).
     async fn sync_one(
         &self,
         source: &SourceRecord,
         req: &SyncRequest,
+        extractor: &Extractor,
         on_event: &(dyn Fn(SyncEvent) + Send + Sync),
     ) -> SourceSyncResult {
         let started_at = Utc::now();
@@ -133,9 +141,9 @@ impl App {
         });
         let progress = |p: SyncProgress| on_event(progress_event(&source.id, p));
         let outcome = match source.kind {
-            SourceKind::Folder => self.run_folder(source, &progress).await,
+            SourceKind::Folder => self.run_folder(source, extractor, &progress).await,
             SourceKind::Ical => self.run_ical(source, &progress).await,
-            SourceKind::Canvas => self.run_canvas(source, req, &progress).await,
+            SourceKind::Canvas => self.run_canvas(source, req, extractor, &progress).await,
         };
         if matches!(source.kind, SourceKind::Folder | SourceKind::Canvas) {
             self.relink_events();
@@ -226,6 +234,7 @@ impl App {
     async fn run_folder(
         &self,
         source: &SourceRecord,
+        extractor: &Extractor,
         progress: &(dyn Fn(SyncProgress) + Send + Sync),
     ) -> std::result::Result<Counts, SourceError> {
         let root: std::path::PathBuf = source
@@ -237,9 +246,10 @@ impl App {
         let term_start = config_date(source, "term_start");
         let (db_path, source_id) = (self.db_path(), source.id.clone());
         let (tx, mut rx) = mpsc::unbounded_channel();
+        let extractor = extractor.clone();
         let task = tokio::task::spawn_blocking(move || {
             let store = Store::open(&db_path)?;
-            pagelamp_local::sync_folder(&store, &source_id, &root, term_start, &|p| {
+            pagelamp_local::sync_folder(&store, &source_id, &root, term_start, &extractor, &|p| {
                 let _ = tx.send(p);
             })
         });
@@ -279,6 +289,7 @@ impl App {
         &self,
         source: &SourceRecord,
         req: &SyncRequest,
+        extractor: &Extractor,
         progress: &(dyn Fn(SyncProgress) + Send + Sync),
     ) -> std::result::Result<Counts, SourceError> {
         let base_url = crate::canvas_base_url(source).map_err(|e| SourceError::other(e.message))?;
@@ -291,6 +302,7 @@ impl App {
             max_file_bytes: u64::from(req.max_file_mb) * 1024 * 1024,
             files_dir: paths::files_dir_in(self.data_dir()),
             only_courses: req.only_courses.clone(),
+            extractor: extractor.clone(),
         };
         let report = pagelamp_canvas::sync(&self.db_path(), &config, &options, progress).await?;
         Ok(Counts {

@@ -11,7 +11,7 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use pagelamp_core::Store;
-use pagelamp_core::ingest::{self, IndexOutcome};
+use pagelamp_core::ingest::{self, Extractor, IndexOutcome};
 use pagelamp_core::model::{CourseUpsert, MaterialKind, MaterialUpsert, Module, TextStatus};
 use pagelamp_core::source::{ProgressFn, SourceError, SyncProgress};
 use pagelamp_core::timeline::parse_week_hint;
@@ -34,6 +34,7 @@ pub(crate) fn sync_folder(
     source_id: &str,
     root: &Path,
     default_term_start: Option<NaiveDate>,
+    extractor: &Extractor,
     progress: ProgressFn<'_>,
 ) -> Result<FolderSyncReport, SourceError> {
     // Only the folder's own name: this message is shown to the AI app by `sync_status`, and
@@ -73,6 +74,7 @@ pub(crate) fn sync_folder(
             dir_name,
             course_id: &course_id,
             default_term_start,
+            extractor,
         };
         course.sync(store, progress, &mut report)?;
     }
@@ -88,6 +90,7 @@ struct CourseDir<'a> {
     dir_name: &'a str,
     course_id: &'a str,
     default_term_start: Option<NaiveDate>,
+    extractor: &'a Extractor,
 }
 
 /// A file found under a course directory.
@@ -176,8 +179,21 @@ impl CourseDir<'_> {
                 total: Some(to_u32(supported.len())),
             });
             let mime = file.material.mime.as_deref();
-            match ingest::index_file(store, &file.material.id, &file.path, mime) {
-                Ok(IndexOutcome::Unchanged) => report.files_unchanged += 1,
+            let outcome = ingest::index_file_using(
+                store,
+                &file.material.id,
+                &file.path,
+                mime,
+                self.extractor,
+            );
+            if let Some(message) = self.extractor.take_warning() {
+                warn(report, message);
+            }
+            match outcome {
+                // A file the text reader already failed on is not read again (see ingest).
+                Ok(IndexOutcome::Unchanged | IndexOutcome::Skipped(_)) => {
+                    report.files_unchanged += 1
+                }
                 Ok(IndexOutcome::Indexed { .. }) => report.files_indexed += 1,
                 Ok(IndexOutcome::Empty) => {
                     report.files_indexed += 1;
@@ -186,7 +202,8 @@ impl CourseDir<'_> {
                         format!("{}: no extractable text (scanned?)", file.material.title),
                     );
                 }
-                Ok(IndexOutcome::Unsupported) => {}
+                // Tried again next sync; the extractor's warning covers every such file.
+                Ok(IndexOutcome::Unsupported | IndexOutcome::Deferred(_)) => {}
                 Ok(IndexOutcome::Failed(message)) => {
                     warn(report, format!("{}: {message}", file.material.title));
                 }

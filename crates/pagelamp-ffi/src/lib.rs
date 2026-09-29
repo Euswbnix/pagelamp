@@ -153,6 +153,19 @@ impl PageLamp {
         Ok(path_string(&self.app.db_path()))
     }
 
+    /// Where `pagelamp extract-worker` is (the bundled `pagelamp` executable,
+    /// `Bundle.main.url(forAuxiliaryExecutable:)`): syncs then read every file in a separate,
+    /// resource-limited process. Nil reads files in this process. Set it once after `open`.
+    pub async fn set_extract_worker(&self, path: Option<String>) -> Result<()> {
+        self.app.set_extract_worker(path.map(PathBuf::from));
+        Ok(())
+    }
+
+    /// The executable set with `set_extract_worker`.
+    pub async fn extract_worker(&self) -> Result<Option<String>> {
+        Ok(self.app.extract_worker().as_deref().map(path_string))
+    }
+
     // ----- status & sources ----------------------------------------------------------------
 
     pub async fn status(&self) -> Result<AppStatus> {

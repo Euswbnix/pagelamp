@@ -76,6 +76,22 @@ pub fn extract_in_worker(
     run(exe, path, mime, limits, wall_timeout(size), None)
 }
 
+/// Wall clock of a `check`.
+const CHECK_WALL: Duration = Duration::from_secs(15);
+
+/// Start a worker from `exe` and have it answer one request, as `doctor` does: `Ok(time)` for
+/// the round trip, `Err` when it could not be started (`SpawnFailed`), is from another version
+/// (`ProtocolMismatch`) or did not answer properly. The request names a file of an unsupported
+/// type, which the worker declines before touching the disk, so nothing is read.
+pub fn check(exe: &Path) -> Result<Duration, WorkerFailure> {
+    let started = Instant::now();
+    let probe = Path::new("pagelamp-worker-check.unsupported");
+    match run(exe, probe, None, WorkerLimits::default(), CHECK_WALL, None)? {
+        Err(ExtractError::Unsupported(_)) => Ok(started.elapsed()),
+        _ => Err(WorkerFailure::BadOutput),
+    }
+}
+
 /// `extract_in_worker` with an explicit wall clock and, for tests of debug builds, a fault the
 /// worker should simulate (`hang`, `spin`, `allocate`, `abort`, `garbage`).
 #[doc(hidden)]
