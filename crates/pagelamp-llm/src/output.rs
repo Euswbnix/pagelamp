@@ -291,6 +291,23 @@ mod tests {
     }
 
     #[test]
+    fn the_study_plan_tasks_are_a_valid_answer_format() {
+        let OutputSpec::Json { schema, .. } =
+            OutputSpec::for_type::<pagelamp_core::planner::PlanTasks>("study_plan_tasks").unwrap()
+        else {
+            panic!()
+        };
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&json!({ "tasks": [{
+            "course_id": "folder:demo/course/DEMO101", "kind": "prepare_deadline",
+            "title": "Re-read week 4 slides before A2", "description": null,
+            "material_ids": ["m1"], "minutes": 45, "priority": "high",
+            "earliest": null, "latest": "2026-10-13"
+        }] })));
+        assert!(!validator.is_valid(&json!({ "tasks": [{ "kind": "write_the_answers" }] })));
+    }
+
+    #[test]
     fn recursion_and_deep_nesting_are_refused() {
         #[allow(dead_code)]
         #[derive(JsonSchema)]

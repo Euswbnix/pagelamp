@@ -20,6 +20,10 @@ use crate::store::Store;
 use crate::timeline;
 use crate::{Error, Result};
 
+mod digest;
+
+pub use digest::{DigestCourse, DigestPlan, WeeklyDigest, weekly_digest};
+
 /// Window for "recent" materials/announcements in overviews.
 pub const RECENT_DAYS: u32 = 14;
 /// Window for "upcoming" deadlines in overviews and course summaries.
