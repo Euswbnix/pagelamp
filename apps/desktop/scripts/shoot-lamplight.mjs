@@ -52,6 +52,11 @@ const SCREENS = {
     act: `[...document.querySelectorAll("h2")].at(-1).scrollIntoView({ block: "start" });
   document.querySelector("main").scrollTop -= 56; await wait(400);`,
   },
+  // The Timeline tab with a proposal (scan and AI cards, quotes, the calendar in force).
+  proposals: {
+    hash: `#/courses/${encodeURIComponent("canvas:canvas.demo.test/course/332")}?tab=timeline`,
+    scenario: "proposals",
+  },
   // The toolbar row once content scrolls under it (glass, and the title echo).
   scrolled: {
     hash: "#/sources",

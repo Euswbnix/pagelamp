@@ -153,10 +153,7 @@ export function ProposalCard({
   const dropped = proposal.dropped.reduce((n, d) => n + d.count, 0);
 
   return (
-    <article
-      aria-labelledby={headingId}
-      className="space-y-4 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10"
-    >
+    <article aria-labelledby={headingId} className="pl-callout space-y-4 p-5 text-card-foreground">
       <header className="space-y-1">
         <h3 id={headingId} className="font-heading text-base font-semibold tracking-tight">
           {title}
@@ -320,7 +317,7 @@ function ChoiceQuestion({
   const { t } = useTranslation("proposals");
   const legendId = useId();
   return (
-    <fieldset className="space-y-2 rounded-lg border p-3">
+    <fieldset className="space-y-2 rounded-row bg-muted p-3">
       <legend id={legendId} className="px-1 text-sm font-medium">
         {question.legend}
       </legend>
