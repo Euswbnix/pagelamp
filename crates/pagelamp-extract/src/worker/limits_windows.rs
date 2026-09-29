@@ -28,6 +28,13 @@ pub(crate) fn no_crash_dialogs() {
     }
 }
 
+/// Debug builds only (the `console` test fault): whether this process has a console window.
+#[cfg(debug_assertions)]
+pub(crate) fn has_console_window() -> bool {
+    // SAFETY: no arguments; returns the window handle or null.
+    !unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() }.is_null()
+}
+
 /// CPU time of this process (user + kernel).
 pub(crate) fn process_cpu_time() -> Option<Duration> {
     let zero = FILETIME {

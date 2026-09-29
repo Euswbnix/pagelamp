@@ -130,11 +130,13 @@ fn a_huge_page_tree_hits_the_cpu_budget() {
     );
 }
 
+/// Budget for the median cost of one worker (plan §M0.5). Measured on the GitHub runners with
+/// this unoptimised test build (2026-09-29): Windows 45 ms, macOS 46 ms, Linux 20 ms.
+const SPAWN_BUDGET: Duration = Duration::from_millis(150);
+
 #[test]
-fn spawn_cost_is_measured() {
+fn spawn_cost_is_within_budget() {
     // One worker per file: the fixed cost of starting one is paid by every extracted file.
-    // The median is printed for the CI log (`--nocapture`); the budget is loose enough for an
-    // unoptimised test build on a shared runner and catches pathological regressions.
     let dir = tempfile::tempdir().unwrap();
     let file = write(&dir, "tiny.txt", b"demo");
     let mut times: Vec<Duration> = (0..15)
@@ -163,7 +165,7 @@ fn spawn_cost_is_measured() {
         format!("{line}\n")
     };
     let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
-    assert!(median < Duration::from_millis(1500), "median {median:?}");
+    assert!(median <= SPAWN_BUDGET, "median {median:?}");
 }
 
 /// Test faults exist only in debug builds of the worker.
@@ -185,6 +187,86 @@ mod faults {
             "{name} took {:?}",
             started.elapsed()
         );
+    }
+
+    /// What the worker's `console` fault says when started through `extract_in_worker_with`.
+    fn console_via_parent() -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let file = write(&dir, "notes.txt", b"demo");
+        let wall = Duration::from_secs(60);
+        match extract_in_worker_with(
+            &worker(),
+            &file,
+            None,
+            WorkerLimits::default(),
+            wall,
+            Some("console"),
+        ) {
+            Ok(Err(ExtractError::Failed(answer))) => answer,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_worker_has_no_console_window() {
+        // On Windows it is spawned with CREATE_NO_WINDOW, so the GUI app never flashes a console.
+        assert_eq!(console_via_parent(), "no window");
+    }
+
+    /// The same worker started as a plain child of this test process (inheriting its console).
+    #[cfg(windows)]
+    fn console_as_plain_child() -> String {
+        use std::io::{Read, Write};
+        use std::process::{Command, Stdio};
+        let request = serde_json::json!({
+            "protocol": pagelamp_extract::worker::PROTOCOL,
+            "path": "notes.txt",
+            "mime": null,
+            "memory_bytes": WorkerLimits::default().memory_bytes,
+            "cpu_seconds": WorkerLimits::default().cpu_seconds,
+            "debug_fault": "console",
+        });
+        let mut child = Command::new(worker())
+            .args([
+                pagelamp_extract::worker::SUBCOMMAND,
+                "--protocol",
+                &pagelamp_extract::worker::PROTOCOL.to_string(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(request.to_string().as_bytes())
+            .unwrap();
+        let mut output = String::new();
+        child
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_string(&mut output)
+            .unwrap();
+        child.wait().unwrap();
+        let response: serde_json::Value = serde_json::from_str(&output).unwrap();
+        response["outcome"]["message"].as_str().unwrap().to_string()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn without_the_flag_the_worker_would_have_a_console_window() {
+        // Shows the check above can fail: without CREATE_NO_WINDOW the worker shares this test
+        // process's console. (A test process without any console can't show the difference.)
+        match console_as_plain_child().as_str() {
+            "window" => {}
+            "no window" => {
+                eprintln!("this test process has no console window; nothing to compare with")
+            }
+            other => panic!("{other}"),
+        }
     }
 
     #[test]

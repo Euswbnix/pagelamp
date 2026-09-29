@@ -22,10 +22,12 @@ html2text = "0.17"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-# The extraction worker's Job Object, CPU clock, crash-dialog mode and CREATE_NO_WINDOW.
+# The extraction worker's Job Object, CPU clock, crash-dialog mode and CREATE_NO_WINDOW
+# (Console: the debug-build check that the worker has no console window).
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_JobObjects",
     "Win32_System_Threading",

@@ -60,6 +60,12 @@ pub fn serve_stdio(protocol: u32) -> i32 {
                 message: names.join(","),
             });
         }
+        // Report whether this process has a console window (Windows: `CREATE_NO_WINDOW`).
+        if fault == "console" {
+            return respond(Outcome::Failed {
+                message: console_window().to_string(),
+            });
+        }
         run_fault(fault);
     }
     let outcome = match crate::extract_file(Path::new(&request.path), request.mime.as_deref()) {
@@ -109,6 +115,16 @@ pub(crate) fn process_cpu_time() -> Option<std::time::Duration> {
     {
         None
     }
+}
+
+/// Debug builds only: "window" when this process has a console window, else "no window".
+#[cfg(debug_assertions)]
+fn console_window() -> &'static str {
+    #[cfg(windows)]
+    let window = super::limits_windows::has_console_window();
+    #[cfg(not(windows))]
+    let window = false;
+    if window { "window" } else { "no window" }
 }
 
 /// Debug builds only: misbehave on purpose, so tests can check how the parent classifies it.
