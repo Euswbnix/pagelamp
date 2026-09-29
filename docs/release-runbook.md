@@ -84,8 +84,8 @@ Actions → **Release** → Run workflow → "Use workflow from": **`main`**, le
 `release` deployments when GitHub asks (the signing jobs wait for you).
 
 It builds that commit's universal macOS app and `.dmg`, the macOS CLI for each architecture, the
-Windows installer and CLI, and with the updater on also the Linux packages (keeping the signed
-AppImage), then signs, notarizes and checks everything exactly as a release does. The files are
+Windows installer and CLI and the Linux packages (with the updater on, also the signed AppImage),
+then signs, notarizes and checks everything exactly as a release does. The files are
 workflow artifacts for 7 days; their names say "rehearsal". If
 `apps/desktop/src-tauri/tauri.rehearsal.conf.json` exists, the apps are built with it, so their
 updater reads the test channel. With the updater on, the run

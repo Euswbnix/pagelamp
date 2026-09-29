@@ -77,8 +77,8 @@ name: Release
 # the pushed commit; a reviewer is the only check by a person.
 #
 # Rehearsal (no release): Actions → Release → Run workflow → "Use workflow from": main, leave "tag"
-# empty, tick "rehearsal". It builds that commit's universal macOS app, macOS CLIs and Windows
-# installers and CLI (and, with the updater on, the Linux packages, keeping the AppImage), signs
+# empty, tick "rehearsal". It builds that commit's universal macOS app, macOS CLIs, Windows
+# installers and CLI and Linux packages (with the updater on, also the signed AppImage), signs
 # them (and notarizes and staples the macOS ones) and checks them exactly as a release does, and
 # keeps them as workflow artifacts for 7 days (the repo is public, so anyone signed in to GitHub
 # can download them; their names say "rehearsal"). If src-tauri/tauri.rehearsal.conf.json exists,
@@ -237,10 +237,11 @@ jobs:
   # job compiles and bundles with no environment, no secret, a read-only token and no caches;
   # `app-linux` then signs (updater) and uploads what it built. So the updater key is never in a
   # job that runs build scripts or bundling tools, and nothing another run cached ends up in a
-  # package. Runs in a rehearsal only with the updater on (the AppImage goes on the test path).
+  # package. Also runs in every rehearsal (it needs no approval), so the Linux build and the pinned
+  # AppImage tools are tried before a tag.
   app-linux-build:
     needs: [preflight, create-release]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && (needs.create-release.result == 'success' || (inputs.rehearsal && needs.preflight.outputs.updater == 'true')) }}
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -356,7 +357,7 @@ jobs:
         id: keep
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-packages-${{ github.sha }}-attempt${{ github.run_attempt }}
+          name: ${{ inputs.rehearsal && 'linux-packages-rehearsal' || 'linux-packages' }}-${{ github.sha }}-attempt${{ github.run_attempt }}
           path: ${{ runner.temp }}/linux
           compression-level: 0
           retention-days: 7
@@ -368,11 +369,11 @@ jobs:
   # (environment `release`, no caches) that builds and bundles nothing, and runs only the Tauri CLI
   # from the lockfile (installed without lifecycle scripts). The updater installs only the
   # AppImage; .deb/.rpm installs get a download link (D7). Same file names as before (and as
-  # tauri-action used). In a rehearsal (updater on) the AppImage and its signature become a
-  # workflow artifact instead.
+  # tauri-action used). In a rehearsal it runs only with the updater on, and the AppImage and its
+  # signature become a workflow artifact instead.
   app-linux:
     needs: [preflight, create-release, app-linux-build]
-    if: ${{ !cancelled() && needs.app-linux-build.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
+    if: ${{ !cancelled() && needs.app-linux-build.result == 'success' && (needs.create-release.result == 'success' || (inputs.rehearsal && needs.preflight.outputs.updater == 'true')) }}
     environment: release
     runs-on: ubuntu-22.04
     permissions:
