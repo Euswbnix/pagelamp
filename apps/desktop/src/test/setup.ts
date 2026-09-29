@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, vi } from "vitest";
 import i18n, { initI18n } from "@/i18n";
@@ -9,6 +9,8 @@ import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/updates";
 
 initI18n("en");
+// findBy* and waitFor wait longer on CI runners (vite.config.ts).
+configure({ asyncUtilTimeout: Number(import.meta.env.VITE_TEST_ASYNC_TIMEOUT ?? 1000) });
 
 // jsdom lacks these browser APIs that Radix UI and our theme code use.
 if (!window.matchMedia) {
