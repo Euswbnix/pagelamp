@@ -2,20 +2,24 @@ name: Update channels
 
 # The desktop app's update channels (docs/design/v0.3-plan.md M0.4, D5), static files on GitHub
 # Pages (source: branch gh-pages, folder /; the owner's one-time setup in docs/release-runbook.md):
-#   https://euswbnix.github.io/pagelamp/updates/beta.json    every published release
-#   https://euswbnix.github.io/pagelamp/updates/stable.json  published releases that aren't
-#                                                              pre-releases (the app falls back to
+#   https://euswbnix.github.io/pagelamp/updates/beta.json    the newest published release
+#   https://euswbnix.github.io/pagelamp/updates/stable.json  the newest published release that
+#                                                              isn't a pre-release (no "-" in the
+#                                                              version; the app falls back to
 #                                                              releases/latest/download/latest.json)
 #   https://euswbnix.github.io/pagelamp/updates/test.json    a rehearsal's N+1 build, only for
 #                                                              builds made with the rehearsal overlay
 # Each is a copy of a release's latest.json (release.yml writes it into the draft when the updater
-# is on), checked against the manifest contract first. Channels move only when the owner publishes
-# a draft, so the review of the draft stays the gate. Releases made with the updater off have no
-# latest.json and leave the channels as they are.
+# is on), checked first against the manifest contract and the release's SHA256SUMS (which exists
+# only if every check of its Release run passed). Channels move only when the owner publishes a
+# draft, so the review of the draft stays the gate, and only forward: publishing an older version
+# (a patch of an older line) leaves a channel that serves a newer one alone. Releases made with the
+# updater off have no latest.json and leave the channels as they are; a release built with the
+# updater on but without latest.json fails this workflow.
 #
 # By hand (Actions → Update channels → Run workflow, from main):
-# - promote: point `channel` at the published release `tag` (the "bad release" runbook's
-#   rollback: it stops further updates to the bad version but can't roll anyone back);
+# - promote: point `channel` at the published release `tag`, newer or not (the "bad release"
+#   runbook's rollback: it stops further updates to the bad version but can't roll anyone back);
 # - test-publish: serve the updater-test artifact of the rehearsal run `run_id` (release.yml run
 #   from main with the updater on) as the test channel, under updates/test/<commit>/;
 # - test-delete: remove the test channel again.

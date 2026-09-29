@@ -6,8 +6,10 @@
 //        [--platforms <k,k>] [--notes <text> | --notes-file <file>] [--pub-date <rfc3339>]
 //        [--pubkey <base64> | --pubkey-config <tauri.conf.json>] [--out <file>]
 //   node updater-manifest.mjs check <latest.json> [--version <semver>] (--tag <tag> [--repo <o/r>] | --base-url <url>)
-//        [--platforms <k,k>] [--assets <file with one asset name per line>]
+//        [--platforms <k,k>] [--assets <file with one asset name per line>] [--sums <SHA256SUMS>]
 //   node updater-manifest.mjs verify <latest.json> --dir <dir> (--pubkey <base64> | --pubkey-config <tauri.conf.json>)
+//   node updater-manifest.mjs newer <semver a> <semver b>     prints true if a is newer than b (SemVer precedence)
+//   node updater-manifest.mjs enabled <tauri.conf.json>      prints true if that config builds updater artifacts
 //
 // The contract with the desktop app (apps/desktop, docs/design/v0.3-plan.md M0.4):
 // - exactly these platform keys: darwin-aarch64-app and darwin-x86_64-app (both the one universal
@@ -87,6 +89,14 @@ export function isRealPublicKey(pubkey) {
   } catch {
     return false;
   }
+}
+
+/**
+ * True when a Tauri config builds updater artifacts that release.yml publishes: the updater is
+ * switched on (`bundle.createUpdaterArtifacts: true`) and `plugins.updater.pubkey` is a real key.
+ */
+export function updaterEnabled(config) {
+  return config?.bundle?.createUpdaterArtifacts === true && isRealPublicKey(config?.plugins?.updater?.pubkey);
 }
 
 /** A Tauri `.sig` file's content: base64 of a minisign signature file. Throws if it isn't one. */
@@ -181,6 +191,73 @@ export function publicKeyFromConfig(path) {
 export function checkVersion(version) {
   if (typeof version !== "string" || !SEMVER.test(version)) {
     fail(`'${version}' isn't a semantic version (e.g. 0.3.0 or 0.3.0-beta.1, without a leading v)`);
+  }
+}
+
+/**
+ * SemVer 2.0.0 precedence (build metadata ignored): negative if a < b, 0 if equal, positive if
+ * a > b. A pre-release is older than its release (0.3.0-beta.2 < 0.3.0).
+ */
+export function compareVersions(a, b) {
+  checkVersion(a);
+  checkVersion(b);
+  const parse = (v) => {
+    const [, major, minor, patch, pre] = SEMVER.exec(v);
+    return { core: [major, minor, patch].map(Number), pre: pre === undefined ? [] : pre.split(".") };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if (x.core[i] !== y.core[i]) return x.core[i] - y.core[i];
+  }
+  if (!x.pre.length || !y.pre.length) return (x.pre.length ? -1 : 0) + (y.pre.length ? 1 : 0);
+  const numeric = /^\d+$/;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const p = x.pre[i];
+    const q = y.pre[i];
+    if (p === undefined) return -1;
+    if (q === undefined) return 1;
+    if (p === q) continue;
+    const pn = numeric.test(p);
+    const qn = numeric.test(q);
+    if (pn && qn) return Number(p) - Number(q);
+    if (pn !== qn) return pn ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return 0;
+}
+
+/** True if `version` has a pre-release part (0.3.1-beta.1): never for the stable channel. */
+export function isPrerelease(version) {
+  checkVersion(version);
+  return SEMVER.exec(version)[4] !== undefined;
+}
+
+/** `<sha256>  <name>` lines of a SHA256SUMS file (sha256sum's text or binary mode) as a Map. */
+export function parseSums(text) {
+  const sums = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const match = /^([0-9a-f]{64}) [ *](.+)$/.exec(line);
+    if (!match) fail(`SHA256SUMS has a line that isn't '<sha256>  <file name>': ${line}`);
+    sums.set(match[2], match[1]);
+  }
+  return sums;
+}
+
+/**
+ * The release's SHA256SUMS (written by release.yml's `checksums` job only after every check of the
+ * run passed, and attested) must list the manifest itself with exactly these bytes, and every
+ * asset the manifest points at.
+ */
+export function checkSums(manifestBytes, sumsText, assets, manifestName = "latest.json") {
+  const sums = parseSums(sumsText);
+  const expected = sums.get(manifestName);
+  if (!expected) fail(`SHA256SUMS doesn't list ${manifestName}`);
+  const actual = createHash("sha256").update(manifestBytes).digest("hex");
+  if (actual !== expected) fail(`${manifestName} isn't the file SHA256SUMS lists (sha256 ${actual}, listed ${expected})`);
+  for (const asset of new Set(assets)) {
+    if (!sums.has(asset)) fail(`SHA256SUMS doesn't list ${asset}, which the manifest points at`);
   }
 }
 
@@ -432,7 +509,7 @@ export function main(argv, env = process.env) {
   }
 
   if (command === "check") {
-    allow(options, ["version", "tag", "repo", "base-url", "platforms", "assets"]);
+    allow(options, ["version", "tag", "repo", "base-url", "platforms", "assets", "sums"]);
     const manifest = readManifest(positionals[0]);
     const assets = options.assets
       ? readFileSync(options.assets, "utf8").split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
@@ -445,7 +522,30 @@ export function main(argv, env = process.env) {
       platforms: splitList(options.platforms),
       assets,
     });
-    process.stderr.write(`${positionals[0]}: ${manifest.version}, ${Object.keys(found).join(", ")}: OK\n`);
+    if (options.sums) {
+      checkSums(readFileSync(positionals[0]), readFileSync(options.sums, "utf8"), Object.values(found));
+    }
+    process.stderr.write(`${positionals[0]}: ${manifest.version}, ${Object.keys(found).join(", ")}${options.sums ? ", in SHA256SUMS" : ""}: OK\n`);
+    return 0;
+  }
+
+  if (command === "newer") {
+    allow(options, []);
+    if (positionals.length !== 2) fail("newer takes two versions");
+    process.stdout.write(`${compareVersions(positionals[0], positionals[1]) > 0}\n`);
+    return 0;
+  }
+
+  if (command === "enabled") {
+    allow(options, []);
+    if (positionals.length !== 1) fail("enabled takes the path of a tauri.conf.json");
+    let config;
+    try {
+      config = JSON.parse(readFileSync(positionals[0], "utf8"));
+    } catch (err) {
+      fail(`Can't read ${positionals[0]}: ${err.message}`);
+    }
+    process.stdout.write(`${updaterEnabled(config)}\n`);
     return 0;
   }
 
@@ -460,7 +560,7 @@ export function main(argv, env = process.env) {
     return 0;
   }
 
-  fail(`Unknown command '${command}' (build, check or verify)`);
+  fail(`Unknown command '${command}' (build, check, verify, newer or enabled)`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

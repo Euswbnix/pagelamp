@@ -3,9 +3,12 @@
 #
 #   update-channels.sh release        TAG and PRERELEASE of a release that was just published:
 #                                     updates/beta.json, and updates/stable.json unless it is a
-#                                     pre-release, become its latest.json
+#                                     pre-release (by GitHub's flag or a `-` in the version), become
+#                                     its latest.json, each only if that is newer than what the
+#                                     channel serves (channels never move back on their own)
 #   update-channels.sh promote        TAG and CHANNEL: point one channel at a published release's
-#                                     latest.json (the rollback of the "bad release" runbook)
+#                                     latest.json, newer or not (the rollback of the "bad release"
+#                                     runbook); stable only takes full releases
 #   update-channels.sh test-publish   RUN_ID of a rehearsal of release.yml from main: its
 #                                     updater-test artifact becomes updates/test.json and
 #                                     updates/test/<commit>/ (the test channel)
@@ -15,9 +18,11 @@
 # docs/release-runbook.md), at $PAGES_URL. gh-pages holds only what Pages serves (.nojekyll,
 # updates/) and is replaced by one new commit each time (a force push with a lease on the commit
 # it started from), so the test channel's installers (tens of MB) never stay in the repository's
-# history. Every change is in this workflow's run log. A manifest is checked
-# (updater-manifest.mjs check) before any channel serves it, and the test channel's signatures
-# are checked against the committed updater public key.
+# history. Every change is in this workflow's run log. A release's manifest is checked
+# (updater-manifest.mjs check) before any channel serves it: against the contract, the release's
+# assets, and its SHA256SUMS, which release.yml's `checksums` job uploads only after every check of
+# the run passed (so a release whose run failed never reaches a channel). The test channel's
+# signatures are checked against the committed updater public key.
 #
 # Needs GH_TOKEN (contents: write; actions: read for test-publish), GH_REPO, PAGES_URL and
 # RUNNER_TEMP. The token reaches git only as an HTTP header on the command line of the clone and
@@ -90,32 +95,71 @@ push_site() {
   (cd "$SITE" && find . -path ./.git -prune -o -type f -print | sed 's|^\./||' | sort)
 }
 
-# A published release's latest.json into $WORK/release, checked against the contract and the
-# release's assets. Returns 1 if the release has no latest.json (the updater was off for it).
+# A published release's latest.json into $WORK/release, checked against the contract, the
+# release's assets and its SHA256SUMS. Returns 1 if the release has no latest.json.
 download_manifest() {
   local tag=$1 dir="$WORK/release"
   mkdir -p "$dir"
   gh release view "$tag" --json assets --jq '.assets[].name' > "$dir/assets.txt" || fail "Can't read the release $tag"
   grep -qxF latest.json "$dir/assets.txt" || return 1
-  gh release download "$tag" --pattern latest.json --dir "$dir" --clobber || fail "Can't download latest.json from $tag"
-  node "$MANIFEST" check "$dir/latest.json" --tag "$tag" --repo "$GH_REPO" --assets "$dir/assets.txt" ||
-    fail "latest.json of $tag doesn't follow the manifest contract (see above); no channel was changed"
+  grep -qxF SHA256SUMS "$dir/assets.txt" ||
+    fail "$tag has latest.json but no SHA256SUMS: the checksums job of its Release run didn't pass (or hadn't finished when it was published), so no channel was changed. See docs/release-runbook.md, 'Making a release'."
+  gh release download "$tag" --pattern latest.json --pattern SHA256SUMS --dir "$dir" --clobber ||
+    fail "Can't download latest.json and SHA256SUMS from $tag"
+  node "$MANIFEST" check "$dir/latest.json" --tag "$tag" --repo "$GH_REPO" --assets "$dir/assets.txt" --sums "$dir/SHA256SUMS" ||
+    fail "latest.json of $tag doesn't follow the manifest contract or doesn't match the release's SHA256SUMS (see above); no channel was changed"
+}
+
+# "true" for a pre-release: GitHub's flag, or a pre-release part in the tag (v0.3.1-beta.1), which
+# the stable channel never serves even if the flag was left off.
+is_prerelease() {
+  local tag=$1 flag=$2
+  case "$tag" in *-*) echo true ;; *) echo "$flag" ;; esac
+}
+
+# The version a channel file on gh-pages announces, or nothing (no file, or unreadable).
+channel_version() {
+  local file="$SITE/updates/$1.json"
+  [ -f "$file" ] || return 0
+  node -p 'require(process.argv[1]).version' "$file" 2>/dev/null || true
 }
 
 cmd_release() {
   : "${TAG:?TAG is not set}" "${PRERELEASE:?PRERELEASE is not set}"
-  local channels=beta channel
-  [ "$PRERELEASE" = true ] || channels="beta stable"
+  local channels=beta channel version current newer moved=""
+  [ "$(is_prerelease "$TAG" "$PRERELEASE")" = true ] || channels="beta stable"
   if ! download_manifest "$TAG"; then
+    # This checkout is the release's tag, so its tauri.conf.json says whether the updater was on.
+    if [ "$(node "$MANIFEST" enabled apps/desktop/src-tauri/tauri.conf.json)" = true ]; then
+      fail "$TAG was built with the updater on but its release has no latest.json: look at the updater-manifest and checksums jobs of its Release run. The update channels stay as they are."
+    fi
     echo "::notice::$TAG has no latest.json (it was released with the updater off), so the update channels stay as they are."
     return 0
   fi
+  version=$(node -p 'require(process.argv[1]).version' "$WORK/release/latest.json")
   fetch_site
   for channel in $channels; do
+    current=$(channel_version "$channel")
+    if [ -n "$current" ]; then
+      if ! newer=$(node "$MANIFEST" newer "$version" "$current"); then
+        echo "::warning::updates/$channel.json announces '$current', which isn't a version; replacing it."
+        newer=true
+      fi
+      if [ "$newer" != true ]; then
+        echo "::notice::updates/$channel.json stays at $current: $TAG ($version) isn't newer. To serve it anyway, run Update channels → promote."
+        continue
+      fi
+    fi
     cp "$WORK/release/latest.json" "$SITE/updates/$channel.json"
     summary "$channel → $TAG: $PAGES_URL/updates/$channel.json"
+    moved="$moved $channel"
   done
-  push_site "Update channels: ${channels// /, } → $TAG"
+  if [ -z "$moved" ]; then
+    summary "No channel moved: each already serves a version at least as new as $TAG."
+    return 0
+  fi
+  moved=${moved# }
+  push_site "Update channels: ${moved// /, } → $TAG"
 }
 
 cmd_promote() {
@@ -124,8 +168,8 @@ cmd_promote() {
   case "$CHANNEL" in beta | stable) ;; *) fail "Unknown channel '$CHANNEL' (beta or stable)" ;; esac
   state=$(gh release view "$TAG" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"') || fail "There is no release $TAG"
   [ "${state% *}" = false ] || fail "$TAG is still a draft; its files can't be downloaded without signing in, so no channel may point at it"
-  if [ "$CHANNEL" = stable ] && [ "${state#* }" = true ]; then
-    fail "$TAG is a pre-release; the stable channel only serves full releases"
+  if [ "$CHANNEL" = stable ] && [ "$(is_prerelease "$TAG" "${state#* }")" = true ]; then
+    fail "$TAG is a pre-release (GitHub's flag or a '-' in the version); the stable channel only serves full releases"
   fi
   download_manifest "$TAG" || fail "$TAG has no latest.json (it was released with the updater off)"
   fetch_site

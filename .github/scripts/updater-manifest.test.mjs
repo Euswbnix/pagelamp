@@ -11,11 +11,15 @@ import { fileURLToPath } from "node:url";
 import {
   buildManifest,
   checkManifest,
+  checkSums,
+  compareVersions,
   decodeSignature,
   findArtifacts,
+  isPrerelease,
   isRealPublicKey,
   PLATFORM_KEYS,
   signedVersion,
+  updaterEnabled,
   verifyManifestFiles,
   verifySignature,
 } from "./updater-manifest.mjs";
@@ -282,6 +286,58 @@ describe("signatures", () => {
   });
 });
 
+describe("SHA256SUMS", () => {
+  const sha = (data) => createHash("sha256").update(data).digest("hex");
+  const manifestBytes = Buffer.from(`${JSON.stringify(release(), null, 2)}\n`);
+  const sums = (entries) => `${entries.map(([name, data]) => `${sha(data)}  ${name}`).join("\n")}\n`;
+  const all = [["latest.json", manifestBytes], ...Object.entries(content), [`PageLamp_${VERSION}_universal.dmg`, "dmg"]];
+
+  it("accepts a manifest listed with its exact bytes, whose assets are all listed", () => {
+    assert.doesNotThrow(() => checkSums(manifestBytes, sums(all), [MAC, MAC, WIN, LINUX]));
+    // sha256sum's binary-mode marker is fine too.
+    assert.doesNotThrow(() => checkSums(manifestBytes, sums(all).replaceAll("  ", " *"), [MAC, WIN, LINUX]));
+  });
+
+  it("rejects a manifest that isn't listed, was changed, or points at unlisted assets", () => {
+    assert.throws(() => checkSums(manifestBytes, sums(all.slice(1)), [MAC]), /SHA256SUMS doesn't list latest\.json/);
+    assert.throws(() => checkSums(Buffer.from("{}"), sums(all), [MAC]), /latest\.json isn't the file SHA256SUMS lists/);
+    assert.throws(() => checkSums(manifestBytes, sums(all.filter(([n]) => n !== WIN)), [MAC, WIN, LINUX]), /doesn't list PageLamp_0\.3\.0-beta\.1_x64-setup\.exe/);
+    assert.throws(() => checkSums(manifestBytes, "not a sums file\n", [MAC]), /isn't '<sha256>  <file name>'/);
+  });
+});
+
+describe("versions and channels", () => {
+  it("orders versions by SemVer precedence", () => {
+    assert.ok(compareVersions("0.3.0-beta.2", "0.3.0") < 0, "a pre-release is older than its release");
+    assert.ok(compareVersions("0.4.0-alpha.1", "0.3.1") > 0);
+    assert.ok(compareVersions("0.3.1", "0.3.0") > 0);
+    assert.ok(compareVersions("0.3.0-alpha.0.1", "0.3.0-alpha.1") < 0, "the test channel's versions come before alpha.1");
+    assert.ok(compareVersions("0.3.0-alpha.0.2", "0.3.0-alpha.0.1") > 0);
+    assert.ok(compareVersions("0.3.0-beta.10", "0.3.0-beta.9") > 0, "numeric identifiers compare as numbers");
+    assert.ok(compareVersions("0.3.0-beta", "0.3.0-beta.1") < 0, "fewer identifiers come first");
+    assert.ok(compareVersions("0.3.0-alpha.1", "0.3.0-1") > 0, "text identifiers come after numeric ones");
+    assert.ok(compareVersions("0.3.0-alpha.1", "0.3.0-beta.1") < 0);
+    assert.equal(compareVersions("0.3.0+build.1", "0.3.0+build.2"), 0, "build metadata doesn't count");
+    assert.equal(compareVersions("0.3.0-rc.1", "0.3.0-rc.1"), 0);
+    assert.throws(() => compareVersions("v0.3.0", "0.3.0"), /isn't a semantic version/);
+  });
+
+  it("tells pre-release versions apart", () => {
+    assert.equal(isPrerelease("0.3.1-beta.1"), true);
+    assert.equal(isPrerelease("0.3.1"), false);
+    assert.equal(isPrerelease("0.3.1+build.5"), false);
+  });
+
+  it("knows when a Tauri config builds updater artifacts", () => {
+    const on = { bundle: { createUpdaterArtifacts: true }, plugins: { updater: { pubkey: key.pubkey } } };
+    assert.equal(updaterEnabled(on), true);
+    assert.equal(updaterEnabled({ ...on, bundle: {} }), false);
+    assert.equal(updaterEnabled({ ...on, bundle: { createUpdaterArtifacts: "v1Compatible" } }), false);
+    assert.equal(updaterEnabled({ ...on, plugins: { updater: { pubkey: "PLACEHOLDER: the owner's key" } } }), false);
+    assert.equal(updaterEnabled(undefined), false);
+  });
+});
+
 describe("command line", () => {
   const run = (...args) =>
     spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", env: { ...process.env, GITHUB_ACTIONS: "" } });
@@ -325,6 +381,37 @@ describe("command line", () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /linux-x86_64-appimage: no Linux AppImage/);
     assert.equal(result.stdout, "");
+  });
+
+  it("checks latest.json against the release's SHA256SUMS", () => {
+    const dir = folder(files);
+    const out = join(dir, "latest.json");
+    assert.equal(run("build", "--dir", dir, "--version", VERSION, "--tag", TAG, "--repo", REPO, "--out", out).status, 0);
+    const sha = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+    const listed = ["latest.json", MAC, WIN, LINUX].map((name) => `${sha(join(dir, name))}  ${name}`);
+    const sums = join(dir, "SHA256SUMS");
+    writeFileSync(sums, `${listed.join("\n")}\n`);
+    const ok = run("check", out, "--tag", TAG, "--repo", REPO, "--sums", sums);
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.match(ok.stderr, /in SHA256SUMS: OK/);
+    writeFileSync(sums, `${listed.slice(1).join("\n")}\n`);
+    const unlisted = run("check", out, "--tag", TAG, "--repo", REPO, "--sums", sums);
+    assert.equal(unlisted.status, 1);
+    assert.match(unlisted.stderr, /SHA256SUMS doesn't list latest\.json/);
+  });
+
+  it("compares versions and reads the updater switch", () => {
+    assert.equal(run("newer", "0.4.0-alpha.1", "0.3.1").stdout, "true\n");
+    assert.equal(run("newer", "0.3.0-beta.2", "0.3.0").stdout, "false\n");
+    assert.equal(run("newer", "0.3.0", "0.3.0").stdout, "false\n");
+    assert.equal(run("newer", "0.3.0", "latest").status, 1);
+    const dir = folder({
+      "on.json": JSON.stringify({ bundle: { createUpdaterArtifacts: true }, plugins: { updater: { pubkey: key.pubkey } } }),
+      "off.json": JSON.stringify({ bundle: {}, plugins: { updater: { pubkey: "PLACEHOLDER" } } }),
+    });
+    assert.equal(run("enabled", join(dir, "on.json")).stdout, "true\n");
+    assert.equal(run("enabled", join(dir, "off.json")).stdout, "false\n");
+    assert.equal(run("enabled", join(dir, "missing.json")).status, 1);
   });
 
   it("exits 1 on unknown options and commands", () => {
