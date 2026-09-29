@@ -3,7 +3,7 @@
 > **Design specification** · 2026-09-26 · status: accepted for implementation on `feat/macos-shell`
 > **Scope:** the native macOS app (`apps/macos`: SwiftUI, Liquid Glass, minimum macOS 26) and the Windows/Linux translation of the Tauri 2 app (`apps/desktop`).
 > **Basis:** concept **calm-desk** (ranked first by both reviews), plus the reviewers' grafts from **native-maximal** and **glance-dashboard**, with every flaw and API error they found fixed (Appendix C).
-> **Inputs:** fact-checked research of 2026-09-26 (Liquid Glass APIs, Mac scope, cross-platform glass, Rust–Swift bridge; kept in the leader's research archive and summarised where used); the current Tauri UI and its i18n files; ARCHITECTURE §3 (hard rules; rule 8 = AI access), §5, §7.
+> **Inputs:** fact-checked research of 2026-09-26 (Liquid Glass APIs, Mac scope, cross-platform glass, Rust–Swift bridge; kept in the maintainers' research notes, not in this repository, and summarised where used); the current Tauri UI and its i18n files; ARCHITECTURE §3 (hard rules; rule 8 = AI access), §5, §7.
 > **Never in scope:** a chat UI, any write to the LMS, glass in the content layer.
 
 ## 0. Conventions
@@ -1505,7 +1505,7 @@ Mac code in `apps/macos/Sources/PageLamp/` (glass only in `Chrome/`); web in `ap
 
 **M3 — glance, reminders, Quick Look, polish.** Mac: MenuBarExtra + Open at Login; Reminders (`planned_reminders`, local notifications); Quick Look incl. Canvas files; day ribbon; ignite; pool warming; leaders and rolling numerals; serif titles; the one bounce; `AccentColor` asset and Icon Composer icon (Xcode). Tauri: native tray menu.
 
-## 13. Facade additions needed (backend/leader decision; each has an M1 fallback)
+## 13. Facade additions needed (backend/maintainer decision; each has an M1 fallback)
 
 | # | Addition | Why | Fallback | M |
 |---|---|---|---|---|

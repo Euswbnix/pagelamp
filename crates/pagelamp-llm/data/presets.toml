@@ -1,5 +1,5 @@
 # Provider presets, in display order (docs/design/v0.3-model-access.md §2.5, §2.6; research
-# docs/design/v0.3-research/byok.md §3). Data, not code: re-check each vendor fact when it
+# the maintainers' research notes). Data, not code: re-check each vendor fact when it
 # changes. `data_policy` is shown at setup and in the disclosure (codes the UIs translate).
 #
 # No model ids here: the live model list and the probe decide what can be picked (§3.2), and
