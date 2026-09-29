@@ -20,13 +20,22 @@ public final class LiveService: PageLampService {
 
     /// Opens the default data folder (`~/Library/Application Support/dev.PageLamp.PageLamp`) with
     /// the keychain, after starting the core's diagnostics (logs, panic hook) once per process.
+    /// Syncs read files in the bundled `pagelamp` executable's resource-limited worker
+    /// (`bundledExtractWorker`); without one (`swift run`) they read them in this process.
     public static func openDefault() async throws(PageLampFailure) -> LiveService {
         try startDiagnostics()
         do {
-            return LiveService(core: try await PageLamp.open(dataDir: nil))
+            let core = try await PageLamp.open(dataDir: nil)
+            try await core.setExtractWorker(path: bundledExtractWorker)
+            return LiveService(core: core)
         } catch {
             throw PageLampFailure.from(error)
         }
+    }
+
+    /// The bundled CLI (`Contents/MacOS/pagelamp`), which runs `pagelamp extract-worker`.
+    public static var bundledExtractWorker: String? {
+        Bundle.main.url(forAuxiliaryExecutable: "pagelamp")?.path(percentEncoded: false)
     }
 
     /// `initDiagnostics` for the default data folder; later calls do nothing (like the core's).
@@ -80,6 +89,74 @@ public final class LiveService: PageLampService {
 
     public func weekMaterials(course: String, week: UInt32?) async throws(PageLampFailure) -> WeekMaterials {
         try await call { try await core.weekMaterials(course: course, week: week) }
+    }
+
+    public func courseTimeline(course: String) async throws(PageLampFailure) -> CourseTimeline {
+        try await call { try await core.courseTimeline(course: course) }
+    }
+
+    public func lifecycleSummary() async throws(PageLampFailure) -> LifecycleSummary {
+        try await call { try await core.lifecycleSummary() }
+    }
+
+    public func keepCourseCurrent(course: String, until: String?) async throws(PageLampFailure) -> Course {
+        try await call { try await core.keepCourseCurrent(course: course, until: until) }
+    }
+
+    public func clearKeepCourseCurrent(course: String) async throws(PageLampFailure) -> Course {
+        try await call { try await core.clearKeepCourseCurrent(course: course) }
+    }
+
+    public func snoozeRemovalSuggestions(courses: [String], kind: SnoozeKind) async throws(PageLampFailure) {
+        try await call { try await core.snoozeRemovalSuggestions(courses: courses, kind: kind) }
+    }
+
+    public func clearRemovalSnooze(courses: [String]) async throws(PageLampFailure) {
+        try await call { try await core.clearRemovalSnooze(courses: courses) }
+    }
+
+    public func snoozeLifecycleBanner() async throws(PageLampFailure) {
+        try await call { try await core.snoozeLifecycleBanner() }
+    }
+
+    public func confirmCourseDates(course: String) async throws(PageLampFailure) -> CourseTimeline {
+        try await call { try await core.confirmCourseDates(course: course) }
+    }
+
+    public func startupTasks(now: Date) async throws(PageLampFailure) -> StartupTasks {
+        try await call { try await core.startupTasks(now: now) }
+    }
+
+    public func updatePrefs() async throws(PageLampFailure) -> UpdatePrefs {
+        try await call { try await core.updatePrefs() }
+    }
+
+    public func setUpdatePrefs(prefs: UpdatePrefs) async throws(PageLampFailure) {
+        try await call { try await core.setUpdatePrefs(prefs: prefs) }
+    }
+
+    public func effectiveUpdateChannel() async throws(PageLampFailure) -> UpdateChannel {
+        try await call { try await core.effectiveUpdateChannel() }
+    }
+
+    public func acknowledgeWhatsNew() async throws(PageLampFailure) {
+        try await call { try await core.acknowledgeWhatsNew() }
+    }
+
+    public func acknowledgeUpdateDisclosure() async throws(PageLampFailure) {
+        try await call { try await core.acknowledgeUpdateDisclosure() }
+    }
+
+    public func recordUpdateCheck(record: UpdateCheckRecord) async throws(PageLampFailure) {
+        try await call { try await core.recordUpdateCheck(record: record) }
+    }
+
+    public func lastUpdateCheck() async throws(PageLampFailure) -> UpdateCheckRecord? {
+        try await call { try await core.lastUpdateCheck() }
+    }
+
+    public func activity() async throws(PageLampFailure) -> Activity {
+        try await call { try await core.activity() }
     }
 
     public func syncAll(request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SyncSummary {
@@ -142,6 +219,29 @@ public struct UnavailableService: PageLampService {
     public func weekMaterials(course: String, week: UInt32?) async throws(PageLampFailure) -> WeekMaterials {
         throw failure
     }
+
+    public func courseTimeline(course: String) async throws(PageLampFailure) -> CourseTimeline { throw failure }
+    public func lifecycleSummary() async throws(PageLampFailure) -> LifecycleSummary { throw failure }
+
+    public func keepCourseCurrent(course: String, until: String?) async throws(PageLampFailure) -> Course {
+        throw failure
+    }
+
+    public func clearKeepCourseCurrent(course: String) async throws(PageLampFailure) -> Course { throw failure }
+    public func snoozeRemovalSuggestions(courses: [String], kind: SnoozeKind) async throws(PageLampFailure) { throw failure }
+    public func clearRemovalSnooze(courses: [String]) async throws(PageLampFailure) { throw failure }
+    public func snoozeLifecycleBanner() async throws(PageLampFailure) { throw failure }
+    public func confirmCourseDates(course: String) async throws(PageLampFailure) -> CourseTimeline { throw failure }
+
+    public func startupTasks(now: Date) async throws(PageLampFailure) -> StartupTasks { throw failure }
+    public func updatePrefs() async throws(PageLampFailure) -> UpdatePrefs { throw failure }
+    public func setUpdatePrefs(prefs: UpdatePrefs) async throws(PageLampFailure) { throw failure }
+    public func effectiveUpdateChannel() async throws(PageLampFailure) -> UpdateChannel { throw failure }
+    public func acknowledgeWhatsNew() async throws(PageLampFailure) { throw failure }
+    public func acknowledgeUpdateDisclosure() async throws(PageLampFailure) { throw failure }
+    public func recordUpdateCheck(record: UpdateCheckRecord) async throws(PageLampFailure) { throw failure }
+    public func lastUpdateCheck() async throws(PageLampFailure) -> UpdateCheckRecord? { throw failure }
+    public func activity() async throws(PageLampFailure) -> Activity { throw failure }
 
     public func syncAll(request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SyncSummary {
         throw failure

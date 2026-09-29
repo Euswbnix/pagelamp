@@ -6,7 +6,7 @@
 import Foundation
 import PageLampKit
 
-public struct FixtureService: PageLampService {
+public struct FixtureService: ForwardingService {
     /// A call that can be made to fail (S14).
     public enum Part: Hashable, Sendable {
         /// `list_courses()`.
@@ -151,10 +151,6 @@ public struct FixtureService: PageLampService {
         return try await base.listCourses().map(summary)
     }
 
-    public func listSources() async throws(PageLampFailure) -> [SourceRecord] {
-        try await base.listSources()
-    }
-
     public func listDeadlines(course: String?, daysAhead: UInt32, daysBack: UInt32) async throws(PageLampFailure) -> [Deadline] {
         try fail(.deadlines)
         if course != nil { try fail(.courseDeadlines) }
@@ -205,37 +201,25 @@ public struct FixtureService: PageLampService {
         )
     }
 
-    public func syncAll(request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SyncSummary {
-        try await base.syncAll(request: request, observer: observer)
+    public func courseTimeline(course: String) async throws(PageLampFailure) -> CourseTimeline {
+        timeline(try await base.courseTimeline(course: course))
     }
 
-    public func syncSource(sourceId: String, request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SourceSyncResult {
-        try await base.syncSource(sourceId: sourceId, request: request, observer: observer)
+    public func keepCourseCurrent(course: String, until: String?) async throws(PageLampFailure) -> Course {
+        self.course(try await base.keepCourseCurrent(course: course, until: until))
+    }
+
+    public func clearKeepCourseCurrent(course: String) async throws(PageLampFailure) -> Course {
+        self.course(try await base.clearKeepCourseCurrent(course: course))
+    }
+
+    public func confirmCourseDates(course: String) async throws(PageLampFailure) -> CourseTimeline {
+        timeline(try await base.confirmCourseDates(course: course))
     }
 
     public func mcpClientConfigs(pagelampBinary: String) async throws(PageLampFailure) -> [McpClientConfig] {
         try fail(.clientConfigs)
         return try await base.mcpClientConfigs(pagelampBinary: pagelampBinary)
-    }
-
-    public func mcpLaunch(pagelampBinary: String) async throws(PageLampFailure) -> McpLaunch {
-        try await base.mcpLaunch(pagelampBinary: pagelampBinary)
-    }
-
-    public func doctor() async throws(PageLampFailure) -> DoctorReport {
-        try await base.doctor()
-    }
-
-    public func diagnosticReport() async throws(PageLampFailure) -> String {
-        try await base.diagnosticReport()
-    }
-
-    public func logsDir() async throws(PageLampFailure) -> String {
-        try await base.logsDir()
-    }
-
-    public func lastCrash() async throws(PageLampFailure) -> CrashReport? {
-        try await base.lastCrash()
     }
 
     public func clearLastCrash() async throws(PageLampFailure) {
