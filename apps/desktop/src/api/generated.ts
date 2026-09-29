@@ -819,7 +819,7 @@ export type SnoozeKind = "not_now" | "keep";
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "WhatsNewTopic".
  */
-export type WhatsNewTopic = "update_check" | "course_weeks";
+export type WhatsNewTopic = "update_check" | "course_weeks" | "course_removal";
 /**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *
