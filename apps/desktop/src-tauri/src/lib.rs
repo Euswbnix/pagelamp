@@ -12,7 +12,9 @@
 //! ─────────────────────────────────────────────────────────────────────────────────────────────
 
 pub mod backend;
+pub mod background;
 mod commands;
+pub mod reminders;
 pub mod updates;
 pub mod window;
 
@@ -111,6 +113,8 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::codex_logout,
         commands::set_mode_a_weekly_cap,
         commands::set_codex_source,
+        background::background_status,
+        background::set_tray_labels,
         updates::updates_status,
         updates::updates_check,
         updates::updates_install,
@@ -122,17 +126,23 @@ pub fn run() {
     // the core below is logged and a crash is recorded for the next launch's notice.
     pagelamp_app::diagnostics::init(pagelamp_app::diagnostics::ProcessKind::App, false);
     updates::remove_old_sidecar();
+    let hidden = background::started_hidden(std::env::args());
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(updates::plugin())
+        .plugin(background::autostart_plugin())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             updates::manage(app.handle());
             // Built here, not from the config, so Windows 11 can get Mica (window.rs).
             window::create_main(app)?;
+            background::start(app.handle(), None);
+            reminders::start(app.handle().clone());
             Ok(())
         })
-        .manage(Backend::open());
+        .manage(Backend::open())
+        .manage(background::Background::new(hidden));
     with_commands(builder)
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {

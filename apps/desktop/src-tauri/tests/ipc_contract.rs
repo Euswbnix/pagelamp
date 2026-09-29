@@ -41,6 +41,9 @@ const SKIPPED: &[&str] = &[
     "install_codex",
     "codex_login",
     "codex_logout",
+    // The login item and the tray: this computer's real ones, never from a test.
+    "background_status",
+    "set_tray_labels",
 ];
 
 /// The removal commands' Trash here: moves nothing, so a changed fixture can never reach this
