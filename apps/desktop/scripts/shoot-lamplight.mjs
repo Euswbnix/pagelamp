@@ -4,7 +4,7 @@
 // only (mock mode). Run it before and after a change and compare the folders.
 //
 //   pnpm exec vite --mode mock --port 1531          # in another terminal
-//   node scripts/shoot-lamplight.mjs <out-dir> [--shots courses,timeline,settings]
+//   node scripts/shoot-lamplight.mjs <out-dir> [--shots courses,timeline,settings,syncing]
 //
 // Drives Chrome/Chromium over the DevTools protocol, like record-demo.mjs (no npm packages).
 // Browser: $CHROME, else Google Chrome. Base URL: $SHOOT_URL, else http://localhost:1531.
@@ -25,7 +25,13 @@ const WIDTH = 1280;
 const HEIGHT = 800;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Screens: a route (hash) and a mock scenario. */
+// In-page steps for the shots that need a state (run after the screen settles).
+const startSync = `[...document.querySelectorAll(".pl-toolbar button")].at(-1).click();
+  await wait(1500);`;
+const openCapsule = `document.querySelector(".pl-accessory button").click();
+  await wait(500);`;
+
+/** Screens: a route (hash), a mock scenario and, optionally, steps to reach a state. */
 const SCREENS = {
   courses: { hash: "#/courses", scenario: "demo" },
   timeline: {
@@ -38,6 +44,15 @@ const SCREENS = {
   },
   sources: { hash: "#/sources", scenario: "demo" },
   settings: { hash: "#/settings", scenario: "demo" },
+  // The toolbar row once content scrolls under it (glass, and the title echo).
+  scrolled: {
+    hash: "#/sources",
+    scenario: "demo",
+    act: `document.querySelector("main").scrollTop = 320; await wait(400);`,
+  },
+  // The accessory bar mid-sync, and its details.
+  syncing: { hash: "#/courses", scenario: "demo", act: startSync },
+  "sync-details": { hash: "#/courses", scenario: "demo", act: `${startSync}\n${openCapsule}` },
 };
 
 /** Appearance contexts: theme × locale × simulated platform/backdrop. */
@@ -115,6 +130,8 @@ async function settle() {
 try {
   await send("Page.enable");
   await send("Runtime.enable");
+  // A headless page never has focus; without this the app dims the accessory bar as inactive.
+  await send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await send("Emulation.setDeviceMetricsOverride", {
     width: WIDTH,
     height: HEIGHT,
@@ -141,6 +158,12 @@ try {
       await sleep(100);
       await send("Page.navigate", { url: `${BASE}/?${params}${screen.hash}` });
       await settle();
+      if (screen.act) {
+        await evaluate(`(async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          ${screen.act}
+        })()`);
+      }
       const { data } = await send("Page.captureScreenshot", { format: "png" });
       const file = join(out, `${name}-${ctx.platform}-${ctx.theme}-${ctx.locale}.png`);
       writeFileSync(file, Buffer.from(data, "base64"));
