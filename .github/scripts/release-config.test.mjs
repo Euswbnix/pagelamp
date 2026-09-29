@@ -6,7 +6,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { cargoWorkspaceVersion, pinningProblems, run, scanYaml, secretProblems, tauriFindings } from "./release-config.mjs";
+import {
+  cargoWorkspaceVersion,
+  lockfileProblems,
+  lockPackages,
+  memberPackage,
+  pinningProblems,
+  run,
+  scanYaml,
+  secretProblems,
+  tauriFindings,
+  workspaceMembers,
+} from "./release-config.mjs";
 
 function realPubkey() {
   const { publicKey } = generateKeyPairSync("ed25519");
@@ -66,9 +77,9 @@ describe("secrets", () => {
 
   it("flags job-level and workflow-level env", () => {
     const job = workflow.replace("    environment: release\n", "    environment: release\n    env:\n      KEY: ${{ secrets.KEY }}\n");
-    assert.match(secretProblems("w.yml", job).join("\n"), /w\.yml:\d+: a secret is used in jobs\.build\.env\.KEY/);
+    assert.match(secretProblems("w.yml", job).join("\n"), /w\.yml:\d+: a secret or the job.s token is used in jobs\.build\.env\.KEY/);
     const top = workflow.replace("  CARGO_TERM_COLOR: always\n", "  CARGO_TERM_COLOR: always\n  KEY: ${{ secrets.KEY }}\n");
-    assert.match(secretProblems("w.yml", top).join("\n"), /a secret is used in env\.KEY/);
+    assert.match(secretProblems("w.yml", top).join("\n"), /token is used in env\.KEY/);
   });
 
   it("flags secrets in run scripts, conditions and reusable-workflow calls", () => {
@@ -78,6 +89,32 @@ describe("secrets", () => {
     assert.match(secretProblems("w.yml", condition).join("\n"), /jobs\.build\.steps\[\]\.if/);
     const inherit = "jobs:\n  call:\n    uses: ./.github/workflows/other.yml\n    secrets: inherit\n";
     assert.match(secretProblems("w.yml", inherit).join("\n"), /passes secrets to a reusable workflow/);
+  });
+
+  it("treats github.token like a secret", () => {
+    const step = workflow.replace("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", "          GH_TOKEN: ${{ github.token }}\n");
+    assert.notEqual(step, workflow);
+    assert.deepEqual(secretProblems("w.yml", step), []);
+    const job = workflow.replace("    environment: release\n", "    environment: release\n    env:\n      GH_TOKEN: ${{ github.token }}\n");
+    assert.match(secretProblems("w.yml", job).join("\n"), /jobs\.build\.env\.GH_TOKEN/);
+    const indexed = workflow.replace("gh release view", "gh release view --token ${{ github['token'] }}");
+    assert.match(secretProblems("w.yml", indexed).join("\n"), /jobs\.build\.steps\[\]\.run/);
+    const condition = workflow.replace("      - name: Check\n", "      - name: Check\n        if: github.token != ''\n");
+    assert.match(secretProblems("w.yml", condition).join("\n"), /jobs\.build\.steps\[\]\.if/);
+  });
+
+  it("sees secrets inside longer and multi-line expressions", () => {
+    const format = workflow.replace("    environment: release\n", "    environment: release\n    env:\n      KEY: ${{ format('{0}', secrets.TAURI_SIGNING_PRIVATE_KEY) }}\n");
+    assert.match(secretProblems("w.yml", format).join("\n"), /jobs\.build\.env\.KEY/);
+    const split = workflow.replace("    environment: release\n", '    environment: release\n    env:\n      KEY: "${{\n        secrets.K }}"\n');
+    assert.match(secretProblems("w.yml", split).join("\n"), /w\.yml:11: a secret or the job's token is used in jobs\.build\.env\.KEY/);
+    const script = workflow.replace("gh release view", 'echo "${{\n            secrets.K }}"');
+    assert.match(secretProblems("w.yml", script).join("\n"), /jobs\.build\.steps\[\]\.run/);
+    // Still fine in a step's env, and a script that only names a file "secrets…" is no secret.
+    const stepSplit = workflow.replace("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n", '          GH_TOKEN: "${{\n            secrets.GITHUB_TOKEN }}"\n');
+    assert.deepEqual(secretProblems("w.yml", stepSplit), []);
+    const file = workflow.replace("gh release view", "cat secrets.txt\n          echo ${{ github.sha }} secrets.md");
+    assert.deepEqual(secretProblems("w.yml", file), []);
   });
 });
 
@@ -93,7 +130,12 @@ describe("pinning", () => {
 });
 
 describe("Tauri config", () => {
-  const today = { version: "0.1.0", bundle: { targets: "all", macOS: { signingIdentity: "-" } } };
+  // As on main since a8a1e19 (no MSI), with the updater plugin configured but switched off.
+  const today = {
+    version: "0.1.0",
+    bundle: { targets: ["app", "dmg", "nsis", "deb", "rpm", "appimage"], macOS: { signingIdentity: "-" } },
+    plugins: { updater: { pubkey: "PLACEHOLDER: the owner's minisign public key" } },
+  };
   const updater = (extra = {}) => ({
     version: "0.3.0-alpha.1",
     bundle: { targets: ["app", "dmg", "nsis", "appimage", "deb", "rpm"], createUpdaterArtifacts: true },
@@ -103,12 +145,9 @@ describe("Tauri config", () => {
   const check = (base, { strict = false, cargoVersion = "0.3.0-alpha.1", more = {} } = {}) =>
     tauriFindings({ configs: { "tauri.conf.json": base, ...more }, cargoVersion, strict });
 
-  it("keeps today's config releasable: MSI only warns while the updater is off", () => {
+  it("keeps today's config releasable with the updater off", () => {
     for (const strict of [false, true]) {
-      const result = check(today, { strict, cargoVersion: "0.1.0" });
-      assert.deepEqual(result.errors, []);
-      assert.equal(result.updater, false);
-      assert.match(result.warnings.join("\n"), /bundle\.targets is "all"/);
+      assert.deepEqual(check(today, { strict, cargoVersion: "0.1.0" }), { errors: [], warnings: [], updater: false });
     }
   });
 
@@ -123,12 +162,17 @@ describe("Tauri config", () => {
     assert.match(check(placeholder, { strict: true }).errors.join("\n"), /isn't a real updater public key/);
   });
 
-  it("requires NSIS only once the updater is on (strict)", () => {
-    const msi = updater({ bundle: { targets: ["app", "dmg", "msi", "nsis"], createUpdaterArtifacts: true } });
-    assert.match(check(msi).warnings.join("\n"), /has "msi"/);
-    assert.match(check(msi, { strict: true }).errors.join("\n"), /has "msi"/);
-    const all = updater({ bundle: { createUpdaterArtifacts: true } });
-    assert.match(check(all, { strict: true }).errors.join("\n"), /not set \(all\)/);
+  it("fails a tag on an MSI or \"all\" (D4), with the updater on or off", () => {
+    const off = (targets) => ({ ...today, bundle: { ...today.bundle, targets } });
+    const on = (targets) => updater({ bundle: { targets, createUpdaterArtifacts: true } });
+    for (const [make, cargoVersion] of [[off, "0.1.0"], [on, "0.3.0-alpha.1"]]) {
+      const msi = make(["app", "dmg", "msi", "nsis"]);
+      assert.match(check(msi, { cargoVersion }).warnings.join("\n"), /has "msi"/);
+      assert.deepEqual(check(msi, { cargoVersion }).errors, []);
+      assert.match(check(msi, { strict: true, cargoVersion }).errors.join("\n"), /has "msi"/);
+      assert.match(check(make("all"), { strict: true, cargoVersion }).errors.join("\n"), /bundle\.targets is "all"/);
+      assert.match(check(make(undefined), { strict: true, cargoVersion }).errors.join("\n"), /not set \(all\)/);
+    }
     const windowsOverride = { "tauri.windows.conf.json": { bundle: { targets: ["nsis"] } } };
     const allButNsisOnWindows = updater({ bundle: { targets: "all", createUpdaterArtifacts: true } });
     assert.deepEqual(check(allButNsisOnWindows, { strict: true, more: windowsOverride }).errors, []);
@@ -155,6 +199,41 @@ describe("Tauri config", () => {
     assert.match(overlay.errors.join("\n"), /tauri\.rehearsal\.conf\.json: sets bundle\.createUpdaterArtifacts/);
   });
 
+  it("always rejects beforeBundleCommand, which would run next to the signing secrets", () => {
+    const hook = { ...today, build: { beforeBuildCommand: "pnpm run build", beforeBundleCommand: "node x.mjs" } };
+    assert.match(check(hook).errors.join("\n"), /tauri\.conf\.json: build\.beforeBundleCommand is set/);
+    const object = check(today, { more: { "tauri.macos.conf.json": { build: { beforeBundleCommand: { script: "x" } } } } });
+    assert.match(object.errors.join("\n"), /tauri\.macos\.conf\.json: build\.beforeBundleCommand is set/);
+    assert.deepEqual(check({ ...today, build: { beforeBuildCommand: "pnpm run build" } }, { cargoVersion: "0.1.0" }).errors, []);
+  });
+
+  it("reads the workspace members and their Cargo.lock versions", () => {
+    const root = '[workspace]\nresolver = "3"\nmembers = [\n    "crates/a",\n    # "crates/old",\n    "apps/b", # the app\n]\n\n[workspace.package]\nversion = "0.3.0"\n';
+    assert.deepEqual(workspaceMembers(root), ["crates/a", "apps/b"]);
+    assert.deepEqual(memberPackage('[package]\nname = "pagelamp-a"\nversion.workspace = true\n\n[dependencies]\nname = "x"\n'), { name: "pagelamp-a", inheritsVersion: true });
+    assert.deepEqual(memberPackage('[package]\nname = "b"\nversion = { workspace = true }\n'), { name: "b", inheritsVersion: true });
+    assert.deepEqual(memberPackage('[package]\nname = "c"\nversion = "1.0.0"\n'), { name: "c", inheritsVersion: false });
+    const lock = 'version = 4\n\n[[package]]\nname = "pagelamp-a"\nversion = "0.3.0-alpha.0.1"\ndependencies = [\n "serde",\n]\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n';
+    assert.deepEqual(lockPackages(lock).map((p) => `${p.name} ${p.version} ${p.source ?? "local"}`), [
+      "pagelamp-a 0.3.0-alpha.0.1 local",
+      "serde 1.0.0 registry+https://github.com/rust-lang/crates.io-index",
+    ]);
+  });
+
+  it("requires Cargo.lock to carry the workspace version of every member that inherits it", () => {
+    const lock = '[[package]]\nname = "pagelamp-a"\nversion = "0.3.0-alpha.0.1"\n\n[[package]]\nname = "own"\nversion = "2.0.0"\n';
+    const members = [
+      { path: "crates/a", name: "pagelamp-a", inheritsVersion: true },
+      { path: "crates/own", name: "own", inheritsVersion: false },
+    ];
+    assert.deepEqual(lockfileProblems({ members, cargoLock: lock, cargoVersion: "0.3.0-alpha.0.1" }), []);
+    const stale = lockfileProblems({ members, cargoLock: lock, cargoVersion: "0.3.0-alpha.0.2" });
+    assert.equal(stale.length, 1);
+    assert.match(stale[0], /Cargo\.lock has pagelamp-a 0\.3\.0-alpha\.0\.1, but the workspace version is 0\.3\.0-alpha\.0\.2; run `cargo update --workspace --offline`/);
+    const missing = lockfileProblems({ members: [...members, { path: "apps/new", name: "pagelamp-new", inheritsVersion: true }], cargoLock: lock, cargoVersion: "0.3.0-alpha.0.1" });
+    assert.match(missing.join("\n"), /no entry for the workspace member pagelamp-new/);
+  });
+
   it("reads the Cargo workspace version", () => {
     const toml = '[workspace]\nmembers = []\n\n[workspace.package]\nversion = "0.3.0-alpha.1"\nedition = "2024"\n\n[profile.release]\nversion = "no"\n';
     assert.equal(cargoWorkspaceVersion(toml), "0.3.0-alpha.1");
@@ -167,13 +246,15 @@ describe("run", () => {
   after(() => {
     for (const root of roots) rmSync(root, { recursive: true, force: true });
   });
-  function repo({ config, workflows = { "ci.yml": workflow }, overlay = false }) {
+  function repo({ config, workflows = { "ci.yml": workflow }, overlay = false, lockVersion = "0.3.0-alpha.1" }) {
     const root = mkdtempSync(join(tmpdir(), "release-config-"));
     roots.push(root);
     mkdirSync(join(root, ".github/workflows"), { recursive: true });
     mkdirSync(join(root, "apps/desktop/src-tauri"), { recursive: true });
     for (const [name, text] of Object.entries(workflows)) writeFileSync(join(root, ".github/workflows", name), text);
-    writeFileSync(join(root, "Cargo.toml"), '[workspace.package]\nversion = "0.3.0-alpha.1"\n');
+    writeFileSync(join(root, "Cargo.toml"), '[workspace]\nmembers = ["apps/desktop/src-tauri"]\n\n[workspace.package]\nversion = "0.3.0-alpha.1"\n');
+    writeFileSync(join(root, "apps/desktop/src-tauri/Cargo.toml"), '[package]\nname = "pagelamp-desktop"\nversion.workspace = true\n');
+    writeFileSync(join(root, "Cargo.lock"), `version = 4\n\n[[package]]\nname = "pagelamp-desktop"\nversion = "${lockVersion}"\n`);
     writeFileSync(join(root, "apps/desktop/src-tauri/tauri.conf.json"), JSON.stringify(config));
     if (overlay) writeFileSync(join(root, "apps/desktop/src-tauri/tauri.rehearsal.conf.json"), "{}");
     return root;
@@ -200,5 +281,12 @@ describe("run", () => {
     assert.equal(result.errors.length, 2);
     assert.ok(lines.some((l) => l.startsWith("::error::.github/workflows/bad.yaml:4:")));
     assert.ok(lines.some((l) => l.startsWith("::warning::")), "D4 is a warning outside a release");
+  });
+
+  it("fails when Cargo.lock wasn't updated with the workspace version, even outside a release", () => {
+    const config = { bundle: { targets: ["app", "dmg", "nsis", "appimage", "deb", "rpm"] } };
+    const result = run({ root: repo({ config, lockVersion: "0.1.0" }), log: () => {} });
+    assert.equal(result.errors.length, 1);
+    assert.match(result.errors[0], /Cargo\.lock has pagelamp-desktop 0\.1\.0, but the workspace version is 0\.3\.0-alpha\.1/);
   });
 });

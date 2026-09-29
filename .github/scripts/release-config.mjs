@@ -6,19 +6,25 @@
 //   node .github/scripts/release-config.mjs [--strict] [--root <repo>]
 //
 // Always errors (CI and release):
-// - a secret used anywhere but a step's `env:` or `with:` in any workflow (job- or workflow-level
-//   `env`, `run` scripts, `if`, `secrets: inherit`, …): build scripts, proc macros and package
-//   lifecycle hooks can read everything in a job's environment (docs/design/v0.3-plan.md M0.6);
+// - a secret or the job's token (`secrets.*`, `github.token`) used anywhere but a step's `env:` or
+//   `with:` in any workflow (job- or workflow-level `env`, `run` scripts, `if`, `secrets:
+//   inherit`, …), also inside longer or multi-line expressions: build scripts, proc macros and
+//   package lifecycle hooks can read everything in a job's environment (docs/design/v0.3-plan.md
+//   M0.6);
 // - an action not pinned to a full commit SHA (the tj-actions compromise);
 // - macOS entitlements in any Tauri config (the app and its sidecar ship with none, M0.1);
-// - `createUpdaterArtifacts: "v1Compatible"` (only for apps migrating from Tauri v1).
+// - `build.beforeBundleCommand` in any Tauri config: `tauri bundle` runs it inside the release
+//   steps that hold signing material (the Apple certificate, notary key and updater key on macOS,
+//   the Azure sign-in on Windows);
+// - `createUpdaterArtifacts: "v1Compatible"` (only for apps migrating from Tauri v1);
+// - a workspace member that inherits the workspace version but has another version in Cargo.lock
+//   (or none): release builds use `--locked` and would fail after the owner approved them.
 // Warnings in CI, errors with --strict (release.yml, tags only; rehearsals run without it):
 // - the updater is switched on (`bundle.createUpdaterArtifacts: true`) but
 //   `plugins.updater.pubkey` isn't a real updater public key;
 // - `tauri.conf.json`'s version is neither the Cargo workspace version nor its numeric part (the
 //   check of release.yml's create step, earlier);
-// - `bundle.targets` is "all" (the default) or has "msi" (NSIS only, D4). Strict only once the
-//   updater is switched on: a release made without the updater still builds what v0.1.0 did.
+// - `bundle.targets` is "all" (the default) or has "msi" (NSIS only, D4).
 //
 // Writes `updater=true|false` (updater artifacts will be built and published: switched on with a
 // real key), `version=<Cargo workspace version>` and `test_overlay=true|false`
@@ -28,7 +34,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { isRealPublicKey } from "./updater-manifest.mjs";
+import { isRealPublicKey, updaterEnabled } from "./updater-manifest.mjs";
 
 const TAURI_DIR = "apps/desktop/src-tauri";
 const WORKFLOWS_DIR = ".github/workflows";
@@ -106,26 +112,50 @@ export function scanYaml(text) {
   return entries;
 }
 
-const EXPRESSION_SECRET = /\$\{\{[^}]*\bsecrets\b[^}]*\}\}/;
-const BARE_SECRET = /\bsecrets\s*[.[]/;
+// An expression (`${{ … }}`, possibly over several lines or with `}` inside, e.g. format('{0}', …))
+// that reads a secret or the job's token (`github.token` is secrets.GITHUB_TOKEN).
+const EXPRESSION_SECRET =
+  /\$\{\{(?:(?!\}\})[\s\S])*?(?:\bsecrets\b|\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"])/;
+// The same in an `if:`, where the expression needs no `${{ }}`.
+const BARE_SECRET = /\bsecrets\s*[.[]|\bgithub\s*\.\s*token\b|\bgithub\s*\[\s*['"]token['"]/;
 
 /** Where a secret may appear: a step's env or with (`jobs.<id>.steps[].env.<NAME>`). */
 function allowedSecretPath(path) {
   return path.length === 6 && path[0] === "jobs" && path[2] === "steps" && path[3] === "[]" && (path[4] === "env" || path[4] === "with");
 }
 
-/** Every use of a secret outside a step's `env:`/`with:` (and `secrets:` on a job). */
+const samePath = (a, b) => a.length === b.length && a.every((key, i) => key === b[i]);
+
+/**
+ * The scan's entries joined into whole values: a key with its continuation lines (a quoted value
+ * over several lines, a block scalar such as a `run: |` script), so an expression that spans lines
+ * is seen as one.
+ */
+function values(entries) {
+  const out = [];
+  for (const entry of entries) {
+    const last = out.at(-1);
+    if (entry.key === undefined && last && samePath(last.path, entry.path)) {
+      last.value += `\n${entry.text}`;
+    } else {
+      out.push({ line: entry.line, path: entry.path, key: entry.key, value: entry.value ?? entry.text ?? "" });
+    }
+  }
+  return out;
+}
+
+/** Every use of a secret (or the job's token) outside a step's `env:`/`with:`, and `secrets:` on a job. */
 export function secretProblems(file, text) {
   const problems = [];
-  for (const entry of scanYaml(text)) {
-    const value = entry.value ?? entry.text ?? "";
+  for (const entry of values(scanYaml(text))) {
+    const value = entry.value;
     if (entry.key === "secrets" && entry.path.length === 3 && entry.path[0] === "jobs") {
       problems.push(`${file}:${entry.line}: jobs.${entry.path[1]} passes secrets to a reusable workflow (secrets: ${value || "…"}); pass each secret to the step that needs it`);
       continue;
     }
     const used = EXPRESSION_SECRET.test(value) || (entry.key === "if" && BARE_SECRET.test(value));
     if (used && !allowedSecretPath(entry.path)) {
-      problems.push(`${file}:${entry.line}: a secret is used in ${entry.path.join(".").replaceAll(".[]", "[]")}; secrets may only be given to the step that needs them, in its env: or with:`);
+      problems.push(`${file}:${entry.line}: a secret or the job's token is used in ${entry.path.join(".").replaceAll(".[]", "[]")}; secrets (and github.token) may only be given to the step that needs them, in its env: or with:`);
     }
   }
   return problems;
@@ -177,6 +207,10 @@ export function tauriFindings({ configs, cargoVersion, strict }) {
     if (entitlements !== undefined && entitlements !== null && entitlements !== "") {
       errors.push(`${TAURI_DIR}/${name}: bundle.macOS.entitlements is set; PageLamp and its sidecar are signed with no entitlements (a file here would reach both)`);
     }
+    const beforeBundle = config?.build?.beforeBundleCommand;
+    if (beforeBundle !== undefined && beforeBundle !== null && beforeBundle !== "") {
+      errors.push(`${TAURI_DIR}/${name}: build.beforeBundleCommand is set; \`tauri bundle\` would run it inside the release steps that hold the signing secrets (Apple certificate, notary key and updater key; the Azure sign-in). Do that work in beforeBuildCommand, which runs while nothing secret is around`);
+    }
   }
 
   const artifacts = base.bundle?.createUpdaterArtifacts;
@@ -189,11 +223,8 @@ export function tauriFindings({ configs, cargoVersion, strict }) {
     }
   }
   const switchedOn = artifacts === true;
-  const pubkey = base.plugins?.updater?.pubkey;
-  const realKey = isRealPublicKey(pubkey);
+  const realKey = isRealPublicKey(base.plugins?.updater?.pubkey);
   const release = (message) => (strict ? errors : warnings).push(message);
-  // D4 only blocks a release once the updater is on (see the header).
-  const d4 = (message) => (strict && switchedOn ? errors : warnings).push(message);
 
   if (switchedOn && !realKey) {
     release(`${TAURI_DIR}/tauri.conf.json: the updater is on (createUpdaterArtifacts) but plugins.updater.pubkey isn't a real updater public key (the content of the .key.pub file from \`tauri signer generate\`); the release builds no updater artifacts until it is`);
@@ -209,12 +240,75 @@ export function tauriFindings({ configs, cargoVersion, strict }) {
   const targets = windowsTargets ?? base.bundle?.targets ?? "all";
   const list = Array.isArray(targets) ? targets : [targets];
   if (list.includes("all")) {
-    d4(`${TAURI_DIR}/${name}: bundle.targets is ${base.bundle?.targets === undefined && windowsTargets === undefined ? "not set (all)" : '"all"'}, which builds an MSI too; list the targets without "msi" (NSIS only on Windows, D4)`);
+    release(`${TAURI_DIR}/${name}: bundle.targets is ${base.bundle?.targets === undefined && windowsTargets === undefined ? "not set (all)" : '"all"'}, which builds an MSI too; list the targets without "msi" (NSIS only on Windows, D4)`);
   } else if (list.includes("msi")) {
-    d4(`${TAURI_DIR}/${name}: bundle.targets has "msi"; ship NSIS only on Windows (D4)`);
+    release(`${TAURI_DIR}/${name}: bundle.targets has "msi"; ship NSIS only on Windows (D4)`);
   }
 
-  return { errors, warnings, updater: switchedOn && realKey };
+  return { errors, warnings, updater: updaterEnabled(base) };
+}
+
+// ---- Cargo.lock ---------------------------------------------------------------------------------
+
+/** The `members` of the root Cargo.toml's `[workspace]` (as written, globs included). */
+export function workspaceMembers(cargoToml) {
+  const section = /^\[workspace\]\s*$([\s\S]*?)(?=^\[|(?![\s\S]))/m.exec(cargoToml)?.[1] ?? "";
+  const list = /^\s*members\s*=\s*\[([\s\S]*?)\]/m.exec(section)?.[1] ?? "";
+  return [...list.replace(/#.*$/gm, "").matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+}
+
+/** `{ name, inheritsVersion }` from a member's Cargo.toml (`version.workspace = true`). */
+export function memberPackage(cargoToml) {
+  let section = "";
+  let name;
+  let inheritsVersion = false;
+  for (const line of cargoToml.split(/\r?\n/)) {
+    const header = /^\s*\[([^\]]+)\]\s*(#.*)?$/.exec(line);
+    if (header) {
+      section = header[1].trim();
+      continue;
+    }
+    if (section !== "package") continue;
+    name ??= /^\s*name\s*=\s*"([^"]+)"/.exec(line)?.[1];
+    if (/^\s*version\s*\.\s*workspace\s*=\s*true\b/.test(line) || /^\s*version\s*=\s*\{[^}]*\bworkspace\s*=\s*true\b/.test(line)) {
+      inheritsVersion = true;
+    }
+  }
+  return { name, inheritsVersion };
+}
+
+/** The `[[package]]` entries of Cargo.lock: `{ name, version, source }`. */
+export function lockPackages(cargoLock) {
+  return cargoLock
+    .split(/^\[\[package\]\]\s*$/m)
+    .slice(1)
+    .map((block) => ({
+      name: /^name\s*=\s*"([^"]+)"/m.exec(block)?.[1],
+      version: /^version\s*=\s*"([^"]+)"/m.exec(block)?.[1],
+      source: /^source\s*=\s*"([^"]+)"/m.exec(block)?.[1],
+    }));
+}
+
+/**
+ * Each workspace member that inherits the workspace version must have exactly that version in
+ * Cargo.lock: release builds run `cargo build --locked`, which fails otherwise (after the owner
+ * approved the deployment). `members` is a list of `{ path, name, inheritsVersion }`.
+ */
+export function lockfileProblems({ members, cargoLock, cargoVersion }) {
+  const problems = [];
+  if (!cargoVersion) return problems;
+  const local = lockPackages(cargoLock).filter((p) => p.source === undefined);
+  for (const member of members) {
+    if (!member.inheritsVersion || !member.name) continue;
+    const entry = local.find((p) => p.name === member.name);
+    const fix = "run `cargo update --workspace --offline` and commit Cargo.lock together with Cargo.toml (release builds use --locked)";
+    if (!entry) {
+      problems.push(`Cargo.lock has no entry for the workspace member ${member.name} (${member.path}); ${fix}`);
+    } else if (entry.version !== cargoVersion) {
+      problems.push(`Cargo.lock has ${member.name} ${entry.version}, but the workspace version is ${cargoVersion}; ${fix}`);
+    }
+  }
+  return problems;
 }
 
 // ---- main ---------------------------------------------------------------------------------------
@@ -240,8 +334,32 @@ export function run({ root = ".", strict = false, env = process.env, log = conso
     errors.push(...secretProblems(file, text), ...pinningProblems(file, text));
   }
 
-  const cargoVersion = cargoWorkspaceVersion(readFileSync(join(root, "Cargo.toml"), "utf8"));
+  const cargoToml = readFileSync(join(root, "Cargo.toml"), "utf8");
+  const cargoVersion = cargoWorkspaceVersion(cargoToml);
   if (!cargoVersion) errors.push("Cargo.toml has no [workspace.package] version");
+  const members = [];
+  for (const pattern of workspaceMembers(cargoToml)) {
+    // Explicit paths, or one trailing `/*` level.
+    const paths = pattern.endsWith("/*")
+      ? readdirSync(join(root, pattern.slice(0, -2)), { withFileTypes: true })
+          .filter((d) => d.isDirectory() && existsSync(join(root, pattern.slice(0, -2), d.name, "Cargo.toml")))
+          .map((d) => `${pattern.slice(0, -2)}/${d.name}`)
+      : [pattern];
+    for (const path of paths) {
+      try {
+        members.push({ path, ...memberPackage(readFileSync(join(root, path, "Cargo.toml"), "utf8")) });
+      } catch (err) {
+        errors.push(`${path}/Cargo.toml: ${err.message}`);
+      }
+    }
+  }
+  if (members.length) {
+    if (existsSync(join(root, "Cargo.lock"))) {
+      errors.push(...lockfileProblems({ members, cargoLock: readFileSync(join(root, "Cargo.lock"), "utf8"), cargoVersion }));
+    } else {
+      errors.push("Cargo.lock is missing; release builds use --locked");
+    }
+  }
 
   const configs = {};
   const tauriDir = join(root, TAURI_DIR);

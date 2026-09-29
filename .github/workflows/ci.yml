@@ -195,10 +195,11 @@ jobs:
           command: check licenses
 
   # The release configuration, on every push and pull request (.github/scripts/release-config.mjs):
-  # errors for secrets outside a step's env/with in any workflow, unpinned actions, macOS
-  # entitlements, and failing tests of the release scripts; warnings only for what release.yml
-  # enforces on a tag (a tauri.conf.json version that doesn't fit the Cargo version, and with the
-  # updater on a placeholder updater key or MSI in bundle.targets).
+  # errors for secrets (or github.token) outside a step's env/with in any workflow, unpinned
+  # actions, macOS entitlements, a beforeBundleCommand, a Cargo.lock that doesn't carry the
+  # workspace version, and failing tests of the release scripts; warnings only for what
+  # release.yml enforces on a tag (a tauri.conf.json version that doesn't fit the Cargo version, an
+  # MSI or "all" in bundle.targets, and with the updater on a placeholder updater key).
   release-config:
     name: Release config
     runs-on: ubuntu-22.04
