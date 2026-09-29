@@ -61,7 +61,7 @@ export function ThisWeek() {
   }
 
   return (
-    <Section card title={t("thisWeek.title")} description={summary}>
+    <Section title={t("thisWeek.title")} description={summary}>
       {body}
     </Section>
   );
@@ -89,7 +89,7 @@ function DayRow({ group }: { group: DayGroup }) {
     group.dayDiff === 0 ? tc("time.today") : group.dayDiff === 1 ? tc("time.tomorrow") : null;
 
   return (
-    <li className="grid gap-x-6 py-2 first:pt-0 last:pb-0 sm:grid-cols-[8rem_1fr]">
+    <li className="grid gap-x-6 py-2 last:pb-0 sm:grid-cols-[8rem_1fr]">
       <h3 className="pt-2.5 text-sm font-medium">
         {relative ?? date}
         {relative ? (

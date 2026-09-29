@@ -1,6 +1,8 @@
 import { type ReactNode, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useLampBand } from "@/components/layout/lamp";
 import { useScrolledUnder, useToolbar } from "@/components/layout/toolbar";
+import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   title: ReactNode;
@@ -11,6 +13,8 @@ interface PageHeaderProps {
   eyebrow?: ReactNode;
   /** A way back (e.g. "← All courses"): the toolbar row's first item, else above the eyebrow. */
   leading?: ReactNode;
+  /** The screen shows "now" (this week): light the lamp band behind the title (§6.1). */
+  lit?: boolean;
 }
 
 /**
@@ -18,8 +22,16 @@ interface PageHeaderProps {
  * the leading item and the actions sit in the sticky toolbar row (docs/design/macos-shell.md
  * §2.5, §8), which also shows a small copy of the title once the h1 has scrolled under it.
  */
-export function PageHeader({ title, description, actions, eyebrow, leading }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+  eyebrow,
+  leading,
+  lit = false,
+}: PageHeaderProps) {
   const toolbar = useToolbar();
+  useLampBand(lit);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const titleUnder = useScrolledUnder(headingRef, toolbar?.scroller ?? null);
   return (
@@ -45,7 +57,8 @@ export function PageHeader({ title, description, actions, eyebrow, leading }: Pa
         : null}
       {leading && !toolbar ? <div className="mb-4">{leading}</div> : null}
       <header className="flex flex-wrap items-start justify-between gap-4 pb-6">
-        <div className="min-w-0 space-y-1">
+        {/* Where the band can't glow (reduced transparency, more contrast) a lamp rule marks it. */}
+        <div className={cn("min-w-0 space-y-1", lit && "pl-lamp-text")}>
           {eyebrow ? <div className="text-sm text-muted-foreground">{eyebrow}</div> : null}
           <h1
             ref={headingRef}

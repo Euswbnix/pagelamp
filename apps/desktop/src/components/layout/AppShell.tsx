@@ -10,13 +10,15 @@ import { useUpdateLifecycle } from "@/features/updates/useUpdateLifecycle";
 import { WhatsNewSheet } from "@/features/updates/WhatsNewSheet";
 import { cn } from "@/lib/utils";
 import { useRefreshAfterExternalSync } from "@/stores/sync";
+import { LampContext } from "./lamp";
 import { Sidebar } from "./Sidebar";
 import { ToolbarContext, useScrolled } from "./toolbar";
 
 /**
  * Sidebar + scrollable content column. The column starts with a sticky toolbar row (a screen's
- * PageHeader puts its actions there) and has the floating accessory bar at its foot. Every
- * screen except onboarding renders inside this.
+ * PageHeader puts its actions there), can light a lamp band behind its top (PageHeader `lit`)
+ * and has the floating accessory bar at its foot. Every screen except onboarding renders
+ * inside this.
  */
 export function AppShell() {
   const mainRef = useRef<HTMLElement>(null);
@@ -27,6 +29,7 @@ export function AppShell() {
     setScroller(element);
   }, []);
   const scrolled = useScrolled(scroller);
+  const [lit, setLit] = useState(false);
   const toolbar = useMemo(() => (slot && scroller ? { slot, scroller } : null), [slot, scroller]);
   useRouteAnnouncements(mainRef);
   useRefreshAfterExternalSync();
@@ -40,8 +43,10 @@ export function AppShell() {
           ref={setMain}
           id="main"
           tabIndex={-1}
-          className="pl-content min-w-0 flex-1 overflow-y-auto outline-none"
+          className="pl-content relative isolate min-w-0 flex-1 overflow-y-auto outline-none"
         >
+          {/* The lamp band's pool (§6.1): full-bleed, under the toolbar row, behind the text. */}
+          <div aria-hidden className="pl-lamp pl-lamp-band" data-lit={lit || undefined} />
           {/* Glass only once content scrolls under it (§8). */}
           <div
             className={cn("pl-toolbar", scrolled && "pl-glass")}
@@ -49,16 +54,18 @@ export function AppShell() {
           >
             <div ref={setSlot} className="mx-auto flex h-full max-w-5xl items-center gap-4 px-8" />
           </div>
-          <ToolbarContext.Provider value={toolbar}>
-            {/* Room at the foot for the accessory bar. */}
-            <div className="mx-auto max-w-5xl px-8 pt-2 pb-20">
-              <CrashNotice />
-              <PostUpdateBanner />
-              <UpdateNotice />
-              <WhatsNewSheet />
-              <Outlet />
-            </div>
-          </ToolbarContext.Provider>
+          <LampContext.Provider value={setLit}>
+            <ToolbarContext.Provider value={toolbar}>
+              {/* Room at the foot for the accessory bar. */}
+              <div className="mx-auto max-w-5xl px-8 pt-2 pb-20">
+                <CrashNotice />
+                <PostUpdateBanner />
+                <UpdateNotice />
+                <WhatsNewSheet />
+                <Outlet />
+              </div>
+            </ToolbarContext.Provider>
+          </LampContext.Provider>
         </main>
         <AccessoryBar />
       </div>

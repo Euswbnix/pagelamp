@@ -36,7 +36,7 @@ export function CoursesPage() {
     body = <CoursesEmpty />;
   } else {
     body = (
-      <div className="space-y-6">
+      <div className="space-y-10">
         <ThisWeek />
         <StudyPlanCard />
         <CourseList courses={courses.data} />
@@ -47,6 +47,7 @@ export function CoursesPage() {
   return (
     <>
       <PageHeader
+        lit
         title={t("title")}
         description={t("description")}
         // The empty state has its own "Sync now"; don't show two.
