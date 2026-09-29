@@ -324,6 +324,7 @@ mod tests {
                 term_end: None,
                 url: None,
                 syllabus_text: None,
+                lms: Default::default(),
             })
             .unwrap();
         store

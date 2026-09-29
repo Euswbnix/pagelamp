@@ -46,6 +46,7 @@ fn add_course(store: &Store, external: &str, code: Option<&str>, name: &str, ter
             term_end: term.then(|| date("2026-12-18")),
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
 }

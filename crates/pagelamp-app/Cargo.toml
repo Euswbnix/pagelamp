@@ -28,5 +28,7 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true
+# Builds an old-schema database in a test.
+rusqlite.workspace = true
 wiremock = "0.6"
 tokio.workspace = true

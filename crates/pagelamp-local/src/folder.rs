@@ -139,6 +139,7 @@ impl CourseDir<'_> {
                 .ok()
                 .map(String::from),
             syllabus_text: None,
+            lms: Default::default(),
         };
         store.in_transaction(|store| {
             store.upsert_course(&upsert)?;

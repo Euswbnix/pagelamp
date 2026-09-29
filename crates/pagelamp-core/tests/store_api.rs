@@ -54,6 +54,7 @@ fn course(external_id: &str, code: Option<&str>, name: &str) -> CourseUpsert {
         term_end: Some(date("2026-12-18")),
         url: Some(format!("https://lms.example.edu/courses/{external_id}")),
         syllabus_text: None,
+        lms: Default::default(),
     }
 }
 
@@ -1105,6 +1106,70 @@ fn relink_events_links_hinted_events_to_courses_created_later() {
     );
     assert_eq!(by_id("ev-other").course_id, None);
     assert_eq!(by_id("ev-plain").course_id, None);
+}
+
+#[test]
+fn lms_course_facts_follow_each_sync_while_student_answers_survive_it() {
+    let store = demo_store();
+    let id = course_id("101");
+    assert_eq!(
+        store.course_term_data(&id).unwrap(),
+        Some(CourseTermData::default()),
+        "nothing known yet"
+    );
+    let lms = LmsCourseInfo {
+        term_name: Some("Fall 2026".into()),
+        term_start: Some(date("2026-05-01")),
+        term_end: Some(date("2026-12-31")),
+        course_start: Some(date("2026-09-08")),
+        course_end: Some(date("2026-12-18")),
+        time_zone: Some("America/Toronto".into()),
+        concluded: Some(false),
+        workflow_state: Some("available".into()),
+        access_restricted: None,
+    };
+    let mut upsert = course("101", Some("DEMO101"), "Intro to Demo Studies");
+    upsert.lms = lms.clone();
+    store.upsert_course(&upsert).unwrap();
+    store
+        .set_keep_current_until(&id, Some(date("2027-01-15")))
+        .unwrap();
+    store
+        .set_removal_snoozed_until(&id, Some(date("9999-12-31")))
+        .unwrap();
+    let data = store.course_term_data(&id).unwrap().unwrap();
+    assert_eq!(data.lms, lms);
+    assert_eq!(data.keep_current_until, Some(date("2027-01-15")));
+    assert_eq!(data.removal_snoozed_until, Some(date("9999-12-31")));
+
+    // The next sync states the LMS facts anew; the student's answers stay.
+    upsert.lms = LmsCourseInfo {
+        concluded: Some(true),
+        ..LmsCourseInfo::default()
+    };
+    store.upsert_course(&upsert).unwrap();
+    store.set_course_access_restricted(&id, true).unwrap();
+    let data = store.course_term_data(&id).unwrap().unwrap();
+    assert_eq!(data.lms.concluded, Some(true));
+    assert_eq!(data.lms.term_name, None);
+    assert_eq!(data.lms.access_restricted, Some(true));
+    assert_eq!(data.keep_current_until, Some(date("2027-01-15")));
+    assert_eq!(data.removal_snoozed_until, Some(date("9999-12-31")));
+
+    // Clearing, the bulk read, and unknown ids.
+    store.set_keep_current_until(&id, None).unwrap();
+    let all = store.all_course_term_data().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[&id].keep_current_until, None);
+    assert_eq!(store.course_term_data("nope").unwrap(), None);
+    assert!(matches!(
+        store.set_removal_snoozed_until("nope", None),
+        Err(Error::NotFound(_))
+    ));
+    assert!(matches!(
+        store.set_course_access_restricted("nope", true),
+        Err(Error::NotFound(_))
+    ));
 }
 
 #[test]

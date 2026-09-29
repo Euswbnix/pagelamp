@@ -57,6 +57,7 @@ fn fixture(dir: &Path) -> PathBuf {
                 term_end: Some(today + TimeDelta::days(80)),
                 url: Some(format!("https://lms.example.edu/courses/{external}")),
                 syllabus_text: None,
+                lms: Default::default(),
             })
             .unwrap();
     }

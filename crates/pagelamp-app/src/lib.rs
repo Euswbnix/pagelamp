@@ -843,6 +843,12 @@ impl App {
         )?)
     }
 
+    /// What the last database update did about its backup copy (`None`: never updated, or
+    /// not readable). Shown by `doctor` and in diagnostic reports.
+    pub fn last_migration_backup(&self) -> Option<pagelamp_core::model::MigrationBackupRecord> {
+        diagnostics::last_migration_backup_in(self.data_dir())
+    }
+
     pub fn doctor(&self) -> Result<diagnostics::DoctorReport> {
         Ok(diagnostics::doctor_in(
             &self.data_dir,

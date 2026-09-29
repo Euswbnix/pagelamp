@@ -313,14 +313,20 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
         Command::Schema => print_json(&pagelamp_app::json_schema()),
         Command::Doctor => {
             // Works even when the database can't be opened.
-            let doctor = match App::open() {
-                Ok(app) => app.doctor()?,
-                Err(_) => diagnostics::doctor()?,
+            let (doctor, last_update) = match App::open() {
+                Ok(app) => (app.doctor()?, app.last_migration_backup()),
+                Err(_) => (diagnostics::doctor()?, None),
             };
             if json {
                 return print_json(&doctor);
             }
             print_doctor(&doctor);
+            if let Some(update) = last_update {
+                println!(
+                    "Last database update: {}",
+                    diagnostics::describe_update(&update)
+                );
+            }
             Ok(())
         }
         Command::Report { out } => {

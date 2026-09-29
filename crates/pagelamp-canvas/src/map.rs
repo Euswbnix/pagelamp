@@ -81,6 +81,8 @@ pub(crate) fn course(ids: Ids<'_>, base: &Url, course: &json::Course) -> Option<
             .as_deref()
             .map(html_to_text)
             .filter(|t| !t.is_empty()),
+        // The raw LMS dates and state come with the course lane (calendar design §5, S2/S3).
+        lms: Default::default(),
     })
 }
 

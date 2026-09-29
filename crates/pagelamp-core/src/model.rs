@@ -166,6 +166,65 @@ pub struct CourseUpsert {
     pub url: Option<String>,
     /// Canvas syllabus HTML converted to text, if available (used later for AI-policy hints).
     pub syllabus_text: Option<String>,
+    /// The LMS's own course and term facts (schema 3); all `None` for folder courses. Written on
+    /// every upsert: the sync that upserts a course states them in full.
+    pub lms: LmsCourseInfo,
+}
+
+/// What the LMS says about a course's dates and state, stored raw (schema 3, the `lms_*`
+/// columns; docs/design/v0.3-course-calendar.md §3.1). Written only by sync. `None` means
+/// unknown (not reported, or not an LMS course). Not part of the facade's `Course` type:
+/// `core::term` / `core::lifecycle` read it through `Store::course_term_data`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct LmsCourseInfo {
+    /// `term.name`, e.g. "Fall 2026".
+    pub term_name: Option<String>,
+    /// Term dates as calendar dates in the course's time zone.
+    pub term_start: Option<NaiveDate>,
+    pub term_end: Option<NaiveDate>,
+    /// `course.start_at` / `end_at` as calendar dates in the course's time zone.
+    pub course_start: Option<NaiveDate>,
+    pub course_end: Option<NaiveDate>,
+    /// IANA time zone name of the course.
+    pub time_zone: Option<String>,
+    pub concluded: Option<bool>,
+    pub workflow_state: Option<String>,
+    /// Listed by the LMS but with `access_restricted_by_date` set.
+    pub access_restricted: Option<bool>,
+}
+
+/// What happened to the copy of the database the last migration tried to make (settings key
+/// `store::LAST_MIGRATION_BACKUP`). Codes only: no paths, no messages.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct MigrationBackupRecord {
+    pub from_version: i64,
+    pub to_version: i64,
+    pub at: Timestamp,
+    pub outcome: MigrationBackupOutcome,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum MigrationBackupOutcome {
+    /// `pagelamp.db.v<from_version>.bak` was written.
+    Ok,
+    /// No copy: another process was migrating the same database at that moment.
+    Skipped,
+    /// No copy; the migration went ahead anyway. `code` is e.g. `storage_full`,
+    /// `permission_denied`, `sqlite` or `other`.
+    Failed { code: String },
+}
+
+/// A course's term and lifecycle inputs beyond `Course`: the LMS facts and the student's own
+/// answers (schema 3). Read with `Store::course_term_data`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CourseTermData {
+    pub lms: LmsCourseInfo,
+    /// "I'm still taking this": keep the course current until this date (student; never
+    /// touched by sync).
+    pub keep_current_until: Option<NaiveDate>,
+    /// "Not now" / "Keep" on the removal suggestion (student; `9999-12-31` = keep).
+    pub removal_snoozed_until: Option<NaiveDate>,
 }
 
 /// A course as read back from the store: synced fields + user overrides resolved.

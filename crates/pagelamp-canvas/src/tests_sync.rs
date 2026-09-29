@@ -567,6 +567,7 @@ async fn foreign_next_links_are_never_followed() {
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     f.sync(&f.options(false)).await.unwrap();

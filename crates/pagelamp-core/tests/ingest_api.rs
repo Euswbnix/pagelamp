@@ -41,6 +41,7 @@ fn demo_store() -> Store {
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     store

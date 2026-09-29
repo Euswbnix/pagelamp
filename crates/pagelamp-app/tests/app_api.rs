@@ -56,6 +56,7 @@ fn seed(app: &App) {
                 term_end: Some(date("2026-12-18")),
                 url: None,
                 syllabus_text: None,
+                lms: Default::default(),
             })
             .unwrap();
     }
@@ -271,6 +272,7 @@ fn removal_cleans_old_download_dirs_and_skips_files_links_and_shared_dirs() {
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     std::fs::create_dir_all(files.join("demo101-101")).unwrap();
@@ -325,6 +327,7 @@ fn removal_deletes_the_course_under_any_older_code_unless_another_source_has_tha
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     drop(store);
@@ -576,6 +579,7 @@ async fn download_course_files_is_for_canvas_courses_only() {
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     assert_eq!(

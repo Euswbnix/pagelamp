@@ -14,7 +14,9 @@ use std::sync::LazyLock;
 use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics as core_diag;
-use pagelamp_core::model::{Course, SourceErrorKind, SourceKind, Timestamp};
+use pagelamp_core::model::{
+    Course, MigrationBackupOutcome, MigrationBackupRecord, SourceErrorKind, SourceKind, Timestamp,
+};
 use pagelamp_core::paths;
 use pagelamp_core::secrets::{KeychainSecrets, SecretBackend};
 use pagelamp_core::store::Store;
@@ -182,6 +184,30 @@ pub(crate) fn doctor_in(data_dir: &Path, secrets: &dyn SecretBackend) -> DoctorR
     report
 }
 
+/// The last migration's backup record (`Store::last_migration_backup`), if the database can
+/// be read and was ever migrated.
+pub(crate) fn last_migration_backup_in(data_dir: &Path) -> Option<MigrationBackupRecord> {
+    Store::open_read_only(&paths::db_path_in(data_dir))
+        .ok()?
+        .last_migration_backup()
+        .ok()?
+}
+
+/// "schema 2 → 3 on 2026-10-01, backup ok" (codes only).
+pub fn describe_update(record: &MigrationBackupRecord) -> String {
+    let outcome = match &record.outcome {
+        MigrationBackupOutcome::Ok => "backup ok".to_string(),
+        MigrationBackupOutcome::Skipped => "backup skipped (another process migrated)".to_string(),
+        MigrationBackupOutcome::Failed { code } => format!("NO backup ({code})"),
+    };
+    format!(
+        "schema {} → {} on {}, {outcome}",
+        record.from_version,
+        record.to_version,
+        record.at.format("%Y-%m-%d")
+    )
+}
+
 pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String {
     let doctor = doctor_in(data_dir, secrets);
     let names = course_names(data_dir);
@@ -201,6 +227,12 @@ pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String 
         (Some(v), _) => out.push_str(&format!("- Database: schema {v}\n")),
         (None, Some(err)) => out.push_str(&format!("- Database: not readable ({err})\n")),
         (None, None) => out.push_str("- Database: unknown\n"),
+    }
+    if let Some(update) = last_migration_backup_in(data_dir) {
+        out.push_str(&format!(
+            "- Last database update: {}\n",
+            describe_update(&update)
+        ));
     }
     match &doctor.keychain_error {
         None => out.push_str("- Keychain: available\n"),
@@ -580,6 +612,7 @@ mod tests {
                 term_end: None,
                 url: None,
                 syllabus_text: None,
+                lms: Default::default(),
             })
             .unwrap();
     }
@@ -649,6 +682,33 @@ mod tests {
     }
 
     #[test]
+    fn the_report_says_how_the_last_database_update_went() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = paths::db_path_in(temp.path());
+        let plain = rusqlite::Connection::open(&db).unwrap();
+        plain
+            .execute_batch(pagelamp_core::store::SCHEMA_V1)
+            .unwrap();
+        plain
+            .execute_batch(pagelamp_core::store::SCHEMA_V2)
+            .unwrap();
+        plain.pragma_update(None, "user_version", 2).unwrap();
+        drop(plain);
+        drop(Store::open(&db).unwrap()); // migrates, with a backup
+        let report = report_in(temp.path(), &MemorySecrets::new());
+        let line = report
+            .lines()
+            .find(|l| l.starts_with("- Last database update:"))
+            .unwrap_or_else(|| panic!("no update line:\n{report}"));
+        assert!(line.contains("schema 2 → 3"), "{line}");
+        assert!(line.ends_with("backup ok"), "{line}");
+        assert!(
+            !report.contains(".bak"),
+            "no backup path in reports:\n{report}"
+        );
+    }
+
+    #[test]
     fn short_or_numeric_course_names_never_mangle_other_words() {
         let temp = tempfile::tempdir().unwrap();
         seeded(temp.path());
@@ -665,6 +725,7 @@ mod tests {
                     term_end: None,
                     url: None,
                     syllabus_text: None,
+                    lms: Default::default(),
                 })
                 .unwrap();
         }
@@ -714,6 +775,7 @@ mod tests {
                 term_end: None,
                 url: None,
                 syllabus_text: None,
+                lms: Default::default(),
             })
             .unwrap();
         let names = course_names(temp.path());

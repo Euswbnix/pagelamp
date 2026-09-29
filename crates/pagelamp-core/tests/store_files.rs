@@ -44,6 +44,7 @@ fn demo_course() -> CourseUpsert {
         term_end: None,
         url: None,
         syllabus_text: None,
+        lms: Default::default(),
     }
 }
 
@@ -341,10 +342,56 @@ fn migrating_backs_up_the_database_first_and_keeps_only_the_newest_copy() {
 }
 
 #[test]
+fn the_backup_outcome_of_a_migration_is_recorded() {
+    let (_dir, path) = temp_db();
+    version_2_db(&path, ("2026-09-08", "2026-12-18"));
+    let store = Store::open(&path).unwrap();
+    let record = store.last_migration_backup().unwrap().expect("recorded");
+    assert_eq!(
+        (record.from_version, record.to_version),
+        (2, SCHEMA_VERSION)
+    );
+    assert_eq!(record.outcome, MigrationBackupOutcome::Ok);
+}
+
+#[test]
+fn a_failed_backup_is_recorded_and_the_migration_goes_ahead() {
+    let (dir, path) = temp_db();
+    version_2_db(&path, ("2026-09-08", "2026-12-18"));
+    // Something that isn't a file sits where the backup goes.
+    std::fs::create_dir(dir.path().join("pagelamp.db.v2.bak")).unwrap();
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
+    let record = store.last_migration_backup().unwrap().expect("recorded");
+    match record.outcome {
+        MigrationBackupOutcome::Failed { code } => {
+            assert!(
+                !code.is_empty() && !code.contains('/'),
+                "a code, not a path: {code}"
+            );
+        }
+        other => panic!("expected Failed, got {other:?}"),
+    }
+    // No half-written copy is left behind.
+    let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.ends_with(".tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
 fn a_new_database_is_not_backed_up() {
     let (dir, path) = temp_db();
-    Store::open(&path).unwrap();
+    let store = Store::open(&path).unwrap();
     assert!(pagelamp_core::store::database_backup(&path).is_none());
+    assert_eq!(
+        store.last_migration_backup().unwrap(),
+        None,
+        "nothing was migrated"
+    );
     let entries: Vec<_> = std::fs::read_dir(dir.path())
         .unwrap()
         .flatten()

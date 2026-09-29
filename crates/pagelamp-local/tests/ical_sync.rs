@@ -51,6 +51,7 @@ fn db() -> (tempfile::TempDir, std::path::PathBuf) {
             term_end: None,
             url: None,
             syllabus_text: None,
+            lms: Default::default(),
         })
         .unwrap();
     (dir, db)

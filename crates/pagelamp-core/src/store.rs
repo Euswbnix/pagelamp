@@ -210,6 +210,9 @@ UPDATE courses SET user_term_end   = NULL WHERE user_term_end   = term_end;
 const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 const _: () = assert!(MIGRATIONS.len() as i64 == SCHEMA_VERSION);
 
+/// Settings key of the last migration's backup outcome (`MigrationBackupRecord`).
+pub const LAST_MIGRATION_BACKUP: &str = "last_migration_backup";
+
 /// How long a statement waits for another connection's lock before failing with "busy".
 const BUSY_TIMEOUT: Duration = Duration::from_millis(5000);
 
@@ -245,6 +248,9 @@ const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
           WHEN term_start IS NOT NULL OR term_end IS NOT NULL THEN 'synced' \
           ELSE 'none' END AS term_source, \
      url, ai_policy, ai_policy_note, ai_access, hidden, enrollment_active, updated_at";
+const TERM_DATA_COLUMNS: &str = "lms_term_name, lms_term_start, lms_term_end, \
+     lms_course_start, lms_course_end, lms_time_zone, lms_concluded, lms_workflow_state, \
+     lms_access_restricted, keep_current_until, removal_snoozed_until";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, download_blocked, updated_at";
@@ -366,9 +372,9 @@ impl Store {
         }
         // Outside the transaction (VACUUM can't run inside one); a copy made while another
         // process migrates is detected and dropped (`write_backup`).
-        if current > 0 {
-            self.back_up_before_migration(current);
-        }
+        let backup = (current > 0)
+            .then(|| self.back_up_before_migration(current))
+            .flatten();
         self.in_transaction(|store| {
             // Read again under the write lock: another process may have migrated meanwhile.
             let current = store.checked_user_version()?;
@@ -381,7 +387,20 @@ impl Store {
                 .conn
                 .pragma_update(None, "user_version", SCHEMA_VERSION)?;
             Ok(())
-        })
+        })?;
+        // Visible later in `doctor` and reports; losing the record is not worth failing for.
+        if let Some(outcome) = backup {
+            let record = MigrationBackupRecord {
+                from_version: current,
+                to_version: SCHEMA_VERSION,
+                at: Utc::now().trunc_subsecs(0),
+                outcome,
+            };
+            if let Err(err) = self.set_setting(LAST_MIGRATION_BACKUP, &record) {
+                tracing::warn!("could not record the pre-migration backup: {err}");
+            }
+        }
+        Ok(())
     }
 
     /// `PRAGMA user_version`, rejecting versions this binary cannot handle.
@@ -449,23 +468,34 @@ impl Store {
 
     /// Copy the database before migrating it from `version` (see `write_backup`). Best effort:
     /// a failure is logged, and the migration (additive, in one transaction) goes ahead.
-    fn back_up_before_migration(&self, version: i64) {
-        let Some(db) = self
+    /// `None` for an in-memory database.
+    fn back_up_before_migration(&self, version: i64) -> Option<MigrationBackupOutcome> {
+        let db = self
             .conn
             .path()
             .filter(|p| !p.is_empty())
-            .map(std::path::PathBuf::from)
-        else {
-            return; // in memory
-        };
-        match write_backup(&self.conn, &db, version) {
-            Ok(Some(backup)) => tracing::info!(
-                "backed up the database (schema {version}) before updating it: {}",
-                backup.file_name().unwrap_or_default().to_string_lossy()
-            ),
-            Ok(None) => {}
-            Err(err) => tracing::warn!("could not back up the database before updating it: {err}"),
-        }
+            .map(std::path::PathBuf::from)?;
+        Some(match write_backup(&self.conn, &db, version) {
+            Ok(Some(backup)) => {
+                tracing::info!(
+                    "backed up the database (schema {version}) before updating it: {}",
+                    backup.file_name().unwrap_or_default().to_string_lossy()
+                );
+                MigrationBackupOutcome::Ok
+            }
+            Ok(None) => MigrationBackupOutcome::Skipped,
+            Err(err) => {
+                tracing::warn!("could not back up the database before updating it: {err}");
+                MigrationBackupOutcome::Failed {
+                    code: backup_error_code(&err),
+                }
+            }
+        })
+    }
+
+    /// The last migration's backup outcome, if this database was ever migrated (schema 3+).
+    pub fn last_migration_backup(&self) -> Result<Option<MigrationBackupRecord>> {
+        Ok(self.setting(LAST_MIGRATION_BACKUP).unwrap_or(None)) // unreadable (another version's shape): as if absent
     }
 
     /// Run `f` inside `BEGIN IMMEDIATE … COMMIT` on this connection (ROLLBACK on error).
@@ -592,10 +622,15 @@ impl Store {
     /// Insert or update synced fields only; never touches ai_policy, ai_policy_note, ai_access,
     /// user_term_*, hidden. Sets updated_at = now.
     pub fn upsert_course(&self, course: &CourseUpsert) -> Result<()> {
+        let lms = &course.lms;
         self.conn.execute(
             "INSERT INTO courses (id, source_id, external_id, code, name, term_start, term_end,
-                                  url, syllabus_text, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                                  url, syllabus_text, updated_at,
+                                  lms_term_name, lms_term_start, lms_term_end, lms_course_start,
+                                  lms_course_end, lms_time_zone, lms_concluded, lms_workflow_state,
+                                  lms_access_restricted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                     ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
              ON CONFLICT(id) DO UPDATE SET
                  source_id = excluded.source_id,
                  external_id = excluded.external_id,
@@ -605,7 +640,16 @@ impl Store {
                  term_end = excluded.term_end,
                  url = excluded.url,
                  syllabus_text = excluded.syllabus_text,
-                 updated_at = excluded.updated_at",
+                 updated_at = excluded.updated_at,
+                 lms_term_name = excluded.lms_term_name,
+                 lms_term_start = excluded.lms_term_start,
+                 lms_term_end = excluded.lms_term_end,
+                 lms_course_start = excluded.lms_course_start,
+                 lms_course_end = excluded.lms_course_end,
+                 lms_time_zone = excluded.lms_time_zone,
+                 lms_concluded = excluded.lms_concluded,
+                 lms_workflow_state = excluded.lms_workflow_state,
+                 lms_access_restricted = excluded.lms_access_restricted",
             params![
                 course.id,
                 course.source_id,
@@ -617,9 +661,76 @@ impl Store {
                 course.url,
                 course.syllabus_text,
                 now_text(),
+                lms.term_name,
+                opt_date_text(lms.term_start),
+                opt_date_text(lms.term_end),
+                opt_date_text(lms.course_start),
+                opt_date_text(lms.course_end),
+                lms.time_zone,
+                lms.concluded,
+                lms.workflow_state,
+                lms.access_restricted,
             ],
         )?;
         Ok(())
+    }
+
+    /// Mark a listed course the LMS restricts by date (`access_restricted_by_date`), which the
+    /// sync does not upsert: only `lms_access_restricted` changes. `NotFound` for an unknown id.
+    pub fn set_course_access_restricted(&self, course_id: &str, restricted: bool) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE courses SET lms_access_restricted = ?2 WHERE id = ?1",
+            params![course_id, restricted],
+        )?;
+        expect_changed(changed, "course", course_id)
+    }
+
+    /// The LMS facts and the student's lifecycle answers of one course (hidden or not), or
+    /// `None` for an unknown id.
+    pub fn course_term_data(&self, course_id: &str) -> Result<Option<CourseTermData>> {
+        self.query_opt(
+            &format!("SELECT {TERM_DATA_COLUMNS} FROM courses WHERE id = ?1"),
+            [course_id],
+            term_data_from_row,
+        )
+    }
+
+    /// `course_term_data` of every course (hidden ones too), by course id.
+    pub fn all_course_term_data(
+        &self,
+    ) -> Result<std::collections::BTreeMap<String, CourseTermData>> {
+        Ok(self
+            .query_list(
+                &format!("SELECT id, {TERM_DATA_COLUMNS} FROM courses"),
+                [],
+                |row| Ok((row.get::<_, String>("id")?, term_data_from_row(row)?)),
+            )?
+            .into_iter()
+            .collect())
+    }
+
+    /// "I'm still taking this": keep the course current until `until` (`None` clears it).
+    /// A student answer: sync never changes it. `NotFound` for an unknown id.
+    pub fn set_keep_current_until(&self, course_id: &str, until: Option<NaiveDate>) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE courses SET keep_current_until = ?2 WHERE id = ?1",
+            params![course_id, opt_date_text(until)],
+        )?;
+        expect_changed(changed, "course", course_id)
+    }
+
+    /// Snooze the removal suggestion until `until` ("Keep" = 9999-12-31; `None` clears it).
+    /// A student answer: sync never changes it. `NotFound` for an unknown id.
+    pub fn set_removal_snoozed_until(
+        &self,
+        course_id: &str,
+        until: Option<NaiveDate>,
+    ) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE courses SET removal_snoozed_until = ?2 WHERE id = ?1",
+            params![course_id, opt_date_text(until)],
+        )?;
+        expect_changed(changed, "course", course_id)
     }
 
     /// All courses (including hidden ones when `include_hidden`), ordered by code, name.
@@ -1515,6 +1626,25 @@ fn backup_siblings(db: &Path) -> Vec<(PathBuf, String)> {
         .collect()
 }
 
+/// A short code for why a backup failed (no path, no message).
+fn backup_error_code(err: &Error) -> String {
+    match err {
+        Error::Io(io) => {
+            // `StorageFull` → `storage_full`
+            let mut code = String::new();
+            for (i, c) in format!("{:?}", io.kind()).chars().enumerate() {
+                if c.is_uppercase() && i > 0 {
+                    code.push('_');
+                }
+                code.push(c.to_ascii_lowercase());
+            }
+            code
+        }
+        Error::Db(_) => "sqlite".into(),
+        _ => "other".into(),
+    }
+}
+
 /// Copy the database (`conn`, at `db`, schema `version`) to `backup_path(db, version)` with
 /// `VACUUM INTO`, which is safe while other connections use the database (WAL). The copy is
 /// written to a private temporary file first and renamed; older backups are then deleted.
@@ -1549,7 +1679,10 @@ fn write_backup(conn: &Connection, db: &Path, version: i64) -> Result<Option<Pat
         }
     }
     let backup = backup_path(db, version);
-    std::fs::rename(&temp, &backup)?;
+    if let Err(err) = std::fs::rename(&temp, &backup) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(err.into());
+    }
     for (older, _) in backup_files(db) {
         if older != backup {
             let _ = std::fs::remove_file(older);
@@ -1724,6 +1857,24 @@ fn course_from_row(row: &Row<'_>) -> rusqlite::Result<Course> {
         enrollment_active: row.get("enrollment_active")?,
         hidden: row.get("hidden")?,
         updated_at: get_value(row, "updated_at")?,
+    })
+}
+
+fn term_data_from_row(row: &Row<'_>) -> rusqlite::Result<CourseTermData> {
+    Ok(CourseTermData {
+        lms: LmsCourseInfo {
+            term_name: row.get("lms_term_name")?,
+            term_start: get_opt_value(row, "lms_term_start")?,
+            term_end: get_opt_value(row, "lms_term_end")?,
+            course_start: get_opt_value(row, "lms_course_start")?,
+            course_end: get_opt_value(row, "lms_course_end")?,
+            time_zone: row.get("lms_time_zone")?,
+            concluded: row.get("lms_concluded")?,
+            workflow_state: row.get("lms_workflow_state")?,
+            access_restricted: row.get("lms_access_restricted")?,
+        },
+        keep_current_until: get_opt_value(row, "keep_current_until")?,
+        removal_snoozed_until: get_opt_value(row, "removal_snoozed_until")?,
     })
 }
 
