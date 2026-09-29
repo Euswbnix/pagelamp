@@ -372,6 +372,39 @@
     }
   },
   {
+    "cmd": "explain_week",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "week": 4,
+      "generationId": "contract-test-explanation",
+      "options": {
+        "include": [
+          "contract-test-material"
+        ],
+        "ui_language": "en",
+        "override_budget": false
+      },
+      "onEvent": "__CHANNEL__:0"
+    }
+  },
+  {
+    "cmd": "saved_explanations",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "week": 4
+    }
+  },
+  {
+    "cmd": "ai_output_language",
+    "args": {}
+  },
+  {
+    "cmd": "set_ai_output_language",
+    "args": {
+      "language": "course"
+    }
+  },
+  {
     "cmd": "generate_study_plan",
     "args": {
       "request": {

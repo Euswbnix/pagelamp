@@ -13,9 +13,9 @@ use chrono::NaiveDate;
 use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
-    EstimateRequest, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent, ModelChoice, ModelInfo,
-    ModelProviderRecord, ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent,
-    StudyPlanRequest, UsageSummary,
+    EstimateRequest, ExplainOptions, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent,
+    ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, ProbeReport, ProviderPreset,
+    RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary, WeeklyExplanation,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
@@ -573,6 +573,54 @@ pub async fn read_course_calendars(
             })
             .await
         })
+        .await
+}
+
+// ----- weekly explanations (v0.3 M3; design §5.2) --------------------------------------------------
+
+/// A week explained: a model run (the install gate holds it back; `cancel_generation` stops it).
+#[tauri::command]
+pub async fn explain_week(
+    backend: State<'_, Backend>,
+    course: String,
+    week: Option<u32>,
+    generation_id: String,
+    options: ExplainOptions,
+    on_event: Channel<GenEvent>,
+) -> CmdResult<WeeklyExplanation> {
+    backend
+        .spawn_work(|app| async move {
+            app.explain_week(&course, week, &generation_id, options, move |event| {
+                let _ = on_event.send(event);
+            })
+            .await
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn saved_explanations(
+    backend: State<'_, Backend>,
+    course: String,
+    week: Option<u32>,
+) -> CmdResult<Vec<WeeklyExplanation>> {
+    backend
+        .blocking(move |app| app.saved_explanations(&course, week))
+        .await
+}
+
+#[tauri::command]
+pub async fn ai_output_language(backend: State<'_, Backend>) -> CmdResult<OutputLanguage> {
+    backend.blocking(|app| app.ai_output_language()).await
+}
+
+#[tauri::command]
+pub async fn set_ai_output_language(
+    backend: State<'_, Backend>,
+    language: OutputLanguage,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_ai_output_language(language))
         .await
 }
 

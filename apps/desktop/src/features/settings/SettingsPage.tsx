@@ -4,6 +4,7 @@ import { AiModelsSection } from "@/features/ai/AiModelsSection";
 import { UsageSection } from "@/features/ai/UsageSection";
 import { REMOVAL_UI } from "@/features/course/removal/availability";
 import { RemovedCoursesSection } from "@/features/course/removal/RemovedCoursesSection";
+import { OutputLanguageSection } from "@/features/explain/OutputLanguageSection";
 import { REMINDERS_UI } from "@/features/reminders/availability";
 import { RemindersSection } from "@/features/reminders/RemindersSection";
 import { AI_SETUP_ENABLED } from "@/lib/features";
@@ -32,6 +33,7 @@ export function SettingsPage() {
         {AI_SETUP_ENABLED ? (
           <>
             <AiModelsSection />
+            <OutputLanguageSection />
             <UsageSection />
           </>
         ) : null}

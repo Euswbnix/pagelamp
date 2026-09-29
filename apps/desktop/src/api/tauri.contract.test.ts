@@ -108,6 +108,16 @@ it("sends the commands and arguments the Rust side expects", async () => {
     () => {},
   );
   await api.cancelGeneration("contract-test-generation");
+  await api.explainWeek(
+    COURSE,
+    4,
+    "contract-test-explanation",
+    { include: ["contract-test-material"], ui_language: "en", override_budget: false },
+    onEvent,
+  );
+  await api.savedExplanations(COURSE, 4);
+  await api.aiOutputLanguage();
+  await api.setAiOutputLanguage("course");
   await api.generateStudyPlan(
     {
       horizon_days: 14,

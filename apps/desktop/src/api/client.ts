@@ -20,6 +20,7 @@ import type {
   RuntimeEvent,
   UsageSummary,
 } from "./ai";
+import type { ExplainOptions, OutputLanguage, WeeklyExplanation } from "./explain";
 import type { GeneratedStudyPlan, StudyPlanRequest } from "./plan";
 import type {
   BackgroundStatus,
@@ -248,6 +249,24 @@ export interface PageLampApi {
   ): Promise<CalendarRunOutcome[]>;
   /** Stop a running generation or batch (by its id); the run ends with `cancelled`. */
   cancelGeneration(generationId: string): Promise<void>;
+
+  // ----- weekly explanations (M3; design §5.2) ------------------------------------------------
+  /**
+   * Explains a course's week (null: its default week) from its materials, every paragraph cited:
+   * a model run (`cancelGeneration(generationId)` stops it). No text arrives before the end.
+   */
+  explainWeek(
+    courseId: string,
+    week: number | null,
+    generationId: string,
+    options: ExplainOptions,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<WeeklyExplanation>;
+  /** The last 5 for the course and week, newest first (`stale` recomputed). */
+  savedExplanations(courseId: string, week: number | null): Promise<WeeklyExplanation[]>;
+  /** Whether explanations are written in PageLamp's language or the course's. */
+  aiOutputLanguage(): Promise<OutputLanguage>;
+  setAiOutputLanguage(language: OutputLanguage): Promise<void>;
 
   // ----- study plans written by PageLamp (M3; design §5.1) ------------------------------------
   /**

@@ -43,6 +43,7 @@ import {
   withStudentDates,
 } from "./calendar";
 import { buildCalendarScenarioDb } from "./courseScenarios";
+import { createExplainMock } from "./explain";
 import {
   buildMockDb,
   diagnosticReport,
@@ -281,6 +282,17 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     activity,
     gate: (courses, horizonDays, overrideBudget) =>
       aiGate({ feature: "study_plan", courses, horizon_days: horizonDays }, overrideBudget),
+    findCourse,
+  });
+
+  // Weekly explanations (explain.ts).
+  const explanations = createExplainMock({
+    now,
+    respond,
+    step: () => sleep(syncStep),
+    activity,
+    gate: (courseId, week, overrideBudget) =>
+      aiGate({ feature: "weekly_explanation", course: courseId, week }, overrideBudget),
     findCourse,
   });
 
@@ -558,11 +570,16 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     ...ai,
     ...courseLifecycle.api,
     ...courseProposals.api,
-    // One Stop for every run: a syllabus reading or a study plan.
+    // One Stop for every run: a syllabus reading, a study plan or an explanation.
     cancelGeneration: async (generationId) => {
       studyPlans.cancel(generationId);
+      explanations.cancel(generationId);
       await courseProposals.api.cancelGeneration(generationId);
     },
+    explainWeek: explanations.explainWeek,
+    savedExplanations: explanations.savedExplanations,
+    aiOutputLanguage: explanations.aiOutputLanguage,
+    setAiOutputLanguage: explanations.setAiOutputLanguage,
     generateStudyPlan: studyPlans.generateStudyPlan,
     acceptStudyPlan: studyPlans.acceptStudyPlan,
     setStudyPlanItemDone: studyPlans.setStudyPlanItemDone,

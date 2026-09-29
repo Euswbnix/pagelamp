@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { CourseOverview } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExplainTab } from "@/features/explain/ExplainTab";
 import { DeadlinesTab } from "./deadlines/DeadlinesTab";
 import { PolicyTab } from "./policy/PolicyTab";
 import { SettingsTab } from "./settings/SettingsTab";
@@ -13,7 +14,7 @@ import { WeekTab } from "./week/WeekTab";
 const PANEL = "rounded-lg pt-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
 
 /**
- * The five course tabs. The selected tab is kept in `?tab=` (see useCourseParams).
+ * The course tabs (Explain, M3, only where the AI screens are built). The selected tab is kept in `?tab=` (see useCourseParams).
  * Tabs with a form stay mounted while hidden, so unsaved edits survive switching tabs.
  */
 export function CourseTabs({ overview }: { overview: CourseOverview }) {
@@ -48,6 +49,11 @@ export function CourseTabs({ overview }: { overview: CourseOverview }) {
       <TabsContent value="week" className={PANEL}>
         <WeekTab overview={overview} onSetTermDates={openTermDates} />
       </TabsContent>
+      {COURSE_TABS.includes("explain") ? (
+        <TabsContent value="explain" className={PANEL}>
+          <ExplainTab overview={overview} onOpenPolicy={() => setTab("policy")} />
+        </TabsContent>
+      ) : null}
       <TabsContent
         ref={timelinePanel}
         value="timeline"

@@ -147,6 +147,38 @@
 			<string>%1$ld deadlines in the next 7 days</string>
 		</dict>
 	</dict>
+	<key>explain.result.droppedCitations</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld citation the model gave didn't match your materials and was removed.</string>
+			<key>other</key>
+			<string>%1$ld citations the model gave didn't match your materials and were removed.</string>
+		</dict>
+	</dict>
+	<key>explain.running.reading</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Reading %1$ld material</string>
+			<key>other</key>
+			<string>Reading %1$ld materials</string>
+		</dict>
+	</dict>
 	<key>mac.a11y.minutes</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

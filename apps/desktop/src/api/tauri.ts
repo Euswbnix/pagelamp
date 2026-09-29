@@ -114,6 +114,17 @@ export function createTauriApi(): PageLampApi {
         onEvent: eventChannel(onEvent),
       }),
     cancelGeneration: (generationId) => call("cancel_generation", { generationId }),
+    explainWeek: (courseId, week, generationId, options, onEvent) =>
+      call("explain_week", {
+        course: courseId,
+        week,
+        generationId,
+        options,
+        onEvent: eventChannel(onEvent),
+      }),
+    savedExplanations: (courseId, week) => call("saved_explanations", { course: courseId, week }),
+    aiOutputLanguage: () => call("ai_output_language"),
+    setAiOutputLanguage: (language) => call("set_ai_output_language", { language }),
     generateStudyPlan: (request, generationId, onEvent) =>
       call("generate_study_plan", {
         request,

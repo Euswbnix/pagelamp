@@ -9,6 +9,7 @@ import type common from "./locales/en/common.json";
 import type connect from "./locales/en/connect.json";
 import type course from "./locales/en/course.json";
 import type courses from "./locales/en/courses.json";
+import type explain from "./locales/en/explain.json";
 import type onboarding from "./locales/en/onboarding.json";
 import type plan from "./locales/en/plan.json";
 import type proposals from "./locales/en/proposals.json";
@@ -29,6 +30,7 @@ declare module "i18next" {
       connect: typeof connect;
       course: typeof course;
       courses: typeof courses;
+      explain: typeof explain;
       onboarding: typeof onboarding;
       plan: typeof plan;
       proposals: typeof proposals;
