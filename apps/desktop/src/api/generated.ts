@@ -100,6 +100,30 @@ export type EventKind =
  */
 export type ProcessKind = "app" | "mcp";
 /**
+ * Whether the extraction worker (`pagelamp extract-worker`, v0.3 M0.5) works.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ExtractWorkerStatus".
+ */
+export type ExtractWorkerStatus =
+  "ok" | "not_set" | "spawn_failed" | "protocol_mismatch" | "failed";
+/**
+ * Why the extraction worker (`pagelamp extract-worker`, v0.3 M0.5) could not read a file:
+ * `materials.text_error_kind`, next to `text_status = error`. Same names as
+ * `pagelamp_extract::worker::WorkerFailure`.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "TextErrorKind".
+ */
+export type TextErrorKind =
+  | "timed_out"
+  | "cpu_limit"
+  | "memory_limit"
+  | "crashed"
+  | "bad_output"
+  | "spawn_failed"
+  | "protocol_mismatch";
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "McpClient".
  */
@@ -229,6 +253,8 @@ export interface PageLampAppTypes {
   crash_report: CrashReport;
   deadline: Deadline;
   doctor_report: DoctorReport;
+  extract_worker_check: ExtractWorkerCheck;
+  extract_worker_status: ExtractWorkerStatus;
   mcp_client_config: McpClientConfig;
   process_kind: ProcessKind;
   search_hit: SearchHit;
@@ -241,6 +267,8 @@ export interface PageLampAppTypes {
   sync_request: SyncRequest;
   sync_summary: SyncSummary;
   term_source: TermSource;
+  text_error_kind: TextErrorKind;
+  unreadable_files: UnreadableFiles;
   update_channel: UpdateChannel;
   update_check_outcome: UpdateCheckOutcome;
   update_check_record: UpdateCheckRecord;
@@ -639,6 +667,7 @@ export interface DoctorReport {
    */
   database_error?: string | null;
   events: number;
+  extract_worker: ExtractWorkerCheck;
   hidden_courses: number;
   keychain_available: boolean;
   keychain_error?: string | null;
@@ -649,7 +678,25 @@ export interface DoctorReport {
   os: string;
   schema_version?: number | null;
   sources: DoctorSource[];
+  /**
+   * Files the extraction worker could not read, per reason (reasons without files left
+   * out; empty when the database can't be read).
+   */
+  unreadable_files: UnreadableFiles[];
   version: string;
+}
+/**
+ * `doctor`'s check of the extraction worker: it is started once.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ExtractWorkerCheck".
+ */
+export interface ExtractWorkerCheck {
+  /**
+   * How long starting it and getting its answer took (`ok` only).
+   */
+  spawn_ms?: number | null;
+  status: ExtractWorkerStatus;
 }
 /**
  * Whether each AI app's config has a PageLamp entry (presence only; nothing else is read
@@ -677,6 +724,16 @@ export interface DoctorSource {
    * The last sync succeeded (false when it failed or never ran).
    */
   ok: boolean;
+}
+/**
+ * How many files the extraction worker could not read for one reason.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UnreadableFiles".
+ */
+export interface UnreadableFiles {
+  count: number;
+  kind: TextErrorKind;
 }
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
