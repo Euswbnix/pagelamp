@@ -20,6 +20,15 @@ import type {
   RuntimeEvent,
   UsageSummary,
 } from "./ai";
+import type { ExplainOptions, OutputLanguage, WeeklyExplanation } from "./explain";
+import type { GeneratedStudyPlan, StudyPlanRequest } from "./plan";
+import type {
+  BackgroundStatus,
+  NotificationText,
+  Reminder,
+  ReminderSettings,
+  TrayLabels,
+} from "./reminders";
 import type {
   Activity,
   AiPolicy,
@@ -181,6 +190,8 @@ export interface PageLampApi {
   snoozeLifecycleBanner(): Promise<void>;
   /** "Not now" (14 days) or "Keep" (never again) on some courses' removal suggestion. */
   snoozeRemovalSuggestions(courseIds: string[], kind: SnoozeKind): Promise<void>;
+  /** "Not now" on the syllabus reading offers: 14 days, like the lifecycle banner. */
+  snoozeCalendarOffers(): Promise<void>;
   clearRemovalSnooze(courseIds: string[]): Promise<void>;
   /** What removing these courses would delete and keep. */
   removalPreview(courseIds: string[]): Promise<RemovalPreview>;
@@ -240,6 +251,41 @@ export interface PageLampApi {
   ): Promise<CalendarRunOutcome[]>;
   /** Stop a running generation or batch (by its id); the run ends with `cancelled`. */
   cancelGeneration(generationId: string): Promise<void>;
+
+  // ----- weekly explanations (M3; design §5.2) ------------------------------------------------
+  /**
+   * Explains a course's week (null: its default week) from its materials, every paragraph cited:
+   * a model run (`cancelGeneration(generationId)` stops it). No text arrives before the end.
+   */
+  explainWeek(
+    courseId: string,
+    week: number | null,
+    generationId: string,
+    options: ExplainOptions,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<WeeklyExplanation>;
+  /** The last 5 for the course and week, newest first (`stale` recomputed). */
+  savedExplanations(courseId: string, week: number | null): Promise<WeeklyExplanation[]>;
+  /** Deletes one explanation and its text (`not_found` for another feature's id). */
+  deleteExplanation(generationId: string): Promise<void>;
+  /** Whether explanations are written in PageLamp's language or the course's. */
+  aiOutputLanguage(): Promise<OutputLanguage>;
+  setAiOutputLanguage(language: OutputLanguage): Promise<void>;
+
+  // ----- study plans written by PageLamp (M3; design §5.1) ------------------------------------
+  /**
+   * A draft plan: a model run like the syllabus reading (`cancelGeneration(generationId)` stops
+   * it), its dates set by PageLamp's scheduler. Nothing is saved until `acceptStudyPlan`.
+   */
+  generateStudyPlan(
+    request: StudyPlanRequest,
+    generationId: string,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<GeneratedStudyPlan>;
+  /** Saves the draft as the latest plan (origin "pagelamp"). */
+  acceptStudyPlan(generationId: string): Promise<StoredStudyPlan>;
+  /** Ticks an item off (or back on); the index counts the items as `latestStudyPlan` lists them. */
+  setStudyPlanItemDone(planId: number, itemIndex: number, done: boolean): Promise<StoredStudyPlan>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 
@@ -329,6 +375,32 @@ export interface PageLampApi {
   /** The student saw (in onboarding) that PageLamp checks for updates. */
   acknowledgeUpdateDisclosure(): Promise<void>;
   lastUpdateCheck(): Promise<UpdateCheckRecord | null>;
+
+  // ----- reminders (M3; design §5.3): what is due is the facade's, showing it the shell's ----
+  reminderSettings(): Promise<ReminderSettings>;
+  /**
+   * Saves the settings; the shell then follows `run_in_background` (the tray, the login item and
+   * the close button) and answers with how that went.
+   */
+  setReminderSettings(settings: ReminderSettings): Promise<BackgroundStatus>;
+  backgroundStatus(): Promise<BackgroundStatus>;
+  /** The tray menu in the student's language. */
+  setTrayLabels(labels: TrayLabels): Promise<void>;
+  /** What is due now: catch-up, dedupe and maximum age are the facade's. */
+  dueReminders(): Promise<Reminder[]>;
+  /** Shows these notifications, then marks their reminders shown. */
+  showReminders(notifications: NotificationText[]): Promise<void>;
+  /** Seen in the app instead (the catch-up card): they don't come back. */
+  markRemindersShown(ids: string[]): Promise<void>;
+  /**
+   * The one notification when reminders are turned on: where the system asks whether PageLamp
+   * may notify (desktop systems have no other way to ask). Marks nothing.
+   */
+  showRemindersOnNotice(title: string, body: string): Promise<void>;
+  /** Opens the system's notification settings; false where there's no standard place (Linux). */
+  openNotificationSettings(): Promise<boolean>;
+  /** Calls `onCheck` whenever the shell asks for a delivery (every 15 min, after a sleep). */
+  onReminderCheck(onCheck: () => void): () => void;
 
   // ----- desktop helpers (not part of the facade) --------------------------------------------
   /** Native folder picker. Resolves null when cancelled. */

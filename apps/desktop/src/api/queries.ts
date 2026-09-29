@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
-import type { AiPolicy, IsoDate, StartupTasks, UpdatePrefs } from "./types";
+import type { AiPolicy, IsoDate, StartupTasks, StoredStudyPlan, UpdatePrefs } from "./types";
 
 export const queryKeys = {
   all: ["pagelamp"] as const,
@@ -105,6 +105,32 @@ export function useDeadlines(
 export function useStudyPlan() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.studyPlan(), queryFn: () => api.latestStudyPlan() });
+}
+
+/** Ticks a plan item off or back on (M3), shown at once and put back if saving fails. */
+export function useSetStudyPlanItemDone() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { planId: number; itemIndex: number; done: boolean }) =>
+      api.setStudyPlanItemDone(v.planId, v.itemIndex, v.done),
+    onMutate: async ({ itemIndex, done }) => {
+      await client.cancelQueries({ queryKey: queryKeys.studyPlan() });
+      const previous = client.getQueryData<StoredStudyPlan | null>(queryKeys.studyPlan());
+      if (previous) {
+        const items = previous.plan.items.map((item, i) =>
+          i === itemIndex ? { ...item, done } : item,
+        );
+        client.setQueryData(queryKeys.studyPlan(), {
+          ...previous,
+          plan: { ...previous.plan, items },
+        });
+      }
+      return { previous };
+    },
+    onSuccess: (stored) => client.setQueryData(queryKeys.studyPlan(), stored),
+    onError: (_error, _v, context) => client.setQueryData(queryKeys.studyPlan(), context?.previous),
+  });
 }
 
 export function useMcpClientConfigs() {
