@@ -22,6 +22,7 @@ export type CalendarFields = Pick<
   | "last_teaching_week"
   | "current_break_kind"
   | "notes_week"
+  | "starts_on"
   | "term"
   | "calendar"
   | "evidence_items"
@@ -56,6 +57,12 @@ export function mondayOf(iso: string): string {
   const d = parseIso(iso);
   const back = (d.getDay() + 6) % 7; // Monday = 0
   return addDays(iso, -back);
+}
+
+/** The day teaching starts: the date itself, or the next Monday for a Saturday or Sunday. */
+export function teachingStart(iso: string): string {
+  const day = parseIso(iso).getDay(); // Sunday = 0, Saturday = 6
+  return day === 6 ? addDays(iso, 2) : day === 0 ? addDays(iso, 1) : iso;
 }
 
 /** The Monday `weeks` weeks from this week's Monday (negative = earlier). */
@@ -103,6 +110,7 @@ export function calendarFields(
     last_teaching_week: null,
     current_break_kind: null,
     notes_week: null,
+    starts_on: null,
     term: resolution(),
     calendar: "none",
     evidence_items: [],
@@ -199,9 +207,11 @@ export function withStudentDates(
   });
 
   if (monday && today < monday) {
+    // Like the facade: a weekend first class starts teaching the next Monday.
+    const startsOn = start ? teachingStart(start) : monday;
     return {
-      timeline: { ...fields({ phase: "not_started" }), outside_term: true },
-      lifecycle: lifecycle({ state: "upcoming", starts_on: start ?? monday }),
+      timeline: { ...fields({ phase: "not_started", starts_on: startsOn }), outside_term: true },
+      lifecycle: lifecycle({ state: "upcoming", starts_on: startsOn }),
     };
   }
   if (end && today > end) {

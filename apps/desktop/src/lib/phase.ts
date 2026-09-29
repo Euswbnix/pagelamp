@@ -40,7 +40,8 @@ export function describePhase(timeline: CourseTimeline): PhaseLabel {
     case "ended":
       return { kind: "ended" };
     case "not_started": {
-      const start = timeline.term.teaching[0]?.first_class ?? timeline.term.week_one_monday ?? null;
+      // The facade's day teaching starts (a weekend first class gives the next Monday).
+      const start = timeline.starts_on ?? null;
       return start ? { kind: "startsOn", date: start } : { kind: "notStarted" };
     }
     default:
