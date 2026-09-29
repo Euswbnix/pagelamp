@@ -36,6 +36,7 @@
     "tryAgain": "Try again",
     "availableAfterSync": "Available when the sync finishes",
     "availableAfterOtherSync": "Available when the other sync (from the command line or another window) finishes",
+    "held": "{{product}} will install the update when the sync finishes.",
     "progressLabel": "Update progress",
     "stopSync": "Stop the sync"
   },
