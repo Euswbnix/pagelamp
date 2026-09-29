@@ -29,6 +29,7 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 /// The unpacked binary is ≈250 MB; anything far larger is not Codex.
 const MAX_UNPACKED_BYTES: u64 = 1 << 30;
 /// Developer ID team of OpenAI OpCo, LLC (design §2.3).
+#[cfg(target_os = "macos")]
 const OPENAI_TEAM_ID: &str = "2DC432GLL2";
 
 /// Progress of `Runtime::install` (the facade maps it to its `RuntimeEvent`).
