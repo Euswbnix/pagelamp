@@ -5,7 +5,7 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
-// update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
+// update-available · upgrader · upgrader-from-01 · upgrader-from-alpha1 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
 // codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed);
@@ -60,6 +60,7 @@ import { createPlanMock } from "./plan";
 import { createProposalsMock, type MockAiRun } from "./proposals";
 import { createRemindersMock } from "./reminders";
 import { createLifecycleMock } from "./removal";
+import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
 
@@ -160,12 +161,22 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   let nextId = 1;
 
   // Updates (M0.4). A fresh install ("empty") hasn't seen the update-check disclosure yet; an
-  // upgrader from 0.1 hasn't seen "What's new"; some scenarios have never checked.
+  // upgrader hasn't seen "What's new"; some scenarios have never checked. 0.1 never recorded its
+  // version, so upgraders from it have none.
+  const upgradedFrom =
+    scenario === "upgrader"
+      ? MOCK_PREVIOUS_VERSION
+      : scenario === "upgrader-from-alpha1"
+        ? "0.3.0-alpha.1"
+        : null;
   const offersUpdate = scenario === "update-available" || scenario === "deb";
   const updates = {
     prefs: { auto_check: true, channel: null as UpdateChannel | null },
     disclosureSeen: scenario !== "empty",
-    whatsNewSeen: scenario !== "upgrader" && scenario !== "upgrader-from-01",
+    whatsNewSeen:
+      scenario !== "upgrader" &&
+      scenario !== "upgrader-from-01" &&
+      scenario !== "upgrader-from-alpha1",
     lastCheck: (offersUpdate || scenario === "upgrader" || scenario === "upgrader-from-01"
       ? null
       : {
@@ -954,13 +965,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
         return {
-          whats_new: updates.whatsNewSeen
-            ? null
-            : {
-                // 0.1 never recorded its version, so upgraders from it have none.
-                since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-                topics: ["update_check" as const, "course_weeks" as const],
-              },
+          whats_new: updates.whatsNewSeen ? null : whatsNewSince(upgradedFrom),
           update_check_due:
             updates.prefs.auto_check &&
             updates.disclosureSeen &&

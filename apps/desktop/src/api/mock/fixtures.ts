@@ -46,6 +46,7 @@ export type MockScenario =
   | "update-available"
   | "upgrader"
   | "upgrader-from-01"
+  | "upgrader-from-alpha1"
   | "updated"
   | "deb"
   // The file reader (extraction worker) is blocked, e.g. by antivirus (M0.5).
@@ -95,6 +96,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "update-available",
   "upgrader",
   "upgrader-from-01",
+  "upgrader-from-alpha1",
   "updated",
   "deb",
   "worker-blocked",
