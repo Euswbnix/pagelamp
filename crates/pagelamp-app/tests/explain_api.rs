@@ -5,6 +5,7 @@
 //! ever leaves this computer (a cloud backend is only used where the gate blocks first).
 
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
@@ -355,6 +356,86 @@ async fn an_explanation_is_grounded_in_the_week_s_materials() {
 }
 
 #[tokio::test]
+async fn include_never_sends_a_material_without_readable_text() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    // "Quiz 3" was read once and is not downloaded now (locked, its copy gone).
+    let quiz = {
+        let store = Store::open(&app.db_path()).unwrap();
+        let id = material(&store, "101", "quiz3", "Quiz 3", "Quiz 3 answer key: 42.");
+        store
+            .set_text_state(&id, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        id
+    };
+    for (n, include) in [(0, vec![]), (1, vec![quiz.clone()])] {
+        let result = app
+            .explain_week(
+                "DEMO101",
+                Some(3),
+                &format!("explain-{n}"),
+                ExplainOptions {
+                    include,
+                    ..ExplainOptions::default()
+                },
+                |_| {},
+            )
+            .await
+            .unwrap();
+        // No text is decided before "looks like an assessment", and include can't lift it.
+        let reason = result
+            .left_out
+            .iter()
+            .find(|left| left.material_id == quiz)
+            .map(|left| left.reason);
+        assert_eq!(reason, Some(LeftOutReason::NoText), "run {n}");
+        assert!(!sent(&server, n).await.contains("answer key"), "run {n}");
+    }
+}
+
+#[tokio::test]
+async fn turning_a_course_s_ai_off_elsewhere_stops_its_explanation() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()).set_delay(Duration::from_secs(30)))
+        .mount(&server)
+        .await;
+    let task = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.explain_week(
+                "DEMO101",
+                Some(3),
+                "explain-off",
+                ExplainOptions::default(),
+                |_| {},
+            )
+            .await
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while server.received_requests().await.unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "the run never reached the model");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    // Another window turns the course's AI access off while the model is being asked.
+    app.set_course_ai_access("DEMO101", false).unwrap();
+    let err = tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+}
+
+#[tokio::test]
 async fn saved_explanations_turn_stale_when_the_week_changes() {
     let temp = tempfile::tempdir().unwrap();
     let (app, _) = app_with_courses(temp.path());
@@ -617,4 +698,50 @@ async fn a_moved_week_makes_explanations_stale_and_one_can_be_deleted() {
         app.delete_explanation("e-1").unwrap_err().kind,
         AppErrorKind::NotFound
     );
+}
+
+/// A failed read of the output language fails the explanation before anything is sent: never
+/// an answer in a language the student didn't choose. Another version's shape is the default.
+#[tokio::test]
+async fn a_failed_read_of_the_output_language_sends_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    app.set_ai_output_language(OutputLanguage::Course).unwrap();
+    let raw = rusqlite::Connection::open(app.db_path()).unwrap();
+
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert!(app.ai_output_language().is_err());
+    let result = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "explain-1",
+            ExplainOptions::default(),
+            |_| {},
+        )
+        .await;
+    assert!(result.is_err());
+    assert!(server.received_requests().await.unwrap().is_empty());
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.ai_output_language().unwrap(), OutputLanguage::Course);
+
+    raw.execute(
+        "UPDATE settings SET value = '\"klingon\"' WHERE key = 'ai.output_language'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.ai_output_language().unwrap(), OutputLanguage::Ui);
 }

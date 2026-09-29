@@ -1,11 +1,15 @@
 //! Tests of `pagelamp_core::views` over an in-memory store with a fixed `AsOf`.
 //! All data is synthetic ("DEMO101 Intro to Demo Studies" and friends).
 
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
+
 use chrono::{DateTime, NaiveDate, Utc};
 use pagelamp_core::Error;
 use pagelamp_core::ingest::NO_TEXT_NOTE;
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
+use pagelamp_core::term::CONFIRMED_DATES_KEY;
 use pagelamp_core::views::{self, AsOf, TextProblem, WeekNoteKind};
 use serde_json::json;
 
@@ -101,12 +105,12 @@ fn add_material(
             text: (*text).into(),
         })
         .collect();
-    store.replace_chunks(&material_id, &chunks).unwrap();
     if !texts.is_empty() {
         store
             .set_text_state(&material_id, TextStatus::Ok, None, Some("hash"))
             .unwrap();
     }
+    store.replace_chunks(&material_id, &chunks).unwrap();
     material_id
 }
 
@@ -807,4 +811,86 @@ fn text_problem_says_why_a_material_has_no_text() {
         locked.text_error.as_deref(),
         Some("PDF is password-protected")
     );
+}
+
+#[derive(Clone)]
+struct LogBuffer(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for LogBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn confirmed_dates_that_cannot_be_read_are_an_error_and_another_shape_counts_as_none() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("pagelamp.db");
+    let store = Store::open(&path).unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: SOURCE.into(),
+            kind: SourceKind::Canvas,
+            label: "Demo LMS".into(),
+            config: json!({ "base_url": "https://lms.example.edu" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    add_course(
+        &store,
+        "101",
+        Some("DEMO101"),
+        "Intro to Demo Studies",
+        false,
+    );
+    store
+        .set_course_term(&cid("101"), Some(date("2026-09-08")), None)
+        .unwrap();
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([cid("101")]))
+        .unwrap();
+    let course = store.get_course(&cid("101")).unwrap().unwrap();
+    let timeline = views::course_timeline(&store, &course, at()).unwrap();
+    assert_eq!(timeline.term.anchor_origin, Some(CalendarOrigin::User));
+
+    // Another version's shape: nothing is confirmed, with a warning that names the key but
+    // never the stored value.
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute(
+        "UPDATE settings SET value = '{\"zqxcanary\": 3}' WHERE key = ?1",
+        [CONFIRMED_DATES_KEY],
+    )
+    .unwrap();
+    let logs = Arc::new(Mutex::new(Vec::new()));
+    let writer = LogBuffer(logs.clone());
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(move || writer.clone())
+        .finish();
+    let timeline = tracing::subscriber::with_default(subscriber, || {
+        views::course_timeline(&store, &course, at()).unwrap()
+    });
+    assert_eq!(timeline.term.anchor_origin, Some(CalendarOrigin::Legacy));
+    let logs = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+    assert!(logs.contains("unreadable setting"), "{logs}");
+    assert!(logs.contains(CONFIRMED_DATES_KEY), "{logs}");
+    assert!(!logs.contains("zqxcanary"), "{logs}");
+
+    // A failed read (here the table is gone) is an error, never "nothing confirmed".
+    raw.execute_batch("ALTER TABLE settings RENAME TO settings_away")
+        .unwrap();
+    assert!(matches!(
+        views::course_timeline(&store, &course, at()),
+        Err(Error::Db(_))
+    ));
+    assert!(matches!(
+        views::list_courses(&store, true, at()),
+        Err(Error::Db(_))
+    ));
 }

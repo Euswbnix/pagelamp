@@ -1048,3 +1048,24 @@ fn the_lane_calls_reach_the_facade() {
     assert!(file.is_some_and(|path| path.ends_with("lecture-01.md")));
     block_on(lamp.cancel_sync()).unwrap();
 }
+
+#[test]
+fn the_mac_app_has_its_own_whats_new() {
+    // A folder used before (0.1 recorded no version), then opened by the Mac app.
+    let temp = tempfile::tempdir().unwrap();
+    let data = temp.path().join("data");
+    let courses = temp.path().join("Courses");
+    course_folder(&courses);
+    let desktop = || {
+        pagelamp_app::App::open_at_with_secrets(data.clone(), Arc::new(MemorySecrets::new()))
+            .unwrap()
+    };
+    desktop().add_folder_source(&courses, None, None).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap();
+
+    let lamp = block_on(PageLamp::open_with_memory_secrets(path_string(&data))).unwrap();
+    let tasks = block_on(lamp.startup_tasks(now)).unwrap();
+    assert!(tasks.whats_new.is_none(), "the Mac app's first run");
+    // The desktop app's update from 0.1 is still there.
+    assert!(desktop().startup_tasks(now).unwrap().whats_new.is_some());
+}

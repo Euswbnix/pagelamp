@@ -40,9 +40,11 @@ impl App {
         )?)
     }
 
-    /// The student's reminder settings (defaults when never set, or unreadable).
+    /// The student's reminder settings (defaults when never set or unparseable). A failed read
+    /// is an error, never the defaults: the shells keep the login item and the notifications
+    /// as they are until the stored answer can be read.
     pub fn reminder_settings(&self) -> Result<ReminderSettings> {
-        Ok(settings_in(&self.read_store()?))
+        settings_in(&self.read_store()?)
     }
 
     /// `Invalid` when a time isn't "HH:MM".
@@ -144,16 +146,13 @@ impl App {
     }
 }
 
-fn settings_in(store: &Store) -> ReminderSettings {
-    store
-        .setting(SETTINGS_KEY)
-        .unwrap_or(None)
-        .unwrap_or_default()
+fn settings_in(store: &Store) -> Result<ReminderSettings> {
+    Ok(store.setting_or_absent(SETTINGS_KEY)?.unwrap_or_default())
 }
 
 /// Every reminder that fires in [`from`, `to`) (shown or not).
 fn schedule(store: &Store, tz: Tz, from: Timestamp, to: Timestamp) -> Result<Vec<Reminder>> {
-    let settings = settings_in(store);
+    let settings = settings_in(store)?;
     // A deadline's reminders fire 48 h to 24 h before it; a digest counts the next 7 days.
     let deadlines = views::deadlines_between(store, from, to + Duration::days(7))?;
     let plan = store.latest_study_plan()?;

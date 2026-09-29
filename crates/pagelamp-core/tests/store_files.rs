@@ -592,3 +592,226 @@ fn a_second_writer_waits_for_the_lock_instead_of_failing() {
     assert_eq!(mcp.latest_study_plan().unwrap().unwrap().id, saved.id);
     assert_eq!(mcp.list_sources().unwrap().len(), 2);
 }
+
+// ----- chunks exist only for readable materials --------------------------------------------------
+
+/// A folder course with one material of `text`, indexed (`ok`), at `local_path`.
+fn indexed(store: &Store, local_path: &str, text: &str) -> String {
+    store
+        .upsert_source(&SourceRecord {
+            id: "folder:demo".into(),
+            kind: SourceKind::Folder,
+            label: "Demo".into(),
+            config: serde_json::json!({ "path": "/demo" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: "folder:demo/course/DEMO101".into(),
+            source_id: "folder:demo".into(),
+            external_id: "DEMO101".into(),
+            code: Some("DEMO101".into()),
+            name: "Demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    let material = material_at(local_path);
+    store.upsert_material(&material).unwrap();
+    store
+        .set_text_state(&material.id, TextStatus::Ok, None, Some("hash"))
+        .unwrap();
+    store
+        .replace_chunks(
+            &material.id,
+            &[Chunk {
+                material_id: material.id.clone(),
+                ord: 0,
+                locator: Some("p. 1".into()),
+                text: text.into(),
+            }],
+        )
+        .unwrap();
+    material.id
+}
+
+fn material_at(local_path: &str) -> MaterialUpsert {
+    MaterialUpsert {
+        id: "folder:demo/course/DEMO101/file/notes".into(),
+        course_id: "folder:demo/course/DEMO101".into(),
+        module_id: None,
+        kind: MaterialKind::File,
+        title: "Notes".into(),
+        url: None,
+        local_path: Some(local_path.into()),
+        mime: None,
+        published_at: None,
+        week_hint: None,
+    }
+}
+
+#[test]
+fn a_material_that_stops_being_readable_loses_its_text() {
+    for status in [
+        TextStatus::NotDownloaded,
+        TextStatus::Error,
+        TextStatus::Unsupported,
+        TextStatus::Pending,
+    ] {
+        let (_dir, path) = temp_db();
+        let store = Store::open(&path).unwrap();
+        let id = indexed(&store, "/demo/DEMO101/notes.md", "Stomata open in light.");
+        assert_eq!(store.chunk_count(&id).unwrap(), 1);
+        assert_eq!(store.search("stomata", None, 5).unwrap().len(), 1);
+
+        store.set_text_state(&id, status, None, None).unwrap();
+        assert_eq!(store.chunk_count(&id).unwrap(), 0, "{status:?}");
+        assert!(
+            store.search("stomata", None, 5).unwrap().is_empty(),
+            "{status:?}"
+        );
+        // What MCP read_material serves: nothing.
+        let read = pagelamp_core::views::read_material(&store, &id, 0, 12_000).unwrap();
+        assert!(
+            read.chunks.is_empty() && read.total_chunks == 0,
+            "{status:?}"
+        );
+    }
+
+    // Setting `ok` again (a re-index) keeps what the ingest just wrote.
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let id = indexed(&store, "/demo/DEMO101/notes.md", "Stomata open in light.");
+    store
+        .set_text_state(&id, TextStatus::Ok, None, Some("hash"))
+        .unwrap();
+    assert_eq!(store.chunk_count(&id).unwrap(), 1);
+}
+
+#[test]
+fn only_a_readable_material_takes_chunks() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let id = indexed(&store, "/demo/DEMO101/notes.md", "Stomata open in light.");
+    store
+        .set_text_state(&id, TextStatus::NotDownloaded, None, None)
+        .unwrap();
+    let chunk = Chunk {
+        material_id: id.clone(),
+        ord: 0,
+        locator: None,
+        text: "Stale text.".into(),
+    };
+    assert!(matches!(
+        store.replace_chunks(&id, std::slice::from_ref(&chunk)),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(store.chunk_count(&id).unwrap(), 0);
+    store.replace_chunks(&id, &[]).unwrap();
+}
+
+#[test]
+fn a_material_that_moved_has_no_text_until_it_is_read_again() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let id = indexed(&store, "/demo/DEMO101/notes.md", "Stomata open in light.");
+
+    // The same file again: text kept.
+    store
+        .upsert_material(&material_at("/demo/DEMO101/notes.md"))
+        .unwrap();
+    assert_eq!(store.chunk_count(&id).unwrap(), 1);
+
+    // Another file now: pending, and the old text is gone until the ingest reads it.
+    store
+        .upsert_material(&material_at("/demo/DEMO101/renamed.md"))
+        .unwrap();
+    let material = store.get_material(&id).unwrap().unwrap();
+    assert_eq!(material.text_status, TextStatus::Pending);
+    assert_eq!(store.chunk_count(&id).unwrap(), 0);
+    assert!(store.search("stomata", None, 5).unwrap().is_empty());
+}
+
+#[test]
+fn upgrading_drops_the_text_of_materials_that_are_not_readable() {
+    let (_dir, path) = temp_db();
+    version_2_db(&path, ("2026-05-01", "2026-12-31"));
+    let plain = rusqlite::Connection::open(&path).unwrap();
+    for (id, status) in [
+        ("locked", "not_downloaded"),
+        ("indexed", "ok"),
+        ("failed", "error"),
+    ] {
+        plain
+            .execute(
+                "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+                 VALUES (?1, 'canvas:demo/course/101', 'file', ?1, ?2, '2026-09-20T00:00:00Z')",
+                [id, status],
+            )
+            .unwrap();
+        plain
+            .execute(
+                "INSERT INTO chunks (material_id, ord, text) VALUES (?1, 0, ?2)",
+                [id, &format!("Stomata text of {id}")],
+            )
+            .unwrap();
+    }
+    drop(plain);
+
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.chunk_count("indexed").unwrap(), 1);
+    assert_eq!(store.chunk_count("locked").unwrap(), 0);
+    assert_eq!(store.chunk_count("failed").unwrap(), 0);
+    let hits = store.search("stomata", None, 5).unwrap();
+    assert_eq!(
+        hits.iter()
+            .map(|h| h.material_id.as_str())
+            .collect::<Vec<_>>(),
+        ["indexed"]
+    );
+    // Opening again finds nothing more to do.
+    drop(store);
+    assert_eq!(
+        Store::open(&path).unwrap().chunk_count("indexed").unwrap(),
+        1
+    );
+}
+
+#[test]
+fn an_unparseable_setting_is_absent_but_a_failed_read_is_an_error() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    store.set_setting("demo.flag", &true).unwrap();
+    assert_eq!(
+        store.setting_or_absent::<bool>("demo.flag").unwrap(),
+        Some(true)
+    );
+    assert_eq!(store.setting_or_absent::<bool>("demo.none").unwrap(), None);
+
+    // Another version's shape: absent (the strict read still says so).
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute(
+        "UPDATE settings SET value = 'not json' WHERE key = 'demo.flag'",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        store.setting::<bool>("demo.flag"),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(store.setting_or_absent::<bool>("demo.flag").unwrap(), None);
+
+    // A failed read (here the table is gone) is an error, never "absent".
+    raw.execute_batch("ALTER TABLE settings RENAME TO settings_away")
+        .unwrap();
+    assert!(matches!(
+        store.setting_or_absent::<bool>("demo.flag"),
+        Err(Error::Db(_))
+    ));
+}

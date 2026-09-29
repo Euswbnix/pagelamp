@@ -46,6 +46,7 @@ export type MockScenario =
   | "update-available"
   | "upgrader"
   | "upgrader-from-01"
+  | "upgrader-from-alpha1"
   | "updated"
   | "deb"
   // The file reader (extraction worker) is blocked, e.g. by antivirus (M0.5).
@@ -79,7 +80,11 @@ export type MockScenario =
   // Removal (F2): some courses already removed, one waiting to be purged.
   | "removed"
   // Calendar proposals (F3): an AI proposal with a conflict, a scan proposal, a stale calendar.
-  | "proposals";
+  | "proposals"
+  // Reminders (M3): a deadline, the weekly digest and today's plan are due / running in the
+  // background is on, but this system has no tray (Linux without an AppIndicator library).
+  | "reminders-due"
+  | "reminders-no-tray";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "demo",
@@ -91,6 +96,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "update-available",
   "upgrader",
   "upgrader-from-01",
+  "upgrader-from-alpha1",
   "updated",
   "deb",
   "worker-blocked",
@@ -113,6 +119,8 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "all-past",
   "removed",
   "proposals",
+  "reminders-due",
+  "reminders-no-tray",
 ];
 
 /** The version mock mode reports (a pre-release, so its default update channel is beta). */
@@ -488,7 +496,8 @@ function demo101(now: Date): MockCourse {
       module: m4,
       chunks: 18,
     }),
-    material(c.id, "Lab 4 notebook — Survey Simulation", "file", 4, -2, now, {
+    // Looks like graded work: left out of an explanation unless the student includes it.
+    material(c.id, "Assignment 4 — Survey Simulation", "file", 4, -2, now, {
       module: m4,
       chunks: 15,
     }),

@@ -27,6 +27,7 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   course per day, and never for a course whose materials you don't share with AI.
 
 ### Changed
+- MCP: tools declare all four annotation hints (read-only, destructive, idempotent, open-world).
 - A course file whose text can't be read now says why, in the app's language: no text found (for
   example a scanned PDF), too large, password-protected, damaged or an old format, or it hit the
   file reader's time or memory limit; the week's count of files your AI app can read leaves them
@@ -42,6 +43,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   last day of classes.
 - Releases: one universal macOS disk image for Apple silicon and Intel; Windows ships only the
   per-user installer (no MSI).
+
+### Fixed
+- A file that became locked or was moved, and hasn't been read again, no longer shows its old
+  text anywhere: not in search, not to your AI app, not in PageLamp's own AI features.
 
 ## [0.1.0] — 2026-09-28
 

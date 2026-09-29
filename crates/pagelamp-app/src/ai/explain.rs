@@ -236,12 +236,12 @@ impl App {
         Ok(())
     }
 
-    /// The output-language setting (default: the UI's language).
+    /// The output-language setting (default: the UI's language; also when unparseable). A
+    /// failed read is an error.
     pub fn ai_output_language(&self) -> Result<OutputLanguage> {
         Ok(self
             .read_store()?
-            .setting(OUTPUT_LANGUAGE)
-            .unwrap_or(None)
+            .setting_or_absent(OUTPUT_LANGUAGE)?
             .unwrap_or_default())
     }
 
@@ -274,6 +274,9 @@ impl App {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
             let (profile, destination) = self.estimate_profile(&choice)?;
+            // From here a change to the course's AI settings stops this run
+            // (`stop_course_runs`); week_context_including reads them after that.
+            self.run_reads_course(generation_id, &course.id, Some(destination));
             let context = match week_context_including(
                 &store,
                 &course.id,
@@ -291,8 +294,7 @@ impl App {
             let term = views::course_timeline(&store, &course, at)?.term;
             let week_starts = week.and_then(|week| week_starts_on(&term, week));
             let setting: OutputLanguage = store
-                .setting(OUTPUT_LANGUAGE)
-                .unwrap_or(None)
+                .setting_or_absent(OUTPUT_LANGUAGE)?
                 .unwrap_or_default();
             let language = answer_language(setting, options.ui_language.as_deref());
             let prompt = assemble_in(WEEKLY_EXPLANATION, &context, None, Some(language));

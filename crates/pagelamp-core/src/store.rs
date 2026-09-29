@@ -522,6 +522,9 @@ impl Store {
                     store.migrate_legacy_calendars()?;
                 }
             }
+            // After any upgrade: databases written before chunks were tied to `ok` (v0.1) may
+            // still hold the text of files locked or moved since.
+            store.drop_stale_chunks()?;
             // Part of the transaction: rolled back together with the schema on failure.
             store
                 .conn
@@ -635,7 +638,8 @@ impl Store {
 
     /// The last migration's backup outcome, if this database was ever migrated (schema 3+).
     pub fn last_migration_backup(&self) -> Result<Option<MigrationBackupRecord>> {
-        Ok(self.setting(LAST_MIGRATION_BACKUP).unwrap_or(None)) // unreadable (another version's shape): as if absent
+        // Unreadable (another version's shape): as if absent; a failed read is an error.
+        self.setting_or_absent(LAST_MIGRATION_BACKUP)
     }
 
     /// Run `f` inside `BEGIN IMMEDIATE … COMMIT` on this connection (ROLLBACK on error).
@@ -1142,8 +1146,21 @@ impl Store {
     /// Insert (text_status = pending) or update the synced columns of a material.
     /// On update, content_hash/text_status/text_error(_kind) are preserved — EXCEPT when
     /// `local_path` changed, in which case text_status is reset to pending (and the now
-    /// stale text_error, text_error_kind and fingerprint are cleared). Sets updated_at = now.
+    /// stale text_error, text_error_kind and fingerprint are cleared) and the old chunks go
+    /// (chunks exist only for `ok` materials: `set_text_state`). Sets updated_at = now.
     pub fn upsert_material(&self, material: &MaterialUpsert) -> Result<()> {
+        self.atomic(|| {
+            self.upsert_material_row(material)?;
+            self.conn.execute(
+                "DELETE FROM chunks WHERE material_id = ?1
+                   AND NOT EXISTS (SELECT 1 FROM materials WHERE id = ?1 AND text_status = 'ok')",
+                [&material.id],
+            )?;
+            Ok(())
+        })
+    }
+
+    fn upsert_material_row(&self, material: &MaterialUpsert) -> Result<()> {
         // In the DO UPDATE clause `materials.x` is the stored (old) value and `excluded.x`
         // the new one; `IS` compares NULLs as equal.
         self.conn.execute(
@@ -1222,7 +1239,9 @@ impl Store {
 
     /// Update index state of one material. `content_hash = None` leaves the stored hash as is.
     /// Clears the worker failure (`set_text_error_kind` records one after this call).
-    /// Errors: `NotFound` if there is no such material.
+    /// Any status but `ok` also deletes the material's chunks: chunks exist only for `ok`
+    /// materials, so no reader (MCP, search, a model's context) can see the text of a file
+    /// that was locked, moved or failed since. Errors: `NotFound` if there is no such material.
     pub fn set_text_state(
         &self,
         material_id: &str,
@@ -1230,14 +1249,31 @@ impl Store {
         error: Option<&str>,
         content_hash: Option<&str>,
     ) -> Result<()> {
-        let changed = self.conn.execute(
-            "UPDATE materials
-             SET text_status = ?2, text_error = ?3, content_hash = COALESCE(?4, content_hash),
-                 text_error_kind = NULL, text_error_fingerprint = NULL
-             WHERE id = ?1",
-            params![material_id, status.as_str(), error, content_hash],
-        )?;
-        expect_changed(changed, "material", material_id)
+        self.atomic(|| {
+            let changed = self.conn.execute(
+                "UPDATE materials
+                 SET text_status = ?2, text_error = ?3, content_hash = COALESCE(?4, content_hash),
+                     text_error_kind = NULL, text_error_fingerprint = NULL
+                 WHERE id = ?1",
+                params![material_id, status.as_str(), error, content_hash],
+            )?;
+            expect_changed(changed, "material", material_id)?;
+            if status != TextStatus::Ok {
+                self.conn
+                    .execute("DELETE FROM chunks WHERE material_id = ?1", [material_id])?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Deletes the chunks of every material that isn't `ok` (the `set_text_state` invariant),
+    /// for databases written before it held. Idempotent. Returns how many chunks went.
+    pub(crate) fn drop_stale_chunks(&self) -> Result<usize> {
+        Ok(self.conn.execute(
+            "DELETE FROM chunks WHERE material_id IN
+                 (SELECT id FROM materials WHERE text_status <> 'ok')",
+            [],
+        )?)
     }
 
     /// Record why the extraction worker failed on the material's current content, and the
@@ -1296,14 +1332,32 @@ impl Store {
         expect_changed(changed, "material", material_id)
     }
 
-    /// Replace all chunks of a material (FTS kept in sync by triggers).
-    /// Errors: `Invalid` if a chunk's `material_id` is not `material_id`.
+    /// Replace all chunks of a material (FTS kept in sync by triggers). Chunks belong only to
+    /// an `ok` material (`set_text_state`): set its text state first, as the ingest does.
+    /// Errors: `Invalid` if a chunk's `material_id` is not `material_id`, or if `chunks` isn't
+    /// empty and the material isn't `ok`; `NotFound` if there is no such material.
     pub fn replace_chunks(&self, material_id: &str, chunks: &[Chunk]) -> Result<()> {
         if let Some(chunk) = chunks.iter().find(|c| c.material_id != material_id) {
             return Err(Error::Invalid(format!(
                 "chunk {} belongs to material '{}', not '{material_id}'",
                 chunk.ord, chunk.material_id
             )));
+        }
+        if !chunks.is_empty() {
+            let status: Option<String> = self.query_opt(
+                "SELECT text_status FROM materials WHERE id = ?1",
+                [material_id],
+                |row| row.get(0),
+            )?;
+            match status.as_deref() {
+                Some("ok") => {}
+                Some(status) => {
+                    return Err(Error::Invalid(format!(
+                        "material '{material_id}' is {status}, not ok: set its text state first"
+                    )));
+                }
+                None => return Err(Error::NotFound(format!("material '{material_id}'"))),
+            }
         }
         self.atomic(|| {
             self.conn
@@ -1712,6 +1766,28 @@ impl Store {
                 .map_err(|err| Error::Invalid(format!("setting '{key}' could not be read: {err}")))
         })
         .transpose()
+    }
+
+    /// Like `setting`, but a stored value that can't be parsed (another version's shape) counts
+    /// as absent, with a warning, while a failed read (a busy or damaged database) is still an
+    /// error. For settings whose default is right when the value is unreadable, but where a
+    /// failed read must never look like the default (consent, what the student turned off).
+    pub fn setting_or_absent<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>> {
+        let text: Option<String> =
+            self.query_opt("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })?;
+        Ok(text.and_then(|text| match serde_json::from_str(&text) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                // The key and the kind of error only: never the stored value.
+                tracing::warn!(key, kind = ?err.classify(), "unreadable setting; using the default");
+                None
+            }
+        }))
     }
 
     /// Store `value` as JSON under `key`, replacing an earlier value.

@@ -365,6 +365,52 @@ fn settings_are_checked_and_ids_must_be_reminders() {
     assert_eq!(err.kind, AppErrorKind::Invalid, "at most 62 days");
 }
 
+/// A failed read of the reminder settings is an error, never the defaults: the student's
+/// "off" never turns into reminders, and the shells leave the login item and notifications
+/// as they are until the stored answer can be read. Another version's shape is the defaults.
+#[test]
+fn a_failed_read_of_the_reminder_settings_is_an_error_never_the_defaults() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app(&temp);
+    fall_course(&app, "101");
+    let chosen = ReminderSettings {
+        weekly_digest: false,
+        run_in_background: true,
+        ..ReminderSettings::default()
+    };
+    app.set_reminder_settings(&chosen).unwrap();
+    let raw = rusqlite::Connection::open(app.db_path()).unwrap();
+    let monday = utc(2026, 11, 2, 15, 0);
+
+    // The value can't be read (here it is stored as a blob).
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = 'reminder_settings'",
+        [],
+    )
+    .unwrap();
+    assert!(app.reminder_settings().is_err());
+    assert!(app.due_reminders(monday).is_err());
+    assert!(app.reminders(monday, monday + Duration::days(7)).is_err());
+    assert!(app.startup_tasks(monday).unwrap().due_reminders.is_empty());
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = 'reminder_settings'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.reminder_settings().unwrap(), chosen);
+    assert!(app.due_reminders(monday).unwrap().is_empty(), "digest off");
+
+    raw.execute(
+        "UPDATE settings SET value = '{\"weekly_digest\": \"sometimes\"}' WHERE key = 'reminder_settings'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        app.reminder_settings().unwrap(),
+        ReminderSettings::default()
+    );
+}
+
 #[test]
 fn launch_tasks_carry_due_reminders_and_a_due_purge() {
     let temp = tempfile::tempdir().unwrap();
@@ -504,6 +550,10 @@ fn no_material_text_reaches_the_digest_or_reminders() {
                 week_hint: None,
             })
             .unwrap();
+        // Readable text (text only belongs to an `ok` material): still never in the digest.
+        store
+            .set_text_state(&material, TextStatus::Ok, None, Some("h"))
+            .unwrap();
         store
             .replace_chunks(
                 &material,
@@ -620,4 +670,44 @@ fn launch_tasks_list_offers_and_suggestions_until_not_now() {
     assert_eq!(back.calendar_offers_total, 2);
     assert_eq!(app.syllabus_reading_offers().unwrap().len(), 2);
     assert!(back.removal_suggestions.is_empty(), "still snoozed");
+}
+
+/// A failed read of the offers' "Not now" never brings the offers back: the Courses page's
+/// card fails and the launch tasks show none. Another version's shape counts as no "Not now".
+#[test]
+fn a_failed_read_of_not_now_never_brings_the_offers_back() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app(&temp);
+    let today = Utc::now().date_naive();
+    let current = course(
+        &app,
+        "101",
+        today - Duration::days(20),
+        today + Duration::days(60),
+    );
+    with_syllabus(&app, &current);
+    app.snooze_calendar_offers().unwrap();
+    let raw = rusqlite::Connection::open(app.db_path()).unwrap();
+
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = 'calendar.offers_snoozed'",
+        [],
+    )
+    .unwrap();
+    assert!(app.syllabus_reading_offers().is_err());
+    let tasks = app.startup_tasks(Utc::now()).unwrap();
+    assert!(tasks.calendar_offers.is_empty());
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = 'calendar.offers_snoozed'",
+        [],
+    )
+    .unwrap();
+    assert!(app.syllabus_reading_offers().unwrap().is_empty());
+
+    raw.execute(
+        "UPDATE settings SET value = '[3]' WHERE key = 'calendar.offers_snoozed'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.syllabus_reading_offers().unwrap().len(), 1);
 }

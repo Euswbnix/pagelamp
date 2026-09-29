@@ -38,7 +38,7 @@ use std::sync::{Arc, LazyLock};
 
 use pagelamp_app::diagnostics::{CrashReport, DoctorReport, ProcessKind};
 use pagelamp_app::{
-    Activity, App, AppError, AppStatus, LifecycleSummary, McpClientConfig, McpLaunch,
+    Activity, App, AppError, AppStatus, LifecycleSummary, McpClientConfig, McpLaunch, Shell,
     SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary, UpdateChannel,
     UpdateCheckRecord, UpdatePrefs,
 };
@@ -139,6 +139,8 @@ impl PageLamp {
             None => App::open(),
         })
         .await?;
+        // This crate serves the Mac app: its own What's new (`pagelamp_app::Shell`).
+        app.set_shell(Shell::Mac);
         Ok(Arc::new(Self { app }))
     }
 
@@ -150,6 +152,7 @@ impl PageLamp {
             App::open_at_with_secrets(PathBuf::from(data_dir), Arc::new(MemorySecrets::new()))
         })
         .await?;
+        app.set_shell(Shell::Mac);
         Ok(Arc::new(Self { app }))
     }
 

@@ -79,6 +79,9 @@ fn seed(app: &App) {
         })
         .unwrap();
     store
+        .set_text_state(&material_id, TextStatus::Ok, None, Some("h"))
+        .unwrap();
+    store
         .replace_chunks(
             &material_id,
             &[Chunk {
@@ -88,9 +91,6 @@ fn seed(app: &App) {
                 text: "photosynthesis converts light".into(),
             }],
         )
-        .unwrap();
-    store
-        .set_text_state(&material_id, TextStatus::Ok, None, Some("h"))
         .unwrap();
 }
 

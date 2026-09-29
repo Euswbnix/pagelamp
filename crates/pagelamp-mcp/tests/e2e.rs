@@ -92,10 +92,10 @@ fn fixture(dir: &Path) -> PathBuf {
                     text: (*text).into(),
                 })
                 .collect();
-            store.replace_chunks(&mid(name), &chunks).unwrap();
             store
                 .set_text_state(&mid(name), TextStatus::Ok, None, Some("h"))
                 .unwrap();
+            store.replace_chunks(&mid(name), &chunks).unwrap();
         };
     material(
         "101",
@@ -255,16 +255,24 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
         text::PROPOSE_COURSE_CALENDAR
     );
     assert_eq!(description("sync_status"), text::sync_status_description());
+    // Every tool declares all four hints explicitly (strict tool directories reject a missing
+    // one): only the writes (a study plan, and a calendar proposal the student accepts in the
+    // app) aren't read-only or idempotent, and nothing reaches the network.
+    const WRITES: &[&str] = &["save_study_plan", "propose_course_calendar"];
     for tool in &tools {
-        let read_only = tool.annotations.as_ref().and_then(|a| a.read_only_hint);
+        let hints = tool
+            .annotations
+            .as_ref()
+            .unwrap_or_else(|| panic!("{} has no annotations", tool.name));
+        let writes = WRITES.contains(&tool.name.as_ref());
         assert_eq!(
-            read_only,
-            // The two writes: a study plan, and a calendar proposal the student accepts in
-            // the app.
-            Some(!matches!(
-                tool.name.as_ref(),
-                "save_study_plan" | "propose_course_calendar"
-            )),
+            (
+                hints.read_only_hint,
+                hints.destructive_hint,
+                hints.idempotent_hint,
+                hints.open_world_hint
+            ),
+            (Some(!writes), Some(false), Some(!writes), Some(false)),
             "{}",
             tool.name
         );
@@ -807,10 +815,10 @@ fn syllabus(db: &Path) -> impl Fn(&str, &str) -> Value {
                 text: text.clone(),
             })
             .collect();
-        store.replace_chunks(&mid("syllabus"), &chunks).unwrap();
         store
             .set_text_state(&mid("syllabus"), TextStatus::Ok, None, Some("h"))
             .unwrap();
+        store.replace_chunks(&mid("syllabus"), &chunks).unwrap();
     });
     move |label: &str, quote_suffix: &str| {
         let claim = |kind: &str,
@@ -1228,6 +1236,8 @@ async fn local_file_paths_never_reach_the_ai_app() {
             week_hint: Some(3),
         })
         .unwrap();
+        s.set_text_state(&mid("local-notes"), TextStatus::Ok, None, Some("h"))
+            .unwrap();
         s.replace_chunks(
             &mid("local-notes"),
             &[Chunk {
@@ -1238,8 +1248,6 @@ async fn local_file_paths_never_reach_the_ai_app() {
             }],
         )
         .unwrap();
-        s.set_text_state(&mid("local-notes"), TextStatus::Ok, None, Some("h"))
-            .unwrap();
     });
     // An error text quoting a path in the home folder (an older version wrote those).
     let home = std::env::var("HOME")

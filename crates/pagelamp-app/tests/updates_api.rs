@@ -261,3 +261,35 @@ async fn activity_shows_a_running_sync_and_another_process_holding_the_lock() {
     lock.try_lock().unwrap();
     assert!(app.activity().other_process_syncing);
 }
+
+#[test]
+fn a_failed_read_of_the_update_settings_is_an_error_never_the_defaults() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    app.set_update_prefs(UpdatePrefs {
+        auto_check: false,
+        channel: None,
+    })
+    .unwrap();
+    let raw = rusqlite::Connection::open(data.join("pagelamp.db")).unwrap();
+
+    // The table can't be read (busy past the timeout, damaged, …): the student's "off" must
+    // never come back as the default "on".
+    raw.execute_batch("ALTER TABLE settings RENAME TO settings_away")
+        .unwrap();
+    assert!(app.update_prefs().is_err());
+    assert!(app.startup_tasks(at("2026-10-01T09:00:00Z")).is_err());
+    assert!(app.last_update_check().is_err());
+    raw.execute_batch("ALTER TABLE settings_away RENAME TO settings")
+        .unwrap();
+    assert!(!app.update_prefs().unwrap().auto_check);
+
+    // Another version's shape: the defaults, as before.
+    raw.execute(
+        "UPDATE settings SET value = '{\"auto_check\": \"sometimes\"}' WHERE key = 'updates.prefs'",
+        [],
+    )
+    .unwrap();
+    assert_eq!(app.update_prefs().unwrap(), UpdatePrefs::default());
+}

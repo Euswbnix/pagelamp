@@ -5,16 +5,17 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
-// update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
+// update-available · upgrader · upgrader-from-01 · upgrader-from-alpha1 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
 // codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed);
-// course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts).
+// course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts);
+// reminders (M3): reminders-due · reminders-no-tray (see reminders.ts).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
-import { sameBackend } from "../ai";
+import { type EstimateRequest, sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
@@ -42,6 +43,7 @@ import {
   withStudentDates,
 } from "./calendar";
 import { buildCalendarScenarioDb } from "./courseScenarios";
+import { createExplainMock } from "./explain";
 import {
   buildMockDb,
   diagnosticReport,
@@ -54,7 +56,9 @@ import {
   type MockScenario,
   mcpClientConfigs,
 } from "./fixtures";
-import { createProposalsMock } from "./proposals";
+import { createPlanMock } from "./plan";
+import { createProposalsMock, type MockAiRun } from "./proposals";
+import { createRemindersMock } from "./reminders";
 import { createLifecycleMock } from "./removal";
 import { whatsNewSince } from "./whatsNew";
 
@@ -71,6 +75,8 @@ export interface MockOptions {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+/** startup_tasks lists at most this many offers and suggestions (the facade's STARTUP_LIST_MAX). */
+const STARTUP_LIST_MAX = 20;
 
 function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
@@ -155,12 +161,22 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   let nextId = 1;
 
   // Updates (M0.4). A fresh install ("empty") hasn't seen the update-check disclosure yet; an
-  // upgrader from 0.1 hasn't seen "What's new"; some scenarios have never checked.
+  // upgrader hasn't seen "What's new"; some scenarios have never checked. 0.1 never recorded its
+  // version, so upgraders from it have none.
+  const upgradedFrom =
+    scenario === "upgrader"
+      ? MOCK_PREVIOUS_VERSION
+      : scenario === "upgrader-from-alpha1"
+        ? "0.3.0-alpha.1"
+        : null;
   const offersUpdate = scenario === "update-available" || scenario === "deb";
   const updates = {
     prefs: { auto_check: true, channel: null as UpdateChannel | null },
     disclosureSeen: scenario !== "empty",
-    whatsNewSeen: scenario !== "upgrader" && scenario !== "upgrader-from-01",
+    whatsNewSeen:
+      scenario !== "upgrader" &&
+      scenario !== "upgrader-from-01" &&
+      scenario !== "upgrader-from-alpha1",
     lastCheck: (offersUpdate || scenario === "upgrader" || scenario === "upgrader-from-01"
       ? null
       : {
@@ -236,6 +252,63 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   // taking this" and snoozes, as the facade computes them per read.
   const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
   const lifecycleOf = courseLifecycle.lifecycleOf;
+  /**
+   * The AI gate of one run, as in the facade: the AI mock's estimate (its blocks; the student may
+   * override a reached budget), then who the feature's model runs on. `ai` is created below;
+   * this is only called later.
+   */
+  async function aiGate(request: EstimateRequest, overrideBudget: boolean): Promise<MockAiRun> {
+    const estimate = await ai.estimateGeneration(request);
+    const block = estimate.would_block ?? null;
+    if (block && !(block === "budget_reached" && overrideBudget)) {
+      throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+    }
+    const status = await ai.aiStatus();
+    const choice = status.features.find((f) => f.feature === request.feature)?.choice;
+    const backend = choice
+      ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
+      : undefined;
+    if (!choice || !backend) {
+      throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
+    }
+    return {
+      backend_label: backend.label,
+      model: choice.model,
+      on_device: backend.kind === "local",
+    };
+  }
+
+  // Reminders, their settings, the tray and the login item (reminders.ts).
+  const { dueNow: dueReminders, ...remindersApi } = createRemindersMock({
+    scenario,
+    now,
+    respond,
+    courses: () => db.courses,
+  });
+
+  // Study plans written by PageLamp (plan.ts).
+  const studyPlans = createPlanMock({
+    db,
+    now,
+    respond,
+    step: () => sleep(syncStep),
+    activity,
+    gate: (courses, horizonDays, overrideBudget) =>
+      aiGate({ feature: "study_plan", courses, horizon_days: horizonDays }, overrideBudget),
+    findCourse,
+  });
+
+  // Weekly explanations (explain.ts).
+  const explanations = createExplainMock({
+    now,
+    respond,
+    step: () => sleep(syncStep),
+    activity,
+    gate: (courseId, week, overrideBudget) =>
+      aiGate({ feature: "weekly_explanation", course: courseId, week }, overrideBudget),
+    findCourse,
+  });
+
   // Calendar proposals, candidates and syllabus reading (proposals.ts).
   const courseProposals = createProposalsMock({
     db,
@@ -246,29 +319,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     findCourse,
     step: () => sleep(syncStep),
     // The AI mock's estimate is the gate, as in the facade (created below; called later).
-    aiGate: async (courseId, overrideBudget) => {
-      const estimate = await ai.estimateGeneration({
-        feature: "course_calendar",
-        courses: [courseId],
-      });
-      const block = estimate.would_block ?? null;
-      if (block && !(block === "budget_reached" && overrideBudget)) {
-        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
-      }
-      const status = await ai.aiStatus();
-      const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
-      const backend = choice
-        ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
-        : undefined;
-      if (!choice || !backend) {
-        throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
-      }
-      return {
-        backend_label: backend.label,
-        model: choice.model,
-        on_device: backend.kind === "local",
-      };
-    },
+    aiGate: (courseId, overrideBudget) =>
+      aiGate({ feature: "course_calendar", courses: [courseId] }, overrideBudget),
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));
       c.timeline = {
@@ -531,6 +583,21 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     ...ai,
     ...courseLifecycle.api,
     ...courseProposals.api,
+    // One Stop for every run: a syllabus reading, a study plan or an explanation.
+    cancelGeneration: async (generationId) => {
+      studyPlans.cancel(generationId);
+      explanations.cancel(generationId);
+      await courseProposals.api.cancelGeneration(generationId);
+    },
+    explainWeek: explanations.explainWeek,
+    savedExplanations: explanations.savedExplanations,
+    deleteExplanation: explanations.deleteExplanation,
+    aiOutputLanguage: explanations.aiOutputLanguage,
+    setAiOutputLanguage: explanations.setAiOutputLanguage,
+    generateStudyPlan: studyPlans.generateStudyPlan,
+    acceptStudyPlan: studyPlans.acceptStudyPlan,
+    setStudyPlanItemDone: studyPlans.setStudyPlanItemDone,
+    ...remindersApi,
 
     downloadMaterialFiles: async (courseId, materialIds, onEvent) => {
       const c = findCourse(courseId);
@@ -898,23 +965,21 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
         return {
-          // 0.1 never recorded its version, so upgraders from it have none.
-          whats_new: updates.whatsNewSeen
-            ? null
-            : whatsNewSince(scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null),
+          whats_new: updates.whatsNewSeen ? null : whatsNewSince(upgradedFrom),
           update_check_due:
             updates.prefs.auto_check &&
             updates.disclosureSeen &&
             updates.whatsNewSeen &&
             (last === null || last <= now().getTime() - DAY),
-          updated_from:
-            scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-          // Reminders and the app-start purge (M3): none in the mock yet.
-          due_reminders: [],
+          // The facade's launch.updated_from, which also gives What's new its `since`.
+          updated_from: upgradedFrom ?? (scenario === "updated" ? MOCK_PREVIOUS_VERSION : null),
+          // What came due since the last launch (reminders-due); the purge: none in the mock yet.
+          due_reminders: dueReminders(),
           purge_due: false,
           removed_files_waiting: 0,
-          calendar_offers: [],
-          calendar_offers_total: 0,
+          // The same offers as the Courses page's card, "Not now" applied (proposals.ts).
+          calendar_offers: courseProposals.offersNow().slice(0, STARTUP_LIST_MAX),
+          calendar_offers_total: courseProposals.offersNow().length,
           removal_suggestions: [],
           removal_suggestions_total: 0,
         };
