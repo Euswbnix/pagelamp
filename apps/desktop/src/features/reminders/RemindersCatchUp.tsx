@@ -15,7 +15,7 @@ import { reminderText } from "./reminderText";
 
 /**
  * Reminders off ("Not now"): what came due since the last launch shows here instead of as
- * notifications (design §5.3, the leader's decision 6b): the course code, title and due time.
+ * notifications (design §5.3): the course code, title and due time.
  * Opening one, or dismissing the card, marks them shown, so they don't come back.
  */
 export function RemindersCatchUp() {

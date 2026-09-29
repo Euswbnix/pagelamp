@@ -21,7 +21,7 @@ type RemindersApi = Pick<
   | "onReminderCheck"
 >;
 
-/** The facade's defaults (backend-1, 2026-09-29). */
+/** The facade's defaults (pagelamp-core ReminderSettings::default). */
 export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
   deadline_soon: true,
   weekly_digest: true,
