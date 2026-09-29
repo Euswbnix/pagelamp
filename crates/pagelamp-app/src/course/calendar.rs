@@ -17,7 +17,7 @@ use std::collections::BTreeSet;
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, MaterialSharing, ModelErrorKind};
 use pagelamp_core::ai_gate::{GateError, GatedContext, assemble, calendar_context};
-use pagelamp_core::calendar::assemble::Assembled;
+use pagelamp_core::calendar::assemble::{Assembled, CurrentCalendar, outcome_of};
 use pagelamp_core::calendar::candidates::{CalendarCandidate, ScoredCandidate, course_candidates};
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::calendar::proposal::{AcceptedCalendar, CalendarProposal};
@@ -601,19 +601,36 @@ impl App {
         course: &Course,
         at: AsOf,
     ) -> Result<CourseCalendarView> {
-        let status = views::course_timeline(store, course, at)?.calendar;
-        let accepted = match store.accepted_calendar(&course.id)? {
+        let timeline = views::course_timeline(store, course, at)?;
+        let accepted_row = store.accepted_calendar(&course.id)?;
+        // What accepting each proposal would change, against the calendar in force now (another
+        // proposal may have been accepted since it was made).
+        let current = CurrentCalendar {
+            calendar: accepted_row.as_ref().map(|row| &row.calendar),
+            week: timeline.current_week,
+            phase: timeline.phase,
+        };
+        let proposals = store
+            .calendar_proposals(&course.id)?
+            .into_iter()
+            .map(|row| {
+                let outcome = outcome_of(&row.calendar, &current, at.today, false);
+                CalendarProposal {
+                    resulting_week_today: outcome.resulting_week_today,
+                    resulting_phase: outcome.resulting_phase,
+                    changes: outcome.changes,
+                    ..proposal_of(row)
+                }
+            })
+            .collect();
+        let status = timeline.calendar;
+        let accepted = match accepted_row {
             Some(row) => {
                 let staleness = store.calendar_staleness(&row)?;
                 Some(accepted_of(row, staleness))
             }
             None => None,
         };
-        let proposals = store
-            .calendar_proposals(&course.id)?
-            .into_iter()
-            .map(proposal_of)
-            .collect();
         let candidates = candidates_of(store, course, at)?;
         let blocked = self.reading_block(store, course, &candidates)?;
         Ok(CourseCalendarView {

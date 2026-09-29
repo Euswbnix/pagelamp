@@ -655,6 +655,43 @@ async fn a_sync_scans_changed_outlines_into_proposals_once() {
     assert_eq!(app.course_calendar("DEMO707").unwrap().proposals.len(), 1);
 }
 
+#[test]
+fn what_a_proposal_changes_follows_the_calendar_in_force() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let proposal = app.scan_course_calendar("DEMO101").unwrap().unwrap();
+    let codes = |view: &pagelamp_app::CourseCalendarView| -> Vec<String> {
+        view.proposals[0]
+            .changes
+            .iter()
+            .map(|c| c.code.as_str().to_string())
+            .collect()
+    };
+    let view = app.course_calendar("DEMO101").unwrap();
+    assert_eq!(view.proposals[0].id, proposal.id);
+    assert!(codes(&view).contains(&"new_calendar".to_string()));
+    // The student's own dates go in force a week later: the proposal now moves the first
+    // class back.
+    app.set_course_dates(
+        "DEMO101",
+        Some(pagelamp_app::CourseDatesInput {
+            first_class: Some(day(-6)),
+            last_class: Some(day(70)),
+            exams_end: None,
+            breaks: vec![],
+            second_segment: None,
+        }),
+    )
+    .unwrap();
+    let view = app.course_calendar("DEMO101").unwrap();
+    let codes = codes(&view);
+    assert!(!codes.contains(&"new_calendar".to_string()), "{codes:?}");
+    assert!(
+        codes.contains(&"first_class_moved".to_string()),
+        "{codes:?}"
+    );
+}
+
 #[tokio::test]
 async fn stored_proposals_are_found_by_id_only() {
     let temp = tempfile::tempdir().unwrap();
