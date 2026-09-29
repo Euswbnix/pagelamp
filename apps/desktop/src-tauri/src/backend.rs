@@ -3,8 +3,8 @@
 use std::future::Future;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use pagelamp_app::diagnostics::{expect_panics, expect_panics_in};
 use pagelamp_app::{App, AppError, AppErrorKind};
@@ -20,6 +20,10 @@ pub struct Backend {
     /// Set while an update downloads and installs (`InstallGate`): the restart, or on Windows
     /// the installer closing the app, would kill any work started meanwhile.
     installing: AtomicBool,
+    /// Work started through `spawn_work` that hasn't ended. Counted before the gate is checked,
+    /// while an install closes the gate before it checks the count: one of the two always sees
+    /// the other, even before the work registers in `App::activity`.
+    in_flight: Arc<AtomicUsize>,
 }
 
 impl Backend {
@@ -32,6 +36,7 @@ impl Backend {
             state: Mutex::new(open_guarded(open)),
             open,
             installing: AtomicBool::new(false),
+            in_flight: Arc::default(),
         }
     }
 
@@ -41,6 +46,7 @@ impl Backend {
             state: Mutex::new(Ok(app)),
             open: App::open,
             installing: AtomicBool::new(false),
+            in_flight: Arc::default(),
         }
     }
 
@@ -112,6 +118,9 @@ impl Backend {
         F: FnOnce(App) -> Fut,
         Fut: Future<Output = Result<T, AppError>> + Send + 'static,
     {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        // Dropped with the spawned task, not with this future: the work runs on regardless.
+        let work = InFlight(Arc::clone(&self.in_flight));
         if self.installing.load(Ordering::SeqCst) {
             return Err(AppError::new(
                 AppErrorKind::Busy,
@@ -121,7 +130,19 @@ impl Backend {
                 ),
             ));
         }
-        self.spawn(f).await
+        self.spawn(|app| {
+            let fut = f(app);
+            async move {
+                let _work = work;
+                fut.await
+            }
+        })
+        .await
+    }
+
+    /// How much `spawn_work` work hasn't ended, including work not yet in `App::activity`.
+    pub fn work_in_flight(&self) -> usize {
+        self.in_flight.load(Ordering::SeqCst)
     }
 
     /// Hold new work back (`spawn_work`) until the gate drops, which every error or cancel path
@@ -136,6 +157,15 @@ impl Backend {
 
 /// An update is installing: new work is refused until this drops.
 pub struct InstallGate<'a>(&'a AtomicBool);
+
+/// One piece of `spawn_work` work; ending it (success, error, panic or drop) uncounts it.
+struct InFlight(Arc<AtomicUsize>);
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 impl Drop for InstallGate<'_> {
     fn drop(&mut self) {
@@ -252,6 +282,67 @@ mod tests {
             || panic!("the open facade's data dir must be used"),
         ));
         assert_eq!(used.unwrap(), dir.path());
+    }
+
+    /// Waits (up to 5 s) for work the test let go of to end on the runtime.
+    fn eventually(done: impl Fn() -> bool) {
+        let started = std::time::Instant::now();
+        while !done() {
+            assert!(started.elapsed().as_secs() < 5, "timed out");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn work_is_counted_until_it_ends_however_it_ends() {
+        use std::future::Future;
+        use std::task::{Context, Waker};
+
+        use tauri::async_runtime::block_on;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let app = App::open_at(dir.path().to_path_buf()).expect("open App in a temp dir");
+        let backend = Backend::from_app(app);
+
+        block_on(backend.spawn_work(|_| async { Ok(()) })).expect("success");
+        assert_eq!(backend.work_in_flight(), 0, "after success");
+        let failed: Result<(), AppError> =
+            block_on(backend.spawn_work(|_| async {
+                Err(AppError::new(AppErrorKind::Internal, "work failed"))
+            }));
+        assert!(failed.is_err());
+        assert_eq!(backend.work_in_flight(), 0, "after an error");
+        let crashed: Result<(), AppError> = block_on(backend.spawn_work(|_| async {
+            let crash = true;
+            if crash {
+                panic!("work crashed");
+            }
+            Ok(())
+        }));
+        assert!(matches!(crashed.unwrap_err().kind, AppErrorKind::Internal));
+        assert_eq!(backend.work_in_flight(), 0, "after a panic");
+
+        // The command's future is dropped mid-work (e.g. the window reloads): the work runs on,
+        // and stays counted until it ends.
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let mut command = Box::pin(backend.spawn_work(move |_| async move {
+            let _ = wait.recv();
+            Ok(())
+        }));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(command.as_mut().poll(&mut cx).is_pending());
+        drop(command);
+        assert_eq!(backend.work_in_flight(), 1, "the work still runs");
+        release.send(()).expect("release the work");
+        eventually(|| backend.work_in_flight() == 0);
+
+        // Refused before it starts: the facade can't open.
+        fn locked_open() -> Result<App, AppError> {
+            Err(AppError::new(AppErrorKind::Internal, "database is locked"))
+        }
+        let closed = Backend::open_with(locked_open);
+        assert!(block_on(closed.spawn_work(|_| async { Ok(()) })).is_err());
+        assert_eq!(closed.work_in_flight(), 0, "when the facade can't open");
     }
 
     #[test]
