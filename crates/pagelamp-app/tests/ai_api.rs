@@ -664,3 +664,63 @@ async fn local_work_and_keyless_providers_never_touch_the_keychain() {
     app.remove_all_ai_data().unwrap();
     assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 2);
 }
+
+#[tokio::test]
+async fn a_local_app_on_another_computer_is_disclosed_as_leaving_this_one() {
+    use pagelamp_app::ai::{CostKind, RetentionFact, TrainingFact};
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let store = Store::open(&app.db_path()).unwrap();
+    for (id, url) in [
+        ("here", "http://127.0.0.1:1234/v1"),
+        ("there", "https://llm.example.invalid/v1"),
+    ] {
+        store
+            .insert_model_provider(&ProviderRow {
+                id: id.into(),
+                preset: "lm_studio".into(),
+                label: "LM Studio".into(),
+                wire: "openai_chat".into(),
+                base_url: url.into(),
+                created_at: Utc::now().trunc_subsecs(0),
+                last_probe_json: None,
+            })
+            .unwrap();
+    }
+    let status = app.ai_status().unwrap();
+    let facts = |id: &str| {
+        status
+            .backends
+            .iter()
+            .find(|b| {
+                b.backend
+                    == BackendRef::Provider {
+                        provider_id: id.into(),
+                    }
+            })
+            .unwrap()
+            .disclosure
+            .clone()
+    };
+    let here = facts("here");
+    assert!(here.on_device);
+    assert_eq!(
+        (here.retention, here.training, here.cost),
+        (
+            RetentionFact::OnDevice,
+            TrainingFact::NoTraining,
+            CostKind::FreeOnDevice
+        )
+    );
+    // The gate treats it as cloud (question (b)), and so does the disclosure.
+    let there = facts("there");
+    assert!(!there.on_device);
+    assert_eq!(
+        (there.retention, there.training, there.cost),
+        (
+            RetentionFact::ProviderTerms,
+            TrainingFact::Unknown,
+            CostKind::ApiBilling
+        )
+    );
+}

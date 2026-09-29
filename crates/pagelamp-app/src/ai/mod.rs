@@ -389,7 +389,10 @@ pub(crate) fn provider_wire(wire: Wire) -> ProviderWire {
 /// The disclosure facts of an API-key or local provider.
 pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
     let policy = &provider.data_policy;
-    let on_device = provider.local || provider.on_device();
+    // By address, like the gate: a local app (Ollama, LM Studio) on another computer is not on
+    // this device, and what happens to the data there is up to whoever runs it.
+    let on_device = provider.on_device();
+    let elsewhere = provider.local && !on_device;
     let facts = DisclosureFacts {
         version: 0,
         sends: vec![SentData::Structure, SentData::MaterialText],
@@ -398,6 +401,7 @@ pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
             terms_url: policy.terms_url.clone(),
         },
         training: match policy.training {
+            _ if elsewhere => TrainingFact::Unknown,
             Training::NoTraining => TrainingFact::NoTraining,
             Training::MayTrainFreeTier => TrainingFact::MayTrainFreeTier,
             Training::MayTrain => TrainingFact::MayTrain {
@@ -406,6 +410,7 @@ pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
             Training::Unknown => TrainingFact::Unknown,
         },
         retention: match policy.retention {
+            _ if elsewhere => RetentionFact::ProviderTerms,
             Retention::NotStored => RetentionFact::NotStored,
             Retention::StoredDays(days) => RetentionFact::StoredDays { days },
             Retention::ProviderTerms => RetentionFact::ProviderTerms,
