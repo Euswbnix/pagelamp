@@ -9,7 +9,7 @@
 // This target is the catalogue and the PNG writer; the pages themselves are views of the
 // PageLamp module, reached through `package` access, so none of this is linked into the app.
 // A screen adds its states to `SnapshotCatalog.pages` (`ThisWeekSnapshots`, `CourseSnapshots`,
-// `SetupSnapshots`, `SidebarSnapshots`): each page says how to set up its model (`SnapshotSetup`)
+// `SetupSnapshots`, `SidebarSnapshots`, `WhatsNewSnapshots`): each page says how to set up its model (`SnapshotSetup`)
 // and loads what it needs in `make`, since `.task` never runs offscreen.
 
 import AppKit
@@ -61,7 +61,8 @@ public enum SnapshotCatalog {
 
     /// Every page, by screen.
     public static let pages: [SnapshotPage] =
-        ThisWeekSnapshots.pages + CourseSnapshots.pages + SetupSnapshots.pages + SidebarSnapshots.pages + [
+        ThisWeekSnapshots.pages + CourseSnapshots.pages + SetupSnapshots.pages + SidebarSnapshots.pages
+        + WhatsNewSnapshots.pages + [
             SnapshotPage(name: "components") { _ in AnyView(ComponentGallery()) },
         ]
 

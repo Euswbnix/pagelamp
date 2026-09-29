@@ -1,7 +1,7 @@
 //! The course dates form, version 2 (docs/design/v0.3-course-calendar.md §7.10): first and
 //! last day of classes, end of exams, breaks and a second segment for full-year courses.
 //!
-//! The input types come first (alpha.2 contract, agreed with frontend-2);
+//! The input types come first (the alpha.2 contract agreed with the desktop);
 //! `set_course_dates` arrives with the schema-v4 calendars (B6). The facade computes the week
 //! numbering (a second segment continues after the first or restarts at 1), so surfaces do no
 //! week arithmetic.

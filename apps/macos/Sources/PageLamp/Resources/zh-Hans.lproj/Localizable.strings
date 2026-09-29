@@ -1597,7 +1597,7 @@
 "updates.whatsNew.title" = "PageLamp 有哪些新变化";
 "updates.whatsNew.topics.course_removal.body" = "课程结束后，可以把它从 PageLamp 中移除。7 天内可以撤销，你自己的课程文件夹不会被改动。";
 "updates.whatsNew.topics.course_removal.title" = "移除已结束的课程";
-"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归到“已结束”分组里。";
+"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.update_check.body" = "它每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 PageLamp 的版本号；不会发送任何课程内容。安装任何更新之前一定会先问你。";
 "updates.whatsNew.topics.update_check.title" = "PageLamp 现在可以自己更新了";

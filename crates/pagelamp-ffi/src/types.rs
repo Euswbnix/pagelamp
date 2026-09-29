@@ -1036,7 +1036,7 @@ pub struct Activity {
     pub other_process_syncing: bool,
 }
 
-// ----- AI (v0.3 M1; methods are wired by the leader) ------------------------------------------
+// ----- AI (v0.3 M1) ---------------------------------------------------------------------------
 
 #[uniffi::remote(Enum)]
 pub enum AiFeature {
