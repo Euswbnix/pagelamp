@@ -3,6 +3,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use super::protocol::{Outcome, Request, Response};
@@ -31,6 +32,8 @@ pub enum WorkerFailure {
     SpawnFailed,
     /// A worker of another protocol version (a stale binary).
     ProtocolMismatch,
+    /// Stopped on request (the sync was cancelled): says nothing about the file.
+    Cancelled,
 }
 
 impl WorkerFailure {
@@ -44,6 +47,7 @@ impl WorkerFailure {
             WorkerFailure::BadOutput => "bad_output",
             WorkerFailure::SpawnFailed => "spawn_failed",
             WorkerFailure::ProtocolMismatch => "protocol_mismatch",
+            WorkerFailure::Cancelled => "cancelled",
         }
     }
 
@@ -76,6 +80,27 @@ pub fn extract_in_worker(
     run(exe, path, mime, limits, wall_timeout(size), None)
 }
 
+/// `extract_in_worker` that stops the worker (`WorkerFailure::Cancelled`) as soon as `cancel`
+/// is set, even mid-file.
+pub fn extract_in_worker_cancellable(
+    exe: &Path,
+    path: &Path,
+    mime: Option<&str>,
+    limits: WorkerLimits,
+    cancel: &AtomicBool,
+) -> Result<Result<Vec<Segment>, ExtractError>, WorkerFailure> {
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    run_until(
+        exe,
+        path,
+        mime,
+        limits,
+        wall_timeout(size),
+        None,
+        Some(cancel),
+    )
+}
+
 /// Wall clock of a `check`.
 const CHECK_WALL: Duration = Duration::from_secs(15);
 
@@ -102,6 +127,19 @@ pub fn run(
     limits: WorkerLimits,
     wall: Duration,
     debug_fault: Option<&str>,
+) -> Result<Result<Vec<Segment>, ExtractError>, WorkerFailure> {
+    run_until(exe, path, mime, limits, wall, debug_fault, None)
+}
+
+/// `run`, also stopped when `cancel` is set.
+fn run_until(
+    exe: &Path,
+    path: &Path,
+    mime: Option<&str>,
+    limits: WorkerLimits,
+    wall: Duration,
+    debug_fault: Option<&str>,
+    cancel: Option<&AtomicBool>,
 ) -> Result<Result<Vec<Segment>, ExtractError>, WorkerFailure> {
     let request = Request {
         protocol: PROTOCOL,
@@ -165,6 +203,11 @@ pub fn run(
                 stopped = Some(WorkerFailure::Crashed);
                 break child.wait().ok();
             }
+        }
+        if cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {
+            let _ = child.kill();
+            stopped = Some(WorkerFailure::Cancelled);
+            break child.wait().ok();
         }
         if Instant::now() >= deadline {
             let _ = child.kill();

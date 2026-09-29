@@ -209,6 +209,7 @@ const MIRRORED: &[&str] = &[
     "CostEstimate",
     "TokenUsage",
     "UsageRow",
+    "CostBasis",
     "UsageSummary",
     "RemoveAiDataReport",
     "GenStage",

@@ -15,7 +15,7 @@ use pagelamp_canvas::{CanvasConfig, SyncOptions};
 use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::{SourceKind, SourceRecord};
 use pagelamp_core::paths;
-use pagelamp_core::source::{CourseSyncSummary, SourceError, SyncProgress};
+use pagelamp_core::source::{CancelFlag, CourseSyncSummary, SourceError, SyncProgress};
 use pagelamp_core::store::Store;
 use tokio::sync::mpsc;
 
@@ -50,14 +50,18 @@ impl App {
     ) -> Result<SyncSummary> {
         let _lock = self.acquire_sync_lock()?;
         let _activity = self.begin_activity(ActivityKind::Sync, None);
+        let cancel = self.begin_cancellable();
         let started_at = Utc::now();
         let mut sources = self.read_store()?.list_sources()?;
         // Stable: keeps the label order within each group.
         sources.sort_by_key(|source| source.kind == SourceKind::Ical);
         let mut results = Vec::with_capacity(sources.len());
-        let extractor = self.extractor();
+        let extractor = self.extractor(cancel.flag());
         for source in &sources {
             results.push(self.sync_one(source, &req, &extractor, &on_event).await);
+            if cancel.flag().is_cancelled() {
+                return Err(AppError::cancelled());
+            }
         }
         Ok(SyncSummary {
             started_at,
@@ -77,10 +81,11 @@ impl App {
     ) -> Result<SourceSyncResult> {
         let _lock = self.acquire_sync_lock()?;
         let _activity = self.begin_activity(ActivityKind::Sync, Some(source_id));
+        let cancel = self.begin_cancellable();
         let source = self.source(source_id)?;
-        Ok(self
-            .sync_one(&source, &req, &self.extractor(), &on_event)
-            .await)
+        let extractor = self.extractor(cancel.flag());
+        let result = self.sync_one(&source, &req, &extractor, &on_event).await;
+        cancel.result(result)
     }
 
     /// Explicit "download & index this course's files" action for an LMS course: a sync of
@@ -107,9 +112,39 @@ impl App {
             only_courses: vec![course.id],
             ..SyncRequest::default()
         };
-        Ok(self
-            .sync_one(&source, &req, &self.extractor(), &on_event)
-            .await)
+        let cancel = self.begin_cancellable();
+        let extractor = self.extractor(cancel.flag());
+        let result = self.sync_one(&source, &req, &extractor, &on_event).await;
+        cancel.result(result)
+    }
+
+    /// Stop the sync this app is running (`sync_all`, `sync_source`, `download_course_files`;
+    /// mac request F4). It stops at the next file, course or download: a file being read in the
+    /// extraction worker is abandoned at once. Courses finished so far stay synced; the source
+    /// isn't marked failed; the call returns `AppErrorKind::Cancelled`. Does nothing when no
+    /// sync runs in this app (a sync in another process, e.g. the CLI, can't be stopped here).
+    pub fn cancel_sync(&self) {
+        if let Some(flag) = self
+            .state
+            .sync_cancel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            tracing::info!(target: "pagelamp::sync", "sync stop requested");
+            flag.cancel();
+        }
+    }
+
+    /// Register this sync's stop request until the returned guard is dropped.
+    fn begin_cancellable(&self) -> CancelGuard<'_> {
+        let flag = CancelFlag::new();
+        *self
+            .state
+            .sync_cancel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(flag.clone());
+        CancelGuard { app: self, flag }
     }
 
     fn acquire_sync_lock(&self) -> Result<SyncLock> {
@@ -150,6 +185,21 @@ impl App {
         }
         self.remember_course_names();
         let finished_at = Utc::now();
+        if outcome.as_ref().is_err_and(|error| error.cancelled) {
+            // Stopped by the student: not a failure, so nothing is recorded for the source.
+            tracing::info!(target: "pagelamp::sync", "{} sync stopped", source.kind.as_str());
+            on_event(SyncEvent::SourceFinished {
+                source_id: source.id.clone(),
+                ok: false,
+                error: Some("The sync was stopped.".to_string()),
+                error_kind: None,
+            });
+            return SourceSyncResult {
+                ok: false,
+                error: Some("The sync was stopped.".to_string()),
+                ..self.empty_result(source, started_at)
+            };
+        }
         let error = outcome.as_ref().err().map(|e| (e.kind, e.message.clone()));
         // Log file: kind and counts at info; course/file names only at debug.
         match (&outcome, &error) {
@@ -209,6 +259,33 @@ impl App {
             warnings: counts.warnings,
             course_summaries: counts.course_summaries,
             requests: counts.requests,
+        }
+    }
+
+    /// A result with no counts (a stopped sync).
+    fn empty_result(
+        &self,
+        source: &SourceRecord,
+        started_at: chrono::DateTime<Utc>,
+    ) -> SourceSyncResult {
+        SourceSyncResult {
+            source_id: source.id.clone(),
+            label: source.label.clone(),
+            kind: source.kind,
+            ok: false,
+            error_kind: None,
+            error: None,
+            started_at,
+            finished_at: Utc::now(),
+            courses: 0,
+            modules: 0,
+            materials: 0,
+            files_downloaded: 0,
+            files_indexed: 0,
+            events: 0,
+            warnings: Vec::new(),
+            course_summaries: Vec::new(),
+            requests: None,
         }
     }
 
@@ -332,6 +409,39 @@ impl App {
             ))),
             Err(err) => Err(SourceError::other(err.to_string())),
         }
+    }
+}
+
+/// This sync's stop request, registered in the app until dropped.
+struct CancelGuard<'a> {
+    app: &'a App,
+    flag: CancelFlag,
+}
+
+impl CancelGuard<'_> {
+    fn flag(&self) -> CancelFlag {
+        self.flag.clone()
+    }
+
+    /// `result`, or `Cancelled` if the sync was stopped.
+    fn result(&self, result: SourceSyncResult) -> Result<SourceSyncResult> {
+        if self.flag.is_cancelled() {
+            Err(AppError::cancelled())
+        } else {
+            Ok(result)
+        }
+    }
+}
+
+impl Drop for CancelGuard<'_> {
+    fn drop(&mut self) {
+        let mut current = self
+            .app
+            .state
+            .sync_cancel
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *current = None;
     }
 }
 

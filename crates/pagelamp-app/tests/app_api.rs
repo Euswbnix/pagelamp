@@ -1186,3 +1186,65 @@ async fn a_blocked_extract_worker_warns_once_and_reads_only_small_non_pdf_files(
         "{report}"
     );
 }
+
+// ----- cancel_sync (mac request F4) ----------------------------------------------------------------
+
+#[tokio::test]
+async fn a_stopped_sync_is_cancelled_not_failed_and_the_next_one_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let courses = temp.path().join("Courses");
+    for n in 1..=4 {
+        write(
+            &courses,
+            &format!("DEMO101 Intro/notes-{n}.md"),
+            &format!("# Week {n}\nlambdaword"),
+        );
+    }
+    let source = app.add_folder_source(&courses, None, None).unwrap();
+    app.cancel_sync(); // nothing runs: no effect
+
+    let remote = app.clone();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = events.clone();
+    let result = app
+        .sync_all(SyncRequest::default(), move |event| {
+            if matches!(
+                &event,
+                SyncEvent::Progress {
+                    current: Some(2),
+                    ..
+                }
+            ) {
+                remote.cancel_sync();
+            }
+            sink.lock().unwrap().push(event);
+        })
+        .await;
+    assert_eq!(kind(result), AppErrorKind::Cancelled);
+    let finished = events.lock().unwrap().iter().any(|event| {
+        matches!(
+            event,
+            SyncEvent::SourceFinished {
+                ok: false,
+                error_kind: None,
+                ..
+            }
+        )
+    });
+    assert!(finished, "the UI is told the source stopped");
+    // Not recorded as a failure (nor as a sync).
+    let stored = &app.list_sources().unwrap()[0];
+    assert_eq!(stored.last_error_kind, None);
+    assert_eq!(stored.last_synced_at, None);
+
+    // The next sync starts fresh and completes.
+    let done = app
+        .sync_source(&source.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(done.ok, "{done:?}");
+    assert_eq!(done.files_indexed, 3, "file 1 was indexed before the stop");
+    let course = &app.list_courses().unwrap()[0];
+    assert_eq!(course.counts.indexed_materials, 4);
+}

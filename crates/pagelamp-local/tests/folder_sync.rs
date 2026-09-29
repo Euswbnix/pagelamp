@@ -449,3 +449,41 @@ fn published_at_is_the_file_modification_time_not_the_sync_time() {
         assert_eq!(materials[0].published_at, Some(modified));
     }
 }
+
+#[test]
+fn a_stopped_sync_ends_before_the_next_file_and_keeps_what_was_done() {
+    let temp = tempfile::tempdir().unwrap();
+    let course = temp.path().join("DEMO101 Intro to Demo Studies");
+    fs::create_dir_all(&course).unwrap();
+    for n in 1..=5 {
+        fs::write(
+            course.join(format!("notes-{n}.md")),
+            format!("# Week {n}\nkappaword {n}"),
+        )
+        .unwrap();
+    }
+    let store = store();
+    let cancel = pagelamp_core::source::CancelFlag::new();
+    let extractor = Extractor::default().cancellable(cancel.clone());
+    // Stop as soon as the second file is announced.
+    let err = sync_folder(&store, SOURCE, temp.path(), None, &extractor, &|progress| {
+        if let SyncProgress::Step {
+            current: Some(2), ..
+        } = progress
+        {
+            cancel.cancel();
+        }
+    })
+    .unwrap_err();
+    assert!(err.cancelled, "{err:?}");
+    let indexed = store
+        .list_materials(&format!("{SOURCE}/course/DEMO101 Intro to Demo Studies"))
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.text_status == TextStatus::Ok)
+        .count();
+    assert_eq!(
+        indexed, 1,
+        "file 1 stays indexed; file 2 was stopped before it was read"
+    );
+}

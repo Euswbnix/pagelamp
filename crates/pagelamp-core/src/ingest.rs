@@ -32,6 +32,7 @@ use sha2::{Digest, Sha256};
 
 use crate::brand;
 use crate::model::{Chunk, Material, TextErrorKind, TextStatus};
+use crate::source::CancelFlag;
 use crate::store::Store;
 use crate::{Error, Result};
 
@@ -144,6 +145,8 @@ struct ExtractorInner {
     unavailable: Mutex<Option<WorkerFailure>>,
     /// Whether `take_warning` already returned the warning.
     warned: AtomicBool,
+    /// The sync's stop request, if it can be stopped.
+    cancel: CancelFlag,
 }
 
 impl Extractor {
@@ -164,6 +167,23 @@ impl Extractor {
                 ..ExtractorInner::default()
             }),
         }
+    }
+
+    /// The same extractor, stopped when `cancel` is set: a file being read in a worker is
+    /// abandoned at once (`Error::Cancelled`); nothing is recorded for it.
+    pub fn cancellable(self, cancel: CancelFlag) -> Extractor {
+        Extractor {
+            inner: Arc::new(ExtractorInner {
+                worker: self.inner.worker.clone(),
+                cancel,
+                ..ExtractorInner::default()
+            }),
+        }
+    }
+
+    /// Whether the sync this extractor belongs to was stopped.
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.cancel.is_cancelled()
     }
 
     /// The worker executable, when files are extracted in worker processes.
@@ -202,41 +222,51 @@ impl Extractor {
 
     /// Extract `path` (of `size` bytes).
     fn extract(&self, path: &Path, mime: Option<&str>, size: u64) -> Extracted {
+        if self.is_cancelled() {
+            return Extracted::Cancelled;
+        }
         let Some((exe, limits)) = &self.inner.worker else {
             return Extracted::Done(pagelamp_extract::extract_file(path, mime));
         };
         let known = *self.unavailable();
         let failure = match known {
             Some(failure) => failure,
-            None => match worker::extract_in_worker(exe, path, mime, *limits) {
-                Ok(result) => return Extracted::Done(result),
-                Err(failure @ (WorkerFailure::SpawnFailed | WorkerFailure::ProtocolMismatch)) => {
-                    *self.unavailable() = Some(failure);
-                    failure
+            None => {
+                let cancel = self.inner.cancel.as_atomic();
+                match worker::extract_in_worker_cancellable(exe, path, mime, *limits, cancel) {
+                    Ok(result) => return Extracted::Done(result),
+                    Err(WorkerFailure::Cancelled) => return Extracted::Cancelled,
+                    Err(
+                        failure @ (WorkerFailure::SpawnFailed | WorkerFailure::ProtocolMismatch),
+                    ) => {
+                        *self.unavailable() = Some(failure);
+                        failure
+                    }
+                    Err(failure) => return worker_failure(failure),
                 }
-                Err(failure) => return Extracted::Worker(failure.into()),
-            },
+            }
         };
         if worker::in_process_fallback_allowed(path, mime, size) {
             Extracted::Done(pagelamp_extract::extract_file(path, mime))
         } else {
-            Extracted::Worker(failure.into())
+            worker_failure(failure)
         }
     }
 }
 
-impl From<WorkerFailure> for TextErrorKind {
-    fn from(failure: WorkerFailure) -> Self {
-        match failure {
-            WorkerFailure::TimedOut => TextErrorKind::TimedOut,
-            WorkerFailure::CpuLimit => TextErrorKind::CpuLimit,
-            WorkerFailure::MemoryLimit => TextErrorKind::MemoryLimit,
-            WorkerFailure::Crashed => TextErrorKind::Crashed,
-            WorkerFailure::BadOutput => TextErrorKind::BadOutput,
-            WorkerFailure::SpawnFailed => TextErrorKind::SpawnFailed,
-            WorkerFailure::ProtocolMismatch => TextErrorKind::ProtocolMismatch,
-        }
-    }
+/// A worker failure as what extraction gave (a stop request isn't a failure of the file).
+fn worker_failure(failure: WorkerFailure) -> Extracted {
+    let kind = match failure {
+        WorkerFailure::TimedOut => TextErrorKind::TimedOut,
+        WorkerFailure::CpuLimit => TextErrorKind::CpuLimit,
+        WorkerFailure::MemoryLimit => TextErrorKind::MemoryLimit,
+        WorkerFailure::Crashed => TextErrorKind::Crashed,
+        WorkerFailure::BadOutput => TextErrorKind::BadOutput,
+        WorkerFailure::SpawnFailed => TextErrorKind::SpawnFailed,
+        WorkerFailure::ProtocolMismatch => TextErrorKind::ProtocolMismatch,
+        WorkerFailure::Cancelled => return Extracted::Cancelled,
+    };
+    Extracted::Worker(kind)
 }
 
 /// What extracting one file gave.
@@ -246,6 +276,8 @@ enum Extracted {
     Done(std::result::Result<Vec<Segment>, ExtractError>),
     /// The worker failed, and the file was not read in this process.
     Worker(TextErrorKind),
+    /// The sync was stopped: nothing is recorded.
+    Cancelled,
 }
 
 /// Index a file at `path` for `material_id` (material row must exist), extracting it in this
@@ -428,6 +460,7 @@ fn save_extraction(
     extracted: Extracted,
 ) -> Result<IndexOutcome> {
     let extracted = match extracted {
+        Extracted::Cancelled => return Err(Error::Cancelled),
         Extracted::Done(result) => result,
         Extracted::Worker(kind) => {
             let message = worker_failure_message(kind);

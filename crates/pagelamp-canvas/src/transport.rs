@@ -56,6 +56,8 @@ pub(crate) enum CanvasError {
     Io(String),
     /// The local database failed (aborts the sync: it would fail for every course).
     Store(String),
+    /// The student stopped the sync.
+    Cancelled,
 }
 
 impl std::fmt::Display for CanvasError {
@@ -73,6 +75,7 @@ impl std::fmt::Display for CanvasError {
             }
             CanvasError::Io(detail) => write!(f, "could not save the file ({detail})"),
             CanvasError::Store(detail) => write!(f, "could not save Canvas data ({detail})"),
+            CanvasError::Cancelled => f.write_str("the sync was stopped"),
         }
     }
 }

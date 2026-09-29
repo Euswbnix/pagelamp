@@ -9,10 +9,38 @@
 //! Messages are shown to the student as-is: make them actionable and NEVER include a secret
 //! (token, feed URL) — not even inside a URL.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::model::SourceErrorKind;
+
+/// A "stop" request for a running sync (`App::cancel_sync`, mac request F4): set once, seen by
+/// every clone. The folder sync checks it between files, the Canvas sync between courses and
+/// downloads, and the extraction worker's watchdog while a file is read.
+#[derive(Clone, Debug, Default)]
+pub struct CancelFlag(Arc<AtomicBool>);
+
+impl CancelFlag {
+    pub fn new() -> CancelFlag {
+        CancelFlag::default()
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// The flag itself, for code that polls it (the extraction worker's parent loop).
+    pub fn as_atomic(&self) -> &AtomicBool {
+        &self.0
+    }
+}
 
 /// What one sync did for one course (the `pagelamp sync` summary; desktop status screens).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -37,6 +65,8 @@ pub struct SourceError {
     /// The entered address itself can't be used (e.g. its server redirects to plain http);
     /// UIs report that as invalid input rather than a failure. `kind` stays `Other`.
     pub invalid_input: bool,
+    /// The student stopped the sync (`CancelFlag`): not a failure, and not recorded as one.
+    pub cancelled: bool,
 }
 
 impl SourceError {
@@ -45,6 +75,14 @@ impl SourceError {
             kind,
             message: message.into(),
             invalid_input: false,
+            cancelled: false,
+        }
+    }
+    /// See `cancelled`.
+    pub fn cancelled() -> Self {
+        SourceError {
+            cancelled: true,
+            ..Self::other("The sync was stopped.")
         }
     }
     /// See `invalid_input`.
@@ -83,7 +121,10 @@ impl std::error::Error for SourceError {}
 /// store never sees them).
 impl From<crate::Error> for SourceError {
     fn from(err: crate::Error) -> Self {
-        SourceError::other(err.to_string())
+        match err {
+            crate::Error::Cancelled => SourceError::cancelled(),
+            other => SourceError::other(other.to_string()),
+        }
     }
 }
 

@@ -310,16 +310,38 @@ pub struct TokenUsage {
     pub reasoning_tokens: Option<u64>,
 }
 
+/// How a usage row's cost is known (the UIs label it: "≈ $x", "Free", "price unknown", "your
+/// plan").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CostBasis {
+    /// Priced from PageLamp's price list (an estimate of the provider's bill).
+    Priced,
+    /// Ran on this computer.
+    FreeOnDevice,
+    /// The model isn't in the price list: tokens only.
+    Unpriced,
+    /// Counted against a ChatGPT / Claude plan: no per-run cost.
+    Plan,
+}
+
+/// One backend × model × feature of a month.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct UsageRow {
     pub backend_label: String,
     pub model: String,
     pub feature: AiFeature,
     pub runs: u32,
+    /// All input tokens, cached ones included.
     pub input_tokens: u64,
+    /// All output tokens, reasoning included.
     pub output_tokens: u64,
+    /// Of `output_tokens`, the ones spent thinking (0 when the provider doesn't say).
     pub reasoning_tokens: u64,
-    pub micro_usd: u64,
+    pub cost_basis: CostBasis,
+    /// Estimated cost: set for `priced` (and 0 for `free_on_device`), null for `unpriced` and
+    /// `plan`.
+    pub micro_usd: Option<u64>,
     /// Some counts are PageLamp's estimates (cancelled runs).
     pub estimated: bool,
 }
@@ -329,6 +351,7 @@ pub struct UsageSummary {
     /// The first day of the month.
     pub month: NaiveDate,
     pub rows: Vec<UsageRow>,
+    /// The priced rows' total (what the budget counts).
     pub total_micro_usd: u64,
     pub budget: BudgetStatus,
 }

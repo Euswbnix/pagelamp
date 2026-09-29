@@ -444,3 +444,30 @@ fn a_stale_worker_is_a_protocol_mismatch() {
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains(r#""kind":"protocol_mismatch""#), "{text}");
 }
+
+#[test]
+fn a_cancelled_sync_stops_the_worker_mid_file() {
+    // The page-tree bomb keeps a worker busy for many seconds at the default limits.
+    let dir = tempfile::tempdir().unwrap();
+    let bomb = write(&dir, "pages.pdf", &pdf(4_500, &text_page("x")));
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let setter = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        setter.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let started = Instant::now();
+    let result = pagelamp_extract::worker::extract_in_worker_cancellable(
+        &worker(),
+        &bomb,
+        None,
+        WorkerLimits::default(),
+        &cancel,
+    );
+    assert_eq!(result.unwrap_err(), WorkerFailure::Cancelled);
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+}

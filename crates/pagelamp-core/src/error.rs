@@ -53,4 +53,8 @@ pub enum Error {
 
     #[error("keychain error: {0}")]
     Secret(String),
+
+    /// The work was stopped on request (`source::CancelFlag`).
+    #[error("cancelled")]
+    Cancelled,
 }

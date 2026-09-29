@@ -39,7 +39,7 @@ pub use alloc::CountingAllocator;
 pub use child::serve_stdio;
 #[doc(hidden)]
 pub use parent::run as extract_in_worker_with;
-pub use parent::{WorkerFailure, check, extract_in_worker};
+pub use parent::{WorkerFailure, check, extract_in_worker, extract_in_worker_cancellable};
 
 /// Version of the request/response protocol. The worker refuses other versions
 /// (`WorkerFailure::ProtocolMismatch`), which happens when a stale binary is found.

@@ -1655,3 +1655,17 @@ async fn a_5xx_in_one_course_does_not_stop_the_others() {
     );
     assert!(report.requests > 10);
 }
+
+#[tokio::test]
+async fn p_a_stopped_sync_ends_between_courses_as_cancelled() {
+    let f = Fixture::new().await;
+    f.standard().await;
+    let cancel = pagelamp_core::source::CancelFlag::new();
+    let mut options = f.options(false);
+    options.extractor = pagelamp_core::ingest::Extractor::default().cancellable(cancel.clone());
+    cancel.cancel();
+    let err = f.sync(&options).await.unwrap_err();
+    assert!(err.cancelled, "{err:?}");
+    // It stopped before the first course: nothing was written for any course.
+    assert!(f.store().list_courses(true).unwrap().is_empty());
+}

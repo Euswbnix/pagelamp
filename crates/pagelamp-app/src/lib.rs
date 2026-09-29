@@ -170,6 +170,7 @@ impl From<pagelamp_core::Error> for AppError {
             E::SchemaTooNew { .. } => AppErrorKind::SchemaTooNew,
             E::SchemaTooOld { .. } => AppErrorKind::SchemaTooOld,
             E::Invalid(_) => AppErrorKind::Invalid,
+            E::Cancelled => AppErrorKind::Cancelled,
             E::Db(_) | E::Json(_) | E::Io(_) | E::NoDataDir | E::Secret(_) => {
                 AppErrorKind::Internal
             }
@@ -432,6 +433,8 @@ pub(crate) struct AppState {
     activity: activity::Registry,
     /// The `pagelamp` executable that runs extraction workers (`set_extract_worker`).
     extract_worker: std::sync::RwLock<Option<PathBuf>>,
+    /// The stop request of the sync this app is running, if any (`cancel_sync`).
+    sync_cancel: std::sync::Mutex<Option<pagelamp_core::source::CancelFlag>>,
 }
 
 impl std::fmt::Debug for App {
@@ -504,11 +507,16 @@ impl App {
     }
 
     /// A fresh extractor for one sync (`ingest::Extractor`).
-    pub(crate) fn extractor(&self) -> pagelamp_core::ingest::Extractor {
-        match self.extract_worker() {
+    /// A fresh extractor for one sync, stopped by `cancel` (`ingest::Extractor`).
+    pub(crate) fn extractor(
+        &self,
+        cancel: pagelamp_core::source::CancelFlag,
+    ) -> pagelamp_core::ingest::Extractor {
+        let extractor = match self.extract_worker() {
             Some(exe) => pagelamp_core::ingest::Extractor::worker(exe),
             None => pagelamp_core::ingest::Extractor::in_process(),
-        }
+        };
+        extractor.cancellable(cancel)
     }
 
     /// `<data_dir>/pagelamp.db`
@@ -1194,6 +1202,7 @@ struct AppTypes {
     cost_estimate: ai::CostEstimate,
     token_usage: ai::TokenUsage,
     usage_row: ai::UsageRow,
+    cost_basis: ai::CostBasis,
     usage_summary: ai::UsageSummary,
     remove_ai_data_report: ai::RemoveAiDataReport,
     gen_stage: ai::GenStage,

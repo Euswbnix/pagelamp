@@ -62,6 +62,7 @@ pub(crate) fn fatal(err: &CanvasError) -> Option<SourceError> {
         CanvasError::Store(detail) => {
             SourceError::other(format!("Could not save Canvas data ({detail})."))
         }
+        CanvasError::Cancelled => SourceError::cancelled(),
         _ => return None,
     })
 }
@@ -91,7 +92,10 @@ async fn with_store<T: Send + 'static>(
     })
     .await
     .map_err(|err| CanvasError::Store(format!("sync task crashed: {err}")))?
-    .map_err(|err| CanvasError::Store(err.to_string()))
+    .map_err(|err| match err {
+        pagelamp_core::Error::Cancelled => CanvasError::Cancelled,
+        other => CanvasError::Store(other.to_string()),
+    })
 }
 
 pub(crate) struct Syncer<'a, T> {
@@ -172,6 +176,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
     fn ids(&self) -> Ids<'_> {
         Ids {
             source: self.source_id,
+        }
+    }
+
+    /// Stop here if the student stopped the sync (between courses, requests and files).
+    fn check_cancelled(&self) -> Result<(), CanvasError> {
+        if self.options.extractor.is_cancelled() {
+            Err(CanvasError::Cancelled)
+        } else {
+            Ok(())
         }
     }
 
@@ -265,6 +278,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         let mut new_events: Vec<Event> = Vec::new();
         let mut refreshed_courses: HashSet<String> = HashSet::new();
         for (index, (canvas, upsert)) in selected.iter().enumerate() {
+            self.check_cancelled()?;
             let label = upsert.code.clone().unwrap_or_else(|| upsert.name.clone());
             self.step(
                 format!("{label}: reading"),
@@ -967,6 +981,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         let mut files_indexed = 0;
         let total = downloads.len();
         for (index, job) in downloads.into_iter().enumerate() {
+            self.check_cancelled()?;
             self.step(
                 format!("{label}: downloading files"),
                 Some(index + 1),
@@ -1046,6 +1061,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
 
         // ---- read cached copies again that the text reader couldn't read last time --------------
         for job in reindex {
+            self.check_cancelled()?;
             let extractor = self.options.extractor.clone();
             let ReindexJob {
                 material_id,

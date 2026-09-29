@@ -173,6 +173,9 @@ impl CourseDir<'_> {
 
         let supported: Vec<&FoundFile> = files.iter().filter(|f| f.supported).collect();
         for (index, file) in supported.iter().enumerate() {
+            if self.extractor.is_cancelled() {
+                return Err(SourceError::cancelled());
+            }
             progress(SyncProgress::Step {
                 message: format!("{label}: indexing files"),
                 current: Some(to_u32(index + 1)),

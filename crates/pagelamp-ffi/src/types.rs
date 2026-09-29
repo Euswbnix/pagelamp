@@ -24,7 +24,7 @@ use std::time::SystemTime;
 
 use pagelamp_app::ai::{
     AiBackendStatus, AiStatus, BackendKind, BackendProblem, BackendRef, BackendState, BudgetStatus,
-    CostEstimate, CostKind, DisclosureFacts, EstimateRequest, FeatureRouting, GenEvent,
+    CostBasis, CostEstimate, CostKind, DisclosureFacts, EstimateRequest, FeatureRouting, GenEvent,
     GenNoticeCode, GenStage, GenerationMeta, LocalServer, LocalServerKind, ModelChoice, ModelInfo,
     ModelProviderRecord, ProbeReport, ProviderPreset, ProviderWire, Recipient, RemoveAiDataReport,
     RetentionFact, SentData, StructuredOutputTier, TokenUsage, TrainingFact, UsageRow,
@@ -1010,6 +1010,14 @@ pub struct TokenUsage {
     pub reasoning_tokens: Option<u64>,
 }
 
+#[uniffi::remote(Enum)]
+pub enum CostBasis {
+    Priced,
+    FreeOnDevice,
+    Unpriced,
+    Plan,
+}
+
 #[uniffi::remote(Record)]
 pub struct UsageRow {
     pub backend_label: String,
@@ -1019,7 +1027,8 @@ pub struct UsageRow {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub reasoning_tokens: u64,
-    pub micro_usd: u64,
+    pub cost_basis: CostBasis,
+    pub micro_usd: Option<u64>,
     pub estimated: bool,
 }
 
