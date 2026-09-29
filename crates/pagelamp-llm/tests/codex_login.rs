@@ -26,11 +26,14 @@ fn home_with(script: Value) -> (tempfile::TempDir, CodexHome) {
     (temp, home)
 }
 
+/// What the fake Codex recorded, one JSON line per run. Only whole lines: a run still writing
+/// (or killed while writing) can leave a last line without its newline.
 fn observed(home: &Path) -> Vec<Value> {
     std::fs::read_to_string(home.join("fake-codex-observed.jsonl"))
         .unwrap_or_default()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
+        .split_inclusive('\n')
+        .filter(|line| line.ends_with('\n'))
+        .map(|line| serde_json::from_str(line.trim_end()).unwrap())
         .collect()
 }
 

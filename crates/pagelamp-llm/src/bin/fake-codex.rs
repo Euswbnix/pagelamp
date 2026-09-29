@@ -65,7 +65,8 @@ fn main() {
         .append(true)
         .open(home.join("fake-codex-observed.jsonl"))
     {
-        let _ = writeln!(file, "{observed}");
+        // One write for the whole line, so a reader never sees half of it (Windows CI).
+        let _ = file.write_all(format!("{observed}\n").as_bytes());
     }
 
     let lines = |name: &str| -> Vec<String> {
