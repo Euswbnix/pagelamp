@@ -1661,6 +1661,8 @@ nonisolated enum L10nKeys {
         "updates.whatsNew.topics.course_removal.title",
         "updates.whatsNew.topics.course_weeks.body",
         "updates.whatsNew.topics.course_weeks.title",
+        "updates.whatsNew.topics.syllabus_reading.body",
+        "updates.whatsNew.topics.syllabus_reading.title",
         "updates.whatsNew.topics.update_check.body",
         "updates.whatsNew.topics.update_check.title",
     ]

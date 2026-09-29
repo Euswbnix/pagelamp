@@ -71,6 +71,10 @@
       "course_removal": {
         "title": "Remove finished courses",
         "body": "When a course is over, you can remove it from {{product}}. You can undo it for 7 days, and your own course folders are never touched."
+      },
+      "syllabus_reading": {
+        "title": "Course dates from the syllabus",
+        "body": "With a model you set up, {{product}} can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them. Your ChatGPT plan, an API key or a model on this computer all work."
       }
     }
   },

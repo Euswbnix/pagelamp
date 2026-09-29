@@ -993,6 +993,7 @@ pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
     CourseRemoval,
+    SyllabusReading,
 }
 
 #[uniffi::remote(Record)]
