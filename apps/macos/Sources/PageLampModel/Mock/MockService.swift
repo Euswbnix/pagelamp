@@ -360,8 +360,10 @@ public actor MockService: PageLampService {
     public func startupTasks(now date: Date) async throws(PageLampFailure) -> StartupTasks {
         await respond("startupTasks")
         let updates = db.updates
+        // The Mac app's What's new (the facade's Shell::Mac): never the update-check topic, which
+        // is the Tauri app's.
         let whatsNew = updates.upgraded && !updates.whatsNewSeen
-            ? WhatsNew(since: updates.upgradedFrom, topics: [.updateCheck, .courseWeeks])
+            ? WhatsNew(since: updates.upgradedFrom, topics: [.courseWeeks])
             : nil
         let checkIsOld = updates.lastCheck.map { date.timeIntervalSince($0.at) >= 24 * 3600 } ?? true
         return StartupTasks(
@@ -390,8 +392,8 @@ public actor MockService: PageLampService {
     public func acknowledgeWhatsNew() async throws(PageLampFailure) {
         await respond("acknowledgeWhatsNew")
         db.updates.whatsNewSeen = true
-        // Its update-check topic counts as the disclosure.
-        db.updates.disclosureSeen = true
+        // The Mac app's acknowledgement is never the update disclosure (only the Tauri app's
+        // update-check topic counts as that).
     }
 
     public func acknowledgeUpdateDisclosure() async throws(PageLampFailure) {
