@@ -334,6 +334,13 @@ export interface PageLampApi {
   pickFolder(): Promise<string | null>;
   /** Open an http(s) link in the default browser. Other schemes are rejected. */
   openExternal(url: string): Promise<void>;
+  /**
+   * Open a material's local file with the system's app (material_local_file, Rust-side; the
+   * page never sees the path). false: no document of it on this computer.
+   */
+  openMaterial(materialId: string): Promise<boolean>;
+  /** Show a material's local file in Finder / Explorer. false: not on this computer. */
+  revealMaterial(materialId: string): Promise<boolean>;
   /** Show the PageLamp data folder in Finder / Explorer. */
   revealDataDir(): Promise<void>;
   /**

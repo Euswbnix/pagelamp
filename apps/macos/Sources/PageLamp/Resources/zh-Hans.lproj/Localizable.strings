@@ -1169,6 +1169,7 @@
 "proposals.card.edit" = "修改…";
 "proposals.card.editSave" = "接受这些日期";
 "proposals.card.editTitle" = "修改提议的日期";
+"proposals.card.fileUnavailable" = "%1$@ 不在这台电脑上，或者不是 PageLamp 能打开的文档。";
 "proposals.card.kind.break_span" = "假期";
 "proposals.card.kind.exam_period" = "考试期";
 "proposals.card.kind.final_exam" = "期末考试";
@@ -1176,7 +1177,10 @@
 "proposals.card.kind.last_class" = "最后一天上课";
 "proposals.card.kind.week_start" = "第 %1$@ 周开始";
 "proposals.card.lowQuality" = "能核对上的日期很少。接受之前请仔细检查。";
+"proposals.card.onDevice" = "由这台电脑上的模型读取，接受前请核对日期。";
 "proposals.card.open" = "打开 %1$@";
+"proposals.card.openFile" = "打开文件";
+"proposals.card.openFileLabel" = "打开 %1$@";
 "proposals.card.optionFrom" = "%1$@——来自 %2$@";
 "proposals.card.optionOwn" = "%1$@——来自 PageLamp 推算的日期";
 "proposals.card.phase.break" = "假期";
@@ -1185,6 +1189,8 @@
 "proposals.card.phase.not_started" = "尚未开课";
 "proposals.card.phase.teaching" = "上课中";
 "proposals.card.phase.unknown" = "未知";
+"proposals.card.revealFile" = "在文件夹中显示";
+"proposals.card.revealFileLabel" = "在文件夹中显示 %1$@";
 "proposals.card.scanNote" = "由 PageLamp 在不使用 AI 的情况下找到，可信度最多为一般。";
 "proposals.card.secondPart" = "%1$@（第二部分）";
 "proposals.card.source" = "%1$@";

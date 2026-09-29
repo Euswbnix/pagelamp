@@ -1169,6 +1169,7 @@
 "proposals.card.edit" = "Edit…";
 "proposals.card.editSave" = "Accept these dates";
 "proposals.card.editTitle" = "Edit the proposed dates";
+"proposals.card.fileUnavailable" = "%1$@ isn't on this computer, or it isn't a document PageLamp opens.";
 "proposals.card.kind.break_span" = "Break";
 "proposals.card.kind.exam_period" = "Exam period";
 "proposals.card.kind.final_exam" = "Final exam";
@@ -1176,7 +1177,10 @@
 "proposals.card.kind.last_class" = "Last day of classes";
 "proposals.card.kind.week_start" = "Week %1$@ starts";
 "proposals.card.lowQuality" = "Few dates could be checked. Look at them carefully before accepting.";
+"proposals.card.onDevice" = "Read by a model on this computer: check the dates before you accept.";
 "proposals.card.open" = "Open %1$@";
+"proposals.card.openFile" = "Open file";
+"proposals.card.openFileLabel" = "Open %1$@";
 "proposals.card.optionFrom" = "%1$@ — from %2$@";
 "proposals.card.optionOwn" = "%1$@ — from the dates PageLamp worked out";
 "proposals.card.phase.break" = "break";
@@ -1185,6 +1189,8 @@
 "proposals.card.phase.not_started" = "not started";
 "proposals.card.phase.teaching" = "teaching";
 "proposals.card.phase.unknown" = "unknown";
+"proposals.card.revealFile" = "Show in folder";
+"proposals.card.revealFileLabel" = "Show %1$@ in its folder";
 "proposals.card.scanNote" = "Found by PageLamp without AI. Confidence is at most medium.";
 "proposals.card.secondPart" = "%1$@ (second part)";
 "proposals.card.source" = "%1$@";

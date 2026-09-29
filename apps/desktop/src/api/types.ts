@@ -128,6 +128,8 @@ export type {
 
 // StoreCounts.removed_courses until B5 adds it (the augmentation lives there).
 import "./provisional/courseRemoval";
+// AiLabel.on_device until feat/course-ai merges (the augmentation lives there).
+import "./provisional/courseAi";
 
 import type { AiMaterialsState, AiPolicy, Course } from "./generated";
 

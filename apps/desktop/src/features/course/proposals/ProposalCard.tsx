@@ -162,7 +162,12 @@ export function ProposalCard({
           {t("card.created", { date: formatDate(proposal.created_at, i18n.language) })}
         </p>
         {label ? (
-          <AiGeneratedLabel meta={label} />
+          <>
+            <AiGeneratedLabel meta={label} />
+            {label.on_device ? (
+              <p className="text-xs text-muted-foreground">{t("card.onDevice")}</p>
+            ) : null}
+          </>
         ) : proposal.origin === "scan" ? (
           <p className="text-xs text-muted-foreground">{t("card.scanNote")}</p>
         ) : null}

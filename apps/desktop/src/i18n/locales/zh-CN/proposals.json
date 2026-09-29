@@ -78,7 +78,13 @@
       "exam_period": "考试期",
       "ended": "已结课",
       "unknown": "未知"
-    }
+    },
+    "openFile": "打开文件",
+    "revealFile": "在文件夹中显示",
+    "fileUnavailable": "{{title}} 不在这台电脑上，或者不是 {{product}} 能打开的文档。",
+    "onDevice": "由这台电脑上的模型读取，接受前请核对日期。",
+    "openFileLabel": "打开 {{title}}",
+    "revealFileLabel": "在文件夹中显示 {{title}}"
   },
   "conflict": {
     "syllabus_from_another_year": "这个日期看起来来自另一年的教学大纲。",

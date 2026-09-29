@@ -510,6 +510,7 @@ export function createProposalsMock(deps: {
     const made = proposal(c, "ai", m, {
       ai_label: {
         backend_label: run.backend_label,
+        on_device: run.on_device,
         model: run.model,
         created_at: now().toISOString(),
       },

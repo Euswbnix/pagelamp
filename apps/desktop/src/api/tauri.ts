@@ -176,6 +176,8 @@ export function createTauriApi(): PageLampApi {
         throw toApiError(error);
       }
     },
+    openMaterial: (materialId) => call("open_material", { materialId }),
+    revealMaterial: (materialId) => call("reveal_material", { materialId }),
     openExternal: async (url) => {
       // The opener capability is scoped to http(s) too; this check gives a clearer error.
       if (!isHttpUrl(url)) throw new ApiError("invalid", "Only web links can be opened");

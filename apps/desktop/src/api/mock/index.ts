@@ -493,6 +493,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     findCourse,
   });
 
+  /** A material with a local file on this computer (and, to open it, a document type). */
+  function localDocument(materialId: string, open: boolean): boolean {
+    const m = db.courses.flatMap((c) => c.materials).find((x) => x.id === materialId);
+    if (!m || (m.kind !== "file" && m.kind !== "syllabus")) return false;
+    if (m.text_status === "not_downloaded") return false;
+    return !open || m.text_status !== "unsupported";
+  }
+
   /** The student's dates cleared: back to what the source reported (like the facade). */
   function clearStudentDates(c: MockCourse) {
     c.course.term_start = c.synced.termStart;
@@ -939,6 +947,15 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       // Mock mode never leaves the page: demo links point at *.demo.test.
     },
     revealDataDir: async () => {},
+    // Like material_local_file: a downloaded document of a file material (never a page or link).
+    openMaterial: async (materialId) => {
+      await sleep(latency);
+      return localDocument(materialId, true);
+    },
+    revealMaterial: async (materialId) => {
+      await sleep(latency);
+      return localDocument(materialId, false);
+    },
     onWindowFocus: (onFocus) => {
       // The browser tab's focus stands in for the desktop window's.
       const handler = () => onFocus();

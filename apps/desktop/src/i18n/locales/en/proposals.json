@@ -78,7 +78,13 @@
       "exam_period": "exam period",
       "ended": "ended",
       "unknown": "unknown"
-    }
+    },
+    "openFile": "Open file",
+    "revealFile": "Show in folder",
+    "fileUnavailable": "{{title}} isn't on this computer, or it isn't a document {{product}} opens.",
+    "onDevice": "Read by a model on this computer: check the dates before you accept.",
+    "openFileLabel": "Open {{title}}",
+    "revealFileLabel": "Show {{title}} in its folder"
   },
   "conflict": {
     "syllabus_from_another_year": "This date looks like it's from another year's syllabus.",
