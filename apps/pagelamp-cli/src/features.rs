@@ -7,10 +7,11 @@ use std::collections::HashMap;
 use chrono::Utc;
 use clap::ValueEnum;
 use pagelamp_app::ai::{
-    ExplainOptions, GenEvent, GeneratedStudyPlan, PlanWarningCode, StudyPlanRequest,
+    BackendRef, ExplainOptions, GenEvent, GeneratedStudyPlan, PlanWarningCode, StudyPlanRequest,
     WeeklyExplanation, WeeklyNote, WeeklyNoteOptions,
 };
 use pagelamp_app::{App, DayOfWeek, Reminder, ReminderKind};
+use pagelamp_core::ai::AiFeature;
 use pagelamp_core::ai_gate::LeftOutReason;
 use pagelamp_core::model::{PlanOrigin, StoredStudyPlan, StudyPlan};
 use pagelamp_core::planner::UnscheduledReason;
@@ -70,6 +71,39 @@ fn said(err: pagelamp_app::AppError) -> anyhow::Error {
     }
 }
 
+/// PageLamp starts runs on the ChatGPT and Claude plans only when the student starts them (plan
+/// D27), so the CLI refuses them when no terminal is attached: a run of `feature` on one of
+/// them with neither stdin nor stderr a terminal (cron, a script) is refused before anything
+/// starts, and the message points to an API key or a model on this computer, which may run on
+/// a schedule. It stops an accidental crontab; it is not a lock (a faked terminal passes).
+pub(crate) fn refuse_unattended_plan_run(app: &App, feature: AiFeature) -> anyhow::Result<()> {
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() || std::io::stderr().is_terminal() {
+        return Ok(());
+    }
+    let backend = app
+        .ai_status()?
+        .features
+        .into_iter()
+        .find(|routing| routing.feature == feature)
+        .and_then(|routing| routing.choice)
+        .map(|choice| choice.backend);
+    if matches!(backend, Some(BackendRef::Codex | BackendRef::ClaudeCode)) {
+        let what = match feature {
+            AiFeature::StudyPlan => "study plans",
+            AiFeature::WeeklyExplanation => "explanations",
+            AiFeature::WeeklyNote => "weekly notes",
+            AiFeature::CourseCalendar => "reading syllabi",
+        };
+        anyhow::bail!(
+            "refused: unattended_plan_run — PageLamp runs the ChatGPT and Claude plans only \
+             when you start the run yourself. For scheduled runs (cron), choose an API key or \
+             a model on this computer for {what}."
+        );
+    }
+    Ok(())
+}
+
 /// A generation id for one CLI run.
 fn generation_id(what: &str) -> String {
     format!(
@@ -113,6 +147,7 @@ pub async fn plan(app: &App, args: PlanArgs, json: bool) -> anyhow::Result<()> {
         print_stored(app, &stored);
         return Ok(());
     }
+    refuse_unattended_plan_run(app, AiFeature::StudyPlan)?;
     let id = generation_id("plan");
     let request = StudyPlanRequest {
         horizon_days: args.days,
@@ -253,6 +288,7 @@ pub async fn explain(app: &App, args: ExplainArgs, json: bool) -> anyhow::Result
         }
         return Ok(());
     }
+    refuse_unattended_plan_run(app, AiFeature::WeeklyExplanation)?;
     let id = generation_id("explain");
     let options = ExplainOptions {
         include: args.include,
@@ -350,6 +386,7 @@ pub async fn note(app: &App, over_budget: bool, saved: bool, json: bool) -> anyh
         }
         return Ok(());
     }
+    refuse_unattended_plan_run(app, AiFeature::WeeklyNote)?;
     let id = generation_id("note");
     let options = WeeklyNoteOptions {
         // The command line speaks English.

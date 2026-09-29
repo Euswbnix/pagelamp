@@ -98,6 +98,9 @@ enum Command {
         command: Option<ai::AiCommand>,
     },
     /// A study plan PageLamp writes with your chosen model (a draft to keep, or --save).
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
     Plan {
         /// Days the plan covers (1-56; default 14).
         #[arg(long)]
@@ -125,6 +128,9 @@ enum Command {
         accept: Option<String>,
     },
     /// Explain a week of a course from its materials, with your chosen model.
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
     Explain {
         /// The course (code, name or id).
         course: String,
@@ -143,6 +149,9 @@ enum Command {
     },
     /// Write your weekly note (a few sentences and three things to focus on) from your courses'
     /// structure and your plan's progress, with your chosen model. No material text is sent.
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
     Note {
         /// Go over the monthly budget for this run.
         #[arg(long)]
@@ -277,7 +286,8 @@ enum CourseCommand {
         /// Scan the syllabus for dates (no model).
         #[arg(long)]
         scan: bool,
-        /// Read the syllabus with the model chosen for syllabus reading.
+        /// Read the syllabus with the model chosen for syllabus reading. On the ChatGPT or
+        /// Claude plan only from a terminal (scheduled runs: an API key or a local model).
         #[arg(long)]
         read: bool,
         /// With --read: go over the monthly budget for this run.
