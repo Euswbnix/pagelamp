@@ -104,8 +104,9 @@ describe("mock ChatGPT plan (Codex)", () => {
   it("says what a RuntimeOutdated error means: install the pin, or update PageLamp", async () => {
     const old = createMockApi({ ...fast, scenario: "codex-outdated-pin" });
     expect((await old.codexStatus()).outdated_action).toBe("install_pin");
-    await expect(old.testModel(codex, "gpt-6-luna")).rejects.toMatchObject({
-      model_error: "runtime_outdated",
+    expect(await old.testModel(codex, "gpt-6-luna")).toMatchObject({
+      ok: false,
+      error: "runtime_outdated",
     });
     const updated = await old.installCodex("install-4", () => {});
     expect(updated).toMatchObject({

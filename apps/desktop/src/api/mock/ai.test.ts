@@ -61,9 +61,16 @@ describe("mock AI setup", () => {
     await expect(api.addModelProvider("openai", null, "  ")).rejects.toMatchObject({
       kind: "invalid",
     });
+    await expect(api.addModelProvider("no-such-preset", null, "k")).rejects.toMatchObject({
+      kind: "not_found",
+    });
     // A local server needs no key, and http is fine on this computer.
     const local = await api.addModelProvider("ollama", "http://127.0.0.1:11434", null);
     expect(local).toMatchObject({ on_device: true, key_last4: null });
+    // One provider per preset.
+    await expect(
+      api.addModelProvider("ollama", "http://127.0.0.1:11434", null),
+    ).rejects.toMatchObject({ kind: "invalid" });
   });
 
   it("estimates an upper bound and applies the course gates, question (b) included", async () => {
@@ -81,7 +88,12 @@ describe("mock AI setup", () => {
       feature: "weekly_explanation",
       course: demo205.id,
     });
-    expect(shared.would_block).toBe("material_sharing_not_allowed");
+    // A blocked estimate carries no amount and no tokens.
+    expect(shared).toMatchObject({
+      would_block: "material_sharing_not_allowed",
+      micro_usd_upper: null,
+      input_tokens: 0,
+    });
 
     const demo310 = await courseId(api, "DEMO310");
     const prohibited = await api.estimateGeneration({
@@ -105,7 +117,10 @@ describe("mock AI setup", () => {
     expect((await api.aiStatus()).budget.spent_micro_usd).toBe(4_960_000);
     const demo101 = await courseId(api, "DEMO101");
     const req = { feature: "weekly_explanation", course: demo101.id } as const;
-    expect((await api.estimateGeneration(req)).would_block).toBe("budget_reached");
+    // Over budget keeps its amount: the student decides on the per-run override with it.
+    const over = await api.estimateGeneration(req);
+    expect(over.would_block).toBe("budget_reached");
+    expect(over.micro_usd_upper).toBeGreaterThan(0);
     await api.setMonthlyBudget(null);
     expect((await api.estimateGeneration(req)).would_block).toBeNull();
     await expect(api.setMonthlyBudget(-1)).rejects.toMatchObject({ kind: "invalid" });
@@ -156,10 +171,14 @@ describe("mock AI setup", () => {
       kind: "model",
       model_error: "network",
     });
-    await expect(api.testModel(backend.backend, "demo-model-large")).rejects.toMatchObject({
-      model_error: "rate_limited",
-      retry_after_secs: 20,
+    // Like the facade: a model error in "Test" is a failed probe, not a thrown error.
+    expect(await api.testModel(backend.backend, "demo-model-large")).toMatchObject({
+      ok: false,
+      error: "rate_limited",
     });
+    await expect(
+      api.testModel({ kind: "provider", provider_id: "nope" }, "m"),
+    ).rejects.toMatchObject({ kind: "not_found" });
   });
 
   it("sums usage per month and forgets everything on remove all", async () => {

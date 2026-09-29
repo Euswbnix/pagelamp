@@ -17,6 +17,7 @@ import {
   type EstimateRequest,
   type LocalServer,
   type ModelChoice,
+  type ModelErrorKind,
   type ModelInfo,
   type ModelProviderRecord,
   materialSharing,
@@ -92,7 +93,7 @@ const FEATURES: AiFeature[] = [
 
 function presetOf(id: string): ProviderPreset {
   const preset = MOCK_PRESETS.find((p) => p.id === id);
-  if (!preset) throw new ApiError("invalid", `Unknown preset "${id}".`);
+  if (!preset) throw new ApiError("not_found", `Unknown preset "${id}".`);
   return preset;
 }
 
@@ -123,6 +124,17 @@ function workload(req: EstimateRequest): { input: number; output: number } {
     case "course_calendar":
       return { input: 15_000 * Math.max(1, req.courses.length), output: 4_000 };
   }
+}
+
+/** "Test" failed at the model: a report, not an error (like the facade). */
+function failedProbe(error: ModelErrorKind): ProbeReport {
+  return {
+    ok: false,
+    latency_ms: 0,
+    structured_output_tier: null,
+    thinking_always_on: false,
+    error,
+  };
 }
 
 const REASONING: Record<Effort, number> = { lowest: 0, low: 2_000, medium: 8_000, high: 24_000 };
@@ -332,10 +344,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       CODING_PLAN_HOSTS.some((h) => target.startsWith(h)) ||
       (key !== null && CODING_PLAN_KEY_PREFIXES.some((p) => key.trim().startsWith(p)));
     if (codingPlan) {
-      // The real message quotes the vendor's own terms; this one is made up.
+      // The facade's message is "<Vendor>: “<their sentence>”"; this sentence is made up.
       throw new ApiError(
         "blocked",
-        "“This plan's keys may only be used in the vendor's own coding tools.”",
+        "Demo Vendor: “This plan's keys may only be used in the vendor's own coding tools.”",
         { blocked: "coding_plan_key" },
       );
     }
@@ -392,11 +404,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       const preset = presetOf(presetId);
       const url = validateBaseUrl(preset, baseUrl);
       validateKey(preset, url, preset.needs_key ? apiKey : null);
-      let id = preset.id === "custom" ? `custom-${shortHash(url)}` : preset.id;
+      // Like the facade: one provider per preset (per address for custom endpoints).
+      const id = preset.id === "custom" ? `custom-${shortHash(url)}` : preset.id;
       if (providers.some((p) => p.provider_id === id)) {
-        let n = 2;
-        while (providers.some((p) => p.provider_id === `${id}-${n}`)) n += 1;
-        id = `${id}-${n}`;
+        throw new ApiError("invalid", `${preset.label} is already set up.`);
       }
       const rec = record(preset.id, id, url, preset.needs_key ? apiKey : null);
       rec.created_at = now().toISOString();
@@ -449,17 +460,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       if (backend.kind === "codex") {
         const models = modelsFor(backend);
         const status = await codex.api.codexStatus();
-        if (status.login.state === "signed_out") {
-          throw new ApiError("model", "Not signed in.", { model_error: "not_signed_in" });
-        }
-        if (status.outdated_action !== "none") {
-          throw new ApiError("model", "The model requires a newer version of Codex.", {
-            model_error: "runtime_outdated",
-          });
-        }
-        if (!models.some((m) => m.id === model)) {
-          throw new ApiError("model", `No model "${model}".`, { model_error: "model_not_found" });
-        }
+        if (status.login.state === "signed_out") return failedProbe("not_signed_in");
+        if (status.outdated_action !== "none") return failedProbe("runtime_outdated");
+        if (!models.some((m) => m.id === model)) return failedProbe("model_not_found");
         return {
           ok: true,
           latency_ms: 3_100,
@@ -468,16 +471,11 @@ export function createMockAi(ctx: MockAiContext): AiApi {
           error: null,
         };
       }
+      // Like the facade: an unknown provider is NotFound; model errors are a failed probe.
       const provider = providerOf(backend);
-      if (scenario === "ai-errors") {
-        throw new ApiError("model", "Rate limited.", {
-          model_error: "rate_limited",
-          retry_after_secs: 20,
-        });
-      }
+      if (scenario === "ai-errors") return failedProbe("rate_limited");
       const info = modelInfo(provider, model);
-      if (!info)
-        throw new ApiError("model", `No model "${model}".`, { model_error: "model_not_found" });
+      if (!info) return failedProbe("model_not_found");
       return {
         ok: true,
         latency_ms: info.on_device ? 2_300 : 900,
@@ -524,16 +522,19 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       await ctx.delay();
       const choice = features.get(req.feature) ?? null;
       const { input, output } = workload(req);
-      const blank: CostEstimate = {
+      // Like the facade: a blocked estimate has no amount and 0 tokens. PROVISIONAL: except
+      // budget_reached, whose amount the student needs to decide on the per-run override (asked
+      // of the backend on 2026-09-28).
+      const blocked = (reason: BlockReason, priceKnown = false): CostEstimate => ({
         micro_usd_upper: null,
-        input_tokens: input,
-        max_output_tokens: output,
+        input_tokens: 0,
+        max_output_tokens: 0,
         reasoning_allowance: 0,
         repair_possible: false,
-        price_known: false,
-        would_block: null,
-      };
-      if (!choice) return { ...blank, would_block: "no_model_chosen" };
+        price_known: priceKnown,
+        would_block: reason,
+      });
+      if (!choice) return blocked("no_model_chosen");
       const info = modelsFor(choice.backend).find((m) => m.id === choice.model) ?? null;
       const onDevice = info?.on_device ?? false;
       const courses =
@@ -569,7 +570,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
           block = "price_unknown_not_acknowledged";
         }
       }
-      if (!block && upper !== null && upper > 0 && budget !== null) {
+      if (block) return blocked(block, priceKnown);
+      if (upper !== null && upper > 0 && budget !== null) {
         if (spentThisMonth() + upper > budget) block = "budget_reached";
       }
       return {
