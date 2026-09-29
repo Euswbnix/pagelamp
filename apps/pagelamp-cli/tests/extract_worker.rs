@@ -260,13 +260,15 @@ mod faults {
     fn without_the_flag_the_worker_would_have_a_console_window() {
         // Shows the check above can fail: without CREATE_NO_WINDOW the worker shares this test
         // process's console. (A test process without any console can't show the difference.)
-        match console_as_plain_child().as_str() {
-            "window" => {}
-            "no window" => {
-                eprintln!("this test process has no console window; nothing to compare with")
-            }
-            other => panic!("{other}"),
-        }
+        let answer = console_as_plain_child();
+        assert!(answer == "window" || answer == "no window", "{answer}");
+        // Past the test capture, so the CI log shows whether the comparison meant anything.
+        let line = if answer == "window" {
+            "a plain child has a console window, so CREATE_NO_WINDOW is what removes it\n"
+        } else {
+            "this test process has no console window; nothing to compare with\n"
+        };
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), line.as_bytes());
     }
 
     #[test]
