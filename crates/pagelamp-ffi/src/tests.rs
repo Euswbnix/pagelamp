@@ -216,6 +216,13 @@ const MIRRORED: &[&str] = &[
     "PlanWarningCode",
     "PlanWarning",
     "GeneratedStudyPlan",
+    // v0.3 M3: weekly explanations
+    "OutputLanguage",
+    "ExplainOptions",
+    "Citation",
+    "ExplanationParagraph",
+    "ExplanationSection",
+    "WeeklyExplanation",
     // AI (v0.3 M1)
     "AiFeature",
     "BlockReason",

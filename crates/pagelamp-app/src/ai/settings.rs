@@ -25,9 +25,11 @@ pub(crate) const CODEX_SOURCE: &str = "ai.codex_source";
 pub(crate) const MODE_A_WEEKLY_CAP: &str = "ai.mode_a_weekly_cap";
 /// The last "requires a newer version of Codex" seen, and with which version.
 pub(crate) const CODEX_OUTDATED: &str = "ai.codex_outdated";
+/// The language of explanations (`OutputLanguage`; absent: the UI's).
+pub(crate) const OUTPUT_LANGUAGE: &str = "ai.output_language";
 
 /// Every AI settings key ("Remove all AI data" deletes them).
-pub(crate) const ALL_KEYS: [&str; 7] = [
+pub(crate) const ALL_KEYS: [&str; 8] = [
     ROUTING,
     BUDGET,
     DISCLOSURES,
@@ -35,6 +37,7 @@ pub(crate) const ALL_KEYS: [&str; 7] = [
     CODEX_SOURCE,
     MODE_A_WEEKLY_CAP,
     CODEX_OUTDATED,
+    OUTPUT_LANGUAGE,
 ];
 
 /// A stable key for a backend in settings maps.

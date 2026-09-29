@@ -20,6 +20,8 @@ use crate::{App, AppError, AppErrorKind, Result};
 
 /// Characters of material text an explanation may carry (design §4.2 starting value).
 pub(crate) const EXPLANATION_CONTEXT_CHARS: usize = 200_000;
+/// The same for a model on this computer (a smaller context window, design §4.2).
+pub(crate) const EXPLANATION_LOCAL_CONTEXT_CHARS: usize = 24_000;
 /// Output budgets per feature (tokens).
 pub(crate) const EXPLANATION_MAX_OUTPUT: u32 = 6_000;
 pub(crate) const PLAN_MAX_OUTPUT: u32 = 4_000;
@@ -62,12 +64,14 @@ impl App {
                 };
                 plan_context(&store, &scope, at)
             }
-            EstimateRequest::WeeklyExplanation { course, week } => {
-                let budget = ContextBudget {
-                    max_chars: EXPLANATION_CONTEXT_CHARS,
-                };
-                week_context(&store, course, *week, at, destination, budget)
-            }
+            EstimateRequest::WeeklyExplanation { course, week } => week_context(
+                &store,
+                course,
+                *week,
+                at,
+                destination,
+                explanation_budget(destination),
+            ),
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
                 note_context(&store, at)
             }
@@ -317,6 +321,17 @@ impl App {
 /// The model a feature is routed to, if any.
 pub(crate) fn feature_choice(store: &Store, feature: AiFeature) -> Result<Option<ModelChoice>> {
     Ok(settings::routing(store)?.0.get(&feature).cloned())
+}
+
+/// How much course text an explanation may carry: ≈ 200k characters in the cloud, ≈ 24k on
+/// this computer.
+pub(crate) fn explanation_budget(destination: Destination) -> ContextBudget {
+    ContextBudget {
+        max_chars: match destination {
+            Destination::Cloud => EXPLANATION_CONTEXT_CHARS,
+            Destination::OnDevice => EXPLANATION_LOCAL_CONTEXT_CHARS,
+        },
+    }
 }
 
 /// How much course text a syllabus reading may carry: ≈ 60k characters in the cloud, ≈ 24k on

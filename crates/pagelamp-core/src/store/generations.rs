@@ -145,6 +145,26 @@ impl Store {
             generation_from_row,
         )
     }
+
+    /// A feature's runs with `status` for a course, of one week or (`None`) all, newest first.
+    pub fn generations_of(
+        &self,
+        feature: AiFeature,
+        course_id: &str,
+        week: Option<u32>,
+        status: GenerationStatus,
+    ) -> Result<Vec<GenerationRecord>> {
+        self.query_list(
+            &format!(
+                "SELECT {GENERATION_COLUMNS} FROM generations
+                 WHERE feature = ?1 AND course_id = ?2 AND (?3 IS NULL OR week = ?3)
+                   AND status = ?4
+                 ORDER BY created_at DESC, rowid DESC"
+            ),
+            params![feature.as_str(), course_id, week, status.as_str()],
+            generation_from_row,
+        )
+    }
 }
 
 #[cfg(test)]

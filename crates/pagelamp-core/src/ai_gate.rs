@@ -63,7 +63,8 @@ mod builders;
 
 pub(crate) use builders::looks_like_assessment;
 pub use builders::{
-    ContextBudget, GateError, PlanScope, calendar_context, note_context, plan_context, week_context,
+    ContextBudget, GateError, PlanScope, calendar_context, note_context, plan_context,
+    week_changed, week_context, week_context_including,
 };
 
 use schemars::JsonSchema;
@@ -281,6 +282,31 @@ impl RenderedPrompt {
     }
 }
 
+/// The language an answer is written in (the output-language setting, design §4.3). A closed
+/// set: each value adds fixed wording to the instructions, so no free text reaches a prompt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnswerLanguage {
+    English,
+    SimplifiedChinese,
+    /// Whatever language the course materials use.
+    CourseLanguage,
+}
+
+impl AnswerLanguage {
+    fn instruction(self) -> &'static str {
+        match self {
+            AnswerLanguage::English => "Write your answer in English.",
+            AnswerLanguage::SimplifiedChinese => {
+                "Write your answer in Simplified Chinese (简体中文); keep course terms, names and \
+                 quotes as the materials write them."
+            }
+            AnswerLanguage::CourseLanguage => {
+                "Write your answer in the language the course materials are written in."
+            }
+        }
+    }
+}
+
 /// Build a prompt from fixed wording (`template`, from `pagelamp-app/src/ai/prompts.rs`), a gated
 /// context and an optional note.
 pub fn assemble(
@@ -288,6 +314,21 @@ pub fn assemble(
     context: &GatedContext,
     note: Option<&StudentNote>,
 ) -> RenderedPrompt {
+    assemble_in(template, context, note, None)
+}
+
+/// `assemble` with the answer's language (fixed wording appended to the instructions).
+pub fn assemble_in(
+    template: &'static str,
+    context: &GatedContext,
+    note: Option<&StudentNote>,
+    language: Option<AnswerLanguage>,
+) -> RenderedPrompt {
+    let mut instructions = template.to_string();
+    if let Some(language) = language {
+        instructions.push(' ');
+        instructions.push_str(language.instruction());
+    }
     let mut user_text = context.render();
     if let Some(note) = note {
         user_text.push_str("<student_note>\n");
@@ -295,7 +336,7 @@ pub fn assemble(
         user_text.push_str("\n</student_note>\n");
     }
     RenderedPrompt {
-        instructions: template.to_string(),
+        instructions,
         user_text,
         manifest: context.manifest.clone(),
     }

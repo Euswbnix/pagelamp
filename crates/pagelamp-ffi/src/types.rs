@@ -33,6 +33,10 @@ use pagelamp_app::ai::{
     Recipient, RemoveAiDataReport, RetentionFact, RuntimeEvent, SentData, StructuredOutputTier,
     StudyPlanRequest, SystemCodex, TokenUsage, TrainingFact, UsageRow, UsageSummary,
 };
+use pagelamp_app::ai::{
+    Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, OutputLanguage,
+    WeeklyExplanation,
+};
 use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, ExtractWorkerCheck, ExtractWorkerStatus,
     McpClientPresence, ProcessKind, UnreadableFiles,
@@ -615,6 +619,8 @@ pub struct StoredStudyPlan {
     pub origin: PlanOrigin,
     #[uniffi(default)]
     pub generation_id: Option<String>,
+    #[uniffi(default)]
+    pub ai_label: Option<AiLabel>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1151,6 +1157,59 @@ pub struct GeneratedStudyPlan {
     pub warnings: Vec<PlanWarning>,
 }
 
+// ----- weekly explanations (v0.3 M3; methods are wired by the leader) ----------------------------
+
+#[uniffi::remote(Enum)]
+pub enum OutputLanguage {
+    Ui,
+    Course,
+}
+
+#[uniffi::remote(Record)]
+pub struct ExplainOptions {
+    #[uniffi(default)]
+    pub include: Vec<String>,
+    #[uniffi(default)]
+    pub ui_language: Option<String>,
+    #[uniffi(default)]
+    pub override_budget: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct Citation {
+    pub handle: String,
+    pub material_id: String,
+    pub title: String,
+    pub locator: Option<String>,
+    pub url: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ExplanationParagraph {
+    pub text: String,
+    pub citations: Vec<Citation>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ExplanationSection {
+    pub heading: String,
+    pub paragraphs: Vec<ExplanationParagraph>,
+}
+
+#[uniffi::remote(Record)]
+pub struct WeeklyExplanation {
+    pub meta: GenerationMeta,
+    pub course_id: String,
+    pub week: Option<u32>,
+    pub sections: Vec<ExplanationSection>,
+    pub check_questions: Vec<String>,
+    pub left_out: Vec<LeftOutMaterial>,
+    pub stale: bool,
+    pub sharing_reminder: bool,
+    pub dropped_citations: u32,
+    pub cite_ai_use: bool,
+}
+
 #[uniffi::remote(Enum)]
 pub enum UpdateCheckOutcome {
     UpToDate,
@@ -1570,6 +1629,10 @@ pub enum GenEvent {
     Stage {
         stage: GenStage,
     },
+    Context {
+        summary: ContextSummary,
+        input_tokens: Option<u64>,
+    },
     TextDelta {
         text: String,
     },
@@ -1590,6 +1653,8 @@ pub struct GenerationMeta {
     pub feature: AiFeature,
     pub backend_label: String,
     pub model: String,
+    #[uniffi(default)]
+    pub on_device: bool,
     pub created_at: Timestamp,
     pub usage: TokenUsage,
     pub est_cost_micro_usd: Option<u64>,
