@@ -27,7 +27,10 @@
 
 uniffi::setup_scaffolding!();
 
+mod ai;
 mod error;
+mod lane;
+mod observers;
 mod types;
 
 use std::path::{Path, PathBuf};
@@ -48,6 +51,9 @@ use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterial
 
 pub use crate::error::PageLampError;
 use crate::error::join_error;
+pub use crate::observers::{
+    CalendarBatchObserver, CodexInstallObserver, CodexLoginObserver, GenObserver,
+};
 pub use crate::types::{EnvMap, IsoDate, JsonString, Timestamp};
 
 type Result<T, E = PageLampError> = std::result::Result<T, E>;
