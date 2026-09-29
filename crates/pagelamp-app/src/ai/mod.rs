@@ -370,10 +370,15 @@ impl App {
     }
 
     /// The student's answer to "may this course's materials be shared with an AI service?".
+    /// "Not allowed" stops this app's runs that send the course's materials to a cloud model
+    /// (`stop_course_runs`); a model on this computer may go on.
     pub fn set_course_material_sharing(&self, course: &str, answer: MaterialSharing) -> Result<()> {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
         store.set_course_material_sharing(&course.id, answer)?;
+        if answer == MaterialSharing::NotAllowed {
+            self.stop_course_runs(&course.id, true);
+        }
         Ok(())
     }
 

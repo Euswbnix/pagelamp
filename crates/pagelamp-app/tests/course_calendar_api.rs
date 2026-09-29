@@ -13,7 +13,9 @@ use pagelamp_app::ai::{BackendRef, CostBasis, EstimateRequest, GenEvent, ModelCh
 use pagelamp_app::{
     ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
 };
-use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
+use pagelamp_core::ai::{
+    AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind, ProviderRow,
+};
 use pagelamp_core::calendar::candidates::{CandidateLeftOut, CandidateReason};
 use pagelamp_core::model::*;
 use pagelamp_core::secrets::MemorySecrets;
@@ -681,6 +683,85 @@ async fn activity_lists_a_generation_until_it_ends() {
         .unwrap_err();
     assert_eq!(err.kind, AppErrorKind::Cancelled);
     assert!(app.activity().items.is_empty());
+}
+
+#[tokio::test]
+async fn changing_a_course_s_ai_settings_stops_its_reading() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    let read = |generation_id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar(
+                "DEMO101",
+                generation_id,
+                ReadCalendarOptions::default(),
+                |_| {},
+            )
+            .await
+        })
+    };
+    let slow = |delay: Duration| {
+        let server = &server;
+        async move {
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(answer(&good_extraction()).set_delay(delay))
+                .mount(server)
+                .await;
+        }
+    };
+    // Another window turns the course's AI off, hides it or marks it prohibited while the
+    // model is being asked: the reading stops.
+    type Change = fn(&App);
+    let changes: [(&'static str, Change, Change); 3] = [
+        (
+            "gen-off",
+            |app| app.set_course_ai_access("DEMO101", false).unwrap(),
+            |app| app.set_course_ai_access("DEMO101", true).unwrap(),
+        ),
+        (
+            "gen-hidden",
+            |app| app.set_course_hidden("DEMO101", true).unwrap(),
+            |app| app.set_course_hidden("DEMO101", false).unwrap(),
+        ),
+        (
+            "gen-prohibited",
+            |app| {
+                app.set_course_policy("DEMO101", AiPolicy::Prohibited, None)
+                    .unwrap()
+            },
+            |app| {
+                app.set_course_policy("DEMO101", AiPolicy::Unknown, None)
+                    .unwrap()
+            },
+        ),
+    ];
+    for (id, change, undo) in changes {
+        slow(Duration::from_secs(30)).await;
+        let task = read(id);
+        wait_for_request(&server).await;
+        change(&app);
+        let err = tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Cancelled, "{id}");
+        undo(&app);
+    }
+    // Question (b) turning "not allowed" stops cloud runs only: this model is on this computer.
+    slow(Duration::from_millis(1500)).await;
+    let task = read("gen-local");
+    wait_for_request(&server).await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+        .unwrap();
+    let proposal = tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(proposal.is_ok(), "{proposal:?}");
 }
 
 #[tokio::test]
