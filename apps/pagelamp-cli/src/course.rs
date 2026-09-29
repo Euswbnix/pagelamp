@@ -364,6 +364,8 @@ pub async fn remove(
     }
     if report.backup_deleted {
         println!("The pre-update backup was deleted.");
+    } else if report.backup_failed {
+        println!("The pre-update backup couldn't be deleted; it is still in the data folder.");
     }
     Ok(())
 }
@@ -434,6 +436,11 @@ pub async fn purge(
             "{} course(s)' downloaded files couldn't be moved to the Trash and are kept (--permanent deletes them).",
             report.files_pending.len()
         );
+    }
+    if report.backup_deleted {
+        println!("The pre-update backup was deleted.");
+    } else if report.backup_failed {
+        println!("The pre-update backup couldn't be deleted; it is still in the data folder.");
     }
     Ok(())
 }

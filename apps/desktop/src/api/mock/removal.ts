@@ -231,7 +231,9 @@ export function createLifecycleMock(deps: {
         return {
           removed: records,
           purged_now: options.purge_now,
-          backup_deleted: options.delete_pre_update_backup,
+          // Like the facade: the backup goes with the purge, never at stage 1.
+          backup_deleted: options.delete_pre_update_backup && options.purge_now,
+          backup_failed: false,
         };
       }, 150),
 
@@ -287,7 +289,7 @@ export function createLifecycleMock(deps: {
           if (r.record.files_pending && permanentIfNoTrash) r.record.files_pending = false;
           if (r.record.files_pending) filesPending.push(r.record.removed_id);
         }
-        return { purged, files_pending: filesPending };
+        return { purged, files_pending: filesPending, backup_deleted: false, backup_failed: false };
       }),
 
     forgetRemovedCourse: (removedId) =>

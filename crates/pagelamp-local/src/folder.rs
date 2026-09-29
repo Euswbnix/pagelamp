@@ -65,21 +65,24 @@ pub(crate) fn sync_folder(
     course_dirs.sort();
 
     let mut report = FolderSyncReport::default();
-    let mut keep_courses = Vec::new();
     // Removed courses (calendar design §5): not read. A pending one keeps its row until its
-    // purge; a purged one has none. The student's folder is never changed.
+    // purge, even when its folder was renamed or moved meanwhile (undo must find it); a purged
+    // one has none. The student's folder is never changed.
     let tombstones = store.tombstone_states(source_id)?;
+    let mut keep_courses: Vec<String> = store
+        .tombstones()?
+        .into_iter()
+        .filter(|t| t.source_id == source_id && t.state == TombstoneState::Pending)
+        .map(|t| t.course_id)
+        .collect();
     let mut read = 0;
     for (dir_name, dir) in &course_dirs {
         let course_id = format!("{source_id}/course/{dir_name}");
-        match tombstones.get(dir_name.as_str()) {
-            Some(state) if state.skipped_by_sync() => {
-                if *state == TombstoneState::Pending {
-                    keep_courses.push(course_id);
-                }
-                continue;
-            }
-            _ => {}
+        if tombstones
+            .get(dir_name.as_str())
+            .is_some_and(|state| state.skipped_by_sync())
+        {
+            continue;
         }
         read += 1;
         keep_courses.push(course_id.clone());

@@ -4,11 +4,13 @@
 //! - `remove_courses` (stage 1, under `sync.lock`): hidden at once, a `pending` tombstone,
 //!   purged after 7 days or at once with `purge_now`;
 //! - `purge_removed_courses` (stage 2, under `sync.lock`; due purges also run at each sync's
-//!   start): the database first, then the course's downloaded Canvas files to the Trash
-//!   (never files in the student's own folders; a failed move is kept and retried, never
-//!   deleted permanently unless the student asks);
+//!   start): the database first (marked `files_pending` in the same transaction), then the
+//!   course's downloaded Canvas files to the Trash (never files in the student's own folders;
+//!   a failed move or a quit is retried, never deleted permanently unless the student asks),
+//!   and the pre-update backup if the student chose so;
 //! - `removed_courses`, `restore_course` (undo while pending; after a purge, the course is
-//!   synced back and gets its settings back), `forget_removed_course`.
+//!   synced back and gets its settings back; a restore a quit interrupted is settled at the
+//!   next sync or launch), `forget_removed_course`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -88,6 +90,7 @@ pub struct RemoveOptions {
     pub keep_downloaded_files: bool,
     /// Delete at once instead of in 7 days (no undo).
     pub purge_now: bool,
+    /// Delete the pre-update backup with the purge (at once with `purge_now`); an undo keeps it.
     pub delete_pre_update_backup: bool,
 }
 
@@ -119,7 +122,10 @@ pub struct RemovedCourse {
 pub struct RemovalReport {
     pub removed: Vec<RemovedCourse>,
     pub purged_now: bool,
+    /// The pre-update backup was deleted now (`purge_now`; otherwise it goes with the purge).
     pub backup_deleted: bool,
+    /// Deleting the pre-update backup failed (the courses are removed all the same).
+    pub backup_failed: bool,
 }
 
 /// Why a purged course didn't come back.
@@ -147,6 +153,10 @@ pub struct PurgeReport {
     pub purged: Vec<String>,
     /// `removed_id`s whose files couldn't be moved to the Trash (kept; retried later).
     pub files_pending: Vec<String>,
+    /// A purged course asked for the pre-update backup to go, and it did.
+    pub backup_deleted: bool,
+    /// Deleting the pre-update backup failed (the purge went ahead).
+    pub backup_failed: bool,
 }
 
 /// A pre-update backup this old or older is deleted by default with a removal.
@@ -269,17 +279,22 @@ impl App {
                             _ => RemovalReason::Other,
                         }
                     });
-                    store.remove_course(&course.id, reason, options.keep_downloaded_files, now)
+                    store.remove_course(
+                        &course.id,
+                        reason,
+                        options.keep_downloaded_files,
+                        options.delete_pre_update_backup,
+                        now,
+                    )
                 })
                 .collect::<pagelamp_core::Result<Vec<_>>>()
         })?;
-        let backup_deleted = options.delete_pre_update_backup
-            && pagelamp_core::store::delete_database_backups(&self.db_path())
-                .map_err(pagelamp_core::Error::from)?
-                > 0;
-        if options.purge_now {
-            self.purge_locked(&store, tombstones.clone(), false)?;
-        }
+        // The backup is deleted with the purge, never in this undoable stage.
+        let purge = if options.purge_now {
+            Some(self.purge_locked(&store, tombstones.clone(), false)?)
+        } else {
+            None
+        };
         let removed = tombstones
             .iter()
             .filter_map(|t| store.tombstone(&t.course_id).ok().flatten())
@@ -288,7 +303,8 @@ impl App {
         Ok(RemovalReport {
             removed,
             purged_now: options.purge_now,
-            backup_deleted,
+            backup_deleted: purge.as_ref().is_some_and(|p| p.backup_deleted),
+            backup_failed: purge.as_ref().is_some_and(|p| p.backup_failed),
         })
     }
 
@@ -304,7 +320,8 @@ impl App {
 
     /// Undo a removal that isn't purged yet (everything comes back at once), or bring a purged
     /// course back by syncing its source: its settings and calendar come back, its Canvas
-    /// files as not downloaded. `Busy` while a sync runs.
+    /// files as not downloaded. A `restoring` course (a restore a quit interrupted) is tried
+    /// again. `Busy` while a sync runs.
     pub async fn restore_course(&self, removed_id: &str) -> Result<RestoreOutcome> {
         let _lock = self.acquire_sync_lock()?;
         let tombstone = self
@@ -319,8 +336,8 @@ impl App {
                 failure: None,
             });
         }
-        self.write_store()?
-            .set_tombstone_state(removed_id, TombstoneState::Restoring)?;
+        // What can fail comes before the `restoring` mark; a mark a quit leaves behind is
+        // settled at the next sync or launch (`settle_restores`).
         let source = self.source(&tombstone.source_id)?;
         let req = SyncRequest {
             only_courses: match source.kind {
@@ -329,19 +346,19 @@ impl App {
             },
             ..SyncRequest::default()
         };
+        self.write_store()?
+            .set_tombstone_state(removed_id, TombstoneState::Restoring)?;
         let cancel = self.begin_cancellable();
         let extractor = self.extractor(cancel.flag());
         let result = self.sync_one(&source, &req, &extractor, &|_| {}).await;
         let store = self.write_store()?;
-        if store.get_course(removed_id)?.is_some() {
-            store.apply_restored_settings(removed_id, Utc::now())?;
+        if settle_restore(&store, removed_id)? {
             return Ok(RestoreOutcome {
                 restored: true,
                 course_id: Some(tombstone.course_id),
                 failure: None,
             });
         }
-        store.set_tombstone_state(removed_id, TombstoneState::Purged)?;
         let failure = if result.error_kind == Some(SourceErrorKind::Network) {
             RestoreFailure::Offline
         } else if tombstone.settings.access_restricted {
@@ -381,8 +398,10 @@ impl App {
     }
 
     /// Forget a purged course: the next sync brings it back. A removal that isn't purged yet
-    /// is undone with `restore_course` instead (`Invalid`).
+    /// is undone with `restore_course` instead, and files still waiting for the Trash are
+    /// moved (or deleted) first (`Invalid`). `Busy` while a sync runs.
     pub fn forget_removed_course(&self, removed_id: &str) -> Result<()> {
+        let _lock = self.acquire_sync_lock()?;
         let store = self.write_store()?;
         let tombstone = store
             .tombstone(removed_id)?
@@ -391,6 +410,13 @@ impl App {
             return Err(AppError::new(
                 AppErrorKind::Invalid,
                 "Only a course whose data is already deleted can be forgotten; undo this removal instead.",
+            ));
+        }
+        if tombstone.files_pending {
+            return Err(AppError::new(
+                AppErrorKind::Invalid,
+                "This course's downloaded files are still waiting for the Trash: try again, or \
+                 delete them permanently, before forgetting it.",
             ));
         }
         Ok(store.delete_tombstone(removed_id)?)
@@ -402,12 +428,16 @@ impl App {
         self.state.trash.set(trash);
     }
 
-    /// S8, at a sync's start (the sync holds `sync.lock`): due purges, and files a failed
+    /// S8, at a sync's start (the sync holds `sync.lock`): restores a quit interrupted are
+    /// settled (before the sync reads the tombstones), then due purges run, and files a failed
     /// Trash move left. Problems are logged; they never stop the sync.
     pub(crate) fn purge_due_at_sync_start(&self) {
         let result = self
             .write_store()
-            .and_then(|store| Ok((due_or_waiting(&store)?, store)))
+            .and_then(|store| {
+                settle_restores(&store)?;
+                Ok((due_or_waiting(&store)?, store))
+            })
             .and_then(|(targets, store)| self.purge_locked(&store, targets, false));
         match result {
             Ok(report) if !report.purged.is_empty() || !report.files_pending.is_empty() => {
@@ -423,9 +453,34 @@ impl App {
         }
     }
 
-    /// Stage 2 for `targets` (`sync.lock` held): the database first, then the downloaded
-    /// Canvas files to the Trash (a failure is kept and retried; deleted permanently only
-    /// with `permanent_if_no_trash`).
+    /// At launch: settle a restore a quit interrupted (`settle_restores`), when there is one
+    /// and `sync.lock` is free (a running restore holds it). Only a read when there is none;
+    /// problems are logged.
+    pub(crate) fn settle_restores_at_open(&self) {
+        let interrupted = self.read_store().and_then(|store| {
+            Ok(store
+                .tombstones()?
+                .iter()
+                .any(|t| t.state == TombstoneState::Restoring))
+        });
+        if !matches!(interrupted, Ok(true)) {
+            return;
+        }
+        let Ok(_lock) = self.acquire_sync_lock() else {
+            return;
+        };
+        if let Err(err) = self.write_store().and_then(|store| settle_restores(&store)) {
+            tracing::warn!(target: "pagelamp::removal", "settling a restore failed: {:?}", err.kind);
+        }
+    }
+
+    /// Stage 2 for `targets` (`sync.lock` held): the database first, marked `files_pending`
+    /// in the same transaction when downloaded Canvas files are left; then the files to the
+    /// Trash (a failure, or a quit before the end, is retried; deleted permanently only with
+    /// `permanent_if_no_trash`, and a failed delete is kept as pending too); `files_pending`
+    /// is cleared only once every folder is handled. Then the pre-update backup, if a purged
+    /// course asked for it: a failure is reported, never an error. A `restoring` course is
+    /// left alone (its restore runs, or is settled at the next sync).
     fn purge_locked(
         &self,
         store: &Store,
@@ -437,11 +492,15 @@ impl App {
         let mut report = PurgeReport {
             purged: Vec::new(),
             files_pending: Vec::new(),
+            backup_deleted: false,
+            backup_failed: false,
         };
+        let mut delete_backup = false;
         for tombstone in targets {
-            let canvas = self
-                .source(&tombstone.source_id)
-                .is_ok_and(|s| s.kind == SourceKind::Canvas);
+            if tombstone.state == TombstoneState::Restoring {
+                continue;
+            }
+            let canvas = self.source(&tombstone.source_id)?.kind == SourceKind::Canvas;
             // Before the rows go: their local paths say which folders are the course's.
             let dirs = if canvas && !tombstone.keep_files {
                 download_dirs(store, &files_dir, &tombstone)?
@@ -449,31 +508,43 @@ impl App {
                 Vec::new()
             };
             if tombstone.state == TombstoneState::Pending {
-                store.purge_course(&tombstone.course_id, Utc::now())?;
+                store.purge_course(&tombstone.course_id, Utc::now(), !dirs.is_empty())?;
                 report.purged.push(tombstone.course_id.clone());
+                delete_backup |= tombstone.delete_backup;
+            } else if !dirs.is_empty() && !tombstone.files_pending {
+                store.set_tombstone_files_pending(&tombstone.course_id, true)?;
             }
             let mut waiting = false;
-            for dir in dirs.iter().filter(|dir| dir.exists()) {
-                if let Err(reason) = trash.trash(dir) {
-                    if permanent_if_no_trash {
-                        crate::remove_download_dir(dir).map_err(|err| {
-                            AppError::new(
-                                AppErrorKind::Internal,
-                                format!("Could not delete the downloaded course files: {err}"),
-                            )
-                        })?;
-                    } else {
-                        tracing::warn!(target: "pagelamp::removal", "moving to the Trash failed: {reason}");
+            for dir in &dirs {
+                let Err(reason) = trash.trash(dir) else {
+                    continue;
+                };
+                if permanent_if_no_trash {
+                    if let Err(err) = crate::remove_download_dir(dir) {
+                        tracing::warn!(target: "pagelamp::removal", "deleting the downloaded files failed: {err}");
                         waiting = true;
                     }
+                } else {
+                    tracing::warn!(target: "pagelamp::removal", "moving to the Trash failed: {reason}");
+                    waiting = true;
                 }
             }
+            // Also clears a mark whose folders are gone meanwhile (e.g. deleted by hand).
             store.set_tombstone_files_pending(&tombstone.course_id, waiting)?;
             if waiting {
                 report.files_pending.push(tombstone.course_id);
             }
         }
         store.checkpoint_after_purge();
+        if delete_backup {
+            match pagelamp_core::store::delete_database_backups(&self.db_path()) {
+                Ok(deleted) => report.backup_deleted = deleted > 0,
+                Err(err) => {
+                    tracing::warn!(target: "pagelamp::removal", "deleting the pre-update backup failed: {err}");
+                    report.backup_failed = true;
+                }
+            }
+        }
         Ok(report)
     }
 
@@ -521,15 +592,14 @@ fn due_or_waiting(store: &Store) -> Result<Vec<Tombstone>> {
 /// `<CODE>-<id>` folder, the folders its materials' files are in, and the same course under
 /// older codes (`…-<id>`). Every other course, of any source, owns what it uses: such a folder
 /// is kept, and the older-code sweep is skipped when another course shares the Canvas id.
+/// Only real folders that are direct children of `files_dir` (never a symbolic link, never
+/// `..`) are returned.
 fn download_dirs(store: &Store, files_dir: &Path, tombstone: &Tombstone) -> Result<Vec<PathBuf>> {
     let parents = |course_id: &str| -> Result<Vec<PathBuf>> {
         Ok(store
             .list_materials(course_id)?
             .into_iter()
-            .filter_map(|m| {
-                let parent = Path::new(m.local_path.as_deref()?).parent()?.to_path_buf();
-                (parent.parent() == Some(files_dir)).then_some(parent)
-            })
+            .filter_map(|m| crate::download_dir_of(files_dir, Path::new(m.local_path.as_deref()?)))
             .collect())
     };
     let suffix = crate::fold_name(&pagelamp_canvas::course_dir_suffix(&tombstone.external_id));
@@ -566,8 +636,36 @@ fn download_dirs(store: &Store, files_dir: &Path, tombstone: &Tombstone) -> Resu
     }
     own.sort();
     own.dedup();
-    own.retain(|dir| !kept.contains(&crate::dir_key(dir)));
+    own.retain(|dir| {
+        !kept.contains(&crate::dir_key(dir))
+            && crate::is_download_dir(files_dir, dir)
+            && std::fs::symlink_metadata(dir).is_ok_and(|meta| meta.is_dir())
+    });
     Ok(own)
+}
+
+/// Settle every `restoring` tombstone (`sync.lock` held, no restore running): see
+/// `settle_restore`.
+fn settle_restores(store: &Store) -> Result<()> {
+    for tombstone in store.tombstones()? {
+        if tombstone.state == TombstoneState::Restoring {
+            settle_restore(store, &tombstone.course_id)?;
+        }
+    }
+    Ok(())
+}
+
+/// The end of a restore, also one a quit interrupted: the course is back (its row exists, so
+/// the sync brought it) and gets the student's settings, or it goes back to `purged`. Whether
+/// it is back.
+fn settle_restore(store: &Store, removed_id: &str) -> Result<bool> {
+    if store.get_course(removed_id)?.is_some() {
+        store.apply_restored_settings(removed_id, Utc::now())?;
+        Ok(true)
+    } else {
+        store.set_tombstone_state(removed_id, TombstoneState::Purged)?;
+        Ok(false)
+    }
 }
 
 /// The pre-update backup the removal dialog offers to delete, if there is one.

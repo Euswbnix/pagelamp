@@ -143,7 +143,10 @@ pub struct Tombstone {
     pub purged_at: Option<Timestamp>,
     /// "Keep downloaded files": the purge leaves them.
     pub keep_files: bool,
-    /// Moving the downloaded files to the Trash failed; retried later.
+    /// The downloaded files still wait for the Trash: set with the purge itself and cleared
+    /// only once every folder is handled, so a quit or a failed move is retried later.
     pub files_pending: bool,
+    /// "Also delete the pre-update backup": done with the purge (stage 2), never at stage 1.
+    pub delete_backup: bool,
     pub settings: CourseSettings,
 }

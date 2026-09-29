@@ -222,7 +222,8 @@ enum CourseCommand {
         /// Keep the files PageLamp downloaded from Canvas.
         #[arg(long)]
         keep_files: bool,
-        /// Also delete the pre-update backup (it still holds these courses' text).
+        /// Also delete the pre-update backup (it still holds these courses' text), together
+        /// with the local data (now with --now, else in 7 days; an undo keeps it).
         #[arg(long)]
         delete_backup: bool,
     },

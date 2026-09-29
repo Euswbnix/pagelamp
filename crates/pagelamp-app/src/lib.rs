@@ -510,6 +510,7 @@ impl App {
         };
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
+        app.settle_restores_at_open();
         Ok(app)
     }
 
@@ -753,10 +754,9 @@ impl App {
                 let parent = material
                     .local_path
                     .as_deref()
-                    .and_then(|p| Path::new(p).parent())
-                    .filter(|parent| parent.parent() == Some(files_dir.as_path()));
+                    .and_then(|p| download_dir_of(&files_dir, Path::new(p)));
                 if let Some(parent) = parent {
-                    dirs.push(parent.to_path_buf());
+                    dirs.push(parent);
                 }
             }
             Ok(dirs)
@@ -792,7 +792,10 @@ impl App {
         }
         own.sort();
         own.dedup();
-        for dir in own.iter().filter(|dir| !kept.contains(&dir_key(dir))) {
+        for dir in own
+            .iter()
+            .filter(|dir| !kept.contains(&dir_key(dir)) && is_download_dir(&files_dir, dir))
+        {
             remove_download_dir(dir).map_err(|err| {
                 AppError::new(
                     AppErrorKind::Internal,
@@ -1058,6 +1061,22 @@ impl App {
 }
 
 // ----- facade helpers ---------------------------------------------------------------------------
+
+/// Whether `dir` can be a download directory: a direct child of `files_dir` whose name is a
+/// plain name (never `..` or `.`, which would reach `files_dir` itself or the data folder).
+pub(crate) fn is_download_dir(files_dir: &Path, dir: &Path) -> bool {
+    dir.parent() == Some(files_dir)
+        && matches!(
+            dir.components().next_back(),
+            Some(std::path::Component::Normal(_))
+        )
+}
+
+/// The download directory a material's local copy is in (see `is_download_dir`).
+pub(crate) fn download_dir_of(files_dir: &Path, local_path: &Path) -> Option<PathBuf> {
+    let dir = local_path.parent()?;
+    is_download_dir(files_dir, dir).then(|| dir.to_path_buf())
+}
 
 /// A download directory's name as the file system compares it: case-insensitive, NFC.
 pub(crate) fn dir_key(dir: &Path) -> String {

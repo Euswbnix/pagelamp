@@ -1569,6 +1569,8 @@ pub struct RemovalReport {
     pub removed: Vec<RemovedCourse>,
     pub purged_now: bool,
     pub backup_deleted: bool,
+    #[uniffi(default)]
+    pub backup_failed: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -1590,6 +1592,10 @@ pub struct RestoreOutcome {
 pub struct PurgeReport {
     pub purged: Vec<String>,
     pub files_pending: Vec<String>,
+    #[uniffi(default)]
+    pub backup_deleted: bool,
+    #[uniffi(default)]
+    pub backup_failed: bool,
 }
 
 #[uniffi::remote(Record)]

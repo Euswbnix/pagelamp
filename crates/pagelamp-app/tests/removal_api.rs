@@ -548,3 +548,410 @@ async fn a_restore_that_cant_bring_the_course_back_says_why() {
     let outcome = app.restore_course(&id).await.unwrap();
     assert_eq!(outcome.failure, Some(pagelamp_app::RestoreFailure::Offline));
 }
+
+/// A Canvas course on `source` with one downloaded file in its `<CODE>-<id>` folder.
+fn add_canvas_course(app: &App, source: &str, external_id: &str, code: &str) -> PathBuf {
+    let store = Store::open(&app.db_path()).unwrap();
+    if store.get_source(source).unwrap().is_none() {
+        store
+            .upsert_source(&SourceRecord {
+                id: source.into(),
+                kind: SourceKind::Canvas,
+                label: "Another LMS".into(),
+                config: json!({ "base_url": "https://lms2.example.edu" }),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
+            })
+            .unwrap();
+    }
+    let course_id = format!("{source}/course/{external_id}");
+    store
+        .upsert_course(&CourseUpsert {
+            id: course_id.clone(),
+            source_id: source.into(),
+            external_id: external_id.into(),
+            code: Some(code.into()),
+            name: format!("Demo {code}"),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    let dir = pagelamp_canvas::course_files_dir(
+        &paths::files_dir_in(app.data_dir()),
+        Some(code),
+        external_id,
+    );
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("notes.txt"), "demo notes").unwrap();
+    store
+        .upsert_material(&MaterialUpsert {
+            id: format!("{source}/file/{external_id}1"),
+            course_id,
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "notes.txt".into(),
+            url: None,
+            local_path: Some(dir.join("notes.txt").to_string_lossy().into_owned()),
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        })
+        .unwrap();
+    dir
+}
+
+/// A folder under `files/` the course had under an older code, with a file in it.
+fn old_code_dir(app: &App, code: &str, external_id: &str) -> PathBuf {
+    let dir = pagelamp_canvas::course_files_dir(
+        &paths::files_dir_in(app.data_dir()),
+        Some(code),
+        external_id,
+    );
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("old.txt"), "old slides").unwrap();
+    dir
+}
+
+fn purge_now() -> RemoveOptions {
+    RemoveOptions {
+        purge_now: true,
+        ..options()
+    }
+}
+
+fn moved(trash: &MockTrash) -> Vec<PathBuf> {
+    let mut moved = trash.moved.lock().unwrap().clone();
+    moved.sort();
+    moved
+}
+
+#[tokio::test]
+async fn only_the_course_s_own_download_folders_go_to_the_trash() {
+    let f = fixture().await;
+    let files = paths::files_dir_in(f.app.data_dir());
+    // Another Canvas course's folder is kept; the course's folder from an older code goes.
+    let other = add_canvas_course(&f.app, CANVAS, "505", "DEMO505");
+    let old = old_code_dir(&f.app, "OLD303", "303");
+    // A local path that climbs out of files/ never names a folder to move.
+    Store::open(&f.app.db_path())
+        .unwrap()
+        .upsert_material(&MaterialUpsert {
+            id: format!("{CANVAS}/file/902"),
+            course_id: format!("{CANVAS}/course/303"),
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "stray.txt".into(),
+            url: None,
+            local_path: Some(
+                files
+                    .join("..")
+                    .join("stray.txt")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            mime: None,
+            published_at: None,
+            week_hint: None,
+        })
+        .unwrap();
+    // A symbolic link named like the course's folder is never followed (nor moved).
+    #[cfg(unix)]
+    let outside = {
+        let outside = f.temp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), "the student's own file").unwrap();
+        std::os::unix::fs::symlink(&outside, files.join("LINK303-303")).unwrap();
+        outside
+    };
+
+    f.app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    let mut expected = vec![f.downloads.clone(), old];
+    expected.sort();
+    assert_eq!(moved(&f.trash), expected);
+    assert!(other.join("notes.txt").exists());
+    assert!(f.app.data_dir().exists() && files.exists());
+    #[cfg(unix)]
+    {
+        assert!(outside.join("keep.txt").exists());
+        assert!(files.join("LINK303-303").symlink_metadata().is_ok());
+    }
+}
+
+#[tokio::test]
+async fn the_older_code_sweep_is_skipped_when_two_sources_share_a_canvas_id() {
+    let f = fixture().await;
+    let twin = add_canvas_course(&f.app, "canvas:lms2.example.edu", "303", "DEMO909");
+    let old = old_code_dir(&f.app, "OLD303", "303");
+    f.app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    // Which course "OLD303-303" was is unknown: only the course's own folder goes.
+    assert_eq!(moved(&f.trash), std::slice::from_ref(&f.downloads));
+    assert!(twin.join("notes.txt").exists());
+    assert!(old.join("old.txt").exists());
+}
+
+/// A Trash that records the course's tombstone as each move starts (what a quit would leave).
+struct ObservingTrash {
+    db: PathBuf,
+    course_id: String,
+    seen: Mutex<Vec<(TombstoneState, bool)>>,
+}
+
+impl FileTrash for ObservingTrash {
+    fn trash(&self, path: &Path) -> Result<(), String> {
+        let tombstone = Store::open(&self.db)
+            .unwrap()
+            .tombstone(&self.course_id)
+            .unwrap()
+            .unwrap();
+        self.seen
+            .lock()
+            .unwrap()
+            .push((tombstone.state, tombstone.files_pending));
+        std::fs::remove_dir_all(path).map_err(|e| e.to_string())
+    }
+}
+
+#[tokio::test]
+async fn the_purge_marks_the_files_pending_until_every_folder_is_handled() {
+    let f = fixture().await;
+    let observer = Arc::new(ObservingTrash {
+        db: f.app.db_path(),
+        course_id: format!("{CANVAS}/course/303"),
+        seen: Mutex::new(Vec::new()),
+    });
+    f.app.set_trash(observer.clone());
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    // Purged and pending in one step: a quit during the move leaves it to be retried.
+    assert_eq!(
+        *observer.seen.lock().unwrap(),
+        [(TombstoneState::Purged, true)]
+    );
+    assert!(!report.removed[0].files_pending, "cleared once moved");
+    assert!(!f.downloads.exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_permanent_delete_stays_pending_instead_of_failing() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fixture().await;
+    f.trash.fail.store(true, Ordering::SeqCst);
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    let id = report.removed[0].removed_id.clone();
+    // files/ can't be changed: the course's folder can't go.
+    let files = paths::files_dir_in(f.app.data_dir());
+    std::fs::set_permissions(&files, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let result = f
+        .app
+        .purge_removed_courses(Some(vec![id.clone()]), true)
+        .await;
+    std::fs::set_permissions(&files, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let report = result.unwrap();
+    assert_eq!(report.files_pending, std::slice::from_ref(&id));
+    let removed = &f.app.removed_courses().unwrap()[0];
+    assert!(removed.files_pending, "offered again");
+    assert_eq!(
+        f.app.forget_removed_course(&id).unwrap_err().kind,
+        AppErrorKind::Invalid,
+        "not forgotten while its files wait"
+    );
+    let done = f
+        .app
+        .purge_removed_courses(Some(vec![id.clone()]), true)
+        .await
+        .unwrap();
+    assert!(done.files_pending.is_empty());
+    assert!(!f.downloads.exists());
+    f.app.forget_removed_course(&id).unwrap();
+}
+
+#[tokio::test]
+async fn files_the_student_deleted_meanwhile_no_longer_wait() {
+    let f = fixture().await;
+    f.trash.fail.store(true, Ordering::SeqCst);
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    assert!(report.removed[0].files_pending);
+    std::fs::remove_dir_all(&f.downloads).unwrap();
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(!f.app.removed_courses().unwrap()[0].files_pending);
+}
+
+#[tokio::test]
+async fn an_interrupted_restore_is_settled_at_the_next_sync_or_launch() {
+    let f = fixture().await;
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO202".into()], purge_now())
+        .await
+        .unwrap();
+    let removed = report.removed[0].clone();
+    let restoring = || {
+        Store::open(&f.app.db_path())
+            .unwrap()
+            .set_tombstone_state(&removed.removed_id, TombstoneState::Restoring)
+            .unwrap()
+    };
+    let state = |app: &App| app.removed_courses().unwrap()[0].state;
+
+    // A quit left it `restoring` without its course: a purge leaves it alone...
+    restoring();
+    let purge = f
+        .app
+        .purge_removed_courses(Some(vec![removed.removed_id.clone()]), false)
+        .await
+        .unwrap();
+    assert!(purge.purged.is_empty() && purge.files_pending.is_empty());
+    assert_eq!(state(&f.app), TombstoneState::Restoring);
+    // ...and the next sync puts it back to purged before reading the folder.
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert_eq!(state(&f.app), TombstoneState::Purged);
+    assert!(!codes(&f.app).contains(&"DEMO202".to_string()));
+
+    // So does the next launch.
+    restoring();
+    let reopened = App::open_at_with_secrets(
+        f.app.data_dir().to_path_buf(),
+        Arc::new(MemorySecrets::new()),
+    )
+    .unwrap();
+    assert_eq!(state(&reopened), TombstoneState::Purged);
+
+    // The sync had brought the course back before the quit: the restore is finished.
+    restoring();
+    Store::open(&f.app.db_path())
+        .unwrap()
+        .upsert_course(&CourseUpsert {
+            id: removed.course_id.clone(),
+            source_id: removed.source_id.clone(),
+            external_id: removed.external_id.clone(),
+            code: removed.code.clone(),
+            name: removed.name.clone(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(f.app.removed_courses().unwrap().is_empty());
+    assert!(codes(&f.app).contains(&"DEMO202".to_string()));
+}
+
+#[tokio::test]
+async fn the_pre_update_backup_goes_with_the_purge_not_before() {
+    let f = fixture().await;
+    let backup = |n: u32| PathBuf::from(format!("{}.v{n}.bak", f.app.db_path().display()));
+    std::fs::write(backup(3), "old database").unwrap();
+    let with_backup = |purge_now: bool| RemoveOptions {
+        purge_now,
+        delete_pre_update_backup: true,
+        ..options()
+    };
+
+    // Stage 1 keeps it, and an undo keeps it too.
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO101".into()], with_backup(false))
+        .await
+        .unwrap();
+    assert!(!report.backup_deleted && !report.backup_failed);
+    assert!(backup(3).exists());
+    f.app
+        .restore_course(&report.removed[0].removed_id)
+        .await
+        .unwrap();
+    assert!(backup(3).exists());
+
+    // The due purge at a sync's start deletes it.
+    f.app
+        .remove_courses(vec!["DEMO101".into()], with_backup(false))
+        .await
+        .unwrap();
+    Store::open(&f.app.db_path())
+        .unwrap()
+        .conn()
+        .execute(
+            "UPDATE course_tombstones SET purge_after = ?1",
+            [(Utc::now() - Duration::hours(1)).to_rfc3339()],
+        )
+        .unwrap();
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(!backup(3).exists());
+
+    // "Delete now" deletes it at once; a failure is reported, and the course is removed anyway.
+    std::fs::write(backup(3), "old database").unwrap();
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO202".into()], with_backup(true))
+        .await
+        .unwrap();
+    assert!(report.backup_deleted && !backup(3).exists());
+    std::fs::create_dir_all(backup(2)).unwrap();
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO303".into()], with_backup(true))
+        .await
+        .unwrap();
+    assert!(report.backup_failed && !report.backup_deleted);
+    assert_eq!(report.removed[0].state, TombstoneState::Purged);
+}
+
+#[tokio::test]
+async fn a_renamed_folder_doesn_t_take_a_pending_removal_with_it() {
+    let f = fixture().await;
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO101".into()], options())
+        .await
+        .unwrap();
+    let removed = report.removed[0].clone();
+    let courses = f.temp.path().join("Courses");
+    std::fs::rename(
+        courses.join("DEMO101 Intro"),
+        courses.join("DEMO101 Intro (old)"),
+    )
+    .unwrap();
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    let store = Store::open(&f.app.db_path()).unwrap();
+    assert!(store.get_course(&removed.course_id).unwrap().is_some());
+    let outcome = f.app.restore_course(&removed.removed_id).await.unwrap();
+    assert!(outcome.restored);
+}

@@ -5,9 +5,10 @@
 //!   every course list (`Store::list_courses`).
 //! - Stage 2 (`purge_course`) deletes the course's rows (its LMS events explicitly, the rest by
 //!   cascade) with `secure_delete` on (freed pages are zeroed), compacts the full-text index
-//!   and marks the tombstone `purged`. The caller then truncates the WAL
-//!   (`checkpoint_after_purge`, outside a transaction) and moves downloaded files to the
-//!   Trash.
+//!   and marks the tombstone `purged`, with `files_pending` set in the same transaction when
+//!   downloaded files are left to move. The caller then truncates the WAL
+//!   (`checkpoint_after_purge`, outside a transaction), moves the files to the Trash and only
+//!   then clears `files_pending`.
 //! - The tombstone matches `(source_id, external_id)`; a sync skips `pending` and `purged` ones.
 
 use std::collections::HashMap;
@@ -36,7 +37,7 @@ impl TextValue for TombstoneState {
 }
 
 const TOMBSTONE_COLUMNS: &str = "source_id, external_id, course_id, code, name, reason, state, \
-     removed_at, purge_after, purged_at, keep_files, files_pending, settings_json";
+     removed_at, purge_after, purged_at, keep_files, files_pending, delete_backup, settings_json";
 
 fn tombstone_from_row(row: &Row<'_>) -> rusqlite::Result<Tombstone> {
     let settings: String = row.get("settings_json")?;
@@ -53,6 +54,7 @@ fn tombstone_from_row(row: &Row<'_>) -> rusqlite::Result<Tombstone> {
         purged_at: get_opt_value(row, "purged_at")?,
         keep_files: row.get("keep_files")?,
         files_pending: row.get("files_pending")?,
+        delete_backup: row.get("delete_backup")?,
         // An unreadable snapshot only loses what a restore would put back.
         settings: serde_json::from_str(&settings).unwrap_or_default(),
     })
@@ -60,12 +62,14 @@ fn tombstone_from_row(row: &Row<'_>) -> rusqlite::Result<Tombstone> {
 
 impl Store {
     /// Stage 1: remove `course_id` (hide it, write a `pending` tombstone purged after 7 days).
-    /// `NotFound` for an unknown course; `Invalid` if it is already removed.
+    /// `keep_files` and `delete_backup` are the student's choices for the purge. `NotFound` for
+    /// an unknown course; `Invalid` if it is already removed.
     pub fn remove_course(
         &self,
         course_id: &str,
         reason: RemovalReason,
         keep_files: bool,
+        delete_backup: bool,
         now: Timestamp,
     ) -> Result<Tombstone> {
         self.atomic(|| {
@@ -92,12 +96,13 @@ impl Store {
                 purged_at: None,
                 keep_files,
                 files_pending: false,
+                delete_backup,
                 settings,
             };
             self.conn.execute(
                 &format!(
                     "INSERT INTO course_tombstones ({TOMBSTONE_COLUMNS})
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, 0, ?11)"
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL, ?10, 0, ?11, ?12)"
                 ),
                 params![
                     tombstone.source_id,
@@ -110,6 +115,7 @@ impl Store {
                     ts_text(now),
                     tombstone.purge_after.map(ts_text),
                     keep_files,
+                    delete_backup,
                     serde_json::to_string(&tombstone.settings).expect("settings serialise"),
                 ],
             )?;
@@ -222,8 +228,9 @@ impl Store {
     /// Stage 2, the database part: delete the course's LMS events (by its own source; feed
     /// events only lose their link), the course row with everything that cascades (modules,
     /// materials, chunks and their index entries, calendars, generations), compact the
-    /// full-text index, and mark the tombstone `purged`. `NotFound` without a tombstone.
-    pub fn purge_course(&self, course_id: &str, now: Timestamp) -> Result<()> {
+    /// full-text index, and mark the tombstone `purged`, with `files_pending` (downloaded files
+    /// are left to move) in the same transaction. `NotFound` without a tombstone.
+    pub fn purge_course(&self, course_id: &str, now: Timestamp, files_pending: bool) -> Result<()> {
         // For this connection: pages the deletes free are overwritten with zeros.
         self.conn.execute_batch("PRAGMA secure_delete = ON;")?;
         self.atomic(|| {
@@ -240,9 +247,9 @@ impl Store {
                 .execute("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize')", [])?;
             self.conn.execute(
                 "UPDATE course_tombstones
-                 SET state = 'purged', purged_at = ?2, purge_after = NULL
+                 SET state = 'purged', purged_at = ?2, purge_after = NULL, files_pending = ?3
                  WHERE course_id = ?1",
-                params![course_id, ts_text(now)],
+                params![course_id, ts_text(now), files_pending],
             )?;
             Ok(())
         })
@@ -267,7 +274,8 @@ impl Store {
         expect_changed(changed, "removed course", course_id)
     }
 
-    /// Whether the downloaded files still wait for the Trash.
+    /// Whether the downloaded files still wait for the Trash (cleared only once every folder
+    /// is handled).
     pub fn set_tombstone_files_pending(&self, course_id: &str, pending: bool) -> Result<()> {
         let changed = self.conn.execute(
             "UPDATE course_tombstones SET files_pending = ?2 WHERE course_id = ?1",

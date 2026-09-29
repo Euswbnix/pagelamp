@@ -307,7 +307,8 @@ CREATE TABLE course_tombstones (
     purge_after   TEXT,                       -- removed_at + 7 days
     purged_at     TEXT,
     keep_files    INTEGER NOT NULL DEFAULT 0,
-    files_pending INTEGER NOT NULL DEFAULT 0, -- moving to the Trash failed; retried later
+    files_pending INTEGER NOT NULL DEFAULT 0, -- files still to move to the Trash (or failed); retried
+    delete_backup INTEGER NOT NULL DEFAULT 0, -- delete the pre-update backup at the purge
     settings_json TEXT NOT NULL,              -- the course's student settings, no quotes
     PRIMARY KEY (source_id, external_id)
 );

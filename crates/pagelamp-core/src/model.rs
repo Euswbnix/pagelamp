@@ -605,11 +605,25 @@ pub fn course_for_hint<'a>(hint: &str, courses: &'a [Course]) -> Option<&'a Cour
         .map(|(_, course)| course)
 }
 
-/// Whether a course text (see `course_for_hint`) starts with `code`, case-insensitive with
-/// spaces ignored (e.g. a feed event of a removed course).
+/// Whether a course text (see `course_for_hint`) starts with `code` as a whole token,
+/// case-insensitive with spaces ignored (e.g. a feed event of a removed course): "DEMO101 F"
+/// and "demo 101" name DEMO101, "DEMO1011 S" doesn't ("MAT1" never hides MAT135).
 pub fn hint_names_code(hint: &str, code: &str) -> bool {
     let code = squash(code);
-    !code.is_empty() && squash(hint).starts_with(&code)
+    if code.is_empty() {
+        return false;
+    }
+    let mut hint = hint.chars().flat_map(char::to_uppercase).peekable();
+    for want in code.chars() {
+        loop {
+            match hint.next() {
+                Some(c) if c.is_whitespace() => continue,
+                Some(c) if c == want => break,
+                _ => return false,
+            }
+        }
+    }
+    !hint.peek().is_some_and(|c| c.is_alphanumeric())
 }
 
 fn squash(text: &str) -> String {
@@ -749,4 +763,21 @@ pub struct StoredStudyPlan {
     pub id: i64,
     pub created_at: Timestamp,
     pub plan: StudyPlan,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hint_names_code;
+
+    #[test]
+    fn a_hint_names_a_code_only_as_a_whole_token() {
+        assert!(hint_names_code("DEMO101H1 F LEC0101", "DEMO101H1"));
+        assert!(hint_names_code("demo 101 f", "DEMO101"));
+        assert!(hint_names_code("DEMO101", "demo 101"));
+        assert!(hint_names_code("DEMO101-LEC0101", "DEMO101"));
+        assert!(!hint_names_code("DEMO1011 S LEC0101", "DEMO101"));
+        assert!(!hint_names_code("MAT135 F", "MAT1"));
+        assert!(!hint_names_code("MAT135", ""));
+        assert!(!hint_names_code("MA", "MAT135"));
+    }
 }
