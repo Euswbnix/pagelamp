@@ -113,16 +113,11 @@ impl App {
         } else {
             CodexRuntimeState::NotInstalled
         };
-        let outdated_action = match (&outdated, &binary) {
-            (Some(seen), Some(binary)) if binary.version.to_string() == seen.version => {
-                if binary.source == CodexSource::Managed && binary.version < pin.version() {
-                    CodexOutdatedAction::InstallPin
-                } else {
-                    CodexOutdatedAction::UpdatePagelamp
-                }
-            }
-            _ => CodexOutdatedAction::None,
-        };
+        let outdated_action = outdated_action(
+            outdated.as_ref().map(|seen| seen.version.as_str()),
+            binary.as_ref().map(|b| (&b.version, b.source)),
+            &pin.version(),
+        );
         Ok(CodexStatus {
             runtime: CodexRuntime {
                 state,
@@ -560,6 +555,27 @@ impl App {
     }
 }
 
+/// What a "requires a newer version of Codex" error means now (design §2.3). `seen_with`: the
+/// version that gave it; `running`: the Codex that runs now. The pin can help only when the
+/// managed runtime that failed is older than the pin; otherwise only a PageLamp update brings a
+/// newer Codex. An error seen with another version (e.g. before an install) no longer applies.
+fn outdated_action(
+    seen_with: Option<&str>,
+    running: Option<(&Version, CodexSource)>,
+    pin: &Version,
+) -> CodexOutdatedAction {
+    match (seen_with, running) {
+        (Some(seen), Some((version, source))) if version.to_string() == seen => {
+            if source == CodexSource::Managed && version < pin {
+                CodexOutdatedAction::InstallPin
+            } else {
+                CodexOutdatedAction::UpdatePagelamp
+            }
+        }
+        _ => CodexOutdatedAction::None,
+    }
+}
+
 /// The disclosure facts of the ChatGPT plan through Codex (design §2.3).
 pub(crate) fn codex_disclosure(plan: Option<ChatGptPlanType>) -> DisclosureFacts {
     with_version(DisclosureFacts {
@@ -751,5 +767,75 @@ fn failure_text(kind: ModelErrorKind) -> &'static str {
         ModelErrorKind::Timeout => "Codex took too long.",
         ModelErrorKind::Overloaded => "OpenAI's service is overloaded or failing.",
         _ => "Codex couldn't answer.",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_newer_version_error_says_install_the_pin_or_update_pagelamp() {
+        let v = |text: &str| Version::parse(text).unwrap();
+        let pin = v("0.158.0");
+        let action = |seen: Option<&str>, running: Option<(&str, CodexSource)>| {
+            let running = running.map(|(version, source)| (v(version), source));
+            outdated_action(seen, running.as_ref().map(|(v, s)| (v, *s)), &pin)
+        };
+        // An older managed runtime: the pin fixes it ("PageLamp needs a newer Codex; updating…").
+        assert_eq!(
+            action(Some("0.157.1"), Some(("0.157.1", CodexSource::Managed))),
+            CodexOutdatedAction::InstallPin
+        );
+        // The pin itself, or the student's own Codex: only a PageLamp update helps.
+        assert_eq!(
+            action(Some("0.158.0"), Some(("0.158.0", CodexSource::Managed))),
+            CodexOutdatedAction::UpdatePagelamp
+        );
+        assert_eq!(
+            action(Some("0.158.2"), Some(("0.158.2", CodexSource::System))),
+            CodexOutdatedAction::UpdatePagelamp
+        );
+        // Seen with a version that no longer runs (installed since), or never seen.
+        assert_eq!(
+            action(Some("0.157.1"), Some(("0.158.0", CodexSource::Managed))),
+            CodexOutdatedAction::None
+        );
+        assert_eq!(
+            action(None, Some(("0.158.0", CodexSource::Managed))),
+            CodexOutdatedAction::None
+        );
+        assert_eq!(action(Some("0.158.0"), None), CodexOutdatedAction::None);
+    }
+
+    #[test]
+    fn the_plan_disclosure_never_understates_admin_visibility() {
+        assert_eq!(
+            codex_disclosure(None).admin_visibility,
+            AdminVisibility::Unknown
+        );
+        assert_eq!(
+            codex_disclosure(Some(ChatGptPlanType::Unknown)).admin_visibility,
+            AdminVisibility::Unknown
+        );
+        for plan in [
+            ChatGptPlanType::Edu,
+            ChatGptPlanType::Enterprise,
+            ChatGptPlanType::Business,
+        ] {
+            assert_eq!(
+                codex_disclosure(Some(plan)).admin_visibility,
+                AdminVisibility::Yes
+            );
+        }
+        assert_eq!(
+            codex_disclosure(Some(ChatGptPlanType::Plus)).admin_visibility,
+            AdminVisibility::No
+        );
+        // The facts differ, so a known plan type asks for the disclosure again.
+        assert_ne!(
+            codex_disclosure(None).version,
+            codex_disclosure(Some(ChatGptPlanType::Edu)).version
+        );
     }
 }
