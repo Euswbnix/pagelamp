@@ -273,7 +273,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config libdbus-1-dev libwebkit2gtk-4.1-dev \
-            libappindicator3-dev librsvg2-dev patchelf xdg-utils
+            libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
@@ -322,6 +322,9 @@ jobs:
       - name: Bundle the packages
         working-directory: apps/desktop
         env:
+          # With the tray, the Tauri CLI adds the appindicator library to the .deb Depends and the
+          # AppImage; the ayatana one, which Debian 12 and Ubuntu 22.04+ ship.
+          TAURI_LINUX_AYATANA_APPINDICATOR: 'true'
           TAURI_BUNDLER_TOOLS_GITHUB_MIRROR_TEMPLATE: https://tool-downloads-disabled.invalid/<owner>/<repo>/<version>/<asset>
         run: |
           configs=(--config "$GITHUB_WORKSPACE/.github/tauri/updater-off.json")
