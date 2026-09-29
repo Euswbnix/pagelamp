@@ -84,6 +84,7 @@ export type MockScenario =
   // Reminders (M3): a deadline, the weekly digest and today's plan are due / running in the
   // background is on, but this system has no tray (Linux without an AppIndicator library).
   | "reminders-due"
+  | "weekly-note-monday"
   | "reminders-no-tray";
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [
@@ -120,6 +121,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "removed",
   "proposals",
   "reminders-due",
+  "weekly-note-monday",
   "reminders-no-tray",
 ];
 

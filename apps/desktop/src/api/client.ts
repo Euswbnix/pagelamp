@@ -69,6 +69,7 @@ import type {
   UpdatePrefs,
   WeekMaterials,
 } from "./types";
+import type { WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings } from "./weeklyNote";
 
 // ----- updater (desktop only: src-tauri's updates.rs, not the facade) -------------------------
 
@@ -271,6 +272,26 @@ export interface PageLampApi {
   /** Whether explanations are written in PageLamp's language or the course's. */
   aiOutputLanguage(): Promise<OutputLanguage>;
   setAiOutputLanguage(language: OutputLanguage): Promise<void>;
+
+  // ----- the weekly note (beta.2; design §5.3) --------------------------------------------------
+  /**
+   * Writes the weekly note from structure and plan progress: a model run (`cancelGeneration`
+   * stops it; `activity` lists it). `automatic` when `startup_tasks` asked for it (Monday's
+   * opt-in): never over the budget, and `invalid` once it isn't due.
+   */
+  writeWeeklyNote(
+    generationId: string,
+    options: WeeklyNoteOptions,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<WeeklyNote>;
+  /** The last 5 notes, newest first. */
+  weeklyNotes(): Promise<WeeklyNote[]>;
+  /** Deletes one note (`not_found` for another id). */
+  deleteWeeklyNote(generationId: string): Promise<void>;
+  /** "Prepare it when I open PageLamp on Monday", and whether the note's model allows it. */
+  weeklyNoteSettings(): Promise<WeeklyNoteSettings>;
+  /** Turning it on is `invalid` unless the note's model is an API key or a local model. */
+  setPrepareWeeklyNoteOnMonday(on: boolean): Promise<WeeklyNoteSettings>;
 
   // ----- study plans written by PageLamp (M3; design §5.1) ------------------------------------
   /**

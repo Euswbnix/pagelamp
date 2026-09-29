@@ -193,6 +193,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     case "ai-key":
     case "ai-budget":
     case "ai-unpriced":
+    // Monday's weekly note (beta.2): prepared with the student's own key.
+    case "weekly-note-monday":
     // Calendar proposals (F3): an API key, so "Read the syllabus with AI" can run in the demo.
     case "proposals": {
       record("openai", "openai", "https://api.openai.com/v1", openaiKey);

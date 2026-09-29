@@ -11,6 +11,7 @@ import { PostUpdateBanner } from "@/features/updates/PostUpdateBanner";
 import { UpdateNotice } from "@/features/updates/UpdateNotice";
 import { useUpdateLifecycle } from "@/features/updates/useUpdateLifecycle";
 import { WhatsNewSheet } from "@/features/updates/WhatsNewSheet";
+import { useWeeklyNotePreparation } from "@/features/weekly-note/useWeeklyNote";
 import { cn } from "@/lib/utils";
 import { useRefreshAfterExternalSync } from "@/stores/sync";
 import { LampContext } from "./lamp";
@@ -44,6 +45,7 @@ export function AppShell() {
   useUpdateLifecycle();
   useReminderDelivery();
   useStartupPurge();
+  useWeeklyNotePreparation();
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />
