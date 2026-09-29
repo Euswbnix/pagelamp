@@ -37,6 +37,8 @@ public actor MockService: PageLampService {
     private let calendar: Calendar
     private var db: MockDb
     private var syncing = false
+    /// When the running sync started (`activity()`).
+    private var syncStartedAt: Date?
     /// How often each call ran (tests).
     public private(set) var calls: [String: Int] = [:]
 
@@ -65,6 +67,14 @@ public actor MockService: PageLampService {
     /// Simulates the CLI holding the sync lock (every sync fails with `busy`).
     public func setExternalSyncRunning(_ running: Bool) {
         db.externalSyncRunning = running
+    }
+
+    /// Simulates a launch after an update from `version` (nil: from 0.1, which recorded none):
+    /// `startupTasks` offers What's new until `acknowledgeWhatsNew`.
+    public func simulateUpgrade(from version: String?) {
+        db.updates.upgradedFrom = version
+        db.updates.upgraded = true
+        db.updates.whatsNewSeen = false
     }
 
     public func callCount(_ name: String) -> Int {
@@ -122,6 +132,12 @@ public actor MockService: PageLampService {
             .sorted { (Self.when($0) ?? .distantPast) < (Self.when($1) ?? .distantPast) }
     }
 
+    /// "YYYY-MM-DD" of the day `days` after today, in the mock's calendar.
+    private func isoDay(daysFromToday days: Int) -> String {
+        let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: now())) ?? now()
+        return IsoDate.string(from: day, calendar: calendar)
+    }
+
     private static func aiMaterials(_ course: Course) -> AiMaterialsState {
         if course.aiPolicy == .prohibited { return .withheldByPolicy }
         if !course.aiAccess { return .turnedOff }
@@ -144,7 +160,7 @@ public actor MockService: PageLampService {
             course: course.course,
             aiMaterials: aiMaterials,
             timeline: course.timeline,
-            lifecycle: MockCalendar.lifecycle(course.timeline),
+            lifecycle: MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil),
             counts: CourseCounts(
                 modules: UInt32(course.modules.count),
                 materials: UInt32(course.materials.count),
@@ -225,7 +241,7 @@ public actor MockService: PageLampService {
             course: course.course,
             aiMaterials: Self.aiMaterials(course.course),
             timeline: course.timeline,
-            lifecycle: MockCalendar.lifecycle(course.timeline),
+            lifecycle: MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil),
             currentModules: course.modules.filter { course.timeline.currentModuleIds.contains($0.id) },
             recentMaterials: course.materials.filter(isRecent).sorted {
                 ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast)
@@ -275,6 +291,130 @@ public actor MockService: PageLampService {
         )
     }
 
+    // MARK: Course weeks and the Past group (every mock course is Current or Unknown)
+
+    public func courseTimeline(course reference: String) async throws(PageLampFailure) -> CourseTimeline {
+        await respond("courseTimeline")
+        return db.courses[try courseIndex(reference)].timeline
+    }
+
+    public func lifecycleSummary() async throws(PageLampFailure) -> LifecycleSummary {
+        await respond("lifecycleSummary")
+        let entries = db.courses.map { course in
+            CourseLifecycleEntry(
+                courseId: course.course.id, code: course.course.code, name: course.course.name,
+                hidden: course.course.hidden,
+                lifecycle: MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil)
+            )
+        }
+        let suggested = entries.filter(\.lifecycle.suggestRemoval).map(\.courseId)
+        let snoozedUntil = db.bannerSnoozedUntil.flatMap { $0 >= isoDay(daysFromToday: 0) ? $0 : nil }
+        return LifecycleSummary(
+            courses: entries, suggested: suggested,
+            showBanner: !suggested.isEmpty && snoozedUntil == nil, bannerSnoozedUntil: snoozedUntil
+        )
+    }
+
+    public func keepCourseCurrent(course reference: String, until: String?) async throws(PageLampFailure) -> Course {
+        await respond("keepCourseCurrent")
+        let index = try courseIndex(reference)
+        // The mock has no term dates: today + keepCurrentDays().
+        db.courses[index].keptCurrentUntil = until ?? isoDay(daysFromToday: Int(keepCurrentDays()))
+        return db.courses[index].course
+    }
+
+    public func clearKeepCourseCurrent(course reference: String) async throws(PageLampFailure) -> Course {
+        await respond("clearKeepCourseCurrent")
+        let index = try courseIndex(reference)
+        db.courses[index].keptCurrentUntil = nil
+        return db.courses[index].course
+    }
+
+    public func snoozeRemovalSuggestions(courses: [String], kind: SnoozeKind) async throws(PageLampFailure) {
+        await respond("snoozeRemovalSuggestions")
+        let until = kind == .keep ? keepForever() : isoDay(daysFromToday: Int(notNowDays()))
+        for reference in courses {
+            db.removalSnoozes[db.courses[try courseIndex(reference)].course.id] = until
+        }
+    }
+
+    public func clearRemovalSnooze(courses: [String]) async throws(PageLampFailure) {
+        await respond("clearRemovalSnooze")
+        for reference in courses {
+            db.removalSnoozes[db.courses[try courseIndex(reference)].course.id] = nil
+        }
+    }
+
+    public func snoozeLifecycleBanner() async throws(PageLampFailure) {
+        await respond("snoozeLifecycleBanner")
+        db.bannerSnoozedUntil = isoDay(daysFromToday: Int(notNowDays()))
+    }
+
+    public func confirmCourseDates(course reference: String) async throws(PageLampFailure) -> CourseTimeline {
+        await respond("confirmCourseDates")
+        return db.courses[try courseIndex(reference)].timeline
+    }
+
+    // MARK: Updates and launch (like the facade: a fresh install, unless `simulateUpgrade`)
+
+    public func startupTasks(now date: Date) async throws(PageLampFailure) -> StartupTasks {
+        await respond("startupTasks")
+        let updates = db.updates
+        let whatsNew = updates.upgraded && !updates.whatsNewSeen
+            ? WhatsNew(since: updates.upgradedFrom, topics: [.updateCheck, .courseWeeks])
+            : nil
+        let checkIsOld = updates.lastCheck.map { date.timeIntervalSince($0.at) >= 24 * 3600 } ?? true
+        return StartupTasks(
+            whatsNew: whatsNew,
+            updateCheckDue: updates.prefs.autoCheck && updates.disclosureSeen && whatsNew == nil && checkIsOld,
+            updatedFrom: updates.upgraded ? updates.upgradedFrom : nil
+        )
+    }
+
+    public func updatePrefs() async throws(PageLampFailure) -> UpdatePrefs {
+        await respond("updatePrefs")
+        return db.updates.prefs
+    }
+
+    public func setUpdatePrefs(prefs: UpdatePrefs) async throws(PageLampFailure) {
+        await respond("setUpdatePrefs")
+        db.updates.prefs = prefs
+    }
+
+    public func effectiveUpdateChannel() async throws(PageLampFailure) -> UpdateChannel {
+        await respond("effectiveUpdateChannel")
+        // "0.1.0-mock" is a pre-release, like an alpha build: Beta unless the student chose.
+        return db.updates.prefs.channel ?? (makeStatus().version.contains("-") ? .beta : .stable)
+    }
+
+    public func acknowledgeWhatsNew() async throws(PageLampFailure) {
+        await respond("acknowledgeWhatsNew")
+        db.updates.whatsNewSeen = true
+        // Its update-check topic counts as the disclosure.
+        db.updates.disclosureSeen = true
+    }
+
+    public func acknowledgeUpdateDisclosure() async throws(PageLampFailure) {
+        await respond("acknowledgeUpdateDisclosure")
+        db.updates.disclosureSeen = true
+    }
+
+    public func recordUpdateCheck(record: UpdateCheckRecord) async throws(PageLampFailure) {
+        await respond("recordUpdateCheck")
+        db.updates.lastCheck = record
+    }
+
+    public func lastUpdateCheck() async throws(PageLampFailure) -> UpdateCheckRecord? {
+        await respond("lastUpdateCheck")
+        return db.updates.lastCheck
+    }
+
+    public func activity() async throws(PageLampFailure) -> Activity {
+        await respond("activity")
+        let items = syncStartedAt.map { [ActivityItem(kind: .sync, sourceId: nil, startedAt: $0)] } ?? []
+        return Activity(items: items, otherProcessSyncing: db.externalSyncRunning && items.isEmpty)
+    }
+
     // MARK: Sources & Sync
 
     public func syncAll(request: SyncRequest, observer: any SyncObserver) async throws(PageLampFailure) -> SyncSummary {
@@ -304,7 +444,11 @@ public actor MockService: PageLampService {
             throw PageLampFailure(kind: .busy, message: "Another PageLamp process is already syncing.")
         }
         syncing = true
-        defer { syncing = false }
+        syncStartedAt = now()
+        defer {
+            syncing = false
+            syncStartedAt = nil
+        }
         var results: [SourceSyncResult] = []
         for sourceId in sourceIds {
             let index = try sourceIndex(sourceId)
