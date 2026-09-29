@@ -61,6 +61,7 @@
 
 mod builders;
 
+pub(crate) use builders::looks_like_assessment;
 pub use builders::{ContextBudget, GateError, PlanScope, note_context, plan_context, week_context};
 
 use schemars::JsonSchema;

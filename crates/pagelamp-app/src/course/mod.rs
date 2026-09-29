@@ -10,6 +10,7 @@
 //! | `course_dates.confirmed`          | ids of courses whose student dates are confirmed  |
 //! | `lifecycle.banner_snoozed`        | `BannerSnooze`: until when, for which courses     |
 
+pub(crate) mod calendar;
 pub(crate) mod dates;
 pub(crate) mod removal;
 

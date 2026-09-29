@@ -34,6 +34,10 @@ mod sync;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
+pub use course::calendar::{
+    CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, OFFER_NO_CALENDAR,
+    ReadCalendarOptions, SyllabusOffer,
+};
 pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
 pub use course::removal::{
     BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
@@ -452,6 +456,10 @@ pub(crate) struct AppState {
     /// Codex (mode A): installs and the sign-in in progress, the last sign-in state, one run at
     /// a time.
     pub(crate) codex: ai::codex::CodexState,
+    /// Whether the data dir had been used when this app opened it (sources, or a
+    /// pre-migration backup), for the launch classification (`updates`): read at open, since
+    /// the first-run screens add a source before the shell asks for its startup tasks.
+    used_before_at_open: bool,
 }
 
 impl std::fmt::Debug for App {
@@ -485,12 +493,21 @@ impl App {
                 ),
             )
         })?;
+        let db_path = paths::db_path_in(&data_dir);
+        // Create + migrate, then only read: the launch itself is classified (and the running
+        // version recorded) by the first `startup_tasks`, never by a CLI or MCP process.
+        let store = Store::open(&db_path)?;
+        let used_before_at_open =
+            !store.list_sources()?.is_empty() || store.last_migration_backup()?.is_some();
+        drop(store);
         let app = App {
             data_dir,
             secrets,
-            state: Arc::default(),
+            state: Arc::new(AppState {
+                used_before_at_open,
+                ..AppState::default()
+            }),
         };
-        Store::open(&app.db_path())?; // create + migrate, then close
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
         Ok(app)
@@ -1260,6 +1277,14 @@ struct AppTypes {
     restore_outcome: RestoreOutcome,
     purge_report: PurgeReport,
     course_dates_input: CourseDatesInput,
+    // alpha.3 (F3: types first; AI reading and storage on the v4 line)
+    course_calendar_view: CourseCalendarView,
+    calendar_candidate: pagelamp_core::calendar::candidates::CalendarCandidate,
+    syllabus_offer: SyllabusOffer,
+    read_calendar_options: ReadCalendarOptions,
+    calendar_run_outcome: CalendarRunOutcome,
+    calendar_batch_event: CalendarBatchEvent,
+    calendar_proposal: pagelamp_core::calendar::proposal::CalendarProposal,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

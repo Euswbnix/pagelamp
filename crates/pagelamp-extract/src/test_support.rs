@@ -9,6 +9,14 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 /// Write `bytes` to `dir/name` and return the path.
+/// The kind of a `Failed` result; `None` for anything else.
+pub(crate) fn kind_of<T>(result: &Result<T, crate::ExtractError>) -> Option<crate::FailureKind> {
+    match result {
+        Err(crate::ExtractError::Failed(message)) => crate::failure_kind(message),
+        _ => None,
+    }
+}
+
 pub(crate) fn write_file(dir: &tempfile::TempDir, name: &str, bytes: &[u8]) -> PathBuf {
     let path = dir.path().join(name);
     std::fs::write(&path, bytes).expect("write fixture");

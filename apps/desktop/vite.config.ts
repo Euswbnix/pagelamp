@@ -41,9 +41,12 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
       // Tests always run against the in-memory mock API.
-      env: { VITE_API: "mock" },
+      env: { VITE_API: "mock", VITE_TEST_ASYNC_TIMEOUT: process.env.CI ? "3000" : "1000" },
       css: false,
       include: ["src/**/*.test.{ts,tsx}"],
+      // Windows CI runners take over 5 s for the larger page tests (a whole route in jsdom,
+      // queried by accessible name); locally the defaults still catch a hang quickly.
+      testTimeout: process.env.CI ? 15_000 : 5_000,
     },
   };
 });
