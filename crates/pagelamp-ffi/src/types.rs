@@ -26,8 +26,10 @@ use pagelamp_app::diagnostics::{
     CrashReport, DoctorReport, DoctorSource, McpClientPresence, ProcessKind,
 };
 use pagelamp_app::{
-    AppStatus, InstallKind, McpClient, McpClientConfig, McpLaunch, McpNoteCode, SourceSyncResult,
-    SyncEvent, SyncRequest, SyncSummary, TemporaryLocation,
+    Activity, ActivityItem, ActivityKind, AppStatus, InstallKind, McpClient, McpClientConfig,
+    McpLaunch, McpNoteCode, SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary,
+    TemporaryLocation, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
+    WhatsNewTopic,
 };
 use pagelamp_core::model::{
     AiMaterialsState, AiPolicy, Confidence, Course, CourseTimeline, DownloadBlock, Event,
@@ -597,4 +599,70 @@ pub struct DoctorReport {
     pub events: u32,
     pub mcp_clients: McpClientPresence,
     pub last_crash: Option<CrashReport>,
+}
+
+// ----- updates and activity (v0.3 M0.4; methods are wired by the leader) ----------------------
+
+#[uniffi::remote(Enum)]
+pub enum UpdateChannel {
+    Stable,
+    Beta,
+}
+
+#[uniffi::remote(Record)]
+pub struct UpdatePrefs {
+    pub auto_check: bool,
+    pub channel: Option<UpdateChannel>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum WhatsNewTopic {
+    UpdateCheck,
+    CourseWeeks,
+}
+
+#[uniffi::remote(Record)]
+pub struct WhatsNew {
+    pub since: Option<String>,
+    pub topics: Vec<WhatsNewTopic>,
+}
+
+#[uniffi::remote(Record)]
+pub struct StartupTasks {
+    pub whats_new: Option<WhatsNew>,
+    pub update_check_due: bool,
+    pub updated_from: Option<String>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum UpdateCheckOutcome {
+    UpToDate,
+    Available { version: String },
+    Error { code: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct UpdateCheckRecord {
+    pub at: Timestamp,
+    pub channel: UpdateChannel,
+    pub outcome: UpdateCheckOutcome,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ActivityKind {
+    Sync,
+    Download,
+}
+
+#[uniffi::remote(Record)]
+pub struct ActivityItem {
+    pub kind: ActivityKind,
+    pub source_id: Option<String>,
+    pub started_at: Timestamp,
+}
+
+#[uniffi::remote(Record)]
+pub struct Activity {
+    pub items: Vec<ActivityItem>,
+    pub other_process_syncing: bool,
 }

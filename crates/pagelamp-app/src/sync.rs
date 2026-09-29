@@ -18,6 +18,7 @@ use pagelamp_core::source::{CourseSyncSummary, SourceError, SyncProgress};
 use pagelamp_core::store::Store;
 use tokio::sync::mpsc;
 
+use crate::activity::ActivityKind;
 use crate::lock::SyncLock;
 use crate::{
     App, AppError, AppErrorKind, Result, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
@@ -47,6 +48,7 @@ impl App {
         on_event: impl Fn(SyncEvent) + Send + Sync,
     ) -> Result<SyncSummary> {
         let _lock = self.acquire_sync_lock()?;
+        let _activity = self.begin_activity(ActivityKind::Sync, None);
         let started_at = Utc::now();
         let mut sources = self.read_store()?.list_sources()?;
         // Stable: keeps the label order within each group.
@@ -72,6 +74,7 @@ impl App {
         on_event: impl Fn(SyncEvent) + Send + Sync,
     ) -> Result<SourceSyncResult> {
         let _lock = self.acquire_sync_lock()?;
+        let _activity = self.begin_activity(ActivityKind::Sync, Some(source_id));
         let source = self.source(source_id)?;
         Ok(self.sync_one(&source, &req, &on_event).await)
     }
@@ -87,6 +90,7 @@ impl App {
     ) -> Result<SourceSyncResult> {
         let _lock = self.acquire_sync_lock()?;
         let course = self.read_store()?.resolve_course_with(course, true)?;
+        let _activity = self.begin_activity(ActivityKind::Download, Some(&course.source_id));
         let source = self.source(&course.source_id)?;
         if source.kind != SourceKind::Canvas {
             return Err(AppError::new(

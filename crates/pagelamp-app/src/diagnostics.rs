@@ -234,6 +234,16 @@ pub(crate) fn report_in(data_dir: &Path, secrets: &dyn SecretBackend) -> String 
             describe_update(&update)
         ));
     }
+    let last_check: Option<crate::UpdateCheckRecord> =
+        Store::open_read_only(&paths::db_path_in(data_dir))
+            .ok()
+            .and_then(|store| store.setting("updates.last_check").unwrap_or(None));
+    if let Some(check) = last_check {
+        out.push_str(&format!(
+            "- Last update check: {}\n",
+            crate::updates::describe_check(&check)
+        ));
+    }
     match &doctor.keychain_error {
         None => out.push_str("- Keychain: available\n"),
         Some(err) => out.push_str(&format!("- Keychain: NOT available ({err})\n")),

@@ -24,10 +24,18 @@
 //! Every method returns `Result<T, AppError>`; `AppError` serialises as
 //! `{ "kind": "...", "message": "..." }` and its message never contains a secret.
 
+mod activity;
 pub mod diagnostics;
 mod lock;
 mod mcp_config;
 mod sync;
+mod updates;
+
+pub use activity::{Activity, ActivityItem, ActivityKind};
+pub use updates::{
+    StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
+    WhatsNewTopic,
+};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -362,6 +370,17 @@ pub enum McpNoteCode {
 pub struct App {
     data_dir: PathBuf,
     secrets: Arc<dyn SecretBackend>,
+    /// Per-process state shared by every clone.
+    state: Arc<AppState>,
+}
+
+/// What an `App` and its clones share within one process.
+#[derive(Default)]
+pub(crate) struct AppState {
+    /// This launch's classification (`updates`), computed once.
+    launch: std::sync::Mutex<Option<updates::LaunchClass>>,
+    /// Running syncs and downloads (`activity`).
+    activity: activity::Registry,
 }
 
 impl std::fmt::Debug for App {
@@ -395,7 +414,11 @@ impl App {
                 ),
             )
         })?;
-        let app = App { data_dir, secrets };
+        let app = App {
+            data_dir,
+            secrets,
+            state: Arc::default(),
+        };
         Store::open(&app.db_path())?; // create + migrate, then close
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
@@ -1038,6 +1061,16 @@ struct AppTypes {
     crash_report: diagnostics::CrashReport,
     process_kind: diagnostics::ProcessKind,
     course_sync_summary: CourseSyncSummary,
+    update_prefs: UpdatePrefs,
+    update_channel: UpdateChannel,
+    startup_tasks: StartupTasks,
+    whats_new: WhatsNew,
+    whats_new_topic: WhatsNewTopic,
+    update_check_record: UpdateCheckRecord,
+    update_check_outcome: UpdateCheckOutcome,
+    activity: Activity,
+    activity_item: ActivityItem,
+    activity_kind: ActivityKind,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.
@@ -1068,6 +1101,7 @@ mod tests {
         let app = App {
             data_dir: custom.clone(),
             secrets: Arc::new(pagelamp_core::secrets::MemorySecrets::new()),
+            state: Arc::default(),
         };
         let launch = app.mcp_launch(Path::new("/demo/pagelamp"));
         let expected_env = !same_dir(Some(&custom), paths::platform_data_dir().as_deref());
