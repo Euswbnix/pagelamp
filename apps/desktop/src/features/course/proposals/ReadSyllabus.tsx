@@ -1,6 +1,7 @@
 import { ScanSearch } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
 import type { EstimateRequest } from "@/api/ai";
 import { useCostEstimate } from "@/api/ai-queries";
 import { useCourseCalendar, useScanCourseCalendar } from "@/api/proposalQueries";
@@ -12,10 +13,14 @@ import {
   SharingNotAllowedNotice,
 } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
+import { paths } from "@/lib/routes";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { translateWithText } from "../timeline/evidence";
 import { COURSE_BLOCKS, useBlockText } from "./blockText";
 import { type ReadingState, useCalendarReading } from "./useCalendarReading";
+
+/** The "Read with AI" heading: where the stale banner's "Read the syllabus again" goes. */
+export const READ_SYLLABUS_HEADING = "read-syllabus-heading";
 
 /**
  * The two ways to read dates from the candidates (calendar design §7.2, §7.3): the scan (no
@@ -30,21 +35,22 @@ export function ReadSyllabus({ course }: { course: Course }) {
   const reading = useCalendarReading(course.id);
   const request: EstimateRequest = { feature: "course_calendar", courses: [course.id] };
   const estimate = useCostEstimate(request);
-  const aiHeadingId = useId();
   const name = course.code ?? course.name;
 
   const block = view.data?.blocked ?? null;
   const courseBlock = block !== null && COURSE_BLOCKS.has(block) ? block : null;
   const sharingNotAllowed = estimate.data?.would_block === "material_sharing_not_allowed";
+  // §7.12: without a model the button says so and leads to Settings, nothing more.
+  const noModel = estimate.data?.would_block === "no_model_chosen";
   const { state } = reading;
 
   return (
     <div className="space-y-6">
       <ScanForDates courseId={course.id} unavailable={block === "no_readable_materials"} />
 
-      <section aria-labelledby={aiHeadingId} className="space-y-3">
+      <section aria-labelledby={READ_SYLLABUS_HEADING} className="space-y-3">
         <div className="space-y-1">
-          <h3 id={aiHeadingId} className="text-sm font-medium">
+          <h3 id={READ_SYLLABUS_HEADING} tabIndex={-1} className="text-sm font-medium outline-none">
             {t("reading.aiTitle")}
           </h3>
           <p className="text-sm text-muted-foreground">{t("reading.aiHint")}</p>
@@ -55,6 +61,10 @@ export function ReadSyllabus({ course }: { course: Course }) {
           <SharingNotAllowedNotice courseId={course.id} courseName={name} />
         ) : state.phase === "running" ? (
           <ReadingProgress state={state} onStop={() => void reading.stop()} />
+        ) : noModel ? (
+          <Button asChild variant="outline">
+            <Link to={paths.settings}>{t("reading.setUp")}</Link>
+          </Button>
         ) : (
           <GenerateButton
             request={request}
@@ -92,7 +102,7 @@ function ReadingProgress({
           ? // The backend label and model id come from outside the translations: plain text.
             translateWithText(
               t,
-              "reading.running",
+              state.onDevice ? "reading.runningOnDevice" : "reading.running",
               {},
               { backend: state.backend, model: state.model },
             )

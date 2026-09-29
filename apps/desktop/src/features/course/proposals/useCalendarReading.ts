@@ -12,6 +12,8 @@ export type ReadingState =
       phase: "running";
       backend: string | null;
       model: string | null;
+      /** An on-device model: nothing leaves this computer. */
+      onDevice: boolean;
       stage: GenStage | null;
       stopping: boolean;
     }
@@ -43,7 +45,14 @@ export function useCalendarReading(courseId: string) {
       runId.current = id;
       let backend: string | null = null;
       let reminder = false;
-      setState({ phase: "running", backend: null, model: null, stage: null, stopping: false });
+      setState({
+        phase: "running",
+        backend: null,
+        model: null,
+        onDevice: false,
+        stage: null,
+        stopping: false,
+      });
       try {
         const proposal = await api.readCourseCalendar(
           courseId,
@@ -52,9 +61,11 @@ export function useCalendarReading(courseId: string) {
           (event) => {
             if (event.type === "started") {
               backend = event.backend_label;
-              const { backend_label, model } = event;
+              const { backend_label, model, on_device } = event;
               setState((s) =>
-                s.phase === "running" ? { ...s, backend: backend_label, model } : s,
+                s.phase === "running"
+                  ? { ...s, backend: backend_label, model, onDevice: on_device }
+                  : s,
               );
             } else if (event.type === "stage") {
               const { stage } = event;

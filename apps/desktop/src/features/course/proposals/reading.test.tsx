@@ -11,6 +11,7 @@ import { openCourse } from "../testing";
 // OpenAI key (gpt-6-luna), so AI reading can run.
 const FITTED = "canvas:canvas.demo.test/course/332"; // AI proposal already; outline readable
 const UNLABELLED = "canvas:canvas.demo.test/course/240"; // scan proposal already
+const LEGACY = "canvas:canvas.demo.test/course/205"; // accepted calendar gone stale
 
 beforeEach(() => {
   toast.dismiss();
@@ -112,6 +113,49 @@ describe("Read the syllabus with AI", () => {
     expect(await screen.findByText(/^Found dates\./)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Find dates without AI" }));
     expect(await screen.findByText("No new dates found in these materials.")).toBeInTheDocument();
+  });
+});
+
+describe("Read the syllabus with AI: setup and staleness", () => {
+  it("without a model, offers the setup and nothing more (and no batch on the home screen)", async () => {
+    const api = mockApi();
+    await api.setFeatureModel("course_calendar", null);
+    const { section, unmount } = await openReading(UNLABELLED, api);
+    const setUp = await within(section).findByRole("link", { name: "Set up AI to read syllabi" });
+    expect(setUp).toHaveAttribute("href", "/settings");
+    expect(within(section).queryByRole("button", { name: /Read the syllabus/ })).toBeNull();
+    unmount();
+
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 2, name: "This week" });
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Read syllabi with AI" })).toBeNull(),
+    );
+  });
+
+  it("says when the reading stays on this computer", async () => {
+    const api = mockApi();
+    api.readCourseCalendar = vi.fn(async (_c, id, _o, onEvent: (e: GenEvent) => void) => {
+      onEvent({
+        type: "started",
+        generation_id: id,
+        backend_label: "Ollama",
+        model: "qwen3.5:9b",
+        on_device: true,
+      });
+      return new Promise<never>(() => {});
+    });
+    const { user, section } = await openReading(FITTED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(
+      await within(section).findByText("Reading on this computer with Ollama · qwen3.5:9b"),
+    ).toBeInTheDocument();
+  });
+
+  it('takes a stale calendar\'s "read again" to the reading section', async () => {
+    const { user } = await openCourse(LEGACY, { query: "tab=timeline", scenario: "proposals" });
+    await user.click(await screen.findByRole("button", { name: "Read the syllabus again" }));
+    expect(screen.getByRole("heading", { level: 3, name: "Read with AI" })).toHaveFocus();
   });
 });
 

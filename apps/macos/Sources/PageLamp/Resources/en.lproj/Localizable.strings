@@ -1209,11 +1209,13 @@
 "proposals.reading.readWithAi" = "Read the syllabus with AI";
 "proposals.reading.readingNow" = "Reading the syllabus…";
 "proposals.reading.running" = "Reading with %1$@ · %2$@";
+"proposals.reading.runningOnDevice" = "Reading on this computer with %1$@ · %2$@";
 "proposals.reading.scan" = "Find dates without AI";
 "proposals.reading.scanFound" = "Found dates. Check the proposal at the top of this tab.";
 "proposals.reading.scanHint" = "Looks for dates written in these materials, on this computer. Nothing is sent anywhere.";
 "proposals.reading.scanNothing" = "No new dates found in these materials.";
 "proposals.reading.scanning" = "Looking for dates…";
+"proposals.reading.setUp" = "Set up AI to read syllabi";
 "proposals.reading.stage.building_context" = "Picking the parts of the outline and schedule to send…";
 "proposals.reading.stage.repairing" = "Asking the model to fix its answer…";
 "proposals.reading.stage.scheduling" = "Putting the dates in order…";
@@ -1259,6 +1261,7 @@
 "proposals.sources.reason.title_schedule" = "Looks like a schedule";
 "proposals.sources.title" = "Materials to read dates from";
 "proposals.stale.body" = "Some quoted words aren't in %1$@ any more. The dates stay in force until you read it again or change them.";
+"proposals.stale.reread" = "Read the syllabus again";
 "proposals.stale.title" = "The syllabus changed on %1$@";
 "removal.banner.body" = "Their deadlines are still listed. Remove them from PageLamp to stop syncing them and free up space.";
 "removal.banner.notNow" = "Not now";

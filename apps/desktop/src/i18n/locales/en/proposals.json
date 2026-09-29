@@ -90,7 +90,8 @@
   },
   "stale": {
     "title": "The syllabus changed on {{date}}",
-    "body": "Some quoted words aren't in {{materials}} any more. The dates stay in force until you read it again or change them."
+    "body": "Some quoted words aren't in {{materials}} any more. The dates stay in force until you read it again or change them.",
+    "reread": "Read the syllabus again"
   },
   "sources": {
     "title": "Materials to read dates from",
@@ -157,7 +158,9 @@
     "stopping": "Stopping…",
     "done": "Dates read. Check the proposal at the top of this tab.",
     "stopped": "Stopped. Nothing was changed.",
-    "failed": "The syllabus couldn't be read"
+    "failed": "The syllabus couldn't be read",
+    "setUp": "Set up AI to read syllabi",
+    "runningOnDevice": "Reading on this computer with {{backend}} · {{model}}"
   },
   "batch": {
     "title": "Read syllabi with AI",

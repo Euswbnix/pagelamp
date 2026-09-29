@@ -2,6 +2,8 @@ import { CircleAlert, CircleCheck, CircleMinus, FileSearch } from "lucide-react"
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import type { EstimateRequest } from "@/api/ai";
+import { useCostEstimate } from "@/api/ai-queries";
 import { useAcceptPassingProposals, useSyllabusReadingOffers } from "@/api/proposalQueries";
 import { useCourses } from "@/api/queries";
 import type { CalendarRunOutcome, CourseSummary } from "@/api/types";
@@ -30,7 +32,12 @@ export function ReadSyllabiBatch() {
   const { state } = batch;
 
   const ids = offers.data?.map((o) => o.course_id) ?? [];
+  const request: EstimateRequest | null =
+    ids.length > 0 ? { feature: "course_calendar", courses: ids } : null;
+  const estimate = useCostEstimate(request);
   if (state.phase === "idle" && ids.length === 0) return null;
+  // §7.12: no model, no nagging on the home screen (each Timeline tab says how to set it up).
+  if (state.phase === "idle" && estimate.data?.would_block === "no_model_chosen") return null;
   const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
 
   return (
@@ -47,7 +54,7 @@ export function ReadSyllabiBatch() {
       <CardContent className="space-y-4">
         {state.phase === "idle" ? (
           <GenerateButton
-            request={{ feature: "course_calendar", courses: ids }}
+            request={request}
             label={t("batch.read", { count: ids.length })}
             onGenerate={({ overrideBudget }) => void batch.start(ids, overrideBudget)}
           />

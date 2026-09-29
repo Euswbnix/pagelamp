@@ -1209,11 +1209,13 @@
 "proposals.reading.readWithAi" = "用 AI 读取课程大纲";
 "proposals.reading.readingNow" = "正在读取课程大纲…";
 "proposals.reading.running" = "正在用 %1$@ · %2$@ 读取";
+"proposals.reading.runningOnDevice" = "正在本机用 %1$@ · %2$@ 读取";
 "proposals.reading.scan" = "不用 AI，直接查找日期";
 "proposals.reading.scanFound" = "找到了日期，请在本页顶部查看建议。";
 "proposals.reading.scanHint" = "在这台电脑上查找这些资料里写明的日期，不会发送任何内容。";
 "proposals.reading.scanNothing" = "这些资料里没有找到新的日期。";
 "proposals.reading.scanning" = "正在查找日期…";
+"proposals.reading.setUp" = "设置 AI 来读取课程大纲";
 "proposals.reading.stage.building_context" = "正在挑选要发送的大纲和日程内容…";
 "proposals.reading.stage.repairing" = "正在请模型修正回答…";
 "proposals.reading.stage.scheduling" = "正在整理日期…";
@@ -1259,6 +1261,7 @@
 "proposals.sources.reason.title_schedule" = "看起来是课程安排";
 "proposals.sources.title" = "从哪些资料读取日期";
 "proposals.stale.body" = "%1$@ 里已经找不到部分引用的原文。在你重新读取或修改之前，这些日期仍然有效。";
+"proposals.stale.reread" = "重新读取课程大纲";
 "proposals.stale.title" = "教学大纲在 %1$@ 有改动";
 "removal.banner.body" = "它们的截止日期仍会列出。从 PageLamp 中移除它们，就不再同步，也能腾出空间。";
 "removal.banner.notNow" = "暂不处理";
