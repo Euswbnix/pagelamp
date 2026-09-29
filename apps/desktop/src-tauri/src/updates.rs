@@ -406,6 +406,14 @@ async fn fetch_and_install<'a, E>(
 /// another process syncs. Without an open core (e.g. its database is from a newer PageLamp)
 /// nothing of ours can run, and installing the update is the way out.
 fn refuse_while_busy(backend: &Backend) -> CmdResult<()> {
+    // Work that got past `spawn_work`'s gate check before it closed but hasn't registered in
+    // activity() yet (a retry with a kept package has no download to wait it out).
+    if backend.work_in_flight() > 0 {
+        return Err(AppError::new(
+            AppErrorKind::Busy,
+            "A sync, a download or an AI reading is starting. Install the update when it finishes.",
+        ));
+    }
     let Ok(facade) = backend.app() else {
         return Ok(());
     };
@@ -635,6 +643,59 @@ mod tests {
         }
 
         #[test]
+        fn work_not_yet_in_activity_holds_a_kept_package_back() {
+            use std::future::Future;
+            use std::task::{Context, Waker};
+
+            let (_dir, backend) = backend();
+            let package = kept(KEY, b"package");
+            // A sync got past spawn_work's gate check before the install closed it, and hasn't
+            // registered in activity() yet (this one never does: it waits to be let go).
+            let (release, wait) = std::sync::mpsc::channel::<()>();
+            let mut sync = Box::pin(backend.spawn_work(move |_| async move {
+                let _ = wait.recv();
+                Ok(())
+            }));
+            let mut cx = Context::from_waker(Waker::noop());
+            assert!(sync.as_mut().poll(&mut cx).is_pending());
+
+            let installed = Cell::new(false);
+            let result = block_on(fetch_and_install::<&'static str>(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { panic!("the kept package needs no download") },
+                |_| {
+                    installed.set(true);
+                    Ok(())
+                },
+            ));
+            assert!(matches!(refused(result), AppErrorKind::Busy));
+            assert!(!installed.get(), "nothing installed while the sync starts");
+            assert!(
+                package.lock().unwrap().is_some(),
+                "the package is still kept"
+            );
+
+            release.send(()).expect("let the sync go");
+            block_on(sync).expect("the sync ends");
+            let gate = block_on(fetch_and_install::<&'static str>(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { panic!("the kept package needs no download") },
+                |_| {
+                    installed.set(true);
+                    Ok(())
+                },
+            ));
+            assert!(
+                gate.is_ok() && installed.get(),
+                "then the retry installs it"
+            );
+        }
+
+        #[test]
         fn new_work_is_refused_while_an_update_installs() {
             let (_dir, backend) = backend();
             let gate = backend.hold_work_for_install().expect("gate");
@@ -644,6 +705,7 @@ mod tests {
             );
             let work = block_on(backend.spawn_work(|_| async { Ok(()) }));
             assert!(matches!(work.unwrap_err().kind, AppErrorKind::Busy));
+            assert_eq!(backend.work_in_flight(), 0, "refused work isn't counted");
             drop(gate);
             block_on(backend.spawn_work(|_| async { Ok(()) })).expect("work runs again");
         }
