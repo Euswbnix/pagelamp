@@ -122,7 +122,8 @@ evidence_codes! {
     TermLooksLikeEnrollmentWindow = "term_looks_like_enrollment_window",
     /// `source`, `start?`, `end?`, `reason`: these dates are not used.
     DatesNotUsed = "dates_not_used",
-    /// `source`, `end`, `until`, `reason`: this end is not used; `until` is used instead.
+    /// `source`, `end`, `until?`, `reason`: this end is not used; `until` is used instead
+    /// (the session window's end), when given.
     EndNotUsed = "end_not_used",
 
     // ----- cross-checks between date sources -----
@@ -429,11 +430,13 @@ fn english(item: &EvidenceItem) -> String {
             reason_text(&p("reason"))
         ),
         EvidenceCode::EndNotUsed => format!(
-            "end {} of {} not used ({}); {} is used instead",
+            "end {} of {} not used ({}){}",
             p("end"),
             source_name(&p("source")),
             reason_text(&p("reason")),
-            p("until")
+            opt("until")
+                .map(|until| format!("; {until} is used instead"))
+                .unwrap_or_default()
         ),
         EvidenceCode::DatesAgree => format!(
             "{} agree: week 1 is the week of {}",

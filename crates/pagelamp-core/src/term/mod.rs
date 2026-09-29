@@ -6,6 +6,15 @@
 //! fields, no recursion, no free-form JSON.
 
 pub mod evidence;
+pub(crate) mod fit;
+pub mod phase;
+mod resolve;
+pub mod session;
+
+pub use resolve::{
+    MAX_DAYS_BEFORE_ACTIVITY, MAX_DAYS_BEFORE_WINDOW, MAX_END_DAYS_OUTSIDE_WINDOW, MAX_TERM_DAYS,
+    MAX_YEAR_TERM_DAYS, MIN_TERM_DAYS, ResolvedTerm, TermInput, resolve_term,
+};
 
 /// Settings key: ids of the courses whose student dates were saved or confirmed in PageLamp
 /// 0.3 or later. The student dates of any other course were set in 0.1 and never checked

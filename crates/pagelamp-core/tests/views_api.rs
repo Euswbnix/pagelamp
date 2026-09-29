@@ -458,16 +458,9 @@ fn week_materials_notes() {
     assert_eq!(unknown.note_kind, Some(WeekNoteKind::CurrentWeekUnknown));
     assert_eq!(titles(&unknown.materials), ["fresh"]);
 
-    // After the term (Jan 5 = calendar week 18): nothing assigned to week 18 yet…
-    let later = AsOf {
-        now: ts("2027-01-05T12:00:00Z"),
-        today: date("2027-01-05"),
-    };
-    let outside = views::week_materials(&store, "DEMO101", None, false, later).unwrap();
-    assert!(outside.timeline.outside_term);
-    assert_eq!(outside.week, Some(18));
-    assert_eq!(outside.note_kind, Some(WeekNoteKind::NoMaterialsThisWeek));
-    // …with a week-18 material the week is shown and flagged as outside the term.
+    // Changed in v0.3 (calendar design §6.6): after the last class (Dec 18) there is no
+    // teaching week. Until Dec 18 + 21 days it is the exam period: no week by default, the
+    // materials of the last 14 days instead…
     add_material(
         &store,
         "101",
@@ -478,11 +471,29 @@ fn week_materials_notes() {
         "2027-01-04T09:00:00Z",
         &["theta"],
     );
+    let exams = AsOf {
+        now: ts("2027-01-05T12:00:00Z"),
+        today: date("2027-01-05"),
+    };
+    let exam_period = views::week_materials(&store, "DEMO101", None, false, exams).unwrap();
+    assert!(!exam_period.timeline.outside_term);
+    assert_eq!(exam_period.timeline.phase, CoursePhase::ExamPeriod);
+    assert_eq!(exam_period.week, None);
+    assert_eq!(exam_period.note_kind, Some(WeekNoteKind::ExamPeriod));
+    assert_eq!(titles(&exam_period.materials), ["exam-review"]);
+    // …then Ended, flagged as outside the term.
+    let later = AsOf {
+        now: ts("2027-01-15T12:00:00Z"),
+        today: date("2027-01-15"),
+    };
     let outside = views::week_materials(&store, "DEMO101", None, false, later).unwrap();
-    assert_eq!(titles(&outside.materials), ["exam-review"]);
+    assert!(outside.timeline.outside_term);
+    assert_eq!(outside.week, None);
     assert_eq!(outside.note_kind, Some(WeekNoteKind::OutsideTerm));
-    // An explicitly requested week is not flagged.
+    assert_eq!(titles(&outside.materials), ["exam-review"]);
+    // An explicitly requested week is shown and not flagged.
     let explicit = views::week_materials(&store, "DEMO101", Some(18), false, later).unwrap();
+    assert_eq!(titles(&explicit.materials), ["exam-review"]);
     assert_eq!(explicit.note_kind, None);
 }
 
