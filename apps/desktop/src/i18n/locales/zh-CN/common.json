@@ -37,7 +37,11 @@
     "done": "同步完成",
     "doneWithErrors": "同步已结束，但有数据来源出了问题",
     "failed": "同步失败",
-    "pillLabel": "同步状态：{{status}}。打开“数据来源与同步”。"
+    "pillLabel": "同步状态：{{status}}。打开“数据来源与同步”。",
+    "stop": "停止",
+    "stopping": "正在停止…",
+    "stopped": "同步已停止",
+    "stopHint": "处理完当前文件后停止，已同步的内容会保留。"
   },
   "states": {
     "loading": "正在加载…",

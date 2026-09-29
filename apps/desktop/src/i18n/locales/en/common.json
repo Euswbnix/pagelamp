@@ -37,7 +37,11 @@
     "done": "Sync finished",
     "doneWithErrors": "Sync finished with problems",
     "failed": "Sync failed",
-    "pillLabel": "Sync status: {{status}}. Open Sources & sync."
+    "pillLabel": "Sync status: {{status}}. Open Sources & sync.",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "stopped": "Sync stopped",
+    "stopHint": "Stops after the file it's on. What's synced so far is kept."
   },
   "states": {
     "loading": "Loading…",

@@ -37,6 +37,11 @@ interface SyncState {
   begin: (total: number | null, downloadCourseId?: string | null) => void;
   apply: (event: SyncEvent) => void;
   finish: (summary: SyncSummary | null, error: ApiError | null) => void;
+  /** The student pressed Stop; the run ends at its next file, course or download. */
+  stopping: boolean;
+  /** The last run ended because the student stopped it (not a failure). */
+  stoppedByUser: boolean;
+  requestStop: () => void;
   /** Hide the "sync failed" message (it stays hidden until the next run). */
   dismissRunError: () => void;
   reset: () => void;
@@ -50,12 +55,23 @@ const idle = {
   lastSummary: null,
   runError: null,
   downloadCourseId: null,
+  stopping: false,
+  stoppedByUser: false,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
   begin: (total, downloadCourseId = null) =>
-    set({ running: true, total, order: [], bySource: {}, runError: null, downloadCourseId }),
+    set({
+      running: true,
+      total,
+      order: [],
+      bySource: {},
+      runError: null,
+      downloadCourseId,
+      stopping: false,
+      stoppedByUser: false,
+    }),
   apply: (event) =>
     set((state) => {
       const prev = state.bySource[event.source_id];
@@ -102,20 +118,30 @@ export const useSyncStore = create<SyncState>()((set) => ({
       };
     }),
   finish: (summary, error) =>
-    set((state) => ({
-      running: false,
-      downloadCourseId: null,
-      lastSummary: summary,
-      runError: error,
-      // Sources that never reported back didn't run to the end: mark them stopped so no
-      // spinner keeps going after the run is over.
-      bySource: Object.fromEntries(
-        Object.entries(state.bySource).map(([id, p]) => [
-          id,
-          p.result ? p : { ...p, stopped: true },
-        ]),
-      ),
-    })),
+    set((state) => {
+      // Stopped by the student (cancel_sync): not a failure. The source it stopped in reports
+      // `ok: false` without an error kind; show it as stopped, like the ones never reached.
+      const stoppedByUser = error?.kind === "cancelled";
+      return {
+        running: false,
+        downloadCourseId: null,
+        lastSummary: summary,
+        runError: stoppedByUser ? null : error,
+        stopping: false,
+        stoppedByUser,
+        // Sources that never reported back didn't run to the end: mark them stopped so no
+        // spinner keeps going after the run is over.
+        bySource: Object.fromEntries(
+          Object.entries(state.bySource).map(([id, p]) => [
+            id,
+            p.result && !(stoppedByUser && !p.result.ok && !p.result.errorKind)
+              ? p
+              : { ...p, result: null, stopped: true },
+          ]),
+        ),
+      };
+    }),
+  requestStop: () => set({ stopping: true }),
   dismissRunError: () => set({ runError: null }),
   reset: () => set(idle),
 }));
@@ -204,6 +230,24 @@ export function useStartSync() {
     },
     [api, queryClient],
   );
+}
+
+/**
+ * Stop this window's running sync or download (cancel_sync). The run ends with the sources it
+ * didn't finish marked stopped. A sync in another process (the CLI) can't be stopped from here.
+ */
+export function useStopSync() {
+  const api = useApi();
+  return useCallback(async () => {
+    const store = useSyncStore.getState();
+    if (!store.running || store.stopping) return;
+    store.requestStop();
+    try {
+      await api.cancelSync();
+    } catch {
+      useSyncStore.setState({ stopping: false });
+    }
+  }, [api]);
 }
 
 /**

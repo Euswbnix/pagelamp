@@ -433,6 +433,10 @@
 "common.sync.needsAttention" = "需要处理";
 "common.sync.never" = "还没有同步过";
 "common.sync.pillLabel" = "同步状态：%1$@。打开“数据来源与同步”。";
+"common.sync.stop" = "停止";
+"common.sync.stopHint" = "处理完当前文件后停止，已同步的内容会保留。";
+"common.sync.stopped" = "同步已停止";
+"common.sync.stopping" = "正在停止…";
 "common.sync.syncedAgo" = "%1$@同步";
 "common.sync.syncing" = "正在同步…";
 "common.sync.syncingProgress" = "正在同步 %1$@/%2$@…";
@@ -878,6 +882,8 @@
 "onboarding.sync.noCourses" = "还没有找到课程。如果你添加的是文件夹，请确认里面每门课都有一个单独的子文件夹。之后随时可以在“数据来源与同步”里修改。";
 "onboarding.sync.problemsDescription" = "有些数据来源没有同步成功。你可以先继续，之后再到“数据来源与同步”里处理。";
 "onboarding.sync.problemsTitle" = "就差一点了";
+"onboarding.sync.stoppedDescription" = "已经同步的内容会保留。你可以现在重新同步，也可以先继续，之后在“来源与同步”中再同步。";
+"onboarding.sync.stoppedTitle" = "同步已停止";
 "onboarding.sync.summaryLabel" = "PageLamp 找到的内容";
 "onboarding.sync.title" = "正在同步你的课程";
 "onboarding.welcome.acknowledgeFirst" = "请先勾选“我已了解”，再继续。";
@@ -1078,6 +1084,7 @@
 "updates.install.installing" = "正在安装…";
 "updates.install.progressLabel" = "更新进度";
 "updates.install.restarting" = "正在重启 PageLamp…";
+"updates.install.stopSync" = "停止同步";
 "updates.install.title" = "安装 PageLamp %1$@？";
 "updates.install.tryAgain" = "重试";
 "updates.install.windows" = "安装程序运行期间 PageLamp 会关闭，之后会重新打开。";

@@ -29,6 +29,8 @@
     "problemsDescription": "有些数据来源没有同步成功。你可以先继续，之后再到“数据来源与同步”里处理。",
     "failedTitle": "这次没能同步",
     "failedDescription": "你可以现在重试，也可以先继续，之后在“数据来源与同步”里再同步。",
+    "stoppedTitle": "同步已停止",
+    "stoppedDescription": "已经同步的内容会保留。你可以现在重新同步，也可以先继续，之后在“来源与同步”中再同步。",
     "summaryLabel": "{{product}} 找到的内容",
     "courses": "课程",
     "materials": "资料",

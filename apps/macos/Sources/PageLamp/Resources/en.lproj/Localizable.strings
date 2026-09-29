@@ -433,6 +433,10 @@
 "common.sync.needsAttention" = "Needs attention";
 "common.sync.never" = "Not synced yet";
 "common.sync.pillLabel" = "Sync status: %1$@. Open Sources & sync.";
+"common.sync.stop" = "Stop";
+"common.sync.stopHint" = "Stops after the file it's on. What's synced so far is kept.";
+"common.sync.stopped" = "Sync stopped";
+"common.sync.stopping" = "Stopping…";
 "common.sync.syncedAgo" = "Synced %1$@";
 "common.sync.syncing" = "Syncing…";
 "common.sync.syncingProgress" = "Syncing %1$@/%2$@…";
@@ -878,6 +882,8 @@
 "onboarding.sync.noCourses" = "No courses found yet. If you added a folder, check that it has one sub-folder per course. You can change your sources at any time on Sources & sync.";
 "onboarding.sync.problemsDescription" = "Some sources didn't sync. You can carry on and fix them later on Sources & sync.";
 "onboarding.sync.problemsTitle" = "Almost there";
+"onboarding.sync.stoppedDescription" = "What was synced so far is kept. You can sync again now, or carry on and sync later from Sources & sync.";
+"onboarding.sync.stoppedTitle" = "Sync stopped";
 "onboarding.sync.summaryLabel" = "What PageLamp found";
 "onboarding.sync.title" = "Syncing your courses";
 "onboarding.welcome.acknowledgeFirst" = "Tick “I understand” to continue.";
@@ -1078,6 +1084,7 @@
 "updates.install.installing" = "Installing…";
 "updates.install.progressLabel" = "Update progress";
 "updates.install.restarting" = "Restarting PageLamp…";
+"updates.install.stopSync" = "Stop the sync";
 "updates.install.title" = "Install PageLamp %1$@?";
 "updates.install.tryAgain" = "Try again";
 "updates.install.windows" = "PageLamp closes while the installer runs, then opens again.";

@@ -1,6 +1,7 @@
 import {
   CircleAlert,
   CircleCheck,
+  CircleMinus,
   CircleX,
   Hourglass,
   LoaderCircle,
@@ -14,7 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useSyncStore } from "@/stores/sync";
+import { useStopSync, useSyncStore } from "@/stores/sync";
 import { SyncProgressRow } from "./SyncProgressRow";
 import { type SyncOutcome, useSyncOutcome } from "./useSyncOutcome";
 
@@ -33,6 +34,7 @@ const HEADLINE = {
   done: { icon: CircleCheck, tone: "text-success", key: "sync.done" },
   doneWithErrors: { icon: CircleAlert, tone: "text-warning", key: "sync.doneWithErrors" },
   failed: { icon: CircleX, tone: "text-destructive", key: "sync.failed" },
+  stopped: { icon: CircleMinus, tone: "text-muted-foreground", key: "sync.stopped" },
 } as const satisfies Record<Exclude<SyncOutcome, "idle">, unknown>;
 
 /**
@@ -52,6 +54,9 @@ export function SyncProgressPanel({
   const order = useSyncStore((s) => s.order);
   const bySource = useSyncStore((s) => s.bySource);
   const runError = useSyncStore((s) => s.runError);
+  const stopping = useSyncStore((s) => s.stopping);
+  const stop = useStopSync();
+  const stopHintId = useId();
 
   if (outcome === "idle") return null;
   const { icon: Icon, tone, key } = HEADLINE[outcome];
@@ -64,6 +69,23 @@ export function SyncProgressPanel({
             <Icon className={cn("size-4 shrink-0", tone)} aria-hidden />
             <h2 id={titleId}>{tc(key)}</h2>
           </CardTitle>
+          {outcome === "running" ? (
+            <CardAction>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void stop()}
+                aria-disabled={stopping || undefined}
+                aria-describedby={stopHintId}
+                className="aria-disabled:opacity-50"
+              >
+                {stopping ? tc("sync.stopping") : tc("sync.stop")}
+              </Button>
+              <span id={stopHintId} className="sr-only">
+                {tc("sync.stopHint")}
+              </span>
+            </CardAction>
+          ) : null}
           {onDismiss && outcome !== "running" ? (
             <CardAction>
               <Button

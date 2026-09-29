@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { queryKeys } from "@/api/queries";
 import { Button } from "@/components/ui/button";
-import { useSyncActivity, useSyncCounts, useSyncStore } from "@/stores/sync";
+import { useStopSync, useSyncActivity, useSyncCounts, useSyncStore } from "@/stores/sync";
 import { Notice } from "./parts/Notice";
 
 /**
@@ -20,6 +20,8 @@ export function SyncBanner() {
   const bySource = useSyncStore((s) => s.bySource);
   const runError = useSyncStore((s) => s.runError);
   const counts = useSyncCounts();
+  const stopping = useSyncStore((s) => s.stopping);
+  const stop = useStopSync();
 
   let content: ReactNode = null;
   // Only the headline is announced (below); the box itself is ordinary content, so its hint
@@ -34,6 +36,17 @@ export function SyncBanner() {
           counts.total
             ? tc("sync.syncingProgress", { done: counts.done, total: counts.total })
             : tc("sync.syncing")
+        }
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void stop()}
+            aria-disabled={stopping || undefined}
+            className="aria-disabled:opacity-50"
+          >
+            {stopping ? tc("sync.stopping") : tc("sync.stop")}
+          </Button>
         }
       >
         <p>{t("banner.runningHint")}</p>

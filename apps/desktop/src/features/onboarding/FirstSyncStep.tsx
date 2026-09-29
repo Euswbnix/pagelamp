@@ -16,6 +16,7 @@ const COPY = {
   done: { title: "sync.doneTitle", description: "sync.doneDescription" },
   doneWithErrors: { title: "sync.problemsTitle", description: "sync.problemsDescription" },
   failed: { title: "sync.failedTitle", description: "sync.failedDescription" },
+  stopped: { title: "sync.stoppedTitle", description: "sync.stoppedDescription" },
 } as const;
 
 /** Step 3: sync everything once, show progress, then point to "Connect your AI app". */

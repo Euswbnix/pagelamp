@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { useSyncActivity } from "@/stores/sync";
+import { useStopSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { type InstallState, useInstallUpdate, useUpdateStore } from "@/stores/updates";
 
 /**
@@ -37,6 +37,8 @@ export function InstallUpdateDialog({
   const install = useUpdateStore((s) => s.install);
   const start = useInstallUpdate();
   const { busy, external } = useSyncActivity();
+  const stopping = useSyncStore((s) => s.stopping);
+  const stopSync = useStopSync();
   const hintId = useId();
   const working =
     install.phase === "downloading" ||
@@ -65,6 +67,18 @@ export function InstallUpdateDialog({
             <span id={hintId} className="text-xs text-muted-foreground sm:mr-auto">
               {external ? t("install.availableAfterOtherSync") : t("install.availableAfterSync")}
             </span>
+          ) : null}
+          {/* This window's sync can be stopped from here (design §7); the CLI's can't. */}
+          {busy && !external && !working ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void stopSync()}
+              aria-disabled={stopping || undefined}
+              className="aria-disabled:opacity-50"
+            >
+              {stopping ? tc("sync.stopping") : t("install.stopSync")}
+            </Button>
           ) : null}
           <AlertDialogCancel disabled={working}>{tc("actions.cancel")}</AlertDialogCancel>
           <Button

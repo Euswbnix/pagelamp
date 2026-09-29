@@ -29,6 +29,8 @@
     "problemsDescription": "Some sources didn't sync. You can carry on and fix them later on Sources & sync.",
     "failedTitle": "The sync didn't run",
     "failedDescription": "You can try again now, or carry on and sync later from Sources & sync.",
+    "stoppedTitle": "Sync stopped",
+    "stoppedDescription": "What was synced so far is kept. You can sync again now, or carry on and sync later from Sources & sync.",
     "summaryLabel": "What {{product}} found",
     "courses": "Courses",
     "materials": "Materials",
