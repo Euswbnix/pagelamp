@@ -46,7 +46,8 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
     <article
       className={cn(
         "relative -mx-3 rounded-row px-3 py-3 text-sm transition-colors",
-        "hover:bg-muted has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring",
+        // An outline, not a ring: it survives Windows contrast themes (forced colors).
+        "hover:bg-muted has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring",
         course.hidden && "text-muted-foreground",
       )}
     >
@@ -56,7 +57,7 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
             ref={linkRef}
             to={paths.course(course.id)}
             data-course-id={course.id}
-            className="flex min-w-0 items-baseline gap-2 outline-none after:absolute after:inset-0 after:rounded-row"
+            className="flex min-w-0 items-baseline gap-2 outline-hidden after:absolute after:inset-0 after:rounded-row"
           >
             <span className="shrink-0 font-semibold">{course.code ?? course.name}</span>{" "}
             {course.code ? (
