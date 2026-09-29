@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg", "nsis", "deb", "rpm", "appimage"],
     "publisher": "PageLamp contributors",
     "homepage": "https://github.com/Euswbnix/pagelamp",
     "category": "Education",
@@ -49,6 +49,11 @@
     "macOS": {
       "signingIdentity": "-",
       "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
     }
   },
   "plugins": {
