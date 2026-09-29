@@ -96,6 +96,9 @@ pub struct CourseSettings {
     pub keep_current_until: Option<NaiveDate>,
     /// The calendar in force, without labels or topics (material text).
     pub calendar: Option<CourseCalendar>,
+    /// Canvas listed the course as restricted by date when it was removed: a sync can't bring
+    /// it back (a restore says so).
+    pub access_restricted: bool,
 }
 
 impl CourseSettings {

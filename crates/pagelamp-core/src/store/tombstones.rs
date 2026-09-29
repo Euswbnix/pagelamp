@@ -135,6 +135,7 @@ impl Store {
             user_term_end: data.user_term_end,
             keep_current_until: data.keep_current_until,
             calendar: self.accepted_calendar_json(course_id)?.map(dates_only),
+            access_restricted: data.lms.access_restricted == Some(true),
         })
     }
 
