@@ -3,14 +3,13 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { toast } from "sonner";
-import type { AiBackendStatus } from "@/api/ai";
+import type { AiBackendStatus, CodexStatus } from "@/api/ai";
 import {
   useCodexLogout,
   useCodexStatus,
   useRemoveCodex,
   useSetCodexSource,
 } from "@/api/ai-queries";
-import type { CodexStatus } from "@/api/provisional/codex";
 import {
   AlertDialog,
   AlertDialogAction,

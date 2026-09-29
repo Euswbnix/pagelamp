@@ -6,10 +6,17 @@
 // PROVISIONAL until the owner's A7 tests (by 2026-10-18): what `codex login status` says about the
 // plan type, whether `codex exec` works on Free/Go (exec_available), and the credits wording.
 
-import type { AiBackendStatus, DisclosureFacts, ModelInfo, UsageRow } from "../ai";
+import type {
+  AiBackendStatus,
+  ChatGptPlanType,
+  CodexStatus,
+  DisclosureFacts,
+  ModeAUsage,
+  ModelInfo,
+  UsageRow,
+} from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import type { ChatGptPlanType, CodexStatus, ModeAUsage } from "../provisional/codex";
 import type { MockScenario } from "./fixtures";
 
 type CodexApi = Pick<
@@ -32,7 +39,7 @@ export const MOCK_CODEX_DOWNLOAD_BYTES = 71_300_000;
 /** The proposed default weekly cap (design §2.3). */
 export const DEFAULT_WEEKLY_CAP = 40;
 export const MOCK_DEVICE_CODE = "PLMP-4821";
-export const CODEX_LABEL = "ChatGPT plan (Codex)";
+export const CODEX_LABEL = "ChatGPT plan (through OpenAI Codex)";
 
 /** The pin's supported models (codex-pin.toml): explicit `-m` from this list on every run. */
 export const MOCK_CODEX_MODELS: ModelInfo[] = [
@@ -140,14 +147,15 @@ function scenarioState(scenario: MockScenario): Scenario {
 
 export interface MockCodex {
   api: CodexApi;
-  /** The `codex` entry of ai_status, once the runtime is installed. */
-  backendStatus: (acknowledged: number | null) => AiBackendStatus | null;
+  /** The `codex` entry of ai_status, once Codex is installed or chosen for a feature. */
+  backendStatus: (acknowledged: number | null, chosen: boolean) => AiBackendStatus | null;
   /** Whether the scenario starts with the disclosure acknowledged. */
   initiallyAcknowledged: boolean;
   models: () => ModelInfo[];
   /** For the estimate: would a run be refused by the weekly cap? */
   capReached: () => boolean;
-  modeA: () => ModeAUsage | null;
+  /** Null until Codex is installed or chosen for a feature, like the facade. */
+  modeA: (chosen: boolean) => ModeAUsage | null;
   usageRows: () => [number, UsageRow][];
   signedIn: () => boolean;
   /** "Remove all AI data" runs `codex logout` first. */
@@ -269,7 +277,9 @@ export function createMockCodex(options: {
         await sleep(stepMs);
         if (loginCancelled) throw new ApiError("cancelled", "Sign-in cancelled.");
       }
-      state.login = { state: "chatgpt", plan_type: start.login.plan_type ?? "plus" };
+      // Like the facade: `codex login status` doesn't say the plan type yet (until A7), so a
+      // fresh sign-in reports "unknown". Scenarios with a plan type preview what A7 may allow.
+      state.login = { state: "chatgpt", plan_type: start.login.plan_type ?? "unknown" };
       onEvent({ type: "done" });
       return status();
     },
@@ -293,6 +303,7 @@ export function createMockCodex(options: {
         );
       }
       state.source = source;
+      return status();
     },
 
     setModeAWeeklyCap: async (runs) => {
@@ -307,30 +318,35 @@ export function createMockCodex(options: {
   return {
     api,
     initiallyAcknowledged: start.acknowledged,
-    backendStatus: (acknowledged) => {
-      if (!state.installed) return null;
+    backendStatus: (acknowledged, chosen) => {
+      if (!state.installed && !chosen) return null;
       const disclosure = codexFacts(state.login.plan_type ?? "unknown");
-      const signedIn = state.login.state !== "signed_out";
-      const changed = acknowledged !== null && acknowledged !== disclosure.version;
+      const problems: AiBackendStatus["problems"] = [];
+      if (!state.installed) problems.push("runtime_missing");
+      else if (state.login.state === "signed_out") problems.push("not_signed_in");
+      if (acknowledged !== null && acknowledged !== disclosure.version) {
+        problems.push("disclosure_changed");
+      }
+      const setUp =
+        state.installed && state.login.state !== "signed_out" && state.execAvailable !== false;
       return {
         backend: { kind: "codex" },
         label: CODEX_LABEL,
         kind: "codex",
-        state:
-          !signedIn || state.execAvailable === false
-            ? "needs_setup"
-            : acknowledged !== disclosure.version
-              ? "needs_disclosure"
-              : "ready",
-        problems: changed ? ["disclosure_changed"] : [],
-        provider: null,
+        state: !setUp
+          ? "needs_setup"
+          : acknowledged !== disclosure.version
+            ? "needs_disclosure"
+            : "ready",
+        problems,
         disclosure,
         disclosure_acknowledged: acknowledged,
       };
     },
     models: () => structuredClone(MOCK_CODEX_MODELS),
     capReached: () => state.cap !== null && state.runs >= state.cap,
-    modeA: () => (state.installed ? { runs_this_week: state.runs, weekly_cap: state.cap } : null),
+    modeA: (chosen) =>
+      state.installed || chosen ? { runs_this_week: state.runs, weekly_cap: state.cap } : null,
     usageRows: () =>
       start.runs > 0 && start.login.state !== "signed_out"
         ? [

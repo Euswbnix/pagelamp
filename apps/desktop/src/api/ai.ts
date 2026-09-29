@@ -10,14 +10,14 @@ import type {
   BlockReason,
   Course,
   Effort,
-  UsageSummary as GeneratedUsageSummary,
   MaterialSharing,
   ModelErrorKind,
   ModelProviderRecord,
 } from "./generated";
-import type { ModeAUsage } from "./provisional/codex";
 
 export type {
+  // Mode A: the ChatGPT plan through official Codex (M2; design §2.3).
+  AdminVisibility,
   AiBackendStatus,
   AiFeature,
   AiStatus,
@@ -27,6 +27,15 @@ export type {
   BackendState,
   BlockReason,
   BudgetStatus,
+  ChatGptPlanType,
+  CodexLogin,
+  CodexLoginMethod,
+  CodexLoginState,
+  CodexOutdatedAction,
+  CodexRuntime,
+  CodexRuntimeState,
+  CodexSource,
+  CodexStatus,
   CostBasis,
   CostEstimate,
   CostKind,
@@ -37,7 +46,9 @@ export type {
   GenerationMeta,
   LocalServer,
   LocalServerKind,
+  LoginEvent,
   MaterialSharing,
+  ModeAUsage,
   ModelChoice,
   ModelErrorKind,
   ModelInfo,
@@ -48,11 +59,14 @@ export type {
   Recipient,
   RemoveAiDataReport,
   RetentionFact,
+  RuntimeEvent,
   SentData,
   StructuredOutputTier,
+  SystemCodex,
   TokenUsage,
   TrainingFact,
   UsageRow,
+  UsageSummary,
 } from "./generated";
 
 // ----- lists in display order (typed against the generated unions) ------------------------------
@@ -114,9 +128,6 @@ const MODEL_ERROR_SET: Record<ModelErrorKind, true> = {
 export const MODEL_ERROR_KINDS = Object.keys(MODEL_ERROR_SET) as ModelErrorKind[];
 
 // ----- PROVISIONAL gaps ------------------------------------------------------------------------
-
-/** PROVISIONAL (M2): plus mode A's weekly runs, until the backend's M2 types. */
-export type UsageSummary = GeneratedUsageSummary & { mode_a?: ModeAUsage | null };
 
 /** PROVISIONAL: `material_sharing` joins `ai_policy` on the course types with schema v4. */
 export type CourseWithSharing = Course & { material_sharing?: MaterialSharing | null };

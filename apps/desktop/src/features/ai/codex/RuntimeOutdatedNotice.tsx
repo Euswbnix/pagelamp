@@ -1,7 +1,7 @@
 import { Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { CodexStatus } from "@/api/provisional/codex";
+import type { CodexStatus } from "@/api/ai";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { InstallUpdateDialog } from "@/features/updates/InstallUpdateDialog";

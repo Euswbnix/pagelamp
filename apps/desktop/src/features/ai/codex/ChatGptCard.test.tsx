@@ -66,7 +66,7 @@ describe("Use my ChatGPT plan (Codex)", () => {
     await user.click(within(dialog).getByRole("button", { name: "Continue" }));
 
     const sheet = await screen.findByRole("dialog", {
-      name: "Before PageLamp uses ChatGPT plan (Codex)",
+      name: "Before PageLamp uses ChatGPT plan (through OpenAI Codex)",
     });
     expect(
       within(sheet).getByText(
@@ -80,9 +80,13 @@ describe("Use my ChatGPT plan (Codex)", () => {
       within(sheet).getByText(/Past your plan limit, runs may use your ChatGPT credits/),
     ).toBeInTheDocument();
     await user.click(within(sheet).getByLabelText("I meet OpenAI's age requirement."));
-    await user.click(within(sheet).getByRole("button", { name: "Turn on ChatGPT plan (Codex)" }));
+    await user.click(
+      within(sheet).getByRole("button", { name: "Turn on ChatGPT plan (through OpenAI Codex)" }),
+    );
     await waitFor(() => expect(region).toHaveFocus());
-    expect(await within(region).findByText("Signed in with ChatGPT · Plus")).toBeInTheDocument();
+    // The plan type isn't known after a sign-in yet (A7), so admin visibility is "unknown".
+    expect(await within(region).findByText("Signed in with ChatGPT")).toBeInTheDocument();
+    expect(within(region).getByText(/If this is an Edu or workspace account/)).toBeInTheDocument();
   });
 
   it("shows a device code to enter, and cancels the sign-in when closed", async () => {
