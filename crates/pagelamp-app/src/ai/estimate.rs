@@ -7,6 +7,7 @@ use pagelamp_core::ai_gate::{
     ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, assemble, note_context,
     plan_context, week_context,
 };
+use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
 use pagelamp_core::store::Store;
 use pagelamp_core::views::AsOf;
@@ -23,6 +24,8 @@ pub(crate) const EXPLANATION_CONTEXT_CHARS: usize = 200_000;
 pub(crate) const EXPLANATION_MAX_OUTPUT: u32 = 6_000;
 pub(crate) const PLAN_MAX_OUTPUT: u32 = 4_000;
 pub(crate) const NOTE_MAX_OUTPUT: u32 = 1_000;
+/// A syllabus reading (calendar design §7.3).
+pub(crate) const CALENDAR_MAX_OUTPUT: u32 = 4_000;
 /// The default study-plan horizon (days).
 pub(crate) const DEFAULT_PLAN_DAYS: u32 = 14;
 
@@ -194,10 +197,16 @@ fn request_shape(feature: AiFeature, context: &GatedContext) -> (RenderedPrompt,
             OutputSpec::Text,
             EXPLANATION_MAX_OUTPUT,
         ),
-        AiFeature::WeeklyNote | AiFeature::CourseCalendar => (
+        AiFeature::WeeklyNote => (
             assemble(prompts::WEEKLY_NOTE, context, None),
             OutputSpec::Text,
             NOTE_MAX_OUTPUT,
+        ),
+        AiFeature::CourseCalendar => (
+            assemble(prompts::COURSE_CALENDAR, context, None),
+            OutputSpec::for_type::<CalendarExtraction>("course_calendar")
+                .unwrap_or(OutputSpec::Text),
+            CALENDAR_MAX_OUTPUT,
         ),
     }
 }
