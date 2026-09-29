@@ -592,6 +592,10 @@
     }
   },
   {
+    "cmd": "open_notification_settings",
+    "args": {}
+  },
+  {
     "cmd": "show_reminders_on_notice",
     "args": {
       "title": "Reminders are on",

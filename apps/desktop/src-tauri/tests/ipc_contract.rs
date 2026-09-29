@@ -48,6 +48,8 @@ const SKIPPED: &[&str] = &[
     // Real notifications on this computer.
     "show_reminders",
     "show_reminders_on_notice",
+    // This computer's system settings.
+    "open_notification_settings",
 ];
 
 /// The removal commands' Trash here: moves nothing, so a changed fixture can never reach this

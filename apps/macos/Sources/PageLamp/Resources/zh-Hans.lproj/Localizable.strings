@@ -1208,8 +1208,8 @@
 "plan.form.noStudyDays" = "请至少留一天用来学习。";
 "plan.form.note" = "有想重点准备的吗？（可选）";
 "plan.form.noteHint" = "例如「周五的期中考试」。它会和你的课程一起发送给模型。";
-"plan.form.nothingToPlan" = "还没有可以规划的当前课程。";
-"plan.form.syncFirst" = "同步课程";
+"plan.form.nothingToPlan" = "现在没有进行中的课程（没有正在上课、也没有 14 天内开始的课程），所以没有可以规划的内容。";
+"plan.form.seeCourses" = "查看你的课程";
 "plan.running.stage.building_context" = "正在整理你的课程";
 "plan.running.stage.repairing" = "正在修正结果格式";
 "plan.running.stage.scheduling" = "正在把任务安排到学习日";
@@ -1400,6 +1400,8 @@
 "reminders.settings.description" = "在这台电脑上用通知提醒你截止日期和本周安排。通知里只有课程代码和标题，不会出现资料内容。";
 "reminders.settings.invalidTime" = "请输入类似 09:00 的时间。";
 "reminders.settings.loginItemOff" = "系统设置里关闭了登录时启动，所以要在你打开 PageLamp 之后才会开始提醒。";
+"reminders.settings.notSeeing" = "收不到提醒？请在系统的通知设置里允许 PageLamp。";
+"reminders.settings.openNotificationSettings" = "打开通知设置";
 "reminders.settings.planToday" = "今天的学习计划";
 "reminders.settings.planTodayHint" = "已保存的学习计划里今天要做的事。";
 "reminders.settings.saveFailed" = "提醒设置没能保存。";

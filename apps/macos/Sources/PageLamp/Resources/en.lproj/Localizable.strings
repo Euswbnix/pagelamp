@@ -1208,8 +1208,8 @@
 "plan.form.noStudyDays" = "Leave at least one study day.";
 "plan.form.note" = "Anything to focus on? (optional)";
 "plan.form.noteHint" = "For example \"the midterm on Friday\". It is sent to the model with your courses.";
-"plan.form.nothingToPlan" = "No current courses to plan yet.";
-"plan.form.syncFirst" = "Sync your courses";
+"plan.form.nothingToPlan" = "No course is active right now (none is running or starts in the next 14 days), so there's nothing to plan.";
+"plan.form.seeCourses" = "See your courses";
 "plan.running.stage.building_context" = "Gathering your courses";
 "plan.running.stage.repairing" = "Fixing the answer's format";
 "plan.running.stage.scheduling" = "Placing tasks on your study days";
@@ -1400,6 +1400,8 @@
 "reminders.settings.description" = "Deadlines and your week, as notifications on this computer. They show course codes and titles, never the text of your materials.";
 "reminders.settings.invalidTime" = "Use a time like 09:00.";
 "reminders.settings.loginItemOff" = "Starting at login is turned off in your system's settings, so reminders begin once you open PageLamp.";
+"reminders.settings.notSeeing" = "Not seeing reminders? Allow PageLamp in your system's notification settings.";
+"reminders.settings.openNotificationSettings" = "Open notification settings";
 "reminders.settings.planToday" = "Today's study plan";
 "reminders.settings.planTodayHint" = "What your saved study plan has for today.";
 "reminders.settings.saveFailed" = "Your reminder settings couldn't be saved.";

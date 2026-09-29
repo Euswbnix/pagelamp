@@ -12,8 +12,8 @@
     "courses": "课程",
     "coursesHint": "模型只会读取你的 AI 设置允许的资料内容；其他课程只按课程结构来规划。",
     "noCourses": "请至少选择一门课程。",
-    "nothingToPlan": "还没有可以规划的当前课程。",
-    "syncFirst": "同步课程",
+    "nothingToPlan": "现在没有进行中的课程（没有正在上课、也没有 14 天内开始的课程），所以没有可以规划的内容。",
+    "seeCourses": "查看你的课程",
     "note": "有想重点准备的吗？（可选）",
     "noteHint": "例如「周五的期中考试」。它会和你的课程一起发送给模型。",
     "generate": "生成我的计划",
@@ -66,8 +66,8 @@
     }
   },
   "warnings": {
-    "graded_work_left_out_one": "{{product}} 去掉了 {{count}} 项会替你完成计分作业的任务。",
-    "graded_work_left_out_other": "{{product}} 去掉了 {{count}} 项会替你完成计分作业的任务。",
+    "graded_work_left_out_one": "有 {{count}} 项任务看起来像是在替你完成计分作业，已被去掉。",
+    "graded_work_left_out_other": "有 {{count}} 项任务看起来像是在替你完成计分作业，已被去掉。",
     "unknown_materials_dropped_one": "模型提到的 {{count}} 份资料不在你的课程里，已去掉。",
     "unknown_materials_dropped_other": "模型提到的 {{count}} 份资料不在你的课程里，已去掉。"
   },

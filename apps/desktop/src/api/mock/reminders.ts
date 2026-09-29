@@ -16,6 +16,7 @@ type RemindersApi = Pick<
   | "dueReminders"
   | "showReminders"
   | "markRemindersShown"
+  | "openNotificationSettings"
   | "showRemindersOnNotice"
   | "onReminderCheck"
 >;
@@ -138,6 +139,7 @@ export function createRemindersMock(deps: {
         for (const id of ids) shown.add(id);
       }),
     showRemindersOnNotice: async () => {},
+    openNotificationSettings: () => respond(true),
     dueNow: due,
     onReminderCheck: (onCheck) => {
       const handler = () => onCheck();

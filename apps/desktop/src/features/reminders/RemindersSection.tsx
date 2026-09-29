@@ -1,7 +1,10 @@
 import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useApi } from "@/api/context";
+import { useUpdaterStatus } from "@/api/queries";
 import type { BackgroundStatus, ReminderSettings } from "@/api/reminders";
 import { WEEKDAYS, type Weekday } from "@/api/reminders";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,6 +64,7 @@ function RemindersForm({
         onChange={(checked) => set({ run_in_background: checked })}
       >
         {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+        {on ? <NotSeeingReminders /> : null}
       </SwitchRow>
 
       {on ? (
@@ -118,6 +122,32 @@ function RemindersForm({
         <p role="alert" className="text-sm text-destructive">
           {t("settings.saveFailed")}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Whether the system lets PageLamp notify can't be read on desktop (the plugin always says yes),
+ * so say where to look, with the settings pane where there's a standard one (macOS, Windows).
+ */
+function NotSeeingReminders() {
+  const { t } = useTranslation("reminders");
+  const api = useApi();
+  const platform = useUpdaterStatus().data?.platform;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+      <p className="text-xs text-muted-foreground">{t("settings.notSeeing")}</p>
+      {platform === "macos" || platform === "windows" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={() => void api.openNotificationSettings().catch(() => false)}
+        >
+          {t("settings.openNotificationSettings")}
+        </Button>
       ) : null}
     </div>
   );

@@ -15,6 +15,8 @@
     "backgroundHint": "{{product}} reminds you only with this on, and only while it runs. Off, closing the window quits {{product}}.",
     "trayUnavailable": "The tray isn't available on this system; install libayatana-appindicator3-1 to get it. {{product}} still starts at login and reminds you; open it again to see its window.",
     "loginItemOff": "Starting at login is turned off in your system's settings, so reminders begin once you open {{product}}.",
+    "notSeeing": "Not seeing reminders? Allow {{product}} in your system's notification settings.",
+    "openNotificationSettings": "Open notification settings",
     "saveFailed": "Your reminder settings couldn't be saved."
   },
   "remind": {

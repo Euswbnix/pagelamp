@@ -364,7 +364,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>PageLamp 去掉了 %1$ld 项会替你完成计分作业的任务。</string>
+			<string>有 %1$ld 项任务看起来像是在替你完成计分作业，已被去掉。</string>
 		</dict>
 	</dict>
 	<key>plan.warnings.unknown_materials_dropped</key>

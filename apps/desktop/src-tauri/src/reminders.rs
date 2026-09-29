@@ -12,6 +12,7 @@ use pagelamp_app::{AppError, Reminder, ReminderSettings};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::backend::Backend;
 use crate::background::{self, BackgroundStatus};
@@ -133,6 +134,32 @@ pub fn show_reminders_on_notice<R: Runtime>(app: AppHandle<R>, title: String, bo
     }
 }
 
+/// "Not seeing reminders?" in Settings: opens the system's notification settings. false where
+/// there is no standard place to open (Linux desktops differ).
+#[tauri::command]
+pub fn open_notification_settings<R: Runtime>(app: AppHandle<R>) -> bool {
+    #[cfg(target_os = "macos")]
+    let url = Some("x-apple.systempreferences:com.apple.Notifications-Settings.extension");
+    #[cfg(windows)]
+    let url = Some("ms-settings:notifications");
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let url: Option<&str> = None;
+    let Some(url) = url else {
+        return false;
+    };
+    // Rust-side: the webview may still open only http(s) links (capabilities/default.json).
+    match app.opener().open_url(url, None::<&str>) {
+        Ok(()) => true,
+        Err(error) => {
+            tracing::warn!(target: "pagelamp::reminders", %error, "open notification settings");
+            false
+        }
+    }
+}
+
+/// Every notification PageLamp shows goes through here. On macOS the plugin delivers through
+/// NSUserNotificationCenter (deprecated): if a signed build shows no banner, the switch to
+/// UNUserNotificationCenter happens in this one place.
 fn notify<R: Runtime>(
     app: &AppHandle<R>,
     title: &str,

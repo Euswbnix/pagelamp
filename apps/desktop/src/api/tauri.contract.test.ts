@@ -167,6 +167,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.dueReminders();
   await api.showReminders([{ id: "contract-test-reminder", title: "DEMO101: Quiz", body: "Due" }]);
   await api.markRemindersShown(["contract-test-reminder"]);
+  await api.openNotificationSettings();
   await api.showRemindersOnNotice("Reminders are on", "contract test");
   await api.aiStatus();
   await api.modelProviderPresets();

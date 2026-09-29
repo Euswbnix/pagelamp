@@ -393,6 +393,8 @@ export interface PageLampApi {
    * may notify (desktop systems have no other way to ask). Marks nothing.
    */
   showRemindersOnNotice(title: string, body: string): Promise<void>;
+  /** Opens the system's notification settings; false where there's no standard place (Linux). */
+  openNotificationSettings(): Promise<boolean>;
   /** Calls `onCheck` whenever the shell asks for a delivery (every 15 min, after a sleep). */
   onReminderCheck(onCheck: () => void): () => void;
 

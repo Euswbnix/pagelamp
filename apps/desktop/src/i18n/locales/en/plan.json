@@ -12,8 +12,8 @@
     "courses": "Courses",
     "coursesHint": "The model reads only the material text your AI settings allow; the other courses are planned from their structure.",
     "noCourses": "Choose at least one course.",
-    "nothingToPlan": "No current courses to plan yet.",
-    "syncFirst": "Sync your courses",
+    "nothingToPlan": "No course is active right now (none is running or starts in the next 14 days), so there's nothing to plan.",
+    "seeCourses": "See your courses",
     "note": "Anything to focus on? (optional)",
     "noteHint": "For example \"the midterm on Friday\". It is sent to the model with your courses.",
     "generate": "Write my plan",
@@ -66,8 +66,8 @@
     }
   },
   "warnings": {
-    "graded_work_left_out_one": "{{product}} left out {{count}} task that would have done graded work for you.",
-    "graded_work_left_out_other": "{{product}} left out {{count}} tasks that would have done graded work for you.",
+    "graded_work_left_out_one": "{{count}} task was left out because it looked like an answer to graded work.",
+    "graded_work_left_out_other": "{{count}} tasks were left out because they looked like answers to graded work.",
     "unknown_materials_dropped_one": "{{count}} material the model named isn't in your courses, so it was left out.",
     "unknown_materials_dropped_other": "{{count}} materials the model named aren't in your courses, so they were left out."
   },

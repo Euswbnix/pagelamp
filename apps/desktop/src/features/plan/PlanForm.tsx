@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { GenerateButton } from "@/features/ai/GenerateButton";
-import { groupCourses } from "@/features/courses/lib/groups";
 import { paths } from "@/lib/routes";
+import { useToday } from "@/lib/useToday";
+import { activeCourses } from "./activeCourses";
 
 /**
  * What to plan (design §5.1): days from today, hours per week, days off, which courses (the
@@ -30,8 +31,9 @@ export function PlanForm({
 }) {
   const { t, i18n } = useTranslation("plan");
   const courses = useCourses();
-  const groups = groupCourses(courses.data ?? [], false);
-  const listed = [...groups.current, ...groups.upcoming];
+  const today = useToday();
+  // Only active courses: the facade plans nothing else (Invalid "no active course").
+  const listed = activeCourses(courses.data ?? [], today);
   const [horizon, setHorizon] = useState(
     String(initial?.horizon_days ?? PLAN_LIMITS.horizonDays.default),
   );
@@ -41,7 +43,7 @@ export function PlanForm({
   const [daysOff, setDaysOff] = useState<DayOfWeek[]>(initial?.days_off ?? []);
   const [picked, setPicked] = useState<string[] | null>(initial?.courses ?? null);
   const [note, setNote] = useState(initial?.note ?? "");
-  const chosen = picked ?? groups.current.map((c) => c.course.id);
+  const chosen = picked ?? listed.map((c) => c.course.id);
 
   const horizonDays = wholeNumber(horizon, PLAN_LIMITS.horizonDays);
   const hoursPerWeek = wholeNumber(hours, PLAN_LIMITS.hoursPerWeek);
@@ -86,6 +88,17 @@ export function PlanForm({
       // 2024-01-01 was a Monday.
       Date.UTC(2024, 0, 1 + index),
     );
+
+  if (courses.data && listed.length === 0) {
+    return (
+      <div className="space-y-2 text-sm">
+        <p>{t("form.nothingToPlan")}</p>
+        <Link to={paths.courses} className="underline underline-offset-2">
+          {t("form.seeCourses")}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -146,14 +159,6 @@ export function PlanForm({
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{t("form.courses")}</legend>
         <p className="text-xs text-muted-foreground">{t("form.coursesHint")}</p>
-        {courses.data && listed.length === 0 ? (
-          <p className="text-sm">
-            {t("form.nothingToPlan")}{" "}
-            <Link to={paths.sources} className="underline underline-offset-2">
-              {t("form.syncFirst")}
-            </Link>
-          </p>
-        ) : null}
         <ul className="divide-y border-y empty:hidden">
           {listed.map((summary) => (
             <CourseChoice

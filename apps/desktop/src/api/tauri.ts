@@ -217,6 +217,7 @@ export function createTauriApi(): PageLampApi {
     dueReminders: () => call("due_reminders"),
     showReminders: (notifications) => call("show_reminders", { notifications }),
     markRemindersShown: (ids) => call("mark_reminders_shown", { ids }),
+    openNotificationSettings: () => call("open_notification_settings"),
     showRemindersOnNotice: (title, body) => call("show_reminders_on_notice", { title, body }),
     onReminderCheck: (onCheck) => {
       let unlisten: (() => void) | null = null;

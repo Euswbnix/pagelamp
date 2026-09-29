@@ -414,9 +414,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>PageLamp left out %1$ld task that would have done graded work for you.</string>
+			<string>%1$ld task was left out because it looked like an answer to graded work.</string>
 			<key>other</key>
-			<string>PageLamp left out %1$ld tasks that would have done graded work for you.</string>
+			<string>%1$ld tasks were left out because they looked like answers to graded work.</string>
 		</dict>
 	</dict>
 	<key>plan.warnings.unknown_materials_dropped</key>

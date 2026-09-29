@@ -50,7 +50,9 @@ describe("Plan your study", () => {
     );
     expect(within(draft).getByText(/^AI-generated · /)).toBeInTheDocument();
     expect(
-      within(draft).getByText("PageLamp left out 1 task that would have done graded work for you."),
+      within(draft).getByText(
+        "1 task was left out because it looked like an answer to graded work.",
+      ),
     ).toBeInTheDocument();
     expect(within(draft).getByRole("table", { name: "Your draft plan" })).toBeInTheDocument();
     expect(screen.getByText("Your draft plan is ready.")).toHaveAttribute("role", "status");
@@ -104,6 +106,13 @@ describe("Plan your study", () => {
     await user.type(days, "14");
     for (const course of screen.getAllByRole("checkbox")) await user.click(course);
     expect(screen.getByText("Choose at least one course.")).toBeInTheDocument();
+  });
+
+  it("with no active course, says so instead of offering to write a plan", async () => {
+    renderRoute("/plan", { scenario: "all-past" });
+    expect(await screen.findByText(/No course is active right now/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See your courses" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Write my plan" })).toBeNull();
   });
 
   it("without a model, leads to setting one up instead", async () => {

@@ -40,6 +40,11 @@ describe("Settings → Reminders", () => {
     expect(within(section).getByRole("switch", { name: "Deadlines coming up" })).toBeChecked();
     expect(within(section).getByRole("switch", { name: "Your week" })).toBeChecked();
     expect(within(section).getByRole("switch", { name: "Today's study plan" })).not.toBeChecked();
+    // Whether notifications are allowed can't be read: say where to look.
+    expect(within(section).getByText(/Not seeing reminders\?/)).toBeInTheDocument();
+    const settings = vi.spyOn(api, "openNotificationSettings");
+    await user.click(within(section).getByRole("button", { name: "Open notification settings" }));
+    expect(settings).toHaveBeenCalled();
 
     // Another change keeps it on and sends no second notice.
     await user.click(within(section).getByRole("switch", { name: "Deadlines coming up" }));
