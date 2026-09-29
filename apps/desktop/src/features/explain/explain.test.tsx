@@ -1,7 +1,9 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
+import i18n from "@/i18n";
 import { paths } from "@/lib/routes";
+import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
 const READABLE = "canvas:canvas.demo.test/course/205"; // "proposals": week 4 has one material
@@ -171,6 +173,22 @@ describe("Course → Explain: what the facade does", () => {
       m.title.startsWith("Assignment 4"),
     );
     expect(include).toEqual([assignment?.id]);
+  });
+
+  it("says “include it” for one graded-looking material in Chinese too (one plural form)", async () => {
+    useUiStore.setState({ locale: "zh-CN" });
+    await i18n.changeLanguage("zh-CN");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, {
+      api: mockApi({ scenario: "ai-key" }),
+    });
+    const button = await screen.findByRole("button", { name: "讲解第 4 周" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    const article = await screen.findByRole("article");
+    expect(
+      within(article).getByRole("button", { name: "不是计分作业？纳入它并重新生成" }),
+    ).toBeInTheDocument();
+    expect(within(article).queryByText(/纳入这 1 份/)).toBeNull();
   });
 
   it("stops a run when AI access is turned off from the policy tab", async () => {
