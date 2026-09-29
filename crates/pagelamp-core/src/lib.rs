@@ -5,6 +5,7 @@
 //! - `store`    — the SQLite store. The CLI/sync process is the only writer of synced data;
 //!   MCP server processes open it read-only (plus one tiny write path for study plans).
 //! - `ingest`   — sync-time extract → chunk → FTS index (heavy work never runs in MCP calls).
+//! - `dates`    — instants to course calendar dates (course time zone), Monday alignment.
 //! - `timeline` — pure functions that infer "which week is this course in" with evidence.
 //! - `views`    — read views shared by the App facade and the MCP server.
 //! - `diagnostics` — local log files, redaction, crash capture (logs never leave the device).
@@ -14,6 +15,7 @@
 //! - `secrets`  — OS keychain access for Canvas tokens / calendar-feed URLs. Never used by MCP.
 
 pub mod brand;
+pub mod dates;
 pub mod diagnostics;
 pub mod error;
 pub mod ingest;
