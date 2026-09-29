@@ -3,6 +3,11 @@
 // Source of truth: crates/pagelamp-app/src/lib.rs, crates/pagelamp-core/src/{model,views}.rs
 
 /**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ActivityKind".
+ */
+export type ActivityKind = "sync" | "download";
+/**
  * Whether an AI app may read a course's material TEXT over MCP (docs/ARCHITECTURE.md §3
  * rule 8). Computed from `Course.ai_policy` and `Course.ai_access`, never stored.
  * Structure (titles, kinds, dates, weeks, URLs, counts), deadlines and study plans are
@@ -131,6 +136,13 @@ export type McpNoteCode =
   | "generic_stdio_client"
   | "run_from_temporary_location";
 /**
+ * A topic of the one-time What's new sheet shown after an update.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WhatsNewTopic".
+ */
+export type WhatsNewTopic = "update_check" | "course_weeks";
+/**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -169,6 +181,29 @@ export type SyncEvent =
  */
 export type TermSource = "user" | "synced" | "none";
 /**
+ * Where updates come from.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UpdateChannel".
+ */
+export type UpdateChannel = "stable" | "beta";
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UpdateCheckOutcome".
+ */
+export type UpdateCheckOutcome =
+  | {
+      kind: "up_to_date";
+    }
+  | {
+      kind: "available";
+      version: string;
+    }
+  | {
+      code: string;
+      kind: "error";
+    };
+/**
  * Why `WeekMaterials.note` is set.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -181,6 +216,9 @@ export type WeekNoteKind = "current_week_unknown" | "outside_term" | "no_materia
  * (`$defs`), so json-schema-to-typescript emits one TS file with all of them.
  */
 export interface PageLampAppTypes {
+  activity: Activity;
+  activity_item: ActivityItem;
+  activity_kind: ActivityKind;
   ai_materials_state: AiMaterialsState;
   ai_policy: AiPolicy;
   app_error: AppError;
@@ -197,12 +235,46 @@ export interface PageLampAppTypes {
   source_error_kind: SourceErrorKind;
   source_record: SourceRecord;
   source_sync_result: SourceSyncResult;
+  startup_tasks: StartupTasks;
   stored_study_plan: StoredStudyPlan;
   sync_event: SyncEvent;
   sync_request: SyncRequest;
   sync_summary: SyncSummary;
   term_source: TermSource;
+  update_channel: UpdateChannel;
+  update_check_outcome: UpdateCheckOutcome;
+  update_check_record: UpdateCheckRecord;
+  update_prefs: UpdatePrefs;
   week_materials: WeekMaterials;
+  whats_new: WhatsNew;
+  whats_new_topic: WhatsNewTopic;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "Activity".
+ */
+export interface Activity {
+  /**
+   * Work this app is doing, oldest first.
+   */
+  items: ActivityItem[];
+  /**
+   * Another process (the CLI, another window) is syncing: `sync.lock` is held, but not by
+   * this app.
+   */
+  other_process_syncing: boolean;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ActivityItem".
+ */
+export interface ActivityItem {
+  kind: ActivityKind;
+  /**
+   * The one source it works on; `None` for `sync_all`.
+   */
+  source_id?: string | null;
+  started_at: string;
 }
 /**
  * Error returned by every facade method. Serialised as-is by the Tauri commands.
@@ -716,6 +788,38 @@ export interface SourceSyncResult {
   warnings: string[];
 }
 /**
+ * What the app should do now (M0 subset; `startup_tasks`).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "StartupTasks".
+ */
+export interface StartupTasks {
+  /**
+   * Run the automatic update check now: it is on, the student saw the disclosure (onboarding
+   * or What's new), no What's new is waiting, and the last check is 24 h or more ago.
+   */
+  update_check_due: boolean;
+  /**
+   * The version this launch updated from (`None`: not an update, or an update from 0.1).
+   * Shows the "quit and reopen your AI app" banner.
+   */
+  updated_from?: string | null;
+  /**
+   * Show What's new (upgraders only) until `acknowledge_whats_new`.
+   */
+  whats_new?: WhatsNew | null;
+}
+/**
+ * What's new since `since` (`None`: an update from 0.1, which didn't record its version).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "WhatsNew".
+ */
+export interface WhatsNew {
+  since?: string | null;
+  topics: WhatsNewTopic[];
+}
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "StoredStudyPlan".
  */
@@ -789,6 +893,33 @@ export interface SyncSummary {
   ok: boolean;
   results: SourceSyncResult[];
   started_at: string;
+}
+/**
+ * One update check and how it ended (`record_update_check`).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UpdateCheckRecord".
+ */
+export interface UpdateCheckRecord {
+  at: string;
+  channel: UpdateChannel;
+  outcome: UpdateCheckOutcome;
+}
+/**
+ * The student's update settings.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "UpdatePrefs".
+ */
+export interface UpdatePrefs {
+  /**
+   * Check for updates automatically (daily). Default on (D2).
+   */
+  auto_check: boolean;
+  /**
+   * The chosen channel; `None` = the default for this build (`effective_update_channel`).
+   */
+  channel?: UpdateChannel | null;
 }
 /**
  * Materials of one teaching week.
