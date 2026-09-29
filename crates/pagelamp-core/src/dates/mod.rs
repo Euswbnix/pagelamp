@@ -1,4 +1,5 @@
-//! Instants to course calendar dates (docs/design/v0.3-course-calendar.md §6.1).
+//! Instants to course calendar dates (docs/design/v0.3-course-calendar.md §6.1), and the
+//! grammar of dates as course materials write them (`parse`, §7.2).
 //!
 //! Every place that turns a timestamp into a date for week or phase arithmetic (material
 //! publish dates, module unlocks, events, the LMS course and term dates stored at sync) goes
@@ -8,6 +9,8 @@
 //!
 //! `today` is not computed here: it stays the machine's local date (`views::AsOf`), so the
 //! app and `pagelamp mcp` on the same machine agree.
+
+pub mod parse;
 
 use chrono::{Datelike, NaiveDate, NaiveDateTime, TimeDelta};
 
