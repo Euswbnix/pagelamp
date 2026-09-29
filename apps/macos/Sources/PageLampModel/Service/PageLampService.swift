@@ -97,13 +97,13 @@ public protocol PageLampService: Sendable {
     /// Everything AI: providers and their keys, choices, usage, generations.
     func removeAllAiData() async throws(PageLampFailure) -> RemoveAiDataReport
     func codexStatus() async throws(PageLampFailure) -> CodexStatus
-    /// Downloads, verifies and installs the pinned Codex; `cancel_codex_install(install_id)` stops
-    /// it.
+    /// Downloads, verifies and installs the pinned Codex; `cancelCodexInstall(installId:)`
+    /// stops it.
     func installCodex(installId: String, observer: any CodexInstallObserver) async throws(PageLampFailure) -> CodexStatus
     func cancelCodexInstall(installId: String) async throws(PageLampFailure)
     /// Removes the Codex PageLamp installed (never one the student installed themselves).
     func removeCodex() async throws(PageLampFailure)
-    /// Signs in through Codex (browser or one-time code); `cancel_codex_login` stops it.
+    /// Signs in through Codex (browser or one-time code); `cancelCodexLogin()` stops it.
     func codexLogin(method: CodexLoginMethod, observer: any CodexLoginObserver) async throws(PageLampFailure) -> CodexStatus
     func cancelCodexLogin() async throws(PageLampFailure)
     func codexLogout() async throws(PageLampFailure) -> CodexStatus
@@ -112,7 +112,7 @@ public protocol PageLampService: Sendable {
     /// Which Codex to use: the one PageLamp installs, or the student's own.
     func setCodexSource(source: CodexSource) async throws(PageLampFailure) -> CodexStatus
     /// Explains a week of `course` (nil: the default week) from its readable materials, with
-    /// citations; `cancel_generation(generation_id)` stops it.
+    /// citations; `cancelGeneration(generationId:)` stops it.
     func explainWeek(course: String, week: UInt32?, generationId: String, options: ExplainOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyExplanation
     /// The saved explanations of `course` (one week, or all), newest first.
     func savedExplanations(course: String, week: UInt32?) async throws(PageLampFailure) -> [WeeklyExplanation]
@@ -120,9 +120,10 @@ public protocol PageLampService: Sendable {
     /// Explanations in the app's language or the course's.
     func aiOutputLanguage() async throws(PageLampFailure) -> OutputLanguage
     func setAiOutputLanguage(language: OutputLanguage) async throws(PageLampFailure)
-    /// Drafts a plan (not saved until `accept_study_plan`); `cancel_generation` stops it.
+    /// Drafts a plan (not saved until `acceptStudyPlan(generationId:)`);
+    /// `cancelGeneration(generationId:)` stops it.
     func generateStudyPlan(request: StudyPlanRequest, generationId: String, observer: any GenObserver) async throws(PageLampFailure) -> GeneratedStudyPlan
-    /// Saves the draft `generation_id` as the current study plan.
+    /// Saves the draft `generationId` as the current study plan.
     func acceptStudyPlan(generationId: String) async throws(PageLampFailure) -> StoredStudyPlan
     func setStudyPlanItemDone(planId: Int64, itemIndex: UInt32, done: Bool) async throws(PageLampFailure) -> StoredStudyPlan
     /// Stops a running generation or batch by the id the caller gave it; it ends with `Cancelled`.
@@ -152,13 +153,13 @@ public protocol PageLampService: Sendable {
     func dismissCalendarProposal(proposalId: Int64) async throws(PageLampFailure)
     /// The courses "Read syllabi for N courses" offers; empty while "Not now" covers them.
     func syllabusReadingOffers() async throws(PageLampFailure) -> [SyllabusOffer]
-    /// "Not now" on the syllabus reading offers (`not_now_days()`).
+    /// "Not now" on the syllabus reading offers (`notNowDays()`).
     func snoozeCalendarOffers() async throws(PageLampFailure)
     /// Reads the syllabus with the chosen model into a proposal that changes nothing until
-    /// accepted; `cancel_generation(generation_id)` stops it.
+    /// accepted; `cancelGeneration(generationId:)` stops it.
     func readCourseCalendar(course: String, generationId: String, options: ReadCalendarOptions, observer: any GenObserver) async throws(PageLampFailure) -> CalendarProposal
-    /// Reads several courses' syllabi, one after another; `cancel_generation(batch_id)` stops the
-    /// rest. A course that fails is an outcome, not an error.
+    /// Reads several courses' syllabi, one after another; `cancelGeneration(generationId:)` with
+    /// `batchId` stops the rest. A course that fails is an outcome, not an error.
     func readCourseCalendars(courses: [String], batchId: String, options: ReadCalendarOptions, observer: any CalendarBatchObserver) async throws(PageLampFailure) -> [CalendarRunOutcome]
     /// What removing `courses` would take away and keep.
     func removalPreview(courses: [String]) async throws(PageLampFailure) -> RemovalPreview
@@ -166,8 +167,8 @@ public protocol PageLampService: Sendable {
     func removeCourses(courses: [String], options: RemoveOptions) async throws(PageLampFailure) -> RemovalReport
     func removedCourses() async throws(PageLampFailure) -> [RemovedCourse]
     func restoreCourse(removedId: String) async throws(PageLampFailure) -> RestoreOutcome
-    /// Purges removed courses whose time is up (`removed_ids`: these, nil: every due one).
-    /// `permanent_if_no_trash`: delete files for good where there is no Trash; callers ask first,
+    /// Purges removed courses whose time is up (`removedIds`: these, nil: every due one).
+    /// `permanentIfNoTrash`: delete files for good where there is no Trash; callers ask first,
     /// it is never implied.
     func purgeRemovedCourses(removedIds: [String]?, permanentIfNoTrash: Bool) async throws(PageLampFailure) -> PurgeReport
     /// Stops listing a removed course (its undo is gone).

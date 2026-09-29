@@ -6,7 +6,8 @@
 //! A run never waits for its observer: events go through an unbounded channel to a forwarder
 //! on the runtime's blocking pool, which calls the observer in order. An observer that is slow,
 //! never returns or panics can't hold up or break the run; the call returns at most
-//! `DRAIN_WAIT` after the run ends even if events are still undelivered. Stopping a run is the
+//! `DRAIN_WAIT` after the run ends even if events are still undelivered. An observer that never
+//! returns keeps its forwarder (a blocking-pool thread) for good, though. Stopping a run is the
 //! caller's own id: `cancel_generation(id)` (or `cancel_codex_install` / `cancel_codex_login`).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
