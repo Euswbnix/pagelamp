@@ -31,6 +31,31 @@ fn lenient_time<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DateTime<Utc>>
         }))
 }
 
+/// A course or term date as Canvas sent it: an instant, or a bare `YYYY-MM-DD` date. A bare
+/// date is already a calendar date and must not be moved by the course's time zone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Moment {
+    Instant(DateTime<Utc>),
+    Date(NaiveDate),
+}
+
+/// Like `lenient_time`, but keeps a bare date as a date (see `Moment`).
+fn lenient_moment<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Moment>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    let Some(serde_json::Value::String(text)) = value else {
+        return Ok(None);
+    };
+    let text = text.trim();
+    Ok(DateTime::parse_from_rfc3339(text)
+        .map(|t| Moment::Instant(t.with_timezone(&Utc)))
+        .ok()
+        .or_else(|| {
+            NaiveDate::parse_from_str(text, "%Y-%m-%d")
+                .ok()
+                .map(Moment::Date)
+        }))
+}
+
 /// A Canvas object id. Canvas sends numbers (sometimes strings, e.g. sharded "123~456").
 /// Only ASCII digits and `~` are accepted, so an id can be put into a URL path safely.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -69,7 +94,7 @@ pub(crate) struct User {
     pub short_name: Option<String>,
 }
 
-/// `GET /courses?include[]=term&include[]=syllabus_body`
+/// `GET /courses?include[]=term&include[]=syllabus_body&include[]=concluded`
 #[derive(Debug, Deserialize)]
 pub(crate) struct Course {
     pub id: CanvasId,
@@ -77,26 +102,37 @@ pub(crate) struct Course {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     pub course_code: Option<String>,
-    #[serde(default, deserialize_with = "lenient_time")]
-    pub start_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "lenient_time")]
-    pub end_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "lenient_moment")]
+    pub start_at: Option<Moment>,
+    #[serde(default, deserialize_with = "lenient_moment")]
+    pub end_at: Option<Moment>,
     #[serde(default, deserialize_with = "lenient")]
     pub term: Option<Term>,
     #[serde(default, deserialize_with = "lenient")]
     pub syllabus_body: Option<String>,
     /// Canvas returns a stub `{id, access_restricted_by_date: true}` for courses outside
-    /// their dates; those are skipped.
+    /// their dates; those are not upserted (only `lms_access_restricted` is recorded).
     #[serde(default, deserialize_with = "lenient")]
     pub access_restricted_by_date: Option<bool>,
+    /// The course's IANA time zone, e.g. "America/Toronto".
+    #[serde(default, deserialize_with = "lenient")]
+    pub time_zone: Option<String>,
+    /// `unpublished`, `available`, `completed` or `deleted`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub workflow_state: Option<String>,
+    /// Sent with `include[]=concluded`: the course (or its term) has ended for the student.
+    #[serde(default, deserialize_with = "lenient")]
+    pub concluded: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Term {
-    #[serde(default, deserialize_with = "lenient_time")]
-    pub start_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "lenient_time")]
-    pub end_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "lenient_moment")]
+    pub start_at: Option<Moment>,
+    #[serde(default, deserialize_with = "lenient_moment")]
+    pub end_at: Option<Moment>,
 }
 
 /// `GET /courses/:id/tabs`
@@ -273,14 +309,45 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(
-            course.start_at.unwrap().to_rfc3339(),
-            "2026-09-07T00:00:00+00:00"
+            course.start_at,
+            Some(Moment::Date(NaiveDate::from_ymd_opt(2026, 9, 7).unwrap()))
         );
         assert!(course.end_at.is_none() && course.term.is_none());
         assert!(course.access_restricted_by_date.is_none());
         let file: File =
             serde_json::from_value(json!({"id": 1, "size": "big", "display_name": 42})).unwrap();
         assert!(file.size.is_none() && file.display_name.is_none());
+    }
+
+    /// CAL-16 `concluded_field_is_lenient`: a missing, wrongly typed or true `concluded`
+    /// (and the other new course fields) never make the course unreadable.
+    #[test]
+    fn concluded_field_is_lenient() {
+        let course =
+            |value: serde_json::Value| -> Course { serde_json::from_value(value).unwrap() };
+        assert_eq!(course(json!({"id": 1})).concluded, None);
+        assert_eq!(
+            course(json!({"id": 1, "concluded": "true"})).concluded,
+            None
+        );
+        assert_eq!(course(json!({"id": 1, "concluded": 1})).concluded, None);
+        assert_eq!(course(json!({"id": 1, "concluded": null})).concluded, None);
+        assert_eq!(
+            course(json!({"id": 1, "concluded": true})).concluded,
+            Some(true)
+        );
+        assert_eq!(
+            course(json!({"id": 1, "concluded": false})).concluded,
+            Some(false)
+        );
+        let odd = course(json!({
+            "id": 1, "time_zone": 5, "workflow_state": ["completed"],
+            "term": {"name": 2026, "start_at": "2026-05-04T04:00:00Z"}
+        }));
+        assert!(odd.time_zone.is_none() && odd.workflow_state.is_none());
+        let term = odd.term.unwrap();
+        assert!(term.name.is_none());
+        assert!(matches!(term.start_at, Some(Moment::Instant(_))));
     }
 
     #[test]

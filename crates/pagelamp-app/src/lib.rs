@@ -26,6 +26,7 @@
 
 mod activity;
 pub mod ai;
+mod course;
 pub mod diagnostics;
 mod lock;
 mod mcp_config;
@@ -33,6 +34,14 @@ mod sync;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
+pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
+pub use course::removal::{
+    BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
+    RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, TombstoneState,
+};
+pub use course::{
+    CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
+};
 pub use updates::{
     StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
     WhatsNewTopic,
@@ -914,6 +923,8 @@ impl App {
     }
 
     /// Set/clear the student's term override (`None, None` falls back to the synced dates).
+    /// `start` is the first day of classes and `end` the last day of classes. Saving dates
+    /// confirms them (they are no longer `legacy`, calendar design §3.2).
     pub fn set_course_term(
         &self,
         course: &str,
@@ -922,7 +933,11 @@ impl App {
     ) -> Result<()> {
         let store = self.write_store()?;
         let course = store.resolve_course_with(course, true)?;
-        Ok(store.set_course_term(&course.id, start, end)?)
+        store.in_transaction(|store| {
+            store.set_course_term(&course.id, start, end)?;
+            course::set_dates_confirmed(store, &course.id, start.is_some() || end.is_some())
+        })?;
+        Ok(())
     }
 
     /// The per-course switch "Let my AI app read this course's materials" (docs/ARCHITECTURE.md
@@ -1209,6 +1224,19 @@ struct AppTypes {
     gen_notice_code: ai::GenNoticeCode,
     gen_event: ai::GenEvent,
     generation_meta: ai::GenerationMeta,
+    // Course (v0.3 M0.10)
+    course_timeline: pagelamp_core::model::CourseTimeline,
+    lifecycle_summary: LifecycleSummary,
+    snooze_kind: pagelamp_core::model::SnoozeKind,
+    evidence_code: pagelamp_core::model::EvidenceCode,
+    evidence_signal: pagelamp_core::model::EvidenceSignal,
+    // alpha.2 (types first; methods with schema v4)
+    removal_preview: RemovalPreview,
+    remove_options: RemoveOptions,
+    removal_report: RemovalReport,
+    restore_outcome: RestoreOutcome,
+    purge_report: PurgeReport,
+    course_dates_input: CourseDatesInput,
 }
 
 /// JSON Schema (draft 2020-12) of every type crossing the facade, as one document.

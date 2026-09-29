@@ -15,8 +15,12 @@ use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::dates::{Tz, course_date, time_zone};
+use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
 use crate::store::Store;
+use crate::term::phase::teaching_week_on;
+use crate::term::{CONFIRMED_DATES_KEY, ResolvedTerm, TermInput, resolve_term};
 use crate::timeline;
 use crate::{Error, Result};
 
@@ -37,17 +41,44 @@ pub struct AsOf {
     pub now: Timestamp,
     /// The student's local calendar date (drives timeline/week inference).
     pub today: NaiveDate,
+    /// The machine's time zone: the dates of courses without one of their own (folder
+    /// courses) are taken in it, so they agree with `today`. None → UTC.
+    pub tz: Option<Tz>,
 }
 
 impl AsOf {
-    /// Current instant; `today` in the machine's local timezone.
+    /// Current instant; `today` and `tz` in the machine's time zone.
+    ///
+    /// Both come from the operating system's zone setting (`iana-time-zone`: CoreFoundation on
+    /// macOS, `/etc/localtime` on Linux, the Windows API), never from a `TZ` environment
+    /// variable, so the desktop app and every `pagelamp mcp` an AI app starts (possibly with
+    /// its own environment) compute the same `today` and the same course dates. Only when the
+    /// system zone can't be determined does `today` fall back to chrono's `Local`.
     pub fn now_local() -> Self {
         let now: DateTime<Utc> = Utc::now();
+        let tz = local_time_zone();
+        let today = match tz {
+            Some(tz) => now.with_timezone(&tz).date_naive(),
+            None => now.with_timezone(&Local).date_naive(),
+        };
+        AsOf { now, today, tz }
+    }
+
+    /// A fixed moment (tests, previews): `today` as given, UTC for courses without a zone.
+    pub fn at(now: Timestamp, today: NaiveDate) -> Self {
         AsOf {
             now,
-            today: now.with_timezone(&Local).date_naive(),
+            today,
+            tz: None,
         }
     }
+}
+
+/// The operating system's IANA time zone, if it can be determined (see `AsOf::now_local`).
+fn local_time_zone() -> Option<Tz> {
+    iana_time_zone::get_timezone()
+        .ok()
+        .and_then(|name| time_zone(&name))
 }
 
 /// A deadline/event enriched with its course's code and name (all `Event` fields are
@@ -79,6 +110,8 @@ pub struct CourseSummary {
     /// Effective AI access to this course's material text (`Course::ai_materials`).
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    /// Upcoming / current / finishing / ended, the Past group and removal suggestions.
+    pub lifecycle: CourseLifecycle,
     pub counts: CourseCounts,
     pub next_deadline: Option<Deadline>,
     /// Label of the source this course came from (e.g. "Quercus", "~/Courses").
@@ -116,6 +149,7 @@ pub struct CourseOverview {
     /// Effective AI access to this course's material text (`Course::ai_materials`).
     pub ai_materials: AiMaterialsState,
     pub timeline: CourseTimeline,
+    pub lifecycle: CourseLifecycle,
     pub current_modules: Vec<Module>,
     /// Materials published in the last `RECENT_DAYS` days, newest first (announcements excluded).
     pub recent_materials: Vec<MaterialView>,
@@ -164,6 +198,11 @@ pub enum WeekNoteKind {
     OutsideTerm,
     /// The week is known but has no modules or materials.
     NoMaterialsThisWeek,
+    /// No week requested and the course is in its exam period (no teaching week): showing the
+    /// materials of the last `RECENT_DAYS` days (`week` is None).
+    ExamPeriod,
+    /// No week requested and the course is in a break: showing the week before it.
+    Break,
 }
 
 /// A window of a material's text chunks (pagination via `next_chunk`).
@@ -241,10 +280,18 @@ pub const MAX_READ_CHARS: usize = 50_000;
 pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec<CourseSummary>> {
     let sources = SourceIndex::load(store)?;
     let upcoming = store.list_events(at.now, add_days(at.now, UPCOMING_DAYS), None)?;
+    let mut term_data = store.all_course_term_data()?;
+    let confirmed = confirmed_courses(store);
     let mut summaries = Vec::new();
     for course in store.list_courses(include_hidden)? {
-        let data = CourseData::load(store, &course)?;
-        let timeline = data.timeline(&course, at);
+        let data = CourseData::load_with(
+            store,
+            &course,
+            term_data.remove(&course.id).unwrap_or_default(),
+            &confirmed,
+        )?;
+        let (resolved, timeline) = data.timeline(&course, at);
+        let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
         let ai_materials = course.ai_materials();
         let course_deadlines: Vec<&Event> = upcoming
             .iter()
@@ -272,6 +319,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
         summaries.push(CourseSummary {
             ai_materials,
             timeline,
+            lifecycle,
             counts,
             next_deadline,
             source_label,
@@ -282,9 +330,9 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     Ok(summaries)
 }
 
-/// Timeline of one course from its modules and materials (see `timeline::infer_timeline`).
+/// Timeline of one course: its resolved dates, phase and week (see `timeline`).
 pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<CourseTimeline> {
-    Ok(CourseData::load(store, course)?.timeline(course, at))
+    Ok(CourseData::load(store, course)?.timeline(course, at).1)
 }
 
 /// "What's going on in this course right now". `course` is resolved with
@@ -298,7 +346,8 @@ pub fn course_overview(
 ) -> Result<CourseOverview> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let timeline = data.timeline(&course, at);
+    let (resolved, timeline) = data.timeline(&course, at);
+    let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
     let current_modules = data
         .modules
         .iter()
@@ -338,6 +387,7 @@ pub fn course_overview(
     Ok(CourseOverview {
         ai_materials: course.ai_materials(),
         timeline,
+        lifecycle,
         current_modules,
         recent_materials: recent(false),
         upcoming_deadlines,
@@ -366,7 +416,7 @@ pub fn week_materials(
 ) -> Result<WeekMaterials> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let timeline = data.timeline(&course, at);
+    let (resolved, timeline) = data.timeline(&course, at);
     let content: Vec<&Material> = data
         .materials
         .iter()
@@ -374,11 +424,12 @@ pub fn week_materials(
         .collect();
 
     let mut weeks: BTreeSet<u32> = data.modules.iter().filter_map(|m| m.week_hint).collect();
-    weeks.extend(content.iter().filter_map(|m| data.week_of(&course, m)));
+    weeks.extend(content.iter().filter_map(|m| data.week_of(&resolved, m)));
     weeks.extend(timeline.current_week);
+    weeks.extend(timeline.default_week);
     let available_weeks: Vec<u32> = weeks.into_iter().collect();
 
-    let (shown_week, modules, materials, note_kind) = match week.or(timeline.current_week) {
+    let (shown_week, modules, materials, note_kind) = match week.or(timeline.default_week) {
         Some(n) => {
             let modules: Vec<Module> = data
                 .modules
@@ -388,11 +439,13 @@ pub fn week_materials(
                 .collect();
             let materials: Vec<MaterialView> = content
                 .iter()
-                .filter(|m| data.week_of(&course, m) == Some(n))
+                .filter(|m| data.week_of(&resolved, m) == Some(n))
                 .map(|m| data.view(m))
                 .collect();
             let note_kind = if modules.is_empty() && materials.is_empty() {
                 Some(WeekNoteKind::NoMaterialsThisWeek)
+            } else if week.is_none() && timeline.phase == CoursePhase::Break {
+                Some(WeekNoteKind::Break)
             } else if week.is_none() && timeline.outside_term {
                 Some(WeekNoteKind::OutsideTerm)
             } else {
@@ -412,12 +465,12 @@ pub fn week_materials(
                     .then(a.title.cmp(&b.title))
             });
             let materials = recent.into_iter().map(|m| data.view(m)).collect();
-            (
-                None,
-                Vec::new(),
-                materials,
-                Some(WeekNoteKind::CurrentWeekUnknown),
-            )
+            let note_kind = match timeline.phase {
+                CoursePhase::ExamPeriod => WeekNoteKind::ExamPeriod,
+                CoursePhase::NotStarted | CoursePhase::Ended => WeekNoteKind::OutsideTerm,
+                _ => WeekNoteKind::CurrentWeekUnknown,
+            };
+            (None, Vec::new(), materials, Some(note_kind))
         }
     };
     let note = note_kind.map(|kind| week_note_text(kind, shown_week));
@@ -664,13 +717,36 @@ const READ_BATCH: u32 = 64;
 struct CourseData {
     modules: Vec<Module>,
     materials: Vec<Material>,
+    /// Every event of the course (deadlines, class events), any date.
+    events: Vec<Event>,
+    term_data: CourseTermData,
+    dates_confirmed: bool,
     module_names: HashMap<String, String>,
     module_weeks: HashMap<String, u32>,
     chunk_counts: HashMap<String, u32>,
 }
 
+/// The courses whose student dates are confirmed (`CONFIRMED_DATES_KEY`); unreadable → none.
+fn confirmed_courses(store: &Store) -> BTreeSet<String> {
+    store
+        .setting::<BTreeSet<String>>(CONFIRMED_DATES_KEY)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
 impl CourseData {
     fn load(store: &Store, course: &Course) -> Result<Self> {
+        let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
+        Self::load_with(store, course, term_data, &confirmed_courses(store))
+    }
+
+    fn load_with(
+        store: &Store,
+        course: &Course,
+        term_data: CourseTermData,
+        confirmed: &BTreeSet<String>,
+    ) -> Result<Self> {
         let modules = store.list_modules(&course.id)?;
         let module_names = modules
             .iter()
@@ -682,6 +758,13 @@ impl CourseData {
             .collect();
         Ok(CourseData {
             materials: store.list_materials(&course.id)?,
+            events: store.list_events(
+                DateTime::<Utc>::MIN_UTC,
+                DateTime::<Utc>::MAX_UTC,
+                Some(&course.id),
+            )?,
+            dates_confirmed: confirmed.contains(&course.id),
+            term_data,
             chunk_counts: store.material_chunk_counts(&course.id)?,
             modules,
             module_names,
@@ -689,23 +772,60 @@ impl CourseData {
         })
     }
 
-    /// Timeline inference ignores events in v0.1 (see `timeline` docs), so none are loaded.
-    fn timeline(&self, course: &Course, at: AsOf) -> CourseTimeline {
-        timeline::infer_timeline(course, &self.modules, &self.materials, &[], at.today)
+    fn input<'a>(&'a self, course: &'a Course, at: AsOf) -> TermInput<'a> {
+        TermInput {
+            fallback_tz: at.tz,
+            course,
+            data: &self.term_data,
+            dates_confirmed: self.dates_confirmed,
+            // Accepted calendars live in schema v4 (alpha.2); none before that.
+            calendar: None,
+            modules: &self.modules,
+            materials: &self.materials,
+            events: &self.events,
+            today: at.today,
+        }
+    }
+
+    /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`).
+    fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
+        let input = self.input(course, at);
+        let resolved = resolve_term(&input);
+        let timeline = timeline::infer_timeline(&input, &resolved);
+        (resolved, timeline)
     }
 
     fn chunks_of(&self, material_id: &str) -> u32 {
         self.chunk_counts.get(material_id).copied().unwrap_or(0)
     }
 
-    /// Teaching week of a material per the `week_materials` membership rule.
-    fn week_of(&self, course: &Course, material: &Material) -> Option<u32> {
+    /// The course's lifecycle (`lifecycle::course_lifecycle`).
+    fn lifecycle(
+        &self,
+        course: &Course,
+        resolved: &ResolvedTerm,
+        timeline: &CourseTimeline,
+        at: AsOf,
+    ) -> CourseLifecycle {
+        lifecycle::course_lifecycle(&LifecycleInput {
+            course,
+            data: &self.term_data,
+            resolved,
+            timeline,
+            events: &self.events,
+            today: at.today,
+        })
+    }
+
+    /// Teaching week of a material per the `week_materials` membership rule: its own week
+    /// number, its module's, else the teaching week it was published in by the resolved dates.
+    fn week_of(&self, resolved: &ResolvedTerm, material: &Material) -> Option<u32> {
         material
             .week_hint
             .or_else(|| self.module_weeks.get(material.module_id.as_ref()?).copied())
             .or_else(|| {
-                let published = material.published_at?.date_naive();
-                timeline::week_of(course.term_start?, published)
+                let published = course_date(material.published_at?, resolved.tz);
+                teaching_week_on(&resolved.resolution, published)
             })
     }
 
@@ -805,6 +925,13 @@ fn week_note_text(kind: WeekNoteKind, week: Option<u32>) -> String {
         WeekNoteKind::NoMaterialsThisWeek => match week {
             Some(n) => format!("No modules or materials are assigned to week {n}."),
             None => "No modules or materials found.".to_string(),
+        },
+        WeekNoteKind::ExamPeriod => format!(
+            "The course is in its exam period; showing materials published in the last {RECENT_DAYS} days."
+        ),
+        WeekNoteKind::Break => match week {
+            Some(n) => format!("The course is on a break; showing week {n}."),
+            None => "The course is on a break.".to_string(),
         },
     }
 }

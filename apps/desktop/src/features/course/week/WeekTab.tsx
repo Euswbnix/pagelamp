@@ -36,9 +36,10 @@ export function WeekTab({
   const { t } = useTranslation("course");
   const [selectedWeek, setSelectedWeek] = useSelectedWeek();
   const query = useWeekMaterials(overview.course.id, selectedWeek);
-  const currentWeek = overview.timeline.current_week ?? null;
+  // The week the facade shows by default (during a break, the week before it).
+  const currentWeek = overview.timeline.default_week ?? overview.timeline.current_week ?? null;
 
-  // Selecting the current week clears ?week=, so the URL and cache stay canonical.
+  // Selecting the default week clears ?week=, so the URL and cache stay canonical.
   const selectWeek = (week: number | null) => setSelectedWeek(week === currentWeek ? null : week);
 
   let body: ReactNode;
@@ -91,7 +92,7 @@ function WeekView({
     <div className={cn("space-y-6 transition-opacity", stale && "opacity-60")} aria-busy={stale}>
       <WeekSwitcher
         week={week}
-        currentWeek={data.timeline.current_week ?? null}
+        currentWeek={data.timeline.default_week ?? data.timeline.current_week ?? null}
         availableWeeks={data.available_weeks}
         onSelect={onSelectWeek}
       />

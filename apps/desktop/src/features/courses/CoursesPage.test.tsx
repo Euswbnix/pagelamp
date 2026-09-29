@@ -52,7 +52,7 @@ describe("CoursesPage — course list", () => {
     const c310 = within(card(list, "DEMO310"));
     expect(c310.getByText("No AI")).toBeInTheDocument();
     expect(c310.getByText("Week unknown")).toBeInTheDocument();
-    expect(c310.getByText("Set the term start to fix this")).toBeInTheDocument();
+    expect(c310.getByText("Set the first day of classes to fix this")).toBeInTheDocument();
 
     // Sorted by code; the hidden DEMO099 is not shown.
     const links = within(list).getAllByRole("link");
@@ -65,11 +65,13 @@ describe("CoursesPage — course list", () => {
     const list = await coursesRegion();
 
     await user.click(within(list).getByRole("switch", { name: "Show hidden courses (1)" }));
+    // DEMO099 looks finished, so it is under the (collapsed) Past courses.
+    await user.click(within(list).getByRole("button", { name: "Past courses (1)" }));
 
     const hidden = within(card(list, "DEMO099"));
     expect(hidden.getByText("Hidden")).toBeInTheDocument();
     expect(useUiStore.getState().showHiddenCourses).toBe(true);
-    // Hidden courses go after the visible ones.
+    // Past courses go after the current ones.
     expect(within(list).getAllByRole("link").at(-1)?.textContent).toMatch(/^DEMO099/);
   });
 
@@ -91,16 +93,29 @@ describe("CoursesPage — course list", () => {
     ).toBeInTheDocument();
   });
 
-  it("marks a course Canvas no longer lists as active as a past course", async () => {
+  it("groups courses that look finished under Past courses, collapsed until opened", async () => {
     useUiStore.setState({ showHiddenCourses: true });
-    renderRoute("/courses");
+    const { user } = renderRoute("/courses");
     const list = await coursesRegion();
+    expect(within(list).getByRole("heading", { level: 3, name: "Current" })).toBeInTheDocument();
+    const toggle = within(list).getByRole("button", { name: "Past courses (1)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(list).queryByRole("link", { name: /^DEMO099\b/ })).toBeNull();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(useUiStore.getState().showPastCourses).toBe(true);
     expect(within(card(list, "DEMO099")).getByText("Past course")).toBeInTheDocument();
     expect(within(card(list, "DEMO101")).queryByText("Past course")).not.toBeInTheDocument();
+    expect(
+      within(list).getByText(
+        /They're left out of weekly views, and their deadlines still remind you\./,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("puts a hidden course back in the list from its card", async () => {
-    useUiStore.setState({ showHiddenCourses: true });
+    useUiStore.setState({ showHiddenCourses: true, showPastCourses: true });
     const { user, api } = renderRoute("/courses");
     const setHidden = vi.spyOn(api, "setCourseHidden");
     const list = await coursesRegion();
@@ -140,6 +155,10 @@ describe("CoursesPage — course list", () => {
       ),
     ).toBeInTheDocument();
     await user.click(within(list).getByRole("switch", { name: "Show hidden courses (1)" }));
+    expect(
+      within(list).getByText("No current courses. Finished ones are under Past courses."),
+    ).toBeInTheDocument();
+    await user.click(within(list).getByRole("button", { name: "Past courses (1)" }));
     expect(card(list, "DEMO099")).toBeInTheDocument();
   });
 

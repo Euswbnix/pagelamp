@@ -57,6 +57,10 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setCourseAiAccess(COURSE, false);
   await api.setCourseHidden(COURSE, true);
   await api.setCourseMaterialSharing(COURSE, "not_sure");
+  await api.keepCourseCurrent(COURSE, "2026-12-31");
+  await api.keepCourseCurrent(COURSE, null);
+  await api.clearKeepCourseCurrent(COURSE);
+  await api.confirmCourseDates(COURSE);
   await api.mcpClientConfigs();
   await api.diagnosticReport();
   await api.doctor();

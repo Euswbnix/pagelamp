@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use chrono::{Local, NaiveDate, TimeDelta, TimeZone, Utc};
+use chrono::{Datelike, Local, NaiveDate, TimeDelta, TimeZone, Utc};
 use uniffi::FfiConverter;
 
 use super::*;
@@ -133,6 +133,26 @@ const MIRRORED: &[&str] = &[
     "SearchHit",
     "Confidence",
     "CourseTimeline",
+    "CoursePhase",
+    "TermAnchorSource",
+    "RejectReason",
+    "RejectedDates",
+    "BreakKind",
+    "CalendarOrigin",
+    "AiLabel",
+    "TeachingSegment",
+    "DateSpan",
+    "CalendarBreak",
+    "CalendarStatus",
+    "TermResolution",
+    "EvidenceParam",
+    "EvidenceItem",
+    "EvidenceCode",
+    "EvidenceSignal",
+    "LifecycleState",
+    "CourseGroup",
+    "SnoozeKind",
+    "CourseLifecycle",
     "StoreCounts",
     "StudyPlanItem",
     "StudyPlan",
@@ -220,6 +240,24 @@ const MIRRORED: &[&str] = &[
     "ContextCourse",
     "LeftOutMaterial",
     "LeftOutReason",
+    // Course lifecycle and removal (v0.3 M0.10)
+    "LifecycleSummary",
+    "CourseLifecycleEntry",
+    "RemovalReason",
+    "LostAfterPurge",
+    "BackupInfo",
+    "RemovalPreviewItem",
+    "RemovalPreview",
+    "RemoveOptions",
+    "TombstoneState",
+    "RemovedCourse",
+    "RemovalReport",
+    "RestoreFailure",
+    "RestoreOutcome",
+    "PurgeReport",
+    "CourseDatesInput",
+    "BreakInput",
+    "SegmentInput",
     // Carried as `PageLampError` (error.rs).
     "AppError",
     "AppErrorKind",
@@ -265,9 +303,10 @@ fn sync_request_defaults_match_the_facade() {
 // ----- the exported API, end to end ------------------------------------------------------------
 
 /// A course folder root with two courses, week folders and `course.toml`s whose term started
-/// ten days ago (so the current week is 2).
+/// on last week's Monday (so the current week is 2: weeks run Monday to Sunday).
 fn course_folder(root: &Path) -> NaiveDate {
-    let term_start = Local::now().date_naive() - TimeDelta::days(10);
+    let today = Local::now().date_naive();
+    let term_start = today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 7);
     let write = |relative: &str, text: &str| {
         let path = root.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();

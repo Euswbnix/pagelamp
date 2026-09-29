@@ -1,12 +1,14 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import type { Course } from "@/api/types";
+import type { Course, CourseLifecycle } from "@/api/types";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { REMOVAL_UI } from "../removal/availability";
+import { RemoveCourseSection } from "../removal/RemoveCourseSection";
 import { useCourseHidden } from "../useCourseHidden";
 
-/** Per-course settings. For now: hide the course from the list and from the AI app. */
-export function SettingsTab({ course }: { course: Course }) {
+/** Per-course settings: hide the course from the list and the AI app, or remove it. */
+export function SettingsTab({ course, lifecycle }: { course: Course; lifecycle: CourseLifecycle }) {
   const { t } = useTranslation("course");
   const ids = { heading: useId(), hide: useId(), hideHelp: useId() };
   const { setHidden, isPending, pendingValue } = useCourseHidden(course);
@@ -33,6 +35,7 @@ export function SettingsTab({ course }: { course: Course }) {
           aria-describedby={ids.hideHelp}
         />
       </div>
+      {REMOVAL_UI ? <RemoveCourseSection course={course} lifecycle={lifecycle} /> : null}
     </section>
   );
 }

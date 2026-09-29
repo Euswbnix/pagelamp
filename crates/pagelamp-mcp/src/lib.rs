@@ -69,8 +69,9 @@ use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
-    AiMaterialsState, AiPolicy, Confidence, EventKind, MaterialKind, SourceErrorKind, SourceKind,
-    StoreCounts, StudyPlan, TextStatus, Timestamp,
+    AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
+    CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, SourceErrorKind,
+    SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
 };
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, Deadline, MaterialView};
@@ -441,15 +442,11 @@ impl PageLampServer {
                     cap_list(overview.recent_materials, MAX_LISTED_MATERIALS);
                 json_result(&Overview {
                     guidance: text::guidance(),
-                    course: CourseInfo::from(&overview.course),
+                    course: CourseInfo::new(&overview.course, &overview.timeline),
                     ai_materials: overview.ai_materials,
                     note: withheld_note(overview.ai_materials),
-                    timeline: TimelineInfo {
-                        current_week: overview.timeline.current_week,
-                        confidence: overview.timeline.confidence,
-                        outside_term: overview.timeline.outside_term,
-                        evidence: overview.timeline.evidence,
-                    },
+                    lifecycle: overview.lifecycle.state,
+                    timeline: TimelineInfo::from(overview.timeline),
                     current_modules: overview
                         .current_modules
                         .iter()
@@ -494,8 +491,9 @@ impl PageLampServer {
                 let (materials, omitted) = cap_list(week.materials, MAX_LISTED_MATERIALS);
                 json_result(&Week {
                     guidance: text::guidance(),
-                    course: CourseInfo::from(&week.course),
+                    course: CourseInfo::new(&week.course, &week.timeline),
                     ai_materials: week.ai_materials,
+                    phase: week.timeline.phase,
                     week: week.week,
                     requested_week: week.requested_week,
                     available_weeks: week.available_weeks,
@@ -1075,6 +1073,10 @@ struct CourseLine {
     name: String,
     current_week: Option<u32>,
     week_confidence: Confidence,
+    phase: CoursePhase,
+    /// Ended courses stay listed (a finished course is useful for reviewing a prerequisite).
+    lifecycle: LifecycleState,
+    outside_term: bool,
     ai_policy: AiPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
     ai_policy_note: Option<String>,
@@ -1094,6 +1096,9 @@ impl From<&views::CourseSummary> for CourseLine {
             name: summary.course.name.clone(),
             current_week: summary.timeline.current_week,
             week_confidence: summary.timeline.confidence,
+            phase: summary.timeline.phase,
+            lifecycle: summary.lifecycle.state,
+            outside_term: summary.timeline.outside_term,
             ai_policy: summary.course.ai_policy,
             ai_policy_note: summary.course.ai_policy_note.clone(),
             ai_materials: summary.ai_materials,
@@ -1111,22 +1116,33 @@ struct CourseInfo {
     id: String,
     code: Option<String>,
     name: String,
+    /// The dates that count the course's weeks: the first class and the end of exams (or the
+    /// last class), or null. An LMS term that isn't used (e.g. an enrollment window) never
+    /// shows here (calendar design §7.13, CAL-18).
     term_start: Option<NaiveDate>,
     term_end: Option<NaiveDate>,
+    /// Where those dates come from (`none` when no dates are known).
+    term_dates_source: TermAnchorSource,
     url: Option<String>,
     ai_policy: AiPolicy,
     #[serde(skip_serializing_if = "Option::is_none")]
     ai_policy_note: Option<String>,
 }
 
-impl From<&pagelamp_core::model::Course> for CourseInfo {
-    fn from(course: &pagelamp_core::model::Course) -> Self {
+impl CourseInfo {
+    fn new(course: &pagelamp_core::model::Course, timeline: &CourseTimeline) -> Self {
+        let term = &timeline.term;
+        let first = term.teaching.first();
+        let last = term.teaching.last();
         CourseInfo {
             id: course.id.clone(),
             code: course.code.clone(),
             name: course.name.clone(),
-            term_start: course.term_start,
-            term_end: course.term_end,
+            term_start: first.map(|segment| segment.first_class),
+            term_end: term
+                .exams_end
+                .or(last.and_then(|segment| segment.last_class)),
+            term_dates_source: term.anchor,
             url: public_url(course.url.as_deref()).map(str::to_string),
             ai_policy: course.ai_policy,
             ai_policy_note: course.ai_policy_note.clone(),
@@ -1134,13 +1150,89 @@ impl From<&pagelamp_core::model::Course> for CourseInfo {
     }
 }
 
+/// Where the course is. Structure only: dates, enums and numbers, never break labels, week
+/// topics or quotes (calendar design §7.11, rule 8).
 #[derive(Serialize)]
 struct TimelineInfo {
     current_week: Option<u32>,
     confidence: Confidence,
     outside_term: bool,
+    phase: CoursePhase,
+    /// The week to use by default (e.g. the week before a break); null in the exam period.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_week: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    break_after_week: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    teaching: Vec<SegmentInfo>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    breaks: Vec<BreakInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exams_end: Option<NaiveDate>,
+    anchor: TermAnchorSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    anchor_origin: Option<CalendarOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ai_label: Option<AiLabel>,
+    calendar_status: CalendarStatus,
     /// Reasons for the week (may quote module/material titles — course data).
     evidence: Vec<String>,
+}
+
+impl From<CourseTimeline> for TimelineInfo {
+    fn from(timeline: CourseTimeline) -> Self {
+        let term = timeline.term;
+        TimelineInfo {
+            current_week: timeline.current_week,
+            confidence: timeline.confidence,
+            outside_term: timeline.outside_term,
+            phase: timeline.phase,
+            default_week: timeline.default_week,
+            break_after_week: timeline.break_after_week,
+            teaching: term
+                .teaching
+                .iter()
+                .map(|segment| SegmentInfo {
+                    first_class: segment.first_class,
+                    last_class: segment.last_class,
+                    first_week: segment.first_week_number,
+                })
+                .collect(),
+            breaks: term
+                .breaks
+                .iter()
+                .map(|b| BreakInfo {
+                    kind: b.kind,
+                    start: b.span.start,
+                    end: b.span.end,
+                    numbered: b.numbered,
+                })
+                .collect(),
+            exams_end: term.exams_end,
+            anchor: term.anchor,
+            anchor_origin: term.anchor_origin,
+            ai_label: term.ai_label,
+            calendar_status: timeline.calendar,
+            evidence: timeline.evidence,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct SegmentInfo {
+    first_class: NaiveDate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_class: Option<NaiveDate>,
+    first_week: u32,
+}
+
+/// A break as structure: its kind and dates; never its label (material text).
+#[derive(Serialize)]
+struct BreakInfo {
+    kind: BreakKind,
+    start: NaiveDate,
+    end: NaiveDate,
+    numbered: bool,
 }
 
 #[derive(Serialize)]
@@ -1232,6 +1324,7 @@ struct Overview {
     ai_materials: AiMaterialsState,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
+    lifecycle: LifecycleState,
     timeline: TimelineInfo,
     current_modules: Vec<ModuleInfo>,
     recent_materials: Vec<MaterialInfo>,
@@ -1246,6 +1339,7 @@ struct Week {
     guidance: String,
     course: CourseInfo,
     ai_materials: AiMaterialsState,
+    phase: CoursePhase,
     week: Option<u32>,
     requested_week: Option<u32>,
     available_weeks: Vec<u32>,
