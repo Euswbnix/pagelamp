@@ -1,0 +1,181 @@
+{
+  "phase": {
+    "teaching": "第 {{week}} 周",
+    "breakNumbered": "第 {{week}} 周 · {{kind}}",
+    "breakAfter": "{{kind}}（第 {{week}} 周之后）",
+    "break": "{{kind}}",
+    "examsAfter": "考试期（第 {{week}} 周之后）",
+    "exams": "考试期",
+    "ended": "已结课",
+    "startsOn": "{{date}} 开课",
+    "notStarted": "尚未开课",
+    "unknown": "周数未知"
+  },
+  "breakKind": {
+    "reading_week": "阅读周",
+    "holiday": "假日",
+    "winter_break": "寒假",
+    "other": "假期"
+  },
+  "anchor": {
+    "student_confirmed": "你设置的日期",
+    "lms_course_dates": "Canvas 课程日期",
+    "lms_term": "Canvas 学期日期",
+    "folder_config": "课程文件夹的设置",
+    "institution_calendar": "学校校历",
+    "published_week_labels": "教授资料里的周数",
+    "none": "无来源"
+  },
+  "anchorTitle": {
+    "student_confirmed": "你设置的日期",
+    "lms_course_dates": "Canvas 课程日期",
+    "lms_term": "Canvas 学期日期",
+    "folder_config": "课程文件夹设置",
+    "institution_calendar": "学校校历",
+    "published_week_labels": "教授资料里的周数",
+    "none": "无"
+  },
+  "origin": {
+    "user": "由你设置",
+    "legacy": "由你在旧版 {{product}} 中设置",
+    "scan": "{{product}} 从教学大纲中找到，已由你确认",
+    "ai": "日期由 {{backend}} · {{model}} 于 {{date}} 从教学大纲读出，已由你确认",
+    "aiNoLabel": "日期由 AI 从教学大纲读出，已由你确认",
+    "ai_app": "由你的 AI 应用（{{backend}} · {{model}}）于 {{date}} 提议，已由你确认",
+    "ai_appNoLabel": "由你的 AI 应用提议，已由你确认",
+    "restored": "随课程一起恢复"
+  },
+  "reject": {
+    "longer_than_teaching_term": "比一个教学学期还长，更像是选课窗口，而不是上课日期。",
+    "shorter_than_teaching_term": "太短，不像一个教学学期。",
+    "starts_long_before_activity": "开始日期比课程里第一次发布内容早了四周以上。",
+    "starts_before_session_window": "开始日期比本学期开始早了很多。",
+    "end_outside_session_window": "结束日期离本学期结束太远。",
+    "starts_after_end": "结束日期早于开始日期。",
+    "conflicts_with_stronger_source": "和更可靠的来源不一致。"
+  },
+  "where": {
+    "title": "这门课现在到哪儿了",
+    "datesUsed": "采用的日期",
+    "datesNotUsed": "没有采用的日期",
+    "source": "来源",
+    "weekOne": "第 1 周",
+    "weekOf": "{{date}} 那一周",
+    "firstClass": "第一天上课",
+    "lastClass": "最后一天上课",
+    "secondPart": "第二部分",
+    "span": "{{start}} – {{end}}",
+    "spanOpen": "从 {{start}} 起",
+    "breaks": "假期",
+    "breakItem": "{{kind}}：{{span}}",
+    "examsEnd": "考试结束",
+    "noDates": "还没有找到这门课的日期。如果显示的周数不对，请在下面设置日期。",
+    "notUsedDates": "{{source}}：{{span}}",
+    "notUsedEnd": "{{source}}：结束日期 {{date}} 没有采用。",
+    "notesWeek": "教授的资料已经发到第 {{week}} 周。",
+    "evidence": "我们是怎么判断的",
+    "evidenceEmpty": "还没有线索。同步这门课，或在下面设置日期。"
+  },
+  "status": {
+    "title": "课程状态",
+    "state": {
+      "upcoming": "即将开课",
+      "current": "进行中",
+      "finishing": "收尾中",
+      "ended": "已结课",
+      "inactive": "不活跃",
+      "unknown": "状态未知"
+    },
+    "hint": {
+      "upcoming": "还没开始上课。",
+      "current": "正在上课。",
+      "finishing": "课已经上完，但还有考试或其他安排。",
+      "ended": "这门课看起来已经结束。它会列在“往期课程”里，不再出现在按周显示的内容中；它的截止日期仍会提醒你。",
+      "inactive": "这门课很久没有动静，也没有日期。它会列在“往期课程”里。",
+      "unknown": "暂时判断不出这门课是否在进行。"
+    },
+    "since": "自 {{date}} 起",
+    "lastActivity": "最近动态 {{date}}",
+    "nextEvent": "下一项安排 {{date}}"
+  },
+  "keep": {
+    "button": "我还在上这门课",
+    "hint": "{{product}} 会把它当作进行中的课程，直到某个日期（之后可以修改）。",
+    "keptUntil": "你已将这门课标为进行中，直到 {{date}}。",
+    "change": "修改日期",
+    "untilLabel": "进行中直到",
+    "saveDate": "保存日期",
+    "undo": "撤销",
+    "kept": "已移到进行中的课程",
+    "cleared": "{{product}} 会重新判断这门课的状态",
+    "invalid": "请选择今天或之后的日期。"
+  },
+  "checkDates": {
+    "title": "检查这门课的日期",
+    "body": "这些日期是你在旧版 {{product}} 中设置的，当时计算周数的方式不同。请确认现在显示的周数仍然正确。",
+    "confirm": "日期没问题",
+    "edit": "修改日期",
+    "confirmed": "日期已确认"
+  },
+  "form": {
+    "title": "课程日期",
+    "description": "如果显示的周数不对，请设置第一天和最后一天上课的日期。你设置的日期优先于其他一切来源。",
+    "prefilled": "已填入 {{product}} 目前采用的日期。",
+    "breaksNote": "阅读周和考试日期暂时还不能在这里设置。",
+    "start": "第一天上课",
+    "end": "最后一天上课（可不填）",
+    "endHint": "之后的三周算作考试期。",
+    "notUsedTitle": "没有采用的日期及原因",
+    "save": "保存日期",
+    "clear": "清除我的日期",
+    "saved": "课程日期已保存",
+    "cleared": "已清除你设置的日期",
+    "invalid": "这些日期有问题。请确认最后一天上课在第一天之后。"
+  },
+  "groups": {
+    "current": "进行中",
+    "upcoming": "即将开课",
+    "past": "往期课程（{{count}}）",
+    "pastHint": "看起来已经结束的课程。它们不会出现在按周显示的内容中，截止日期仍会提醒你。",
+    "noCurrent": "没有进行中的课程。已结束的课程在“往期课程”里。"
+  },
+  "pastBadge": {
+    "ended": "这门课看起来已经结束。",
+    "inactive": "这门课很久没有动静了。"
+  },
+  "evidence": {
+    "module_unlocked": "模块“{{title}}”于 {{date}} 解锁 → 第 {{week}} 周",
+    "calendar_week": "{{date}} 开课（{{source}}）→ 第 {{week}} 周",
+    "week_fit_from_materials": "{{weeks}} 周带周数的资料显示，第 1 周是 {{monday}} 那一周",
+    "signal_agrees": "与{{source}}一致（第 {{week}} 周）",
+    "signal_disagrees": "{{source}}显示是第 {{week}} 周",
+    "term_looks_like_enrollment_window": "Canvas 学期“{{term_name}}”从 {{start}} 到 {{end}}（{{weeks}} 周），比一个教学学期还长，所以不用它来算周数",
+    "dates_may_be_wrong": "{{source}}显示第 1 周是 {{monday}} 那一周。这些日期可能有误，请检查。",
+    "calendar_disagrees_with_notes": "最近的资料是第 {{week}} 周的，和日期对不上",
+    "notes_ahead": "第 {{week}} 周的资料已经发布",
+    "notes_numbering_offset": "教授的周数编号和校历不同（相差 {{offset}}）",
+    "breaks_unknown": "还不知道这门课的阅读周和假期",
+    "holiday_today": "今天没课（假日）",
+    "in_break": "{{kind}}，到 {{end}} 为止",
+    "no_signal": "还没有找到日期或周数",
+    "no_week_labels": "这门课的资料都没有标周数",
+    "latest_material_week": "最新的资料是第 {{week}} 周的",
+    "recent_materials_week": "最近 10 天的资料是第 {{week}} 周的",
+    "student_first_class": "你设置的第一天上课：{{date}}",
+    "student_last_class": "你设置的最后一天上课：{{date}}",
+    "starts_on": "{{date}} 开课",
+    "classes_ended": "{{date}} 已结束上课",
+    "exams_ended": "{{date}} 考试结束",
+    "term_ended": "学期于 {{date}} 结束",
+    "session_ended": "本学期于 {{date}} 结束",
+    "no_activity_since": "自 {{date}} 以来没有新内容",
+    "next_event": "{{date}} 还有安排",
+    "lms_concluded": "Canvas 已将这门课标为结束（concluded）",
+    "lms_completed": "Canvas 已将这门课标为完成（completed）",
+    "not_listed_active": "Canvas 不再把这门课列为进行中",
+    "no_dates": "完全没有日期",
+    "kept_current_until": "你已将这门课标为进行中，直到 {{until}}",
+    "may_have_ended": "这门课可能已经结束",
+    "unknown": "当前版本的 {{product}} 无法显示的另一条线索"
+  }
+}

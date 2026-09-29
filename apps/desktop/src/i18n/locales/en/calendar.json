@@ -1,0 +1,181 @@
+{
+  "phase": {
+    "teaching": "Week {{week}}",
+    "breakNumbered": "Week {{week}} · {{kind}}",
+    "breakAfter": "{{kind}} (after week {{week}})",
+    "break": "{{kind}}",
+    "examsAfter": "Exams (after week {{week}})",
+    "exams": "Exams",
+    "ended": "Ended",
+    "startsOn": "Starts {{date}}",
+    "notStarted": "Not started yet",
+    "unknown": "Week unknown"
+  },
+  "breakKind": {
+    "reading_week": "Reading week",
+    "holiday": "Holiday",
+    "winter_break": "Winter break",
+    "other": "Break"
+  },
+  "anchor": {
+    "student_confirmed": "your dates",
+    "lms_course_dates": "the Canvas course dates",
+    "lms_term": "the Canvas term dates",
+    "folder_config": "the course folder's settings",
+    "institution_calendar": "the university's calendar",
+    "published_week_labels": "the week numbers in the professor's materials",
+    "none": "no source"
+  },
+  "anchorTitle": {
+    "student_confirmed": "Your dates",
+    "lms_course_dates": "Canvas course dates",
+    "lms_term": "Canvas term dates",
+    "folder_config": "Course folder settings",
+    "institution_calendar": "University calendar",
+    "published_week_labels": "Week numbers in the professor's materials",
+    "none": "None"
+  },
+  "origin": {
+    "user": "Set by you",
+    "legacy": "Set by you in an earlier version of {{product}}",
+    "scan": "Found in the syllabus by {{product}}, confirmed by you",
+    "ai": "Dates read from the syllabus by {{backend}} · {{model}} on {{date}}, confirmed by you",
+    "aiNoLabel": "Dates read from the syllabus by AI, confirmed by you",
+    "ai_app": "Proposed by your AI app ({{backend}} · {{model}}) on {{date}}, confirmed by you",
+    "ai_appNoLabel": "Proposed by your AI app, confirmed by you",
+    "restored": "Restored with the course"
+  },
+  "reject": {
+    "longer_than_teaching_term": "Longer than a teaching term, so it looks like an enrollment window rather than class dates.",
+    "shorter_than_teaching_term": "Too short to be a teaching term.",
+    "starts_long_before_activity": "Starts more than four weeks before anything was posted in the course.",
+    "starts_before_session_window": "Starts well before this session begins.",
+    "end_outside_session_window": "Ends far from the end of this session.",
+    "starts_after_end": "Ends before it starts.",
+    "conflicts_with_stronger_source": "Disagrees with a more reliable source."
+  },
+  "where": {
+    "title": "Where this course is",
+    "datesUsed": "Dates used",
+    "datesNotUsed": "Dates not used",
+    "source": "Source",
+    "weekOne": "Week 1",
+    "weekOf": "Week of {{date}}",
+    "firstClass": "First day of classes",
+    "lastClass": "Last day of classes",
+    "secondPart": "Second part",
+    "span": "{{start}} – {{end}}",
+    "spanOpen": "From {{start}}",
+    "breaks": "Breaks",
+    "breakItem": "{{kind}}: {{span}}",
+    "examsEnd": "Exams end",
+    "noDates": "No dates were found for this course yet. If the week shown is wrong, set the dates below.",
+    "notUsedDates": "{{source}}: {{span}}",
+    "notUsedEnd": "{{source}}: the end date, {{date}}, isn't used.",
+    "notesWeek": "The professor's materials have reached week {{week}}.",
+    "evidence": "How we worked this out",
+    "evidenceEmpty": "No clues yet. Sync this course or set its dates below."
+  },
+  "status": {
+    "title": "Course status",
+    "state": {
+      "upcoming": "Upcoming",
+      "current": "Current",
+      "finishing": "Finishing",
+      "ended": "Ended",
+      "inactive": "Inactive",
+      "unknown": "Status unknown"
+    },
+    "hint": {
+      "upcoming": "Classes haven't started yet.",
+      "current": "Classes are running.",
+      "finishing": "Classes are over, but exams or other events are still coming up.",
+      "ended": "This course looks finished. It's listed under Past courses and left out of weekly views. Its deadlines still remind you.",
+      "inactive": "Nothing has happened in this course for a long time, and it has no dates. It's listed under Past courses.",
+      "unknown": "We can't tell yet whether this course is running."
+    },
+    "since": "Since {{date}}",
+    "lastActivity": "Last activity {{date}}",
+    "nextEvent": "Next event {{date}}"
+  },
+  "keep": {
+    "button": "I'm still taking this",
+    "hint": "{{product}} will treat it as a current course until a date you can change.",
+    "keptUntil": "You marked this course as current until {{date}}.",
+    "change": "Change date",
+    "untilLabel": "Current until",
+    "saveDate": "Save date",
+    "undo": "Undo",
+    "kept": "Moved to your current courses",
+    "cleared": "{{product}} works out this course's status again",
+    "invalid": "Pick a date from today on."
+  },
+  "checkDates": {
+    "title": "Check this course's dates",
+    "body": "You set these dates in an earlier version of {{product}}, which counted weeks differently. Check that the week shown is still right.",
+    "confirm": "These dates are right",
+    "edit": "Edit dates",
+    "confirmed": "Dates confirmed"
+  },
+  "form": {
+    "title": "Course dates",
+    "description": "If the week shown is wrong, set the first and last day of classes. Your dates come before everything else.",
+    "prefilled": "Filled in with the dates {{product}} is using now.",
+    "breaksNote": "Reading weeks and exam dates can't be set here yet.",
+    "start": "First day of classes",
+    "end": "Last day of classes (optional)",
+    "endHint": "The three weeks after it count as the exam period.",
+    "notUsedTitle": "Not used, and why",
+    "save": "Save dates",
+    "clear": "Clear my dates",
+    "saved": "Course dates saved",
+    "cleared": "Your dates were cleared",
+    "invalid": "These dates don't work. Check that classes end after they start."
+  },
+  "groups": {
+    "current": "Current",
+    "upcoming": "Upcoming",
+    "past": "Past courses ({{count}})",
+    "pastHint": "Courses that look finished. They're left out of weekly views, and their deadlines still remind you.",
+    "noCurrent": "No current courses. Finished ones are under Past courses."
+  },
+  "pastBadge": {
+    "ended": "This course looks finished.",
+    "inactive": "Nothing has happened in this course for a long time."
+  },
+  "evidence": {
+    "module_unlocked": "Module “{{title}}” unlocked {{date}} → week {{week}}",
+    "calendar_week": "Classes started {{date}} ({{source}}) → week {{week}}",
+    "week_fit_from_materials": "Week-numbered materials from {{weeks}} weeks put week 1 in the week of {{monday}}",
+    "signal_agrees": "Agrees with {{source}} (week {{week}})",
+    "signal_disagrees": "{{source}} suggests week {{week}}",
+    "term_looks_like_enrollment_window": "Canvas term “{{term_name}}” runs {{start}} → {{end}} ({{weeks}} weeks): longer than a teaching term, so it isn't used to count weeks",
+    "dates_may_be_wrong": "{{source}} puts week 1 in the week of {{monday}}. These dates may be wrong — check them.",
+    "calendar_disagrees_with_notes": "Recent materials are for week {{week}}, which doesn't match the dates",
+    "notes_ahead": "Week {{week}} materials already posted",
+    "notes_numbering_offset": "The professor numbers weeks differently ({{offset}} from the calendar)",
+    "breaks_unknown": "Reading weeks and breaks aren't known for this course",
+    "holiday_today": "No class today (holiday)",
+    "in_break": "{{kind}} until {{end}}",
+    "no_signal": "No dates and no week numbers found yet",
+    "no_week_labels": "None of this course's materials have week numbers",
+    "latest_material_week": "The latest material is for week {{week}}",
+    "recent_materials_week": "Materials from the last 10 days are for week {{week}}",
+    "student_first_class": "You set the first day of classes: {{date}}",
+    "student_last_class": "You set the last day of classes: {{date}}",
+    "starts_on": "Classes start {{date}}",
+    "classes_ended": "Classes ended {{date}}",
+    "exams_ended": "Exams ended {{date}}",
+    "term_ended": "The term ended {{date}}",
+    "session_ended": "The session ended {{date}}",
+    "no_activity_since": "Nothing new since {{date}}",
+    "next_event": "Something is still scheduled on {{date}}",
+    "lms_concluded": "Canvas marks this course as concluded",
+    "lms_completed": "Canvas marks this course as completed",
+    "not_listed_active": "Canvas no longer lists this course as active",
+    "no_dates": "No dates at all",
+    "kept_current_until": "You marked this course as current until {{until}}",
+    "may_have_ended": "This course may have ended",
+    "unknown": "Another clue this version of {{product}} can't show"
+  }
+}

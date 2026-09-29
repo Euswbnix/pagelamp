@@ -2,6 +2,7 @@
 // `t("nav.typo")` does not. Add a line here when you add a new namespace file.
 
 import "i18next";
+import type calendar from "./locales/en/calendar.json";
 import type common from "./locales/en/common.json";
 import type connect from "./locales/en/connect.json";
 import type course from "./locales/en/course.json";
@@ -15,6 +16,7 @@ declare module "i18next" {
   interface CustomTypeOptions {
     defaultNS: "common";
     resources: {
+      calendar: typeof calendar;
       common: typeof common;
       connect: typeof connect;
       course: typeof course;
