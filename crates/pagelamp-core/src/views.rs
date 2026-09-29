@@ -43,14 +43,21 @@ pub struct AsOf {
 }
 
 impl AsOf {
-    /// Current instant; `today` and `tz` in the machine's local time zone.
+    /// Current instant; `today` and `tz` in the machine's time zone.
+    ///
+    /// Both come from the operating system's zone setting (`iana-time-zone`: CoreFoundation on
+    /// macOS, `/etc/localtime` on Linux, the Windows API), never from a `TZ` environment
+    /// variable, so the desktop app and every `pagelamp mcp` an AI app starts (possibly with
+    /// its own environment) compute the same `today` and the same course dates. Only when the
+    /// system zone can't be determined does `today` fall back to chrono's `Local`.
     pub fn now_local() -> Self {
         let now: DateTime<Utc> = Utc::now();
-        AsOf {
-            now,
-            today: now.with_timezone(&Local).date_naive(),
-            tz: local_time_zone(),
-        }
+        let tz = local_time_zone();
+        let today = match tz {
+            Some(tz) => now.with_timezone(&tz).date_naive(),
+            None => now.with_timezone(&Local).date_naive(),
+        };
+        AsOf { now, today, tz }
     }
 
     /// A fixed moment (tests, previews): `today` as given, UTC for courses without a zone.
@@ -63,7 +70,7 @@ impl AsOf {
     }
 }
 
-/// The machine's IANA time zone, if it can be determined.
+/// The operating system's IANA time zone, if it can be determined (see `AsOf::now_local`).
 fn local_time_zone() -> Option<Tz> {
     iana_time_zone::get_timezone()
         .ok()
