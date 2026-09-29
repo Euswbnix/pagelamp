@@ -151,7 +151,8 @@
     "noCurrent": "No current courses. Finished ones are under Past courses."
   },
   "card": {
-    "setDates": "Set the first day of classes to fix this"
+    "setDates": "Set the first day of classes to fix this",
+    "keptUntil": "Current until {{date}} (set by you)"
   },
   "pastBadge": {
     "ended": "This course looks finished.",

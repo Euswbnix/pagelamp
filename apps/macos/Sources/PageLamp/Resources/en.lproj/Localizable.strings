@@ -18,6 +18,7 @@
 "calendar.breakKind.other" = "Break";
 "calendar.breakKind.reading_week" = "Reading week";
 "calendar.breakKind.winter_break" = "Winter break";
+"calendar.card.keptUntil" = "Current until %1$@ (set by you)";
 "calendar.card.setDates" = "Set the first day of classes to fix this";
 "calendar.checkDates.body" = "You set these dates in an earlier version of PageLamp, which counted weeks differently. Check that the week shown is still right.";
 "calendar.checkDates.confirm" = "These dates are right";

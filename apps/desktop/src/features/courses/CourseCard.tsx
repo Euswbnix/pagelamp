@@ -17,6 +17,7 @@ import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
 import { KeepCurrentCardButton } from "@/features/course/lifecycle/KeepCurrentCardButton";
+import { formatIsoDate } from "@/lib/format";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { deadlineTime } from "./lib/thisWeek";
@@ -40,7 +41,7 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
   const Heading = headingLevel;
   const { t } = useTranslation("courses");
   const { t: tc } = useTranslation();
-  const { t: tcal } = useTranslation("calendar");
+  const { t: tcal, i18n } = useTranslation("calendar");
   const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
   const past = lifecycle.group === "past";
@@ -92,6 +93,13 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
           )}
           {weekUnknown ? (
             <span className="block text-xs text-muted-foreground">{tcal("card.setDates")}</span>
+          ) : null}
+          {lifecycle.kept_current_until ? (
+            <span className="block text-xs text-muted-foreground">
+              {tcal("card.keptUntil", {
+                date: formatIsoDate(lifecycle.kept_current_until, i18n.language),
+              })}
+            </span>
           ) : null}
         </Fact>
         <Fact icon={CalendarClock}>

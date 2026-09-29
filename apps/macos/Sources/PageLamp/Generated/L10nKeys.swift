@@ -30,6 +30,7 @@ nonisolated enum L10nKeys {
         "calendar.breakKind.other",
         "calendar.breakKind.reading_week",
         "calendar.breakKind.winter_break",
+        "calendar.card.keptUntil",
         "calendar.card.setDates",
         "calendar.checkDates.body",
         "calendar.checkDates.confirm",
@@ -1045,6 +1046,7 @@ nonisolated enum L10nKeys {
     ]
 
     static let arguments: [String: [String]] = [
+        "calendar.card.keptUntil": ["date"],
         "calendar.evidence.bulk_publish": ["count", "from_week", "to_week", "start", "end", "title"],
         "calendar.evidence.calendar_disagrees_with_notes": ["notes_week", "week"],
         "calendar.evidence.course_end_passed": ["end", "source"],

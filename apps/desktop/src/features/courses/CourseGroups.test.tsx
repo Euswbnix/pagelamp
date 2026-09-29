@@ -35,6 +35,9 @@ describe("course list groups and phases", () => {
     expect(within(card(current, "PHS140")).getByText("Exams (after week 12)")).toBeInTheDocument();
     // Kept current by the student although its dates have passed.
     expect(within(card(current, "PHS200")).getByText("Ended")).toBeInTheDocument();
+    expect(
+      within(card(current, "PHS200")).getByText(/^Current until .+ \(set by you\)$/),
+    ).toBeInTheDocument();
 
     const upcoming = group(list, "Upcoming");
     expect(within(card(upcoming, "PHS160")).getByText(/^Starts /)).toBeInTheDocument();

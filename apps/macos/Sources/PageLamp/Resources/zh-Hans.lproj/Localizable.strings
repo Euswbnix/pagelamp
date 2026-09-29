@@ -18,6 +18,7 @@
 "calendar.breakKind.other" = "假期";
 "calendar.breakKind.reading_week" = "阅读周";
 "calendar.breakKind.winter_break" = "寒假";
+"calendar.card.keptUntil" = "由你标为进行中，直到 %1$@";
 "calendar.card.setDates" = "设置第一天上课的日期即可修正";
 "calendar.checkDates.body" = "这些日期是你在旧版 PageLamp 中设置的，当时计算周数的方式不同。请确认现在显示的周数仍然正确。";
 "calendar.checkDates.confirm" = "日期没问题";
