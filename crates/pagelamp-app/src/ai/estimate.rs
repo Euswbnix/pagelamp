@@ -11,8 +11,8 @@ use pagelamp_core::planner::PlanTasks;
 use pagelamp_core::store::Store;
 use pagelamp_core::views::AsOf;
 use pagelamp_llm::OutputSpec;
+use pagelamp_llm::profile::ProviderProfile;
 
-use super::providers::Provider;
 use super::settings::{self, backend_key};
 use super::{CostEstimate, EstimateRequest, prompts};
 use crate::{App, AppError, AppErrorKind, Result};
@@ -44,8 +44,9 @@ impl App {
         let Some(choice) = routing.0.get(&feature).cloned() else {
             return Ok(blocked_estimate(BlockReason::NoModelChosen));
         };
-        let provider = self.provider_for(&choice.backend)?;
-        let destination = if provider.profile.on_device() {
+        // No key needed: an estimate never reads the keychain.
+        let profile = self.provider_profile(&choice.backend)?;
+        let destination = if profile.on_device() {
             Destination::OnDevice
         } else {
             Destination::Cloud
@@ -81,7 +82,7 @@ impl App {
         };
         let (prompt, output, max_output) = request_shape(feature, &context);
         let estimate = pagelamp_llm::estimate::estimate(
-            &provider.profile,
+            &profile,
             &choice.model,
             &prompt,
             &output,
@@ -92,7 +93,7 @@ impl App {
             &store,
             &choice.backend,
             &choice.model,
-            &provider,
+            &profile,
             estimate.micro_usd_upper,
             estimate.price_known,
         )?;
@@ -113,19 +114,19 @@ impl App {
         store: &Store,
         backend: &super::BackendRef,
         model: &str,
-        provider: &Provider,
+        profile: &ProviderProfile,
         upper: Option<u64>,
         price_known: bool,
     ) -> Result<Option<BlockReason>> {
         let key = backend_key(backend);
-        let facts = super::disclosure_for(&provider.profile);
+        let facts = super::disclosure_for(profile);
         let acknowledged = settings::disclosures(store)?
             .get(&key)
             .is_some_and(|ack| ack.version == facts.version);
         if !acknowledged {
             return Ok(Some(BlockReason::DisclosureNotAcknowledged));
         }
-        if provider.profile.on_device() {
+        if profile.on_device() {
             return Ok(None); // free: no price, no budget
         }
         if !price_known

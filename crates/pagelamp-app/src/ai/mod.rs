@@ -233,7 +233,7 @@ impl App {
     /// Which model a feature uses (`None`: none). The backend must exist.
     pub fn set_feature_model(&self, feature: AiFeature, choice: Option<ModelChoice>) -> Result<()> {
         if let Some(choice) = &choice {
-            self.provider_for(&choice.backend)?;
+            self.provider_profile(&choice.backend)?;
             if choice.model.trim().is_empty() {
                 return Err(AppError::new(AppErrorKind::Invalid, "Choose a model."));
             }
@@ -251,8 +251,7 @@ impl App {
     /// The student read a backend's disclosure. `version` must be the one currently shown:
     /// facts that changed since are asked again.
     pub fn acknowledge_ai_disclosure(&self, backend: &BackendRef, version: u32) -> Result<()> {
-        let provider = self.provider_for(backend)?;
-        let current = disclosure_for(&provider.profile).version;
+        let current = disclosure_for(&self.provider_profile(backend)?).version;
         if version != current {
             return Err(AppError::new(
                 AppErrorKind::Invalid,
@@ -275,7 +274,7 @@ impl App {
     /// "The budget is not enforced for this model": needed before the first run of a model
     /// without a known price.
     pub fn acknowledge_unpriced_model(&self, backend: &BackendRef, model: &str) -> Result<()> {
-        self.provider_for(backend)?;
+        self.provider_profile(backend)?;
         let store = self.write_store()?;
         let mut acks = settings::unpriced(&store)?;
         let models = acks.entry(settings::backend_key(backend)).or_default();
@@ -322,9 +321,14 @@ impl App {
     /// (from schema 4 on it holds AI data too; the result says it was removed).
     pub fn remove_all_ai_data(&self) -> Result<RemoveAiDataReport> {
         let store = self.write_store()?;
-        let ids: Vec<String> = store.model_providers()?.into_iter().map(|p| p.id).collect();
+        let keyed: Vec<String> = store
+            .model_providers()?
+            .into_iter()
+            .filter(providers::uses_key)
+            .map(|p| p.id)
+            .collect();
         let removed = store.remove_all_ai_data()?;
-        for id in &ids {
+        for id in &keyed {
             self.secrets.delete(&providers::key_account(id))?;
         }
         for key in settings::ALL_KEYS {

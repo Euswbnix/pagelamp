@@ -576,3 +576,91 @@ async fn removing_all_ai_data_takes_keys_settings_and_the_backup_too() {
     );
     assert!(!app.remove_all_ai_data().unwrap().backup_removed);
 }
+
+/// Counts every keychain access.
+#[derive(Default)]
+struct Tripwire(std::sync::atomic::AtomicUsize);
+
+impl SecretBackend for Tripwire {
+    fn get(&self, _: &str) -> pagelamp_core::Result<Option<String>> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(None)
+    }
+    fn set(&self, _: &str, _: &str) -> pagelamp_core::Result<()> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+    fn delete(&self, _: &str) -> pagelamp_core::Result<()> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn local_work_and_keyless_providers_never_touch_the_keychain() {
+    let temp = tempfile::tempdir().unwrap();
+    let tripwire = Arc::new(Tripwire::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), tripwire.clone()).unwrap();
+    seed_course(&app);
+    let store = Store::open(&app.db_path()).unwrap();
+    for (id, preset, wire, url) in [
+        (
+            "openai",
+            "openai",
+            "openai_responses",
+            "https://api.openai.com/v1",
+        ),
+        (
+            "lm_studio",
+            "lm_studio",
+            "openai_chat",
+            "http://127.0.0.1:1234/v1",
+        ),
+    ] {
+        store
+            .insert_model_provider(&ProviderRow {
+                id: id.into(),
+                preset: preset.into(),
+                label: id.into(),
+                wire: wire.into(),
+                base_url: url.into(),
+                created_at: Utc::now().trunc_subsecs(0),
+                last_probe_json: None,
+            })
+            .unwrap();
+    }
+    let request = EstimateRequest::WeeklyExplanation {
+        course: "DEMO101".into(),
+        week: Some(3),
+    };
+    // Routing, acknowledgements and estimates are local, even for a provider with a key.
+    for id in ["openai", "lm_studio"] {
+        let backend = BackendRef::Provider {
+            provider_id: id.into(),
+        };
+        app.set_feature_model(
+            AiFeature::WeeklyExplanation,
+            Some(ModelChoice {
+                backend: backend.clone(),
+                model: "gpt-6-luna".into(),
+                effort: Effort::Lowest,
+            }),
+        )
+        .unwrap();
+        app.acknowledge_unpriced_model(&backend, "gpt-6-luna")
+            .unwrap();
+        app.estimate_generation(&request).unwrap();
+    }
+    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    // A provider without a key: its status and removal don't either.
+    app.ai_status().unwrap();
+    app.remove_model_provider("lm_studio").unwrap();
+    assert_eq!(
+        tripwire.0.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "only openai's key was read"
+    );
+    // Removing everything deletes only the keys that exist.
+    app.remove_all_ai_data().unwrap();
+    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}

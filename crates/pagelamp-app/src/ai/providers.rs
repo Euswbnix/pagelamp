@@ -135,10 +135,13 @@ impl App {
     /// Remove a provider: its row, its key and every setting that refers to it.
     pub(crate) fn delete_provider(&self, provider_id: &str) -> Result<()> {
         let store = self.write_store()?;
-        if !store.delete_model_provider(provider_id)? {
-            return Err(unknown_provider(provider_id));
+        let row = store
+            .model_provider(provider_id)?
+            .ok_or_else(|| unknown_provider(provider_id))?;
+        store.delete_model_provider(provider_id)?;
+        if uses_key(&row) {
+            self.secrets.delete(&key_account(provider_id))?;
         }
-        self.secrets.delete(&key_account(provider_id))?;
         super::settings::forget_backend(
             &store,
             &BackendRef::Provider {
@@ -150,22 +153,26 @@ impl App {
 
     /// A stored provider with its key (`NotFound` if there is none; the key may be missing).
     pub(crate) fn provider(&self, provider_id: &str) -> Result<Provider> {
-        let row = self
-            .read_store()?
-            .model_provider(provider_id)?
-            .ok_or_else(|| unknown_provider(provider_id))?;
+        let row = self.provider_row(provider_id)?;
         provider_from_row(row, &*self.secrets)
     }
 
-    /// The provider behind `backend` (Codex and Claude Code arrive with M2 and M4).
+    /// The provider behind `backend`, with its key: for calls that reach the provider
+    /// (Codex and Claude Code arrive with M2 and M4).
     pub(crate) fn provider_for(&self, backend: &BackendRef) -> Result<Provider> {
-        match backend {
-            BackendRef::Provider { provider_id } => self.provider(provider_id),
-            BackendRef::Codex | BackendRef::ClaudeCode => Err(AppError::blocked(
-                BlockReason::BackendDisabledInThisBuild,
-                "This way of using a model isn't available in this build yet.",
-            )),
-        }
+        self.provider(provider_id_of(backend)?)
+    }
+
+    /// The provider behind `backend` without its key: for local work (routing, acknowledgements,
+    /// estimates), which never reads the keychain.
+    pub(crate) fn provider_profile(&self, backend: &BackendRef) -> Result<ProviderProfile> {
+        profile_from_row(&self.provider_row(provider_id_of(backend)?)?)
+    }
+
+    fn provider_row(&self, provider_id: &str) -> Result<ProviderRow> {
+        self.read_store()?
+            .model_provider(provider_id)?
+            .ok_or_else(|| unknown_provider(provider_id))
     }
 
     /// Every provider as the settings page shows it.
@@ -183,10 +190,18 @@ impl App {
     }
 }
 
-fn provider_from_row(
-    row: ProviderRow,
-    secrets: &dyn pagelamp_core::secrets::SecretBackend,
-) -> Result<Provider> {
+/// The id of a provider backend (Codex and Claude Code arrive with M2 and M4).
+fn provider_id_of(backend: &BackendRef) -> Result<&str> {
+    match backend {
+        BackendRef::Provider { provider_id } => Ok(provider_id),
+        BackendRef::Codex | BackendRef::ClaudeCode => Err(AppError::blocked(
+            BlockReason::BackendDisabledInThisBuild,
+            "This way of using a model isn't available in this build yet.",
+        )),
+    }
+}
+
+fn profile_from_row(row: &ProviderRow) -> Result<ProviderProfile> {
     let preset = profile::preset(&row.preset).ok_or_else(|| {
         AppError::new(
             AppErrorKind::Internal,
@@ -195,7 +210,19 @@ fn provider_from_row(
     })?;
     let url = check_base_url(&row.base_url)
         .map_err(|problem| AppError::new(AppErrorKind::Invalid, problem.to_string()))?;
-    let profile = preset.with_base_url(url);
+    Ok(preset.with_base_url(url))
+}
+
+/// Whether a provider keeps a key in the keychain (a row of an unknown type is assumed to).
+pub(crate) fn uses_key(row: &ProviderRow) -> bool {
+    profile::preset(&row.preset).is_none_or(|preset| preset.auth != Auth::None)
+}
+
+fn provider_from_row(
+    row: ProviderRow,
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+) -> Result<Provider> {
+    let profile = profile_from_row(&row)?;
     let key = if profile.auth == Auth::None {
         None
     } else {
