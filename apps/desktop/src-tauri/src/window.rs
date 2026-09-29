@@ -53,10 +53,10 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         .initialization_script(init_script(backdrop))
         // Also after a failed load (Finished comes anyway), so the window never stays hidden.
         .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Finished {
-                if let Err(error) = window.show() {
-                    tracing::warn!(target: "pagelamp::window", %error, "show main window");
-                }
+            if payload.event() == PageLoadEvent::Finished
+                && let Err(error) = window.show()
+            {
+                tracing::warn!(target: "pagelamp::window", %error, "show main window");
             }
         })
         .build()?;
@@ -83,7 +83,11 @@ fn with_backdrop<'a, R: Runtime, M: Manager<R>>(
     // Mica needs Windows 11 22H2 (build 22621); older builds would get a see-through window.
     if build >= 22_621 {
         let effects = EffectsBuilder::new().effect(Effect::Mica).build();
-        (builder.transparent(true).effects(effects), Backdrop::Mica, Some(build))
+        (
+            builder.transparent(true).effects(effects),
+            Backdrop::Mica,
+            Some(build),
+        )
     } else {
         (builder, Backdrop::None, Some(build))
     }
