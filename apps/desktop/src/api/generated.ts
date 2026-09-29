@@ -1137,6 +1137,10 @@ export interface StoreCounts {
   indexed_materials: number;
   materials: number;
   modules: number;
+  /**
+   * Courses under "Removed courses" (their tombstones), not counted above.
+   */
+  removed_courses: number;
   study_plans: number;
 }
 /**

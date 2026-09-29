@@ -571,6 +571,8 @@ pub struct StoreCounts {
     pub chunks: u32,
     pub events: u32,
     pub study_plans: u32,
+    #[uniffi(default)]
+    pub removed_courses: u32,
 }
 
 #[uniffi::remote(Record)]

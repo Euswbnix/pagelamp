@@ -31,6 +31,7 @@ pub mod diagnostics;
 mod lock;
 mod mcp_config;
 mod sync;
+pub mod trash;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
@@ -457,6 +458,8 @@ pub(crate) struct AppState {
     /// pre-migration backup), for the launch classification (`updates`): read at open, since
     /// the first-run screens add a source before the shell asks for its startup tasks.
     used_before_at_open: bool,
+    /// Where removed courses' downloaded files go (`trash`).
+    pub(crate) trash: trash::TrashSlot,
 }
 
 impl std::fmt::Debug for App {
@@ -764,7 +767,7 @@ impl App {
         let mut own_suffixes = std::collections::HashSet::new();
         let mut kept = std::collections::HashSet::new();
         let mut other_suffixes = std::collections::HashSet::new();
-        for course in store.list_courses(true)? {
+        for course in store.list_all_courses()? {
             let dirs = dirs_of(&course)?;
             if course.source_id == source_id {
                 own.extend(dirs);
@@ -1057,21 +1060,21 @@ impl App {
 // ----- facade helpers ---------------------------------------------------------------------------
 
 /// A download directory's name as the file system compares it: case-insensitive, NFC.
-fn dir_key(dir: &Path) -> String {
+pub(crate) fn dir_key(dir: &Path) -> String {
     dir.file_name()
         .map(|name| fold_name(&name.to_string_lossy()))
         .unwrap_or_default()
 }
 
 /// `name` in NFC and lower case.
-fn fold_name(name: &str) -> String {
+pub(crate) fn fold_name(name: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
     name.nfc().collect::<String>().to_lowercase()
 }
 
 /// Remove one download directory: a directory with everything in it, a symbolic link itself
 /// (never what it points to); anything else (a stray file) is left alone.
-fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
     let metadata = match std::fs::symlink_metadata(dir) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
