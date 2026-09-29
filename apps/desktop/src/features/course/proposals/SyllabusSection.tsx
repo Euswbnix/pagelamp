@@ -1,11 +1,12 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { Course } from "@/api/types";
+import { ReadSyllabus } from "./ReadSyllabus";
 import { SyllabusSources } from "./SyllabusSources";
 
 /**
- * "Read the dates from the syllabus" on the Timeline tab (F3): which materials are read, and
- * (after the main → lane merge) "Read the syllabus with AI" with its cost, reminder and progress.
+ * "Read the dates from the syllabus" on the Timeline tab (F3): which materials are read, then the
+ * scan and "Read the syllabus with AI" with its cost, reminder and progress.
  */
 export function SyllabusSection({ course }: { course: Course }) {
   const { t } = useTranslation("proposals");
@@ -19,6 +20,7 @@ export function SyllabusSection({ course }: { course: Course }) {
         <p className="text-sm text-muted-foreground">{t("reading.description")}</p>
       </div>
       <SyllabusSources course={course} />
+      <ReadSyllabus course={course} />
     </section>
   );
 }

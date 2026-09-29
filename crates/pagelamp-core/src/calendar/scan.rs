@@ -78,6 +78,14 @@ static KEYWORDS: LazyLock<Vec<(ClaimKind, Regex)>> = LazyLock::new(|| {
     ]
 });
 
+/// How many keyword-class phrases `text` has (candidate scoring counts them as calendar words).
+pub(super) fn keyword_count(text: &str) -> usize {
+    KEYWORDS
+        .iter()
+        .map(|(_, keyword)| keyword.find_iter(text).count())
+        .sum()
+}
+
 /// "Fall 2026", "Winter term 2027", "2026 Fall".
 static STATED_TERM: LazyLock<Regex> = LazyLock::new(|| {
     regex(

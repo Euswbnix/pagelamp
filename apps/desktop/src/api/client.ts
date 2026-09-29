@@ -4,6 +4,7 @@ import type {
   BackendRef,
   CostEstimate,
   EstimateRequest,
+  GenEvent,
   LocalServer,
   MaterialSharing,
   ModelChoice,
@@ -24,8 +25,10 @@ import type {
 import type {
   AiPolicy,
   AppStatus,
+  CalendarBatchEvent,
   CalendarCandidate,
   CalendarProposal,
+  CalendarRunOutcome,
   CourseCalendarView,
   CourseDatesInput,
   CourseOverview,
@@ -37,6 +40,7 @@ import type {
   LifecycleSummary,
   McpClientConfig,
   PurgeReport,
+  ReadCalendarOptions,
   RemovalPreview,
   RemovalReport,
   RemovedCourse,
@@ -165,8 +169,9 @@ export interface PageLampApi {
   /**
    * The course dates form v2: first and last day of classes, end of exams, breaks and a second
    * part for full-year courses. null = clear the student's dates (the calendar in force).
+   * Returns the course's calendar view as it is now.
    */
-  setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<void>;
+  setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<CourseCalendarView>;
 
   // ----- course lifecycle and removal (calendar design §8) ---------------------------------
   /** Every course's lifecycle, which ones are suggested for removal, and the banner state. */
@@ -218,6 +223,22 @@ export interface PageLampApi {
   dismissCalendarProposal(proposalId: number): Promise<void>;
   /** The courses "Read syllabi for N courses" would read (the facade decides). */
   syllabusReadingOffers(): Promise<SyllabusOffer[]>;
+  /** "Read the syllabus with AI" (design §7.3): gated like every AI run; makes a proposal. */
+  readCourseCalendar(
+    courseId: string,
+    generationId: string,
+    options: ReadCalendarOptions,
+    onEvent: (event: GenEvent) => void,
+  ): Promise<CalendarProposal>;
+  /** "Read syllabi for N courses": one course after another, each gated on its own. */
+  readCourseCalendars(
+    courseIds: string[],
+    batchId: string,
+    options: ReadCalendarOptions,
+    onEvent: (event: CalendarBatchEvent) => void,
+  ): Promise<CalendarRunOutcome[]>;
+  /** Stop a running generation or batch (by its id); the run ends with `cancelled`. */
+  cancelGeneration(generationId: string): Promise<void>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 
@@ -313,6 +334,13 @@ export interface PageLampApi {
   pickFolder(): Promise<string | null>;
   /** Open an http(s) link in the default browser. Other schemes are rejected. */
   openExternal(url: string): Promise<void>;
+  /**
+   * Open a material's local file with the system's app (material_local_file, Rust-side; the
+   * page never sees the path). false: no document of it on this computer.
+   */
+  openMaterial(materialId: string): Promise<boolean>;
+  /** Show a material's local file in Finder / Explorer. false: not on this computer. */
+  revealMaterial(materialId: string): Promise<boolean>;
   /** Show the PageLamp data folder in Finder / Explorer. */
   revealDataDir(): Promise<void>;
   /**

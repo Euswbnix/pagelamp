@@ -184,7 +184,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   switch (scenario) {
     case "ai-key":
     case "ai-budget":
-    case "ai-unpriced": {
+    case "ai-unpriced":
+    // Calendar proposals (F3): an API key, so "Read the syllabus with AI" can run in the demo.
+    case "proposals": {
       record("openai", "openai", "https://api.openai.com/v1", openaiKey);
       acknowledged.set("provider:openai", presetOf("openai").data_policy.version);
       route("openai", "gpt-6-luna");

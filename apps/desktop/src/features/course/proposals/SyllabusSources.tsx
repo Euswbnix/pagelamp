@@ -1,4 +1,4 @@
-import { Download, Info } from "lucide-react";
+import { Download } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -8,7 +8,6 @@ import {
   useSetCalendarSources,
 } from "@/api/proposalQueries";
 import type { CalendarCandidate, Course } from "@/api/types";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -18,8 +17,8 @@ import { useApiErrorText } from "@/lib/useApiErrorText";
 /**
  * "Materials to read dates from" (calendar design §7.1, D46): the candidates the facade picked,
  * why each one, whether it has text, the student's include/exclude, and an explicit, disclosed
- * download for an outline file that isn't downloaded. Also says why AI reading can't run
- * (BlockReason), which the scan and the dates form don't depend on.
+ * download for an outline file that isn't downloaded. (Why AI reading can't run is said next to
+ * the button, in ReadSyllabus.)
  */
 export function SyllabusSources({ course }: { course: Course }) {
   const { t } = useTranslation("proposals");
@@ -36,12 +35,6 @@ export function SyllabusSources({ course }: { course: Course }) {
         </h3>
         <p className="text-sm text-muted-foreground">{t("sources.description")}</p>
       </div>
-      {data.blocked ? (
-        <Alert role="status">
-          <Info aria-hidden />
-          <AlertDescription>{t(`sources.blocked.${data.blocked}`)}</AlertDescription>
-        </Alert>
-      ) : null}
       {data.candidates.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("sources.none")}</p>
       ) : (

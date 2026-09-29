@@ -17,8 +17,16 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 - Files are read in a separate, resource-limited process, so one bad PDF can't stop a sync; the
   diagnostic report counts the files that can't be read, by reason.
 - A backup of the database before an update changes its format.
+- A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
+  turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this
+  week. On Windows 11 22H2 and later the window uses Mica; "Reduce transparency" in Settings (or
+  the system setting) makes every surface solid. The typeface is now Inter.
 
 ### Changed
+- A course file whose text can't be read now says why, in the app's language: no text found (for
+  example a scanned PDF), too large, password-protected, damaged or an old format, or it hit the
+  file reader's time or memory limit; the week's count of files your AI app can read leaves them
+  out.
 - MCP: `course_overview` and `week_materials` report `course.term_start`/`term_end` as the dates
   that count weeks (first class to exams end or last class), or null when none are known — never
   an enrollment-window term — with the new `course.term_dates_source`. `week_materials` gains

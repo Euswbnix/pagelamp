@@ -11,6 +11,7 @@ import type {
   CourseTimeline,
   ProposedDate,
 } from "@/api/types";
+import { AiGeneratedLabel } from "@/components/common/AiGeneratedLabel";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,6 @@ import { formatDate, formatIsoDate } from "@/lib/format";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { useToday } from "@/lib/useToday";
 import { CourseDatesForm } from "../timeline/CourseDatesForm";
-import { translateWithText } from "../timeline/evidence";
 import { CalendarStrip } from "./CalendarStrip";
 import { changeText } from "./changes";
 import { QuoteCard } from "./QuoteCard";
@@ -162,15 +162,12 @@ export function ProposalCard({
           {t("card.created", { date: formatDate(proposal.created_at, i18n.language) })}
         </p>
         {label ? (
-          // To be replaced by frontend-1's shared AiGeneratedLabel after the main → lane merge.
-          <p className="text-xs text-muted-foreground">
-            {translateWithText(
-              t,
-              "card.aiLabel",
-              { date: formatDate(label.created_at, i18n.language) },
-              { backend: label.backend_label, model: label.model },
-            )}
-          </p>
+          <>
+            <AiGeneratedLabel meta={label} />
+            {label.on_device ? (
+              <p className="text-xs text-muted-foreground">{t("card.onDevice")}</p>
+            ) : null}
+          </>
         ) : proposal.origin === "scan" ? (
           <p className="text-xs text-muted-foreground">{t("card.scanNote")}</p>
         ) : null}

@@ -14,6 +14,7 @@
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
+import { sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
@@ -21,6 +22,7 @@ import {
   aiMaterialsState,
   type CourseSummary,
   type Deadline,
+  type MaterialView,
   type SourceKind,
   type SourceRecord,
   type SourceSyncResult,
@@ -238,6 +240,31 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     now,
     respond,
     findCourse,
+    step: () => sleep(syncStep),
+    // The AI mock's estimate is the gate, as in the facade (created below; called later).
+    aiGate: async (courseId, overrideBudget) => {
+      const estimate = await ai.estimateGeneration({
+        feature: "course_calendar",
+        courses: [courseId],
+      });
+      const block = estimate.would_block ?? null;
+      if (block && !(block === "budget_reached" && overrideBudget)) {
+        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+      }
+      const status = await ai.aiStatus();
+      const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
+      const backend = choice
+        ? status.backends.find((b) => sameBackend(b.backend, choice.backend))
+        : undefined;
+      if (!choice || !backend) {
+        throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
+      }
+      return {
+        backend_label: backend.label,
+        model: choice.model,
+        on_device: backend.kind === "local",
+      };
+    },
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));
       c.timeline = {
@@ -262,8 +289,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         modules: c.modules.length,
         materials: c.materials.length,
         // Like the facade: "readable by your AI app" is 0 unless the AI may read materials.
-        indexed_materials:
-          aiMaterials === "readable" ? c.materials.filter((m) => m.text_status === "ok").length : 0,
+        indexed_materials: aiMaterials === "readable" ? c.materials.filter(hasText).length : 0,
         upcoming_deadlines: upcoming.length,
       },
       next_deadline: upcoming[0] ?? null,
@@ -275,7 +301,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   function status(): AppStatus {
     const visible = db.courses.filter((c) => !c.course.hidden);
     const materials = db.courses.flatMap((c) => c.materials);
-    const indexed = materials.filter((m) => m.text_status === "ok");
+    const indexed = materials.filter(hasText);
     const synced = db.sources
       .map((s) => s.last_synced_at)
       .filter((v): v is string => !!v)
@@ -466,6 +492,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     courses: () => db.courses,
     findCourse,
   });
+
+  /** A material with a local file on this computer (and, to open it, a document type). */
+  function localDocument(materialId: string, open: boolean): boolean {
+    const m = db.courses.flatMap((c) => c.materials).find((x) => x.id === materialId);
+    if (!m || (m.kind !== "file" && m.kind !== "syllabus")) return false;
+    if (m.text_status === "not_downloaded") return false;
+    return !open || m.text_status !== "unsupported";
+  }
 
   /** The student's dates cleared: back to what the source reported (like the facade). */
   function clearStudentDates(c: MockCourse) {
@@ -791,7 +825,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const c = findCourse(courseId);
       if (dates === null) {
         clearStudentDates(c);
-        return;
+        return courseProposals.api.courseCalendar(courseId);
       }
       const inOrder = (...dates: (string | null | undefined)[]) => {
         const set = dates.filter((d): d is string => !!d);
@@ -817,6 +851,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       c.course.term_source = "user";
       c.timeline = next.timeline;
       c.lifecycle = next.lifecycle;
+      return courseProposals.api.courseCalendar(courseId);
     },
 
     setCourseAiAccess: async (courseId, allowed) => {
@@ -912,6 +947,15 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       // Mock mode never leaves the page: demo links point at *.demo.test.
     },
     revealDataDir: async () => {},
+    // Like material_local_file: a downloaded document of a file material (never a page or link).
+    openMaterial: async (materialId) => {
+      await sleep(latency);
+      return localDocument(materialId, true);
+    },
+    revealMaterial: async (materialId) => {
+      await sleep(latency);
+      return localDocument(materialId, false);
+    },
     onWindowFocus: (onFocus) => {
       // The browser tab's focus stands in for the desktop window's.
       const handler = () => onFocus();
@@ -979,4 +1023,9 @@ function stepOf(
     case "ical":
       return { stage: "downloading_feed", course: null, message: "Downloading the calendar feed" };
   }
+}
+
+/** Text to read, like the facade's count: indexed ("ok") and at least one chunk (not a scan). */
+function hasText(m: MaterialView): boolean {
+  return m.text_status === "ok" && m.chunk_count > 0;
 }

@@ -32,21 +32,40 @@ describe("This week tab", () => {
     ).toBeInTheDocument();
     expect(within(list).getByText("32 sections")).toBeInTheDocument();
     expect(within(list).getByText("Not downloaded")).toBeInTheDocument();
-    expect(within(list).getByText("Couldn't extract text")).toBeInTheDocument();
+    // A scan: read without errors but no text in it, said from the facade's text_problem.
+    expect(within(list).getByText("No text found")).toBeInTheDocument();
     expect(
-      within(list).getByText("The PDF contains only images; no text could be extracted."),
+      within(list).getByText("No text found in it: it may be a scan or images only."),
     ).toBeInTheDocument();
     expect(screen.getByText("4 of 6 materials readable by your AI app")).toBeInTheDocument();
     // Other weeks' materials are not listed.
     expect(within(list).queryByText(/Week 3 slides/)).not.toBeInTheDocument();
   });
 
-  it("leaves out the facade's English reason in Chinese until it comes as a code", async () => {
+  it("says why a material has no text in the UI's language, never the facade's English", async () => {
     useUiStore.setState({ locale: "zh-CN" });
     await i18n.changeLanguage("zh-CN");
     renderRoute(paths.course(DEMO101));
     expect(await screen.findByRole("link", { name: /^Week 4 slides/ })).toBeInTheDocument();
-    expect(screen.queryByText(/no text could be extracted/)).toBeNull();
+    expect(screen.getByText("没有找到文字")).toBeInTheDocument();
+    expect(screen.getByText("里面没有找到文字，可能是扫描件或只有图片。")).toBeInTheDocument();
+    expect(screen.queryByText(/no extractable text/)).toBeNull();
+  });
+
+  it("shows an older facade's English reason (no code) only in an English UI", async () => {
+    const api = createMockApi({ latencyMs: 0 });
+    const real = api.weekMaterials.bind(api);
+    api.weekMaterials = async (...args) => {
+      const week = await real(...args);
+      return {
+        ...week,
+        materials: week.materials.map((m) =>
+          m.text_problem ? { ...m, text_problem: null, text_error: "Synthetic English reason" } : m,
+        ),
+      };
+    };
+    await openCourse(DEMO101, { api });
+    expect(await screen.findByText("Synthetic English reason")).toBeInTheDocument();
   });
 
   it("shows recent announcements", async () => {
