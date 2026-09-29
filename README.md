@@ -36,8 +36,8 @@ weeks"* — without re-uploading anything.
   fetches assignment instructions to solve them. It tells your AI app to tutor, cite its sources and
   respect each course's AI policy — and for courses you mark "No AI", it doesn't share the materials.
 - **Not tied to one LMS.** A course folder plus your LMS's calendar feed (iCal) works with most
-  systems. If your school uses Canvas, you can also sync from it with your own personal access
-  token, for your own use only.
+  systems. If your school uses Canvas, you can also sync from it with a personal access token you
+  create in Canvas ([how](#canvas-access-tokens)).
 
 ## Install
 
@@ -148,9 +148,23 @@ apps. Plans are set by each vendor and can change — check their plans pages.
 
 ### Canvas access tokens
 
-Canvas personal access tokens are for **your own use only** — Canvas's API policy doesn't allow apps
-to ask other people to create them. Tokens expire (Canvas shows the maximum when you create one).
-If you share PageLamp with classmates, point them to the course folder + calendar feed setup.
+To sync straight from Canvas, create a personal access token in Canvas:
+
+1. In Canvas, open **Account → Settings**, scroll to **Approved Integrations** and click
+   **+ New Access Token**.
+2. Fill in the purpose (e.g. "personal study planner, read-only") and pick an expiry date. Canvas
+   shows the longest expiry it allows.
+3. Click **Generate Token** and copy the token right away: Canvas shows it only once.
+4. In PageLamp, open **Sources & sync → Add source → Canvas access token**, enter your Canvas address
+   (the address you open Canvas at, e.g. `https://canvas.school.edu`) and paste the token. With the
+   command-line tool, `pagelamp canvas add --base-url https://canvas.school.edu` asks for it.
+   PageLamp checks the token with Canvas, then stores it in your system keychain.
+
+If you don't see **+ New Access Token**, your school has turned off student tokens — use the course
+folder + calendar feed instead. The token acts as you in Canvas, so keep it to yourself. When it
+expires, create a new one and use **Replace token** on the source; to end PageLamp's access, delete
+the token on the same Canvas page.
+
 Canvas sync never downloads files unless you ask, because downloads can count as "viewed" in
 module requirements. Canvas records a sync like any other access: your course access report (which
 instructors can see) may list each area PageLamp reads — modules, pages, assignments, files and
@@ -272,7 +286,15 @@ Linux 请用 `.deb`/`.rpm`（会同时安装 `/usr/bin/pagelamp`）；`.AppImage
 
 **遇到问题**：在「设置 → 帮助与反馈 → 复制诊断报告…」先查看再复制报告（课程名已替换为 Course 1、Course 2，令牌和日历链接已去除），贴到 [GitHub issue](https://github.com/Euswbnix/pagelamp/issues/new/choose)。不要贴令牌、日历订阅链接或课件。
 
-**关于 Canvas 令牌**：个人访问令牌仅供你本人使用，不要让同学生成令牌填进来；推荐给同学时请用「课程文件夹 + 日历订阅」方式。
+**Canvas 访问令牌**：想直接从 Canvas 同步，需要在 Canvas 里生成一个个人访问令牌：
+1. 在 Canvas 中打开 **Account → Settings**，往下找到 **Approved Integrations**，点 **+ New Access Token**；
+2. 用途（Purpose）如实填写，例如“个人学习规划，只读”，并选好到期日期（Canvas 会显示允许的最长期限）；
+3. 点 **Generate Token**，马上复制令牌——它只显示一次；
+4. 在 PageLamp 里打开「数据来源与同步 → 添加数据来源 → Canvas 访问令牌」，填入你平时打开 Canvas 用的地址（例如 `https://canvas.school.edu`），粘贴令牌；命令行用 `pagelamp canvas add --base-url https://canvas.school.edu`。PageLamp 会先向 Canvas 验证令牌，再把它保存在系统钥匙串中。
+
+如果看不到 **+ New Access Token**，说明你的学校关闭了学生访问令牌，请改用「课程文件夹 + 日历订阅」。令牌代表你本人访问 Canvas，不要交给别人；过期后生成一个新的，在这个来源上点「更换访问令牌」；想停止 PageLamp 的访问，在同一个 Canvas 页面删除这个令牌即可。
+
+
 同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面（只读新增或有变化的页面）。读取页面不会完成模块要求；下载文件可能会，所以默认不下载。
 PageLamp 的 MCP 服务从不连接 Canvas 或互联网：它读取你电脑上的数据库，只在你的 AI 应用请求保存内容时写入（v0.1 中只有学习计划）；Canvas 同步是你用自己的令牌单独执行的一步。
 

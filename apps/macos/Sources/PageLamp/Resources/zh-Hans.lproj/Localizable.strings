@@ -1770,7 +1770,7 @@
 "updates.whatsNew.topics.ai_writing.title" = "学习计划和每周讲解";
 "updates.whatsNew.topics.course_removal.body" = "课程结束后，可以把它从 PageLamp 中移除。7 天内可以撤销，你自己的课程文件夹不会被改动。";
 "updates.whatsNew.topics.course_removal.title" = "移除已结束的课程";
-"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归到“已结束”分组里。";
+"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.reminders.body" = "在截止日期前和每周发送通知提醒。默认关闭，可以在「设置 → 提醒」里开启；开启后 PageLamp 会常驻托盘，并在登录时启动。";
 "updates.whatsNew.topics.reminders.title" = "提醒";

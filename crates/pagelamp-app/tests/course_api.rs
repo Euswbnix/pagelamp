@@ -175,6 +175,57 @@ fn saving_or_confirming_student_dates_marks_them_confirmed() {
 }
 
 #[test]
+fn a_failed_read_never_drops_the_confirmed_dates() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    app.confirm_course_dates("DEMO303").unwrap();
+    let raw = rusqlite::Connection::open(app.db_path()).unwrap();
+
+    // The list can't be read while writes still work (here it is stored as a blob): saving
+    // or confirming DEMO101's dates fails and writes nothing. It never replaces the list with
+    // DEMO101 alone.
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS BLOB) WHERE key = ?1",
+        [CONFIRMED_DATES_KEY],
+    )
+    .unwrap();
+    assert!(app.confirm_course_dates("DEMO101").is_err());
+    assert!(
+        app.set_course_term("DEMO101", Some(date("2026-09-08")), None)
+            .is_err()
+    );
+    assert!(app.course_timeline("DEMO303").is_err());
+    raw.execute(
+        "UPDATE settings SET value = CAST(value AS TEXT) WHERE key = ?1",
+        [CONFIRMED_DATES_KEY],
+    )
+    .unwrap();
+    assert_eq!(confirmed(&app), BTreeSet::from([course_id("303")]));
+    // The dates weren't saved either (one transaction).
+    assert_eq!(term_data(&app, &course_id("101")).user_term_start, None);
+
+    // The settings table can't be read at all.
+    raw.execute_batch("ALTER TABLE settings RENAME TO settings_away")
+        .unwrap();
+    assert!(app.confirm_course_dates("DEMO101").is_err());
+    assert!(app.course_timeline("DEMO303").is_err());
+    assert!(app.list_courses().is_err());
+    raw.execute_batch("ALTER TABLE settings_away RENAME TO settings")
+        .unwrap();
+    assert_eq!(confirmed(&app), BTreeSet::from([course_id("303")]));
+
+    // Another version's shape counts as an empty list: confirming starts a new one.
+    raw.execute(
+        "UPDATE settings SET value = '{\"ids\": 3}' WHERE key = ?1",
+        [CONFIRMED_DATES_KEY],
+    )
+    .unwrap();
+    app.course_timeline("DEMO303").unwrap();
+    app.confirm_course_dates("DEMO101").unwrap();
+    assert_eq!(confirmed(&app), BTreeSet::from([course_id("101")]));
+}
+
+#[test]
 fn course_timeline_and_lifecycle_summary_cover_hidden_courses() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_courses(temp.path());

@@ -638,7 +638,8 @@ impl Store {
 
     /// The last migration's backup outcome, if this database was ever migrated (schema 3+).
     pub fn last_migration_backup(&self) -> Result<Option<MigrationBackupRecord>> {
-        Ok(self.setting(LAST_MIGRATION_BACKUP).unwrap_or(None)) // unreadable (another version's shape): as if absent
+        // Unreadable (another version's shape): as if absent; a failed read is an error.
+        self.setting_or_absent(LAST_MIGRATION_BACKUP)
     }
 
     /// Run `f` inside `BEGIN IMMEDIATE … COMMIT` on this connection (ROLLBACK on error).
@@ -1765,6 +1766,28 @@ impl Store {
                 .map_err(|err| Error::Invalid(format!("setting '{key}' could not be read: {err}")))
         })
         .transpose()
+    }
+
+    /// Like `setting`, but a stored value that can't be parsed (another version's shape) counts
+    /// as absent, with a warning, while a failed read (a busy or damaged database) is still an
+    /// error. For settings whose default is right when the value is unreadable, but where a
+    /// failed read must never look like the default (consent, what the student turned off).
+    pub fn setting_or_absent<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> Result<Option<T>> {
+        let text: Option<String> =
+            self.query_opt("SELECT value FROM settings WHERE key = ?1", [key], |row| {
+                row.get(0)
+            })?;
+        Ok(text.and_then(|text| match serde_json::from_str(&text) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                // The key and the kind of error only: never the stored value.
+                tracing::warn!(key, kind = ?err.classify(), "unreadable setting; using the default");
+                None
+            }
+        }))
     }
 
     /// Store `value` as JSON under `key`, replacing an earlier value.

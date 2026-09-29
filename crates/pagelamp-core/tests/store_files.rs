@@ -782,3 +782,36 @@ fn upgrading_drops_the_text_of_materials_that_are_not_readable() {
         1
     );
 }
+
+#[test]
+fn an_unparseable_setting_is_absent_but_a_failed_read_is_an_error() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    store.set_setting("demo.flag", &true).unwrap();
+    assert_eq!(
+        store.setting_or_absent::<bool>("demo.flag").unwrap(),
+        Some(true)
+    );
+    assert_eq!(store.setting_or_absent::<bool>("demo.none").unwrap(), None);
+
+    // Another version's shape: absent (the strict read still says so).
+    let raw = rusqlite::Connection::open(&path).unwrap();
+    raw.execute(
+        "UPDATE settings SET value = 'not json' WHERE key = 'demo.flag'",
+        [],
+    )
+    .unwrap();
+    assert!(matches!(
+        store.setting::<bool>("demo.flag"),
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(store.setting_or_absent::<bool>("demo.flag").unwrap(), None);
+
+    // A failed read (here the table is gone) is an error, never "absent".
+    raw.execute_batch("ALTER TABLE settings RENAME TO settings_away")
+        .unwrap();
+    assert!(matches!(
+        store.setting_or_absent::<bool>("demo.flag"),
+        Err(Error::Db(_))
+    ));
+}
