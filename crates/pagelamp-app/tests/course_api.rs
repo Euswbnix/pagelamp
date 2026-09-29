@@ -103,6 +103,12 @@ fn keep_course_current_has_a_facade_default_and_can_be_undone() {
 
     let err = app.keep_course_current("NOPE999", None).unwrap_err();
     assert_eq!(err.kind, AppErrorKind::NotFound);
+    // A day in the past is refused (review 4).
+    let err = app
+        .keep_course_current("DEMO101", Some(today() - TimeDelta::days(1)))
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Invalid);
+    assert_eq!(term_data(&app, &id).keep_current_until, None);
 }
 
 #[test]

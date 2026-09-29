@@ -24,7 +24,7 @@ use pagelamp_core::views::{self, AsOf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{App, Result};
+use crate::{App, AppError, AppErrorKind, Result};
 
 /// "Not now" on a removal suggestion or the banner lasts this many days.
 pub const NOT_NOW_DAYS: i64 = 14;
@@ -89,6 +89,12 @@ impl App {
         let at = AsOf::now_local();
         let course = store.resolve_course_with(course, true)?;
         let until = match until {
+            Some(until) if until < at.today => {
+                return Err(AppError::new(
+                    AppErrorKind::Invalid,
+                    format!("{until} is in the past: choose today or a later day"),
+                ));
+            }
             Some(until) => until,
             None => {
                 let timeline = views::course_timeline(&store, &course, at)?;
