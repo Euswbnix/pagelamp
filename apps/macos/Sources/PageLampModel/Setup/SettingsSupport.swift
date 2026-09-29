@@ -70,8 +70,54 @@ public struct StoredCount: Equatable, Sendable, Identifiable {
     }
 }
 
-/// The core's health report for Settings: the version when `status()` is unavailable, and the
-/// data folder in S2. Loaded on demand; works without the database.
+/// Settings ▸ Help's file reader lines (the desktop's `FileReaderStatus`): nothing while the
+/// reader works and every file could be read; else a warning (often security software blocks
+/// it) and the files that couldn't be read, counted by why.
+public struct FileReaderNotice: Equatable, Sendable {
+    /// `settings.help.fileReader.blocked` or `.mismatch`; nil while the reader works.
+    public var warningKey: String?
+    /// Why files couldn't be read, with their counts (none with 0), in the report's order.
+    public var unreadable: [UnreadableFiles]
+
+    /// Nil when there is nothing to say.
+    public init?(_ report: DoctorReport) {
+        let unreadable = report.unreadableFiles.filter { $0.count > 0 }
+        let warningKey: String? = switch report.extractWorker.status {
+        case .ok: nil
+        case .protocolMismatch: "settings.help.fileReader.mismatch"
+        case .notSet, .spawnFailed, .failed: "settings.help.fileReader.blocked"
+        }
+        guard warningKey != nil || !unreadable.isEmpty else { return nil }
+        self.warningKey = warningKey
+        self.unreadable = unreadable
+    }
+
+    /// "Files PageLamp couldn't read: 2 took too long · 1 crashed the reader", or nil.
+    public func unreadableLine(l10n: L10n) -> String? {
+        guard !unreadable.isEmpty else { return nil }
+        let list = unreadable
+            .map { l10n(Self.key($0.kind), ["count": l10n.number($0.count)]) }
+            .joined(separator: l10n("settings.help.fileReader.separator"))
+        return l10n("settings.help.fileReader.unreadable", ["list": list])
+    }
+
+    /// `settings.help.fileReader.kinds.<kind>` (the facade's snake_case names).
+    public static func key(_ kind: TextErrorKind) -> String {
+        let name = switch kind {
+        case .timedOut: "timed_out"
+        case .cpuLimit: "cpu_limit"
+        case .memoryLimit: "memory_limit"
+        case .crashed: "crashed"
+        case .badOutput: "bad_output"
+        case .spawnFailed: "spawn_failed"
+        case .protocolMismatch: "protocol_mismatch"
+        }
+        return "settings.help.fileReader.kinds.\(name)"
+    }
+}
+
+/// The core's health report for Settings: the file reader lines (Help), and the version, the
+/// data folder and the counts when `status()` is unavailable (S2). Works without the database.
 @Observable @MainActor
 public final class SettingsModel {
     public private(set) var doctor: DoctorReport?

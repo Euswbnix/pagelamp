@@ -7,7 +7,8 @@
 //!   compile time, plus custom types for chrono / JSON / `BTreeMap`.
 //! - **`PageLampError`** (`error.rs`): `AppError` as a Swift-`switch`able enum.
 //! - **Threading**: every facade call is `async` and returns `Result`; only the cheap helpers
-//!   `version`, `default_sync_request`, `init_diagnostics` and `log_ui_error` are synchronous
+//!   `version`, `default_sync_request`, `init_diagnostics`, `log_ui_error` and the facade's
+//!   constants (`not_now_days`, `keep_current_days`, `keep_forever`) are synchronous
 //!   (and only those that cannot fail are non-throwing: Swift traps on a panic in a
 //!   non-throwing export). Blocking facade calls (SQLite, file system) run with
 //!   `spawn_blocking`, async ones (sync, Canvas/iCal checks) with `spawn`, both on this
@@ -34,10 +35,14 @@ use std::sync::{Arc, LazyLock};
 
 use pagelamp_app::diagnostics::{CrashReport, DoctorReport, ProcessKind};
 use pagelamp_app::{
-    App, AppError, AppStatus, McpClientConfig, McpLaunch, SourceSyncResult, SyncEvent, SyncRequest,
-    SyncSummary,
+    Activity, App, AppError, AppStatus, LifecycleSummary, McpClientConfig, McpLaunch,
+    SourceSyncResult, StartupTasks, SyncEvent, SyncRequest, SyncSummary, UpdateChannel,
+    UpdateCheckRecord, UpdatePrefs,
 };
-use pagelamp_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
+use pagelamp_core::lifecycle::SnoozeKind;
+use pagelamp_core::model::{
+    AiPolicy, Course, CourseTimeline, SearchHit, SourceRecord, StoredStudyPlan,
+};
 use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 
@@ -350,6 +355,125 @@ impl PageLamp {
         blocking(move || app.set_course_hidden(&course, hidden)).await
     }
 
+    // ----- course weeks, phases and the Past group --------------------------------------------
+
+    /// Where one course is: week, phase, the dates used and not used, evidence. Hidden courses
+    /// are addressable.
+    pub async fn course_timeline(&self, course: String) -> Result<CourseTimeline> {
+        let app = self.app.clone();
+        blocking(move || app.course_timeline(&course)).await
+    }
+
+    /// Every course's lifecycle, the removal suggestions and whether the banner shows.
+    pub async fn lifecycle_summary(&self) -> Result<LifecycleSummary> {
+        let app = self.app.clone();
+        blocking(move || app.lifecycle_summary()).await
+    }
+
+    /// "I'm still taking this" until `until` (nil: the end of the course's outer frame when
+    /// that is still ahead, else today + `keep_current_days()`).
+    pub async fn keep_course_current(
+        &self,
+        course: String,
+        until: Option<IsoDate>,
+    ) -> Result<Course> {
+        let app = self.app.clone();
+        blocking(move || app.keep_course_current(&course, until)).await
+    }
+
+    /// Undo "I'm still taking this".
+    pub async fn clear_keep_course_current(&self, course: String) -> Result<Course> {
+        let app = self.app.clone();
+        blocking(move || app.clear_keep_course_current(&course)).await
+    }
+
+    /// "Not now" (`not_now_days()`) or "Keep" (never again) on the removal suggestion of
+    /// `courses`.
+    pub async fn snooze_removal_suggestions(
+        &self,
+        courses: Vec<String>,
+        kind: SnoozeKind,
+    ) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.snooze_removal_suggestions(courses, kind)).await
+    }
+
+    /// Undo "Not now" / "Keep": the courses may be suggested again.
+    pub async fn clear_removal_snooze(&self, courses: Vec<String>) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.clear_removal_snooze(courses)).await
+    }
+
+    /// "Not now" on the banner: hidden for `not_now_days()`, until another course becomes a
+    /// suggestion.
+    pub async fn snooze_lifecycle_banner(&self) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.snooze_lifecycle_banner()).await
+    }
+
+    /// "These dates are right": the course's dates from PageLamp 0.1 stop being `legacy`.
+    pub async fn confirm_course_dates(&self, course: String) -> Result<CourseTimeline> {
+        let app = self.app.clone();
+        blocking(move || app.confirm_course_dates(&course)).await
+    }
+
+    // ----- updates and launch -----------------------------------------------------------------
+
+    /// The student's update settings (defaults when never set).
+    pub async fn update_prefs(&self) -> Result<UpdatePrefs> {
+        let app = self.app.clone();
+        blocking(move || app.update_prefs()).await
+    }
+
+    pub async fn set_update_prefs(&self, prefs: UpdatePrefs) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.set_update_prefs(prefs)).await
+    }
+
+    /// The student's channel, else Beta for a pre-release build and Stable otherwise.
+    pub async fn effective_update_channel(&self) -> Result<UpdateChannel> {
+        let app = self.app.clone();
+        blocking(move || app.effective_update_channel()).await
+    }
+
+    /// What to do at launch and on the app's timer: What's new (upgraders), whether the
+    /// automatic update check is due, the version this launch updated from. `now` is the
+    /// caller's clock.
+    pub async fn startup_tasks(&self, now: Timestamp) -> Result<StartupTasks> {
+        let app = self.app.clone();
+        blocking(move || app.startup_tasks(now)).await
+    }
+
+    /// The student closed What's new (its update-check topic counts as the disclosure).
+    pub async fn acknowledge_whats_new(&self) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.acknowledge_whats_new()).await
+    }
+
+    /// The student saw what the update check sends (onboarding, fresh installs).
+    pub async fn acknowledge_update_disclosure(&self) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.acknowledge_update_disclosure()).await
+    }
+
+    /// Remember how an update check ended (`startup_tasks` and diagnostic reports use it).
+    pub async fn record_update_check(&self, record: UpdateCheckRecord) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.record_update_check(record)).await
+    }
+
+    pub async fn last_update_check(&self) -> Result<Option<UpdateCheckRecord>> {
+        let app = self.app.clone();
+        blocking(move || app.last_update_check()).await
+    }
+
+    /// What this app is doing right now (syncs, downloads), and whether another process is
+    /// syncing. Ask it before installing an update.
+    pub async fn activity(&self) -> Result<Activity> {
+        let app = self.app.clone();
+        blocking(move || Ok(app.activity())).await
+    }
+
     // ----- diagnostics (this data dir) -------------------------------------------------------
 
     /// `<data_dir>/logs`, created if missing ("Open Logs Folder").
@@ -414,6 +538,24 @@ pub fn version() -> String {
 #[uniffi::export]
 pub fn default_sync_request() -> SyncRequest {
     SyncRequest::default()
+}
+
+/// Days "Not now" lasts on a removal suggestion, the lifecycle banner or the syllabus offers.
+#[uniffi::export]
+pub fn not_now_days() -> i64 {
+    pagelamp_app::NOT_NOW_DAYS
+}
+
+/// Days "I'm still taking this" lasts when the course has no outer frame ahead.
+#[uniffi::export]
+pub fn keep_current_days() -> i64 {
+    pagelamp_app::KEEP_CURRENT_DAYS
+}
+
+/// The date "Keep" stores as `removal_snoozed_until` (9999-12-31): never suggested again.
+#[uniffi::export]
+pub fn keep_forever() -> IsoDate {
+    pagelamp_app::keep_forever()
 }
 
 /// Sets up log files (`<data dir>/logs`), redacted stderr logging and the crash hook for this

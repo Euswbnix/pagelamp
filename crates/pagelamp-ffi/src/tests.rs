@@ -565,6 +565,12 @@ fn overlapping_syncs_are_busy() {
         .expect("first sync started");
 
     assert!(block_on(lamp.status()).unwrap().sync_in_progress);
+    let activity = block_on(lamp.activity()).unwrap();
+    assert_eq!(activity.items.len(), 1, "{activity:?}");
+    assert!(
+        !activity.other_process_syncing,
+        "the sync runs in this process"
+    );
     assert!(matches!(
         block_on(lamp.sync_all(SyncRequest::default(), Arc::new(Collect::default()))),
         Err(PageLampError::Busy { .. })
@@ -578,4 +584,114 @@ fn overlapping_syncs_are_busy() {
     let summary = first.join().unwrap().unwrap();
     assert!(summary.ok);
     assert!(!block_on(lamp.status()).unwrap().sync_in_progress);
+    assert!(block_on(lamp.activity()).unwrap().items.is_empty());
+}
+
+#[test]
+fn update_settings_and_launch_tasks() {
+    let temp = tempfile::tempdir().unwrap();
+    let lamp = block_on(PageLamp::open_with_memory_secrets(path_string(
+        &temp.path().join("data"),
+    )))
+    .unwrap();
+    let prefs = block_on(lamp.update_prefs()).unwrap();
+    assert!(prefs.auto_check && prefs.channel.is_none());
+    block_on(lamp.set_update_prefs(UpdatePrefs {
+        auto_check: true,
+        channel: Some(UpdateChannel::Stable),
+    }))
+    .unwrap();
+    assert_eq!(
+        block_on(lamp.effective_update_channel()).unwrap(),
+        UpdateChannel::Stable
+    );
+
+    // A fresh install: no What's new, and no check before the student saw the disclosure.
+    let now = Utc.with_ymd_and_hms(2026, 10, 1, 9, 0, 0).unwrap();
+    let tasks = block_on(lamp.startup_tasks(now)).unwrap();
+    assert!(tasks.whats_new.is_none() && tasks.updated_from.is_none());
+    assert!(!tasks.update_check_due);
+    block_on(lamp.acknowledge_update_disclosure()).unwrap();
+    assert!(block_on(lamp.startup_tasks(now)).unwrap().update_check_due);
+
+    let record = UpdateCheckRecord {
+        at: now,
+        channel: UpdateChannel::Stable,
+        outcome: pagelamp_app::UpdateCheckOutcome::Available {
+            version: "0.3.0".into(),
+        },
+    };
+    block_on(lamp.record_update_check(record.clone())).unwrap();
+    assert_eq!(block_on(lamp.last_update_check()).unwrap(), Some(record));
+    assert!(!block_on(lamp.startup_tasks(now)).unwrap().update_check_due);
+    let tomorrow = now + TimeDelta::hours(24);
+    assert!(
+        block_on(lamp.startup_tasks(tomorrow))
+            .unwrap()
+            .update_check_due
+    );
+    block_on(lamp.acknowledge_whats_new()).unwrap();
+
+    let activity = block_on(lamp.activity()).unwrap();
+    assert!(activity.items.is_empty() && !activity.other_process_syncing);
+}
+
+#[test]
+fn course_lifecycle_calls_and_constants() {
+    let temp = tempfile::tempdir().unwrap();
+    let courses = temp.path().join("Courses");
+    course_folder(&courses);
+    let lamp = block_on(PageLamp::open_with_memory_secrets(path_string(
+        &temp.path().join("data"),
+    )))
+    .unwrap();
+    block_on(lamp.add_folder_source(path_string(&courses), None, None)).unwrap();
+    let observer = Arc::new(Collect::default());
+    assert!(
+        block_on(lamp.sync_all(SyncRequest::default(), observer))
+            .unwrap()
+            .ok
+    );
+
+    assert_eq!(not_now_days(), 14);
+    assert_eq!(keep_current_days(), 120);
+    assert_eq!(
+        keep_forever(),
+        NaiveDate::from_ymd_opt(9999, 12, 31).unwrap()
+    );
+
+    let timeline = block_on(lamp.course_timeline("DEMO101".into())).unwrap();
+    assert_eq!(timeline.current_week, Some(2));
+    let summary = block_on(lamp.lifecycle_summary()).unwrap();
+    assert_eq!(summary.courses.len(), 2);
+    assert!(summary.suggested.is_empty() && !summary.show_banner);
+
+    let kept_until = |lamp: &PageLamp, id: &str| {
+        block_on(lamp.lifecycle_summary())
+            .unwrap()
+            .courses
+            .into_iter()
+            .find(|entry| entry.course_id == id)
+            .unwrap()
+            .lifecycle
+            .kept_current_until
+    };
+    let until = Local::now().date_naive() + TimeDelta::days(30);
+    let kept = block_on(lamp.keep_course_current("DEMO202".into(), Some(until))).unwrap();
+    assert_eq!(kept.code.as_deref(), Some("DEMO202"));
+    assert_eq!(kept_until(&lamp, &kept.id), Some(until));
+    block_on(lamp.clear_keep_course_current("DEMO202".into())).unwrap();
+    assert_eq!(kept_until(&lamp, &kept.id), None);
+
+    // Current courses aren't suggested; the calls still reach the facade.
+    let ids = vec![kept.id.clone()];
+    block_on(lamp.snooze_removal_suggestions(ids.clone(), SnoozeKind::Keep)).unwrap();
+    block_on(lamp.clear_removal_snooze(ids)).unwrap();
+    block_on(lamp.snooze_lifecycle_banner()).unwrap();
+    let confirmed = block_on(lamp.confirm_course_dates("DEMO101".into())).unwrap();
+    assert_eq!(confirmed.current_week, Some(2));
+    assert!(matches!(
+        block_on(lamp.course_timeline("NOPE999".into())),
+        Err(PageLampError::NotFound { .. })
+    ));
 }

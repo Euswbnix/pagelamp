@@ -44,11 +44,10 @@ struct SettingsView: View {
                     .frame(width: PLSize.settingsWidth, height: 500)
             }
         }
-        // S2 and the version fallback: the core's health report works without the database.
+        // The file reader lines (Help), and S2 with the version fallback: the core's health
+        // report works without the database.
         .task(id: model.status == nil) {
-            if model.status == nil {
-                await settings.loadDoctor(model.service)
-            }
+            await settings.loadDoctor(model.service)
         }
         // Settings ▸ Help ▸ Copy Diagnostic Report… previews the report on this window.
         .diagnosticReportSheet(host: .settings)

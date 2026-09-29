@@ -57,6 +57,39 @@ struct SetupSettingsTests {
         #expect(StoredCount.rows(doctor).map(\.value) == [doctor.courses, doctor.hiddenCourses, doctor.materials, doctor.events])
     }
 
+    @Test("the file reader says nothing while it works, else why, and counts unreadable files")
+    func fileReader() async throws {
+        let (_, mock) = makeModel(scenario: .demo)
+        let report = try await mock.doctor()
+        func with(_ status: ExtractWorkerStatus, _ unreadable: [UnreadableFiles]) -> DoctorReport {
+            DoctorReport(
+                version: report.version, os: report.os, arch: report.arch, dataDir: report.dataDir,
+                logsDir: report.logsDir, schemaVersion: report.schemaVersion, databaseError: report.databaseError,
+                keychainAvailable: report.keychainAvailable, keychainError: report.keychainError,
+                sources: report.sources, courses: report.courses, hiddenCourses: report.hiddenCourses,
+                materials: report.materials, events: report.events, mcpClients: report.mcpClients,
+                lastCrash: report.lastCrash, extractWorker: ExtractWorkerCheck(status: status, spawnMs: nil),
+                unreadableFiles: unreadable
+            )
+        }
+        #expect(FileReaderNotice(report) == nil, "the mock's reader works")
+        #expect(FileReaderNotice(with(.ok, [UnreadableFiles(kind: .crashed, count: 0)])) == nil)
+        #expect(FileReaderNotice(with(.spawnFailed, []))?.warningKey == "settings.help.fileReader.blocked")
+        #expect(FileReaderNotice(with(.notSet, []))?.warningKey == "settings.help.fileReader.blocked")
+        #expect(FileReaderNotice(with(.protocolMismatch, []))?.warningKey == "settings.help.fileReader.mismatch")
+
+        let notice = try #require(FileReaderNotice(with(.ok, [
+            UnreadableFiles(kind: .timedOut, count: 2), UnreadableFiles(kind: .memoryLimit, count: 0),
+            UnreadableFiles(kind: .crashed, count: 1),
+        ])))
+        #expect(notice.warningKey == nil)
+        let en = L10n(locale: Locale(identifier: "en"), table: .app)
+        let line = try #require(notice.unreadableLine(l10n: en))
+        #expect(line.contains("2 took too long · 1 crashed the reader"), "\(line)")
+        let kinds: [TextErrorKind] = [.timedOut, .cpuLimit, .memoryLimit, .crashed, .badOutput, .spawnFailed, .protocolMismatch]
+        #expect(kinds.allSatisfy { en.has(FileReaderNotice.key($0)) })
+    }
+
     @Test("the version comes from status(), else from doctor()")
     func version() async {
         let (model, mock) = makeModel(scenario: .demo)
