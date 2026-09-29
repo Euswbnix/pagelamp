@@ -172,13 +172,52 @@ describe("SourcesPage", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("describes other source errors by kind", async () => {
-    renderRoute("/sources", { scenario: "error" });
+  it("describes other source errors by kind, with the backend's text under Technical details", async () => {
+    const { user } = renderRoute("/sources", { scenario: "error" });
     expect(await screen.findByText("The last sync didn't work")).toBeInTheDocument();
     expect(screen.getByText("Not found")).toBeInTheDocument();
-    expect(
-      screen.getByText("Folder /Users/demo/Documents/Courses was not found."),
-    ).toBeInTheDocument();
+    const raw = "Folder /Users/demo/Documents/Courses was not found.";
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+
+    const details = screen.getByRole("button", { name: "Technical details for Course folder" });
+    expect(details).toHaveTextContent("Technical details");
+    await user.click(details);
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(raw).closest("[lang]")).toHaveAttribute("lang", "en");
+    await user.click(
+      screen.getByRole("button", { name: "Copy technical details for Course folder" }),
+    );
+    expect(await navigator.clipboard.readText()).toBe(raw);
+  });
+
+  it("keeps the backend's text behind Technical details in Chinese too", async () => {
+    useUiStore.setState({ locale: "zh-CN" });
+    await i18n.changeLanguage("zh-CN");
+    const { user } = renderRoute("/sources", { scenario: "error" });
+    expect(await screen.findByText("上次同步没有成功")).toBeInTheDocument();
+    const raw = "Folder /Users/demo/Documents/Courses was not found.";
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "技术详情：Course folder" }));
+    expect(screen.getByText(raw)).toBeInTheDocument();
+  });
+
+  it("wraps a long source label so the status badge stays on the card", async () => {
+    const label =
+      "University of Example — Canvas (Faculty of Arts & Science, St. George campus, all sections)";
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await api.addFolderSource("/Users/demo/Documents/Long", null, label);
+    renderRoute("/sources", { api });
+
+    const heading = await screen.findByRole("heading", { level: 2, name: label });
+    // jsdom has no layout, so pin what does it: the title (the header grid's first column) may
+    // shrink below the label's width, and the label wraps at any character instead of running on.
+    expect(heading.closest('[data-slot="card-title"]')).toHaveClass("min-w-0");
+    expect(heading).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
+    expect(heading).not.toHaveClass("truncate");
+    // The badge is in the same header, in the action column.
+    const header = heading.closest('[data-slot="card-header"]') as HTMLElement;
+    const action = header.querySelector('[data-slot="card-action"]') as HTMLElement;
+    expect(within(action).getByText("New")).toBeInTheDocument();
   });
 
   it("removes a source after confirmation", async () => {
@@ -358,8 +397,11 @@ describe("SourcesPage", () => {
     expect(screen.getByRole("button", { name: "Sync all" })).toBeEnabled();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
 
-    // The folder source reported a skipped file: warnings are collapsed until asked for.
-    await user.click(screen.getByRole("button", { name: "Warnings (1)" }));
+    // The folder source reported a skipped file: the count shows, the text is collapsed until
+    // asked for.
+    expect(screen.getByText("1 warning")).toBeInTheDocument();
+    expect(screen.queryByText(/video files can't be read/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Technical details for Course folder" }));
     expect(await screen.findByText(/video files can't be read/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Hide sync results" }));

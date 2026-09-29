@@ -126,9 +126,6 @@ export type {
   WhatsNewTopic,
 } from "./generated";
 
-// StoreCounts.removed_courses until B5 adds it (the augmentation lives there).
-import "./provisional/courseRemoval";
-
 import type { AiMaterialsState, AiPolicy, Course } from "./generated";
 
 /** RFC 3339 instant, e.g. "2026-09-25T14:03:00Z". */

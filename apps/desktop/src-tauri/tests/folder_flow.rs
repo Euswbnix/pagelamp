@@ -10,12 +10,12 @@ use pagelamp_app::App;
 use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_desktop_lib::{Backend, with_commands};
 use serde_json::{Value, json};
-use tauri::WebviewWindow;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{
     INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder, mock_context, noop_assets,
 };
 use tauri::webview::InvokeRequest;
+use tauri::{Manager, WebviewWindow};
 
 /// Where the app's own page is served from, the only origin the ACL lets call app commands:
 /// Tauri serves it from `http://tauri.localhost` on Windows and `tauri://localhost` elsewhere.
@@ -258,4 +258,135 @@ fn smoke_folder_is_fully_indexed() {
             week["materials"].as_array().unwrap().len()
         );
     }
+}
+
+/// While an update installs (`updates_install` holds the gate), nothing the restart would kill
+/// can start: no sync, no file download, no model run, no course removal, restore or purge.
+/// Afterwards they run again.
+#[test]
+fn no_sync_starts_while_an_update_installs() {
+    let data = tempfile::tempdir().expect("data dir");
+    let folder = tempfile::tempdir().expect("course folder");
+    course_folder(folder.path());
+    let facade =
+        App::open_at_with_secrets(data.path().to_path_buf(), Arc::new(MemorySecrets::new()))
+            .expect("open App");
+    let app = with_commands(mock_builder())
+        .manage(Backend::from_app(facade))
+        .build(mock_context(noop_assets()))
+        .expect("mock app");
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("webview");
+    let source = ok(
+        &webview,
+        "add_folder_source",
+        json!({ "path": folder.path(), "termStart": null, "label": "Smoke test courses" }),
+    );
+    let source_id = source["id"].as_str().expect("source id");
+    let course = format!("{source_id}/course/DEMO101");
+
+    let backend = app.state::<Backend>();
+    let gate = backend.hold_work_for_install().expect("no install yet");
+    for (cmd, args) in [
+        ("sync_all", json!({ "req": {}, "onEvent": "__CHANNEL__:0" })),
+        (
+            "sync_source",
+            json!({ "sourceId": source_id, "req": {}, "onEvent": "__CHANNEL__:0" }),
+        ),
+        (
+            "download_course_files",
+            json!({ "course": course, "onEvent": "__CHANNEL__:0" }),
+        ),
+        (
+            "download_material_files",
+            json!({ "course": course, "materialIds": [], "onEvent": "__CHANNEL__:0" }),
+        ),
+        (
+            "read_course_calendar",
+            json!({
+                "course": course,
+                "generationId": "install-gate-test",
+                "options": { "override_budget": false },
+                "onEvent": "__CHANNEL__:0",
+            }),
+        ),
+        (
+            "read_course_calendars",
+            json!({
+                "courses": [course],
+                "batchId": "install-gate-test",
+                "options": { "override_budget": false },
+                "onEvent": "__CHANNEL__:0",
+            }),
+        ),
+    ] {
+        let err = invoke(&webview, cmd, args).expect_err(cmd);
+        assert_eq!(err["kind"], "busy", "`{cmd}`: {err}");
+    }
+    assert!(
+        ok(&webview, "list_courses", json!({}))
+            .as_array()
+            .expect("course list")
+            .is_empty(),
+        "nothing synced"
+    );
+
+    drop(gate);
+    let summary = ok(
+        &webview,
+        "sync_all",
+        json!({ "req": {}, "onEvent": "__CHANNEL__:0" }),
+    );
+    assert_eq!(summary["ok"], true, "sync failed: {summary}");
+
+    // Removals move files and a restore syncs: refused too, and nothing changes.
+    let remove = |course: &str| {
+        json!({
+            "courses": [course],
+            "options": {
+                "reason": null,
+                "keep_downloaded_files": false,
+                "purge_now": false,
+                "delete_pre_update_backup": false,
+            },
+        })
+    };
+    let report = ok(&webview, "remove_courses", remove("DEMO101"));
+    let removed_id = report["removed"][0]["removed_id"]
+        .as_str()
+        .expect("removed id")
+        .to_string();
+    let gate = backend.hold_work_for_install().expect("no install yet");
+    for (cmd, args) in [
+        ("remove_courses", remove("DEMO205")),
+        ("restore_course", json!({ "removedId": removed_id })),
+        (
+            "purge_removed_courses",
+            json!({ "removedIds": [removed_id], "permanentIfNoTrash": false }),
+        ),
+    ] {
+        let err = invoke(&webview, cmd, args).expect_err(cmd);
+        assert_eq!(err["kind"], "busy", "`{cmd}`: {err}");
+    }
+    let codes: Vec<Value> = ok(&webview, "list_courses", json!({}))
+        .as_array()
+        .expect("course list")
+        .iter()
+        .map(|summary| summary["course"]["code"].clone())
+        .collect();
+    assert_eq!(
+        codes,
+        [json!("DEMO205")],
+        "DEMO205 kept, DEMO101 still removed"
+    );
+    let removed = ok(&webview, "removed_courses", json!({}));
+    assert_eq!(removed[0]["state"], "pending", "not purged: {removed}");
+    drop(gate);
+    let restored = ok(
+        &webview,
+        "restore_course",
+        json!({ "removedId": removed_id }),
+    );
+    assert_eq!(restored["restored"], true, "{restored}");
 }

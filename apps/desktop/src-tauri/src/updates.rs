@@ -14,11 +14,13 @@
 //! - deb/rpm installs never auto-install: they read the AppImage entry only to learn the new
 //!   version and get a link to the release page (the manifest has no deb/rpm keys, by design).
 
-use std::sync::Mutex;
+use std::future::Future;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use pagelamp_app::{
-    ActivityKind, AppError, AppErrorKind, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+    Activity, ActivityKind, AppError, AppErrorKind, UpdateChannel, UpdateCheckOutcome,
+    UpdateCheckRecord,
 };
 use pagelamp_core::brand;
 use semver::Version;
@@ -28,7 +30,7 @@ use tauri::utils::config::BundleType;
 use tauri::{AppHandle, Manager, Runtime, State, Url};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-use crate::backend::{Backend, internal};
+use crate::backend::{Backend, InstallGate, internal};
 
 type CmdResult<T> = Result<T, AppError>;
 
@@ -107,9 +109,31 @@ pub enum UpdateEvent {
     Restarting,
 }
 
-/// The update the last check found (what "Install and restart" installs).
+/// The update the last check found (what "Install and restart" installs), and its package once
+/// downloaded: kept when work that started during the download held the install back, so trying
+/// again installs without downloading again.
 #[derive(Default)]
-pub struct PendingUpdate(Mutex<Option<Update>>);
+pub struct PendingUpdate {
+    update: Mutex<Option<Update>>,
+    package: Mutex<Option<Package>>,
+}
+
+/// A downloaded package; `Update::download` has checked its signature.
+struct Package {
+    /// The update it belongs to (`package_key`).
+    key: String,
+    bytes: Vec<u8>,
+}
+
+fn package_key(update: &Update) -> String {
+    format!("{} {}", update.version, update.download_url)
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// `tauri.conf.json` → `plugins.pagelamp-updates`.
 #[derive(Debug, Deserialize)]
@@ -249,10 +273,10 @@ pub async fn updates_check<R: Runtime>(
     }
 
     let found = result.map_err(|err| app_error(&err))?;
-    let mut slot = pending
-        .0
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut slot = lock(&pending.update);
+    // A package kept for the same update stays; any other is dropped.
+    let key = found.as_ref().map(package_key);
+    lock(&pending.package).take_if(|package| Some(&package.key) != key.as_ref());
     let Some(update) = found else {
         *slot = None;
         return Ok(None);
@@ -273,8 +297,7 @@ pub async fn updates_check<R: Runtime>(
 }
 
 /// Downloads, verifies and installs the update the last check found, then restarts. Only
-/// called after the student confirmed; refused while anything runs (a sync, a download, a Codex
-/// install, a model run).
+/// called after the student confirmed; refused while anything runs that the restart would kill.
 #[tauri::command]
 pub async fn updates_install<R: Runtime>(
     app: AppHandle<R>,
@@ -288,63 +311,128 @@ pub async fn updates_install<R: Runtime>(
             "This install updates by downloading the new package.",
         ));
     }
-    // Without an open core (e.g. its database is from a newer PageLamp) nothing of ours can be
-    // syncing, and installing the update is the way out.
-    if let Ok(facade) = backend.app() {
-        let activity = facade.activity();
-        if !activity.items.is_empty() || activity.other_process_syncing {
-            let generating = activity
-                .items
-                .iter()
-                .any(|item| item.kind == ActivityKind::Generation);
-            return Err(AppError::new(
-                AppErrorKind::Busy,
-                if generating {
-                    "The AI is still working (reading a syllabus or writing a study plan). \
-                     Install the update when it finishes."
-                } else {
-                    "A sync is running. Install the update when it finishes."
-                },
-            ));
-        }
-    }
-    let update = pending
-        .0
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    let update = lock(&pending.update)
         .clone()
         .ok_or_else(|| AppError::new(AppErrorKind::NotFound, "Check for updates first."))?;
 
     let mut downloaded: u64 = 0;
     let mut started = false;
     let progress = on_event.clone();
-    let finished = on_event.clone();
-    let result = update
-        .download_and_install(
-            move |chunk, total| {
-                if !started {
-                    started = true;
-                    let _ = progress.send(UpdateEvent::DownloadStarted { total_bytes: total });
-                }
-                downloaded += chunk as u64;
-                let _ = progress.send(UpdateEvent::Progress {
-                    downloaded_bytes: downloaded,
-                    total_bytes: total,
-                });
-            },
-            move || {
-                let _ = finished.send(UpdateEvent::Installing);
-            },
-        )
-        .await;
-    // On Windows the installer has already exited the process by now.
-    if let Err(err) = result {
-        tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {err}");
-        return Err(app_error(&err));
-    }
+    let installing = on_event.clone();
+    let download = update.download(
+        move |chunk, total| {
+            if !started {
+                started = true;
+                let _ = progress.send(UpdateEvent::DownloadStarted { total_bytes: total });
+            }
+            downloaded += chunk as u64;
+            let _ = progress.send(UpdateEvent::Progress {
+                downloaded_bytes: downloaded,
+                total_bytes: total,
+            });
+        },
+        || {},
+    );
+    let install = |bytes: &[u8]| {
+        let _ = installing.send(UpdateEvent::Installing);
+        update.install(bytes)
+    };
+    let result = fetch_and_install(
+        &backend,
+        &pending.package,
+        package_key(&update),
+        async { download.await.map_err(Failure::Updater) },
+        |bytes| install(bytes).map_err(Failure::Updater),
+    )
+    .await;
+    // On Windows the installer has already exited the process by now. Elsewhere the gate stays
+    // closed until the restart.
+    let _gate = match result {
+        Ok(gate) => gate,
+        Err(Failure::Refused(err)) => return Err(err),
+        Err(Failure::Updater(err)) => {
+            tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {err}");
+            return Err(app_error(&err));
+        }
+    };
     tracing::info!(target: "pagelamp::updates", version = %update.version, "update installed; restarting");
     let _ = on_event.send(UpdateEvent::Restarting);
     app.restart()
+}
+
+/// Why `fetch_and_install` stopped.
+enum Failure<E> {
+    /// Something runs that the restart would kill, or another install is under way.
+    Refused(AppError),
+    /// The download, its signature check or the install failed.
+    Updater(E),
+}
+
+/// "Install and restart" apart from the updater (tests pass fakes): hold new work back, check
+/// nothing runs, download unless the package was kept, check again, install. Work can start
+/// during the download: another process's sync, or one of ours that got past the gate as it
+/// closed. Then the package is kept and the install refused; trying again installs it. The gate
+/// is returned so it stays closed until the restart; every error drops it.
+async fn fetch_and_install<'a, E>(
+    backend: &'a Backend,
+    kept: &Mutex<Option<Package>>,
+    key: String,
+    download: impl Future<Output = Result<Vec<u8>, Failure<E>>>,
+    install: impl FnOnce(&[u8]) -> Result<(), Failure<E>>,
+) -> Result<InstallGate<'a>, Failure<E>> {
+    let gate = backend.hold_work_for_install().ok_or_else(|| {
+        Failure::Refused(AppError::new(
+            AppErrorKind::Busy,
+            "The update is already being installed.",
+        ))
+    })?;
+    refuse_while_busy(backend).map_err(Failure::Refused)?;
+    let kept_bytes = lock(kept)
+        .take_if(|package| package.key == key)
+        .map(|package| package.bytes);
+    let bytes = match kept_bytes {
+        Some(bytes) => bytes,
+        None => download.await?,
+    };
+    if let Err(busy) = refuse_while_busy(backend) {
+        *lock(kept) = Some(Package { key, bytes });
+        return Err(Failure::Refused(busy));
+    }
+    install(&bytes)?;
+    Ok(gate)
+}
+
+/// Busy while this app runs anything (a sync, a download, a Codex install, a model run) or
+/// another process syncs. Without an open core (e.g. its database is from a newer PageLamp)
+/// nothing of ours can run, and installing the update is the way out.
+fn refuse_while_busy(backend: &Backend) -> CmdResult<()> {
+    let Ok(facade) = backend.app() else {
+        return Ok(());
+    };
+    match busy_message(&facade.activity()) {
+        None => Ok(()),
+        Some(message) => Err(AppError::new(AppErrorKind::Busy, message)),
+    }
+}
+
+/// What holds an install back, a sync first; `None` when nothing does.
+fn busy_message(activity: &Activity) -> Option<&'static str> {
+    let running = |kind| activity.items.iter().any(|item| item.kind == kind);
+    if activity.other_process_syncing
+        || running(ActivityKind::Sync)
+        || running(ActivityKind::Download)
+    {
+        Some("A sync is running. Install the update when it finishes.")
+    } else if running(ActivityKind::Generation) {
+        Some(
+            "The AI is still working (reading a syllabus or writing a study plan). \
+             Install the update when it finishes.",
+        )
+    } else if running(ActivityKind::CodexInstall) {
+        Some("Codex is still downloading. Install the update when it finishes.")
+    } else {
+        None
+    }
 }
 
 /// Windows: the NSIS pre-install hook (windows/hooks.nsh) renames a running `pagelamp.exe` (an
@@ -460,5 +548,262 @@ mod tests {
     #[test]
     fn the_running_version_is_the_crate_version() {
         assert_eq!(current_version().to_string(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn an_install_says_what_holds_it_back() {
+        use pagelamp_app::{Activity, ActivityItem, ActivityKind};
+
+        use super::busy_message;
+
+        let item = |kind| ActivityItem {
+            kind,
+            source_id: None,
+            generation_id: None,
+            started_at: chrono::Utc::now(),
+        };
+        let activity = |kinds: &[ActivityKind], other_process_syncing| Activity {
+            items: kinds.iter().copied().map(item).collect(),
+            other_process_syncing,
+        };
+        assert_eq!(busy_message(&activity(&[], false)), None);
+        let sync = Some("A sync is running. Install the update when it finishes.");
+        assert_eq!(busy_message(&activity(&[], true)), sync);
+        assert_eq!(
+            busy_message(&activity(&[ActivityKind::Download], false)),
+            sync
+        );
+        // A sync is named first: it can be stopped from the dialog.
+        let both = activity(&[ActivityKind::Generation, ActivityKind::Sync], false);
+        assert_eq!(busy_message(&both), sync);
+        assert!(
+            busy_message(&activity(&[ActivityKind::Generation], false))
+                .is_some_and(|m| m.starts_with("The AI is still working"))
+        );
+        assert!(
+            busy_message(&activity(&[ActivityKind::CodexInstall], false))
+                .is_some_and(|m| m.starts_with("Codex is still downloading"))
+        );
+    }
+
+    mod install {
+        use std::cell::Cell;
+        use std::fs::File;
+        use std::path::Path;
+        use std::sync::Mutex;
+
+        use pagelamp_app::{App, AppErrorKind};
+        use pagelamp_core::paths;
+        use tauri::async_runtime::block_on;
+
+        use crate::backend::Backend;
+        use crate::updates::{Failure, Package, fetch_and_install};
+
+        const KEY: &str = "0.3.1 https://example.invalid/PageLamp.app.tar.gz";
+
+        fn backend() -> (tempfile::TempDir, Backend) {
+            let dir = tempfile::tempdir().expect("temp dir");
+            let app = App::open_at(dir.path().to_path_buf()).expect("open App in a temp dir");
+            (dir, Backend::from_app(app))
+        }
+
+        /// Another process (the CLI) syncing: it holds `sync.lock` until the file drops.
+        fn other_process_syncs(data_dir: &Path) -> File {
+            let file = File::options()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(paths::sync_lock_path_in(data_dir))
+                .expect("sync.lock");
+            file.lock().expect("lock sync.lock");
+            file
+        }
+
+        fn kept(key: &str, bytes: &[u8]) -> Mutex<Option<Package>> {
+            Mutex::new(Some(Package {
+                key: key.to_string(),
+                bytes: bytes.to_vec(),
+            }))
+        }
+
+        fn refused<T>(result: Result<T, Failure<&'static str>>) -> AppErrorKind {
+            match result {
+                Err(Failure::Refused(err)) => err.kind,
+                Err(Failure::Updater(err)) => panic!("refused expected, updater failed: {err}"),
+                Ok(_) => panic!("refused expected, installed"),
+            }
+        }
+
+        #[test]
+        fn new_work_is_refused_while_an_update_installs() {
+            let (_dir, backend) = backend();
+            let gate = backend.hold_work_for_install().expect("gate");
+            assert!(
+                backend.hold_work_for_install().is_none(),
+                "one install at a time"
+            );
+            let work = block_on(backend.spawn_work(|_| async { Ok(()) }));
+            assert!(matches!(work.unwrap_err().kind, AppErrorKind::Busy));
+            drop(gate);
+            block_on(backend.spawn_work(|_| async { Ok(()) })).expect("work runs again");
+        }
+
+        #[test]
+        fn a_sync_that_starts_during_the_download_holds_the_install_back() {
+            let (dir, backend) = backend();
+            let package = Mutex::new(None);
+            let lock = Cell::new(None);
+            let installed = Cell::new(false);
+            let result = block_on(fetch_and_install(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async {
+                    lock.set(Some(other_process_syncs(dir.path())));
+                    Ok(b"package".to_vec())
+                },
+                |_| {
+                    installed.set(true);
+                    Ok(())
+                },
+            ));
+            assert!(matches!(refused(result), AppErrorKind::Busy));
+            assert!(!installed.get(), "nothing installed while a sync runs");
+            let kept = package.lock().unwrap();
+            let kept = kept.as_ref().expect("the package is kept");
+            assert_eq!(
+                (kept.key.as_str(), kept.bytes.as_slice()),
+                (KEY, &b"package"[..])
+            );
+            assert!(
+                backend.hold_work_for_install().is_some(),
+                "the gate is open again"
+            );
+        }
+
+        #[test]
+        fn trying_again_installs_the_kept_package_without_downloading() {
+            let (_dir, backend) = backend();
+            let package = kept(KEY, b"package");
+            let installed = Cell::new(None);
+            let gate = block_on(fetch_and_install::<&'static str>(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { panic!("the kept package must not be downloaded again") },
+                |bytes| {
+                    installed.set(Some(bytes.to_vec()));
+                    Ok(())
+                },
+            ));
+            let gate = gate.unwrap_or_else(|_| panic!("installed"));
+            assert_eq!(installed.take().as_deref(), Some(&b"package"[..]));
+            assert!(package.lock().unwrap().is_none());
+            assert!(
+                backend.hold_work_for_install().is_none(),
+                "the gate stays closed until the restart"
+            );
+            drop(gate);
+        }
+
+        #[test]
+        fn a_package_for_another_update_is_not_installed() {
+            let (_dir, backend) = backend();
+            let package = kept("0.3.0 https://example.invalid/old.tar.gz", b"old");
+            let installed = Cell::new(None);
+            let gate = block_on(fetch_and_install::<&'static str>(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { Ok(b"new".to_vec()) },
+                |bytes| {
+                    installed.set(Some(bytes.to_vec()));
+                    Ok(())
+                },
+            ));
+            assert!(gate.is_ok());
+            assert_eq!(installed.take().as_deref(), Some(&b"new"[..]));
+        }
+
+        #[test]
+        fn nothing_is_downloaded_while_a_sync_runs() {
+            let (dir, backend) = backend();
+            let _sync = other_process_syncs(dir.path());
+            let result = block_on(fetch_and_install::<&'static str>(
+                &backend,
+                &Mutex::new(None),
+                KEY.to_string(),
+                async { panic!("no download while a sync runs") },
+                |_| panic!("no install while a sync runs"),
+            ));
+            assert!(matches!(refused(result), AppErrorKind::Busy));
+            assert!(
+                backend.hold_work_for_install().is_some(),
+                "the gate is open again"
+            );
+        }
+
+        #[test]
+        fn the_gate_opens_again_after_a_failed_download_or_install() {
+            let (_dir, backend) = backend();
+            let package = Mutex::new(None);
+            let result = block_on(fetch_and_install(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { Err(Failure::Updater("network")) },
+                |_| panic!("nothing to install"),
+            ));
+            assert!(matches!(result, Err(Failure::Updater("network"))));
+            assert!(
+                backend.hold_work_for_install().is_some(),
+                "open after a failed download"
+            );
+
+            let result = block_on(fetch_and_install(
+                &backend,
+                &package,
+                KEY.to_string(),
+                async { Ok(b"package".to_vec()) },
+                |_| Err(Failure::Updater("install")),
+            ));
+            assert!(matches!(result, Err(Failure::Updater("install"))));
+            assert!(
+                backend.hold_work_for_install().is_some(),
+                "open after a failed install"
+            );
+            assert!(
+                package.lock().unwrap().is_none(),
+                "a package that failed to install is downloaded again"
+            );
+        }
+
+        #[test]
+        fn a_cancelled_install_opens_the_gate() {
+            use std::future::Future;
+            use std::task::{Context, Waker};
+
+            let (_dir, backend) = backend();
+            let package = Mutex::new(None);
+            // The command's future is dropped mid-download (e.g. the app quits).
+            let mut install = Box::pin(fetch_and_install::<&'static str>(
+                &backend,
+                &package,
+                KEY.to_string(),
+                std::future::pending(),
+                |_| panic!("nothing to install"),
+            ));
+            let mut cx = Context::from_waker(Waker::noop());
+            assert!(
+                install.as_mut().poll(&mut cx).is_pending(),
+                "still downloading"
+            );
+            assert!(
+                backend.hold_work_for_install().is_none(),
+                "held while downloading"
+            );
+            drop(install);
+            assert!(backend.hold_work_for_install().is_some());
+        }
     }
 }

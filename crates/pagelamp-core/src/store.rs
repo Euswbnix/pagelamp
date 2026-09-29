@@ -45,6 +45,7 @@ mod ai;
 mod calendars;
 mod generations;
 mod migrate_v4;
+mod tombstones;
 
 pub use ai::USAGE_KEEP_DAYS;
 pub use calendars::{
@@ -313,7 +314,8 @@ CREATE TABLE course_tombstones (
     purge_after   TEXT,                       -- removed_at + 7 days
     purged_at     TEXT,
     keep_files    INTEGER NOT NULL DEFAULT 0,
-    files_pending INTEGER NOT NULL DEFAULT 0, -- moving to the Trash failed; retried later
+    files_pending INTEGER NOT NULL DEFAULT 0, -- files still to move to the Trash (or failed); retried
+    delete_backup INTEGER NOT NULL DEFAULT 0, -- delete the pre-update backup at the purge
     settings_json TEXT NOT NULL,              -- the course's student settings, no quotes
     PRIMARY KEY (source_id, external_id)
 );
@@ -323,6 +325,7 @@ ALTER TABLE courses   ADD COLUMN calendar_sources     TEXT;     -- the student's
 ALTER TABLE courses   ADD COLUMN institution          TEXT;     -- sync-written (course.toml), never by setters
 ALTER TABLE materials ADD COLUMN linked_from_syllabus INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE materials ADD COLUMN is_front_page        INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE materials ADD COLUMN named_outline        INTEGER NOT NULL DEFAULT 0;  -- course.toml `outline` (folders)
 
 -- Additive only: a v3 reader still reads this database.
 UPDATE schema_meta SET value = '3' WHERE key = 'min_reader_version';
@@ -881,14 +884,26 @@ impl Store {
     }
 
     /// All courses (including hidden ones when `include_hidden`), ordered by code, name.
+    /// Removed courses (with a tombstone) are never listed: they show under "Removed courses".
     pub fn list_courses(&self, include_hidden: bool) -> Result<Vec<Course>> {
         self.query_list(
             &format!(
                 "SELECT {COURSE_COLUMNS} FROM courses
-                 WHERE hidden = 0 OR ?1
+                 WHERE (hidden = 0 OR ?1)
+                   AND id NOT IN (SELECT course_id FROM course_tombstones)
                  ORDER BY code, name, id"
             ),
             [include_hidden],
+            course_from_row,
+        )
+    }
+
+    /// Every course row, removed ones too (whose local data may still be there): for what
+    /// decides which downloaded folders are still in use.
+    pub fn list_all_courses(&self) -> Result<Vec<Course>> {
+        self.query_list(
+            &format!("SELECT {COURSE_COLUMNS} FROM courses ORDER BY code, name, id"),
+            [],
             course_from_row,
         )
     }
@@ -1254,6 +1269,16 @@ impl Store {
         Ok(counts)
     }
 
+    /// The outline a folder's `course.toml` names (`outline = "…"`): that material is flagged,
+    /// the course's others not (`None`: none named).
+    pub fn set_named_outline(&self, course_id: &str, material_id: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE materials SET named_outline = (id IS ?2) WHERE course_id = ?1",
+            params![course_id, material_id],
+        )?;
+        Ok(())
+    }
+
     /// Record why a file cannot be downloaded on request (`None` clears it).
     pub fn set_download_blocked(
         &self,
@@ -1553,7 +1578,10 @@ impl Store {
         })
     }
 
-    /// The most recently saved plan (highest id).
+    /// The most recently saved plan (highest id), without the items of removed courses: the
+    /// stored JSON keeps them (calendar design §8.3), every reader (the app, the MCP server,
+    /// the digest, the weekly note) leaves them out. A write by item index must read the
+    /// stored plan itself.
     pub fn latest_study_plan(&self) -> Result<Option<StoredStudyPlan>> {
         let row = self.query_opt(
             "SELECT id, created_at, plan_json FROM study_plans ORDER BY id DESC LIMIT 1",
@@ -1568,10 +1596,20 @@ impl Store {
         let Some((id, created_at, plan_json)) = row else {
             return Ok(None);
         };
+        let mut plan: StudyPlan = serde_json::from_str(&plan_json)?;
+        let removed: Vec<String> =
+            self.query_list("SELECT course_id FROM course_tombstones", [], |row| {
+                row.get(0)
+            })?;
+        plan.items.retain(|item| {
+            item.course_id
+                .as_ref()
+                .is_none_or(|id| !removed.contains(id))
+        });
         Ok(Some(StoredStudyPlan {
             id,
             created_at,
-            plan: serde_json::from_str(&plan_json)?,
+            plan,
         }))
     }
 
@@ -1622,8 +1660,11 @@ impl Store {
     /// Row counts (see `StoreCounts` for what each number means).
     pub fn counts(&self) -> Result<StoreCounts> {
         let sql = "SELECT
-            (SELECT COUNT(*) FROM courses WHERE hidden = 0) AS courses,
-            (SELECT COUNT(*) FROM courses WHERE hidden <> 0) AS hidden_courses,
+            (SELECT COUNT(*) FROM courses WHERE hidden = 0
+               AND id NOT IN (SELECT course_id FROM course_tombstones)) AS courses,
+            (SELECT COUNT(*) FROM courses WHERE hidden <> 0
+               AND id NOT IN (SELECT course_id FROM course_tombstones)) AS hidden_courses,
+            (SELECT COUNT(*) FROM course_tombstones) AS removed_courses,
             (SELECT COUNT(*) FROM modules) AS modules,
             (SELECT COUNT(*) FROM materials) AS materials,
             (SELECT COUNT(*) FROM materials m
@@ -1643,6 +1684,7 @@ impl Store {
                 chunks: row.get("chunks")?,
                 events: row.get("events")?,
                 study_plans: row.get("study_plans")?,
+                removed_courses: row.get("removed_courses")?,
             })
         })?)
     }

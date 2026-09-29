@@ -32,6 +32,7 @@ mod lock;
 mod material_file;
 mod mcp_config;
 mod sync;
+pub mod trash;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
@@ -464,6 +465,8 @@ pub(crate) struct AppState {
     used_before_at_open: bool,
     /// Model runs in progress, by generation id (`cancel_generation`).
     pub(crate) runs: ai::run::Runs,
+    /// Where removed courses' downloaded files go (`trash`).
+    pub(crate) trash: trash::TrashSlot,
 }
 
 impl std::fmt::Debug for App {
@@ -514,6 +517,7 @@ impl App {
         };
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
+        app.settle_restores_at_open();
         Ok(app)
     }
 
@@ -757,10 +761,9 @@ impl App {
                 let parent = material
                     .local_path
                     .as_deref()
-                    .and_then(|p| Path::new(p).parent())
-                    .filter(|parent| parent.parent() == Some(files_dir.as_path()));
+                    .and_then(|p| download_dir_of(&files_dir, Path::new(p)));
                 if let Some(parent) = parent {
-                    dirs.push(parent.to_path_buf());
+                    dirs.push(parent);
                 }
             }
             Ok(dirs)
@@ -771,7 +774,7 @@ impl App {
         let mut own_suffixes = std::collections::HashSet::new();
         let mut kept = std::collections::HashSet::new();
         let mut other_suffixes = std::collections::HashSet::new();
-        for course in store.list_courses(true)? {
+        for course in store.list_all_courses()? {
             let dirs = dirs_of(&course)?;
             if course.source_id == source_id {
                 own.extend(dirs);
@@ -796,7 +799,10 @@ impl App {
         }
         own.sort();
         own.dedup();
-        for dir in own.iter().filter(|dir| !kept.contains(&dir_key(dir))) {
+        for dir in own
+            .iter()
+            .filter(|dir| !kept.contains(&dir_key(dir)) && is_download_dir(&files_dir, dir))
+        {
             remove_download_dir(dir).map_err(|err| {
                 AppError::new(
                     AppErrorKind::Internal,
@@ -1063,22 +1069,38 @@ impl App {
 
 // ----- facade helpers ---------------------------------------------------------------------------
 
+/// Whether `dir` can be a download directory: a direct child of `files_dir` whose name is a
+/// plain name (never `..` or `.`, which would reach `files_dir` itself or the data folder).
+pub(crate) fn is_download_dir(files_dir: &Path, dir: &Path) -> bool {
+    dir.parent() == Some(files_dir)
+        && matches!(
+            dir.components().next_back(),
+            Some(std::path::Component::Normal(_))
+        )
+}
+
+/// The download directory a material's local copy is in (see `is_download_dir`).
+pub(crate) fn download_dir_of(files_dir: &Path, local_path: &Path) -> Option<PathBuf> {
+    let dir = local_path.parent()?;
+    is_download_dir(files_dir, dir).then(|| dir.to_path_buf())
+}
+
 /// A download directory's name as the file system compares it: case-insensitive, NFC.
-fn dir_key(dir: &Path) -> String {
+pub(crate) fn dir_key(dir: &Path) -> String {
     dir.file_name()
         .map(|name| fold_name(&name.to_string_lossy()))
         .unwrap_or_default()
 }
 
 /// `name` in NFC and lower case.
-fn fold_name(name: &str) -> String {
+pub(crate) fn fold_name(name: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
     name.nfc().collect::<String>().to_lowercase()
 }
 
 /// Remove one download directory: a directory with everything in it, a symbolic link itself
 /// (never what it points to); anything else (a stray file) is left alone.
-fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
     let metadata = match std::fs::symlink_metadata(dir) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),

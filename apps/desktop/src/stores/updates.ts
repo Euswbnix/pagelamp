@@ -15,6 +15,12 @@ export type InstallState =
   | { phase: "downloading"; downloaded: number; total: number | null }
   | { phase: "installing" }
   | { phase: "restarting" }
+  /**
+   * Refused as busy: work started during the download (a sync, this window's or another
+   * process's, an AI reading or a Codex download). The app keeps the download, and the dialog
+   * installs it once that work finishes.
+   */
+  | { phase: "held" }
   | { phase: "failed"; error: ApiError };
 
 interface UpdateState {
@@ -85,9 +91,10 @@ export function useCheckForUpdate() {
  */
 export function useInstallUpdate() {
   const api = useApi();
+  const client = useQueryClient();
   return useCallback(async () => {
     const { install } = useUpdateStore.getState();
-    if (install.phase !== "idle" && install.phase !== "failed") return;
+    if (install.phase !== "idle" && install.phase !== "held" && install.phase !== "failed") return;
     useUpdateStore.setState({ install: { phase: "downloading", downloaded: 0, total: null } });
     try {
       await api.installUpdate((event) => {
@@ -115,7 +122,16 @@ export function useInstallUpdate() {
         }
       });
     } catch (error) {
-      useUpdateStore.setState({ install: { phase: "failed", error: toApiError(error) } });
+      const apiError = toApiError(error);
+      if (apiError.kind === "busy") {
+        useUpdateStore.setState({ install: { phase: "held" } });
+        // Another process's sync shows in the status, which isn't polled while nothing syncs;
+        // an AI reading or a Codex download in the activity.
+        void client.invalidateQueries({ queryKey: queryKeys.status() });
+        void client.invalidateQueries({ queryKey: queryKeys.activity() });
+      } else {
+        useUpdateStore.setState({ install: { phase: "failed", error: apiError } });
+      }
     }
-  }, [api]);
+  }, [api, client]);
 }

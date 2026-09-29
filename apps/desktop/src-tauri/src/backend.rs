@@ -4,6 +4,7 @@ use std::future::Future;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use pagelamp_app::diagnostics::{expect_panics, expect_panics_in};
 use pagelamp_app::{App, AppError, AppErrorKind};
@@ -16,6 +17,9 @@ use pagelamp_core::brand;
 pub struct Backend {
     state: Mutex<Result<App, AppError>>,
     open: fn() -> Result<App, AppError>,
+    /// Set while an update downloads and installs (`InstallGate`): the restart, or on Windows
+    /// the installer closing the app, would kill any work started meanwhile.
+    installing: AtomicBool,
 }
 
 impl Backend {
@@ -27,6 +31,7 @@ impl Backend {
         Backend {
             state: Mutex::new(open_guarded(open)),
             open,
+            installing: AtomicBool::new(false),
         }
     }
 
@@ -35,6 +40,7 @@ impl Backend {
         Backend {
             state: Mutex::new(Ok(app)),
             open: App::open,
+            installing: AtomicBool::new(false),
         }
     }
 
@@ -96,6 +102,45 @@ impl Backend {
         tauri::async_runtime::spawn(expect_panics_in(AssertUnwindSafe(fut)))
             .await
             .map_err(|err| internal(format!("background task failed: {err}")))?
+    }
+
+    /// `spawn` for work that `App::activity` lists (a sync, a download, a model run, and a
+    /// course removal, restore or purge, which hold `sync.lock`): refused while an update
+    /// installs.
+    pub async fn spawn_work<T, F, Fut>(&self, f: F) -> Result<T, AppError>
+    where
+        T: Send + 'static,
+        F: FnOnce(App) -> Fut,
+        Fut: Future<Output = Result<T, AppError>> + Send + 'static,
+    {
+        if self.installing.load(Ordering::SeqCst) {
+            return Err(AppError::new(
+                AppErrorKind::Busy,
+                format!(
+                    "{} is installing an update and restarts when it finishes.",
+                    brand::PRODUCT_NAME
+                ),
+            ));
+        }
+        self.spawn(f).await
+    }
+
+    /// Hold new work back (`spawn_work`) until the gate drops, which every error or cancel path
+    /// of an install does. `None` while another install holds it.
+    pub fn hold_work_for_install(&self) -> Option<InstallGate<'_>> {
+        self.installing
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| InstallGate(&self.installing))
+    }
+}
+
+/// An update is installing: new work is refused until this drops.
+pub struct InstallGate<'a>(&'a AtomicBool);
+
+impl Drop for InstallGate<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 

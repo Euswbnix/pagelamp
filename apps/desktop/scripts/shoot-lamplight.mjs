@@ -4,7 +4,10 @@
 // only (mock mode). Run it before and after a change and compare the folders.
 //
 //   pnpm exec vite --mode mock --port 1531          # in another terminal
-//   node scripts/shoot-lamplight.mjs <out-dir> [--shots courses,timeline,settings,syncing]
+//   node scripts/shoot-lamplight.mjs <out-dir> [--shots courses,timeline,settings,syncing] [--unreleased]
+//
+// The mock as the release ships it (?shipped, lib/features.ts): screens that aren't released yet
+// only appear with --unreleased, or on the screens that exist to show them.
 //
 // Drives Chrome/Chromium over the DevTools protocol, like record-demo.mjs (no npm packages).
 // Browser: $CHROME, else Google Chrome. Base URL: $SHOOT_URL, else http://localhost:1531.
@@ -21,6 +24,7 @@ const only = process.argv.includes("--shots")
   ? (process.argv[process.argv.indexOf("--shots") + 1] ?? "").split(",")
   : null;
 const BASE = process.env.SHOOT_URL ?? "http://localhost:1531";
+const unreleased = process.argv.includes("--unreleased");
 const WIDTH = 1280;
 const HEIGHT = 800;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -39,7 +43,10 @@ function scrollToHeading(en, zh) {
   await wait(400);`;
 }
 
-/** Screens: a route (hash), a mock scenario and, optionally, steps to reach a state. */
+/**
+ * Screens: a route (hash), a mock scenario and, optionally, steps to reach a state. `unreleased`:
+ * the screen shows UI the release doesn't have yet.
+ */
 const SCREENS = {
   courses: { hash: "#/courses", scenario: "demo" },
   timeline: {
@@ -58,6 +65,7 @@ const SCREENS = {
   "policy-access": {
     hash: `#/courses/${encodeURIComponent("folder:demo-courses/course/DEMO101")}?tab=policy`,
     scenario: "demo",
+    unreleased: true,
     act: `document.querySelector("main").scrollTop = 1e6; await wait(400);`,
   },
   "course-settings": {
@@ -78,6 +86,7 @@ const SCREENS = {
   proposals: {
     hash: `#/courses/${encodeURIComponent("canvas:canvas.demo.test/course/332")}?tab=timeline`,
     scenario: "proposals",
+    unreleased: true,
   },
   // The toolbar row once content scrolls under it (glass, and the title echo).
   scrolled: {
@@ -85,35 +94,42 @@ const SCREENS = {
     scenario: "demo",
     act: `document.querySelector("main").scrollTop = 320; await wait(400);`,
   },
-  // AI settings (M1/M2, behind AI_SETUP_ENABLED; mock mode only): the ChatGPT-plan card, API-key
-  // and local rows, feature routing, budget, usage, and the disclosure sheet.
+  // AI settings (M1/M2, behind AI_SETUP_ENABLED; mock mode only, so `unreleased`): the
+  // ChatGPT-plan card, API-key and local rows, feature routing, budget, usage, and the
+  // disclosure sheet.
   "ai-models": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "codex-plus",
     act: scrollToHeading("AI models", "AI 模型"),
   },
   "ai-keys": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "ai-key",
     act: scrollToHeading("AI models", "AI 模型"),
   },
   "ai-features": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "ai-key",
     act: scrollToHeading("Which model does what", "各项功能用哪个模型"),
   },
   "ai-usage": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "ai-key",
     act: scrollToHeading("AI usage", "AI 用量"),
   },
   "ai-codex-setup": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "codex-outdated-app",
     act: scrollToHeading("AI models", "AI 模型"),
   },
   "ai-disclosure": {
     hash: "#/settings",
+    unreleased: true,
     scenario: "ai-disclosure-changed",
     act: `${scrollToHeading("AI models", "AI 模型")}
   [...document.querySelectorAll("button")].find((b) => /Review and turn on|查看并启用/.test(b.textContent)).click();
@@ -214,6 +230,7 @@ try {
       const [platform, backdrop] = ctx.platform.split("-");
       const params = new URLSearchParams({ scenario: screen.scenario, platform });
       if (backdrop) params.set("backdrop", backdrop);
+      if (!unreleased && !screen.unreleased) params.set("shipped", "");
       // Preferences live in localStorage (stores/ui.ts); set them, then load the screen.
       await send("Page.navigate", { url: `${BASE}/?${params}` });
       await sleep(300);
