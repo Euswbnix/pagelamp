@@ -66,7 +66,7 @@
       },
       "course_weeks": {
         "title": "Weeks and phases for every course",
-        "body": "Each course shows its current week and phase, and finished courses move to a “Past” group."
+        "body": "Each course shows its current week and phase, and finished courses move to “Past courses”."
       },
       "course_removal": {
         "title": "Remove finished courses",

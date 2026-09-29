@@ -1605,7 +1605,7 @@
 "updates.whatsNew.title" = "PageLamp 有哪些新变化";
 "updates.whatsNew.topics.course_removal.body" = "课程结束后，可以把它从 PageLamp 中移除。7 天内可以撤销，你自己的课程文件夹不会被改动。";
 "updates.whatsNew.topics.course_removal.title" = "移除已结束的课程";
-"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归到“已结束”分组里。";
+"updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.syllabus_reading.body" = "用你设置的模型，PageLamp 可以读取课程的教学大纲并提出课程日期，每个日期都引用原文出处。在你确认之前，什么都不会改变。";
 "updates.whatsNew.topics.syllabus_reading.title" = "从教学大纲读出课程日期";

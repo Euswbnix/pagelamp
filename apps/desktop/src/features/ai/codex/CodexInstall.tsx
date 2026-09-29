@@ -21,7 +21,7 @@ export function CodexDownload() {
   return (
     <div className="space-y-3">
       {/* The pinned 0.158.0 assets across platforms: 68–80 MB compressed, 240–324 MB unpacked,
-          Windows the largest (the leader's wording; D8's plan numbers were corrected). */}
+          Windows the largest (D8's plan numbers were corrected). */}
       <p className="text-sm text-muted-foreground">{t("codex.download.size")}</p>
       {install.phase === "failed" ? <InstallFailed /> : null}
       <Button type="button" onClick={() => void start()}>

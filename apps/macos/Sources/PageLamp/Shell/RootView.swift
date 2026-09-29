@@ -32,6 +32,7 @@ public struct RootView: View {
         .frame(minWidth: PLSize.windowMainMinWidth, minHeight: PLSize.windowMainMinHeight)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .diagnosticReportSheet(host: .main)
+        .whatsNewSheet()
         .alert(l10n("mac.debug.live.title"), isPresented: $model.confirmingLiveData) {
             Button(l10n("common.actions.cancel"), role: .cancel) {}
                 .keyboardShortcut(.defaultAction)

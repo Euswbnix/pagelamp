@@ -1605,7 +1605,7 @@
 "updates.whatsNew.title" = "What's new in PageLamp";
 "updates.whatsNew.topics.course_removal.body" = "When a course is over, you can remove it from PageLamp. You can undo it for 7 days, and your own course folders are never touched.";
 "updates.whatsNew.topics.course_removal.title" = "Remove finished courses";
-"updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to a “Past” group.";
+"updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to “Past courses”.";
 "updates.whatsNew.topics.course_weeks.title" = "Weeks and phases for every course";
 "updates.whatsNew.topics.syllabus_reading.body" = "With a model you set up, PageLamp can read a course's syllabus and propose its dates, each quoting the words it comes from. Nothing changes until you accept them.";
 "updates.whatsNew.topics.syllabus_reading.title" = "Course dates from the syllabus";

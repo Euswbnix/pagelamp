@@ -359,7 +359,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     let sources = SourceIndex::load(store)?;
     let upcoming = store.list_events(at.now, add_days(at.now, UPCOMING_DAYS), None)?;
     let mut term_data = store.all_course_term_data()?;
-    let confirmed = confirmed_courses(store);
+    let confirmed = confirmed_courses(store)?;
     let mut summaries = Vec::new();
     for course in store.list_courses(include_hidden)? {
         let data = CourseData::load_with(
@@ -870,19 +870,18 @@ fn calendar_in_force(
     ))
 }
 
-/// The courses whose student dates are confirmed (`CONFIRMED_DATES_KEY`); unreadable → none.
-fn confirmed_courses(store: &Store) -> BTreeSet<String> {
-    store
-        .setting::<BTreeSet<String>>(CONFIRMED_DATES_KEY)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
+/// The courses whose student dates are confirmed (`CONFIRMED_DATES_KEY`). A value that
+/// doesn't parse counts as none; a failed read is an error.
+fn confirmed_courses(store: &Store) -> Result<BTreeSet<String>> {
+    Ok(store
+        .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
+        .unwrap_or_default())
 }
 
 impl CourseData {
     pub(crate) fn load(store: &Store, course: &Course) -> Result<Self> {
         let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
-        Self::load_with(store, course, term_data, &confirmed_courses(store))
+        Self::load_with(store, course, term_data, &confirmed_courses(store)?)
     }
 
     fn load_with(
