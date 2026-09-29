@@ -310,6 +310,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .map(|c| self.ids().course(&c.id))
             .collect();
         let mark_enrollment = listing.complete();
+        // Listed but restricted by date: never upserted (`map::course`), so only the flag of
+        // an existing row is recorded (calendar design §5 S2: such a course can't be synced
+        // again once removed).
+        let restricted: Vec<String> = listing
+            .items
+            .iter()
+            .filter(|c| c.access_restricted_by_date == Some(true))
+            .map(|c| self.ids().course(&c.id))
+            .collect();
         let planner_prefix = format!("{}/planner/", self.source_id);
         let kept = existing_events.into_iter().filter(|event| {
             if event.id.starts_with(&planner_prefix) {
@@ -336,6 +345,13 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             store.replace_events(&source_id, &events)?;
             if mark_enrollment {
                 store.mark_enrollment_active(&source_id, &listed)?;
+            }
+            for course in &restricted {
+                match store.set_course_access_restricted(course, true) {
+                    // A course never seen with its full fields has no row: nothing to mark.
+                    Ok(()) | Err(pagelamp_core::Error::NotFound(_)) => {}
+                    Err(err) => return Err(err),
+                }
             }
             Ok(())
         })

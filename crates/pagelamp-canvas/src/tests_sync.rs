@@ -126,7 +126,10 @@ impl Fixture {
             "/courses",
             json!([
                 {"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101",
-                 "term": {"start_at": "2026-09-07T04:00:00Z", "end_at": "2026-12-18T05:00:00Z"},
+                 "time_zone": "America/Toronto", "workflow_state": "available",
+                 "concluded": false,
+                 "term": {"name": "Fall 2026", "start_at": "2026-09-07T04:00:00Z",
+                          "end_at": "2026-12-18T05:00:00Z"},
                  "syllabus_body": "<p>Weekly quizzes and a final project.</p>"},
                 {"id": 202, "name": "Advanced Demo Studies", "course_code": "DEMO202"},
                 {"id": 303, "access_restricted_by_date": true}
@@ -292,6 +295,17 @@ async fn full_sync_without_downloads() {
     let demo = &courses[0];
     assert_eq!(demo.term_start.unwrap().to_string(), "2026-09-07");
     assert!(demo.url.as_deref().unwrap().ends_with("/courses/101"));
+    // The LMS facts are stored raw, in the course's time zone (calendar design §5 S2/S3).
+    let lms = store.course_term_data(&demo.id).unwrap().unwrap().lms;
+    assert_eq!(lms.term_name.as_deref(), Some("Fall 2026"));
+    assert_eq!(lms.term_start.unwrap().to_string(), "2026-09-07");
+    assert_eq!(lms.term_end.unwrap().to_string(), "2026-12-18");
+    assert_eq!(lms.time_zone.as_deref(), Some("America/Toronto"));
+    assert_eq!(lms.workflow_state.as_deref(), Some("available"));
+    assert_eq!(lms.concluded, Some(false));
+    assert_eq!(lms.access_restricted, Some(false));
+    let other = store.course_term_data(&courses[1].id).unwrap().unwrap().lms;
+    assert_eq!((other.concluded, other.time_zone), (None, None));
 
     let modules = store.list_modules(&demo.id).unwrap();
     let names: Vec<(String, Option<u32>)> = modules
@@ -826,6 +840,10 @@ async fn d_odd_fields_and_restricted_courses_keep_the_course_and_its_settings() 
         .await;
     f.sync(&f.options(false)).await.unwrap();
     assert!(f.store().get_course(&c202).unwrap().unwrap().hidden);
+    // ...and record that Canvas restricts it (it could not be synced again once removed).
+    let lms = f.store().course_term_data(&c202).unwrap().unwrap().lms;
+    assert_eq!(lms.access_restricted, Some(true));
+    assert_eq!(lms.course_start.unwrap().to_string(), "2026-09-07");
 }
 
 #[tokio::test]

@@ -5,8 +5,11 @@
 //! `<source>/announcement/<id>`, `<source>/syllabus/<course id>`, `<source>/assignment/<id>`,
 //! `<source>/planner/<type>/<id>`.
 
-use chrono::{DateTime, Utc};
-use pagelamp_core::model::{CourseUpsert, Event, EventKind, MaterialKind, MaterialUpsert, Module};
+use chrono::{DateTime, NaiveDate, Utc};
+use pagelamp_core::dates::{self, Tz};
+use pagelamp_core::model::{
+    CourseUpsert, Event, EventKind, LmsCourseInfo, MaterialKind, MaterialUpsert, Module,
+};
 use pagelamp_core::timeline::parse_week_hint;
 use url::Url;
 
@@ -50,6 +53,10 @@ pub(crate) struct Placement {
 }
 
 /// A course, or None for date-restricted stubs / nameless entries.
+///
+/// The LMS facts go to `lms` raw (calendar design §5, S2/S3): course and term dates apart, as
+/// dates in the course's time zone. `term_start`/`term_end` keep v0.1's "term first" merge,
+/// with the same conversion.
 pub(crate) fn course(ids: Ids<'_>, base: &Url, course: &json::Course) -> Option<CourseUpsert> {
     if course.access_restricted_by_date == Some(true) {
         return None;
@@ -59,9 +66,23 @@ pub(crate) fn course(ids: Ids<'_>, base: &Url, course: &json::Course) -> Option<
         .as_deref()
         .map(str::trim)
         .filter(|n| !n.is_empty())?;
+    let tz = course.time_zone.as_deref().and_then(dates::time_zone);
+    let day = |moment: Option<json::Moment>| moment.map(|m| moment_date(m, tz));
     let term = course.term.as_ref();
-    let start = term.and_then(|t| t.start_at).or(course.start_at);
-    let end = term.and_then(|t| t.end_at).or(course.end_at);
+    let lms = LmsCourseInfo {
+        term_name: term.and_then(|t| non_empty(t.name.as_deref())),
+        term_start: day(term.and_then(|t| t.start_at)),
+        term_end: day(term.and_then(|t| t.end_at)),
+        course_start: day(course.start_at),
+        course_end: day(course.end_at),
+        time_zone: tz.map(|tz| tz.name().to_string()),
+        concluded: course.concluded,
+        workflow_state: non_empty(course.workflow_state.as_deref()),
+        // A course upserted here was listed with its full fields, so not restricted.
+        access_restricted: Some(false),
+    };
+    let start = lms.term_start.or(lms.course_start);
+    let end = lms.term_end.or(lms.course_end);
     Some(CourseUpsert {
         id: ids.course(&course.id),
         source_id: ids.source.to_string(),
@@ -73,17 +94,31 @@ pub(crate) fn course(ids: Ids<'_>, base: &Url, course: &json::Course) -> Option<
             .filter(|c| !c.is_empty())
             .map(str::to_string),
         name: name.to_string(),
-        term_start: start.map(|d| d.date_naive()),
-        term_end: end.map(|d| d.date_naive()),
+        term_start: start,
+        term_end: end,
         url: Some(canvas_url(base, &["courses", &course.id.0])),
         syllabus_text: course
             .syllabus_body
             .as_deref()
             .map(html_to_text)
             .filter(|t| !t.is_empty()),
-        // The raw LMS dates and state come with the course lane (calendar design §5, S2/S3).
-        lms: Default::default(),
+        lms,
     })
+}
+
+/// The course calendar date of a Canvas course or term date (a bare date stays as it is).
+fn moment_date(moment: json::Moment, tz: Option<Tz>) -> NaiveDate {
+    match moment {
+        json::Moment::Instant(instant) => dates::course_date(instant, tz),
+        json::Moment::Date(date) => date,
+    }
+}
+
+/// `text` trimmed, or None when that leaves nothing.
+fn non_empty(text: Option<&str>) -> Option<String> {
+    text.map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 pub(crate) fn module(ids: Ids<'_>, course_id: &str, module: &json::Module) -> Module {
@@ -403,10 +438,65 @@ mod tests {
         let syllabus = upsert.syllabus_text.unwrap();
         assert!(syllabus.contains("Weekly quizzes.") && !syllabus.contains("x()"));
 
+        // No time zone: UTC dates, as in v0.1; the LMS facts are kept raw.
+        assert_eq!(upsert.lms.term_start, upsert.term_start);
+        assert_eq!(upsert.lms.course_start.unwrap().to_string(), "2026-08-01");
+        assert_eq!(upsert.lms.time_zone, None);
+        assert_eq!(upsert.lms.access_restricted, Some(false));
+
         let stub: json::Course = from(json!({"id": 5, "access_restricted_by_date": true}));
         assert!(super::course(ids(), &base(), &stub).is_none());
         let nameless: json::Course = from(json!({"id": 6, "name": "  "}));
         assert!(super::course(ids(), &base(), &nameless).is_none());
+    }
+
+    #[test]
+    fn courses_keep_raw_lms_dates_in_the_course_time_zone() {
+        // A UofT-style enrollment-window term (synthetic dates) and course dates that end at
+        // 23:59 local time, which is the next day in UTC.
+        let course: json::Course = from(json!({
+            "id": 332, "name": "Demo Methods", "course_code": "DEM332H5 F LEC0101 20269",
+            "time_zone": "America/Toronto", "workflow_state": " available ",
+            "concluded": false,
+            "start_at": "2026-09-08T13:00:00Z", "end_at": "2026-12-09T04:59:00Z",
+            "term": {"name": " Fall 2026 ", "start_at": "2026-05-04T04:00:00Z",
+                     "end_at": "2027-02-01T04:59:00Z"}
+        }));
+        let upsert = super::course(ids(), &base(), &course).unwrap();
+        let date = |text: &str| NaiveDate::parse_from_str(text, "%Y-%m-%d").ok();
+        assert_eq!(
+            upsert.lms,
+            LmsCourseInfo {
+                term_name: Some("Fall 2026".into()),
+                term_start: date("2026-05-04"),
+                term_end: date("2027-01-31"),
+                course_start: date("2026-09-08"),
+                course_end: date("2026-12-08"),
+                time_zone: Some("America/Toronto".into()),
+                concluded: Some(false),
+                workflow_state: Some("available".into()),
+                access_restricted: Some(false),
+            }
+        );
+        // The merged dates use the same conversion (term first, as in v0.1).
+        assert_eq!(upsert.term_start, date("2026-05-04"));
+        assert_eq!(upsert.term_end, date("2027-01-31"));
+
+        // Unknown time zone → UTC; bare dates are never shifted; no term → course dates.
+        let odd: json::Course = from(json!({
+            "id": 333, "name": "Demo Seminar", "time_zone": "Mars/Olympus_Mons",
+            "concluded": "yes", "start_at": "2026-09-08", "end_at": "2026-12-09T04:59:00Z"
+        }));
+        let upsert = super::course(ids(), &base(), &odd).unwrap();
+        assert_eq!(upsert.lms.time_zone, None);
+        assert_eq!(upsert.lms.concluded, None);
+        assert_eq!(upsert.lms.term_name, None);
+        assert_eq!(upsert.lms.course_start, date("2026-09-08"));
+        assert_eq!(upsert.lms.course_end, date("2026-12-09"));
+        assert_eq!(
+            (upsert.term_start, upsert.term_end),
+            (date("2026-09-08"), date("2026-12-09"))
+        );
     }
 
     #[test]
