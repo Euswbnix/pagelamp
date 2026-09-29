@@ -1329,6 +1329,10 @@
 "proposals.stale.body" = "%1$@ 里已经找不到部分引用的原文。在你重新读取或修改之前，这些日期仍然有效。";
 "proposals.stale.reread" = "重新读取课程大纲";
 "proposals.stale.title" = "教学大纲在 %1$@ 有改动";
+"reminders.catchUp.dismiss" = "关闭";
+"reminders.catchUp.open" = "打开";
+"reminders.catchUp.title" = "自你上次打开 PageLamp 以来";
+"reminders.catchUp.turnOn" = "改为用通知提醒";
 "reminders.notify.deadlineBody" = "截止时间：%1$@";
 "reminders.notify.deadlineTitle" = "%1$@：%2$@";
 "reminders.notify.digestBodyNone" = "未来 7 天没有截止日期";

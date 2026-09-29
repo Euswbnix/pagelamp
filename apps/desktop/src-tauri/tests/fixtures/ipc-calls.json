@@ -551,6 +551,14 @@
     }
   },
   {
+    "cmd": "mark_reminders_shown",
+    "args": {
+      "ids": [
+        "contract-test-reminder"
+      ]
+    }
+  },
+  {
     "cmd": "show_reminders_on_notice",
     "args": {
       "title": "Reminders are on",

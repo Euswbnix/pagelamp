@@ -166,3 +166,44 @@ describe("reminder delivery", () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("reminders while they're off: the catch-up card", () => {
+  async function card() {
+    return screen.findByRole("region", { name: "Since you last opened PageLamp" });
+  }
+
+  it("lists what came due, and Dismiss marks them all shown", async () => {
+    const api = mockApi({ scenario: "reminders-due" });
+    const mark = vi.spyOn(api, "markRemindersShown");
+    const { user } = renderRoute("/courses", { api });
+    const region = await card();
+    expect(within(region).getByText(/^[A-Z]+\d+: Problem set 3$/)).toBeInTheDocument();
+    expect(within(region).getByText("Your week in PageLamp")).toBeInTheDocument();
+
+    await user.click(within(region).getByRole("button", { name: "Dismiss" }));
+    expect(mark).toHaveBeenCalledWith(["deadline_soon:demo-ps3:24", "weekly_digest:2026-W40"]);
+    expect(screen.queryByRole("region", { name: "Since you last opened PageLamp" })).toBeNull();
+    expect((await api.startupTasks()).due_reminders).toEqual([]);
+  });
+
+  it("opens a deadline's course and marks only that one", async () => {
+    const api = mockApi({ scenario: "reminders-due" });
+    const mark = vi.spyOn(api, "markRemindersShown");
+    const { user, router } = renderRoute("/courses", { api });
+    const region = await card();
+    const [open] = within(region).getAllByRole("link", { name: "Open" });
+    if (!open) throw new Error("no Open link");
+    await user.click(open);
+    expect(mark).toHaveBeenCalledWith(["deadline_soon:demo-ps3:24"]);
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/courses\/.+/));
+  });
+
+  it("isn't shown when reminders come as notifications", async () => {
+    const api = mockApi({ scenario: "reminders-due" });
+    await api.setReminderSettings({ ...(await api.reminderSettings()), run_in_background: true });
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("region", { name: "Since you last opened PageLamp" })).toBeNull();
+  });
+});

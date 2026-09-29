@@ -41,5 +41,11 @@
   "tray": {
     "open": "Open {{product}}",
     "quit": "Quit {{product}}"
+  },
+  "catchUp": {
+    "title": "Since you last opened {{product}}",
+    "open": "Open",
+    "dismiss": "Dismiss",
+    "turnOn": "Get these as notifications"
   }
 }

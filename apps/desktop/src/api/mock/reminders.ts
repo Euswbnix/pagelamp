@@ -15,6 +15,7 @@ type RemindersApi = Pick<
   | "setTrayLabels"
   | "dueReminders"
   | "showReminders"
+  | "markRemindersShown"
   | "showRemindersOnNotice"
   | "onReminderCheck"
 >;
@@ -40,7 +41,7 @@ export function createRemindersMock(deps: {
   now: () => Date;
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   courses: () => MockCourse[];
-}): RemindersApi {
+}): RemindersApi & { dueNow: () => Reminder[] } {
   const { scenario, now, respond } = deps;
   const noTray = scenario === "reminders-no-tray";
   let settings: ReminderSettings = {
@@ -132,7 +133,12 @@ export function createRemindersMock(deps: {
       respond(() => {
         for (const n of notifications) shown.add(n.id);
       }),
+    markRemindersShown: (ids) =>
+      respond(() => {
+        for (const id of ids) shown.add(id);
+      }),
     showRemindersOnNotice: async () => {},
+    dueNow: due,
     onReminderCheck: (onCheck) => {
       const handler = () => onCheck();
       window.addEventListener(MOCK_REMINDER_CHECK_EVENT, handler);

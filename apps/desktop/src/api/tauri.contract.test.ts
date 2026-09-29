@@ -156,6 +156,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setTrayLabels({ open: "Open PageLamp", quit: "Quit PageLamp" });
   await api.dueReminders();
   await api.showReminders([{ id: "contract-test-reminder", title: "DEMO101: Quiz", body: "Due" }]);
+  await api.markRemindersShown(["contract-test-reminder"]);
   await api.showRemindersOnNotice("Reminders are on", "contract test");
   await api.aiStatus();
   await api.modelProviderPresets();

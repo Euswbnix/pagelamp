@@ -116,6 +116,14 @@ pub async fn show_reminders<R: Runtime>(
         .await
 }
 
+/// Seen in the app (the catch-up card while reminders are off): they don't come back.
+#[tauri::command]
+pub async fn mark_reminders_shown(backend: State<'_, Backend>, ids: Vec<String>) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.mark_reminders_shown(&ids))
+        .await
+}
+
 /// The one notification when the student turns reminders on: where the system asks whether
 /// PageLamp may notify (desktop systems have no other way to ask). Marks nothing.
 #[tauri::command]

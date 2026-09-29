@@ -367,6 +367,8 @@ export interface PageLampApi {
   dueReminders(): Promise<Reminder[]>;
   /** Shows these notifications, then marks their reminders shown. */
   showReminders(notifications: NotificationText[]): Promise<void>;
+  /** Seen in the app instead (the catch-up card): they don't come back. */
+  markRemindersShown(ids: string[]): Promise<void>;
   /**
    * The one notification when reminders are turned on: where the system asks whether PageLamp
    * may notify (desktop systems have no other way to ask). Marks nothing.

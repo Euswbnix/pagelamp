@@ -264,6 +264,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     };
   }
 
+  // Reminders, their settings, the tray and the login item (reminders.ts).
+  const { dueNow: dueReminders, ...remindersApi } = createRemindersMock({
+    scenario,
+    now,
+    respond,
+    courses: () => db.courses,
+  });
+
   // Study plans written by PageLamp (plan.ts).
   const studyPlans = createPlanMock({
     db,
@@ -558,7 +566,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     generateStudyPlan: studyPlans.generateStudyPlan,
     acceptStudyPlan: studyPlans.acceptStudyPlan,
     setStudyPlanItemDone: studyPlans.setStudyPlanItemDone,
-    ...createRemindersMock({ scenario, now, respond, courses: () => db.courses }),
+    ...remindersApi,
 
     downloadMaterialFiles: async (courseId, materialIds, onEvent) => {
       const c = findCourse(courseId);
@@ -940,8 +948,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             (last === null || last <= now().getTime() - DAY),
           updated_from:
             scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-          // Reminders and the app-start purge (M3): none in the mock yet.
-          due_reminders: [],
+          // What came due since the last launch (reminders-due); the purge: none in the mock yet.
+          due_reminders: dueReminders(),
           purge_due: false,
           removed_files_waiting: 0,
         };

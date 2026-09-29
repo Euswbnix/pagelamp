@@ -1329,6 +1329,10 @@
 "proposals.stale.body" = "Some quoted words aren't in %1$@ any more. The dates stay in force until you read it again or change them.";
 "proposals.stale.reread" = "Read the syllabus again";
 "proposals.stale.title" = "The syllabus changed on %1$@";
+"reminders.catchUp.dismiss" = "Dismiss";
+"reminders.catchUp.open" = "Open";
+"reminders.catchUp.title" = "Since you last opened PageLamp";
+"reminders.catchUp.turnOn" = "Get these as notifications";
 "reminders.notify.deadlineBody" = "Due %1$@";
 "reminders.notify.deadlineTitle" = "%1$@: %2$@";
 "reminders.notify.digestBodyNone" = "No deadlines in the next 7 days";

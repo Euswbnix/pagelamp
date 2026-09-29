@@ -124,6 +124,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         reminders::set_reminder_settings,
         reminders::due_reminders,
         reminders::show_reminders,
+        reminders::mark_reminders_shown,
         reminders::show_reminders_on_notice,
         updates::updates_status,
         updates::updates_check,
