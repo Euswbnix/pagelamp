@@ -1,0 +1,99 @@
+/*
+ * The content layer (docs/design/macos-shell.md §3.0, §4.4, §6.1, §8): the lamp band, callouts and
+ * hairline sections. Hand-written; tokens from tokens.css. Never glass.
+ */
+
+/* The lamp band's pool, drawn by AppShell at the top of the content column: full-bleed and under
+   the clear toolbar row, so a screen's first words sit in the light. Off unless a screen lights
+   it (PageHeader `lit`); it fades like the Mac's .smooth(duration: 0.45). */
+.pl-lamp {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 320px;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 450ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.pl-lamp[data-lit] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pl-lamp {
+    transition-duration: var(--pl-motion-reduced-duration);
+  }
+}
+
+/* Reduced transparency or increased contrast: no glow; a 3 px lamp rule beside the lit title,
+   12 px from it (the Mac's LampBand when flat). */
+:root:is([data-transparency="reduced"], [data-contrast="more"]) .pl-lamp {
+  display: none;
+}
+:root:is([data-transparency="reduced"], [data-contrast="more"]) .pl-lamp-text {
+  padding-left: 12px;
+  box-shadow: inset 3px 0 var(--pl-color-lamp-rule);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .pl-lamp {
+    display: none;
+  }
+  .pl-lamp-text {
+    padding-left: 12px;
+    box-shadow: inset 3px 0 var(--pl-color-lamp-rule);
+  }
+}
+@media (forced-colors: active) {
+  .pl-lamp {
+    display: none;
+  }
+}
+
+/* Callout (§3.0): glyph + title + body + actions on a raised fill, radius.callout; never glass.
+   A hairline border only with increased contrast (or Windows contrast themes). */
+.pl-callout {
+  border-radius: var(--pl-radius-callout);
+  background: var(--pl-color-surface-raised);
+}
+:root[data-contrast="more"] .pl-callout {
+  box-shadow: inset 0 0 0 1px var(--pl-color-rule);
+}
+@media (prefers-contrast: more) {
+  .pl-callout {
+    box-shadow: inset 0 0 0 1px var(--pl-color-rule);
+  }
+}
+@media (forced-colors: active) {
+  .pl-callout {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* On Mica the column is translucent LayerFill, lighter than surface.raised in dark: an ink wash
+   (Fluent's card fill) keeps callouts raised in both themes. Opaque again when reduced / more. */
+:root[data-backdrop="mica"]:not([data-transparency="reduced"], [data-contrast="more"]) .pl-callout {
+  background: color-mix(in oklab, var(--pl-color-text-primary) 5%, transparent);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  /* Same selector as above (same specificity), so this one wins by order. */
+  :root[data-backdrop="mica"]:not([data-transparency="reduced"], [data-contrast="more"])
+  .pl-callout {
+    background: var(--pl-color-surface-raised);
+  }
+}
+
+/* The contents page's dotted leader (§6.4): 1 px dots every 4 px in text.tertiary, on the baseline
+   between a course and its week. Decorative (aria-hidden). */
+.pl-leader {
+  height: 1px;
+  align-self: flex-end;
+  margin-bottom: 0.3em;
+  background-image: radial-gradient(circle, var(--pl-color-text-tertiary) 0.6px, transparent 0.8px);
+  background-size: 4px 1px;
+  background-repeat: repeat-x;
+}
+@media (forced-colors: active) {
+  .pl-leader {
+    background: none;
+    border-bottom: 1px dotted CanvasText;
+  }
+}

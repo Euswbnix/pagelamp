@@ -87,7 +87,9 @@ describe("SettingsPage", () => {
     renderRoute("/settings");
     await section("Appearance");
     expect(screen.queryByRole("region", { name: "Reminders" })).toBeNull();
-    expect(screen.queryByRole("switch")).toBeNull();
+    // The only switch is Appearance ▸ Reduce transparency (Lamplight, §8).
+    expect(screen.queryAllByRole("switch")).toHaveLength(1);
+    expect(screen.getByRole("switch", { name: "Reduce transparency" })).toBeInTheDocument();
     expect(screen.queryByText("Coming soon")).toBeNull();
   });
 

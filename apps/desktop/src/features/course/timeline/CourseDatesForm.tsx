@@ -381,7 +381,7 @@ function BreakFields({
   const ids = { kind: useId(), end: useId(), label: useId(), numbered: useId() };
   const startId = `break-${row.key}-start`;
   return (
-    <fieldset className="relative space-y-3 rounded-lg border p-3">
+    <fieldset className="relative space-y-3 rounded-row bg-muted p-3">
       {/* The legend must be the fieldset's first child to name the group. */}
       <legend className="float-left pt-1 text-sm font-medium">
         {t("form2.breakLegend", { index })}
@@ -479,7 +479,7 @@ function SecondPart({
   const { t } = useTranslation("calendar");
   const ids = { first: useId(), last: useId(), numbering: useId() };
   return (
-    <fieldset className="space-y-3 rounded-lg border p-3">
+    <fieldset className="space-y-3 rounded-row bg-muted p-3">
       <legend className="text-sm font-medium">{t("form2.secondLegend")}</legend>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field data-invalid={invalid || undefined}>

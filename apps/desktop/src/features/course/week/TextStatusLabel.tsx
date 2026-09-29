@@ -48,8 +48,8 @@ export function TextStatusLabel({
   if (status === "not_downloaded" && blocked) {
     const BlockedIcon = BLOCKED_ICON[blocked];
     return (
-      <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}>
-        <BlockedIcon className="size-3.5 shrink-0" aria-hidden />
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <BlockedIcon className={cn("size-3.5 shrink-0", className)} aria-hidden />
         {tc(`downloadBlock.${blocked}`)}
       </span>
     );
@@ -62,9 +62,15 @@ export function TextStatusLabel({
       </span>
     );
   }
+  // The status colour is the glyph's; the words stay ink (§4.2: 3.7:1 amber is never text).
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}>
-      <Icon className="size-3.5 shrink-0" aria-hidden />
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-xs font-medium",
+        status === "error" ? "text-foreground" : "text-muted-foreground",
+      )}
+    >
+      <Icon className={cn("size-3.5 shrink-0", className)} aria-hidden />
       {status === "ok" ? (
         // Sighted users see the tick icon; screen readers get "readable" spelled out.
         <>

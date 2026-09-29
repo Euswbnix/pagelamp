@@ -42,7 +42,7 @@ export function StudyPlanCard() {
   }
 
   return (
-    <Section card title={t("plan.title")} description={description}>
+    <Section title={t("plan.title")} description={description}>
       {body}
     </Section>
   );

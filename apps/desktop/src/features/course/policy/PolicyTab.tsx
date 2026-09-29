@@ -103,8 +103,10 @@ function PolicyForm({ course }: { course: Course }) {
         <AlertDescription>{localized(brand.aiPolicyHint, i18n.language)}</AlertDescription>
       </Alert>
 
+      {/* One row per policy between hairlines; the chosen one gets an ink-wash fill. */}
       <RadioGroup
         aria-labelledby={ids.heading}
+        className="gap-0 divide-y border-y"
         value={policy}
         onValueChange={(value) => isAiPolicy(value) && edit(setPolicy, value)}
       >

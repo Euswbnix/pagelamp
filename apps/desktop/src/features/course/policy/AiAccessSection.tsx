@@ -32,7 +32,7 @@ export function AiAccessSection({ course, state }: { course: Course; state: AiMa
   }
 
   return (
-    <section aria-labelledby={ids.heading} className="max-w-2xl space-y-3 rounded-lg border p-4">
+    <section aria-labelledby={ids.heading} className="pl-callout max-w-2xl space-y-3 p-4">
       <h2 id={ids.heading} className="font-heading text-base font-semibold tracking-tight">
         {t("aiAccess.title")}
       </h2>

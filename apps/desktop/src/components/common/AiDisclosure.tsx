@@ -17,7 +17,7 @@ export function AiDisclosure({
   return (
     <div
       className={cn(
-        "flex gap-3 rounded-lg border bg-muted/40 p-4 text-sm leading-relaxed text-muted-foreground",
+        "pl-callout pl-prose flex gap-3 p-4 text-sm leading-relaxed text-muted-foreground",
         className,
       )}
     >

@@ -7,6 +7,7 @@ import { isApiError } from "@/api/errors";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import i18n from "@/i18n";
+import { useAppearance } from "./useAppearance";
 import { usePreferences } from "./usePreferences";
 
 export function createQueryClient() {
@@ -25,6 +26,7 @@ export function createQueryClient() {
 
 function PreferencesSync() {
   usePreferences();
+  useAppearance();
   return null;
 }
 
