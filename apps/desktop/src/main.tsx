@@ -19,6 +19,7 @@ applyStaticAppearance(
     userAgent: navigator.userAgent,
     windowBackdrop: window.__PAGELAMP_WINDOW__?.backdrop,
   }),
+  API_MODE === "mock",
 );
 document.title = brand.productName;
 if (API_MODE === "tauri") {

@@ -1,4 +1,6 @@
+import { setTheme } from "@tauri-apps/api/app";
 import { useEffect } from "react";
+import { API_MODE } from "@/api";
 import { useUiStore } from "@/stores/ui";
 
 /**
@@ -8,8 +10,17 @@ import { useUiStore } from "@/stores/ui";
  * switches add them where the web view can't see the system setting (WebKitGTK).
  */
 export function useAppearance() {
+  const theme = useUiStore((s) => s.theme);
   const transparency = useUiStore((s) => s.transparency);
   const contrast = useUiStore((s) => s.contrast);
+
+  // The native title bar and Mica follow the in-app theme (null = the system's).
+  useEffect(() => {
+    if (API_MODE !== "tauri") return;
+    setTheme(theme === "system" ? null : theme).catch(() => {
+      // Cosmetic: the page itself already follows the theme.
+    });
+  }, [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.transparency = transparency;

@@ -41,11 +41,16 @@ export function staticAppearance(env: {
   return { platform, backdrop };
 }
 
-/** Sets data-platform and data-backdrop; call once, before the first render. */
+/**
+ * Sets data-platform and data-backdrop; call once, before the first render. `simulateMica` (mock
+ * mode) paints a Mica stand-in behind the page, since a browser has no Mica.
+ */
 export function applyStaticAppearance(
   root: HTMLElement,
   appearance: { platform: Platform; backdrop: Backdrop },
+  simulateMica = false,
 ) {
   root.dataset.platform = appearance.platform;
   root.dataset.backdrop = appearance.backdrop;
+  if (simulateMica && appearance.backdrop === "mica") root.dataset.micaSim = "";
 }

@@ -1,0 +1,76 @@
+/*
+ * The app shell's surfaces (docs/design/macos-shell.md §8, table "Surface"): base and sidebar,
+ * the content column, the selected navigation row. Hand-written; tokens from tokens.css.
+ * Unlayered on purpose, so these win over Tailwind's utilities on the same elements.
+ */
+
+/* Opaque window (macOS, Linux, Windows 10 / 21H2): paper everywhere, a hairline by the sidebar. */
+.pl-sidebar {
+  width: var(--pl-size-sidebar-ideal);
+  background: var(--pl-color-surface-sidebar);
+  border-right: 1px solid var(--pl-color-rule);
+}
+.pl-content {
+  background: var(--pl-color-surface-content);
+}
+
+/* Windows: Fluent's accent pill beside the selected row (the ink wash marks it everywhere). */
+:root[data-platform="windows"] .pl-nav-item {
+  position: relative;
+}
+:root[data-platform="windows"] .pl-nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--pl-color-accent);
+}
+@media (forced-colors: active) {
+  :root[data-platform="windows"] .pl-nav-item[aria-current="page"]::before {
+    background: Highlight;
+  }
+}
+
+/* Windows 11 Mica: the window shows through base and sidebar (no CSS glass on the sidebar); the
+   content column is an inset LayerFill card. */
+:root[data-backdrop="mica"] body {
+  background: transparent;
+}
+:root[data-backdrop="mica"] .pl-sidebar {
+  background: transparent;
+  border-right-color: transparent;
+}
+:root[data-backdrop="mica"] .pl-content {
+  background: var(--pl-color-mica-layer-fill);
+  border-top-left-radius: var(--pl-radius-mica-card);
+  box-shadow: inset 1px 1px 0 var(--pl-color-rule);
+}
+
+/* Reduced transparency or increased contrast: nothing see-through, Mica or not. */
+:root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) body {
+  background: var(--pl-color-surface-sidebar);
+}
+:root[data-backdrop="mica"]:is([data-transparency="reduced"], [data-contrast="more"]) .pl-content {
+  background: var(--pl-color-surface-content);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root[data-backdrop="mica"] body {
+    background: var(--pl-color-surface-sidebar);
+  }
+  :root[data-backdrop="mica"] .pl-content {
+    background: var(--pl-color-surface-content);
+  }
+}
+
+/* Mock mode only (data-mica-sim, set by lib/appearance.ts): §8's Mica approximations
+   (#F3F3F3 / #202020) behind the transparent page, so screenshots show the Mica layout. */
+:root[data-mica-sim] {
+  background: #f3f3f3;
+}
+:root.dark[data-mica-sim] {
+  background: #202020;
+}

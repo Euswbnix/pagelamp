@@ -9,6 +9,7 @@
  */
 @import "./tokens.css";
 @import "./glass.css";
+@import "./shell.css";
 
 @theme inline {
   /* Paper (content layer) and ink. */
