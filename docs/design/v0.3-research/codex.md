@@ -101,8 +101,20 @@ afterwards) to settle the signature rule of the managed runtime (plan M2, `codex
 - **Code mode comes from the model catalog.** `requested_tool_mode` takes `model_info.tool_mode`
   before `features.code_mode`, and 0.158.0's `models.json` gives every pinned model
   `"tool_mode": "code_mode_only"`, so `features.code_mode = false` does not stop the model's
-  JavaScript `exec`/`wait` entry points. The documented `model_catalog_json` key replaces the
-  bundled catalog for the process (M2 follow-up, leader decision pending).
+  JavaScript `exec`/`wait` entry points. PageLamp therefore sets the documented
+  `model_catalog_json` key ("replaces the bundled catalog for the current process") to its own
+  catalog: the pinned models' entries copied unchanged from 0.158.0's `models.json`
+  (`pagelamp-llm/data/codex-models.json`, Apache-2.0 notice beside it) with only
+  `tool_mode = "direct"` and `shell_type = "disabled"` changed (a test diffs the two). The Codex
+  binary stays unmodified. **To verify with a real sign-in (A7):** the models answer a
+  structured-output run in direct mode, and a signed-in session doesn't replace the local
+  catalog with a server copy.
+- **Tripwire is an allow-list.** Item types a run may show in 0.158.0 (`exec_events.rs`):
+  `agent_message`, `reasoning`, `todo_list`, `error`; top-level events: `thread.started`,
+  `turn.started|completed|failed`, `item.started|updated|completed`, `error`. Anything else stops
+  the run ("PageLamp stopped Codex: unexpected output — update PageLamp").
+- **Canary.** PageLamp's automated test scans every file under `CODEX_HOME` and the run folders
+  after a run (including `*.sqlite`, `-wal`, `-shm`); A7 repeats the grep with a real Codex.
 - **Sign-in output (0.158.0 source).** Browser: stderr "Starting local login server on
   http://localhost:1455. If your browser did not open, navigate to this URL to authenticate:"
   then the URL. Device code: stdout "1. Open this link…" + URL, "2. Enter this one-time code

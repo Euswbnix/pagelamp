@@ -15,6 +15,10 @@ pub enum CodexError {
     /// The binary couldn't be started (missing, blocked by antivirus or Smart App Control).
     #[error("could not start Codex ({0})")]
     Start(String),
+    /// The tripwire: Codex showed output PageLamp doesn't allow (a tool item, or an item type
+    /// this version doesn't know); the run was killed and its output discarded.
+    #[error("PageLamp stopped Codex: unexpected output — update PageLamp")]
+    Stopped,
     /// Codex ran and failed; `kind` is the classified reason.
     #[error("Codex failed ({})", kind.as_str())]
     Failed { kind: ModelErrorKind },

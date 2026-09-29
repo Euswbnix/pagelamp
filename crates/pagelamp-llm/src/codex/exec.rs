@@ -4,8 +4,10 @@
 //! - The answer is the JSONL `agent_message` item: no `-o` file, so PageLamp writes no
 //!   course-derived text to disk (the per-run folder holds only the fixed instructions and the
 //!   answer's JSON Schema, and is deleted afterwards).
-//! - **Tripwire:** any tool item (`command_execution`, `file_change`, `web_search`,
-//!   `mcp_tool_call`, `collab_tool_call`) kills the run and discards its output (`bad_output`).
+//! - **Tripwire (an allow-list):** any item other than text, reasoning, the to-do list or a
+//!   non-fatal error — a tool item (`command_execution`, `file_change`, `web_search`,
+//!   `mcp_tool_call`, `collab_tool_call`) or a type this version doesn't know — and any unknown
+//!   event kill the run and discard its output (`CodexError::Stopped`).
 //! - **Errors** are plain strings in exec; they are classified into `ModelErrorKind` values and
 //!   only the code and the stderr length are logged (stderr can echo course text).
 //! - **Every run names its model** (`-m`), from the pin's supported list; never the account's
@@ -22,7 +24,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
 use super::error::CodexError;
-use super::home::{CodexHome, RUN_OVERRIDES};
+use super::home::{CodexHome, RUN_OVERRIDES, toml_string};
 use super::process::{self, Purpose, RemoveOnDrop};
 use crate::request::Usage;
 
@@ -34,13 +36,19 @@ const INTERRUPT_GRACE: Duration = Duration::from_secs(3);
 const MAX_STDOUT: usize = 16 << 20;
 /// Kept only to classify an error; never logged.
 const MAX_STDERR: usize = 64 << 10;
-/// Item types that mean Codex used a tool.
-const TOOL_ITEMS: [&str; 5] = [
-    "command_execution",
-    "file_change",
-    "web_search",
-    "mcp_tool_call",
-    "collab_tool_call",
+/// The item types a run may show (0.158.0 `exec/src/exec_events.rs`): the answer, reasoning,
+/// the to-do list and non-fatal errors. Everything else stops the run.
+const ALLOWED_ITEMS: [&str; 4] = ["agent_message", "reasoning", "todo_list", "error"];
+/// The top-level events of 0.158.0; any other event stops the run.
+const KNOWN_EVENTS: [&str; 8] = [
+    "thread.started",
+    "turn.started",
+    "turn.completed",
+    "turn.failed",
+    "item.started",
+    "item.updated",
+    "item.completed",
+    "error",
 ];
 
 /// What to run.
@@ -144,11 +152,13 @@ impl Exec {
             }
             None => None,
         };
+        let catalog = self.home.catalog_path()?;
         let args = argv(
             request.model,
             request.effort,
             schema.as_deref(),
             &instructions,
+            &catalog,
         );
 
         let mut command = process::command(&self.binary, &self.home, Purpose::Other, &run_dir);
@@ -189,6 +199,7 @@ impl Exec {
         let mut lines = BufReader::new(stdout).lines();
         let mut parser = EventParser::default();
         let mut read = 0usize;
+        let mut stopped = false;
         let failure = loop {
             let next = tokio::select! {
                 _ = cancel.cancelled() => {
@@ -208,8 +219,9 @@ impl Exec {
             }
             match parser.feed(&line) {
                 Step::Continue => {}
-                Step::Tripwire(item) => {
-                    tracing::warn!(target: "pagelamp::codex", item, "tripwire: Codex used a tool; run discarded");
+                Step::Tripwire(what) => {
+                    tracing::warn!(target: "pagelamp::codex", what, "tripwire: unexpected Codex output; run discarded");
+                    stopped = true;
                     break Some(ModelErrorKind::BadOutput);
                 }
             }
@@ -221,6 +233,9 @@ impl Exec {
         let _ = writer.await;
         let (stderr_text, stderr_len) = stderr_task.await.unwrap_or_default();
         drop(lock);
+        if stopped {
+            return Err(CodexError::Stopped);
+        }
 
         let kind = failure
             .or(parser.failure)
@@ -254,6 +269,7 @@ pub fn argv(
     effort: Effort,
     schema: Option<&Path>,
     instructions: &Path,
+    catalog: &Path,
 ) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "exec",
@@ -280,13 +296,9 @@ pub fn argv(
     args.push("-c".into());
     args.push(format!("model_reasoning_effort=\"{}\"", reasoning_effort(effort)).into());
     args.push("-c".into());
-    args.push(
-        format!(
-            "model_instructions_file={}",
-            toml::Value::String(instructions.to_string_lossy().into_owned())
-        )
-        .into(),
-    );
+    args.push(format!("model_instructions_file={}", toml_string(instructions)).into());
+    args.push("-c".into());
+    args.push(format!("model_catalog_json={}", toml_string(catalog)).into());
     // The prompt comes on stdin.
     args.push("-".into());
     args
@@ -337,12 +349,16 @@ impl EventParser {
         let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
             return Step::Continue; // not JSON: ignored (never logged)
         };
-        match event["type"].as_str().unwrap_or_default() {
+        let event_type = event["type"].as_str().unwrap_or_default();
+        if !KNOWN_EVENTS.contains(&event_type) {
+            return Step::Tripwire(format!("event:{}", short(event_type)));
+        }
+        match event_type {
             "item.started" | "item.updated" | "item.completed" => {
                 let item = &event["item"];
                 let kind = item["type"].as_str().unwrap_or_default();
-                if TOOL_ITEMS.contains(&kind) {
-                    return Step::Tripwire(kind.to_string());
+                if !ALLOWED_ITEMS.contains(&kind) {
+                    return Step::Tripwire(format!("item:{}", short(kind)));
                 }
                 if kind == "agent_message"
                     && event["type"] == "item.completed"
@@ -378,6 +394,14 @@ impl EventParser {
         }
         Step::Continue
     }
+}
+
+/// A type name for the log (a short identifier, never content).
+fn short(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
+        .take(40)
+        .collect()
 }
 
 /// exec errors are plain strings; the phrases below are OpenAI's and Codex's own.

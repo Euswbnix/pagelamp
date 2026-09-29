@@ -167,7 +167,7 @@ async fn a_sign_in_can_be_cancelled_and_holds_the_lock_meanwhile() {
         .unwrap()
         .unwrap();
     assert!(matches!(result, Err(CodexError::Cancelled)));
-    assert!(!home.is_locked());
+    released(|| home.is_locked()).await;
 }
 
 #[tokio::test]
@@ -220,4 +220,17 @@ async fn status_sign_out_and_version() {
         login::status(missing, &home).await,
         Err(CodexError::Start(_))
     ));
+}
+
+/// The lock is released (a child another test thread is starting can hold a just-released
+/// `flock` for a moment, so poll briefly).
+async fn released(is_locked: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while is_locked() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the lock is still held"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }

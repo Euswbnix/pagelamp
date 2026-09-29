@@ -97,6 +97,23 @@ pub(crate) fn command(
     command
 }
 
+/// Take an OS file lock without waiting for a real holder, but riding out the moment after one
+/// releases it: `flock` locks belong to the open file, and a child another thread is starting
+/// (between fork and exec) briefly shares every open file, so a lock just released can linger
+/// for microseconds. Retries for up to `LOCK_GRACE`, then reports `WouldBlock`.
+pub(crate) fn try_lock_briefly(file: &std::fs::File) -> Result<(), std::fs::TryLockError> {
+    const LOCK_GRACE: std::time::Duration = std::time::Duration::from_millis(250);
+    let started = std::time::Instant::now();
+    loop {
+        match file.try_lock() {
+            Err(std::fs::TryLockError::WouldBlock) if started.elapsed() < LOCK_GRACE => {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Deletes a file or folder when dropped, unless disarmed.
 pub(crate) struct RemoveOnDrop(std::path::PathBuf);
 

@@ -113,6 +113,24 @@ async fn a_run_names_its_model_sends_the_prompt_on_stdin_and_reads_the_answer() 
     }
     assert!(args.windows(2).any(|w| w == ["--sandbox", "read-only"]));
     assert!(args.contains(&"features.shell_tool=false".to_string()));
+    // Codex gets PageLamp's model catalog: no code mode, no shell, for every pinned model.
+    let catalog_arg = args
+        .iter()
+        .find_map(|a| a.strip_prefix("model_catalog_json="))
+        .unwrap();
+    let catalog_path = toml::from_str::<toml::Table>(&format!("v = {catalog_arg}")).unwrap()["v"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let catalog: Value =
+        serde_json::from_str(&std::fs::read_to_string(&catalog_path).unwrap()).unwrap();
+    assert!(
+        catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|m| m["tool_mode"] == "direct" && m["shell_type"] == "disabled")
+    );
     assert!(
         !args
             .iter()
@@ -144,19 +162,34 @@ async fn a_tool_item_trips_the_wire_and_the_run_is_discarded() {
         )
         .await
         .unwrap_err();
-    assert!(
-        matches!(
-            err,
-            CodexError::Failed {
-                kind: ModelErrorKind::BadOutput
-            }
-        ),
-        "{err}"
+    assert!(matches!(err, CodexError::Stopped), "{err}");
+    assert_eq!(
+        err.to_string(),
+        "PageLamp stopped Codex: unexpected output — update PageLamp"
     );
     assert!(
         started.elapsed() < Duration::from_secs(10),
         "killed, not waited for"
     );
+
+    // Anything this version doesn't know stops the run too: an item type, or an event.
+    for unexpected in [
+        json!({"type": "item.started", "item": {"id": "x1", "type": "image_view", "path": "/demo"}}),
+        json!({"type": "session.configured", "tools": ["exec"]}),
+    ] {
+        let mut stdout = answer("never shown");
+        stdout.insert(2, unexpected.to_string());
+        let (_temp, exec) = exec_with(json!({ "exec": { "stdout": stdout } }));
+        let err = exec
+            .run_with_fallback(
+                &request(&prompt, "gpt-6-luna"),
+                None,
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CodexError::Stopped), "{unexpected}: {err}");
+    }
 }
 
 #[tokio::test]
@@ -298,7 +331,7 @@ async fn a_run_can_be_cancelled_and_holds_the_lock_meanwhile() {
         started.elapsed() < Duration::from_secs(5),
         "SIGINT, then a kill after 3 s"
     );
-    assert!(!exec.home.is_locked());
+    released(|| exec.home.is_locked()).await;
 }
 
 #[tokio::test]
@@ -320,4 +353,85 @@ async fn stdin_is_closed_so_a_codex_that_reads_to_the_end_finishes() {
     .expect("stdin was closed")
     .unwrap();
     assert_eq!(outcome.text, "done");
+}
+
+/// Every file under `dir`, recursively.
+fn files_under(dir: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+/// The canary check of design §4.4 for Codex runs: after a run, no file PageLamp keeps for Codex
+/// — `CODEX_HOME` (the config, the catalog, and whatever Codex adds there: its `*.sqlite`
+/// databases with their `-wal`/`-shm` files) and the per-run folders — holds course text. With a
+/// real Codex and a real sign-in, owner test A7 greps the same files.
+#[tokio::test]
+async fn no_course_text_stays_on_disk_after_a_run() {
+    const CANARY: &str = "stomatacanary7731";
+    let (temp, exec) = exec_with(json!({ "exec": { "stdout": answer("an answer") } }));
+    // Codex keeps its own databases in CODEX_HOME; stand-ins, so the scan covers that shape.
+    std::fs::write(exec.home.dir().join("state_5.sqlite"), b"SQLite format 3\0").unwrap();
+    std::fs::write(exec.home.dir().join("logs_2.sqlite-wal"), b"").unwrap();
+    let prompt = RenderedPrompt::for_tests(
+        "Explain only from the course text.",
+        &format!("Course: DEMO101\nWeek 3: {CANARY} stomata open in light."),
+    );
+    exec.run_with_fallback(
+        &request(&prompt, "gpt-6-luna"),
+        None,
+        &CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    let files = files_under(temp.path());
+    assert!(
+        files.iter().any(|f| f.ends_with("config.toml")),
+        "{files:?}"
+    );
+    for file in files {
+        let name = file.file_name().unwrap().to_string_lossy().into_owned();
+        if name.starts_with("fake-codex") {
+            continue; // the test double's own record of what it was given
+        }
+        let bytes = std::fs::read(&file).unwrap();
+        assert!(
+            !bytes.windows(CANARY.len()).any(|w| w == CANARY.as_bytes()),
+            "course text in {}",
+            file.display()
+        );
+    }
+    // The fake did get it, on stdin: the scan would have seen a leak.
+    assert!(
+        observed(exec.home.dir())[0]["stdin"]
+            .as_str()
+            .unwrap()
+            .contains(CANARY)
+    );
+}
+
+/// The lock is released (a child another test thread is starting can hold a just-released
+/// `flock` for a moment, so poll briefly).
+async fn released(is_locked: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while is_locked() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the lock is still held"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }

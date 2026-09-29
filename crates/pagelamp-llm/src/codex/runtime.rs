@@ -250,7 +250,7 @@ impl Runtime {
             .truncate(false)
             .write(true)
             .open(self.root.join(LOCK_FILE))?;
-        match file.try_lock() {
+        match super::process::try_lock_briefly(&file) {
             Ok(()) => Ok(file),
             Err(TryLockError::WouldBlock) => Err(InstallError::Busy),
             Err(TryLockError::Error(err)) => Err(err.into()),

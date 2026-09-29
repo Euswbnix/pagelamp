@@ -15,6 +15,29 @@ use std::path::{Path, PathBuf};
 
 pub const CONFIG_FILE: &str = "config.toml";
 pub const LOCK_FILE: &str = "pagelamp.lock";
+/// The model catalog PageLamp points Codex at (`model_catalog_json`).
+pub const CATALOG_FILE: &str = "pagelamp-models.json";
+
+/// The pinned models' entries, copied unchanged from 0.158.0's `models.json` (Apache-2.0; see
+/// `data/codex-models.NOTICE`).
+const VENDORED_MODELS: &str = include_str!("../../data/codex-models.json");
+
+/// The catalog Codex gets: the vendored entries with exactly two fields changed.
+/// 0.158.0 takes a model's tool mode from its catalog entry before any feature switch
+/// (`requested_tool_mode`), and every pinned model says `"code_mode_only"`, which would give the
+/// model a JavaScript `exec` tool whatever `features.code_mode` says. `model_catalog_json` is a
+/// documented Codex setting that replaces the bundled catalog; Codex itself stays unmodified.
+/// - `tool_mode: "direct"`: no code mode;
+/// - `shell_type: "disabled"`: no shell tool (a second switch next to `features.shell_tool`).
+pub fn model_catalog() -> String {
+    let mut catalog: serde_json::Value =
+        serde_json::from_str(VENDORED_MODELS).expect("codex-models.json is valid");
+    for model in catalog["models"].as_array_mut().expect("a models array") {
+        model["tool_mode"] = "direct".into();
+        model["shell_type"] = "disabled".into();
+    }
+    serde_json::to_string_pretty(&catalog).expect("the catalog serialises")
+}
 
 /// The config PageLamp writes (design §2.3; D11: analytics off). Every key was checked against
 /// `codex-rs/core/config.schema.json` of the pinned 0.158.0, where unknown keys fail
@@ -91,6 +114,11 @@ pub const RUN_OVERRIDES: &[&str] = &[
     "project_doc_max_bytes=0",
 ];
 
+/// A path as a TOML string (quoted and escaped, so Windows paths survive).
+pub(crate) fn toml_string(path: &Path) -> String {
+    toml::Value::String(path.to_string_lossy().into_owned()).to_string()
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum HomeError {
     /// Another PageLamp process (or window) is running Codex, signing in or out.
@@ -132,7 +160,7 @@ impl CodexHome {
     pub fn lock(&self) -> Result<HomeLock, HomeError> {
         pagelamp_core::paths::create_private_dir_all(&self.dir)?;
         let file = self.open_lock_file()?;
-        match file.try_lock() {
+        match super::process::try_lock_briefly(&file) {
             Ok(()) => Ok(HomeLock { _file: file }),
             Err(TryLockError::WouldBlock) => Err(HomeError::Busy),
             Err(TryLockError::Error(err)) => Err(err.into()),
@@ -147,15 +175,34 @@ impl CodexHome {
         matches!(file.try_lock(), Err(TryLockError::WouldBlock))
     }
 
-    /// Rewrite `config.toml` (atomically: a temporary file, then a rename). Needs the lock.
+    /// Rewrite `config.toml` and the model catalog it names (each atomically: a temporary file,
+    /// then a rename). Needs the lock.
     pub fn write_config(&self, _lock: &HomeLock) -> Result<(), HomeError> {
-        let target = self.dir.join(CONFIG_FILE);
-        let temp = self
-            .dir
-            .join(format!("{CONFIG_FILE}.{}.tmp", std::process::id()));
+        self.write_atomically(CATALOG_FILE, model_catalog().as_bytes())?;
+        // A top-level key: it goes before the first table, or TOML would put it in that table.
+        let first_table = CONFIG_TOML
+            .find("\n[")
+            .map_or(CONFIG_TOML.len(), |at| at + 1);
+        let config = format!(
+            "{}# PageLamp's model catalog (see pagelamp-models.json).\nmodel_catalog_json = {}\n\n{}",
+            &CONFIG_TOML[..first_table],
+            toml_string(&self.catalog_path()?),
+            &CONFIG_TOML[first_table..]
+        );
+        self.write_atomically(CONFIG_FILE, config.as_bytes())
+    }
+
+    /// The absolute path of the model catalog (Codex requires an absolute path).
+    pub fn catalog_path(&self) -> Result<PathBuf, HomeError> {
+        Ok(std::path::absolute(self.dir.join(CATALOG_FILE))?)
+    }
+
+    fn write_atomically(&self, name: &str, bytes: &[u8]) -> Result<(), HomeError> {
+        let target = self.dir.join(name);
+        let temp = self.dir.join(format!("{name}.{}.tmp", std::process::id()));
         {
             let mut file = File::create(&temp)?;
-            file.write_all(CONFIG_TOML.as_bytes())?;
+            file.write_all(bytes)?;
             file.sync_all()?;
         }
         std::fs::rename(&temp, &target).inspect_err(|_| {
@@ -246,6 +293,42 @@ mod tests {
     }
 
     #[test]
+    fn the_catalog_differs_from_codexs_own_entries_in_two_fields_only() {
+        let original: serde_json::Value = serde_json::from_str(VENDORED_MODELS).unwrap();
+        let ours: serde_json::Value = serde_json::from_str(&model_catalog()).unwrap();
+        let (original, ours) = (
+            original["models"].as_array().unwrap(),
+            ours["models"].as_array().unwrap(),
+        );
+        assert_eq!(original.len(), ours.len());
+        for (before, after) in original.iter().zip(ours) {
+            let (before, after) = (before.as_object().unwrap(), after.as_object().unwrap());
+            assert_eq!(
+                before.keys().collect::<Vec<_>>(),
+                after.keys().collect::<Vec<_>>()
+            );
+            let changed: Vec<&String> = before
+                .keys()
+                .filter(|key| before[*key] != after[*key])
+                .collect();
+            assert!(
+                changed
+                    .iter()
+                    .all(|key| *key == "tool_mode" || *key == "shell_type"),
+                "{}: {changed:?}",
+                before["slug"]
+            );
+            assert_eq!(after["tool_mode"], "direct");
+            assert_eq!(after["shell_type"], "disabled");
+        }
+        // Every model the pin allows has an entry.
+        let slugs: Vec<&str> = ours.iter().filter_map(|m| m["slug"].as_str()).collect();
+        for model in &crate::codex::pin().models.supported {
+            assert!(slugs.contains(&model.as_str()), "{model}");
+        }
+    }
+
+    #[test]
     fn one_holder_at_a_time_and_the_config_is_rewritten() {
         let temp = tempfile::tempdir().unwrap();
         let home = CodexHome::new(temp.path().join("codex-home"));
@@ -255,20 +338,42 @@ mod tests {
         assert!(matches!(home.lock(), Err(HomeError::Busy)));
         std::fs::write(home.dir().join(CONFIG_FILE), "model = \"someone-elses\"\n").unwrap();
         home.write_config(&lock).unwrap();
+        let written = std::fs::read_to_string(home.dir().join(CONFIG_FILE)).unwrap();
+        let config: toml::Table = toml::from_str(&written).unwrap();
+        assert!(
+            !config["windows"]
+                .as_table()
+                .unwrap()
+                .contains_key("model_catalog_json"),
+            "a top-level key"
+        );
         assert_eq!(
-            std::fs::read_to_string(home.dir().join(CONFIG_FILE)).unwrap(),
+            written.replace(
+                &format!(
+                    "# PageLamp's model catalog (see pagelamp-models.json).\nmodel_catalog_json = {}\n\n",
+                    toml_string(&home.catalog_path().unwrap())
+                ),
+                ""
+            ),
             CONFIG_TOML
+        );
+        let catalog = config["model_catalog_json"].as_str().unwrap();
+        assert!(Path::new(catalog).is_absolute());
+        assert_eq!(
+            std::fs::read_to_string(catalog).unwrap(),
+            model_catalog(),
+            "the catalog next to the config"
         );
         drop(lock);
         assert!(!home.is_locked());
         home.lock().unwrap();
-        // Only the config and the lock file: nothing temporary is left.
+        // Only the config, the catalog and the lock file: nothing temporary is left.
         let mut names: Vec<String> = std::fs::read_dir(home.dir())
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         names.sort();
-        assert_eq!(names, [CONFIG_FILE, LOCK_FILE]);
+        assert_eq!(names, [CONFIG_FILE, CATALOG_FILE, LOCK_FILE]);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
