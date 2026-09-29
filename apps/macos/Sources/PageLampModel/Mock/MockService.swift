@@ -144,6 +144,7 @@ public actor MockService: PageLampService {
             course: course.course,
             aiMaterials: aiMaterials,
             timeline: course.timeline,
+            lifecycle: MockCalendar.lifecycle(course.timeline),
             counts: CourseCounts(
                 modules: UInt32(course.modules.count),
                 materials: UInt32(course.materials.count),
@@ -224,6 +225,7 @@ public actor MockService: PageLampService {
             course: course.course,
             aiMaterials: Self.aiMaterials(course.course),
             timeline: course.timeline,
+            lifecycle: MockCalendar.lifecycle(course.timeline),
             currentModules: course.modules.filter { course.timeline.currentModuleIds.contains($0.id) },
             recentMaterials: course.materials.filter(isRecent).sorted {
                 ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast)

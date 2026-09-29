@@ -71,12 +71,16 @@ struct Sandbox {
         try Data(text.utf8).write(to: file)
     }
 
-    /// `Courses/` with two courses, week folders and `course.toml`s whose term started ten days
-    /// ago (so the current week is 2). Returns the term start, "YYYY-MM-DD".
+    /// `Courses/` with two courses, week folders and `course.toml`s whose term started on last
+    /// week's Monday (so the current week is 2: weeks run Monday to Sunday). Returns the term
+    /// start, "YYYY-MM-DD".
     @discardableResult
     func makeCourseFolder() throws -> String {
         let calendar = Calendar.current
-        let start = try #require(calendar.date(byAdding: .day, value: -10, to: Date()))
+        let today = Date()
+        // `.weekday` is 1 for Sunday, 2 for Monday, and so on.
+        let daysSinceMonday = (calendar.component(.weekday, from: today) + 5) % 7
+        let start = try #require(calendar.date(byAdding: .day, value: -(daysSinceMonday + 7), to: today))
         let parts = calendar.dateComponents([.year, .month, .day], from: start)
         let termStart = String(
             format: "%04ld-%02ld-%02ld", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0

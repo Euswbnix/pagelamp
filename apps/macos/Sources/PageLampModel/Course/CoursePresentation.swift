@@ -204,7 +204,7 @@ extension CourseDetailModel {
     /// state, which says the same.
     public enum WeekNote: Equatable, Sendable {
         /// A localised note by code, with "Set Term Dates…" when the week is unknown or outside
-        /// the term.
+        /// the term (not in the exam period or a break: the dates are known there, M0.10).
         case known(key: String, offersTermDates: Bool)
         /// A note without a known code: the backend's English, shown verbatim and tagged English.
         case backend(String)
@@ -217,6 +217,10 @@ extension CourseDetailModel {
                 self = .known(key: "course.week.note.outside_term", offersTermDates: true)
             case .noMaterialsThisWeek:
                 return nil
+            case .examPeriod:
+                self = .known(key: "course.week.note.exam_period", offersTermDates: false)
+            case .break:
+                self = .known(key: "course.week.note.break", offersTermDates: false)
             case nil:
                 guard let note = week.note, !note.isEmpty else { return nil }
                 self = .backend(note)
@@ -225,9 +229,11 @@ extension CourseDetailModel {
     }
 
     /// Whether "Set Term Dates…" is a candidate for the page's tinted action (spec §3.0 (3)):
-    /// the week is unknown, today is outside the term, or the guess has low confidence.
+    /// only when the course's phase is unknown (M0.10). No current week is not enough on its
+    /// own: the exam period, breaks and an ended course have none either, and their dates are
+    /// known. The button itself stays on the page, untinted.
     public static func needsTermDates(_ timeline: CourseTimeline) -> Bool {
-        timeline.currentWeek == nil || timeline.outsideTerm || timeline.confidence == .low
+        timeline.phase == .unknown
     }
 
     /// The page's candidates for its one tinted action, in page order (spec §3.0): the fix of

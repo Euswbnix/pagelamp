@@ -25,6 +25,35 @@ enum TestClock {
     }
 }
 
+/// A course timeline in week `week`. The phase (M0.10) defaults to what the week says: ended
+/// outside the term, teaching with a week, unknown without one; the other calendar fields are
+/// neutral (the term unresolved, no calendar).
+func testTimeline(
+    week: UInt32?, confidence: Confidence = .high, outsideTerm: Bool = false, phase: CoursePhase? = nil
+) -> CourseTimeline {
+    let phase = phase ?? (outsideTerm ? .ended : (week == nil ? .unknown : .teaching))
+    return CourseTimeline(
+        asOf: "2026-09-25", currentWeek: week, confidence: confidence, evidence: [], currentModuleIds: [],
+        outsideTerm: outsideTerm, phase: phase, phaseConfidence: confidence, startsOn: nil,
+        defaultWeek: phase == .teaching ? week : nil, breakAfterWeek: nil, lastTeachingWeek: nil,
+        currentBreakKind: nil, notesWeek: nil,
+        term: TermResolution(
+            weekOneMonday: nil, teaching: [], breaks: [], examsEnd: nil, anchor: .noAnchor,
+            anchorConfidence: .low, anchorOrigin: nil, aiLabel: nil, outerFrame: nil, notUsed: [],
+            studentStart: nil, studentEnd: nil
+        ),
+        calendar: .noCalendar, evidenceItems: []
+    )
+}
+
+/// A course in the Current group (M0.10 lifecycle, neutral values).
+func testLifecycle() -> CourseLifecycle {
+    CourseLifecycle(
+        state: .current, group: .current, confidence: .high, since: nil, startsOn: nil, lastActivity: nil,
+        nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: nil
+    )
+}
+
 /// A model over the mock. Its timers (the capsule's, the busy poll, the source highlight) never
 /// fire by themselves: they wait on `timers` until the test fires them. A `gate` holds the mock's
 /// sync before every progress step (`SyncStepGate`), so a test can look at the sync mid-run.
