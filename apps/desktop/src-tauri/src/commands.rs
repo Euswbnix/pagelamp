@@ -381,7 +381,7 @@ pub async fn removal_preview(
         .await
 }
 
-/// Stage 1: hidden at once, deleted after 7 days (or now with `purge_now`).
+/// Stage 1: hidden at once, deleted after the purge window (7 days), or now with `purge_now`.
 #[tauri::command]
 pub async fn remove_courses(
     backend: State<'_, Backend>,

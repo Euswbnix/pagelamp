@@ -1276,8 +1276,8 @@
 "removal.banner.review" = "查看";
 "removal.banner.snoozed" = "两周后再提醒你。";
 "removal.dialog.backup" = "同时删除更新前的备份";
-"removal.dialog.backupOld" = "这个备份已有 %1$@ 天，里面仍有这些课程的文本。";
-"removal.dialog.backupRecent" = "这个备份只有 %1$@ 天，更新出问题时要靠它恢复。";
+"removal.dialog.backupOld" = "这份备份是 %1$@ 天前更新时做的，里面仍有这些课程的文本。";
+"removal.dialog.backupRecent" = "这份备份是 %1$@ 天前更新时做的；如果更新出了问题，要靠它恢复。";
 "removal.dialog.busy" = "正在同步。请等同步结束后再试。";
 "removal.dialog.cannotSync" = "%1$@ 无法重新同步：Canvas 限制了对它的访问。";
 "removal.dialog.deletedTitle" = "会删除的内容";
