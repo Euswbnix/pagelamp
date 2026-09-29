@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { REMOVAL_UI } from "@/features/course/removal/availability";
+import { ReviewPastButton } from "@/features/course/removal/ReviewPastButton";
 import { useUiStore } from "@/stores/ui";
 import { CourseCard } from "./CourseCard";
 import { sourceErrors } from "./lib/courses";
@@ -103,17 +105,20 @@ function PastGroup({
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
       <section aria-labelledby={id} className="space-y-3">
-        <h3 id={id} className="text-sm font-medium text-muted-foreground">
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-              <ChevronRight
-                aria-hidden
-                className="transition-transform motion-reduce:transition-none [[data-state=open]_&]:rotate-90"
-              />
-              {t("groups.past", { count: courses.length })}
-            </Button>
-          </CollapsibleTrigger>
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id={id} className="text-sm font-medium text-muted-foreground">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
+                <ChevronRight
+                  aria-hidden
+                  className="transition-transform motion-reduce:transition-none [[data-state=open]_&]:rotate-90"
+                />
+                {t("groups.past", { count: courses.length })}
+              </Button>
+            </CollapsibleTrigger>
+          </h3>
+          {REMOVAL_UI ? <ReviewPastButton /> : null}
+        </div>
         <CollapsibleContent className="space-y-3">
           <p className="text-sm text-muted-foreground">{t("groups.pastHint")}</p>
           <CourseGrid courses={courses} errors={errors} />

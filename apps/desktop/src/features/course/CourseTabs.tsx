@@ -64,7 +64,7 @@ export function CourseTabs({ overview }: { overview: CourseOverview }) {
         <PolicyTab course={course} aiMaterials={overview.ai_materials} />
       </TabsContent>
       <TabsContent value="settings" className={PANEL}>
-        <SettingsTab course={course} />
+        <SettingsTab course={course} lifecycle={overview.lifecycle} />
       </TabsContent>
     </Tabs>
   );

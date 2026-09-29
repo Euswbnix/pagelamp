@@ -9,6 +9,7 @@ import { CopyButton } from "@/components/common/CopyButton";
 import { ErrorState } from "@/components/common/ErrorState";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { REMOVAL_UI } from "@/features/course/removal/availability";
 import { paths } from "@/lib/routes";
 import { RevealFolderButton } from "./RevealFolderButton";
 import { SettingsSection } from "./SettingsSection";
@@ -91,6 +92,7 @@ const COUNTS = [
 
 function CountList({ counts }: { counts: StoreCounts }) {
   const { t, i18n } = useTranslation("settings");
+  const { t: tr } = useTranslation("removal");
   const number = new Intl.NumberFormat(i18n.language);
   return (
     <div className="space-y-2">
@@ -102,6 +104,14 @@ function CountList({ counts }: { counts: StoreCounts }) {
             <dd className="text-lg font-semibold tabular-nums">{number.format(counts[key])}</dd>
           </div>
         ))}
+        {REMOVAL_UI ? (
+          <div className="rounded-lg border px-3 py-2">
+            <dt className="text-xs text-muted-foreground">{tr("removed.title")}</dt>
+            <dd className="text-lg font-semibold tabular-nums">
+              {number.format(counts.removed_courses)}
+            </dd>
+          </div>
+        ) : null}
       </dl>
     </div>
   );

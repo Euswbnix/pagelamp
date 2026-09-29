@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { PageHeader } from "@/components/common/PageHeader";
+import { REMOVAL_UI } from "@/features/course/removal/availability";
+import { RemovedCoursesSection } from "@/features/course/removal/RemovedCoursesSection";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
 import { DataSection } from "./DataSection";
@@ -16,6 +18,7 @@ export function SettingsPage() {
       <div className="space-y-6">
         <AppearanceSection />
         <DataSection />
+        {REMOVAL_UI ? <RemovedCoursesSection /> : null}
         <PrivacySection />
         <UpdatesSection />
         <HelpSection />
