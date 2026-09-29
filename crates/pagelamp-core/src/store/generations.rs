@@ -2,7 +2,9 @@
 //! feature, with the validated answer and a summary of what was sent (no text). A row is
 //! written once, when the run ends (the store is never held across a model call).
 //!
-//! Retention: the latest 5 rows per feature, course and week.
+//! Retention, per feature, course and week: the latest 5 accepted rows, the latest 5 drafts
+//! and the latest 5 failed or cancelled runs, each counted apart, so a failure never deletes
+//! a result in use or one waiting to be accepted. A row a calendar points to is always kept.
 
 use rusqlite::{Row, params};
 
@@ -11,7 +13,7 @@ use crate::Result;
 use crate::ai::AiFeature;
 use crate::model::Timestamp;
 
-/// Rows kept per feature, course and week.
+/// Rows kept per feature, course and week in each of: accepted, drafts, failed or cancelled.
 pub const KEEP_GENERATIONS: usize = 5;
 
 /// How a run ended.
@@ -96,8 +98,9 @@ fn generation_from_row(row: &Row<'_>) -> rusqlite::Result<GenerationRecord> {
 }
 
 impl Store {
-    /// Write a finished run (replacing a row with the same id), then keep the latest 5 of its
-    /// feature, course and week.
+    /// Write a finished run (replacing a row with the same id), then keep the latest 5 accepted
+    /// rows, the latest 5 drafts and the latest 5 failed or cancelled runs of its feature,
+    /// course and week.
     pub fn record_generation(&self, record: &GenerationRecord) -> Result<()> {
         self.atomic(|| {
             self.conn.execute(
@@ -122,6 +125,8 @@ impl Store {
                 ],
             )?;
             // Rows a calendar still points to are kept (course_calendars.generation_id).
+            // Accepted rows, drafts and failures are counted apart: a failed or cancelled run
+            // never pushes out a result in use or a draft waiting to be accepted.
             self.conn.execute(
                 "DELETE FROM generations
                  WHERE feature = ?1 AND course_id IS ?2 AND week IS ?3
@@ -130,6 +135,17 @@ impl Store {
                    AND id NOT IN (
                        SELECT id FROM generations
                        WHERE feature = ?1 AND course_id IS ?2 AND week IS ?3
+                         AND status = 'accepted'
+                       ORDER BY created_at DESC, rowid DESC LIMIT ?4)
+                   AND id NOT IN (
+                       SELECT id FROM generations
+                       WHERE feature = ?1 AND course_id IS ?2 AND week IS ?3
+                         AND status = 'draft'
+                       ORDER BY created_at DESC, rowid DESC LIMIT ?4)
+                   AND id NOT IN (
+                       SELECT id FROM generations
+                       WHERE feature = ?1 AND course_id IS ?2 AND week IS ?3
+                         AND status NOT IN ('accepted', 'draft')
                        ORDER BY created_at DESC, rowid DESC LIMIT ?4)",
                 params![
                     record.feature.as_str(),
@@ -335,19 +351,76 @@ mod tests {
         assert!(store.generation("gen-1").unwrap().is_none());
         let latest = store.generation("gen-6").unwrap().unwrap();
         assert_eq!(latest, run("gen-6", 6));
-        // A failed run replaces nothing else and carries its error.
+        // A failed run carries its error and pushes no accepted row out.
         let mut failed = run("gen-7", 7);
         failed.status = GenerationStatus::Failed;
         failed.output_json = None;
         failed.error_kind = Some("bad_output".into());
         store.record_generation(&failed).unwrap();
         assert_eq!(store.generation("gen-7").unwrap().unwrap(), failed);
-        assert!(store.generation("gen-2").unwrap().is_none());
+        assert!(store.generation("gen-2").unwrap().is_some());
         // Another course's runs are counted apart.
         let mut elsewhere = run("other", 8);
         elsewhere.course_id = None;
         store.record_generation(&elsewhere).unwrap();
         assert!(store.generation("gen-3").unwrap().is_some());
+    }
+
+    /// Failures never push results out: accepted rows, drafts and failures have 5 places each.
+    #[test]
+    fn failed_runs_never_push_accepted_results_out() {
+        let store = demo_store();
+        for i in 0..5 {
+            store
+                .record_generation(&run(&format!("ok-{i}"), i))
+                .unwrap();
+        }
+        // A study plan draft on screen, waiting for Accept, then 6 failed regenerations.
+        let draft = GenerationRecord {
+            feature: AiFeature::StudyPlan,
+            course_id: None,
+            status: GenerationStatus::Draft,
+            ..run("draft", 5)
+        };
+        store.record_generation(&draft).unwrap();
+        let failed_plan = |id: &str, minutes| GenerationRecord {
+            feature: AiFeature::StudyPlan,
+            course_id: None,
+            status: GenerationStatus::Failed,
+            output_json: None,
+            ..run(id, minutes)
+        };
+        for i in 0..6 {
+            store
+                .record_generation(&failed_plan(&format!("plan-failed-{i}"), 30 + i))
+                .unwrap();
+        }
+        assert_eq!(store.generation("draft").unwrap(), Some(draft));
+        assert!(store.generation("plan-failed-0").unwrap().is_none());
+        let failed = |id: &str, minutes| GenerationRecord {
+            status: GenerationStatus::Failed,
+            output_json: None,
+            error_kind: Some("timeout".into()),
+            ..run(id, minutes)
+        };
+        for i in 0..6 {
+            store
+                .record_generation(&failed(&format!("failed-{i}"), 10 + i))
+                .unwrap();
+        }
+        for i in 0..5 {
+            assert!(
+                store.generation(&format!("ok-{i}")).unwrap().is_some(),
+                "ok-{i}"
+            );
+        }
+        // The others keep their own latest 5.
+        assert!(store.generation("failed-0").unwrap().is_none());
+        assert!(store.generation("failed-5").unwrap().is_some());
+        // A new result pushes the oldest result out, not a failure.
+        store.record_generation(&run("ok-5", 20)).unwrap();
+        assert!(store.generation("ok-0").unwrap().is_none());
+        assert!(store.generation("failed-1").unwrap().is_some());
     }
 
     /// A note covers several courses: deleting one course's runs deletes the notes whose

@@ -481,6 +481,37 @@ async fn notes_are_kept_and_deleted_with_the_courses_they_cover() {
     assert!(app.weekly_notes().unwrap().is_empty());
 }
 
+/// Failed runs never push kept notes out (a Monday whose local model isn't running adds a
+/// failed row every week).
+#[tokio::test]
+async fn failed_runs_never_push_kept_notes_out() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    for n in 0..5 {
+        app.write_weekly_note(&format!("note-{n}"), click(), |_| {})
+            .await
+            .unwrap();
+    }
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    for n in 0..3 {
+        assert!(
+            app.write_weekly_note(&format!("failed-{n}"), click(), |_| {})
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(app.weekly_notes().unwrap().len(), 5);
+}
+
 /// Plan D27 (revised 2026-09-29): "prepare it when I open PageLamp on Monday" is for the
 /// student's own API key (mode C) and a model on this computer (mode D); the ChatGPT plan
 /// (mode A) and the Claude plan (mode B) never run in the background.
