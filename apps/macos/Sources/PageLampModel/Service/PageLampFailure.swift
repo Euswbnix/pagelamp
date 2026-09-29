@@ -24,6 +24,13 @@ public struct PageLampFailure: Error, Equatable, Hashable, Sendable {
         case busy
         /// The database was written by a newer PageLamp, or is older and not migrated.
         case schema
+        /// PageLamp didn't send it to a model (the course's AI settings, no model chosen, the
+        /// budget, …); the facade's `BlockReason` says which.
+        case blocked
+        /// The model or its service failed (key rejected, quota, timeout, …).
+        case model
+        /// Stopped on request (e.g. a sync the student cancelled).
+        case cancelled
         /// Anything else (database, keychain, I/O).
         case `internal`
         /// The core hit a bug (a Rust panic).
@@ -48,6 +55,9 @@ public struct PageLampFailure: Error, Equatable, Hashable, Sendable {
         case .Ambiguous(let message): self.init(kind: .ambiguous, message: message)
         case .Busy(let message): self.init(kind: .busy, message: message)
         case .Schema(let message): self.init(kind: .schema, message: message)
+        case .Blocked(let message, _): self.init(kind: .blocked, message: message)
+        case .Model(let message, _, _): self.init(kind: .model, message: message)
+        case .Cancelled(let message): self.init(kind: .cancelled, message: message)
         case .Internal(let message): self.init(kind: .internal, message: message)
         case .Panic(let message): self.init(kind: .panic, message: message)
         }
@@ -72,6 +82,9 @@ public struct PageLampFailure: Error, Equatable, Hashable, Sendable {
         case .ambiguous: "common.errors.ambiguous"
         case .busy: "common.errors.busy"
         case .schema: "mac.errors.schema"
+        case .blocked: "common.errors.blocked"
+        case .model: "common.errors.model"
+        case .cancelled: "common.errors.cancelled"
         case .internal: "common.errors.internal"
         case .panic: "mac.errors.panic"
         }
