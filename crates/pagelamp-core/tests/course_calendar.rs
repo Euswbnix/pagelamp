@@ -2,6 +2,9 @@
 //! (CAL-n, by their design names). All dates and courses are synthetic.
 
 use chrono::{DateTime, NaiveDate, Utc};
+use pagelamp_core::calendar::{
+    CalendarInForce, DatesDraft, DatesProblem, SecondSegment, calendar_from_dates,
+};
 use pagelamp_core::lifecycle::{LifecycleInput, course_lifecycle, is_active};
 use pagelamp_core::model::*;
 use pagelamp_core::term::{TermInput, resolve_term};
@@ -79,6 +82,7 @@ fn material(id: &str, title: &str, published: &str) -> Material {
 struct Case {
     course: Course,
     data: CourseTermData,
+    calendar: Option<CalendarInForce>,
     materials: Vec<Material>,
     modules: Vec<Module>,
     events: Vec<Event>,
@@ -90,6 +94,7 @@ impl Case {
         Case {
             course,
             data,
+            calendar: None,
             materials: Vec::new(),
             modules: Vec::new(),
             events: Vec::new(),
@@ -103,6 +108,7 @@ impl Case {
             course: &self.course,
             data: &self.data,
             dates_confirmed: self.confirmed,
+            calendar: self.calendar.as_ref(),
             modules: &self.modules,
             materials: &self.materials,
             events: &self.events,
@@ -938,4 +944,232 @@ fn weekend_start_counts_from_the_next_monday() {
         case.lifecycle("2026-09-06").starts_on,
         Some(date("2026-09-07"))
     );
+}
+
+// ----- alpha.2 (M1): the calendar in force -----------------------------------------------------
+
+fn span(start: &str, end: &str) -> DateSpan {
+    DateSpan {
+        start: date(start),
+        end: date(end),
+    }
+}
+
+fn a_break(kind: BreakKind, start: &str, end: &str, numbered: bool) -> CalendarBreak {
+    CalendarBreak {
+        kind,
+        span: span(start, end),
+        numbered,
+        label: String::new(),
+    }
+}
+
+fn user_calendar(draft: &DatesDraft) -> CalendarInForce {
+    CalendarInForce {
+        calendar: calendar_from_dates(draft).expect("valid dates"),
+        origin: CalendarOrigin::User,
+        ai_label: None,
+    }
+}
+
+/// The fall course of CAL-20: classes 09-08 (Tuesday) to 12-08, reading week 10-26..10-30,
+/// exams to 12-22.
+fn fall_draft(numbered: bool) -> DatesDraft {
+    DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: Some(date("2026-12-22")),
+        breaks: vec![a_break(
+            BreakKind::ReadingWeek,
+            "2026-10-26",
+            "2026-10-30",
+            numbered,
+        )],
+        second_segment: None,
+    }
+}
+
+/// CAL-20: a reading week from a confirmed calendar.
+#[test]
+fn reading_week_from_confirmed_calendar() {
+    let mut case = Case::new(dem332(), uoft_window_term());
+    case.calendar = Some(user_calendar(&fall_draft(false)));
+    let t = case.timeline("2026-10-28");
+    assert_eq!(t.phase, CoursePhase::Break);
+    assert_eq!(t.break_after_week, Some(7));
+    assert_eq!(t.current_week, None);
+    assert_eq!(t.default_week, Some(7));
+    assert_eq!(t.current_break_kind, Some(BreakKind::ReadingWeek));
+    assert_eq!(t.calendar, CalendarStatus::Accepted);
+    assert_eq!(t.term.anchor, TermAnchorSource::StudentConfirmed);
+    assert_eq!(t.term.anchor_origin, Some(CalendarOrigin::User));
+    let after = case.timeline("2026-11-02");
+    assert_eq!(
+        (after.current_week, after.confidence),
+        (Some(8), Confidence::High)
+    );
+    assert!(
+        !after
+            .evidence
+            .iter()
+            .any(|line| line.contains("reading weeks"))
+    );
+    let exams = case.timeline("2026-12-15");
+    assert_eq!(
+        (exams.phase, exams.phase_confidence),
+        (CoursePhase::ExamPeriod, Confidence::High)
+    );
+    assert_eq!(exams.last_teaching_week, Some(13));
+    let ended = case.timeline("2026-12-30");
+    assert_eq!(ended.phase, CoursePhase::Ended);
+    let lifecycle = case.lifecycle("2026-12-30");
+    assert_eq!(
+        (lifecycle.state, lifecycle.confidence),
+        (LifecycleState::Ended, Confidence::High)
+    );
+    assert!(lifecycle_codes(&lifecycle).contains(&"exams_over"));
+    // A numbered reading week is week 8, and the week after it week 9.
+    case.calendar = Some(user_calendar(&fall_draft(true)));
+    assert_eq!(case.timeline("2026-10-28").current_week, Some(8));
+    assert_eq!(case.timeline("2026-11-02").current_week, Some(9));
+}
+
+/// CAL-21: a one-day holiday is not a break.
+#[test]
+fn one_day_holiday_is_not_a_break() {
+    let mut draft = fall_draft(false);
+    draft.breaks.push(a_break(
+        BreakKind::Holiday,
+        "2026-10-12",
+        "2026-10-12",
+        false,
+    ));
+    let mut case = Case::new(dem332(), uoft_window_term());
+    case.calendar = Some(user_calendar(&draft));
+    let t = case.timeline("2026-10-12");
+    assert_eq!((t.phase, t.current_week), (CoursePhase::Teaching, Some(6)));
+    assert!(codes(&t).contains(&"no_class_today"));
+    assert!(
+        t.evidence
+            .iter()
+            .any(|line| line == "no class today (holiday)")
+    );
+    // It doesn't count toward the 4 breaks.
+    for (i, week) in ["2026-09-21", "2026-10-05", "2026-11-09", "2026-11-23"]
+        .iter()
+        .enumerate()
+    {
+        let monday = date(week);
+        draft.breaks.push(CalendarBreak {
+            kind: BreakKind::Other,
+            span: DateSpan {
+                start: monday,
+                end: monday + chrono::TimeDelta::days(4),
+            },
+            numbered: i % 2 == 0,
+            label: String::new(),
+        });
+    }
+    assert_eq!(
+        calendar_from_dates(&draft),
+        Err(vec![DatesProblem::TooManyBreaks])
+    );
+    draft.breaks.pop();
+    assert!(calendar_from_dates(&draft).is_ok());
+}
+
+/// CAL-22: a full-year course, numbered straight through or restarting in January.
+#[test]
+fn full_year_course() {
+    // The gap between the halves is the winter break; it needs no break row.
+    let draft = |restart: bool| DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: None,
+        breaks: Vec::new(),
+        second_segment: Some(SecondSegment {
+            first_class: date("2027-01-11"),
+            last_class: Some(date("2027-04-09")),
+            restart_numbering: restart,
+        }),
+    };
+    let mut case = Case::new(
+        course(
+            UOFT,
+            "DEM137Y5 Y LEC0101 20269",
+            "DEM137Y5 Y LEC0101 20269 Demo Year",
+        ),
+        canvas_term("Fall-Winter 2026", "2026-09-01", "2027-01-31"),
+    );
+    case.calendar = Some(user_calendar(&draft(false)));
+    let calendar = &case.calendar.as_ref().unwrap().calendar;
+    assert_eq!(calendar.segments[1].first_week_number, 15);
+    let winter = case.timeline("2026-12-28");
+    assert_eq!(winter.phase, CoursePhase::Break);
+    assert_eq!(winter.current_break_kind, Some(BreakKind::WinterBreak));
+    assert_eq!(winter.break_after_week, Some(14));
+    assert_eq!(case.timeline("2027-01-20").current_week, Some(16));
+    case.calendar = Some(user_calendar(&draft(true)));
+    assert_eq!(case.timeline("2027-01-20").current_week, Some(2));
+    // The whole span (213 days) is plausible for the student's own dates.
+    assert_eq!(case.timeline("2027-03-10").phase, CoursePhase::Teaching);
+    assert_eq!(case.lifecycle("2027-02-24").state, LifecycleState::Current);
+}
+
+#[test]
+fn dates_form_problems_are_reported_together() {
+    let draft = DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-09-01")),
+        exams_end: Some(date("2026-08-30")),
+        breaks: vec![
+            a_break(BreakKind::ReadingWeek, "2026-10-30", "2026-10-26", false),
+            a_break(BreakKind::Other, "2027-06-01", "2027-06-05", false),
+            a_break(BreakKind::ReadingWeek, "2026-09-10", "2026-10-30", false),
+        ],
+        second_segment: None,
+    };
+    let problems = calendar_from_dates(&draft).unwrap_err();
+    for expected in [
+        DatesProblem::LastClassBeforeFirst,
+        DatesProblem::ExamsEndBeforeLastClass,
+        DatesProblem::BreakReversed,
+        DatesProblem::BreakOutsideCourse,
+        DatesProblem::BreakTooLong,
+    ] {
+        assert!(problems.contains(&expected), "{expected:?} in {problems:?}");
+    }
+    assert!(!DatesProblem::BreakTooLong.message().is_empty());
+
+    let overlapping = DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: None,
+        exams_end: Some(date("2026-12-22")),
+        breaks: Vec::new(),
+        second_segment: Some(SecondSegment {
+            first_class: date("2026-09-01"),
+            last_class: Some(date("2026-08-01")),
+            restart_numbering: true,
+        }),
+    };
+    let problems = calendar_from_dates(&overlapping).unwrap_err();
+    assert!(problems.contains(&DatesProblem::SecondSegmentOverlaps));
+    assert!(problems.contains(&DatesProblem::SecondSegmentLastClassBeforeFirst));
+
+    // Labels are cleaned; breaks come back in date order; the exam period follows the last
+    // class.
+    let mut fine = fall_draft(false);
+    fine.breaks.insert(
+        0,
+        CalendarBreak {
+            kind: BreakKind::Holiday,
+            span: span("2026-11-11", "2026-11-11"),
+            numbered: false,
+            label: "Remembrance\nDay".replace("\\n", "\n"),
+        },
+    );
+    let calendar = calendar_from_dates(&fine).unwrap();
+    assert_eq!(calendar.breaks[0].kind, BreakKind::ReadingWeek);
+    assert!(!calendar.breaks[1].label.contains('\n'));
+    assert_eq!(calendar.exam_period, Some(span("2026-12-09", "2026-12-22")));
 }

@@ -290,6 +290,7 @@ pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseT
     // follows a break by itself within two weeks.)
     if calendar.is_some()
         && term.breaks.is_empty()
+        && resolved.calendar == CalendarStatus::NoCalendar
         && term.anchor != TermAnchorSource::PublishedWeekLabels
     {
         lines.push(
@@ -346,7 +347,7 @@ pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseT
         current_break_kind: state.break_kind,
         notes_week: resolved.notes_week,
         term: term.clone(),
-        calendar: CalendarStatus::NoCalendar,
+        calendar: resolved.calendar,
         evidence_items: lines.items,
     }
 }
@@ -524,7 +525,13 @@ fn phase_lines(term: &TermResolution, state: &PhaseState, today: NaiveDate, line
                 lines.item(EvidenceItem::new(EvidenceCode::InBreak).kind(kind));
             }
         }
-        CoursePhase::Teaching => {}
+        CoursePhase::Teaching => {
+            // A holiday shorter than a break week: still teaching, but no class today.
+            if let Some(holiday) = term.breaks.iter().find(|b| b.span.contains(today)) {
+                let item = EvidenceItem::new(EvidenceCode::NoClassToday).kind(holiday.kind);
+                lines.push(item.english(), item);
+            }
+        }
     }
 }
 
@@ -1031,6 +1038,7 @@ mod tests {
             course,
             data: &data,
             dates_confirmed: false,
+            calendar: None,
             modules,
             materials,
             events,

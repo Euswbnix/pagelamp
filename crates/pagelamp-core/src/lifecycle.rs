@@ -222,22 +222,22 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
 
     // Rule 2: strong end signals → Ended · High.
     let mut strong: Vec<EndSignal> = Vec::new();
-    if term.anchor == TermAnchorSource::StudentConfirmed {
-        let own_end = term
-            .exams_end
-            .map(|end| (end, add_days(end, AFTER_EXAMS_DAYS)))
-            .or_else(|| {
-                data.user_term_end
-                    .map(|last| (last, add_days(last, AFTER_LAST_CLASS_DAYS)))
-            });
-        if let Some((end, over)) = own_end
-            && over < today
-        {
-            strong.push(EndSignal {
-                item: EvidenceItem::new(EvidenceCode::ExamsOver).date("date", end),
-                since: Some(end),
-            });
-        }
+    // The student's own dates: exams end + 7 days, or (no exam date) last class + 28.
+    let own_end = term
+        .exams_end
+        .map(|end| (end, add_days(end, AFTER_EXAMS_DAYS)))
+        .or_else(|| {
+            resolved
+                .student_last_class
+                .map(|last| (last, add_days(last, AFTER_LAST_CLASS_DAYS)))
+        });
+    if let Some((end, over)) = own_end
+        && over < today
+    {
+        strong.push(EndSignal {
+            item: EvidenceItem::new(EvidenceCode::ExamsOver).date("date", end),
+            since: Some(end),
+        });
     }
     if data.lms.concluded == Some(true) {
         strong.push(EndSignal {
@@ -257,12 +257,10 @@ pub fn course_lifecycle(input: &LifecycleInput<'_>) -> CourseLifecycle {
             since: None,
         });
     }
-    // (The student's own last day of classes, when given, is the only end that counts.)
-    let own_end_given =
-        term.anchor == TermAnchorSource::StudentConfirmed && data.user_term_end.is_some();
+    // (The student's own end, when given, is the only end that counts.)
     if let Some((source, end)) = resolved.plausible_end
         && add_days(end, END_GRACE_DAYS) < today
-        && !own_end_given
+        && own_end.is_none()
     {
         strong.push(EndSignal {
             item: EvidenceItem::new(EvidenceCode::CourseEndPassed)

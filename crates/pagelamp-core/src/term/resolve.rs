@@ -26,9 +26,10 @@ use super::evidence::{EvidenceCode, EvidenceItem};
 use super::fit::{self, Observation};
 use super::session::{SessionHint, session_hint};
 use super::{
-    CalendarOrigin, DateSpan, RejectReason, RejectedDates, TeachingSegment, TermAnchorSource,
-    TermResolution,
+    CalendarOrigin, CalendarStatus, DateSpan, RejectReason, RejectedDates, TeachingSegment,
+    TermAnchorSource, TermResolution,
 };
+use crate::calendar::CalendarInForce;
 use crate::dates::{Tz, add_days, course_date, days_between, time_zone, week_one_monday};
 use crate::model::{Confidence, Course, CourseTermData, Event, Material, Module};
 
@@ -63,6 +64,8 @@ pub struct TermInput<'a> {
     pub data: &'a CourseTermData,
     /// The course is in the `CONFIRMED_DATES_KEY` list.
     pub dates_confirmed: bool,
+    /// The course's accepted calendar (schema v4), which outranks everything else.
+    pub calendar: Option<&'a CalendarInForce>,
     pub modules: &'a [Module],
     pub materials: &'a [Material],
     pub events: &'a [Event],
@@ -98,6 +101,11 @@ pub struct ResolvedTerm {
     /// Earliest and latest activity on or before today (materials, unlocks, events).
     pub first_activity: Option<NaiveDate>,
     pub last_activity: Option<NaiveDate>,
+    /// The last day of classes the student gave (their calendar or their own term end), for
+    /// the lifecycle's rule 2; None when the end came from elsewhere.
+    pub student_last_class: Option<NaiveDate>,
+    /// Accepted when a calendar is in force.
+    pub calendar: CalendarStatus,
     /// Non-bulk per-day week observations (§6.5), oldest first.
     pub(crate) observations: Vec<Observation>,
     pub notes_week: Option<u32>,
@@ -275,7 +283,10 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
     } else {
         CalendarOrigin::Legacy
     };
-    let student = student_anchor(data, origin, &ctx, &mut not_used);
+    let student = match input.calendar {
+        Some(in_force) => calendar_anchor(in_force),
+        None => student_anchor(data, origin, &ctx, &mut not_used),
+    };
     let lower_index = usize::from(student.is_none());
     let mut anchor = match (student, plausible.first()) {
         (Some(student), _) => Some(student),
@@ -284,7 +295,8 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
     };
 
     // A student end alone replaces only the end of the anchor below.
-    if data.user_term_start.is_none()
+    if input.calendar.is_none()
+        && data.user_term_start.is_none()
         && let (Some(end), Some(anchor)) = (data.user_term_end, anchor.as_mut())
         && end >= anchor.start
     {
@@ -292,8 +304,10 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         anchor.end_clipped = false;
         evidence.push(EvidenceItem::new(EvidenceCode::StudentEndUsed).date("end", end));
     }
-    // A student start without an end borrows a plausible end from below.
+    // A student start without an end borrows a plausible end from below (a calendar's
+    // segments say what they mean).
     if let Some(anchor) = anchor.as_mut()
+        && input.calendar.is_none()
         && anchor.source == TermAnchorSource::StudentConfirmed
         && anchor.end.is_none()
         && let Some(lower) = plausible.iter().find(|lower| {
@@ -351,8 +365,22 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         evidence.push(item);
     }
 
-    let resolution = match &anchor {
-        Some(anchor) => TermResolution {
+    let resolution = match (&anchor, input.calendar) {
+        (Some(anchor), Some(in_force)) => TermResolution {
+            week_one_monday: Some(week_one_monday(anchor.start)),
+            teaching: in_force.calendar.segments.clone(),
+            breaks: in_force.calendar.breaks.clone(),
+            exams_end: in_force.calendar.exam_period.map(|period| period.end),
+            anchor: anchor.source,
+            anchor_confidence: anchor.confidence,
+            anchor_origin: anchor.origin,
+            ai_label: in_force.ai_label.clone(),
+            outer_frame,
+            not_used,
+            student_start: data.user_term_start,
+            student_end: data.user_term_end,
+        },
+        (Some(anchor), None) => TermResolution {
             week_one_monday: Some(week_one_monday(anchor.start)),
             teaching: vec![TeachingSegment {
                 first_class: anchor.start,
@@ -370,7 +398,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             student_start: data.user_term_start,
             student_end: data.user_term_end,
         },
-        None => TermResolution {
+        (None, _) => TermResolution {
             outer_frame,
             not_used,
             student_start: data.user_term_start,
@@ -382,7 +410,24 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         .iter()
         .filter(|a| a.source != TermAnchorSource::PublishedWeekLabels && !a.end_clipped)
         .find_map(|a| Some((a.source, a.end?)));
+    let student_last_class = match input.calendar {
+        Some(in_force) => in_force
+            .calendar
+            .segments
+            .last()
+            .and_then(|segment| segment.last_class),
+        // The student's own end, when it is the end in force (a legacy end may be dropped).
+        None => data
+            .user_term_end
+            .filter(|end| anchor.as_ref().and_then(|a| a.end) == Some(*end)),
+    };
     ResolvedTerm {
+        calendar: if input.calendar.is_some() {
+            CalendarStatus::Accepted
+        } else {
+            CalendarStatus::NoCalendar
+        },
+        student_last_class,
         resolution,
         tz,
         plausible_end,
@@ -427,6 +472,21 @@ fn student_anchor(
         end,
         confidence: Confidence::High,
         origin: Some(origin),
+        end_clipped: false,
+        fit_weeks: None,
+    })
+}
+
+/// The accepted calendar as the anchor: the student confirmed it, whoever read the dates.
+fn calendar_anchor(in_force: &CalendarInForce) -> Option<Anchor> {
+    let segments = &in_force.calendar.segments;
+    let first = segments.first()?;
+    Some(Anchor {
+        source: TermAnchorSource::StudentConfirmed,
+        start: first.first_class,
+        end: segments.last().and_then(|s| s.last_class),
+        confidence: Confidence::High,
+        origin: Some(in_force.origin),
         end_clipped: false,
         fit_weeks: None,
     })

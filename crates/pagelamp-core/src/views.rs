@@ -774,6 +774,8 @@ impl CourseData {
             course,
             data: &self.term_data,
             dates_confirmed: self.dates_confirmed,
+            // Accepted calendars live in schema v4 (alpha.2); none before that.
+            calendar: None,
             modules: &self.modules,
             materials: &self.materials,
             events: &self.events,
