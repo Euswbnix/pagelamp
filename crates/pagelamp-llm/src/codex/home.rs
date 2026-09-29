@@ -71,6 +71,34 @@ memories = false
 sandbox = "unelevated"
 "#;
 
+/// Passed again as `-c` overrides on every run (design §2.3), so a system or managed config layer
+/// can't turn a tool back on. Each is also set in `CONFIG_TOML` (a test checks).
+pub const RUN_OVERRIDES: &[&str] = &[
+    "features.shell_tool=false",
+    "features.unified_exec=false",
+    "features.js_repl=false",
+    "features.apps=false",
+    "features.plugins=false",
+    "features.multi_agent=false",
+    "features.collab=false",
+    "features.code_mode=false",
+    "features.hooks=false",
+    "features.codex_hooks=false",
+    "features.plugin_hooks=false",
+    "features.view_image=false",
+    "features.image_generation=false",
+    "features.web_search=false",
+    "features.standalone_web_search=false",
+    "features.browser_use=false",
+    "features.computer_use=false",
+    "features.memories=false",
+    "tools.update_plan.enabled=false",
+    "tools.experimental_request_user_input.enabled=false",
+    "web_search=\"disabled\"",
+    "history.persistence=\"none\"",
+    "project_doc_max_bytes=0",
+];
+
 #[derive(Debug, thiserror::Error)]
 pub enum HomeError {
     /// Another PageLamp process (or window) is running Codex, signing in or out.
@@ -186,6 +214,21 @@ mod tests {
         }
         // No MCP server is ever configured here.
         assert!(!config.contains_key("mcp_servers"));
+        // Every run override says the same as the config.
+        for over in RUN_OVERRIDES {
+            let (path, value) = over.split_once('=').unwrap();
+            let expected: toml::Value = toml::from_str::<toml::Table>(&format!("v = {value}"))
+                .unwrap()
+                .remove("v")
+                .unwrap();
+            let actual = path
+                .split('.')
+                .try_fold(&toml::Value::Table(config.clone()), |node, key| {
+                    node.get(key).map(|v| v)
+                })
+                .cloned();
+            assert_eq!(actual, Some(expected), "{over}");
+        }
     }
 
     /// For the CI contract test (`codex --strict-config` against the real binary):
