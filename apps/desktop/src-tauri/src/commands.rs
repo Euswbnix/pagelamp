@@ -10,11 +10,16 @@
 use std::path::PathBuf;
 
 use chrono::NaiveDate;
+use pagelamp_app::ai::{
+    AiStatus, BackendRef, CostEstimate, EstimateRequest, LocalServer, ModelChoice, ModelInfo,
+    ModelProviderRecord, ProbeReport, ProviderPreset, RemoveAiDataReport, UsageSummary,
+};
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
 use pagelamp_app::{StartupTasks, UpdateChannel, UpdateCheckRecord, UpdatePrefs};
+use pagelamp_core::ai::{AiFeature, MaterialSharing};
 use pagelamp_core::model::{AiPolicy, SearchHit, SourceRecord, StoredStudyPlan};
 use pagelamp_core::views::{CourseOverview, CourseSummary, Deadline, WeekMaterials};
 use tauri::State;
@@ -143,6 +148,18 @@ pub async fn download_course_files(
         .await
 }
 
+/// Stop this app's running sync or download at the next file, course or download (mac request
+/// F4). The stopped call rejects with `cancelled`; nothing happens when no sync runs here.
+#[tauri::command]
+pub async fn cancel_sync(backend: State<'_, Backend>) -> CmdResult<()> {
+    backend
+        .blocking(|app| {
+            app.cancel_sync();
+            Ok(())
+        })
+        .await
+}
+
 // ----- read views ---------------------------------------------------------------------------------
 
 #[tauri::command]
@@ -247,6 +264,163 @@ pub async fn set_course_hidden(
     backend
         .blocking(move |app| app.set_course_hidden(&course, hidden))
         .await
+}
+
+/// Question (b): may this course's materials be shared with an AI service? (design §4.1)
+#[tauri::command]
+pub async fn set_course_material_sharing(
+    backend: State<'_, Backend>,
+    course: String,
+    answer: MaterialSharing,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_course_material_sharing(&course, answer))
+        .await
+}
+
+// ----- AI setup (v0.3 M1; design §3.8) ------------------------------------------------------------
+// API keys are passed straight to the facade, which checks them and keeps them in the keychain.
+
+#[tauri::command]
+pub async fn ai_status(backend: State<'_, Backend>) -> CmdResult<AiStatus> {
+    backend.blocking(|app| app.ai_status()).await
+}
+
+#[tauri::command]
+pub async fn model_provider_presets(backend: State<'_, Backend>) -> CmdResult<Vec<ProviderPreset>> {
+    backend
+        .blocking(|app| Ok(app.model_provider_presets()))
+        .await
+}
+
+#[tauri::command]
+pub async fn add_model_provider(
+    backend: State<'_, Backend>,
+    preset: String,
+    base_url: Option<String>,
+    api_key: Option<String>,
+) -> CmdResult<ModelProviderRecord> {
+    backend
+        .spawn(|app| async move {
+            app.add_model_provider(&preset, base_url.as_deref(), api_key.as_deref())
+                .await
+        })
+        .await
+}
+
+#[tauri::command]
+pub async fn update_model_provider_key(
+    backend: State<'_, Backend>,
+    provider_id: String,
+    api_key: String,
+) -> CmdResult<ModelProviderRecord> {
+    backend
+        .spawn(|app| async move { app.update_model_provider_key(&provider_id, &api_key).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn remove_model_provider(
+    backend: State<'_, Backend>,
+    provider_id: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.remove_model_provider(&provider_id))
+        .await
+}
+
+#[tauri::command]
+pub async fn detect_local_servers(backend: State<'_, Backend>) -> CmdResult<Vec<LocalServer>> {
+    backend
+        .spawn(|app| async move { app.detect_local_servers().await })
+        .await
+}
+
+#[tauri::command]
+pub async fn list_models(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+) -> CmdResult<Vec<ModelInfo>> {
+    backend
+        .spawn(|app| async move { app.list_models(&model_backend).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn test_model(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    model: String,
+) -> CmdResult<ProbeReport> {
+    backend
+        .spawn(|app| async move { app.test_model(&model_backend, &model).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn set_feature_model(
+    backend: State<'_, Backend>,
+    feature: AiFeature,
+    choice: Option<ModelChoice>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_feature_model(feature, choice))
+        .await
+}
+
+#[tauri::command]
+pub async fn acknowledge_ai_disclosure(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    version: u32,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.acknowledge_ai_disclosure(&model_backend, version))
+        .await
+}
+
+#[tauri::command]
+pub async fn acknowledge_unpriced_model(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    model: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.acknowledge_unpriced_model(&model_backend, &model))
+        .await
+}
+
+#[tauri::command]
+pub async fn set_monthly_budget(
+    backend: State<'_, Backend>,
+    micro_usd: Option<u64>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.set_monthly_budget(micro_usd))
+        .await
+}
+
+#[tauri::command]
+pub async fn estimate_generation(
+    backend: State<'_, Backend>,
+    request: EstimateRequest,
+) -> CmdResult<CostEstimate> {
+    backend
+        .blocking(move |app| app.estimate_generation(&request))
+        .await
+}
+
+#[tauri::command]
+pub async fn usage_summary(
+    backend: State<'_, Backend>,
+    month: Option<NaiveDate>,
+) -> CmdResult<UsageSummary> {
+    backend.blocking(move |app| app.usage_summary(month)).await
+}
+
+#[tauri::command]
+pub async fn remove_all_ai_data(backend: State<'_, Backend>) -> CmdResult<RemoveAiDataReport> {
+    backend.blocking(|app| app.remove_all_ai_data()).await
 }
 
 // ----- "connect your AI app" ---------------------------------------------------------------------

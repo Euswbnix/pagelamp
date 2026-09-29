@@ -75,6 +75,10 @@
     }
   },
   {
+    "cmd": "cancel_sync",
+    "args": {}
+  },
+  {
     "cmd": "list_courses",
     "args": {}
   },
@@ -157,6 +161,13 @@
     }
   },
   {
+    "cmd": "set_course_material_sharing",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101",
+      "answer": "not_sure"
+    }
+  },
+  {
     "cmd": "mcp_client_configs",
     "args": {}
   },
@@ -229,6 +240,148 @@
   },
   {
     "cmd": "last_update_check",
+    "args": {}
+  },
+  {
+    "cmd": "ai_status",
+    "args": {}
+  },
+  {
+    "cmd": "model_provider_presets",
+    "args": {}
+  },
+  {
+    "cmd": "add_model_provider",
+    "args": {
+      "preset": "custom",
+      "baseUrl": "http://llm.example.edu/v1",
+      "apiKey": "contract-test-key"
+    }
+  },
+  {
+    "cmd": "update_model_provider_key",
+    "args": {
+      "providerId": "contract-test-provider",
+      "apiKey": "contract-test-key"
+    }
+  },
+  {
+    "cmd": "remove_model_provider",
+    "args": {
+      "providerId": "contract-test-provider"
+    }
+  },
+  {
+    "cmd": "detect_local_servers",
+    "args": {}
+  },
+  {
+    "cmd": "list_models",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      }
+    }
+  },
+  {
+    "cmd": "test_model",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "model": "contract-test-model"
+    }
+  },
+  {
+    "cmd": "set_feature_model",
+    "args": {
+      "feature": "weekly_note",
+      "choice": {
+        "backend": {
+          "kind": "provider",
+          "provider_id": "contract-test-provider"
+        },
+        "model": "m",
+        "effort": "lowest"
+      }
+    }
+  },
+  {
+    "cmd": "set_feature_model",
+    "args": {
+      "feature": "weekly_note",
+      "choice": null
+    }
+  },
+  {
+    "cmd": "acknowledge_ai_disclosure",
+    "args": {
+      "modelBackend": {
+        "kind": "codex"
+      },
+      "version": 1
+    }
+  },
+  {
+    "cmd": "acknowledge_unpriced_model",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "model": "contract-test-model"
+    }
+  },
+  {
+    "cmd": "set_monthly_budget",
+    "args": {
+      "microUsd": 5000000
+    }
+  },
+  {
+    "cmd": "set_monthly_budget",
+    "args": {
+      "microUsd": null
+    }
+  },
+  {
+    "cmd": "estimate_generation",
+    "args": {
+      "request": {
+        "feature": "weekly_explanation",
+        "course": "folder:contract-test/course/DEMO101",
+        "week": 3
+      }
+    }
+  },
+  {
+    "cmd": "estimate_generation",
+    "args": {
+      "request": {
+        "feature": "study_plan",
+        "courses": [
+          "folder:contract-test/course/DEMO101"
+        ],
+        "horizon_days": 7
+      }
+    }
+  },
+  {
+    "cmd": "usage_summary",
+    "args": {
+      "month": "2026-09-01"
+    }
+  },
+  {
+    "cmd": "usage_summary",
+    "args": {
+      "month": null
+    }
+  },
+  {
+    "cmd": "remove_all_ai_data",
     "args": {}
   },
   {

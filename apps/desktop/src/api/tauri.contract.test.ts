@@ -19,6 +19,8 @@ const SOURCE = "folder:contract-test";
 // deterministic (the contract is about names and shapes, not about succeeding).
 const OFFLINE_CANVAS_URL = "contract-test-not-a-url";
 const OFFLINE_FEED_URL = "http://calendar.example.edu/feed.ics"; // plain http → invalid
+const OFFLINE_LLM_URL = "http://llm.example.edu/v1"; // plain http to another computer → invalid
+const PROVIDER = { kind: "provider", provider_id: "contract-test-provider" } as const; // not_found
 
 it("sends the commands and arguments the Rust side expects", async () => {
   const calls: { cmd: string; args: unknown }[] = [];
@@ -41,6 +43,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.syncAll({}, onEvent);
   await api.syncSource(SOURCE, { download_files: false }, onEvent);
   await api.downloadCourseFiles(COURSE, onEvent);
+  await api.cancelSync();
   await api.listCourses();
   await api.courseOverview(COURSE);
   await api.weekMaterials(COURSE, 3);
@@ -53,6 +56,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setCourseTerm(COURSE, "2026-09-08", null);
   await api.setCourseAiAccess(COURSE, false);
   await api.setCourseHidden(COURSE, true);
+  await api.setCourseMaterialSharing(COURSE, "not_sure");
   await api.mcpClientConfigs();
   await api.diagnosticReport();
   await api.doctor();
@@ -69,6 +73,25 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.acknowledgeWhatsNew();
   await api.acknowledgeUpdateDisclosure();
   await api.lastUpdateCheck();
+  await api.aiStatus();
+  await api.modelProviderPresets();
+  await api.addModelProvider("custom", OFFLINE_LLM_URL, "contract-test-key");
+  await api.updateModelProviderKey(PROVIDER.provider_id, "contract-test-key");
+  await api.removeModelProvider(PROVIDER.provider_id);
+  await api.detectLocalServers();
+  await api.listModels(PROVIDER);
+  await api.testModel(PROVIDER, "contract-test-model");
+  await api.setFeatureModel("weekly_note", { backend: PROVIDER, model: "m", effort: "lowest" });
+  await api.setFeatureModel("weekly_note", null);
+  await api.acknowledgeAiDisclosure({ kind: "codex" }, 1);
+  await api.acknowledgeUnpricedModel(PROVIDER, "contract-test-model");
+  await api.setMonthlyBudget(5_000_000);
+  await api.setMonthlyBudget(null);
+  await api.estimateGeneration({ feature: "weekly_explanation", course: COURSE, week: 3 });
+  await api.estimateGeneration({ feature: "study_plan", courses: [COURSE], horizon_days: 7 });
+  await api.usageSummary("2026-09-01");
+  await api.usageSummary(null);
+  await api.removeAllAiData();
   await api.updaterStatus();
   await api.checkForUpdate();
   await api.installUpdate(() => {});

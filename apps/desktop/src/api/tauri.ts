@@ -47,6 +47,7 @@ export function createTauriApi(): PageLampApi {
 
     downloadCourseFiles: (courseId, onEvent) =>
       call("download_course_files", { course: courseId, onEvent: eventChannel(onEvent) }),
+    cancelSync: () => call("cancel_sync"),
 
     listCourses: () => call("list_courses"),
     courseOverview: (courseId) => call("course_overview", { course: courseId }),
@@ -67,8 +68,8 @@ export function createTauriApi(): PageLampApi {
     setCourseMaterialSharing: (courseId, answer) =>
       call("set_course_material_sharing", { course: courseId, answer }),
 
-    // AI setup (M1). PROVISIONAL: the Rust commands arrive with the backend's facade; until then
-    // AI_SETUP_ENABLED keeps these screens to mock mode, and the contract test doesn't call them.
+    // AI setup (M1). Most facade methods are stubs until schema v4 (after the alpha.1 tag), so
+    // AI_SETUP_ENABLED keeps these screens to mock mode until the backend says they're live.
     aiStatus: () => call("ai_status"),
     modelProviderPresets: () => call("model_provider_presets"),
     addModelProvider: (preset, baseUrl, apiKey) =>
@@ -77,15 +78,16 @@ export function createTauriApi(): PageLampApi {
       call("update_model_provider_key", { providerId, apiKey }),
     removeModelProvider: (providerId) => call("remove_model_provider", { providerId }),
     detectLocalServers: () => call("detect_local_servers"),
-    listModels: (backend) => call("list_models", { backend }),
-    testModel: (backend, model) => call("test_model", { backend, model }),
+    // `backend` is the command's app-state parameter in Rust, so the BackendRef is `model_backend`.
+    listModels: (backend) => call("list_models", { modelBackend: backend }),
+    testModel: (backend, model) => call("test_model", { modelBackend: backend, model }),
     setFeatureModel: (feature, choice) => call("set_feature_model", { feature, choice }),
     acknowledgeAiDisclosure: (backend, version) =>
-      call("acknowledge_ai_disclosure", { backend, disclosureVersion: version }),
+      call("acknowledge_ai_disclosure", { modelBackend: backend, version }),
     acknowledgeUnpricedModel: (backend, model) =>
-      call("acknowledge_unpriced_model", { backend, model }),
+      call("acknowledge_unpriced_model", { modelBackend: backend, model }),
     setMonthlyBudget: (microUsd) => call("set_monthly_budget", { microUsd }),
-    estimateGeneration: (req) => call("estimate_generation", { req }),
+    estimateGeneration: (req) => call("estimate_generation", { request: req }),
     usageSummary: (month) => call("usage_summary", { month }),
     removeAllAiData: () => call("remove_all_ai_data"),
     codexStatus: () => call("codex_status"),

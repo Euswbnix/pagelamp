@@ -6,12 +6,10 @@ import type {
   AiBackendStatus,
   AiFeature,
   AiStatus,
-  BackendKind,
   BackendRef,
   BlockReason,
   Course,
   Effort,
-  UsageRow as GeneratedUsageRow,
   UsageSummary as GeneratedUsageSummary,
   MaterialSharing,
   ModelErrorKind,
@@ -29,6 +27,7 @@ export type {
   BackendState,
   BlockReason,
   BudgetStatus,
+  CostBasis,
   CostEstimate,
   CostKind,
   DisclosureFacts,
@@ -53,6 +52,7 @@ export type {
   StructuredOutputTier,
   TokenUsage,
   TrainingFact,
+  UsageRow,
 } from "./generated";
 
 // ----- lists in display order (typed against the generated unions) ------------------------------
@@ -115,21 +115,8 @@ export const MODEL_ERROR_KINDS = Object.keys(MODEL_ERROR_SET) as ModelErrorKind[
 
 // ----- PROVISIONAL gaps ------------------------------------------------------------------------
 
-/**
- * PROVISIONAL: asked of the backend on 2026-09-28 — the generated row has a required
- * `micro_usd` and no backend kind, so an unpriced or plan run would read as "$0.00".
- */
-export type UsageRow = Omit<GeneratedUsageRow, "micro_usd"> & {
-  /** Null when the price is unknown or doesn't apply (plans). 0 on device. */
-  micro_usd?: number | null;
-  backend_kind: BackendKind;
-};
-
-/** PROVISIONAL: the rows above, plus mode A's weekly runs (M2). */
-export type UsageSummary = Omit<GeneratedUsageSummary, "rows"> & {
-  rows: UsageRow[];
-  mode_a?: ModeAUsage | null;
-};
+/** PROVISIONAL (M2): plus mode A's weekly runs, until the backend's M2 types. */
+export type UsageSummary = GeneratedUsageSummary & { mode_a?: ModeAUsage | null };
 
 /** PROVISIONAL: `material_sharing` joins `ai_policy` on the course types with schema v4. */
 export type CourseWithSharing = Course & { material_sharing?: MaterialSharing | null };

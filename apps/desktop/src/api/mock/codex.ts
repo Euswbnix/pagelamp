@@ -344,7 +344,7 @@ export function createMockCodex(options: {
 function codexRow(feature: UsageRow["feature"], runs: number): UsageRow {
   return {
     backend_label: CODEX_LABEL,
-    backend_kind: "codex",
+    cost_basis: "plan",
     model: feature === "weekly_explanation" ? "gpt-6-sol" : "gpt-6-luna",
     feature,
     runs,

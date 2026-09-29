@@ -11,6 +11,7 @@ import type {
   ModelProviderRecord,
   ProbeReport,
   ProviderPreset,
+  RemoveAiDataReport,
   UsageSummary,
 } from "./ai";
 import type {
@@ -119,6 +120,12 @@ export interface PageLampApi {
     onEvent: (event: SyncEvent) => void,
   ): Promise<SourceSyncResult>;
 
+  /**
+   * Stop this app's running sync or download at the next file, course or download; the stopped
+   * call rejects with `cancelled`. Does nothing when none runs here (not a CLI sync).
+   */
+  cancelSync(): Promise<void>;
+
   // ----- read views ----------------------------------------------------------------------------
   /** All courses, hidden ones included (check `course.hidden`). */
   listCourses(): Promise<CourseSummary[]>;
@@ -173,7 +180,7 @@ export interface PageLampApi {
   /** `month` = any day of the month (null = this month). Counts only, never content. */
   usageSummary(month: IsoDate | null): Promise<UsageSummary>;
   /** Keys, generated content, the usage ledger and AI settings; signs out of Codex first. */
-  removeAllAiData(): Promise<void>;
+  removeAllAiData(): Promise<RemoveAiDataReport>;
 
   // ----- mode A: the ChatGPT plan through official Codex (M2; design §2.3) -------------------
   /** The runtime, the sign-in, the weekly cap and what a RuntimeOutdated error means now. */

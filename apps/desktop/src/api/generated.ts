@@ -209,6 +209,14 @@ export type SourceKind = "canvas" | "folder" | "ical";
 export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
+ * How a usage row's cost is known (the UIs label it: "≈ $x", "Free", "price unknown", "your
+ * plan").
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CostBasis".
+ */
+export type CostBasis = "priced" | "free_on_device" | "unpriced" | "plan";
+/**
  * Why a file that is recorded `NotDownloaded` cannot be downloaded by asking again.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -507,6 +515,7 @@ export interface PageLampAppTypes {
   backend_state: BackendState;
   block_reason: BlockReason;
   budget_status: BudgetStatus;
+  cost_basis: CostBasis;
   cost_estimate: CostEstimate;
   cost_kind: CostKind;
   course_overview: CourseOverview;
@@ -1634,20 +1643,36 @@ export interface UpdatePrefs {
   channel?: UpdateChannel | null;
 }
 /**
+ * One backend × model × feature of a month.
+ *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "UsageRow".
  */
 export interface UsageRow {
   backend_label: string;
+  cost_basis: CostBasis;
   /**
    * Some counts are PageLamp's estimates (cancelled runs).
    */
   estimated: boolean;
   feature: AiFeature;
+  /**
+   * All input tokens, cached ones included.
+   */
   input_tokens: number;
-  micro_usd: number;
+  /**
+   * Estimated cost: set for `priced` (and 0 for `free_on_device`), null for `unpriced` and
+   * `plan`.
+   */
+  micro_usd?: number | null;
   model: string;
+  /**
+   * All output tokens, reasoning included.
+   */
   output_tokens: number;
+  /**
+   * Of `output_tokens`, the ones spent thinking (0 when the provider doesn't say).
+   */
   reasoning_tokens: number;
   runs: number;
 }
@@ -1662,6 +1687,9 @@ export interface UsageSummary {
    */
   month: string;
   rows: UsageRow[];
+  /**
+   * The priced rows' total (what the budget counts).
+   */
   total_micro_usd: number;
 }
 /**

@@ -300,7 +300,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   }
   function spentThisMonth(): number {
     return usage
-      .filter(([ago, r]) => ago === 0 && r.backend_kind === "api_key")
+      .filter(([ago, r]) => ago === 0 && r.cost_basis === "priced")
       .reduce((sum, [, r]) => sum + (r.micro_usd ?? 0), 0);
   }
   function budgetStatus() {
@@ -593,7 +593,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       return structuredClone({
         month: iso,
         rows,
-        total_micro_usd: rows.reduce((sum, r) => sum + (r.micro_usd ?? 0), 0),
+        // The priced rows only: what the budget counts.
+        total_micro_usd: rows
+          .filter((r) => r.cost_basis === "priced")
+          .reduce((sum, r) => sum + (r.micro_usd ?? 0), 0),
         budget: budgetStatus(),
         mode_a: codex.modeA(),
       });
@@ -601,13 +604,20 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     removeAllAiData: async () => {
       await ctx.delay(300);
-      providers.length = 0;
       acknowledged.clear();
       unpricedAcks.clear();
       for (const feature of FEATURES) features.set(feature, null);
       budget = DEFAULT_BUDGET_MICRO_USD;
+      const report = {
+        providers_removed: providers.length,
+        generations_removed: 0,
+        usage_rows_removed: usage.length,
+        backup_removed: false,
+      };
+      providers.length = 0;
       usage = [];
       codex.forget();
+      return report;
     },
 
     ...codex.api,

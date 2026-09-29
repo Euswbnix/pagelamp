@@ -134,6 +134,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const now = options.now ?? (() => new Date());
   const db: MockDb = buildMockDb(now(), scenario);
   let syncing = false;
+  /** Set by cancelSync: the running sync stops at its next step. */
+  let cancelRequested = false;
   let nextId = 1;
 
   // Updates (M0.4). A fresh install ("empty") hasn't seen the update-check disclosure yet; an
@@ -321,6 +323,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       throw new ApiError("busy", "Another PageLamp process is already syncing.");
     }
     syncing = true;
+    cancelRequested = false;
     const results: SourceSyncResult[] = [];
     try {
       for (const sourceId of sourceIds) {
@@ -333,6 +336,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         const warnings: string[] = [];
         for (let step = 1; step <= total; step++) {
           await sleep(syncStep);
+          if (cancelRequested) {
+            // Like the facade: the source isn't recorded as failed.
+            const stopped = "The sync was stopped.";
+            onEvent({
+              type: "source_finished",
+              source_id: source.id,
+              ok: false,
+              error: stopped,
+              error_kind: null,
+            });
+            throw new ApiError("cancelled", stopped);
+          }
           onEvent({
             type: "progress",
             source_id: source.id,
@@ -473,6 +488,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       findSource(sourceId);
       db.sources = db.sources.filter((s) => s.id !== sourceId);
       db.courses = db.courses.filter((c) => c.course.source_id !== sourceId);
+    },
+
+    cancelSync: async () => {
+      if (syncing) cancelRequested = true;
     },
 
     syncAll: async (_req: SyncRequest, onEvent) => {

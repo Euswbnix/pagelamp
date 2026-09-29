@@ -18,12 +18,14 @@ use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop
 use tauri::webview::InvokeRequest;
 
 /// Commands with real side effects on the machine running the tests.
-/// (The updater ones would reach the network, and install would restart the app.)
+/// (The updater ones would reach the network, install would restart the app, and the local
+/// server check connects to ports on this computer.)
 const SKIPPED: &[&str] = &[
     "reveal_data_dir",
     "reveal_logs_dir",
     "updates_check",
     "updates_install",
+    "detect_local_servers",
 ];
 
 #[test]

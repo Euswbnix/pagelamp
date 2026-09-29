@@ -11,7 +11,8 @@
       "!**/dist",
       "!src-tauri/target",
       "!src-tauri/gen",
-      "!src/api/generated.ts"
+      "!src/api/generated.ts",
+      "!src-tauri/tests/fixtures"
     ]
   },
   "formatter": {

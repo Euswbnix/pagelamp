@@ -246,7 +246,7 @@ export const CODING_PLAN_KEY_PREFIXES = ["sk-sp-"];
 
 function row(
   backend_label: string,
-  backend_kind: UsageRow["backend_kind"],
+  kind: "api_key" | "local",
   model: string,
   feature: AiFeature,
   runs: number,
@@ -256,7 +256,8 @@ function row(
   const input = runs * (feature === "weekly_explanation" ? 42_000 : 7_500);
   return {
     backend_label,
-    backend_kind,
+    // The facade decides how the cost is known; the mock derives it the same way.
+    cost_basis: micro_usd === null ? "unpriced" : kind === "local" ? "free_on_device" : "priced",
     model,
     feature,
     runs,

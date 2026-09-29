@@ -161,14 +161,21 @@ function UsageTable({ summary }: { summary: UsageSummary }) {
 
 function Cost({ row }: { row: UsageRow }) {
   const { t, i18n } = useTranslation("ai");
-  if (row.micro_usd === null || row.micro_usd === undefined) return <>{t("usage.noPrice")}</>;
-  if (row.micro_usd === 0 && row.backend_kind === "local") return <>{t("usage.free")}</>;
-  return (
-    <>
-      {row.estimated ? "≈ " : ""}
-      {formatUsd(row.micro_usd, i18n.language)}
-    </>
-  );
+  switch (row.cost_basis) {
+    case "free_on_device":
+      return <>{t("usage.free")}</>;
+    case "unpriced":
+      return <>{t("usage.noPrice")}</>;
+    case "plan":
+      return <>{t("usage.plan")}</>;
+    case "priced":
+      return (
+        <>
+          {row.estimated ? "≈ " : ""}
+          {formatUsd(row.micro_usd ?? 0, i18n.language)}
+        </>
+      );
+  }
 }
 
 /** This month only: how much of the API-key budget is used. */
