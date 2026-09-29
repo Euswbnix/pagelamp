@@ -108,7 +108,14 @@ jobs:
       - name: Clippy (desktop crate)
         run: cargo clippy -p pagelamp-desktop --all-targets -- -D warnings
       - name: Test (desktop crate)
+        # Windows: Tauri test executables have no Common Controls v6 manifest and exit with
+        # STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139) at load, so they are only compiled there until
+        # src-tauri's build.rs embeds the manifest for tests too (frontend, tracked in the plan).
+        if: runner.os != 'Windows'
         run: cargo test -p pagelamp-desktop
+      - name: Build the desktop crate's tests (Windows)
+        if: runner.os == 'Windows'
+        run: cargo test -p pagelamp-desktop --no-run
 
   # The native macOS app (apps/macos, preview): the Rust core as an xcframework, then the Swift
   # package's build and tests (including a small headless snapshot render), the Mac lint (glass
