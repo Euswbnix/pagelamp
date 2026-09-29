@@ -482,14 +482,7 @@
 "course.tabs.week" = "本周";
 "course.term.breaksNote" = "目前暂不考虑阅读周和假期。";
 "course.term.description" = "PageLamp 会从学期第一天开始计算教学周。";
-"course.term.end" = "学期结束日期（可选）";
-"course.term.invalid" = "日期有误，请确认结束日期晚于开始日期。";
-"course.term.save" = "保存日期";
-"course.term.saved" = "学期日期已保存";
 "course.term.start" = "学期开始日期";
-"course.term.title" = "周次不对？设置这门课的学期日期";
-"course.term.useSynced" = "改用同步的日期";
-"course.term.usedSynced" = "已改回同步的学期日期";
 "course.timeline.confidence.high" = "基本可以确定，判断依据见下方。";
 "course.timeline.confidence.low" = "暂时没法准确判断现在是第几周。在下方设置学期日期就能解决。";
 "course.timeline.confidence.medium" = "这是比较可靠的估计，但最好确认一下是否正确。";

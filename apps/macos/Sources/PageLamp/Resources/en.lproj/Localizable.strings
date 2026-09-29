@@ -482,14 +482,7 @@
 "course.tabs.week" = "This week";
 "course.term.breaksNote" = "Reading weeks and breaks aren't taken into account yet.";
 "course.term.description" = "PageLamp counts teaching weeks from the first day of term.";
-"course.term.end" = "Last day of term (optional)";
-"course.term.invalid" = "These dates don't work. Check that the term ends after it starts.";
-"course.term.save" = "Save dates";
-"course.term.saved" = "Term dates saved";
 "course.term.start" = "First day of term";
-"course.term.title" = "Wrong week? Set this course's term dates";
-"course.term.useSynced" = "Use synced dates";
-"course.term.usedSynced" = "Back to the synced term dates";
 "course.timeline.confidence.high" = "This is very likely right. The clues are listed below.";
 "course.timeline.confidence.low" = "We couldn't work this out reliably. Setting the term dates below fixes that.";
 "course.timeline.confidence.medium" = "This is a good estimate, but check that it looks right.";
