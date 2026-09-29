@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 pdf-extract = "0.12"
 # Size-capped inflate for the PDF bomb check (already used by `zip` and `lopdf`).
@@ -15,6 +16,20 @@ flate2 = "1.1"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
 html2text = "0.17"
+
+[target.'cfg(unix)'.dependencies]
+# The extraction worker's rlimits, CPU clock and exit.
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# The extraction worker's Job Object, CPU clock, crash-dialog mode and CREATE_NO_WINDOW.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -63,6 +63,7 @@ mod pptx;
 mod test_support;
 mod text;
 mod util;
+pub mod worker;
 
 pub use util::panic_is_expected;
 

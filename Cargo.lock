@@ -3445,8 +3445,10 @@ dependencies = [
  "chrono",
  "clap",
  "libc",
+ "lopdf",
  "pagelamp-app",
  "pagelamp-core",
+ "pagelamp-extract",
  "pagelamp-mcp",
  "rpassword",
  "serde",
@@ -3500,12 +3502,15 @@ version = "0.1.0"
 dependencies = [
  "flate2",
  "html2text",
+ "libc",
  "lopdf",
  "pdf-extract",
  "quick-xml",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "windows-sys 0.61.2",
  "zip",
 ]
 

@@ -14,6 +14,7 @@ path = "src/main.rs"
 pagelamp-core.workspace = true
 pagelamp-app.workspace = true
 pagelamp-mcp.workspace = true
+pagelamp-extract.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -29,3 +30,5 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true
+# Builds the synthetic PDF bombs for the extraction-worker tests (the version pdf-extract uses).
+lopdf = { version = "0.42", default-features = false }

@@ -107,7 +107,20 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Extract one file in this process, for the app (one JSON request on stdin, one JSON
+    /// response on stdout; see `pagelamp_extract::worker`). Not for people.
+    #[command(name = "extract-worker", hide = true)]
+    ExtractWorker {
+        #[arg(long)]
+        protocol: u32,
+    },
 }
+
+/// Counts live heap bytes, so the extraction worker can cap its memory (a no-op cap
+/// elsewhere; see `pagelamp_extract::worker`).
+#[global_allocator]
+static ALLOCATOR: pagelamp_extract::worker::CountingAllocator =
+    pagelamp_extract::worker::CountingAllocator;
 
 #[derive(Subcommand)]
 enum CanvasCommand {
@@ -262,6 +275,12 @@ fn parse_date(text: &str) -> Result<NaiveDate, String> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    // The worker is a bare child process: no logging setup, no runtime, nothing but the one
+    // extraction (its environment is empty, so it must not look for a data folder either).
+    if let Command::ExtractWorker { protocol } = cli.command {
+        let code = pagelamp_extract::worker::serve_stdio(protocol);
+        return ExitCode::from(u8::try_from(code).unwrap_or(1));
+    }
     let kind = if matches!(cli.command, Command::Mcp) {
         diagnostics::ProcessKind::Mcp
     } else {
@@ -311,6 +330,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             pagelamp_mcp::serve_stdio(db).await
         }
         Command::Schema => print_json(&pagelamp_app::json_schema()),
+        // Handled at the top of `main`, before any setup.
+        Command::ExtractWorker { .. } => anyhow::bail!("the extraction worker runs on its own"),
         Command::Doctor => {
             // Works even when the database can't be opened.
             let (doctor, last_update) = match App::open() {
