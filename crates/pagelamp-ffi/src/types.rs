@@ -972,7 +972,7 @@ pub struct AiProviderCheck {
     pub reachable: Option<bool>,
 }
 
-// ----- updates and activity (v0.3 M0.4; methods are wired by the leader) ----------------------
+// ----- updates and activity (v0.3 M0.4; `PageLamp::startup_tasks` and friends) ----------------
 
 #[uniffi::remote(Enum)]
 pub enum UpdateChannel {
