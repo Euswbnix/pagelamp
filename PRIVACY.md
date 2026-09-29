@@ -1,6 +1,7 @@
 # Privacy
 
-*Last updated: 2026-09-26 · applies to PageLamp v0.1*
+*Last updated: 2026-09-28 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
+pre-releases and later; v0.1.0 doesn't have them.*
 
 PageLamp is a local app. There is no PageLamp server, account, analytics or telemetry. The people
 who build PageLamp never receive your data.
@@ -12,6 +13,8 @@ who build PageLamp never receive your data.
 | Course list, modules, material titles and text, announcements, deadlines, your study plan, your per-course settings (AI policy, AI access, term dates, hidden) | a SQLite database in your data folder (macOS `~/Library/Application Support/dev.PageLamp.PageLamp`, Windows `%APPDATA%\PageLamp\PageLamp\data`, Linux `$XDG_DATA_HOME/pagelamp`, or `PAGELAMP_HOME`) | so your AI app can answer questions about your courses |
 | Files you ask PageLamp to download from Canvas | the `files/` folder next to the database | so their text can be indexed |
 | Canvas access token, calendar-feed link | your operating system's keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) — never in the database, logs or AI output | to sync on your behalf |
+| **(v0.3)** Your update settings, the result of the last update check, and the version you last ran | the same database | to know when the next check is due and to show "What's new" once |
+| **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database, readable only by you; only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
 dates and links. It never reads your university password.
@@ -24,6 +27,13 @@ dates and links. It never reads your university password.
   information it needs from PageLamp on your computer and sends it to that AI provider **under your
   own account and that provider's terms**. What the provider stores or uses for training depends on
   your account settings with them — check them.
+- **(v0.3) Update check:** once a day PageLamp downloads a small file from GitHub to see whether
+  there's a new version. GitHub sees your IP address and your PageLamp version, as with any
+  download; nothing about your courses is sent. The request carries only `User-Agent:
+  PageLamp/<version>` and standard `Accept` headers: no cookies, and nothing about you or your
+  computer in the address. PageLamp always asks before installing an update, which it then
+  downloads from GitHub too. On Linux `.deb`/`.rpm` installs it only shows a download link. You can
+  turn the daily check off (see below).
 - Nothing else. PageLamp never contacts any other server.
 
 ## Your controls
@@ -32,6 +42,8 @@ dates and links. It never reads your university password.
   policy as "No AI" — PageLamp then shares no material text for that course (deadlines, structure
   and your study plan remain available for planning). CLI: `pagelamp course ai-access <course> off`.
 - **Hide a course** to keep it out of your AI app entirely: `pagelamp course hide <course>`.
+- **(v0.3) Update checks:** *Settings → Updates → Check for updates automatically*. With it off,
+  PageLamp never checks on its own; *Check now* still works.
 - **Remove a source** (`pagelamp sources remove <id>` or *Sources & sync → Remove*) deletes what
   was synced from it — its courses with your AI-policy and term settings for them (course folder
   and Canvas), its deadlines and events (calendar feed), and for Canvas the course files you
@@ -56,7 +68,8 @@ deletes them after 7 days. Logs record what PageLamp did (e.g. "synced 5 courses
 status codes) — never tokens, calendar-feed links, signed download links or course text; your home
 folder is shown as `~`. A diagnostic report (*Copy diagnostic report* in the app, or
 `pagelamp report`) is created only when you ask for it, shows you its full content first, and
-replaces course names with "Course 1", "Course 2". Nothing is ever sent automatically — you decide
+replaces course names with "Course 1", "Course 2". From v0.3 it also lists the result of the last
+update check and of the last database update and backup, as codes only. Nothing is ever sent automatically — you decide
 whether to share a report, e.g. in a GitHub issue.
 
 To replace names of courses you have since renamed or removed, PageLamp keeps a small list of course
