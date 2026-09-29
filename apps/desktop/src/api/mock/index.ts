@@ -5,7 +5,8 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
-// update-available · upgrader · updated · deb.
+// update-available · upgrader · updated · deb; course weeks and lifecycle (M0.10):
+// uoft-fall · phases · all-past (see courseScenarios.ts).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -26,6 +27,14 @@ import {
   type UpdateChannel,
   type UpdateCheckRecord,
 } from "../types";
+import {
+  defaultKeepUntil,
+  isoOf,
+  keptCurrent,
+  withoutStudentDates,
+  withStudentDates,
+} from "./calendar";
+import { buildCalendarScenarioDb } from "./courseScenarios";
 import {
   buildMockDb,
   diagnosticReport,
@@ -128,7 +137,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const latency = options.latencyMs ?? 250;
   const syncStep = options.syncStepMs ?? 350;
   const now = options.now ?? (() => new Date());
-  const db: MockDb = buildMockDb(now(), scenario);
+  const db: MockDb = buildCalendarScenarioDb(now(), scenario) ?? buildMockDb(now(), scenario);
   let syncing = false;
   let nextId = 1;
 
@@ -205,7 +214,16 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     const weeks = new Set<number>();
     for (const m of [...c.modules, ...c.materials]) if (m.week_hint) weeks.add(m.week_hint);
     if (c.timeline.current_week) weeks.add(c.timeline.current_week);
+    if (c.timeline.default_week) weeks.add(c.timeline.default_week);
     return [...weeks].sort((a, b) => a - b);
+  }
+
+  /** The lifecycle with "I'm still taking this" applied, as the facade computes it per read. */
+  function lifecycleOf(c: MockCourse) {
+    const today = isoOf(now());
+    return c.keptCurrentUntil && c.keptCurrentUntil >= today
+      ? keptCurrent(c.lifecycle, c.keptCurrentUntil)
+      : c.lifecycle;
   }
 
   function summary(c: MockCourse): CourseSummary {
@@ -214,6 +232,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return {
       course: c.course,
       timeline: c.timeline,
+      lifecycle: lifecycleOf(c),
       ai_materials: aiMaterials,
       counts: {
         modules: c.modules.length,
@@ -533,6 +552,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         return {
           course: c.course,
           timeline: c.timeline,
+          lifecycle: lifecycleOf(c),
           current_modules: c.modules.filter((m) => c.timeline.current_module_ids.includes(m.id)),
           recent_materials: c.materials
             .filter(recent)
@@ -552,7 +572,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     weekMaterials: (courseId, week) =>
       respond(() => {
         const c = findCourse(courseId);
-        const shown = week ?? c.timeline.current_week ?? null;
+        const shown = week ?? c.timeline.default_week ?? c.timeline.current_week ?? null;
         if (shown === null) {
           const t = now().getTime();
           return {
@@ -639,40 +659,52 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
       const c = findCourse(courseId);
+      const today = isoOf(now());
       if (start === null && end === null) {
         // Clearing the override falls back to what the source reported (like the facade).
         c.course.term_start = c.synced.termStart;
         c.course.term_end = c.synced.termEnd;
-        c.course.term_source = c.synced.termStart ? "synced" : "none";
-        c.timeline = c.synced.timeline;
+        c.course.term_source = c.synced.termStart || c.synced.termEnd ? "synced" : "none";
+        const synced = withoutStudentDates(c.synced.timeline, c.synced.lifecycle);
+        c.timeline = synced.timeline;
+        c.lifecycle = synced.lifecycle;
         return;
       }
-      c.course.term_start = start;
-      c.course.term_end = end;
+      // COALESCE(user, synced), per field; the student's end is the last day of classes.
+      c.course.term_start = start ?? c.synced.termStart;
+      c.course.term_end = end ?? c.synced.termEnd;
       c.course.term_source = "user";
-      if (start) {
-        // Whole local calendar days since the start date (Date.parse would read it as UTC).
-        const [y, m, d] = start.split("-").map(Number) as [number, number, number];
-        const n = now();
-        const days = Math.round(
-          (new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime() -
-            new Date(y, m - 1, d).getTime()) /
-            DAY,
-        );
-        const weeks = Math.floor(days / 7) + 1;
-        c.timeline = {
-          ...c.timeline,
-          current_week: weeks >= 1 ? weeks : null,
-          confidence: "medium",
-          evidence: [`Term start set to ${start} by you → week ${weeks}`],
-          outside_term: weeks < 1,
-        };
-      }
+      const next = withStudentDates(c.timeline, start, end, today);
+      c.timeline = next.timeline;
+      c.lifecycle = next.lifecycle;
     },
 
     setCourseHidden: async (courseId, hidden) => {
       await sleep(latency);
       findCourse(courseId).course.hidden = hidden;
+    },
+
+    keepCourseCurrent: async (courseId, until) => {
+      await sleep(latency);
+      const c = findCourse(courseId);
+      const today = isoOf(now());
+      if (until !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < today)) {
+        throw new ApiError("invalid", "Pick a date from today on.");
+      }
+      c.keptCurrentUntil = until ?? defaultKeepUntil(c.timeline, today);
+    },
+
+    clearKeepCourseCurrent: async (courseId) => {
+      await sleep(latency);
+      findCourse(courseId).keptCurrentUntil = null;
+    },
+
+    confirmCourseDates: async (courseId) => {
+      await sleep(latency);
+      const c = findCourse(courseId);
+      if (c.timeline.term.anchor_origin === "legacy") {
+        c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "user" } };
+      }
     },
 
     setCourseAiAccess: async (courseId, allowed) => {

@@ -110,6 +110,15 @@ export interface PageLampApi {
   setCoursePolicy(courseId: string, policy: AiPolicy, note: string | null): Promise<void>;
   setCourseTerm(courseId: string, start: IsoDate | null, end: IsoDate | null): Promise<void>;
   setCourseHidden(courseId: string, hidden: boolean): Promise<void>;
+  /**
+   * "I'm still taking this": the course counts as current until `until` (null = the facade's
+   * default: the end of the course's outer date frame, else today + 120 days).
+   */
+  keepCourseCurrent(courseId: string, until: IsoDate | null): Promise<void>;
+  /** Undo "I'm still taking this". */
+  clearKeepCourseCurrent(courseId: string): Promise<void>;
+  /** "These dates are right": the student checked dates kept from version 0.1. */
+  confirmCourseDates(courseId: string): Promise<void>;
   /** "Let my AI app read this course's materials" (§3 rule 8). "No AI" still wins over it. */
   setCourseAiAccess(courseId: string, allowed: boolean): Promise<void>;
 

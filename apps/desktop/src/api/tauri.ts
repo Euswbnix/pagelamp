@@ -62,6 +62,10 @@ export function createTauriApi(): PageLampApi {
     setCourseTerm: (courseId, start, end) =>
       call("set_course_term", { course: courseId, start, end }),
     setCourseHidden: (courseId, hidden) => call("set_course_hidden", { course: courseId, hidden }),
+    keepCourseCurrent: (courseId, until) =>
+      call("keep_course_current", { course: courseId, until }),
+    clearKeepCourseCurrent: (courseId) => call("clear_keep_course_current", { course: courseId }),
+    confirmCourseDates: (courseId) => call("confirm_course_dates", { course: courseId }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
 
