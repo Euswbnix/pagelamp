@@ -28,7 +28,14 @@ interface UpdateState {
   /** "Later" on the update notice: hidden until the next launch or the next check. */
   noticeDismissed: boolean;
   install: InstallState;
+  /**
+   * The version this launch was updated from (post-update banner). Kept from the first
+   * startup_tasks answer, which a later refetch may no longer report.
+   */
+  updatedFrom: string | null;
+  updatedDismissed: boolean;
   dismissNotice: () => void;
+  dismissUpdated: () => void;
   reset: () => void;
 }
 
@@ -39,11 +46,14 @@ const initial = {
   checked: false,
   noticeDismissed: false,
   install: { phase: "idle" },
+  updatedFrom: null,
+  updatedDismissed: false,
 } satisfies Partial<UpdateState>;
 
 export const useUpdateStore = create<UpdateState>()((set) => ({
   ...initial,
   dismissNotice: () => set({ noticeDismissed: true }),
+  dismissUpdated: () => set({ updatedDismissed: true }),
   reset: () => set(initial),
 }));
 

@@ -1,0 +1,70 @@
+{
+  "settings": {
+    "title": "更新",
+    "description": "{{product}} 会在 GitHub 上查找新版本，安装之前一定会先问你。",
+    "version": "版本",
+    "autoCheck": "自动检查更新",
+    "autoCheckHint": "启动时检查一次，之后每天一次。只有你的 IP 地址会发送给 GitHub，不涉及任何课程内容。",
+    "channel": "更新渠道",
+    "channelStable": "正式版",
+    "channelStableHint": "已经发布的正式版本。",
+    "channelBeta": "测试版",
+    "channelBetaHint": "供测试用的早期版本，也包括每个正式版。",
+    "checkNow": "立即检查",
+    "checking": "正在检查…",
+    "upToDate": "{{product}} 已是最新版本。",
+    "available": "{{product}} {{version}} 已可更新。",
+    "checkFailed": "无法检查更新。",
+    "lastChecked": "上次检查：{{when}}",
+    "neverChecked": "还没有检查过。",
+    "releaseNotes": "更新说明",
+    "install": "安装并重启…",
+    "download": "下载 {{product}} {{version}}",
+    "downloadHint": "这份 {{product}} 是通过 .deb 或 .rpm 安装包安装的，需要安装新的安装包来更新。"
+  },
+  "install": {
+    "title": "安装 {{product}} {{version}}？",
+    "body": "{{product}} 会下载更新、校验签名、完成安装，然后重新启动。",
+    "windows": "安装程序运行期间 {{product}} 会关闭，之后会重新打开。",
+    "aiApp": "更新完成后，请退出并重新打开你的 AI 应用，让它使用新的 {{product}}。",
+    "confirm": "安装并重启",
+    "downloading": "正在下载… {{percent}}%",
+    "downloadingUnknown": "正在下载…",
+    "installing": "正在安装…",
+    "restarting": "正在重启 {{product}}…",
+    "failed": "更新没能安装。",
+    "tryAgain": "重试",
+    "availableAfterSync": "同步结束后可用",
+    "progressLabel": "更新进度"
+  },
+  "notice": {
+    "available": "{{product}} {{version}} 已可更新。",
+    "install": "安装…",
+    "download": "下载",
+    "later": "稍后"
+  },
+  "updated": {
+    "title": "{{product}} 已更新到 {{version}}",
+    "body": "请退出并重新打开你的 AI 应用（Claude Desktop、Claude Code 或 Codex），让它使用新的 {{product}}。",
+    "dismiss": "关闭"
+  },
+  "whatsNew": {
+    "title": "{{product}} 有哪些新变化",
+    "since": "自 {{version}} 版本以来",
+    "done": "知道了",
+    "topics": {
+      "update_check": {
+        "title": "{{product}} 现在可以自己更新了",
+        "body": "它每天会向 GitHub 询问一次有没有新版本。只会发送你的 IP 地址，不涉及任何课程内容；安装任何更新之前一定会先问你。"
+      },
+      "course_weeks": {
+        "title": "每门课都有周次和阶段",
+        "body": "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归到“已结束”分组里。"
+      }
+    }
+  },
+  "onboarding": {
+    "autoCheck": "自动检查更新",
+    "autoCheckHint": "{{product}} 每天会向 GitHub 询问一次有没有新版本（只会发送你的 IP 地址）。安装之前一定会先问你，之后也可以在设置里更改。"
+  }
+}

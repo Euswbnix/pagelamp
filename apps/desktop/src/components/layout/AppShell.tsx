@@ -3,6 +3,10 @@ import { Outlet, useLocation } from "react-router";
 import { useRefreshOnWindowFocus } from "@/api/queries";
 import { brand } from "@/brand";
 import { CrashNotice } from "@/features/diagnostics/CrashNotice";
+import { PostUpdateBanner } from "@/features/updates/PostUpdateBanner";
+import { UpdateNotice } from "@/features/updates/UpdateNotice";
+import { useUpdateLifecycle } from "@/features/updates/useUpdateLifecycle";
+import { WhatsNewSheet } from "@/features/updates/WhatsNewSheet";
 import { useRefreshAfterExternalSync } from "@/stores/sync";
 import { Sidebar } from "./Sidebar";
 
@@ -12,6 +16,7 @@ export function AppShell() {
   useRouteAnnouncements(mainRef);
   useRefreshAfterExternalSync();
   useRefreshOnWindowFocus();
+  useUpdateLifecycle();
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />
@@ -23,6 +28,9 @@ export function AppShell() {
       >
         <div className="mx-auto max-w-5xl px-8 py-8">
           <CrashNotice />
+          <PostUpdateBanner />
+          <UpdateNotice />
+          <WhatsNewSheet />
           <Outlet />
         </div>
       </main>

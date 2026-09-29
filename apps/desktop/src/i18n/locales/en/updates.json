@@ -1,0 +1,70 @@
+{
+  "settings": {
+    "title": "Updates",
+    "description": "{{product}} looks for new versions on GitHub. It always asks before installing one.",
+    "version": "Version",
+    "autoCheck": "Check for updates automatically",
+    "autoCheckHint": "At launch and once a day. Only your IP address reaches GitHub, nothing about your courses.",
+    "channel": "Update channel",
+    "channelStable": "Stable",
+    "channelStableHint": "Finished releases.",
+    "channelBeta": "Beta",
+    "channelBetaHint": "Early versions for testing, plus every stable release.",
+    "checkNow": "Check now",
+    "checking": "Checking…",
+    "upToDate": "{{product}} is up to date.",
+    "available": "{{product}} {{version}} is available.",
+    "checkFailed": "Couldn't check for updates.",
+    "lastChecked": "Last checked {{when}}",
+    "neverChecked": "Not checked yet.",
+    "releaseNotes": "Release notes",
+    "install": "Install and restart…",
+    "download": "Download {{product}} {{version}}",
+    "downloadHint": "This copy of {{product}} was installed from a .deb or .rpm package, so it updates by installing the new package."
+  },
+  "install": {
+    "title": "Install {{product}} {{version}}?",
+    "body": "{{product}} downloads the update, checks its signature, installs it and restarts.",
+    "windows": "{{product}} closes while the installer runs, then opens again.",
+    "aiApp": "Afterwards, quit and reopen your AI app so it uses the new {{product}}.",
+    "confirm": "Install and restart",
+    "downloading": "Downloading… {{percent}}%",
+    "downloadingUnknown": "Downloading…",
+    "installing": "Installing…",
+    "restarting": "Restarting {{product}}…",
+    "failed": "The update couldn't be installed.",
+    "tryAgain": "Try again",
+    "availableAfterSync": "Available when the sync finishes",
+    "progressLabel": "Update progress"
+  },
+  "notice": {
+    "available": "{{product}} {{version}} is available.",
+    "install": "Install…",
+    "download": "Download",
+    "later": "Later"
+  },
+  "updated": {
+    "title": "{{product}} was updated to {{version}}",
+    "body": "Quit and reopen your AI app (Claude Desktop, Claude Code or Codex) so it uses the new {{product}}.",
+    "dismiss": "Dismiss"
+  },
+  "whatsNew": {
+    "title": "What's new in {{product}}",
+    "since": "Since version {{version}}",
+    "done": "Got it",
+    "topics": {
+      "update_check": {
+        "title": "{{product}} now updates itself",
+        "body": "Once a day it asks GitHub whether there's a new version. Only your IP address is sent, nothing about your courses, and it always asks before installing anything."
+      },
+      "course_weeks": {
+        "title": "Weeks and phases for every course",
+        "body": "Each course shows its current week and phase, and finished courses move to a “Past” group."
+      }
+    }
+  },
+  "onboarding": {
+    "autoCheck": "Check for updates automatically",
+    "autoCheckHint": "Once a day {{product}} asks GitHub whether there's a new version (only your IP address is sent). It always asks before installing, and you can change this in Settings."
+  }
+}

@@ -304,16 +304,21 @@ export function useUpdaterStatus() {
   });
 }
 
-/** The student has read "What's new": it's done for good (and so is the update disclosure). */
+/**
+ * The student has read "What's new": it's done for good (and so is the update disclosure). The
+ * sheet closes at once; then the facade is asked again whether an update check is now due.
+ */
 export function useAcknowledgeWhatsNew() {
   const api = useApi();
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => api.acknowledgeWhatsNew(),
-    onSuccess: () =>
+    onSuccess: () => {
       client.setQueryData<StartupTasks>(queryKeys.startupTasks(), (tasks) =>
         tasks ? { ...tasks, whats_new: null } : tasks,
-      ),
+      );
+      return client.invalidateQueries({ queryKey: queryKeys.startupTasks() });
+    },
   });
 }
 

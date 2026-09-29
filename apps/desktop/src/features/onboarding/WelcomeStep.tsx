@@ -4,23 +4,33 @@ import { useTranslation } from "react-i18next";
 import { AiDisclosureAcknowledgement } from "@/components/common/AiDisclosureAcknowledgement";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
+import { UpdateCheckChoice, useUpdateCheckChoice } from "@/features/updates/UpdateCheckChoice";
 import { useUiStore } from "@/stores/ui";
 
 /**
  * Step 1: what the product does (and doesn't), the AI disclosure the student must acknowledge
- * (docs/ARCHITECTURE.md §3 rule 8), and a way out. Skipping needs no acknowledgement: nothing is
- * shared until a source is added — and adding one later asks again.
+ * (docs/ARCHITECTURE.md §3 rule 8), the automatic update check (on by default, disclosed here;
+ * recorded either way the student leaves this step), and a way out. Skipping needs no AI
+ * acknowledgement: nothing is shared until a source is added — and adding one later asks again.
  */
 export function WelcomeStep({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) {
   const { t } = useTranslation("onboarding");
   const acknowledged = useUiStore((s) => s.aiDisclosureAcknowledgedAt !== null);
   const [nudge, setNudge] = useState(false);
   const hintId = useId();
+  const updateCheck = useUpdateCheckChoice();
 
   function start() {
     // aria-disabled (not disabled) keeps the button focusable, so we can explain instead.
-    if (acknowledged) onStart();
-    else setNudge(true);
+    if (acknowledged) {
+      updateCheck.record();
+      onStart();
+    } else setNudge(true);
+  }
+
+  function skip() {
+    updateCheck.record();
+    onSkip();
   }
 
   return (
@@ -29,6 +39,7 @@ export function WelcomeStep({ onStart, onSkip }: { onStart: () => void; onSkip: 
       <div className="space-y-6">
         <p className="text-base leading-relaxed text-pretty">{t("welcome.body")}</p>
         <AiDisclosureAcknowledgement />
+        <UpdateCheckChoice value={updateCheck.value} onChange={updateCheck.setValue} />
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -41,7 +52,7 @@ export function WelcomeStep({ onStart, onSkip }: { onStart: () => void; onSkip: 
               {t("welcome.start")}
               <ArrowRight aria-hidden />
             </Button>
-            <Button size="lg" variant="ghost" className="text-muted-foreground" onClick={onSkip}>
+            <Button size="lg" variant="ghost" className="text-muted-foreground" onClick={skip}>
               {t("welcome.skip")}
             </Button>
           </div>
