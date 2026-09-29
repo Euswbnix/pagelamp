@@ -19,7 +19,9 @@ export function reminderText(
         id,
         title: code ? t("notify.deadlineTitle", { code, title }) : title,
         body: reminder.due_at
-          ? t("notify.deadlineBody", { when: when(reminder.due_at, reminder.time_zone, locale) })
+          ? t("notify.deadlineBody", {
+              when: when(reminder.due_at, reminder.time_zone, locale, t),
+            })
           : "",
       };
     }
@@ -40,17 +42,21 @@ export function reminderText(
   }
 }
 
-/** "Tuesday 23:59" in the student's language, in `timeZone` when the system knows it. */
-function when(at: string, timeZone: string, locale: string): string {
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: "long",
-    hour: "2-digit",
-    minute: "2-digit",
+/**
+ * "Tuesday 23:59" in the student's language, in `timeZone` when the system knows it. The day and
+ * the time are formatted apart: CLDR's zh pattern runs them together ("星期二23:59").
+ */
+function when(at: string, timeZone: string, locale: string, t: TFunction<"reminders">): string {
+  const format = (options: Intl.DateTimeFormatOptions) => {
+    try {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(new Date(at));
+    } catch {
+      // An IANA name this system doesn't know: its own zone is the best guess left.
+      return new Intl.DateTimeFormat(locale, options).format(new Date(at));
+    }
   };
-  try {
-    return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(new Date(at));
-  } catch {
-    // An IANA name this system doesn't know: its own zone is the best guess left.
-    return new Intl.DateTimeFormat(locale, options).format(new Date(at));
-  }
+  return t("notify.when", {
+    weekday: format({ weekday: "long" }),
+    time: format({ hour: "2-digit", minute: "2-digit" }),
+  });
 }

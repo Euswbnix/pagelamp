@@ -1401,6 +1401,7 @@
 "reminders.notify.onBody" = "PageLamp 会在这里提醒你截止日期和本周安排。";
 "reminders.notify.onTitle" = "提醒已开启";
 "reminders.notify.planTitle" = "今天的学习计划";
+"reminders.notify.when" = "%1$@ %2$@";
 "reminders.remind.no" = "暂不";
 "reminders.remind.offDone" = "不提醒。可以在「设置 → 提醒」里开启。";
 "reminders.remind.onDone" = "PageLamp 会提醒你。可以在「设置 → 提醒」里更改。";

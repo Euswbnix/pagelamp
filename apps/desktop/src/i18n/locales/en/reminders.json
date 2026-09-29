@@ -31,6 +31,7 @@
   "notify": {
     "deadlineTitle": "{{code}}: {{title}}",
     "deadlineBody": "Due {{when}}",
+    "when": "{{weekday}} {{time}}",
     "digestTitle": "Your week in {{product}}",
     "digestBody_one": "{{count}} deadline in the next 7 days",
     "digestBody_other": "{{count}} deadlines in the next 7 days",

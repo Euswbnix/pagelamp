@@ -33,9 +33,10 @@ describe("reminder notifications", () => {
       title: "DEMO101: Assignment 2",
       body: "Due Tuesday 11:59 PM",
     });
+    // The day and the time apart (CLDR's zh pattern runs them together).
     expect(text(deadline, "zh-CN")).toMatchObject({
       title: "DEMO101：Assignment 2",
-      body: expect.stringContaining("23:59"),
+      body: "截止时间：星期二 23:59",
     });
   });
 

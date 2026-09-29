@@ -31,6 +31,7 @@
   "notify": {
     "deadlineTitle": "{{code}}：{{title}}",
     "deadlineBody": "截止时间：{{when}}",
+    "when": "{{weekday}} {{time}}",
     "digestTitle": "{{product}} 本周概览",
     "digestBody_one": "未来 7 天有 {{count}} 个截止日期",
     "digestBody_other": "未来 7 天有 {{count}} 个截止日期",

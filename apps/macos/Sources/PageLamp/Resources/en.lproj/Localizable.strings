@@ -1401,6 +1401,7 @@
 "reminders.notify.onBody" = "PageLamp will remind you here about deadlines and your week.";
 "reminders.notify.onTitle" = "Reminders are on";
 "reminders.notify.planTitle" = "Today's study plan";
+"reminders.notify.when" = "%1$@ %2$@";
 "reminders.remind.no" = "Not now";
 "reminders.remind.offDone" = "No reminders. You can turn them on in Settings → Reminders.";
 "reminders.remind.onDone" = "PageLamp will remind you. You can change this in Settings → Reminders.";
