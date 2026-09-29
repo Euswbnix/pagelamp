@@ -125,7 +125,6 @@ export function CourseDatesForm({
     heading: useId(),
     first: useId(),
     last: useId(),
-    lastHint: useId(),
     exams: useId(),
     examsHint: useId(),
     breaks: useId(),
@@ -240,11 +239,8 @@ export function CourseDatesForm({
         </Field>
         <Field data-invalid={invalid || undefined}>
           <FieldLabel htmlFor={ids.last}>{t("form.end")}</FieldLabel>
-          {dateInput(ids.last, state.last, (last) => update({ last }), {
-            min: state.first,
-            hint: ids.lastHint,
-          })}
-          <FieldDescription id={ids.lastHint}>{t("form.endHint")}</FieldDescription>
+          {/* No "three weeks after" hint here: the end of exams (next field) says it. */}
+          {dateInput(ids.last, state.last, (last) => update({ last }), { min: state.first })}
         </Field>
         <Field data-invalid={invalid || undefined}>
           <FieldLabel htmlFor={ids.exams}>{t("form2.exams")}</FieldLabel>
