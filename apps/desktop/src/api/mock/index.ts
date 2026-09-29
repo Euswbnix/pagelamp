@@ -22,6 +22,7 @@ import {
   aiMaterialsState,
   type CourseSummary,
   type Deadline,
+  type MaterialView,
   type SourceKind,
   type SourceRecord,
   type SourceSyncResult,
@@ -288,8 +289,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         modules: c.modules.length,
         materials: c.materials.length,
         // Like the facade: "readable by your AI app" is 0 unless the AI may read materials.
-        indexed_materials:
-          aiMaterials === "readable" ? c.materials.filter((m) => m.text_status === "ok").length : 0,
+        indexed_materials: aiMaterials === "readable" ? c.materials.filter(hasText).length : 0,
         upcoming_deadlines: upcoming.length,
       },
       next_deadline: upcoming[0] ?? null,
@@ -301,7 +301,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   function status(): AppStatus {
     const visible = db.courses.filter((c) => !c.course.hidden);
     const materials = db.courses.flatMap((c) => c.materials);
-    const indexed = materials.filter((m) => m.text_status === "ok");
+    const indexed = materials.filter(hasText);
     const synced = db.sources
       .map((s) => s.last_synced_at)
       .filter((v): v is string => !!v)
@@ -1005,4 +1005,9 @@ function stepOf(
     case "ical":
       return { stage: "downloading_feed", course: null, message: "Downloading the calendar feed" };
   }
+}
+
+/** Text to read, like the facade's count: indexed ("ok") and at least one chunk (not a scan). */
+function hasText(m: MaterialView): boolean {
+  return m.text_status === "ok" && m.chunk_count > 0;
 }
