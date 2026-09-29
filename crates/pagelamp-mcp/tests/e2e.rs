@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{TimeDelta, Utc};
+use chrono::{Datelike, Local, TimeDelta, Utc};
 use pagelamp_core::brand;
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
@@ -40,7 +40,10 @@ fn fixture(dir: &Path) -> PathBuf {
         })
         .unwrap();
     store.record_sync(SOURCE, Utc::now(), None).unwrap();
-    let today = Utc::now().date_naive();
+    // Week 1 began on the Monday two weeks ago, so today is week 3 (weeks run Monday to
+    // Sunday), by the same local date the server uses.
+    let today = Local::now().date_naive();
+    let week_one = today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14);
     for (external, code, name) in [
         ("101", "DEMO101", "Intro to Demo Studies"),
         ("202", "DEMO202", "Advanced Demo Studies"),
@@ -53,7 +56,7 @@ fn fixture(dir: &Path) -> PathBuf {
                 external_id: external.into(),
                 code: Some(code.into()),
                 name: name.into(),
-                term_start: Some(today - TimeDelta::days(16)), // week 3
+                term_start: Some(week_one),
                 term_end: Some(today + TimeDelta::days(80)),
                 url: Some(format!("https://lms.example.edu/courses/{external}")),
                 syllabus_text: None,
