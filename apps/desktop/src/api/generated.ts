@@ -626,6 +626,7 @@ export type EvidenceCode =
   | "dates_agree"
   | "dates_may_be_wrong"
   | "session_window"
+  | "institution_calendar_missing"
   | "week_from_dates"
   | "week_from_module_unlock"
   | "week_from_recent_materials"

@@ -147,8 +147,30 @@ function scenarioState(scenario: MockScenario): Scenario {
   }
 }
 
+/**
+ * Whether the mock offers the ChatGPT plan: only in the `codex-*` scenarios, which exist to show
+ * its screens. Everywhere else it's off, as in every build until OpenAI confirms in writing (the
+ * facade's CHATGPT_PLAN_OFFERED): no card, no ChatGPT copy, and every way into Codex refuses.
+ */
+export function chatgptPlanOfferedIn(scenario: MockScenario): boolean {
+  return scenario.startsWith("codex-");
+}
+
+/** The facade's refusal while the ChatGPT plan isn't offered. */
+export function chatgptPlanNotOffered(): ApiError {
+  return new ApiError(
+    "blocked",
+    "The ChatGPT plan isn't available in this version of PageLamp. Use an API key or a model on this computer.",
+    { blocked: "backend_disabled_in_this_build" },
+  );
+}
+
 export interface MockCodex {
   api: CodexApi;
+  /** This build offers the ChatGPT plan (`chatgptPlanOfferedIn`). */
+  offered: boolean;
+  /** Throws the facade's refusal unless the plan is offered. */
+  requireOffered: () => void;
   /** The `codex` entry of ai_status, once Codex is installed or chosen for a feature. */
   backendStatus: (acknowledged: number | null, chosen: boolean) => AiBackendStatus | null;
   /** Whether the scenario starts with the disclosure acknowledged. */
@@ -172,6 +194,10 @@ export function createMockCodex(options: {
 }): MockCodex {
   const { delay, stepMs } = options;
   const start = scenarioState(options.scenario);
+  const offered = chatgptPlanOfferedIn(options.scenario);
+  const requireOffered = () => {
+    if (!offered) throw chatgptPlanNotOffered();
+  };
   const state = {
     installed: start.installed,
     source: "managed" as CodexStatus["runtime"]["source"],
@@ -188,8 +214,8 @@ export function createMockCodex(options: {
 
   function status(): CodexStatus {
     return structuredClone({
-      // As `aiStatus` (mock/ai.ts): the mock offers the plan.
-      chatgpt_plan_offered: true,
+      // As `aiStatus` (mock/ai.ts). The rest still answers, for clean-up.
+      chatgpt_plan_offered: offered,
       runtime: {
         state: state.installed ? "installed" : "not_installed",
         source: state.source,
@@ -256,8 +282,11 @@ export function createMockCodex(options: {
       return status();
     },
 
-    installCodex: (installId, onEvent) =>
-      options.activity.during("codex_install", {}, () => install(installId, onEvent)),
+    installCodex: async (installId, onEvent) => {
+      // Refused before the activity starts, like the facade.
+      requireOffered();
+      return options.activity.during("codex_install", {}, () => install(installId, onEvent));
+    },
 
     cancelCodexInstall: async (installId) => {
       cancelledInstalls.add(installId);
@@ -272,6 +301,7 @@ export function createMockCodex(options: {
 
     codexLogin: async (method, onEvent) => {
       await delay();
+      requireOffered();
       requireInstalled();
       loginCancelled = false;
       if (method === "device_code") {
@@ -308,6 +338,7 @@ export function createMockCodex(options: {
 
     setCodexSource: async (source) => {
       await delay();
+      requireOffered();
       if (source === "system") {
         throw new ApiError(
           "invalid",
@@ -320,6 +351,7 @@ export function createMockCodex(options: {
 
     setModeAWeeklyCap: async (runs) => {
       await delay();
+      requireOffered();
       if (runs !== null && (!Number.isInteger(runs) || runs < 1)) {
         throw new ApiError("invalid", "The weekly cap must be a whole number of runs, at least 1.");
       }
@@ -329,9 +361,12 @@ export function createMockCodex(options: {
 
   return {
     api,
+    offered,
+    requireOffered,
     initiallyAcknowledged: start.acknowledged,
     backendStatus: (acknowledged, chosen) => {
-      if (!state.installed && !chosen) return null;
+      // Not offered: no Codex backend at all, like the facade.
+      if (!offered || (!state.installed && !chosen)) return null;
       const disclosure = codexFacts(state.login.plan_type ?? "unknown");
       const problems: AiBackendStatus["problems"] = [];
       if (!state.installed) problems.push("runtime_missing");
