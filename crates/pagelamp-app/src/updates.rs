@@ -207,7 +207,7 @@ impl App {
         *self.state.launch.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
-    fn shell(&self) -> Shell {
+    pub(crate) fn shell(&self) -> Shell {
         *self.state.shell.lock().unwrap_or_else(|e| e.into_inner())
     }
 

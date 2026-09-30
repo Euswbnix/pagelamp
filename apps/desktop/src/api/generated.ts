@@ -2932,9 +2932,10 @@ export interface ReminderSettings {
   plan_today?: boolean;
   plan_today_time?: string;
   /**
-   * The onboarding answer "Remind me (keep PageLamp in the tray / menu bar and start it at
-   * login)". Each shell keeps its tray and login item in line with it; reminders are
-   * computed the same either way.
+   * The onboarding answer "Remind me", per app shell, the only field that isn't shared. The
+   * desktop app keeps its tray and login item in line with it. The Mac app treats it as its
+   * consent to schedule notifications, stored apart so that neither app's answer changes
+   * the other's. Reminders are computed the same either way.
    */
   run_in_background?: boolean;
   weekly_digest?: boolean;

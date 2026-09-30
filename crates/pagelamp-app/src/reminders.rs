@@ -23,10 +23,14 @@ pub use pagelamp_core::reminders::{DayOfWeek, Reminder, ReminderKind, ReminderSe
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, WeeklyDigest};
 
+use crate::updates::Shell;
 use crate::{App, AppError, AppErrorKind, Result};
 
 /// The settings key of `ReminderSettings`.
 const SETTINGS_KEY: &str = "reminder_settings";
+/// The Mac app's own `run_in_background` (its "Remind me" consent), apart from the desktop
+/// app's, which lives in `SETTINGS_KEY` (like What's new's `app.mac.*` keys). Absent: false.
+const MAC_RUN_IN_BACKGROUND_KEY: &str = "app.mac.run_in_background";
 /// The longest window `reminders(from, to)` accepts.
 const MAX_WINDOW_DAYS: i64 = 62;
 
@@ -42,9 +46,17 @@ impl App {
 
     /// The student's reminder settings (defaults when never set or unparseable). A failed read
     /// is an error, never the defaults: the shells keep the login item and the notifications
-    /// as they are until the stored answer can be read.
+    /// as they are until the stored answer can be read. `run_in_background` is this shell's
+    /// own (`Shell::Mac`: the Mac app's consent, false until given); the rest is shared.
     pub fn reminder_settings(&self) -> Result<ReminderSettings> {
-        settings_in(&self.read_store()?)
+        let store = self.read_store()?;
+        let mut settings = settings_in(&store)?;
+        if self.shell() == Shell::Mac {
+            settings.run_in_background = store
+                .setting_or_absent(MAC_RUN_IN_BACKGROUND_KEY)?
+                .unwrap_or(false);
+        }
+        Ok(settings)
     }
 
     /// `Invalid` when a time isn't "HH:MM".
@@ -55,7 +67,25 @@ impl App {
                 format!("{field} must be a time like 09:00."),
             )
         })?;
-        Ok(self.write_store()?.set_setting(SETTINGS_KEY, settings)?)
+        let store = self.write_store()?;
+        if self.shell() == Shell::Desktop {
+            return Ok(store.set_setting(SETTINGS_KEY, settings)?);
+        }
+        // The Mac app: the shared fields, and its own consent; the desktop app's answer stays.
+        Ok(store.in_transaction(|store| {
+            let desktop = store
+                .setting_or_absent::<ReminderSettings>(SETTINGS_KEY)?
+                .unwrap_or_default()
+                .run_in_background;
+            store.set_setting(
+                SETTINGS_KEY,
+                &ReminderSettings {
+                    run_in_background: desktop,
+                    ..settings.clone()
+                },
+            )?;
+            store.set_setting(MAC_RUN_IN_BACKGROUND_KEY, &settings.run_in_background)
+        })?)
     }
 
     /// The reminders that fire in [`from`, `to`) and weren't shown yet, soonest first (Swift
