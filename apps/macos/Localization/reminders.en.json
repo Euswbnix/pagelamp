@@ -20,6 +20,25 @@
     },
     "catchUp": {
       "turnOn": "Get These as Notifications"
+    },
+    "general": {
+      "menuBar": "Show {{product}} in the menu bar",
+      "menuBarHint": "Your week at a glance. Closing the last window then leaves {{product}} running in the menu bar."
     }
+  },
+  "menuBar": {
+    "label": "{{product}}",
+    "labelDue_one": "{{product}} — {{count}} deadline in the next 24 hours",
+    "labelDue_other": "{{product}} — {{count}} deadlines in the next 24 hours",
+    "dueSoon": "Due soon",
+    "moreDue_one": "{{count}} more in the next 7 days",
+    "moreDue_other": "{{count}} more in the next 7 days",
+    "todayPlan": "Today's plan",
+    "moreToday_one": "{{count}} more today",
+    "moreToday_other": "{{count}} more today",
+    "lastWeek": "Last week: {{done}} of {{planned}} done",
+    "loadFailed": "This week couldn't be loaded.",
+    "settings": "Settings…",
+    "open": "Open {{product}}"
   }
 }

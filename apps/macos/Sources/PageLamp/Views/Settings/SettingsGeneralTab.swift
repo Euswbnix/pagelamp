@@ -1,15 +1,23 @@
 // Settings ▸ General (spec §3.5 W8a, M1): Language and Appearance. Content switches language
-// live; menus and system dialogs follow AppleLanguages, hence Reopen Now. (Week starts on is M2;
-// the menu bar and login items are M3.)
+// live; menus and system dialogs follow AppleLanguages, hence Reopen Now. In preview builds until
+// they ship: Show PageLamp in the menu bar (M3). (Week starts on is M2.)
 
 import AppKit
 import SwiftUI
 import PageLampModel
 
 struct SettingsGeneralTab: View {
+    /// The tab's height in the Settings window (preview builds have the menu bar section).
+    #if PAGELAMP_PREVIEW
+    static let height: CGFloat = 330
+    #else
+    static let height: CGFloat = 220
+    #endif
+
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
     @State private var reopening = false
+    @AppStorage(PageLampScenes.showInMenuBarKey) private var showInMenuBar = false
 
     var body: some View {
         @Bindable var model = model
@@ -46,6 +54,14 @@ struct SettingsGeneralTab: View {
                 }
                 .pickerStyle(.segmented)
             }
+            #if PAGELAMP_PREVIEW
+            Section {
+                Toggle(isOn: $showInMenuBar) {
+                    Text(l10n("mac.reminders.general.menuBar"))
+                    Text(l10n("mac.reminders.general.menuBarHint"))
+                }
+            }
+            #endif
         }
     }
 }

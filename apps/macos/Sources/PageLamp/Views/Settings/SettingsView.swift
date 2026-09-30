@@ -31,7 +31,7 @@ struct SettingsView: View {
         TabView {
             Tab(l10n("mac.settings.tabs.general"), systemImage: "gearshape") {
                 SettingsGeneralTab()
-                    .frame(width: PLSize.settingsWidth, height: 220)
+                    .frame(width: PLSize.settingsWidth, height: SettingsGeneralTab.height)
             }
             if model.reminderDelivery != nil {
                 Tab(l10n("mac.settings.tabs.reminders"), systemImage: "bell") {

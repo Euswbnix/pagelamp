@@ -1,6 +1,7 @@
-// Reminders (M3, preview builds) for the snapshot catalogue: Settings ▸ Reminders off, on and not
-// allowed; This Week's catch-up card (reminders off at launch, what came due since). "Remind me"
-// on the first-sync page is in `ThisWeekSnapshots` ("this-week-first-sync").
+// Reminders and the menu bar extra (M3, preview builds) for the snapshot catalogue: Settings ▸
+// Reminders off, on and not allowed; This Week's catch-up card (reminders off at launch, what came
+// due since); the menu bar extra with the demo's week and empty. "Remind me" on the first-sync
+// page is in `ThisWeekSnapshots` ("this-week-first-sync").
 
 import SwiftUI
 import PageLamp
@@ -13,6 +14,8 @@ enum RemindersSnapshots {
         settings("settings-reminders-on", setup: SnapshotSetup(notificationPermission: .notDetermined, notificationAnswer: true), prepare: turnOnWithPlan),
         settings("settings-reminders-denied", setup: SnapshotSetup(notificationPermission: .notDetermined, notificationAnswer: false), prepare: turnOn),
         SnapshotPage(name: "this-week-reminders-catchup", width: SnapshotCatalog.detailWidth, minHeight: WindowMetrics.mainHeight, setup: SnapshotSetup(moment: tuesday), make: catchUp),
+        SnapshotPage(name: "menubar-week", width: MenuBarWeekView.width, minHeight: 0, setup: SnapshotSetup(), make: menuBar),
+        SnapshotPage(name: "menubar-empty", width: MenuBarWeekView.width, minHeight: 0, setup: SnapshotSetup(scenario: .empty), make: menuBar),
     ]
 
     // MARK: - Preparations
@@ -42,6 +45,11 @@ enum RemindersSnapshots {
         let due = (try? await model.service.dueReminders(now: model.clock())) ?? []
         await model.reminderDelivery?.launch(due: due)
         return AnyView(ThisWeekPage())
+    }
+
+    private static func menuBar(_ model: AppModel) async -> AnyView {
+        await model.loadMenuBarWeek()
+        return AnyView(MenuBarWeekView())
     }
 
     /// Settings ▸ Reminders after `prepare`, with its settings loaded (`.task` never runs offscreen).

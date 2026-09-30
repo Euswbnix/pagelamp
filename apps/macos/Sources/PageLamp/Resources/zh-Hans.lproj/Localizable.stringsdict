@@ -241,6 +241,48 @@
 			<string>%1$ld 周前</string>
 		</dict>
 	</dict>
+	<key>mac.menuBar.labelDue</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>PageLamp — 24 小时内有 %1$ld 个截止日期</string>
+		</dict>
+	</dict>
+	<key>mac.menuBar.moreDue</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未来 7 天还有 %1$ld 个</string>
+		</dict>
+	</dict>
+	<key>mac.menuBar.moreToday</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>今天还有 %1$ld 项</string>
+		</dict>
+	</dict>
 	<key>mac.relative.daysAgo</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

@@ -233,6 +233,11 @@ public final class AppModel {
 
     /// Reminders as notifications and the catch-up card; nil where reminders aren't shown yet.
     public private(set) var reminderDelivery: ReminderDelivery?
+    /// The menu bar extra's week (`weekly_digest()`), read with each refresh where reminders are
+    /// shown; nil until read.
+    public private(set) var menuBarWeek: MenuBarWeek?
+    /// Why the last `weekly_digest()` failed (the menu says so and offers Try Again).
+    public private(set) var menuBarWeekFailure: PageLampFailure?
     @ObservationIgnored private let reminderCenters: ReminderCenters
     @ObservationIgnored private var reminderTasks: [Task<Void, Never>] = []
     @ObservationIgnored private var reminderResponder: ReminderResponder?
@@ -440,6 +445,23 @@ public final class AppModel {
         appliedRefresh = sequence
         // After a sync, a plan saved elsewhere, a new day: the week ahead again.
         reminderDelivery?.requestPass()
+        if reminderDelivery != nil { await loadMenuBarWeek() }
+    }
+
+    /// Reads the digest for the menu bar extra.
+    public func loadMenuBarWeek() async {
+        let generation = self.generation
+        let service = self.service
+        let now = clock()
+        do throws(PageLampFailure) {
+            let digest = try await service.weeklyDigest()
+            guard generation == self.generation else { return }
+            menuBarWeek = MenuBarWeek(digest: digest, now: now)
+            menuBarWeekFailure = nil
+        } catch {
+            guard generation == self.generation else { return }
+            menuBarWeekFailure = error
+        }
     }
 
     /// Whether the refresh numbered `sequence` (of the service generation `generation`) is still
@@ -869,6 +891,8 @@ public final class AppModel {
         sourceHighlight = nil
         courseStates = [:]
         whatsNew = nil
+        menuBarWeek = nil
+        menuBarWeekFailure = nil
         if case .course = destination { destination = .thisWeek }
     }
 

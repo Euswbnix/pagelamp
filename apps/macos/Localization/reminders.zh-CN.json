@@ -20,6 +20,25 @@
     },
     "catchUp": {
       "turnOn": "改为用通知提醒"
+    },
+    "general": {
+      "menuBar": "在菜单栏中显示 {{product}}",
+      "menuBarHint": "一眼看到本周安排。关闭最后一个窗口后，{{product}} 仍会在菜单栏中运行。"
     }
+  },
+  "menuBar": {
+    "label": "{{product}}",
+    "labelDue_one": "{{product}} — 24 小时内有 {{count}} 个截止日期",
+    "labelDue_other": "{{product}} — 24 小时内有 {{count}} 个截止日期",
+    "dueSoon": "即将截止",
+    "moreDue_one": "未来 7 天还有 {{count}} 个",
+    "moreDue_other": "未来 7 天还有 {{count}} 个",
+    "todayPlan": "今天的计划",
+    "moreToday_one": "今天还有 {{count}} 项",
+    "moreToday_other": "今天还有 {{count}} 项",
+    "lastWeek": "上周：{{planned}} 项中完成了 {{done}} 项",
+    "loadFailed": "本周内容没能载入。",
+    "settings": "设置…",
+    "open": "打开 {{product}}"
   }
 }
