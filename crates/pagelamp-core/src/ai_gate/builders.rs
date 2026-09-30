@@ -253,17 +253,15 @@ pub fn week_context_including(
         let mut context = GatedContext::empty();
         let mut candidates = Vec::new();
         for view in &listed.materials {
-            // "Include" lifts only looks_like_assessment: `left_out` decides every other
-            // reason (no readable text first) before it.
-            let reason = left_out(store, view)?.filter(|reason| {
-                !(*reason == LeftOutReason::LooksLikeAssessment && include.contains(&view.id))
-            });
+            // "Include" lifts only an includable reason: `left_out` decides every other reason
+            // (no readable text first) before it.
+            let reason = left_out(store, view)?
+                .filter(|reason| !(reason.includable() && include.contains(&view.id)));
             if let Some(reason) = reason {
-                context.summary.left_out.push(LeftOutMaterial {
-                    material_id: view.id.clone(),
-                    title: view.title.clone(),
-                    reason,
-                });
+                context
+                    .summary
+                    .left_out
+                    .push(LeftOutMaterial::new(&view.id, &view.title, reason));
                 continue;
             }
             let chunks = store.get_chunks(&view.id, 0, None)?;
@@ -306,11 +304,11 @@ pub fn week_context_including(
                 });
             }
             if ords.is_empty() {
-                context.summary.left_out.push(LeftOutMaterial {
-                    material_id: view.id.clone(),
-                    title: view.title.clone(),
-                    reason: LeftOutReason::OverBudget,
-                });
+                context.summary.left_out.push(LeftOutMaterial::new(
+                    &view.id,
+                    &view.title,
+                    LeftOutReason::OverBudget,
+                ));
                 continue;
             }
             context.summary.materials_included += 1;
@@ -583,11 +581,11 @@ pub fn calendar_context(
                 Some(CandidateLeftOut::OverBudget) => LeftOutReason::OverBudget,
                 Some(CandidateLeftOut::ExcludedByStudent) => continue,
             };
-            context.summary.left_out.push(LeftOutMaterial {
-                material_id: candidate.material_id.clone(),
-                title: candidate.title.clone(),
+            context.summary.left_out.push(LeftOutMaterial::new(
+                &candidate.material_id,
+                &candidate.title,
                 reason,
-            });
+            ));
         }
         if read.is_empty() {
             return Ok(Err(BlockReason::NoReadableMaterials));
@@ -632,11 +630,11 @@ pub fn calendar_context(
         for ((candidate, chunks), share) in read.iter().zip(&texts).zip(shares) {
             let selection = select_chunks(chunks, share);
             if selection.chosen.is_empty() {
-                context.summary.left_out.push(LeftOutMaterial {
-                    material_id: candidate.material_id.clone(),
-                    title: candidate.title.clone(),
-                    reason: LeftOutReason::OverBudget,
-                });
+                context.summary.left_out.push(LeftOutMaterial::new(
+                    &candidate.material_id,
+                    &candidate.title,
+                    LeftOutReason::OverBudget,
+                ));
                 continue;
             }
             let material = data

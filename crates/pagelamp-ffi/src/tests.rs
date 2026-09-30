@@ -210,6 +210,7 @@ const MIRRORED: &[&str] = &[
     "WeeklyDigest",
     // v0.3 M3: study plans
     "PlanOrigin",
+    "PlanLimits",
     "StudyPlanRequest",
     "UnscheduledReason",
     "UnscheduledTask",
@@ -697,6 +698,7 @@ fn course_lifecycle_calls_and_constants() {
             .ok
     );
 
+    assert_eq!(plan_limits(), pagelamp_app::ai::plan_limits());
     assert_eq!(not_now_days(), 14);
     assert_eq!(keep_current_days(), 120);
     assert_eq!(

@@ -460,9 +460,24 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     detectLocalServers: async (): Promise<LocalServer[]> => {
       await ctx.delay(300);
+      // Like the facade: the provider already added with the same preset and address.
+      const normal = (url: string) => url.replace(/\/+$/, "").replace("//localhost", "//127.0.0.1");
+      const server = (
+        preset: LocalServer["kind"],
+        base_url: string,
+        running: boolean,
+      ): LocalServer => ({
+        kind: preset,
+        preset,
+        base_url,
+        running,
+        provider_id:
+          providers.find((p) => p.preset === preset && normal(p.base_url) === normal(base_url))
+            ?.provider_id ?? null,
+      });
       return [
-        { kind: "ollama", base_url: "http://127.0.0.1:11434", running: true },
-        { kind: "lm_studio", base_url: "http://127.0.0.1:1234/v1", running: false },
+        server("ollama", "http://127.0.0.1:11434", true),
+        server("lm_studio", "http://127.0.0.1:1234/v1", false),
       ];
     },
 

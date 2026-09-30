@@ -1340,6 +1340,7 @@ struct AppTypes {
     day_of_week: DayOfWeek,
     // M3: study plans
     study_plan_request: ai::StudyPlanRequest,
+    plan_limits: ai::PlanLimits,
     generated_study_plan: ai::GeneratedStudyPlan,
     plan_warning: ai::PlanWarning,
     plan_warning_code: ai::PlanWarningCode,

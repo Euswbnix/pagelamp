@@ -804,8 +804,20 @@ async fn doctor_says_which_keys_are_there_and_which_local_servers_answer_but_nev
     );
     assert_eq!(check("ollama").reachable, Some(false));
     // Whether the usual Ollama and LM Studio ports answer depends on this computer.
-    let kinds: Vec<_> = doctor.ai.local_servers.iter().map(|s| s.kind).collect();
-    assert_eq!(kinds, [LocalServerKind::Ollama, LocalServerKind::LmStudio]);
+    let kinds: Vec<_> = doctor
+        .ai
+        .local_servers
+        .iter()
+        .map(|s| (s.kind, s.preset.as_str(), s.provider_id.as_deref()))
+        .collect();
+    // No provider ids in doctor, although both servers were added.
+    assert_eq!(
+        kinds,
+        [
+            (LocalServerKind::Ollama, "ollama", None),
+            (LocalServerKind::LmStudio, "lm_studio", None)
+        ]
+    );
 
     let report = app.diagnostic_report().unwrap();
     assert!(report.contains("- AI providers: "), "{report}");
@@ -820,5 +832,62 @@ async fn doctor_says_which_keys_are_there_and_which_local_servers_answer_but_nev
     }
     let json = serde_json::to_string(&doctor).unwrap();
     assert!(!json.contains("canary7731") && !json.contains(&format!(":{open_port}")));
+    assert!(!json.contains("lm_studio-1") && !json.contains("ollama-1"));
     drop(listening);
+}
+
+#[tokio::test]
+async fn a_local_server_names_its_preset_and_the_provider_already_added_for_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _secrets) = app_in(temp.path());
+    let store = Store::open(&app.db_path()).unwrap();
+    for (id, preset, wire, url) in [
+        // Ollama at its usual address, written another way.
+        (
+            "ollama-1",
+            "ollama",
+            "ollama_native",
+            "http://localhost:11434/",
+        ),
+        // LM Studio on another port: not the server at the usual one.
+        (
+            "lm_studio-1",
+            "lm_studio",
+            "openai_chat",
+            "http://127.0.0.1:1235/v1",
+        ),
+        // Another preset at LM Studio's usual address isn't LM Studio.
+        (
+            "custom-1",
+            "custom",
+            "openai_chat",
+            "http://127.0.0.1:1234/v1",
+        ),
+    ] {
+        store
+            .insert_model_provider(&ProviderRow {
+                id: id.into(),
+                preset: preset.into(),
+                label: id.into(),
+                wire: wire.into(),
+                base_url: url.into(),
+                created_at: Utc::now().trunc_subsecs(0),
+                last_probe_json: None,
+            })
+            .unwrap();
+    }
+
+    // Whether the usual ports answer depends on this computer; what was added doesn't.
+    let servers = app.detect_local_servers().await.unwrap();
+    let found: Vec<_> = servers
+        .iter()
+        .map(|s| (s.kind, s.preset.as_str(), s.provider_id.as_deref()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (LocalServerKind::Ollama, "ollama", Some("ollama-1")),
+            (LocalServerKind::LmStudio, "lm_studio", None)
+        ]
+    );
 }

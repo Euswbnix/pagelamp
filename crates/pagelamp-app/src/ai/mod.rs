@@ -26,7 +26,9 @@ pub use explain::{
     WeeklyExplanation,
 };
 pub use note::{MAX_FOCUS_ITEMS, NoteFocus, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings};
-pub use plan::{GeneratedStudyPlan, PlanWarning, PlanWarningCode, StudyPlanRequest};
+pub use plan::{
+    GeneratedStudyPlan, PlanLimits, PlanWarning, PlanWarningCode, StudyPlanRequest, plan_limits,
+};
 pub(crate) use settings::backend_key;
 pub use types::*;
 
@@ -59,8 +61,10 @@ impl App {
         profile::presets().iter().map(provider_preset).collect()
     }
 
-    /// Ollama and LM Studio on this computer: which are running (a quick loopback call each).
+    /// Ollama and LM Studio on this computer: which are running (a quick loopback call each),
+    /// and which the student already added.
     pub async fn detect_local_servers(&self) -> Result<Vec<LocalServer>> {
+        let added = self.read_store()?.model_providers()?;
         let mut servers = Vec::new();
         for (preset_id, kind) in [
             ("ollama", LocalServerKind::Ollama),
@@ -85,10 +89,16 @@ impl App {
                 }
                 Err(_) => false,
             };
+            let provider_id = added
+                .iter()
+                .find(|row| row.preset == preset_id && same_address(&row.base_url, &base_url))
+                .map(|row| row.id.clone());
             servers.push(LocalServer {
                 kind,
+                preset: preset_id.to_string(),
                 base_url,
                 running,
+                provider_id,
             });
         }
         Ok(servers)
@@ -519,8 +529,11 @@ pub(crate) fn doctor_checks(
         let url = profile::preset(preset_id)?.base_url.clone()?;
         Some(LocalServer {
             kind,
+            preset: preset_id.to_string(),
             base_url: url.as_str().trim_end_matches('/').to_string(),
             running: accepts_connections(&url),
+            // Doctor output is shared in issues: no provider ids.
+            provider_id: None,
         })
     })
     .collect();
@@ -528,6 +541,16 @@ pub(crate) fn doctor_checks(
         providers,
         local_servers,
     }
+}
+
+/// Whether two addresses name the same server: a trailing `/`, and `localhost` for
+/// `127.0.0.1`, don't matter.
+fn same_address(a: &str, b: &str) -> bool {
+    let normal = |url: &str| {
+        url.trim_end_matches('/')
+            .replacen("//localhost", "//127.0.0.1", 1)
+    };
+    normal(a) == normal(b)
 }
 
 /// Whether something on this computer accepts connections at `url`'s port (loopback
