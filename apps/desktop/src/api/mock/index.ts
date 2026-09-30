@@ -11,6 +11,7 @@
 // codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed);
 // course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts);
 // reminders (M3): reminders-due · reminders-no-tray (see reminders.ts).
+// weekly note (beta.2): weekly-note-monday (opted in, an API key, Monday; see weeklyNote.ts).
 //
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
@@ -60,6 +61,7 @@ import { createPlanMock } from "./plan";
 import { createProposalsMock, type MockAiRun } from "./proposals";
 import { createRemindersMock } from "./reminders";
 import { createLifecycleMock } from "./removal";
+import { createWeeklyNoteMock } from "./weeklyNote";
 import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
@@ -307,6 +309,26 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     gate: (courseId, week, overrideBudget) =>
       aiGate({ feature: "weekly_explanation", course: courseId, week }, overrideBudget),
     findCourse,
+  });
+
+  // The AI weekly note and "Prepare it on Monday" (weeklyNote.ts).
+  const weeklyNotes = createWeeklyNoteMock({
+    scenario,
+    now,
+    respond,
+    step: () => sleep(syncStep),
+    activity,
+    courses: () => db.courses,
+    lifecycleOf: (c) => lifecycleOf(c),
+    deadlinesWithin,
+    planItems: () => db.studyPlan?.plan.items.length ?? 0,
+    gate: (overrideBudget) => aiGate({ feature: "weekly_note" }, overrideBudget),
+    noteBackend: async () => {
+      const status = await ai.aiStatus();
+      const choice = status.features.find((f) => f.feature === "weekly_note")?.choice;
+      if (!choice) return null;
+      return status.backends.find((b) => sameBackend(b.backend, choice.backend))?.kind ?? null;
+    },
   });
 
   // Calendar proposals, candidates and syllabus reading (proposals.ts).
@@ -583,12 +605,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     ...ai,
     ...courseLifecycle.api,
     ...courseProposals.api,
-    // One Stop for every run: a syllabus reading, a study plan or an explanation.
+    // One Stop for every run: a syllabus reading, a study plan, an explanation or a note.
     cancelGeneration: async (generationId) => {
       studyPlans.cancel(generationId);
       explanations.cancel(generationId);
+      weeklyNotes.cancel(generationId);
       await courseProposals.api.cancelGeneration(generationId);
     },
+    writeWeeklyNote: weeklyNotes.writeWeeklyNote,
+    weeklyNotes: weeklyNotes.weeklyNotes,
+    deleteWeeklyNote: weeklyNotes.deleteWeeklyNote,
+    weeklyNoteSettings: weeklyNotes.weeklyNoteSettings,
+    setPrepareWeeklyNoteOnMonday: weeklyNotes.setPrepareWeeklyNoteOnMonday,
     explainWeek: explanations.explainWeek,
     savedExplanations: explanations.savedExplanations,
     deleteExplanation: explanations.deleteExplanation,
@@ -961,10 +989,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };
       }),
-    startupTasks: () =>
-      respond(() => {
+    startupTasks: async () => {
+      // Monday's note (weeklyNote.ts): asks who runs the note's model, so it's read first.
+      const prepareWeeklyNote = await weeklyNotes.prepareNow();
+      return respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
         return {
+          prepare_weekly_note: prepareWeeklyNote,
           whats_new: updates.whatsNewSeen ? null : whatsNewSince(upgradedFrom),
           update_check_due:
             updates.prefs.auto_check &&
@@ -982,10 +1013,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           calendar_offers_total: courseProposals.offersNow().length,
           removal_suggestions: [],
           removal_suggestions_total: 0,
-          // The weekly note's Monday opt-in: not in the mock yet.
-          prepare_weekly_note: false,
         };
-      }),
+      });
+    },
     acknowledgeWhatsNew: () =>
       respond(() => {
         updates.whatsNewSeen = true;

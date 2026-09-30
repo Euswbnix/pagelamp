@@ -18,6 +18,7 @@ import type removal from "./locales/en/removal.json";
 import type settings from "./locales/en/settings.json";
 import type sources from "./locales/en/sources.json";
 import type updates from "./locales/en/updates.json";
+import type weeklyNote from "./locales/en/weeklyNote.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -35,6 +36,7 @@ declare module "i18next" {
       plan: typeof plan;
       proposals: typeof proposals;
       reminders: typeof reminders;
+      weeklyNote: typeof weeklyNote;
       removal: typeof removal;
       settings: typeof settings;
       sources: typeof sources;

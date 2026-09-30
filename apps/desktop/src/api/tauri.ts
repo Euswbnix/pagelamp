@@ -127,6 +127,12 @@ export function createTauriApi(): PageLampApi {
     deleteExplanation: (generationId) => call("delete_explanation", { generationId }),
     aiOutputLanguage: () => call("ai_output_language"),
     setAiOutputLanguage: (language) => call("set_ai_output_language", { language }),
+    writeWeeklyNote: (generationId, options, onEvent) =>
+      call("write_weekly_note", { generationId, options, onEvent: eventChannel(onEvent) }),
+    weeklyNotes: () => call("weekly_notes"),
+    deleteWeeklyNote: (generationId) => call("delete_weekly_note", { generationId }),
+    weeklyNoteSettings: () => call("weekly_note_settings"),
+    setPrepareWeeklyNoteOnMonday: (on) => call("set_prepare_weekly_note_on_monday", { on }),
     generateStudyPlan: (request, generationId, onEvent) =>
       call("generate_study_plan", {
         request,

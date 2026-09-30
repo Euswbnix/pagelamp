@@ -703,5 +703,19 @@
 			<string>%1$ld 条提示</string>
 		</dict>
 	</dict>
+	<key>weeklyNote.gradedLeftOut</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>有 %1$ld 项重点看起来像是在替你完成计分作业，已略去。</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

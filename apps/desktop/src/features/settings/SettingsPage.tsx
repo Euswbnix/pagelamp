@@ -9,6 +9,7 @@ import { RemovedCoursesSection } from "@/features/course/removal/RemovedCoursesS
 import { OutputLanguageSection } from "@/features/explain/OutputLanguageSection";
 import { REMINDERS_UI } from "@/features/reminders/availability";
 import { RemindersSection } from "@/features/reminders/RemindersSection";
+import { WeeklyNoteSettingsSection } from "@/features/weekly-note/WeeklyNoteSettingsSection";
 import { AI_SETUP_ENABLED } from "@/lib/features";
 import { AboutSection } from "./AboutSection";
 import { AppearanceSection } from "./AppearanceSection";
@@ -37,6 +38,7 @@ export function SettingsPage() {
           <>
             <AiModelsSection />
             <OutputLanguageSection />
+            <WeeklyNoteSettingsSection />
             <UsageSection />
           </>
         ) : null}

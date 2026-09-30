@@ -134,6 +134,16 @@ it("sends the commands and arguments the Rust side expects", async () => {
   );
   await api.acceptStudyPlan("contract-test-plan");
   await api.setStudyPlanItemDone(1, 0, true);
+  // No course in the replay's data dir: nothing to write about, before any model is asked.
+  await api.writeWeeklyNote(
+    "contract-test-note",
+    { automatic: false, override_budget: false, ui_language: "en" },
+    onEvent,
+  );
+  await api.weeklyNotes();
+  await api.deleteWeeklyNote("contract-test-note");
+  await api.weeklyNoteSettings();
+  await api.setPrepareWeeklyNoteOnMonday(true);
   await api.openMaterial("contract-test-material");
   await api.revealMaterial("contract-test-material");
   await api.clearKeepCourseCurrent(COURSE);

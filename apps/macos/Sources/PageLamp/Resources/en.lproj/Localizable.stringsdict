@@ -803,5 +803,21 @@
 			<string>%1$ld warnings</string>
 		</dict>
 	</dict>
+	<key>weeklyNote.gradedLeftOut</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld focus item was left out because it looked like an answer to graded work.</string>
+			<key>other</key>
+			<string>%1$ld focus items were left out because they looked like answers to graded work.</string>
+		</dict>
+	</dict>
 </dict>
 </plist>
