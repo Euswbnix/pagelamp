@@ -208,6 +208,8 @@ public final class AiSettingsModel {
         do throws(PageLampFailure) {
             try await service.removeModelProvider(providerId: providerId)
             await refreshStatus()
+            // A local server's "Added" comes from the facade's detection.
+            await detectLocalServers()
             return true
         } catch {
             removeFailure = error
@@ -217,13 +219,9 @@ public final class AiSettingsModel {
 
     // MARK: - Local servers
 
-    /// Whether a detected server is already a provider. The Tauri app's rule, until the facade
-    /// reports it (LocalServer's preset and provider id, coming): same preset, same address
-    /// (a trailing "/" and localhost vs 127.0.0.1 don't count).
+    /// Whether a detected server is already a provider (the facade names it).
     public func isAdded(_ server: LocalServer) -> Bool {
-        status?.providers.contains {
-            $0.preset == AiCodes.name(server.kind) && Self.sameAddress($0.baseUrl, server.baseUrl)
-        } ?? false
+        server.providerId != nil
     }
 
     /// Adds a running local server (nothing is downloaded). Returns the provider, or nil with its
@@ -234,25 +232,14 @@ public final class AiSettingsModel {
         serverFailures[server.kind] = nil
         defer { addingServer = nil }
         do throws(PageLampFailure) {
-            // The preset is the server kind's name until the facade reports it (coming).
-            let record = try await service.addModelProvider(
-                preset: AiCodes.name(server.kind), baseUrl: server.baseUrl, apiKey: nil
-            )
+            let record = try await service.addModelProvider(preset: server.preset, baseUrl: server.baseUrl, apiKey: nil)
             await refreshStatus()
+            await detectLocalServers()
             return record
         } catch {
             serverFailures[server.kind] = error
             return nil
         }
-    }
-
-    private static func sameAddress(_ a: String, _ b: String) -> Bool {
-        func normal(_ url: String) -> String {
-            var url = url.replacingOccurrences(of: "//localhost", with: "//127.0.0.1")
-            while url.hasSuffix("/") { url.removeLast() }
-            return url
-        }
-        return normal(a) == normal(b)
     }
 
     // MARK: - Models per feature

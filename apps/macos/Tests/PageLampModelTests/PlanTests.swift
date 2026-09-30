@@ -225,7 +225,7 @@ struct PlanModelTests {
         #expect(sent.daysOff == [.sunday, .monday, .tuesday, .thursday, .friday, .saturday])
         #expect(sent.note == "the midterm on Friday")
         plan.note = String(repeating: "a", count: 600)
-        #expect(plan.request?.note?.count == StudyPlanLimits.noteMaxChars)
+        #expect(plan.request?.note?.count == Int(planLimits().studentNoteMaxChars) && plan.noteMaxChars == 500)
     }
 
     @Test("no active course: nothing to plan")

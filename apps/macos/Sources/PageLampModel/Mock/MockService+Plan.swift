@@ -46,7 +46,7 @@ extension MockService {
     private func writePlan(
         _ request: StudyPlanRequest, generationId: String, observer: any GenObserver
     ) async throws(PageLampFailure) -> GeneratedStudyPlan {
-        let limits = StudyPlanLimits.self
+        let limits = planLimits()
         let horizon = request.horizonDays ?? limits.defaultHorizonDays
         let hours = request.hoursPerWeek ?? limits.defaultHoursPerWeek
         let daysOff = Set(request.daysOff)

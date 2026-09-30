@@ -26,11 +26,13 @@ public final class PlanModel {
     public var daysOff: Set<DayOfWeek> { didSet { formChanged() } }
     /// The courses ticked (by id); nil: every active course.
     public var picked: [String]? { didSet { formChanged() } }
-    /// "Anything to focus on?" (at most `StudyPlanLimits.noteMaxChars` characters are sent).
+    /// "Anything to focus on?" (at most the limits' `studentNoteMaxChars` characters are sent).
     public var note: String
 
     /// The active courses, in the app's order.
     public let courses: [CourseSummary]
+    /// The facade's limits on a request (`plan_limits`).
+    public let limits: PlanLimits
 
     // MARK: The run and its outcome
 
@@ -54,13 +56,15 @@ public final class PlanModel {
         service: any PageLampService,
         courses: [CourseSummary],
         initial: StudyPlanRequest? = nil,
+        limits: PlanLimits = planLimits(),
         debounce: Duration = .milliseconds(300),
         newId: @escaping @Sendable () -> String = randomGenerationId
     ) {
         self.service = service
         self.courses = courses.filter { !$0.course.hidden && $0.lifecycle.isActive }
-        horizon = String(initial?.horizonDays ?? StudyPlanLimits.defaultHorizonDays)
-        hours = String(initial?.hoursPerWeek ?? StudyPlanLimits.defaultHoursPerWeek)
+        self.limits = limits
+        horizon = String(initial?.horizonDays ?? limits.defaultHorizonDays)
+        hours = String(initial?.hoursPerWeek ?? limits.defaultHoursPerWeek)
         daysOff = Set(initial?.daysOff ?? [])
         picked = initial.map(\.courses).flatMap { $0.isEmpty ? nil : $0 }
         note = initial?.note ?? ""
@@ -70,6 +74,9 @@ public final class PlanModel {
         estimate.update(estimateRequest)
     }
 
+    /// The longest note the facade takes.
+    public var noteMaxChars: Int { Int(limits.studentNoteMaxChars) }
+
     /// No course is active: there's nothing to plan.
     public var nothingToPlan: Bool { courses.isEmpty }
 
@@ -77,11 +84,11 @@ public final class PlanModel {
     public var chosen: [String] { picked ?? courses.map(\.course.id) }
 
     public var horizonDays: UInt32? {
-        Self.wholeNumber(horizon, StudyPlanLimits.minHorizonDays...StudyPlanLimits.maxHorizonDays)
+        Self.wholeNumber(horizon, limits.minHorizonDays...limits.maxHorizonDays)
     }
 
     public var hoursPerWeek: UInt32? {
-        Self.wholeNumber(hours, StudyPlanLimits.minHoursPerWeek...StudyPlanLimits.maxHoursPerWeek)
+        Self.wholeNumber(hours, limits.minHoursPerWeek...limits.maxHoursPerWeek)
     }
 
     public var problem: Problem? {
@@ -95,7 +102,7 @@ public final class PlanModel {
     /// What Write My Plan sends; nil while there's a problem.
     public var request: StudyPlanRequest? {
         guard problem == nil, let horizonDays, let hoursPerWeek else { return nil }
-        let note = String(note.prefix(StudyPlanLimits.noteMaxChars)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = String(note.prefix(noteMaxChars)).trimmingCharacters(in: .whitespacesAndNewlines)
         return StudyPlanRequest(
             horizonDays: horizonDays, hoursPerWeek: hoursPerWeek,
             daysOff: ReminderSettingsEditor.weekdays.filter(daysOff.contains), courses: chosen,

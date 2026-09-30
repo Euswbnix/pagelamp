@@ -14,9 +14,25 @@ extension MockService {
         return MockAiFixtures.presets
     }
 
+    /// Like the facade: each server's preset, and the provider already added with that preset
+    /// and address (a trailing "/" and localhost vs 127.0.0.1 don't count).
     public func detectLocalServers() async throws(PageLampFailure) -> [LocalServer] {
         await respond("detectLocalServers")
-        return MockAiFixtures.localServers
+        func normal(_ url: String) -> String {
+            var url = url.replacingOccurrences(of: "//localhost", with: "//127.0.0.1")
+            while url.hasSuffix("/") { url.removeLast() }
+            return url
+        }
+        return MockAiFixtures.localServers.map { server in
+            let preset = MockAi.presetName(server.kind)
+            let added = db.features.ai.providers.first {
+                $0.preset == preset && normal($0.baseUrl) == normal(server.baseUrl)
+            }
+            return LocalServer(
+                kind: server.kind, preset: preset, baseUrl: server.baseUrl, running: server.running,
+                providerId: added?.providerId
+            )
+        }
     }
 
     public func aiStatus() async throws(PageLampFailure) -> AiStatus {
