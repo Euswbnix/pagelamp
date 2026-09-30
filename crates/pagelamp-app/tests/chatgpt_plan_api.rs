@@ -148,6 +148,27 @@ async fn a_stored_codex_routing_blocks_and_clean_up_still_works() {
     );
 }
 
+/// `codex_status` keeps answering with the switch off (the "Remove all AI data" dialog reads the
+/// sign-in from it). It looks for a `codex` on PATH, so it only runs where there is none: these
+/// tests never start a Codex found on this computer.
+#[tokio::test]
+async fn codex_status_still_answers_when_the_plan_is_not_offered() {
+    let exe = if cfg!(windows) { "codex.exe" } else { "codex" };
+    let on_path = std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(exe).is_file()));
+    if on_path {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_in(temp.path());
+    let status = app.codex_status().await.unwrap();
+    assert!(!status.chatgpt_plan_offered);
+    assert_eq!(
+        status.login.state,
+        pagelamp_app::ai::CodexLoginState::SignedOut
+    );
+}
+
 /// The switch on (tests only): the same calls reach Codex's own checks again.
 #[tokio::test]
 async fn the_test_setting_offers_the_plan_in_a_debug_build() {
