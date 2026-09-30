@@ -363,6 +363,7 @@
 "calendar.evidence.folder_dates_no_end" = "采用课程文件夹设置的开始日期：%1$@";
 "calendar.evidence.in_break" = "%1$@：%2$@ – %3$@";
 "calendar.evidence.institution_calendar" = "采用学校校历中 %1$@ 学期的日期：%2$@ 到 %3$@";
+"calendar.evidence.institution_calendar_missing" = "此版本的校历里没有 %1$@ 学期的日期：只用学期月份来界定课程范围";
 "calendar.evidence.kept_current" = "你已将这门课标为进行中，直到 %1$@";
 "calendar.evidence.legacy_dates" = "采用你在旧版中设置的日期（%1$@ 到 %2$@），请确认仍然正确。";
 "calendar.evidence.legacy_dates_no_end" = "采用你在旧版中设置的第一天上课日期 %1$@，请确认仍然正确。";

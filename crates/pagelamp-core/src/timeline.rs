@@ -1076,6 +1076,7 @@ mod tests {
             materials,
             events,
             today,
+            institution: None,
         })
     }
 

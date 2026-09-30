@@ -483,6 +483,7 @@ pub enum EvidenceCode {
     DatesAgree,
     DatesMayBeWrong,
     SessionWindow,
+    InstitutionCalendarMissing,
     WeekFromDates,
     WeekFromModuleUnlock,
     WeekFromRecentMaterials,

@@ -32,7 +32,7 @@ describe("mock activity", () => {
     expect((await api.activity()).items).toEqual([]);
   });
 
-  it("lists syncs and a Codex download while they run", async () => {
+  it("lists syncs while they run", async () => {
     const api = createMockApi(slow);
     const [source] = await api.listSources();
     if (!source) throw new Error("the demo has sources");
@@ -43,7 +43,19 @@ describe("mock activity", () => {
     const one = api.syncSource(source.id, {}, () => {});
     expect((await api.activity()).items).toMatchObject([{ kind: "sync", source_id: source.id }]);
     await one;
+    expect(await api.activity()).toEqual({ items: [], other_process_syncing: false });
+  });
 
+  it("lists a Codex download while it runs, and never a refused one", async () => {
+    // The demo doesn't offer the ChatGPT plan: the install is refused before any activity.
+    const demo = createMockApi(slow);
+    await expect(demo.installCodex("install-0", () => {})).rejects.toMatchObject({
+      kind: "blocked",
+      blocked: "backend_disabled_in_this_build",
+    } satisfies Partial<ApiError>);
+    expect((await demo.activity()).items).toEqual([]);
+
+    const api = createMockApi({ ...slow, scenario: "codex-not-installed" });
     const codex = api.installCodex("install-1", () => {});
     expect((await api.activity()).items).toMatchObject([{ kind: "codex_install" }]);
     await codex;

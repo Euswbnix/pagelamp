@@ -261,6 +261,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     return [...features.values()].some((c) => c?.backend.kind === "codex");
   }
   function codexBackend(): AiBackendStatus {
+    // Not offered: models, "Test", the Codex choice and its disclosure all refuse.
+    codex.requireOffered();
     const found = codex.backendStatus(acknowledged.get("codex") ?? null, codexChosen());
     if (!found) {
       throw new ApiError("model", "Codex isn't installed.", { model_error: "runtime_missing" });
@@ -399,9 +401,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     aiStatus: async (): Promise<AiStatus> => {
       await ctx.delay();
       return structuredClone({
-        // The mock offers the ChatGPT plan; a shipped build doesn't until OpenAI confirms in
+        // Off except in the codex-* scenarios, as in every build until OpenAI confirms in
         // writing (CHATGPT_PLAN_OFFERED in the facade).
-        chatgpt_plan_offered: true,
+        chatgpt_plan_offered: codex.offered,
         // Priority order (design §7): the ChatGPT plan first, then keys and local models.
         backends: [
           codex.backendStatus(acknowledged.get("codex") ?? null, codexChosen()),
@@ -558,6 +560,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         would_block: reason,
       });
       if (!choice) return gateBlocked("no_model_chosen");
+      // A Codex routing stored while the plan was offered blocks instead of running.
+      if (choice.backend.kind === "codex" && !codex.offered) {
+        return gateBlocked("backend_disabled_in_this_build");
+      }
       const info = modelsFor(choice.backend).find((m) => m.id === choice.model) ?? null;
       const onDevice = info?.on_device ?? false;
       const courses =

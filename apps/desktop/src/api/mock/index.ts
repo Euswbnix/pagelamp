@@ -7,8 +7,9 @@
 // Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · upgrader-from-alpha1 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
-// ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
-// codex-outdated-pin · codex-outdated-app · codex-free · codex-cap (the demo: not installed);
+// ChatGPT plan (M2), offered only in these: codex-not-installed · codex-signed-out · codex-plus ·
+// codex-edu · codex-api-key · codex-outdated-pin · codex-outdated-app · codex-free · codex-cap
+// (elsewhere the plan isn't offered, as in every build until OpenAI confirms in writing);
 // course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts);
 // reminders (M3): reminders-due · reminders-no-tray (see reminders.ts).
 // weekly note (beta.2): weekly-note-monday (opted in, an API key, Monday; see weeklyNote.ts).

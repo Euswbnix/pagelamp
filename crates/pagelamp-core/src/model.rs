@@ -241,6 +241,11 @@ pub struct CourseTermData {
     /// The student's own overrides as saved (`Course.term_*` merges them field by field).
     pub user_term_start: Option<NaiveDate>,
     pub user_term_end: Option<NaiveDate>,
+    /// The school a folder course names in `course.toml` (`institution = "uoft"`): opts it into
+    /// the session hint and the school's calendar (calendar design §6.3, §6.4). Canvas courses
+    /// are known by their host instead.
+    #[serde(default)]
+    pub institution: Option<String>,
 }
 
 /// A course as read back from the store: synced fields + user overrides resolved.

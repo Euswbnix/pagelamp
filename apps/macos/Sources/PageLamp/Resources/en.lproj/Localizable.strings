@@ -363,6 +363,7 @@
 "calendar.evidence.folder_dates_no_end" = "The course folder's start date is used: %1$@";
 "calendar.evidence.in_break" = "%1$@: %2$@ – %3$@";
 "calendar.evidence.institution_calendar" = "The university's calendar for session %1$@ is used: %2$@ to %3$@";
+"calendar.evidence.institution_calendar_missing" = "The school calendar in this version has no dates for session %1$@: only its months bound the course";
 "calendar.evidence.kept_current" = "You marked this course as current until %1$@";
 "calendar.evidence.legacy_dates" = "Dates you set in an earlier version are used (%1$@ to %2$@). Check they're still right.";
 "calendar.evidence.legacy_dates_no_end" = "The first day of classes you set in an earlier version, %1$@, is used. Check it's still right.";

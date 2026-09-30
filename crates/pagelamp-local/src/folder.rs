@@ -199,6 +199,7 @@ impl CourseDir<'_> {
                 store.prune_materials(self.course_id, &keep)?;
             }
             store.set_named_outline(self.course_id, outline.as_deref())?;
+            store.set_course_institution(self.course_id, meta.institution.as_deref())?;
             Ok(())
         })?;
         if !walk_complete {
@@ -405,12 +406,41 @@ pub(crate) struct CourseMeta {
     pub term_end: Option<NaiveDate>,
     /// The course's outline, a path inside the course folder (a syllabus-reading candidate).
     pub outline: Option<String>,
+    /// The school, for its session codes and calendar (calendar design §6.3, D50): only
+    /// "uoft" is known.
+    pub institution: Option<String>,
     /// One message per setting we don't know (a typo would otherwise be silently ignored).
     pub warnings: Vec<String>,
 }
 
 /// The settings `course.toml` / `course.json` may contain.
-const COURSE_KEYS: [&str; 5] = ["code", "name", "term_start", "term_end", "outline"];
+const COURSE_KEYS: [&str; 6] = [
+    "code",
+    "name",
+    "term_start",
+    "term_end",
+    "outline",
+    "institution",
+];
+
+/// The schools `institution` may name.
+const KNOWN_INSTITUTIONS: [&str; 1] = ["uoft"];
+
+/// `institution` as a known school, or a warning and none.
+fn known_institution(meta: &mut CourseMeta, file: &str) {
+    let Some(value) = meta.institution.take() else {
+        return;
+    };
+    let lower = value.to_ascii_lowercase();
+    if KNOWN_INSTITUTIONS.contains(&lower.as_str()) {
+        meta.institution = Some(lower);
+    } else {
+        let value: String = value.chars().take(40).collect();
+        meta.warnings.push(format!(
+            "{file}: institution {value:?} isn't a school PageLamp knows (use \"uoft\"); ignored"
+        ));
+    }
+}
 
 /// Warnings for known settings whose value is not text (or a date), e.g. `code = 101`.
 fn wrong_types(file: &str, wrong: impl Fn(&str) -> bool) -> Vec<String> {
@@ -519,6 +549,7 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
             meta.warnings
                 .push("course.json is ignored because there is a course.toml".to_string());
         }
+        known_institution(&mut meta, "course.toml");
         return Ok(meta);
     }
     if let Some(text) = read_course_file(&dir.join("course.json"), "course.json")? {
@@ -537,6 +568,7 @@ pub(crate) fn read_course_meta(dir: &Path) -> Result<CourseMeta, String> {
                 object.contains_key(key) && text_of(key).is_none()
             }));
         }
+        known_institution(&mut meta, "course.json");
         return Ok(meta);
     }
     Ok(CourseMeta::default())
@@ -562,6 +594,7 @@ fn meta_from(get: impl Fn(&str) -> Option<String>) -> Result<CourseMeta, String>
         term_start: date("term_start")?,
         term_end: date("term_end")?,
         outline: text("outline"),
+        institution: text("institution"),
         warnings: Vec::new(),
     })
 }
@@ -599,6 +632,29 @@ mod tests {
         assert_eq!(course_code("Intro to Demo Studies"), None);
         assert_eq!(course_code("DEMOS101"), None, "5 letters is not a code");
         assert_eq!(course_code("AB12 notes"), None);
+    }
+
+    #[test]
+    fn course_meta_names_a_known_institution() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("course.toml"), "institution = \"UofT\"\n").unwrap();
+        let meta = read_course_meta(dir.path()).unwrap();
+        assert_eq!(meta.institution.as_deref(), Some("uoft"));
+        assert!(meta.warnings.is_empty(), "{:?}", meta.warnings);
+        std::fs::remove_file(dir.path().join("course.toml")).unwrap();
+        std::fs::write(
+            dir.path().join("course.json"),
+            r#"{"institution": "elsewhere"}"#,
+        )
+        .unwrap();
+        let meta = read_course_meta(dir.path()).unwrap();
+        assert_eq!(meta.institution, None);
+        assert_eq!(
+            meta.warnings,
+            [
+                "course.json: institution \"elsewhere\" isn't a school PageLamp knows (use \"uoft\"); ignored"
+            ]
+        );
     }
 
     #[test]
