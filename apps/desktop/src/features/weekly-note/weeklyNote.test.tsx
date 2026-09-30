@@ -5,6 +5,7 @@ import { createMockApi } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
 import { paths } from "@/lib/routes";
 import { renderRoute } from "@/test/render";
+import { useNoteRunStore } from "./useWeeklyNote";
 
 const MONDAY = new Date(2026, 8, 28, 10, 0); // Monday 2026-09-28
 const TUESDAY = new Date(2026, 8, 29, 10, 0);
@@ -71,6 +72,20 @@ describe("Courses → Weekly note", () => {
     expect(cancel).not.toHaveBeenCalled();
     await screen.findByRole("article", { name: /^Weekly note for the week of/ });
     expect(await api.weeklyNotes()).toHaveLength(1);
+  });
+
+  it("a run that is no longer the app's run changes nothing when it ends", async () => {
+    const api = mockApi({ syncStepMs: 100, now: () => TUESDAY });
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    await screen.findByRole("button", { name: "Stop" });
+    // The run store starts over (as it does between tests) while that run goes on.
+    act(() => useNoteRunStore.setState({ run: { phase: "idle" }, automaticProblem: null }));
+    // The run ends and its note is saved (the list shows it)...
+    await screen.findByRole("article", { name: /^Weekly note for the week of/ });
+    // ...but it doesn't become the store's run again.
+    expect(useNoteRunStore.getState().run).toEqual({ phase: "idle" });
+    expect(screen.queryByText("Your weekly note is ready.")).toBeNull();
   });
 
   it("stops with Stop, says so, and saves nothing", async () => {
@@ -214,6 +229,8 @@ describe("Monday's note (the opt-in)", () => {
     await waitFor(async () => expect((await api.startupTasks()).prepare_weekly_note).toBe(true));
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0]?.[1]).toMatchObject({ automatic: false });
+    // The click's run ends here, not during a later test.
+    await screen.findByRole("article", { name: /^Weekly note for the week of/ });
   });
 
   it("says why when it was blocked, with no dialog; not due is silent", async () => {
