@@ -1169,6 +1169,8 @@ pub struct AiStatus {
     pub providers: Vec<ModelProviderRecord>,
     pub features: Vec<FeatureRouting>,
     pub budget: BudgetStatus,
+    #[uniffi(default)]
+    pub chatgpt_plan_offered: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1717,6 +1719,8 @@ pub struct CodexStatus {
     pub weekly_cap: Option<u32>,
     pub runs_this_week: u32,
     pub system_codex: Option<SystemCodex>,
+    #[uniffi(default)]
+    pub chatgpt_plan_offered: bool,
 }
 
 #[uniffi::remote(Enum)]

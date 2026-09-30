@@ -1123,6 +1123,11 @@ export interface AiStatus {
    */
   backends: AiBackendStatus[];
   budget: BudgetStatus;
+  /**
+   * This build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`). False: no Codex backend is
+   * listed, and the UIs hide the ChatGPT card and every ChatGPT copy.
+   */
+  chatgpt_plan_offered: boolean;
   features: FeatureRouting[];
   providers: ModelProviderRecord[];
 }
@@ -1636,6 +1641,11 @@ export interface CodexRuntime {
  * via the `definition` "CodexStatus".
  */
 export interface CodexStatus {
+  /**
+   * This build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`). False: hide the ChatGPT card
+   * and every ChatGPT copy; the rest of this status is only for clean-up.
+   */
+  chatgpt_plan_offered: boolean;
   /**
    * False when `codex exec` doesn't work on this plan (Free/Go, D10); `None` until known.
    */
