@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "PageLamp",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "identifier": "dev.pagelamp.desktop",
   "build": {
     "beforeDevCommand": "node scripts/build-sidecar.mjs --dev && pnpm run dev",
@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["app", "dmg", "nsis", "deb", "rpm", "appimage"],
     "publisher": "PageLamp contributors",
     "homepage": "https://github.com/Euswbnix/pagelamp",
@@ -60,17 +61,22 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "PLACEHOLDER: the owner's minisign public key (A4, by 2026-10-09)",
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2QjE3OTk2QUYwNzBGMTQKUldRVUR3ZXZsbm14aHZsaWRQVU44TTBCOHg4dmFlcklSSXIzaWFZaGFNUTI5QndJRDhuc1hscisK",
       "windows": {
         "installMode": "passive"
       }
     },
     "pagelamp-updates": {
       "stable": [
+        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/stable.json",
         "https://euswbnix.github.io/pagelamp/updates/stable.json",
         "https://github.com/Euswbnix/pagelamp/releases/latest/download/latest.json"
       ],
-      "beta": ["https://euswbnix.github.io/pagelamp/updates/beta.json"],
+      "beta": [
+        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/beta.json",
+        "https://euswbnix.github.io/pagelamp/updates/beta.json"
+      ],
       "releasePage": "https://github.com/Euswbnix/pagelamp/releases/tag/v{version}"
     }
   }
