@@ -21,7 +21,7 @@ import type {
   UsageSummary,
 } from "./ai";
 import type { ExplainOptions, OutputLanguage, WeeklyExplanation } from "./explain";
-import type { GeneratedStudyPlan, StudyPlanRequest } from "./plan";
+import type { GeneratedStudyPlan, PlanLimits, StudyPlanRequest } from "./plan";
 import type {
   BackgroundStatus,
   NotificationText,
@@ -303,6 +303,8 @@ export interface PageLampApi {
     generationId: string,
     onEvent: (event: GenEvent) => void,
   ): Promise<GeneratedStudyPlan>;
+  /** What a request may ask for (horizon, weekly hours, note length): the limits it enforces. */
+  planLimits(): Promise<PlanLimits>;
   /** Saves the draft as the latest plan (origin "pagelamp"). */
   acceptStudyPlan(generationId: string): Promise<StoredStudyPlan>;
   /** Ticks an item off (or back on); the index counts the items as `latestStudyPlan` lists them. */

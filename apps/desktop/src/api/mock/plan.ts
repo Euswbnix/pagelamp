@@ -14,7 +14,10 @@ import { isoOf } from "./calendar";
 import type { MockCourse, MockDb } from "./fixtures";
 import type { MockAiRun } from "./proposals";
 
-type PlanApi = Pick<PageLampApi, "generateStudyPlan" | "acceptStudyPlan" | "setStudyPlanItemDone">;
+type PlanApi = Pick<
+  PageLampApi,
+  "generateStudyPlan" | "planLimits" | "acceptStudyPlan" | "setStudyPlanItemDone"
+>;
 
 const DAYS: readonly DayOfWeek[] = [
   "sunday",
@@ -164,6 +167,16 @@ export function createPlanMock(deps: {
   }
 
   return {
+    planLimits: () =>
+      respond({
+        min_horizon_days: PLAN_LIMITS.horizonDays.min,
+        max_horizon_days: PLAN_LIMITS.horizonDays.max,
+        default_horizon_days: PLAN_LIMITS.horizonDays.default,
+        min_hours_per_week: PLAN_LIMITS.hoursPerWeek.min,
+        max_hours_per_week: PLAN_LIMITS.hoursPerWeek.max,
+        default_hours_per_week: PLAN_LIMITS.hoursPerWeek.default,
+        student_note_max_chars: PLAN_LIMITS.noteChars,
+      }),
     generateStudyPlan: async (request, generationId, onEvent) => {
       if (running.has(generationId)) throw new ApiError("busy", "This plan is being written.");
       running.add(generationId);

@@ -624,6 +624,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     aiOutputLanguage: explanations.aiOutputLanguage,
     setAiOutputLanguage: explanations.setAiOutputLanguage,
     generateStudyPlan: studyPlans.generateStudyPlan,
+    planLimits: studyPlans.planLimits,
     acceptStudyPlan: studyPlans.acceptStudyPlan,
     setStudyPlanItemDone: studyPlans.setStudyPlanItemDone,
     ...remindersApi,

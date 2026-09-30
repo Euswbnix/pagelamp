@@ -14,9 +14,9 @@ use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
     EstimateRequest, ExplainOptions, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent,
-    ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, ProbeReport, ProviderPreset,
-    RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary, WeeklyExplanation,
-    WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings,
+    ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, PlanLimits, ProbeReport,
+    ProviderPreset, RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary,
+    WeeklyExplanation, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
@@ -238,6 +238,12 @@ pub async fn search(
 #[tauri::command]
 pub async fn latest_study_plan(backend: State<'_, Backend>) -> CmdResult<Option<StoredStudyPlan>> {
     backend.blocking(|app| app.latest_study_plan()).await
+}
+
+/// What a study plan request may ask for (constants: no store).
+#[tauri::command]
+pub fn plan_limits() -> PlanLimits {
+    pagelamp_app::ai::plan_limits()
 }
 
 // ----- course settings ----------------------------------------------------------------------------
