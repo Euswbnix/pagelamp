@@ -118,15 +118,21 @@ public struct ThisWeekText: Sendable {
             let anchor = calendar.date(byAdding: .day, value: days, to: now) ?? date
             return now.formatted(relativeStyle(anchor: anchor))
         }
+        // Within the last minute (a plan just saved): "now", never "in 0 seconds".
+        if now.timeIntervalSince(date) < 60 {
+            return now.formatted(relativeStyle(anchor: now, presentation: .named))
+        }
         return now.formatted(relativeStyle(anchor: min(date, now)))
     }
 
     /// `anchor` relative to the formatted date ("now"): numeric, full units, this locale and
     /// calendar. A value type (Foundation caches its formatter), so view bodies can call it.
-    private func relativeStyle(anchor: Date) -> Date.AnchoredRelativeFormatStyle {
+    private func relativeStyle(
+        anchor: Date, presentation: Date.AnchoredRelativeFormatStyle.Presentation = .numeric
+    ) -> Date.AnchoredRelativeFormatStyle {
         Date.AnchoredRelativeFormatStyle(
             anchor: anchor,
-            presentation: .numeric,
+            presentation: presentation,
             unitsStyle: .wide,
             locale: l10n.locale,
             calendar: calendar,

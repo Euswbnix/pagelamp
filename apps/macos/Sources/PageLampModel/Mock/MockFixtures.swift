@@ -70,8 +70,8 @@ struct MockCourse: Sendable {
 }
 
 /// The course calendar and lifecycle fields (M0.10) in neutral values: a course with a week is
-/// teaching, one without is in an unknown phase; the term is unresolved, there is no calendar, and
-/// every course is in the Current group.
+/// teaching, one without is in an unknown phase (both active); the term is unresolved, there is
+/// no calendar, and every course is in the Current group.
 enum MockCalendar {
     static var unresolvedTerm: TermResolution {
         TermResolution(
@@ -87,7 +87,9 @@ enum MockCalendar {
         return CourseLifecycle(
             state: kept || timeline.currentWeek != nil ? .current : .unknown, group: .current,
             confidence: kept ? .high : timeline.confidence, since: nil, startsOn: nil, lastActivity: nil,
-            nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: keptCurrentUntil
+            nextEvent: nil, evidenceItems: [], suggestRemoval: false, keptCurrentUntil: keptCurrentUntil,
+            // The facade's rule: Current and Unknown courses are active (study plans cover them).
+            isActive: true
         )
     }
 }

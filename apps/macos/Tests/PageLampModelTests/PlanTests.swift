@@ -238,8 +238,10 @@ struct PlanModelTests {
     func writeAndDiscard() async throws {
         let plan = try await plan(mock(.aiKey))
         #expect(plan.estimate.canGenerate && plan.estimate.showsCost)
-        let line = try #require(en.estimateLine(try #require(plan.estimate.estimate), backendKind: plan.estimate.backendKind))
-        #expect(line.text.hasPrefix("≈ $") && line.spoken.hasPrefix("Estimated cost: ≈ $"))
+        let value = try #require(plan.estimate.estimate)
+        let line = try #require(en.estimateLine(value, backendKind: plan.estimate.backendKind))
+        // A plan costs under a cent with this key.
+        #expect(line.text == "≈ less than $0.01" && line.spoken == "Estimated cost: ≈ less than $0.01")
         await plan.generate()
         guard case .finished(let draft) = plan.run.phase else {
             Issue.record("expected a draft")
@@ -367,7 +369,7 @@ struct GenerationRunTests {
     @Test("events become progress (never text); a second run waits its turn; a failure is kept")
     func progress() async throws {
         let run = GenerationRun<String>(service: mock(.demo), newId: { "g1" })
-        let (release, released) = AsyncStream<Void>.makeStream()
+        let (released, release) = AsyncStream<Void>.makeStream()
         let first = Task {
             await run.run { _, id, observer async throws(PageLampFailure) in
                 observer.onEvent(event: .started(generationId: id, backendLabel: "Ollama", model: "qwen3.5:9b", onDevice: true))
@@ -459,6 +461,9 @@ struct PlanTextTests {
         #expect(en.aiLabel(meta(estimated: false), calendar: TestClock.calendar) == "AI-generated · OpenAI · gpt-6-luna · Oct 1, 2026 · 43,600 tokens")
         #expect(en.aiLabel(meta(estimated: true), calendar: TestClock.calendar).hasSuffix(" · ≈ 43,600 tokens"))
         #expect(zh.aiLabel(meta(estimated: true), calendar: TestClock.calendar) == "AI 生成 · OpenAI · gpt-6-luna · 2026年10月1日 · ≈ 43,600 个 token")
+        // A plan just saved was made "now", never "in 0 seconds".
+        let week = ThisWeekText(l10n: en, calendar: TestClock.calendar, now: TestClock.now)
+        #expect(week.ago(TestClock.now) == "now" && week.ago(TestClock.now.addingTimeInterval(-30)) == "now")
         let saved = AiLabel(backendLabel: "Ollama", model: "qwen3.5:9b", createdAt: created, onDevice: true)
         #expect(en.aiLabel(saved, calendar: TestClock.calendar) == "AI-generated · Ollama · qwen3.5:9b · Oct 1, 2026")
     }

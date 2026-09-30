@@ -92,9 +92,12 @@ struct PlanDraftView: View {
                     GridRow(alignment: .firstTextBaseline) {
                         Text(index == 0 ? text.day(day.date) : "")
                             .font(PLType.body.font.weight(.semibold))
+                            .fixedSize()
                             .accessibilityHidden(index != 0)
                         Text(courseLabel(item.courseId) ?? "")
                             .foregroundStyle(.secondary)
+                            .fixedSize()
+                        // The task takes the width left; the other columns keep theirs.
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -105,9 +108,11 @@ struct PlanDraftView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         Text(item.minutes.map(text.minutes) ?? "")
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
+                            .fixedSize()
                     }
                 }
                 Divider()

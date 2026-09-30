@@ -16,7 +16,7 @@ enum PlanSnapshots {
         sheet("plan-running", scenario: .aiKey, syncStep: .seconds(30), prepare: startAndHold),
         sheet("plan-draft", scenario: .aiKey, prepare: writeShortPlan),
         SnapshotPage(
-            name: "this-week-plan-pagelamp", width: SnapshotCatalog.detailWidth, minHeight: WindowMetrics.mainHeight,
+            name: "plan-this-week", width: SnapshotCatalog.detailWidth, minHeight: WindowMetrics.mainHeight,
             setup: SnapshotSetup(scenario: .aiKey), make: thisWeekWithPlan
         ),
     ]
@@ -42,10 +42,10 @@ enum PlanSnapshots {
         }
     }
 
-    /// Three days only: the review tasks that don't fit are listed as not in the plan.
+    /// Four days only: the table, and the tasks that don't fit listed as not in the plan.
     private static func writeShortPlan(_ plan: PlanModel, _ model: AppModel) async {
-        plan.horizon = "3"
-        plan.hours = "3"
+        plan.horizon = "4"
+        plan.hours = "10"
         await plan.estimate.settle()
         await plan.generate()
         await plan.againEstimate.settle()
