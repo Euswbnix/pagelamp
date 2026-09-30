@@ -15,10 +15,15 @@ design is in `docs/design/v0.3-plan.md` (M0.1, M0.3, M0.4, M0.6, M0.7).
 | `channels.yml` by hand | `promote` (point a channel at a published release: the rollback), `test-publish` / `test-delete` (the test channel) |
 | `gh-pages` branch | only what Pages serves: `.nojekyll`, `updates/*.json`, `updates/test/`. Each change replaces it with one commit |
 
-The update channels (D5): `https://euswbnix.github.io/pagelamp/updates/stable.json` (the app
-falls back to `releases/latest/download/latest.json`), `…/updates/beta.json` (default for
-pre-release installs, D3) and `…/updates/test.json` (only builds made with the rehearsal
-overlay read it).
+The update channels (D5): `updates/stable.json`, `updates/beta.json` (default for pre-release
+installs, D3) and `updates/test.json` (only builds made with the rehearsal overlay read it) on
+the `gh-pages` branch. The app asks
+`https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/<channel>.json` first and
+`https://euswbnix.github.io/pagelamp/updates/<channel>.json` (GitHub Pages) second; stable then
+falls back to `releases/latest/download/latest.json`. The updater tries the next endpoint after
+a network error or an error status but stops at an answer that isn't JSON, so the endpoint that
+depends on no domain comes first. Both hosts are GitHub's and serve the same files (raw caches
+for 5 minutes, Pages for up to 10).
 
 **The updater is on** in a build when `apps/desktop/src-tauri/tauri.conf.json` has
 `bundle.createUpdaterArtifacts: true` and a real `plugins.updater.pubkey`. Until then a release

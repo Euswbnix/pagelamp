@@ -930,6 +930,10 @@ pub struct DoctorReport {
     pub unreadable_files: Vec<UnreadableFiles>,
     #[uniffi(default)]
     pub ai: AiDoctor,
+    #[uniffi(default)]
+    pub enrollment_window_terms: u32,
+    #[uniffi(default)]
+    pub removals_waiting: u32,
 }
 
 /// Whether the extraction worker works (`spawn_failed`: blocked by antivirus or Smart App

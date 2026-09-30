@@ -7,8 +7,12 @@
 //! - Endpoints are static URLs from `tauri.conf.json` `plugins.pagelamp-updates` (no
 //!   `{{target}}`/`{{arch}}`/`{{current_version}}` templating), and requests carry a minimal
 //!   `User-Agent: PageLamp/<version>`. So GitHub sees the IP address and the app version, as
-//!   with any download, and nothing else. The rehearsal overlay (`tauri.rehearsal.conf.json`)
-//!   swaps the endpoints at build time; nothing can change them at runtime.
+//!   with any download, and nothing else. Each channel asks raw.githubusercontent.com first
+//!   (the `gh-pages` branch itself), then GitHub Pages: the updater moves to the next endpoint
+//!   on a network error or an error status, but stops at an answer that isn't JSON, so the
+//!   endpoint that depends on no domain comes first. The rehearsal overlay
+//!   (`tauri.rehearsal.conf.json`) swaps the endpoints at build time; nothing can change them
+//!   at runtime.
 //! - Versions are compared with the real crate version (`CARGO_PKG_VERSION`, e.g.
 //!   `0.3.0-beta.2`), not `tauri.conf.json`'s numeric one, so betas are offered the release.
 //! - deb/rpm installs never auto-install: they read the AppImage entry only to learn the new
@@ -518,6 +522,12 @@ mod tests {
             );
         }
         assert!(channels.release_page.contains("{version}"));
+        // The first endpoint of each channel is the gh-pages branch on raw.githubusercontent.com,
+        // which depends on no domain of ours (see the module docs).
+        let raw = "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/";
+        for list in [&channels.stable, &channels.beta] {
+            assert!(list[0].as_str().starts_with(raw), "{list:?}");
+        }
 
         // The rehearsal overlay only swaps the endpoints, and only to the test manifest.
         let overlay: serde_json::Value =
@@ -531,6 +541,7 @@ mod tests {
                     .all(|u| u.as_str().ends_with("/updates/test.json")),
                 "{list:?}"
             );
+            assert!(list[0].as_str().starts_with(raw), "{list:?}");
         }
     }
 
