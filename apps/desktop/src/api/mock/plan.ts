@@ -5,8 +5,13 @@
 import type { GenEvent } from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import type { DayOfWeek, GeneratedStudyPlan, StudyPlanRequest, UnscheduledTask } from "../plan";
-import { PLAN_LIMITS } from "../plan";
+import type {
+  DayOfWeek,
+  GeneratedStudyPlan,
+  PlanLimits,
+  StudyPlanRequest,
+  UnscheduledTask,
+} from "../plan";
 import type { StoredStudyPlan, StudyPlanItem } from "../types";
 import { aiMaterialsState } from "../types";
 import type { MockActivity } from "./activity";
@@ -30,6 +35,17 @@ const DAYS: readonly DayOfWeek[] = [
 ];
 const MAX_MINUTES_PER_DAY = 240;
 
+/** The facade's limits on a request (`plan_limits`). */
+const LIMITS: PlanLimits = {
+  min_horizon_days: 1,
+  max_horizon_days: 56,
+  default_horizon_days: 14,
+  min_hours_per_week: 1,
+  max_hours_per_week: 80,
+  default_hours_per_week: 10,
+  student_note_max_chars: 500,
+};
+
 export function createPlanMock(deps: {
   db: MockDb;
   now: () => Date;
@@ -51,13 +67,13 @@ export function createPlanMock(deps: {
     generationId: string,
     onEvent: (event: GenEvent) => void,
   ): Promise<GeneratedStudyPlan> {
-    const horizon = request.horizon_days ?? PLAN_LIMITS.horizonDays.default;
-    const hours = request.hours_per_week ?? PLAN_LIMITS.hoursPerWeek.default;
+    const horizon = request.horizon_days ?? LIMITS.default_horizon_days;
+    const hours = request.hours_per_week ?? LIMITS.default_hours_per_week;
     const daysOff = new Set(request.days_off ?? []);
-    if (horizon < PLAN_LIMITS.horizonDays.min || horizon > PLAN_LIMITS.horizonDays.max) {
+    if (horizon < LIMITS.min_horizon_days || horizon > LIMITS.max_horizon_days) {
       throw new ApiError("invalid", "The plan covers 1 to 56 days.");
     }
-    if (hours < PLAN_LIMITS.hoursPerWeek.min || hours > PLAN_LIMITS.hoursPerWeek.max) {
+    if (hours < LIMITS.min_hours_per_week || hours > LIMITS.max_hours_per_week) {
       throw new ApiError("invalid", "Study hours per week are 1 to 80.");
     }
     if (daysOff.size >= 7) throw new ApiError("invalid", "Leave at least one study day.");
@@ -167,16 +183,7 @@ export function createPlanMock(deps: {
   }
 
   return {
-    planLimits: () =>
-      respond({
-        min_horizon_days: PLAN_LIMITS.horizonDays.min,
-        max_horizon_days: PLAN_LIMITS.horizonDays.max,
-        default_horizon_days: PLAN_LIMITS.horizonDays.default,
-        min_hours_per_week: PLAN_LIMITS.hoursPerWeek.min,
-        max_hours_per_week: PLAN_LIMITS.hoursPerWeek.max,
-        default_hours_per_week: PLAN_LIMITS.hoursPerWeek.default,
-        student_note_max_chars: PLAN_LIMITS.noteChars,
-      }),
+    planLimits: () => respond({ ...LIMITS }),
     generateStudyPlan: async (request, generationId, onEvent) => {
       if (running.has(generationId)) throw new ApiError("busy", "This plan is being written.");
       running.add(generationId);

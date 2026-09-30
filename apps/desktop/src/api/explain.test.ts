@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { INCLUDABLE_REASON } from "./explain";
-import { ASSESSMENT_WORDS, looksLikeAssessment, STUDY_WORDS } from "./mock/explain";
+import {
+  ASSESSMENT_WORDS,
+  INCLUDABLE_REASON,
+  looksLikeAssessment,
+  STUDY_WORDS,
+} from "./mock/explain";
 
 // The facade's rules, in pagelamp-core: found from this test file, wherever the tests run from.
 const testFile = expect.getState().testPath ?? "";
@@ -17,8 +21,8 @@ const words = (constant: string) => {
   return [...list[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 };
 
-describe("Explain's include, against the facade", () => {
-  it("offers include for exactly the reason week_context_including brings back", () => {
+describe("the mock's include, against the facade", () => {
+  it("marks includable exactly the reason week_context_including brings back", () => {
     // week_context_including lifts what LeftOutReason::includable allows, and that is one reason.
     expect(builders).toMatch(/reason\.includable\(\) && include\.contains/);
     const rule = aiGate.match(/fn includable\(self\) -> bool \{\s*self == Self::(\w+)\s*\}/);
