@@ -1,0 +1,25 @@
+{
+  "reminders": {
+    "remind": {
+      "question": "Get notifications about deadlines and your week? {{product}} schedules them a week ahead, so they arrive even when it's closed.",
+      "yes": "Yes, Remind Me",
+      "no": "Not Now",
+      "onDone": "{{product}} will remind you. You can change this in Settings ▸ Reminders.",
+      "offDone": "No reminders. You can turn them on in Settings ▸ Reminders.",
+      "saveFailed": "Your answer couldn't be saved."
+    },
+    "settings": {
+      "notify": "Remind me with notifications",
+      "notifyHint": "{{product}} schedules reminders a week ahead, so they arrive even when it's closed. Open it at least once a week to keep them coming.",
+      "notDetermined": "macOS asks whether {{product}} may send notifications when you turn this on.",
+      "denied": "Notifications from {{product}} are turned off in System Settings, so reminders show only inside {{product}}.",
+      "openNotificationSettings": "Open Notification Settings",
+      "digestDay": "Day of your week",
+      "digestTime": "Time of your week",
+      "planTime": "Time of today's plan"
+    },
+    "catchUp": {
+      "turnOn": "Get These as Notifications"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "reminders": {
+    "remind": {
+      "question": "要接收截止日期和本周安排的通知吗？{{product}} 会提前一周安排好，即使它没有打开也能收到。",
+      "yes": "好，提醒我",
+      "no": "暂不",
+      "onDone": "{{product}} 会提醒你。可以在「设置 ▸ 提醒」里更改。",
+      "offDone": "不提醒。可以在「设置 ▸ 提醒」里开启。",
+      "saveFailed": "你的选择没能保存。"
+    },
+    "settings": {
+      "notify": "用通知提醒我",
+      "notifyHint": "{{product}} 会提前一周安排提醒，即使它没有打开也能收到。每周至少打开一次，提醒才不会中断。",
+      "notDetermined": "开启后，macOS 会询问是否允许 {{product}} 发送通知。",
+      "denied": "系统设置里关闭了 {{product}} 的通知，所以提醒只会显示在 {{product}} 里面。",
+      "openNotificationSettings": "打开通知设置",
+      "digestDay": "本周概览的星期",
+      "digestTime": "本周概览的时间",
+      "planTime": "今天学习计划的时间"
+    },
+    "catchUp": {
+      "turnOn": "改为用通知提醒"
+    }
+  }
+}

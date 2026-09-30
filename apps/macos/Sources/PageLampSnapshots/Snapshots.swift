@@ -9,7 +9,7 @@
 // This target is the catalogue and the PNG writer; the pages themselves are views of the
 // PageLamp module, reached through `package` access, so none of this is linked into the app.
 // A screen adds its states to `SnapshotCatalog.pages` (`ThisWeekSnapshots`, `CourseSnapshots`,
-// `SetupSnapshots`, `SidebarSnapshots`, `WhatsNewSnapshots`): each page says how to set up its model (`SnapshotSetup`)
+// `SetupSnapshots`, `SidebarSnapshots`, `WhatsNewSnapshots`, `RemindersSnapshots`): each page says how to set up its model (`SnapshotSetup`)
 // and loads what it needs in `make`, since `.task` never runs offscreen.
 
 import AppKit
@@ -29,6 +29,9 @@ struct SnapshotSetup: Sendable {
     var syncStep: Duration = .zero
     /// The system's languages differ from the app's (menus follow the system: Reopen Now).
     var otherSystemLanguage = false
+    /// The notification permission macOS has for PageLamp, and what its prompt answers.
+    var notificationPermission: NotificationPermission = .notDetermined
+    var notificationAnswer = true
 }
 
 /// One snapshot-able page.
@@ -62,7 +65,7 @@ public enum SnapshotCatalog {
     /// Every page, by screen.
     public static let pages: [SnapshotPage] =
         ThisWeekSnapshots.pages + CourseSnapshots.pages + SetupSnapshots.pages + SidebarSnapshots.pages
-        + WhatsNewSnapshots.pages + [
+        + WhatsNewSnapshots.pages + RemindersSnapshots.pages + [
             SnapshotPage(name: "components") { _ in AnyView(ComponentGallery()) },
         ]
 
@@ -156,9 +159,18 @@ public enum SnapshotRenderer {
             clock: { moment },
             notificationCenter: NotificationCenter(),
             preferredLanguages: { languages },
-            service: setup.service(mock, moment, calendar)
+            service: setup.service(mock, moment, calendar),
+            // Reminders and the menu bar extra (M3) are on in preview builds, which these are;
+            // notifications stay in memory.
+            reminders: true,
+            reminderCenters: ReminderCenters(
+                live: { RecordingNotificationCenter() },
+                mock: RecordingNotificationCenter(permission: setup.notificationPermission, answer: setup.notificationAnswer)
+            )
         )
         await model.refresh()
+        // The pass the refresh asked for decides whether "Remind me" shows: let it finish.
+        await model.reminderDelivery?.settle()
         return model
     }
 

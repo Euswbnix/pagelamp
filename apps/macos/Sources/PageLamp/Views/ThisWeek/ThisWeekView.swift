@@ -100,6 +100,7 @@ private struct ThisWeekDocument: View {
                 if !model.failingSources.isEmpty {
                     ThisWeekSourceProblems()
                 }
+                RemindersCatchUp()
                 Next7DaysSection(digest: digest, text: text)
                 StudyPlanSection(text: text, expanded: planExpanded)
                 ContentsSection(text: text)
