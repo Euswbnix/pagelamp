@@ -697,8 +697,7 @@ fn rejected_item(
             )
             .reason(rejected.reason);
     }
-    if rejected.source == TermAnchorSource::LmsTerm
-        && rejected.reason == RejectReason::LongerThanTeachingTerm
+    if rejected.is_enrollment_window()
         && let (Some(start), Some(end)) = (rejected.start, rejected.end)
     {
         let weeks = (days_between(start, end) + 1 + 6) / 7;
