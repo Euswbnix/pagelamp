@@ -275,6 +275,54 @@
 			<string>%1$ld weeks ago</string>
 		</dict>
 	</dict>
+	<key>mac.menuBar.labelDue</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>PageLamp — %1$ld deadline in the next 24 hours</string>
+			<key>other</key>
+			<string>PageLamp — %1$ld deadlines in the next 24 hours</string>
+		</dict>
+	</dict>
+	<key>mac.menuBar.moreDue</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld more in the next 7 days</string>
+			<key>other</key>
+			<string>%1$ld more in the next 7 days</string>
+		</dict>
+	</dict>
+	<key>mac.menuBar.moreToday</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld more today</string>
+			<key>other</key>
+			<string>%1$ld more today</string>
+		</dict>
+	</dict>
 	<key>mac.relative.daysAgo</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

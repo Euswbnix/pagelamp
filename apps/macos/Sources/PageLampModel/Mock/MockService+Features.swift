@@ -494,11 +494,40 @@ extension MockService {
         db.features.removed.remove(at: index)
     }
 
-    // MARK: - Reminders and the weekly digest
+    // MARK: - Reminders and the weekly digest (like the facade's reminders.rs and digest.rs)
 
     public func weeklyDigest() async throws(PageLampFailure) -> WeeklyDigest {
         await respond("weeklyDigest")
-        return WeeklyDigest(generatedAt: now(), courses: [], plan: nil)
+        let t = now()
+        let today = IsoDate.string(from: t, calendar: calendar)
+        let horizon = t.addingTimeInterval(7 * 86_400)
+        let courses = db.courses.filter { !$0.course.hidden }.compactMap { course -> DigestCourse? in
+            let upcoming = course.deadlines
+                .filter { Self.isDeadline($0) }
+                .filter { (Self.due($0) ?? .distantPast) >= t && (Self.due($0) ?? .distantPast) < horizon }
+                .sorted { (Self.due($0) ?? .distantPast) < (Self.due($1) ?? .distantPast) }
+            let active = MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil).state == .current
+            if !active && upcoming.isEmpty { return nil }
+            let week = active ? course.timeline.defaultWeek ?? course.timeline.currentWeek : nil
+            let materials = week.map { shown in course.materials.filter { $0.weekHint == shown } } ?? []
+            return DigestCourse(
+                courseId: course.course.id, code: course.course.code, name: course.course.name, active: active,
+                week: week, confidence: course.timeline.confidence, phase: course.timeline.phase,
+                currentBreakKind: course.timeline.currentBreakKind, lastTeachingWeek: course.timeline.lastTeachingWeek,
+                materialCount: UInt32(materials.count), materialTitles: materials.prefix(5).map(\.title),
+                deadlines: upcoming
+            )
+        }
+        let plan = db.studyPlan.map { stored -> DigestPlan in
+            let weekAgo = isoDay(daysFromToday: -7)
+            let lastWeek = stored.plan.items.filter { $0.date >= weekAgo && $0.date < today }
+            return DigestPlan(
+                lastWeekPlanned: UInt32(lastWeek.count),
+                lastWeekDone: UInt32(lastWeek.filter(\.done).count),
+                today: stored.plan.items.filter { $0.date == today }
+            )
+        }
+        return WeeklyDigest(generatedAt: t, courses: courses, plan: plan)
     }
 
     public func reminderSettings() async throws(PageLampFailure) -> ReminderSettings {
@@ -508,46 +537,143 @@ extension MockService {
 
     public func setReminderSettings(settings: ReminderSettings) async throws(PageLampFailure) {
         await respond("setReminderSettings")
+        for time in [settings.digestTime, settings.planTodayTime] where Self.clockTime(time) == nil {
+            throw PageLampFailure(kind: .invalid, message: "\(time) must be a time like 09:00.")
+        }
         db.features.reminderSettings = settings
     }
 
     public func reminders(from: Date, to: Date) async throws(PageLampFailure) -> [Reminder] {
         await respond("reminders")
-        return deadlineReminders().filter { $0.fireAt >= from && $0.fireAt <= to }
+        guard to >= from, to.timeIntervalSince(from) <= 62 * 86_400 else {
+            throw PageLampFailure(kind: .invalid, message: "Ask for reminders over a window of at most 62 days.")
+        }
+        return schedule(from: from, to: to).filter { !db.features.shownReminders.contains($0.id) }
     }
 
     public func dueReminders(now date: Date) async throws(PageLampFailure) -> [Reminder] {
         await respond("dueReminders")
-        let catchUp = date.addingTimeInterval(-3 * 86_400)
-        return deadlineReminders().filter {
-            $0.fireAt <= date && $0.fireAt >= catchUp && !db.features.shownReminders.contains($0.id)
+        let fired = schedule(from: date.addingTimeInterval(-3 * 86_400), to: date.addingTimeInterval(1))
+            .filter { $0.fireAt <= date }
+        // The latest reminder that fired for each deadline replaces the earlier one.
+        var latest: [String: Date] = [:]
+        for reminder in fired where reminder.kind == .deadlineSoon {
+            latest[Self.deadlineKey(reminder.id)] = max(latest[Self.deadlineKey(reminder.id)] ?? .distantPast, reminder.fireAt)
+        }
+        return fired.filter { reminder in
+            guard !db.features.shownReminders.contains(reminder.id) else { return false }
+            switch reminder.kind {
+            case .deadlineSoon:
+                return (reminder.dueAt.map { date < $0 } ?? false) && latest[Self.deadlineKey(reminder.id)] == reminder.fireAt
+            case .weeklyDigest:
+                return date.timeIntervalSince(reminder.fireAt) < 3 * 86_400
+            case .planToday:
+                return calendar.isDate(reminder.fireAt, inSameDayAs: date)
+            }
         }
     }
 
     public func markRemindersShown(ids: [String]) async throws(PageLampFailure) {
         await respond("markRemindersShown")
+        if let id = ids.first(where: { id in !["deadline_soon:", "weekly_digest:", "plan_today:"].contains { id.hasPrefix($0) } }) {
+            throw PageLampFailure(kind: .invalid, message: "'\(id)' is not a reminder id.")
+        }
         db.features.shownReminders.formUnion(ids)
     }
 
-    /// "Due soon" 24 hours before each visible course's deadline, when that reminder is on.
-    private func deadlineReminders() -> [Reminder] {
-        guard db.features.reminderSettings.deadlineSoon else { return [] }
+    /// The reminders that fire in [`from`, `to`), soonest first, in the mock's time zone (the
+    /// facade's `schedule`): 48 h and 24 h before each deadline of a visible course, the weekly
+    /// digest on its day and time, and today's plan when it has open items.
+    private func schedule(from: Date, to: Date) -> [Reminder] {
+        let settings = db.features.reminderSettings
         let zone = calendar.timeZone.identifier
-        return db.courses.filter { !$0.course.hidden }.flatMap { course in
-            course.deadlines.compactMap { deadline -> Reminder? in
-                guard let due = deadline.event.dueAt, deadline.event.kind != .classEvent else { return nil }
-                let fire = due.addingTimeInterval(-24 * 3600)
-                let parts = calendar.dateComponents([.hour, .minute], from: fire)
-                return Reminder(
-                    id: "\(deadline.event.id)@\(Int(due.timeIntervalSince1970))", kind: .deadlineSoon,
-                    localTime: String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0), timeZone: zone,
-                    fireAt: fire, title: deadline.event.title, courseId: course.course.id,
-                    courseCode: course.course.code, courseName: course.course.name, dueAt: due,
-                    hoursBefore: 24, count: nil
-                )
+        let inWindow = { (date: Date) in from <= date && date < to }
+        var out: [Reminder] = []
+        let visible = db.courses.filter { !$0.course.hidden }
+        if settings.deadlineSoon {
+            for course in visible {
+                for deadline in course.deadlines where Self.isDeadline(deadline) {
+                    guard let due = Self.due(deadline) else { continue }
+                    for hours in [48, 24] {
+                        let fire = due.addingTimeInterval(-Double(hours) * 3600)
+                        guard inWindow(fire) else { continue }
+                        out.append(Reminder(
+                            id: "deadline_soon:\(hours)h:\(deadline.event.id)@\(Int(due.timeIntervalSince1970))",
+                            kind: .deadlineSoon, localTime: localText(fire), timeZone: zone, fireAt: fire,
+                            title: deadline.event.title, courseId: course.course.id, courseCode: course.course.code,
+                            courseName: course.course.name, dueAt: due, hoursBefore: UInt32(hours), count: nil
+                        ))
+                    }
+                }
             }
         }
-        .sorted { $0.fireAt < $1.fireAt }
+        let openItems = Dictionary(grouping: db.studyPlan?.plan.items.filter { !$0.done } ?? [], by: \.date)
+        var day = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: from)) ?? from
+        let lastDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to)) ?? to
+        while day <= lastDay {
+            let date = IsoDate.string(from: day, calendar: calendar)
+            if settings.weeklyDigest, !visible.isEmpty, Self.weekday(of: day, calendar: calendar) == settings.digestDay,
+               let fire = at(day, settings.digestTime), inWindow(fire) {
+                let weekEnd = fire.addingTimeInterval(7 * 86_400)
+                let count = visible.flatMap(\.deadlines).filter(Self.isDeadline).compactMap(Self.due)
+                    .filter { $0 >= fire && $0 < weekEnd }.count
+                out.append(simple(.weeklyDigest, date: date, fire: fire, zone: zone, count: count))
+            }
+            if settings.planToday, let items = openItems[date], let fire = at(day, settings.planTodayTime), inWindow(fire) {
+                out.append(simple(.planToday, date: date, fire: fire, zone: zone, count: items.count))
+            }
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? lastDay.addingTimeInterval(1)
+        }
+        return out.sorted { ($0.fireAt, $0.id) < ($1.fireAt, $1.id) }
+    }
+
+    private func simple(_ kind: ReminderKind, date: String, fire: Date, zone: String, count: Int) -> Reminder {
+        let name = kind == .weeklyDigest ? "weekly_digest" : "plan_today"
+        return Reminder(
+            id: "\(name):\(date)", kind: kind, localTime: localText(fire), timeZone: zone, fireAt: fire,
+            title: nil, courseId: nil, courseCode: nil, courseName: nil, dueAt: nil, hoursBefore: nil,
+            count: UInt32(count)
+        )
+    }
+
+    /// `day` at the wall-clock `time` ("09:00") in the mock's calendar.
+    private func at(_ day: Date, _ time: String) -> Date? {
+        guard let (hour, minute) = Self.clockTime(time) else { return nil }
+        return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day)
+    }
+
+    /// "YYYY-MM-DDTHH:MM" in the mock's calendar (the facade's `local_time`).
+    private func localText(_ date: Date) -> String {
+        let p = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+        return String(format: "%04d-%02d-%02dT%02d:%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0)
+    }
+
+    private static func clockTime(_ text: String) -> (Int, Int)? {
+        let parts = text.split(separator: ":")
+        guard parts.count == 2, parts.allSatisfy({ $0.count == 2 }), let hour = Int(parts[0]), let minute = Int(parts[1]),
+              (0...23).contains(hour), (0...59).contains(minute) else { return nil }
+        return (hour, minute)
+    }
+
+    private static func weekday(of day: Date, calendar: Calendar) -> DayOfWeek {
+        let days: [DayOfWeek] = [.sunday, .monday, .tuesday, .wednesday, .thursday, .friday, .saturday]
+        return days[calendar.component(.weekday, from: day) - 1]
+    }
+
+    /// When a deadline is (the facade's `Event::when`: due, else starts).
+    private static func due(_ deadline: Deadline) -> Date? {
+        deadline.event.dueAt ?? deadline.event.startsAt
+    }
+
+    /// The facade's `is_deadline`: assignments, quizzes, exams and planner items.
+    private static func isDeadline(_ deadline: Deadline) -> Bool {
+        [.assignmentDue, .quizDue, .exam, .plannerItem].contains(deadline.event.kind)
+    }
+
+    /// "<event id>@<due>" of a deadline reminder's id: the same for its 48 h and 24 h reminders.
+    private static func deadlineKey(_ id: String) -> String {
+        guard let range = id.range(of: "h:") else { return id }
+        return String(id[range.upperBound...])
     }
 
     // MARK: - Files and syncs
