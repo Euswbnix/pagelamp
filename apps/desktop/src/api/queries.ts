@@ -18,6 +18,7 @@ export const queryKeys = {
   deadlines: (courseId: string | null, daysAhead: number, daysBack: number) =>
     [...queryKeys.all, "deadlines", courseId, daysAhead, daysBack] as const,
   studyPlan: () => [...queryKeys.all, "study-plan"] as const,
+  planLimits: () => [...queryKeys.all, "plan-limits"] as const,
   mcpConfigs: () => [...queryKeys.all, "mcp-configs"] as const,
   lastCrash: () => [...queryKeys.all, "last-crash"] as const,
   doctor: () => [...queryKeys.all, "doctor"] as const,
@@ -105,6 +106,16 @@ export function useDeadlines(
 export function useStudyPlan() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.studyPlan(), queryFn: () => api.latestStudyPlan() });
+}
+
+/** The facade's limits on a study plan request (fixed for the app's life: asked once). */
+export function usePlanLimits() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.planLimits(),
+    queryFn: () => api.planLimits(),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
 }
 
 /** Ticks a plan item off or back on (M3), shown at once and put back if saving fails. */

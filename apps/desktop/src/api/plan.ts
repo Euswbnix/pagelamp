@@ -34,10 +34,3 @@ const WARNINGS: Record<PlanWarningCode, true> = {
   unknown_materials_dropped: true,
 };
 export const PLAN_WARNING_CODES = Object.keys(WARNINGS) as PlanWarningCode[];
-
-/** The facade's limits (StudyPlanRequest); the form checks them before sending. */
-export const PLAN_LIMITS = {
-  horizonDays: { min: 1, max: 56, default: 14 },
-  hoursPerWeek: { min: 1, max: 80, default: 10 },
-  noteChars: 500,
-} as const;

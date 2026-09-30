@@ -8,8 +8,8 @@
 import { type GenEvent, materialSharing } from "../ai";
 import type { PageLampApi } from "../client";
 import { ApiError } from "../errors";
-import { INCLUDABLE_REASON, type WeeklyExplanation } from "../explain";
-import type { LeftOutMaterial } from "../plan";
+import type { WeeklyExplanation } from "../explain";
+import type { LeftOutMaterial, LeftOutReason } from "../plan";
 import { aiMaterialsState, type MaterialView } from "../types";
 import type { MockActivity } from "./activity";
 import type { MockCourse } from "./fixtures";
@@ -68,6 +68,13 @@ export function looksLikeAssessment(title: string): boolean {
  * the first two readable materials fit the budget and the rest are left out for it, which
  * `include` doesn't change.
  */
+/**
+ * The one left-out reason `ExplainOptions.include` brings back (the facade's
+ * `LeftOutReason::includable`): a material that looks like graded work, once the student says it
+ * isn't. Materials over the length limit stay out whatever `include` says.
+ */
+export const INCLUDABLE_REASON: LeftOutReason = "looks_like_assessment";
+
 export function selectMaterials(
   materials: MaterialView[],
   include: string[],
