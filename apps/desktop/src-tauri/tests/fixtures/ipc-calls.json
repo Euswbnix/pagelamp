@@ -434,6 +434,10 @@
     }
   },
   {
+    "cmd": "plan_limits",
+    "args": {}
+  },
+  {
     "cmd": "accept_study_plan",
     "args": {
       "generationId": "contract-test-plan"

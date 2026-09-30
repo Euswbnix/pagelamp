@@ -29,9 +29,10 @@ use pagelamp_app::ai::{
     CodexSource, CodexStatus, CostBasis, CostEstimate, CostKind, DisclosureFacts, EstimateRequest,
     FeatureRouting, GenEvent, GenNoticeCode, GenStage, GeneratedStudyPlan, GenerationMeta,
     LocalServer, LocalServerKind, LoginEvent, ModeAUsage, ModelChoice, ModelInfo,
-    ModelProviderRecord, PlanWarning, PlanWarningCode, ProbeReport, ProviderPreset, ProviderWire,
-    Recipient, RemoveAiDataReport, RetentionFact, RuntimeEvent, SentData, StructuredOutputTier,
-    StudyPlanRequest, SystemCodex, TokenUsage, TrainingFact, UsageRow, UsageSummary,
+    ModelProviderRecord, PlanLimits, PlanWarning, PlanWarningCode, ProbeReport, ProviderPreset,
+    ProviderWire, Recipient, RemoveAiDataReport, RetentionFact, RuntimeEvent, SentData,
+    StructuredOutputTier, StudyPlanRequest, SystemCodex, TokenUsage, TrainingFact, UsageRow,
+    UsageSummary,
 };
 use pagelamp_app::ai::{
     Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, NoteFocus, OutputLanguage,
@@ -1133,6 +1134,17 @@ pub struct WeeklyDigest {
 // ----- study plans (v0.3 M3) ---------------------------------------------------------------------
 
 #[uniffi::remote(Record)]
+pub struct PlanLimits {
+    pub min_horizon_days: u32,
+    pub max_horizon_days: u32,
+    pub default_horizon_days: u32,
+    pub min_hours_per_week: u32,
+    pub max_hours_per_week: u32,
+    pub default_hours_per_week: u32,
+    pub student_note_max_chars: u32,
+}
+
+#[uniffi::remote(Record)]
 pub struct StudyPlanRequest {
     #[uniffi(default)]
     pub horizon_days: Option<u32>,
@@ -1547,8 +1559,12 @@ pub enum LocalServerKind {
 #[uniffi::remote(Record)]
 pub struct LocalServer {
     pub kind: LocalServerKind,
+    #[uniffi(default)]
+    pub preset: String,
     pub base_url: String,
     pub running: bool,
+    #[uniffi(default)]
+    pub provider_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -1745,6 +1761,8 @@ pub struct LeftOutMaterial {
     pub material_id: String,
     pub title: String,
     pub reason: LeftOutReason,
+    #[uniffi(default)]
+    pub includable: bool,
 }
 
 #[uniffi::remote(Enum)]

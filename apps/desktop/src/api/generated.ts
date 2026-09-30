@@ -1052,6 +1052,7 @@ export interface PageLampAppTypes {
   model_provider_record: ModelProviderRecord;
   note_focus: NoteFocus;
   output_language: OutputLanguage;
+  plan_limits: PlanLimits;
   plan_origin: PlanOrigin;
   plan_warning: PlanWarning;
   plan_warning_code: PlanWarningCode;
@@ -1419,6 +1420,11 @@ export interface ContextCourse {
  * via the `definition` "LeftOutMaterial".
  */
 export interface LeftOutMaterial {
+  /**
+   * The student may send it anyway (an explanation's `include`): only a material that
+   * looks like an assessment (`LeftOutReason::includable`).
+   */
+  includable: boolean;
   material_id: string;
   reason: LeftOutReason;
   title: string;
@@ -2451,6 +2457,15 @@ export interface AiDoctor {
 export interface LocalServer {
   base_url: string;
   kind: LocalServerKind;
+  /**
+   * The preset to pass to `add_model_provider` to add it (`ollama`, `lm_studio`).
+   */
+  preset: string;
+  /**
+   * The provider already added for it (the same preset and address), if any. Always
+   * `None` in `doctor`, which names no provider.
+   */
+  provider_id?: string | null;
   running: boolean;
 }
 /**
@@ -2796,6 +2811,43 @@ export interface NoteFocus {
    */
   course_id?: string | null;
   text: string;
+}
+/**
+ * What a study plan request may ask for: the limits `generate_study_plan` enforces, for the
+ * shells' fields.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "PlanLimits".
+ */
+export interface PlanLimits {
+  /**
+   * Days when the request doesn't say.
+   */
+  default_horizon_days: number;
+  /**
+   * Study hours per week when the request doesn't say.
+   */
+  default_hours_per_week: number;
+  /**
+   * The longest plan a request may ask for, in days from today.
+   */
+  max_horizon_days: number;
+  /**
+   * The most study hours per week a request may ask for.
+   */
+  max_hours_per_week: number;
+  /**
+   * The shortest plan a request may ask for, in days from today.
+   */
+  min_horizon_days: number;
+  /**
+   * The fewest study hours per week a request may ask for.
+   */
+  min_hours_per_week: number;
+  /**
+   * The student's note is cut to this many characters.
+   */
+  student_note_max_chars: number;
 }
 /**
  * What "Test" found out.

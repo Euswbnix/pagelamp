@@ -34,8 +34,45 @@ use crate::{App, AppError, AppErrorKind, Result};
 
 /// Study hours per week when the request doesn't say.
 pub const DEFAULT_HOURS_PER_WEEK: u32 = 10;
+/// The fewest study hours per week a request may ask for.
+pub const MIN_HOURS_PER_WEEK: u32 = 1;
 /// The most study hours per week a request may ask for.
 pub const MAX_HOURS_PER_WEEK: u32 = 80;
+/// The shortest plan a request may ask for, in days.
+pub const MIN_HORIZON_DAYS: u32 = 1;
+
+/// What a study plan request may ask for: the limits `generate_study_plan` enforces, for the
+/// shells' fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PlanLimits {
+    /// The shortest plan a request may ask for, in days from today.
+    pub min_horizon_days: u32,
+    /// The longest plan a request may ask for, in days from today.
+    pub max_horizon_days: u32,
+    /// Days when the request doesn't say.
+    pub default_horizon_days: u32,
+    /// The fewest study hours per week a request may ask for.
+    pub min_hours_per_week: u32,
+    /// The most study hours per week a request may ask for.
+    pub max_hours_per_week: u32,
+    /// Study hours per week when the request doesn't say.
+    pub default_hours_per_week: u32,
+    /// The student's note is cut to this many characters.
+    pub student_note_max_chars: u32,
+}
+
+/// The limits `generate_study_plan` enforces (constants: no store, no network).
+pub fn plan_limits() -> PlanLimits {
+    PlanLimits {
+        min_horizon_days: MIN_HORIZON_DAYS,
+        max_horizon_days: MAX_HORIZON_DAYS,
+        default_horizon_days: DEFAULT_PLAN_DAYS,
+        min_hours_per_week: MIN_HOURS_PER_WEEK,
+        max_hours_per_week: MAX_HOURS_PER_WEEK,
+        default_hours_per_week: DEFAULT_HOURS_PER_WEEK,
+        student_note_max_chars: u32::try_from(StudentNote::MAX_CHARS).unwrap_or(u32::MAX),
+    }
+}
 
 /// What to plan (design §5.1).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -369,16 +406,16 @@ fn checked(request: &StudyPlanRequest) -> Result<(u32, u32)> {
     let horizon = request.horizon_days.unwrap_or(DEFAULT_PLAN_DAYS);
     let hours = request.hours_per_week.unwrap_or(DEFAULT_HOURS_PER_WEEK);
     let study_days = 7 - request.days_off.iter().collect::<HashSet<_>>().len().min(7);
-    if !(1..=MAX_HORIZON_DAYS).contains(&horizon) {
+    if !(MIN_HORIZON_DAYS..=MAX_HORIZON_DAYS).contains(&horizon) {
         return Err(AppError::new(
             AppErrorKind::Invalid,
-            format!("A plan covers 1 to {MAX_HORIZON_DAYS} days."),
+            format!("A plan covers {MIN_HORIZON_DAYS} to {MAX_HORIZON_DAYS} days."),
         ));
     }
-    if !(1..=MAX_HOURS_PER_WEEK).contains(&hours) {
+    if !(MIN_HOURS_PER_WEEK..=MAX_HOURS_PER_WEEK).contains(&hours) {
         return Err(AppError::new(
             AppErrorKind::Invalid,
-            format!("Plan 1 to {MAX_HOURS_PER_WEEK} study hours a week."),
+            format!("Plan {MIN_HOURS_PER_WEEK} to {MAX_HOURS_PER_WEEK} study hours a week."),
         ));
     }
     if study_days == 0 {
@@ -398,4 +435,51 @@ fn blocked(reason: BlockReason) -> AppError {
             _ => "PageLamp can't start this study plan run.",
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_exported_limits_are_the_ones_enforced() {
+        let limits = plan_limits();
+        let request = |horizon_days, hours_per_week| StudyPlanRequest {
+            horizon_days: Some(horizon_days),
+            hours_per_week: Some(hours_per_week),
+            ..StudyPlanRequest::default()
+        };
+        let (days, hours) = (limits.default_horizon_days, limits.default_hours_per_week);
+        assert_eq!(
+            checked(&StudyPlanRequest::default()).unwrap(),
+            (days, hours)
+        );
+        for (horizon, weekly) in [
+            (limits.min_horizon_days, hours),
+            (limits.max_horizon_days, hours),
+            (days, limits.min_hours_per_week),
+            (days, limits.max_hours_per_week),
+        ] {
+            assert_eq!(
+                checked(&request(horizon, weekly)).unwrap(),
+                (horizon, weekly)
+            );
+        }
+        for (horizon, weekly) in [
+            (limits.min_horizon_days - 1, hours),
+            (limits.max_horizon_days + 1, hours),
+            (days, limits.min_hours_per_week - 1),
+            (days, limits.max_hours_per_week + 1),
+        ] {
+            let err = checked(&request(horizon, weekly)).unwrap_err();
+            assert_eq!(
+                err.kind,
+                AppErrorKind::Invalid,
+                "{horizon} days, {weekly} h"
+            );
+        }
+        let max = usize::try_from(limits.student_note_max_chars).unwrap();
+        let note = StudentNote::new(&"é".repeat(max + 20)).unwrap();
+        assert_eq!(note.as_str().chars().count(), max);
+    }
 }

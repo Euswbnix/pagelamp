@@ -6,10 +6,10 @@ import { ASSESSMENT_WORDS, looksLikeAssessment, STUDY_WORDS } from "./mock/expla
 
 // The facade's rules, in pagelamp-core: found from this test file, wherever the tests run from.
 const testFile = expect.getState().testPath ?? "";
-const builders = readFileSync(
-  join(dirname(testFile), "../../../../crates/pagelamp-core/src/ai_gate/builders.rs"),
-  "utf8",
-);
+const core = (file: string) =>
+  readFileSync(join(dirname(testFile), "../../../../crates/pagelamp-core/src", file), "utf8");
+const builders = core("ai_gate/builders.rs");
+const aiGate = core("ai_gate.rs");
 const snake = (name: string) => name.replace(/(?<!^)([A-Z])/g, "_$1").toLowerCase();
 const words = (constant: string) => {
   const list = builders.match(new RegExp(`const ${constant}: \\[&str; \\d+\\] = \\[([^\\]]*)\\]`));
@@ -19,10 +19,10 @@ const words = (constant: string) => {
 
 describe("Explain's include, against the facade", () => {
   it("offers include for exactly the reason week_context_including brings back", () => {
-    const lifted = [...builders.matchAll(/LeftOutReason::(\w+) && include\.contains/g)].map((m) =>
-      snake(m[1] ?? ""),
-    );
-    expect(lifted).toEqual([INCLUDABLE_REASON]);
+    // week_context_including lifts what LeftOutReason::includable allows, and that is one reason.
+    expect(builders).toMatch(/reason\.includable\(\) && include\.contains/);
+    const rule = aiGate.match(/fn includable\(self\) -> bool \{\s*self == Self::(\w+)\s*\}/);
+    expect(snake(rule?.[1] ?? "")).toBe(INCLUDABLE_REASON);
   });
 
   it("marks graded-looking titles with the facade's words", () => {

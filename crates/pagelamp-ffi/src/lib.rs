@@ -561,6 +561,13 @@ pub fn keep_current_days() -> i64 {
     pagelamp_app::KEEP_CURRENT_DAYS
 }
 
+/// What a study plan request may ask for (horizon, weekly hours, note length): the limits
+/// `generate_study_plan` enforces.
+#[uniffi::export]
+pub fn plan_limits() -> pagelamp_app::ai::PlanLimits {
+    pagelamp_app::ai::plan_limits()
+}
+
 /// The date "Keep" stores as `removal_snoozed_until` (9999-12-31): never suggested again.
 #[uniffi::export]
 pub fn keep_forever() -> IsoDate {

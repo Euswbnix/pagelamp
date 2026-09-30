@@ -245,8 +245,13 @@ pub enum LocalServerKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LocalServer {
     pub kind: LocalServerKind,
+    /// The preset to pass to `add_model_provider` to add it (`ollama`, `lm_studio`).
+    pub preset: String,
     pub base_url: String,
     pub running: bool,
+    /// The provider already added for it (the same preset and address), if any. Always
+    /// `None` in `doctor`, which names no provider.
+    pub provider_id: Option<String>,
 }
 
 /// `doctor`'s AI facts (M1): whether keys are there — never a key — and whether the model

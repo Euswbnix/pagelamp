@@ -170,6 +170,15 @@ fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
                 item(day(-3), "Review week 2", true),
                 item(day(-2), "Practice problems", false),
                 item(day(0), "Read chapter 4", false),
+                // DEMO404's, by id and by code: hidden below, so never sent.
+                StudyPlanItem {
+                    course_id: Some(course_id("404")),
+                    ..item(day(-1), "Canary plan item 404 by id", true)
+                },
+                StudyPlanItem {
+                    course_id: Some("DEMO404".into()),
+                    ..item(day(0), "Canary plan item 404 by code", false)
+                },
             ],
             notes: None,
         })
@@ -304,8 +313,9 @@ async fn sent(server: &MockServer, n: usize) -> String {
 
 /// Policy golden: the prompt holds every visible, active course's structure (titles, weeks,
 /// phase, deadlines) and the plan's progress, and no material text of any course; prohibited
-/// and turned-off courses appear as structure only, hidden and ended ones not at all, and a
-/// break by its kind, never its label.
+/// and turned-off courses appear as structure only, hidden and ended ones not at all (a hidden
+/// course's plan items neither, nor in the progress count), and a break by its kind, never its
+/// label.
 #[tokio::test]
 async fn a_note_is_written_from_structure_and_progress_only() {
     let temp = tempfile::tempdir().unwrap();
@@ -332,6 +342,7 @@ async fn a_note_is_written_from_structure_and_progress_only() {
         );
     }
     assert!(!body.contains("Canary break label"), "{body}");
+    assert!(!body.contains("Canary plan item 404"), "hidden: {body}");
     for external in ["101", "202", "303"] {
         assert!(
             body.contains(&format!("Demo course {external}")),

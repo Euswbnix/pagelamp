@@ -76,16 +76,21 @@ export function selectMaterials(
   const readable: MaterialView[] = [];
   for (const m of materials) {
     if (m.text_status !== "ok") {
-      leftOut.push({ material_id: m.id, title: m.title, reason: "no_text" });
+      leftOut.push({ material_id: m.id, title: m.title, reason: "no_text", includable: false });
     } else if (looksLikeAssessment(m.title) && !include.includes(m.id)) {
-      leftOut.push({ material_id: m.id, title: m.title, reason: INCLUDABLE_REASON });
+      leftOut.push({
+        material_id: m.id,
+        title: m.title,
+        reason: INCLUDABLE_REASON,
+        includable: true,
+      });
     } else {
       readable.push(m);
     }
   }
   const read = readable.slice(0, 2);
   for (const m of readable.slice(2)) {
-    leftOut.push({ material_id: m.id, title: m.title, reason: "over_budget" });
+    leftOut.push({ material_id: m.id, title: m.title, reason: "over_budget", includable: false });
   }
   return { read, leftOut };
 }

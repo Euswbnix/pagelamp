@@ -139,6 +139,7 @@ export function createTauriApi(): PageLampApi {
         generationId,
         onEvent: eventChannel(onEvent),
       }),
+    planLimits: () => call("plan_limits"),
     acceptStudyPlan: (generationId) => call("accept_study_plan", { generationId }),
     setStudyPlanItemDone: (planId, itemIndex, done) =>
       call("set_study_plan_item_done", { planId, itemIndex, done }),

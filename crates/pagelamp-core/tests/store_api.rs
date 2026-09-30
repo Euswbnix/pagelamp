@@ -1544,6 +1544,61 @@ fn save_and_read_latest_study_plan() {
 }
 
 #[test]
+fn a_model_never_reads_a_hidden_course_s_plan_items() {
+    let store = demo_store();
+    for (external, code, name) in [
+        ("202", "DEMO 202", "Hidden Demo Studies"),
+        ("203", "DEMO203", "Other Demo Studies"),
+    ] {
+        store
+            .upsert_course(&course(external, Some(code), name))
+            .unwrap();
+    }
+    let item = |course: Option<&str>, title: &str| StudyPlanItem {
+        course_id: course.map(str::to_string),
+        ..plan_item(title)
+    };
+    let hidden_id = course_id("202");
+    store
+        .save_study_plan(&plan(vec![
+            item(Some(&course_id("101")), "Visible by id"),
+            item(Some("demo101"), "Visible by code"),
+            item(None, "No course"),
+            item(Some("A course PageLamp doesn't know"), "Unknown course"),
+            item(Some(&hidden_id), "Hidden by id"),
+            // As an AI app may write it: the code in other case and spacing, the name.
+            item(Some("demo202"), "Hidden by code"),
+            item(Some("Hidden Demo Studies"), "Hidden by name"),
+            // DEMO202 or DEMO203: it could be the hidden one.
+            item(Some("DEMO20"), "Ambiguous"),
+        ]))
+        .unwrap();
+    let titles = |plan: Option<StoredStudyPlan>| -> Vec<String> {
+        plan.unwrap()
+            .plan
+            .items
+            .into_iter()
+            .map(|item| item.title)
+            .collect()
+    };
+    // Nothing hidden yet: all of it.
+    assert_eq!(titles(store.latest_study_plan_for_ai().unwrap()).len(), 8);
+
+    store.set_course_hidden(&hidden_id, true).unwrap();
+    assert_eq!(
+        titles(store.latest_study_plan_for_ai().unwrap()),
+        [
+            "Visible by id",
+            "Visible by code",
+            "No course",
+            "Unknown course"
+        ]
+    );
+    // The student's own screens still show every item.
+    assert_eq!(titles(store.latest_study_plan().unwrap()).len(), 8);
+}
+
+#[test]
 fn save_study_plan_validation() {
     let store = demo_store();
     let invalid = |plan: StudyPlan| {

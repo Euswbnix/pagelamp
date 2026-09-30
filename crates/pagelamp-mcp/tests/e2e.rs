@@ -477,6 +477,22 @@ async fn study_plans_round_trip_and_are_validated() {
     let stored: Value = serde_json::from_str(inner).unwrap();
     assert_eq!(stored["plan"]["items"][0]["title"], "Review week 3");
 
+    // DEMO303 is hidden: its items never reach the AI app, by id or by code.
+    let with_hidden = json!({ "plan": {
+        "horizon_start": "2026-10-01", "horizon_end": "2026-10-07",
+        "items": [
+            { "date": "2026-10-01", "course_id": cid("101"), "title": "Review week 3" },
+            { "date": "2026-10-01", "course_id": cid("303"), "title": "Hidden course item" },
+            { "date": "2026-10-02", "course_id": "DEMO303", "title": "Hidden course item" }
+        ]
+    }});
+    assert!(!is_error(
+        &call(&client, "save_study_plan", with_hidden).await
+    ));
+    let stored = text_of(&call(&client, "get_study_plan", json!({})).await);
+    assert!(stored.contains("Review week 3"), "{stored}");
+    assert!(!stored.contains("Hidden course item"), "{stored}");
+
     // A plan cannot close its own wrapper and pose as instructions.
     let sneaky = json!({ "plan": {
         "horizon_start": "2026-10-01", "horizon_end": "2026-10-07",
