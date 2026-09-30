@@ -53,6 +53,11 @@ public actor MockService: PageLampService {
         self.now = now
         self.calendar = calendar
         db = MockFixtures.database(scenario, now: now(), calendar: calendar)
+        db.features.ai = MockAi.start(scenario, now: now(), calendar: calendar)
+        // As in the Tauri mock: DEMO205's materials may not be shared with a cloud AI service.
+        if let demo205 = db.courses.first(where: { $0.course.code == "DEMO205" }) {
+            db.features.sharing[demo205.course.id] = .notAllowed
+        }
     }
 
     // MARK: - Debug controls (preview Debug menu, tests)

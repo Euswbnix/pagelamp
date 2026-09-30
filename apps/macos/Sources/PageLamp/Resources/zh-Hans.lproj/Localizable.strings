@@ -1092,6 +1092,12 @@
 "mac.debug.mockData" = "模拟数据";
 "mac.debug.runMockSync" = "运行模拟同步";
 "mac.debug.runMockSyncRejected" = "运行模拟同步（访问令牌被拒绝）";
+"mac.debug.scenario.aiBudget" = "AI：预算快用完";
+"mac.debug.scenario.aiDisclosureChanged" = "AI：披露说明有变";
+"mac.debug.scenario.aiErrors" = "AI：服务出错";
+"mac.debug.scenario.aiKey" = "AI：已设置 API key";
+"mac.debug.scenario.aiLocal" = "AI：本机模型";
+"mac.debug.scenario.aiUnpriced" = "AI：没有价格的模型";
 "mac.debug.scenario.busy" = "另一个同步正在进行";
 "mac.debug.scenario.crashed" = "刚从崩溃中恢复";
 "mac.debug.scenario.demo" = "演示";

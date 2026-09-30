@@ -20,6 +20,19 @@ public enum MockScenario: String, CaseIterable, Codable, Sendable {
     case busy
     /// The demo after a crash of the MCP server (S6).
     case crashed
+    /// AI (the Tauri mock's scenarios): an OpenAI key set up and acknowledged, a model per feature,
+    /// this month's and last month's usage.
+    case aiKey
+    /// A model on this computer (Ollama).
+    case aiLocal
+    /// Like aiKey, but explanations use a model without a known price.
+    case aiUnpriced
+    /// Like aiKey, but this month's usage has almost reached the budget.
+    case aiBudget
+    /// An Anthropic key whose disclosure changed since it was acknowledged.
+    case aiDisclosureChanged
+    /// A custom endpoint that can't be reached (listing models fails; "Test" is rate-limited).
+    case aiErrors
 
     /// What the preview app starts with: the demo plus a failing Canvas token, so the attention
     /// states are visible without setup.

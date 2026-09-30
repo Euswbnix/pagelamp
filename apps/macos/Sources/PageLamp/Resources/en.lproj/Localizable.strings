@@ -1092,6 +1092,12 @@
 "mac.debug.mockData" = "Mock Data";
 "mac.debug.runMockSync" = "Run Mock Sync";
 "mac.debug.runMockSyncRejected" = "Run Mock Sync with a Rejected Token";
+"mac.debug.scenario.aiBudget" = "AI: Budget Almost Used";
+"mac.debug.scenario.aiDisclosureChanged" = "AI: Disclosure Changed";
+"mac.debug.scenario.aiErrors" = "AI: Provider Errors";
+"mac.debug.scenario.aiKey" = "AI: API Key Set Up";
+"mac.debug.scenario.aiLocal" = "AI: Model on This Mac";
+"mac.debug.scenario.aiUnpriced" = "AI: Model Without a Price";
 "mac.debug.scenario.busy" = "Another Sync Running";
 "mac.debug.scenario.crashed" = "Recovered from a Crash";
 "mac.debug.scenario.demo" = "Demo";

@@ -438,7 +438,8 @@ struct MockFeatureTests {
         }
         try await service.cancelGeneration(generationId: "g1")
         #expect(try await service.removeAllAiData().providersRemoved == 0)
-        #expect(try await service.aiStatus().budget.monthlyMicroUsd == nil)
+        // The budget goes back to its default (US$5), as in the facade.
+        #expect(try await service.aiStatus().budget.monthlyMicroUsd == 5_000_000)
     }
 
     @Test("the weekly note is blocked without a model; only API keys and local models prepare it")
@@ -452,12 +453,18 @@ struct MockFeatureTests {
         } catch {
             #expect(error.kind == .invalid)
         }
-        let local = ModelChoice(backend: .provider(providerId: "ollama"), model: "local-model", effort: .lowest)
-        try await service.setFeatureModel(feature: .weeklyNote, choice: local)
-        let settings = try await service.setPrepareWeeklyNoteOnMonday(on: true)
+        // A model on this computer (the aiLocal scenario routes the note to Ollama) may prepare it.
+        let local = mock(.aiLocal)
+        let settings = try await local.setPrepareWeeklyNoteOnMonday(on: true)
         #expect(settings.prepareOnMonday && settings.prepareOnMondayAllowed)
+        // The ChatGPT plan isn't offered: choosing it is refused.
         let plan = ModelChoice(backend: .codex, model: "plan-model", effort: .lowest)
-        try await service.setFeatureModel(feature: .weeklyNote, choice: plan)
+        do {
+            try await service.setFeatureModel(feature: .weeklyNote, choice: plan)
+            Issue.record("expected blocked")
+        } catch {
+            #expect(error.kind == .blocked && error.blocked == .backendDisabledInThisBuild)
+        }
         #expect(try await service.weeklyNoteSettings().prepareOnMondayAllowed == false)
         do {
             _ = try await service.writeWeeklyNote(generationId: "n1", options: WeeklyNoteOptions(), observer: GenEventStream())

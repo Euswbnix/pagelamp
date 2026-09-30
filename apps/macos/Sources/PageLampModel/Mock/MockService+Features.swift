@@ -1,15 +1,15 @@
-// The mock's M1–M3 calls (AI, course calendars, removal, reminders). Settings, removing and
-// restoring courses and reminders behave like the facade on the mock's own data. The mock has
-// no model: every generation and syllabus reading ends `blocked` like the facade without one,
-// and installing or signing in to Codex fails like a machine that can't reach it.
+// The mock's M1–M3 calls (course calendars, removal, reminders, generations; AI setup is in
+// MockService+Ai). Settings, removing and restoring courses and reminders behave like the facade
+// on the mock's own data. Generations still end `blocked` like the facade without a model until
+// their screens come to the Mac, and Codex isn't offered (the ChatGPT plan's build switch).
 
 import Foundation
 import PageLampKit
 
 /// The M1–M3 state the mock keeps.
 struct MockFeatures: Sendable {
-    var featureModels: [AiFeature: ModelChoice] = [:]
-    var monthlyBudget: UInt64?
+    /// Settings ▸ AI: providers, acknowledgements, the model per feature, the budget, usage.
+    var ai = MockAi()
     var sharing: [String: MaterialSharing] = [:]
     var outputLanguage: OutputLanguage = .ui
     var prepareNoteOnMonday = false
@@ -32,79 +32,7 @@ struct MockRemoval: Sendable {
 extension MockService {
     static let noModel = PageLampFailure(kind: .blocked, message: "Set up a model first: the preview's mock data has none.")
 
-    // MARK: - AI setup
-
-    public func modelProviderPresets() async throws(PageLampFailure) -> [ProviderPreset] {
-        await respond("modelProviderPresets")
-        return []
-    }
-
-    public func detectLocalServers() async throws(PageLampFailure) -> [LocalServer] {
-        await respond("detectLocalServers")
-        return []
-    }
-
-    public func aiStatus() async throws(PageLampFailure) -> AiStatus {
-        await respond("aiStatus")
-        let features = db.features.featureModels
-            .map { FeatureRouting(feature: $0.key, choice: $0.value) }
-            .sorted { "\($0.feature)" < "\($1.feature)" }
-        return AiStatus(backends: [], providers: [], features: features, budget: budget())
-    }
-
-    public func addModelProvider(preset: String, baseUrl: String?, apiKey: String?) async throws(PageLampFailure) -> ModelProviderRecord {
-        await respond("addModelProvider")
-        throw PageLampFailure(kind: .network, message: "The preview's mock can't reach \(preset).")
-    }
-
-    public func updateModelProviderKey(providerId: String, apiKey: String) async throws(PageLampFailure) -> ModelProviderRecord {
-        await respond("updateModelProviderKey")
-        throw Self.noProvider(providerId)
-    }
-
-    public func removeModelProvider(providerId: String) async throws(PageLampFailure) {
-        await respond("removeModelProvider")
-        throw Self.noProvider(providerId)
-    }
-
-    public func listModels(backend: BackendRef) async throws(PageLampFailure) -> [ModelInfo] {
-        await respond("listModels")
-        throw Self.noModel
-    }
-
-    public func testModel(backend: BackendRef, model: String) async throws(PageLampFailure) -> ProbeReport {
-        await respond("testModel")
-        throw Self.noModel
-    }
-
-    public func setFeatureModel(feature: AiFeature, choice: ModelChoice?) async throws(PageLampFailure) {
-        await respond("setFeatureModel")
-        db.features.featureModels[feature] = choice
-    }
-
-    public func acknowledgeAiDisclosure(backend: BackendRef, version: UInt32) async throws(PageLampFailure) {
-        await respond("acknowledgeAiDisclosure")
-    }
-
-    public func acknowledgeUnpricedModel(backend: BackendRef, model: String) async throws(PageLampFailure) {
-        await respond("acknowledgeUnpricedModel")
-    }
-
-    public func setMonthlyBudget(microUsd: UInt64?) async throws(PageLampFailure) {
-        await respond("setMonthlyBudget")
-        db.features.monthlyBudget = microUsd
-    }
-
-    public func estimateGeneration(request: EstimateRequest) async throws(PageLampFailure) -> CostEstimate {
-        await respond("estimateGeneration")
-        throw Self.noModel
-    }
-
-    public func usageSummary(month: String?) async throws(PageLampFailure) -> UsageSummary {
-        await respond("usageSummary")
-        let first = month.map { String($0.prefix(7)) + "-01" } ?? String(isoDay(daysFromToday: 0).prefix(7)) + "-01"
-        return UsageSummary(month: first, rows: [], totalMicroUsd: 0, budget: budget(), modeA: nil)
-    }
+    // MARK: - Course answers and generated content (the rest of AI setup: MockService+Ai)
 
     public func setCourseMaterialSharing(course reference: String, answer: MaterialSharing) async throws(PageLampFailure) {
         await respond("setCourseMaterialSharing")
@@ -117,23 +45,14 @@ extension MockService {
         return 0
     }
 
-    public func removeAllAiData() async throws(PageLampFailure) -> RemoveAiDataReport {
-        await respond("removeAllAiData")
-        db.features.featureModels = [:]
-        db.features.monthlyBudget = nil
-        db.features.sharing = [:]
-        return RemoveAiDataReport(providersRemoved: 0, generationsRemoved: 0, usageRowsRemoved: 0, backupRemoved: false)
-    }
+    // MARK: - The ChatGPT plan through Codex (not offered: every way in refuses, clean-up works)
 
-    private func budget() -> BudgetStatus {
-        BudgetStatus(monthlyMicroUsd: db.features.monthlyBudget, spentMicroUsd: 0, warnAtPercent: 80)
-    }
-
-    private static func noProvider(_ id: String) -> PageLampFailure {
-        PageLampFailure(kind: .notFound, message: "No model provider with id \(id)")
-    }
-
-    // MARK: - The ChatGPT plan through Codex (not installed, can't be downloaded here)
+    /// The facade's refusal while the build doesn't offer the ChatGPT plan.
+    static let chatgptPlanNotOffered = PageLampFailure(
+        kind: .blocked,
+        message: "The ChatGPT plan isn't available in this version of PageLamp. Use an API key or a model on this computer.",
+        blocked: .backendDisabledInThisBuild
+    )
 
     public func codexStatus() async throws(PageLampFailure) -> CodexStatus {
         await respond("codexStatus")
@@ -142,7 +61,7 @@ extension MockService {
 
     public func installCodex(installId: String, observer: any CodexInstallObserver) async throws(PageLampFailure) -> CodexStatus {
         await respond("installCodex")
-        throw PageLampFailure(kind: .network, message: "The preview's mock can't download Codex.")
+        throw Self.chatgptPlanNotOffered
     }
 
     public func cancelCodexInstall(installId: String) async throws(PageLampFailure) {
@@ -155,7 +74,7 @@ extension MockService {
 
     public func codexLogin(method: CodexLoginMethod, observer: any CodexLoginObserver) async throws(PageLampFailure) -> CodexStatus {
         await respond("codexLogin")
-        throw PageLampFailure(kind: .blocked, message: "Install Codex first: the preview's mock has none.")
+        throw Self.chatgptPlanNotOffered
     }
 
     public func cancelCodexLogin() async throws(PageLampFailure) {
@@ -169,13 +88,12 @@ extension MockService {
 
     public func setModeAWeeklyCap(runs: UInt32?) async throws(PageLampFailure) {
         await respond("setModeAWeeklyCap")
-        db.features.weeklyCap = runs
+        throw Self.chatgptPlanNotOffered
     }
 
     public func setCodexSource(source: CodexSource) async throws(PageLampFailure) -> CodexStatus {
         await respond("setCodexSource")
-        db.features.codexSource = source
-        return codex()
+        throw Self.chatgptPlanNotOffered
     }
 
     private func codex() -> CodexStatus {
@@ -267,7 +185,7 @@ extension MockService {
     /// Only an API key or a model on this computer may prepare it (plan D27).
     private func noteSettings() -> WeeklyNoteSettings {
         var allowed = false
-        if case .provider = db.features.featureModels[.weeklyNote]?.backend {
+        if case .provider = db.features.ai.routing[.weeklyNote]?.backend {
             allowed = true
         }
         return WeeklyNoteSettings(prepareOnMonday: db.features.prepareNoteOnMonday, prepareOnMondayAllowed: allowed)
