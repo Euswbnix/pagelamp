@@ -17,7 +17,7 @@ struct AiUsageSection: View {
         Section {
             Picker(l10n("ai.usage.month"), selection: Binding(
                 get: { ai.usageMonth },
-                set: { month in Task { await ai.loadUsage(month: month) } }
+                set: { month in Task { await ai.chooseUsageMonth(month) } }
             )) {
                 ForEach(ai.months, id: \.self) { month in
                     Text(monthName(month)).tag(month)

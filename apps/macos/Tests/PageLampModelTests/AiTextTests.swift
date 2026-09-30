@@ -97,10 +97,11 @@ struct AiTextTests {
         #expect(AiMoney.parse(" 2.50 ") == 2_500_000)
         #expect(AiMoney.parse("$3") == 3_000_000)
         #expect(AiMoney.parse("us$3") == 3_000_000)
+        #expect(AiMoney.parse("US$ 3") == 3_000_000 && AiMoney.parse("$ 5") == 5_000_000)
         #expect(AiMoney.parse("1,000") == 1_000_000_000)
         #expect(AiMoney.parse("5.") == 5_000_000)
         #expect(AiMoney.parse("0") == 0)
-        for invalid in ["", "-1", "2.505", ".5", "US$ 3", "five", "１２", "5.5.5"] {
+        for invalid in ["", "-1", "2.505", ".5", "$", "five", "１２", "5.5.5", "1 000"] {
             #expect(AiMoney.parse(invalid) == nil, "\(invalid) should be refused")
         }
         #expect(AiMoney.inputValue(nil) == "")

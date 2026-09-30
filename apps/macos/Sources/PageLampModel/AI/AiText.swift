@@ -314,8 +314,8 @@ extension L10n {
 
 /// Dollars as the student types them, and back (the Tauri app's `parseUsd` / `usdInputValue`).
 public enum AiMoney {
-    /// "5", "2.50", "$3", "US$3", "1,000", "5." → micro-dollars; nil for anything else (negative,
-    /// more than two decimals, empty, a space after the sign).
+    /// "5", "2.50", "$3", "US$ 3", "$ 5", "1,000", "5." → micro-dollars; nil for anything else
+    /// (negative, more than two decimals, empty).
     public static func parse(_ text: String) -> UInt64? {
         var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.lowercased().hasPrefix("us$") {
@@ -323,7 +323,7 @@ public enum AiMoney {
         } else if value.hasPrefix("$") {
             value.removeFirst()
         }
-        value = value.replacingOccurrences(of: ",", with: "")
+        value = value.replacingOccurrences(of: ",", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         let parts = value.split(separator: ".", omittingEmptySubsequences: false)
         guard (1...2).contains(parts.count), let whole = parts.first, !whole.isEmpty,
               whole.allSatisfy({ $0.isASCII && $0.isNumber }), let dollars = UInt64(whole)

@@ -14,8 +14,8 @@ struct SettingsAiTab: View {
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
     @State private var ai: AiSettingsModel?
-    /// The data source `ai` reads (mock or live).
-    @State private var loadedFor: DataMode?
+    /// The service `ai` reads (`AppModel.serviceGeneration`).
+    @State private var loadedFor: Int?
     /// The key sheet: nil, or adding a key, or replacing one provider's.
     @State private var keySheet: KeySheet?
     /// The backend whose disclosure is shown (by key).
@@ -53,19 +53,18 @@ struct SettingsAiTab: View {
                 removeAllSection(ai)
             }
         }
-        // Read again each time the tab shows (local servers are detected anew); a new data source
-        // (mock ↔ live) is a new setup.
-        .task(id: model.dataMode) {
+        // Read again each time the tab shows (local servers are detected anew); a new service
+        // (mock ↔ live, or the live facade once it has opened) is a new setup.
+        .task(id: model.serviceGeneration) {
             let current: AiSettingsModel
-            // A model handed in (the snapshot harness) reads the current source.
-            if let ai, loadedFor == nil || loadedFor == model.dataMode {
+            // A model handed in (the snapshot harness) reads the current service.
+            if let ai, loadedFor == nil || loadedFor == model.serviceGeneration {
                 current = ai
-                loadedFor = model.dataMode
             } else {
                 current = AiSettingsModel(service: model.service, clock: model.clock, calendar: model.calendar)
                 ai = current
-                loadedFor = model.dataMode
             }
+            loadedFor = model.serviceGeneration
             await current.load()
         }
         .sheet(item: $keySheet, onDismiss: {
@@ -74,6 +73,8 @@ struct SettingsAiTab: View {
         }) { sheet in
             if let ai {
                 AiKeySheet(ai: ai, mode: sheet) { record in
+                    // Only this sheet, while it's still up (its disclosure follows its dismissal).
+                    guard keySheet?.id == sheet.id else { return }
                     if let record {
                         announce(l10n("ai.addKey.added", ["name": record.label]))
                         pendingDisclosure = disclosure(of: record)
@@ -83,7 +84,11 @@ struct SettingsAiTab: View {
                 .pageLampEnvironment(model)
             }
         }
-        .sheet(item: $disclosureFor) { request in
+        // Only while its backend is in the status (a failed re-read would leave it empty).
+        .sheet(item: Binding(
+            get: { disclosureFor.flatMap { ai?.backend(key: $0.key) == nil ? nil : $0 } },
+            set: { disclosureFor = $0 }
+        )) { request in
             if let ai, let backend = ai.backend(key: request.key) {
                 AiDisclosureSheet(ai: ai, backend: backend) {
                     disclosureFor = nil
@@ -137,7 +142,7 @@ struct SettingsAiTab: View {
                     BackendRowView(
                         backend: backend, provider: ai.provider(of: backend),
                         showDisclosure: { disclosureFor = DisclosureRequest(key: AiCodes.key(backend.backend), added: false) },
-                        replaceKey: { provider in keySheet = .replace(provider) },
+                        replaceKey: { provider in openKeySheet(.replace(provider)) },
                         remove: { provider in removing = provider }
                     )
                     .accessibilityFocused($focusedBackend, equals: AiCodes.key(backend.backend))
@@ -146,7 +151,7 @@ struct SettingsAiTab: View {
                     Text(l10n.aiError(failure)).foregroundStyle(PLColor.danger)
                 }
             }
-            Button(l10n("mac.ai.addKey")) { keySheet = .add }
+            Button(l10n("mac.ai.addKey")) { openKeySheet(.add) }
         } header: {
             Text(l10n("ai.settings.title"))
         } footer: {
@@ -197,6 +202,12 @@ struct SettingsAiTab: View {
                 Text(l10n.aiError(failure)).foregroundStyle(PLColor.danger)
             }
         }
+    }
+
+    /// A new key sheet starts without the last one's failure.
+    private func openKeySheet(_ sheet: KeySheet) {
+        ai?.clearKeyFailure()
+        keySheet = sheet
     }
 
     /// A local server was added: say so, then show its disclosure (turning it on).

@@ -3,10 +3,61 @@
 // failures are kept by what failed.
 
 import Foundation
+import Synchronization
 import PageLamp
 import PageLampKit
 import PageLampModel
 import Testing
+
+/// A clock the test moves.
+private final class MovableClock: Sendable {
+    private let date: Mutex<Date>
+
+    init(_ date: Date) {
+        self.date = Mutex(date)
+    }
+
+    var now: Date { date.withLock { $0 } }
+
+    func set(_ new: Date) {
+        date.withLock { $0 = new }
+    }
+}
+
+/// Holds `testModel` until the test lets it answer.
+private actor TestHold {
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var started: [CheckedContinuation<Void, Never>] = []
+    private var isHeld = false
+
+    func hold() async {
+        isHeld = true
+        for continuation in started { continuation.resume() }
+        started = []
+        await withCheckedContinuation { waiting = $0 }
+    }
+
+    /// Waits until a test call is being held.
+    func held() async {
+        if isHeld { return }
+        await withCheckedContinuation { started.append($0) }
+    }
+
+    func release() {
+        waiting?.resume()
+        waiting = nil
+    }
+}
+
+private struct HeldTests: ForwardingService {
+    let base: any PageLampService
+    let hold: TestHold
+
+    func testModel(backend: BackendRef, model: String) async throws(PageLampFailure) -> ProbeReport {
+        await hold.hold()
+        return try await base.testModel(backend: backend, model: model)
+    }
+}
 
 @Suite("AI settings model")
 @MainActor
@@ -151,5 +202,68 @@ struct AiSettingsModelTests {
         #expect(all.status?.providers.isEmpty == true && all.providerBackends.isEmpty)
         #expect(all.status?.budget.monthlyMicroUsd == 5_000_000)
         #expect(all.tests.isEmpty && all.removeAllFailure == nil)
+    }
+
+    @Test("a Test result that arrives after the model changed is dropped; one Test at a time")
+    func staleTest() async throws {
+        let hold = TestHold()
+        let service = HeldTests(
+            base: MockService(scenario: .aiKey, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now }),
+            hold: hold
+        )
+        let ai = AiSettingsModel(service: service, clock: { TestClock.now }, calendar: TestClock.calendar)
+        await ai.load()
+        let choice = try #require(ai.choice(for: .studyPlan))
+        let first = Task { await ai.test(.studyPlan) }
+        await hold.held()
+        #expect(ai.testing.contains(.studyPlan))
+        // A second press while it runs does nothing.
+        await ai.test(.studyPlan)
+        await ai.setEffort(.studyPlan, .high)
+        #expect(!ai.testing.contains(.studyPlan) && ai.tests[.studyPlan] == nil)
+        await hold.release()
+        await first.value
+        #expect(ai.tests[.studyPlan] == nil && !ai.testing.contains(.studyPlan))
+        #expect(ai.choice(for: .studyPlan)?.model == choice.model)
+    }
+
+    @Test("usage follows this month into a new one, unless the student picked a month still listed")
+    func usageMonthMoves() async throws {
+        let clock = MovableClock(TestClock.now)
+        let service = MockService(scenario: .aiKey, timing: .instant, calendar: TestClock.calendar, now: { TestClock.now })
+        let ai = AiSettingsModel(service: service, clock: { clock.now }, calendar: TestClock.calendar)
+        await ai.load()
+        #expect(ai.usageMonth == "2026-09-01")
+        clock.set(try #require(TestClock.calendar.date(byAdding: .day, value: 7, to: TestClock.now)))
+        await ai.load()
+        #expect(ai.usageMonth == "2026-10-01" && ai.months.first == "2026-10-01")
+        await ai.chooseUsageMonth("2026-08-01")
+        await ai.load()
+        #expect(ai.usageMonth == "2026-08-01")
+        // A year on, August 2026 is no longer listed: back to this month.
+        clock.set(try #require(TestClock.calendar.date(byAdding: .year, value: 1, to: TestClock.now)))
+        await ai.load()
+        #expect(ai.usageMonth == "2027-09-01")
+    }
+
+    @Test("reading everything again clears the failures of earlier changes")
+    func failuresClear() async throws {
+        let (ai, _) = await loaded(.aiKey)
+        #expect(await ai.removeProvider("nope") == false && ai.removeFailure != nil)
+        #expect(await ai.saveBudget(microUsd: nil))
+        await ai.load()
+        #expect(ai.removeFailure == nil && ai.budgetFailure == nil && ai.serverFailures.isEmpty)
+    }
+
+    @Test("a new service (Debug ▸ Data Source, the live facade opening) is announced to the screens")
+    func serviceGeneration() async throws {
+        let model = AppModel(
+            dataMode: .mock(.demo), strings: .app, settings: InMemorySettingsStore(language: .english),
+            timing: AppModel.Timing(finishedCapsule: .seconds(60), failedCapsule: .seconds(60), mock: .instant),
+            calendar: TestClock.calendar, clock: { TestClock.now }, notificationCenter: NotificationCenter()
+        )
+        let before = model.serviceGeneration
+        await model.useMock(.aiKey)
+        #expect(model.serviceGeneration > before)
     }
 }

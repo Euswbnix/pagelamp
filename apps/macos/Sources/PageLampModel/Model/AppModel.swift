@@ -149,7 +149,12 @@ public final class AppModel {
 
     public private(set) var dataMode: DataMode
     /// The core. Screens load their own data through it (errors are `PageLampFailure`).
-    public private(set) var service: any PageLampService
+    public private(set) var service: any PageLampService {
+        didSet { serviceGeneration += 1 }
+    }
+    /// Bumped whenever `service` is replaced (Debug ▸ Data Source, the live facade opening):
+    /// screens holding their own model of the service rebuild on it.
+    public private(set) var serviceGeneration = 0
 
     // MARK: Shell data (spec §2.8)
 

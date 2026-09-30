@@ -81,7 +81,7 @@ private struct AiFeatureRow: View {
                                 }
                             }
                         }
-                        .disabled(choice == nil)
+                        .disabled(choice == nil || ai.testing.contains(feature))
                         .accessibilityHint(name)
                     }
                 }
