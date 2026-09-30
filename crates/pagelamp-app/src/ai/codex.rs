@@ -2,6 +2,14 @@
 //! The runtime, the sign-in and the runs themselves are `pagelamp_llm::codex`; this is the facade
 //! around them: which Codex runs (the pinned one, or the student's own in the tested range, D12),
 //! status for the ChatGPT card, the weekly run cap, the disclosure and the error texts.
+//!
+//! **The build switch.** PageLamp offers the ChatGPT plan once OpenAI confirms in writing that
+//! this use is allowed (the owner's decision; the README says so). Until then
+//! `CHATGPT_PLAN_OFFERED` is false: every way into Codex refuses with
+//! `BackendDisabledInThisBuild` (install, sign-in, the Codex choices, the disclosure, models,
+//! "Test", and runs, a Codex routing stored by an earlier build included), and `codex_status` and
+//! `ai_status` say so in `chatgpt_plan_offered`, so the UIs hide the ChatGPT card and copy.
+//! Clean-up still works: `remove_codex`, `codex_logout`, `forget_codex` and "Remove all AI data".
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,6 +35,10 @@ use super::{
 use crate::activity::ActivityKind;
 use crate::{App, AppError, AppErrorKind, Result};
 
+/// Whether this build offers the ChatGPT plan (see the module docs). Turning it on is the one
+/// release-prep change once OpenAI's written confirmation is in.
+pub const CHATGPT_PLAN_OFFERED: bool = false;
+
 /// Mode A's weekly run cap unless the student sets another (design §2.3).
 pub const DEFAULT_WEEKLY_CAP: u32 = 40;
 /// The `backend` of Codex runs in the usage ledger.
@@ -49,6 +61,8 @@ pub(crate) struct CodexState {
     last_login: Mutex<Option<CodexLoginState>>,
     /// One Codex command at a time in this process (other processes: the CODEX_HOME lock).
     runs: tokio::sync::Mutex<()>,
+    /// `set_chatgpt_plan_offered_for_tests` (debug builds only): 0 unset, 1 off, 2 on.
+    offered_for_tests: std::sync::atomic::AtomicU8,
 }
 
 /// The binary a Codex command runs.
@@ -97,6 +111,41 @@ impl App {
         &self.state.codex
     }
 
+    // ----- the build switch ---------------------------------------------------------------------
+
+    /// Whether this build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`).
+    pub fn chatgpt_plan_offered(&self) -> bool {
+        let set = self
+            .codex_state()
+            .offered_for_tests
+            .load(std::sync::atomic::Ordering::Relaxed);
+        match set {
+            1 if cfg!(debug_assertions) => false,
+            2 if cfg!(debug_assertions) => true,
+            _ => CHATGPT_PLAN_OFFERED,
+        }
+    }
+
+    /// Offer the ChatGPT plan in this app or not, whatever the build says, so tests cover both
+    /// states whichever way `CHATGPT_PLAN_OFFERED` is set. Debug builds only: a release build
+    /// ignores it.
+    #[doc(hidden)]
+    pub fn set_chatgpt_plan_offered_for_tests(&self, offered: bool) {
+        self.codex_state().offered_for_tests.store(
+            if offered { 2 } else { 1 },
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+
+    /// `Err(Blocked(BackendDisabledInThisBuild))` unless this build offers the ChatGPT plan (the
+    /// CLI checks it first, so nothing is printed before the refusal).
+    pub fn require_chatgpt_plan(&self) -> Result<()> {
+        if self.chatgpt_plan_offered() {
+            return Ok(());
+        }
+        Err(not_offered())
+    }
+
     // ----- status -------------------------------------------------------------------------------
 
     /// The ChatGPT-plan card: runtime (managed or the student's own), sign-in, the weekly cap.
@@ -131,6 +180,7 @@ impl App {
             &pin.version(),
         );
         Ok(CodexStatus {
+            chatgpt_plan_offered: self.chatgpt_plan_offered(),
             runtime: CodexRuntime {
                 state,
                 source,
@@ -241,6 +291,7 @@ impl App {
         install_id: &str,
         on_event: impl Fn(RuntimeEvent) + Send + Sync,
     ) -> Result<CodexStatus> {
+        self.require_chatgpt_plan()?;
         let pin = codex::pin();
         let asset = codex::running_target()
             .and_then(|target| pin.asset(target))
@@ -303,6 +354,7 @@ impl App {
         method: CodexLoginMethod,
         on_event: impl Fn(LoginEvent) + Send + Sync,
     ) -> Result<CodexStatus> {
+        self.require_chatgpt_plan()?;
         let binary = self.codex_binary().await?;
         let cancel = CancellationToken::new();
         *self
@@ -400,6 +452,7 @@ impl App {
 
     /// Mode A's weekly run cap (`None`: no cap).
     pub fn set_mode_a_weekly_cap(&self, runs: Option<u32>) -> Result<()> {
+        self.require_chatgpt_plan()?;
         self.write_store()?
             .set_setting(settings::MODE_A_WEEKLY_CAP, &WeeklyCap { runs })?;
         Ok(())
@@ -407,6 +460,7 @@ impl App {
 
     /// Run the managed pin, or the student's own Codex when its version is in the tested range.
     pub async fn set_codex_source(&self, source: CodexSource) -> Result<CodexStatus> {
+        self.require_chatgpt_plan()?;
         if source == CodexSource::System {
             let pin = codex::pin();
             match self.detect_system_codex().await {
@@ -461,6 +515,7 @@ impl App {
 
     /// "Test" with Codex: a structured answer, no course data. Counts as one run of the plan.
     pub(crate) async fn codex_test(&self, model: &str) -> Result<ProbeReport> {
+        self.require_chatgpt_plan()?;
         check_codex_model(model)?;
         let binary = self.codex_binary().await?;
         let schema = serde_json::json!({
@@ -809,6 +864,15 @@ fn model_error(kind: ModelErrorKind, message: &str) -> AppError {
         model_error: Some(kind),
         ..AppError::new(AppErrorKind::Model, message)
     }
+}
+
+/// Why nothing ChatGPT-plan works in this build (`CHATGPT_PLAN_OFFERED`).
+pub(crate) fn not_offered() -> AppError {
+    AppError::blocked(
+        pagelamp_core::ai::BlockReason::BackendDisabledInThisBuild,
+        "The ChatGPT plan isn't available in this version of PageLamp. Use an API key or a model \
+         on this computer.",
+    )
 }
 
 pub(crate) fn install_error(err: InstallError) -> AppError {

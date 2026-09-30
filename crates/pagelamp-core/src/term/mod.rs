@@ -138,6 +138,15 @@ pub struct RejectedDates {
     pub end_only: bool,
 }
 
+impl RejectedDates {
+    /// An LMS term too long to be a teaching term: an enrollment window like UofT's May–January
+    /// "Fall 2026" (calendar design §6.3), never used to count weeks.
+    pub fn is_enrollment_window(&self) -> bool {
+        self.source == TermAnchorSource::LmsTerm
+            && self.reason == RejectReason::LongerThanTeachingTerm
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BreakKind {

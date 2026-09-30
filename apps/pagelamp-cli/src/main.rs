@@ -1052,6 +1052,18 @@ fn print_doctor(doctor: &diagnostics::DoctorReport) {
         "Courses: {} ({} hidden) · materials: {} · events: {}",
         doctor.courses, doctor.hidden_courses, doctor.materials, doctor.events
     );
+    if doctor.enrollment_window_terms > 0 {
+        println!(
+            "Course terms not used to count weeks (they look like enrollment windows): {}",
+            doctor.enrollment_window_terms
+        );
+    }
+    if doctor.removals_waiting > 0 {
+        println!(
+            "Removed courses waiting (for their purge or for files to go to the Trash): {}",
+            doctor.removals_waiting
+        );
+    }
     if doctor.sources.is_empty() {
         println!(
             "Sources: none (add one with `{} folder add <path>`)",

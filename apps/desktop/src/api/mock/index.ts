@@ -1063,6 +1063,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
                 { kind: "timed_out" as const, count: 1 },
               ]
             : [],
+          enrollment_window_terms: 0,
+          removals_waiting: 0,
         };
       }),
     lastCrash: () => respond(() => db.lastCrash),

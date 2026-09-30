@@ -425,6 +425,9 @@ fn plan_runs_without_a_terminal_are_refused() {
         .set_setting("ai.codex_source", &CodexSource::System)
         .unwrap();
     let app = App::open_at_with_secrets(home.clone(), Arc::new(MemorySecrets::new())).unwrap();
+    // The ChatGPT plan's build switch is off: acknowledging needs it on (in this process only;
+    // the spawned CLI refuses before it would matter).
+    app.set_chatgpt_plan_offered_for_tests(true);
     let version = app
         .ai_status()
         .unwrap()
@@ -495,4 +498,34 @@ fn plan_runs_without_a_terminal_are_refused() {
     store.set_setting("ai.routing", &routing).unwrap();
     let err = failed(&pagelamp_with_path(&home, &["note"], path));
     assert!(!err.contains("unattended_plan_run"), "{err}");
+}
+
+/// A build that doesn't offer the ChatGPT plan (`CHATGPT_PLAN_OFFERED`): `ai codex …` refuses
+/// with the facade's message before anything is printed or started (status and sign-out, which
+/// clean up, still work; they aren't run here because they would look for a `codex` on PATH).
+#[test]
+fn codex_commands_refuse_when_the_plan_is_not_offered() {
+    if pagelamp_app::ai::CHATGPT_PLAN_OFFERED {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    for args in [
+        &["ai", "codex", "install"][..],
+        &["ai", "codex", "login"],
+        &["ai", "codex", "use", "system"],
+        &["ai", "codex", "cap", "5"],
+    ] {
+        let output = pagelamp(&home, args);
+        let err = failed(&output);
+        assert!(
+            err.contains("The ChatGPT plan isn't available in this version of PageLamp"),
+            "{args:?}: {err}"
+        );
+        assert!(
+            stdout(&output).is_empty(),
+            "{args:?}: nothing printed first"
+        );
+        assert!(!err.contains("Downloading"), "{args:?}: {err}");
+    }
 }

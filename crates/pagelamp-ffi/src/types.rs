@@ -951,6 +951,10 @@ pub struct DoctorReport {
     pub unreadable_files: Vec<UnreadableFiles>,
     #[uniffi(default)]
     pub ai: AiDoctor,
+    #[uniffi(default)]
+    pub enrollment_window_terms: u32,
+    #[uniffi(default)]
+    pub removals_waiting: u32,
 }
 
 /// Whether the extraction worker works (`spawn_failed`: blocked by antivirus or Smart App
@@ -1431,6 +1435,8 @@ pub struct AiStatus {
     pub providers: Vec<ModelProviderRecord>,
     pub features: Vec<FeatureRouting>,
     pub budget: BudgetStatus,
+    #[uniffi(default)]
+    pub chatgpt_plan_offered: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1985,6 +1991,8 @@ pub struct CodexStatus {
     pub weekly_cap: Option<u32>,
     pub runs_this_week: u32,
     pub system_codex: Option<SystemCodex>,
+    #[uniffi(default)]
+    pub chatgpt_plan_offered: bool,
 }
 
 #[uniffi::remote(Enum)]

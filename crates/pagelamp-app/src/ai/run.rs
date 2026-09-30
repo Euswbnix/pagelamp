@@ -213,7 +213,12 @@ impl App {
     ) -> Result<RunOutcome> {
         let cancel = request.cancel.clone();
         match &request.choice.backend {
-            BackendRef::Codex => self.codex_run(&request, on_event, &cancel).await,
+            BackendRef::Codex => {
+                // Every feature checks `run_blocks` first (`codex_blocks`); this is the last
+                // line for a build that doesn't offer the ChatGPT plan.
+                self.require_chatgpt_plan()?;
+                self.codex_run(&request, on_event, &cancel).await
+            }
             BackendRef::Provider { .. } => self.http_run(request, on_event, &cancel).await,
             BackendRef::ClaudeCode => Err(AppError::blocked(
                 BlockReason::BackendDisabledInThisBuild,

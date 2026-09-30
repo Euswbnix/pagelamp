@@ -264,7 +264,8 @@
 "ai.policy.training.may_train_free_tier" = "free tier: may be used for training";
 "ai.policy.training.no_training" = "not used for training";
 "ai.policy.training.unknown" = "training unknown: check the provider's terms";
-"ai.removeAll.body" = "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and every plan and explanation PageLamp wrote, and signs PageLamp's Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.";
+"ai.removeAll.body" = "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything PageLamp wrote with AI. Your courses, their rules and your answers about sharing materials stay.";
+"ai.removeAll.bodyCodex" = "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything PageLamp wrote with AI, and signs PageLamp's Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.";
 "ai.removeAll.button" = "Remove all AI data";
 "ai.removeAll.confirm" = "Remove all";
 "ai.removeAll.done" = "All AI data removed";

@@ -264,7 +264,8 @@
 "ai.policy.training.may_train_free_tier" = "免费档：可能用于训练";
 "ai.policy.training.no_training" = "不用于训练";
 "ai.policy.training.unknown" = "是否用于训练未知：请查看服务商条款";
-"ai.removeAll.body" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 写出的所有计划和讲解，还会让 PageLamp 的 Codex 退出 ChatGPT 登录。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
+"ai.removeAll.body" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 用 AI 写出的所有内容。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
+"ai.removeAll.bodyCodex" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 用 AI 写出的所有内容，还会让 PageLamp 的 Codex 退出 ChatGPT 登录。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
 "ai.removeAll.button" = "删除所有 AI 数据";
 "ai.removeAll.confirm" = "全部删除";
 "ai.removeAll.done" = "已删除所有 AI 数据";
