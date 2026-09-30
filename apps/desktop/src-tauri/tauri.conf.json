@@ -68,10 +68,14 @@
     },
     "pagelamp-updates": {
       "stable": [
+        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/stable.json",
         "https://euswbnix.github.io/pagelamp/updates/stable.json",
         "https://github.com/Euswbnix/pagelamp/releases/latest/download/latest.json"
       ],
-      "beta": ["https://euswbnix.github.io/pagelamp/updates/beta.json"],
+      "beta": [
+        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/beta.json",
+        "https://euswbnix.github.io/pagelamp/updates/beta.json"
+      ],
       "releasePage": "https://github.com/Euswbnix/pagelamp/releases/tag/v{version}"
     }
   }
