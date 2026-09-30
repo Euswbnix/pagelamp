@@ -373,13 +373,14 @@ struct MockFeatureTests {
         #expect(try await service.removedCourses().isEmpty)
     }
 
-    @Test("reminders: settings round-trip; due-soon reminders are due once, then shown")
+    @Test("reminders: settings round-trip; the facade's kinds; due once, then shown")
     func reminders() async throws {
         let service = mock()
         var settings = try await service.reminderSettings()
         #expect(settings.deadlineSoon && settings.digestTime == "09:00")
         let week = try await service.reminders(from: TestClock.now, to: TestClock.now.addingTimeInterval(7 * 86_400))
-        #expect(!week.isEmpty && week.allSatisfy { $0.kind == .deadlineSoon && $0.hoursBefore == 24 })
+        #expect(week.contains { $0.kind == .deadlineSoon } && week.contains { $0.kind == .weeklyDigest })
+        #expect(week.filter { $0.kind == .deadlineSoon }.allSatisfy { [48, 24].contains($0.hoursBefore) })
         let later = week[0].fireAt.addingTimeInterval(60)
         let due = try await service.dueReminders(now: later)
         #expect(due.map(\.id).contains(week[0].id))
@@ -392,7 +393,10 @@ struct MockFeatureTests {
         )
         try await service.setReminderSettings(settings: settings)
         #expect(try await service.reminderSettings() == settings)
-        #expect(try await service.reminders(from: TestClock.now, to: TestClock.now.addingTimeInterval(7 * 86_400)).isEmpty)
+        // Deadline reminders off: only the week's digest, now on Friday 18:30.
+        let digests = try await service.reminders(from: TestClock.now, to: TestClock.now.addingTimeInterval(7 * 86_400))
+        #expect(digests.map(\.id) == ["weekly_digest:2026-09-25"])
+        #expect(digests.first?.localTime == "2026-09-25T18:30")
         #expect(try await service.weeklyDigest().generatedAt == TestClock.now)
     }
 
