@@ -98,6 +98,15 @@ public actor MockService: PageLampService {
         try? await Task.sleep(for: duration)
     }
 
+    /// A model run's step: held at the tests' gate (at the run's id), else a sync step's wait.
+    func generationStep(_ generationId: String, _ step: UInt32) async {
+        if let gate = timing.gate {
+            await gate.pass(SyncStepPosition(sourceId: generationId, step: step))
+        } else {
+            await pause(timing.syncStep)
+        }
+    }
+
     func courseIndex(_ reference: String) throws(PageLampFailure) -> Int {
         if let index = db.courses.firstIndex(where: { $0.course.id == reference || $0.course.code == reference }) {
             return index
@@ -143,7 +152,7 @@ public actor MockService: PageLampService {
         return IsoDate.string(from: day, calendar: calendar)
     }
 
-    private static func aiMaterials(_ course: Course) -> AiMaterialsState {
+    static func aiMaterials(_ course: Course) -> AiMaterialsState {
         if course.aiPolicy == .prohibited { return .withheldByPolicy }
         if !course.aiAccess { return .turnedOff }
         return .readable

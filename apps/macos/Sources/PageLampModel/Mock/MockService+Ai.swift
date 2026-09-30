@@ -157,7 +157,7 @@ extension MockService {
             )
         }
         let work = MockAiFixtures.workload(request)
-        guard let choice = db.features.ai.routing[request.feature] else { return gateBlocked(.noModelChosen) }
+        guard let choice = db.features.ai.routing[request.aiFeature] else { return gateBlocked(.noModelChosen) }
         let record = try provider(of: choice.backend)
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
         let onDevice = info?.onDevice ?? false
@@ -290,6 +290,20 @@ extension MockService {
     }
 
     /// A provider backend's record; the other backends aren't in this build.
+    /// The facade's gate before a run: the estimate's block (only going over the budget can be
+    /// overridden), then who the run goes to.
+    func aiRun(_ request: EstimateRequest, overrideBudget: Bool) throws(PageLampFailure) -> MockAiRun {
+        let estimate = try estimate(request)
+        if let block = estimate.wouldBlock, !(block == .budgetReached && overrideBudget) {
+            throw PageLampFailure(kind: .blocked, message: "The AI gate stopped this run.", blocked: block)
+        }
+        guard let choice = db.features.ai.routing[request.aiFeature] else {
+            throw PageLampFailure(kind: .blocked, message: "No model chosen.", blocked: .noModelChosen)
+        }
+        let record = try provider(of: choice.backend)
+        return MockAiRun(backendLabel: record.label, model: choice.model, onDevice: record.onDevice)
+    }
+
     private func provider(of backend: BackendRef) throws(PageLampFailure) -> ModelProviderRecord {
         guard case .provider(let id) = backend else {
             throw PageLampFailure(kind: .blocked, message: "Not available in this build.", blocked: .backendDisabledInThisBuild)
@@ -337,4 +351,11 @@ extension MockService {
             throw PageLampFailure(kind: .model, message: "Couldn't reach the provider.", modelError: .network)
         }
     }
+}
+
+/// Who a mock run goes to.
+struct MockAiRun: Sendable {
+    let backendLabel: String
+    let model: String
+    let onDevice: Bool
 }

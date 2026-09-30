@@ -233,6 +233,14 @@ public final class AppModel {
 
     /// Settings ▸ AI: the student's models, keys, budget and usage (shared with the Tauri app).
     public let aiSettings: Bool
+    /// This Week ▸ Plan with PageLamp…: a study plan written by the student's model.
+    public let aiPlan: Bool
+
+    /// A plan written by PageLamp was saved: This Week shows it at once.
+    public func studyPlanSaved(_ stored: StoredStudyPlan) {
+        studyPlan = stored
+        sectionErrors[.studyPlan] = nil
+    }
 
     // MARK: Reminders (M3; preview builds until they ship)
 
@@ -269,10 +277,12 @@ public final class AppModel {
         service: (any PageLampService)? = nil,
         reminders: Bool = false,
         reminderCenters: ReminderCenters = .standard,
-        aiSettings: Bool = false
+        aiSettings: Bool = false,
+        aiPlan: Bool = false
     ) {
         self.strings = strings
         self.aiSettings = aiSettings
+        self.aiPlan = aiPlan
         self.reminderCenters = reminderCenters
         self.settings = settings
         self.timing = timing

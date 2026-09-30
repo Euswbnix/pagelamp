@@ -138,6 +138,33 @@ public enum AiCodes {
         }
     }
 
+    /// A run's stage: the key's last part in each feature's `running.stage.*`.
+    public static func name(_ stage: GenStage) -> String {
+        switch stage {
+        case .buildingContext: "building_context"
+        case .waitingForModel: "waiting_for_model"
+        case .validating: "validating"
+        case .repairing: "repairing"
+        case .scheduling: "scheduling"
+        }
+    }
+
+    public static func name(_ code: PlanWarningCode) -> String {
+        switch code {
+        case .gradedWorkLeftOut: "graded_work_left_out"
+        case .unknownMaterialsDropped: "unknown_materials_dropped"
+        }
+    }
+
+    public static func name(_ reason: UnscheduledReason) -> String {
+        switch reason {
+        case .outsideHorizon: "outside_horizon"
+        case .noStudyDays: "no_study_days"
+        case .noTimeBeforeLatest: "no_time_before_latest"
+        case .tooManyItems: "too_many_items"
+        }
+    }
+
     /// A backend's key, as the facade's routing and acknowledgements name it.
     public static func key(_ backend: BackendRef) -> String {
         switch backend {
@@ -194,6 +221,72 @@ extension L10n {
     /// "45K", "3.4M" (the usage table's and the estimate's token counts).
     public func compactTokens(_ count: UInt64) -> String {
         Int(count).formatted(.number.notation(.compactName).precision(.fractionLength(0...1)).locale(locale))
+    }
+
+    // MARK: The estimate before Generate
+
+    /// The cost line: what it shows, and what VoiceOver reads ("Estimated cost: ≈ $0.07 at
+    /// most"; the label goes only before an amount). Nil when there's nothing to say (a model
+    /// without a price on a backend that has no line).
+    public func estimateLine(_ estimate: CostEstimate, backendKind: BackendKind?) -> (text: String, spoken: String)? {
+        if let upper = estimate.microUsdUpper {
+            if upper == 0 {
+                let free = self("ai.estimate.free")
+                return (free, free)
+            }
+            let amount = estimateAmount(microUsd: upper)
+            return (amount, sentences(self("ai.estimate.label"), amount))
+        }
+        let key: String? = switch backendKind {
+        case .codex?: "ai.codex.costLine"
+        case .local?: "ai.estimate.cloudNoPrice"
+        case .apiKey?: "ai.estimate.noPrice"
+        case .claudeCode?, nil: nil
+        }
+        return key.map { (self($0), self($0)) }
+    }
+
+    /// "≈ $0.07 at most" (rounded up to the cent), or "≈ less than $0.01".
+    public func estimateAmount(microUsd: UInt64) -> String {
+        guard microUsd >= 10_000 else {
+            return self("ai.estimate.lessThan", ["amount": usd(microUsd: 10_000)])
+        }
+        let cents = (microUsd + 9_999) / 10_000
+        return self("ai.estimate.upTo", ["amount": usd(microUsd: cents * 10_000)])
+    }
+
+    /// "Up to 45K tokens in and 2.5K out" (the output counts the reasoning allowance).
+    public func estimateDetails(_ estimate: CostEstimate) -> String? {
+        guard estimate.inputTokens > 0 else { return nil }
+        return self("ai.estimate.details", [
+            "input": compactTokens(estimate.inputTokens),
+            "output": compactTokens(estimate.maxOutputTokens + estimate.reasoningAllowance),
+        ])
+    }
+
+    // MARK: The AI label
+
+    /// The label on every AI output and every copy (Canvas §2E): "AI-generated · OpenAI ·
+    /// gpt-6-luna · Oct 1, 2026 · 43,600 tokens" (≈ when the count is estimated). The date is
+    /// the calendar's (local) day.
+    public func aiLabel(_ meta: GenerationMeta, calendar: Calendar) -> String {
+        let tokens = number(meta.usage.inputTokens + meta.usage.outputTokens)
+        return aiLabel(
+            backend: meta.backendLabel, model: meta.model, createdAt: meta.createdAt, calendar: calendar,
+            tokens: self(meta.estimated ? "ai.aiLabel.tokensApprox" : "ai.aiLabel.tokens", ["tokens": tokens])
+        )
+    }
+
+    /// A saved output's label (no token count), e.g. an accepted study plan's.
+    public func aiLabel(_ label: AiLabel, calendar: Calendar) -> String {
+        aiLabel(backend: label.backendLabel, model: label.model, createdAt: label.createdAt, calendar: calendar, tokens: nil)
+    }
+
+    private func aiLabel(backend: String, model: String, createdAt: Date, calendar: Calendar, tokens: String?) -> String {
+        let date = createdAt.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .omitted, locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+        )
+        return ([self("ai.aiLabel.prefix"), backend, model, date] + (tokens.map { [$0] } ?? [])).joined(separator: " · ")
     }
 
     /// A backend's data policy in one line (design §2.5): where the data goes, training, how

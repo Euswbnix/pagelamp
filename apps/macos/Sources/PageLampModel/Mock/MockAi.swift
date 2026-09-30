@@ -311,15 +311,3 @@ enum MockAiFixtures {
         }
     }
 }
-
-extension EstimateRequest {
-    /// The feature the request is for.
-    var feature: AiFeature {
-        switch self {
-        case .studyPlan: .studyPlan
-        case .weeklyExplanation: .weeklyExplanation
-        case .weeklyNote: .weeklyNote
-        case .courseCalendar: .courseCalendar
-        }
-    }
-}

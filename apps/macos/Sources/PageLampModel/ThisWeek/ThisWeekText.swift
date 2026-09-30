@@ -197,12 +197,12 @@ public struct ThisWeekText: Sendable {
 
     // MARK: - Study plan
 
-    /// "Made by your AI app 2 days ago · covers Sep 22 – Oct 5".
+    /// "Made by your AI app 2 days ago · covers Sep 22 – Oct 5" (or "Made by PageLamp …").
     public func planMeta(_ stored: StoredStudyPlan) -> String {
         func date(_ iso: String) -> String {
             IsoDate.date(from: iso, calendar: calendar).map(shortDate) ?? iso
         }
-        return l10n("courses.plan.madeBy", [
+        return l10n(stored.origin == .pageLamp ? "courses.plan.madeByPageLamp" : "courses.plan.madeBy", [
             "when": ago(stored.createdAt),
             "start": date(stored.plan.horizonStart),
             "end": date(stored.plan.horizonEnd),
