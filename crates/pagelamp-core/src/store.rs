@@ -45,6 +45,7 @@ mod ai;
 mod calendars;
 mod generations;
 mod migrate_v4;
+mod reminders;
 mod tombstones;
 
 pub use ai::USAGE_KEEP_DAYS;
@@ -54,6 +55,7 @@ pub use calendars::{
 };
 pub use generations::{GenerationRecord, GenerationStatus, KEEP_GENERATIONS};
 pub use migrate_v4::{COURSE_DATES_CONFIRMED, MIGRATED_FINGERPRINT};
+pub use reminders::REMINDERS_SHOWN_DAYS;
 
 pub const SCHEMA_VERSION: i64 = 4;
 
@@ -1613,6 +1615,18 @@ impl Store {
     /// Plans are written by AI clients over MCP, so storage is bounded: only the newest
     /// `MAX_STORED_STUDY_PLANS` plans are kept (older ones are deleted in the same step).
     pub fn save_study_plan(&self, plan: &StudyPlan) -> Result<StoredStudyPlan> {
+        self.save_study_plan_as(plan, PlanOrigin::AiApp, None, None)
+    }
+
+    /// `save_study_plan` with its origin: a plan PageLamp generated is saved with the run's id
+    /// and its AI label.
+    pub fn save_study_plan_as(
+        &self,
+        plan: &StudyPlan,
+        origin: PlanOrigin,
+        generation_id: Option<&str>,
+        ai_label: Option<&crate::term::AiLabel>,
+    ) -> Result<StoredStudyPlan> {
         validate_study_plan(plan)?;
         let plan_json = serde_json::to_string(plan)?;
         // The per-field limits count characters, but JSON can make text up to 6× longer
@@ -1627,8 +1641,16 @@ impl Store {
         let created_at = Utc::now().trunc_subsecs(0);
         let id = self.atomic(|| {
             self.conn.execute(
-                "INSERT INTO study_plans (created_at, plan_json) VALUES (?1, ?2)",
-                params![ts_text(created_at), plan_json],
+                "INSERT INTO study_plans (created_at, plan_json, origin, generation_id,
+                                          ai_label_json)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    ts_text(created_at),
+                    plan_json,
+                    origin.as_str(),
+                    generation_id,
+                    ai_label.map(serde_json::to_string).transpose()?
+                ],
             )?;
             let id = self.conn.last_insert_rowid();
             self.conn.execute(
@@ -1642,6 +1664,9 @@ impl Store {
             id,
             created_at,
             plan: plan.clone(),
+            origin,
+            generation_id: generation_id.map(str::to_string),
+            ai_label: ai_label.cloned(),
         })
     }
 
@@ -1650,34 +1675,92 @@ impl Store {
     /// the digest, the weekly note) leaves them out. A write by item index must read the
     /// stored plan itself.
     pub fn latest_study_plan(&self) -> Result<Option<StoredStudyPlan>> {
+        let Some(mut stored) = self.stored_study_plan(None)? else {
+            return Ok(None);
+        };
+        let removed = self.removed_course_ids()?;
+        stored
+            .plan
+            .items
+            .retain(|item| !names_removed(item, &removed));
+        Ok(Some(stored))
+    }
+
+    /// Tick item `index` of plan `plan_id` done or not. `index` counts the items as readers
+    /// see them (`latest_study_plan`: removed courses' items left out); the stored plan keeps
+    /// the others. Returns the plan as readers see it. `NotFound` for an unknown plan or item.
+    pub fn set_study_plan_item_done(
+        &self,
+        plan_id: i64,
+        index: u32,
+        done: bool,
+    ) -> Result<StoredStudyPlan> {
+        self.atomic(|| {
+            let mut stored = self
+                .stored_study_plan(Some(plan_id))?
+                .ok_or_else(|| Error::NotFound(format!("study plan {plan_id}")))?;
+            let removed = self.removed_course_ids()?;
+            let at = stored
+                .plan
+                .items
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !names_removed(item, &removed))
+                .nth(index as usize)
+                .map(|(at, _)| at)
+                .ok_or_else(|| Error::NotFound(format!("item {index} of study plan {plan_id}")))?;
+            stored.plan.items[at].done = done;
+            self.conn.execute(
+                "UPDATE study_plans SET plan_json = ?2 WHERE id = ?1",
+                params![plan_id, serde_json::to_string(&stored.plan)?],
+            )?;
+            stored
+                .plan
+                .items
+                .retain(|item| !names_removed(item, &removed));
+            Ok(stored)
+        })
+    }
+
+    /// Plan `id`, or the latest (`None`), as stored.
+    fn stored_study_plan(&self, id: Option<i64>) -> Result<Option<StoredStudyPlan>> {
         let row = self.query_opt(
-            "SELECT id, created_at, plan_json FROM study_plans ORDER BY id DESC LIMIT 1",
-            [],
+            "SELECT id, created_at, plan_json, origin, generation_id, ai_label_json
+             FROM study_plans
+             WHERE ?1 IS NULL OR id = ?1 ORDER BY id DESC LIMIT 1",
+            [id],
             |row| {
                 let id: i64 = row.get("id")?;
                 let created_at: Timestamp = get_value(row, "created_at")?;
                 let plan_json: String = row.get("plan_json")?;
-                Ok((id, created_at, plan_json))
+                let origin: String = row.get("origin")?;
+                let generation_id: Option<String> = row.get("generation_id")?;
+                let ai_label: Option<String> = row.get("ai_label_json")?;
+                Ok((id, created_at, plan_json, origin, generation_id, ai_label))
             },
         )?;
-        let Some((id, created_at, plan_json)) = row else {
+        let Some((id, created_at, plan_json, origin, generation_id, ai_label)) = row else {
             return Ok(None);
         };
-        let mut plan: StudyPlan = serde_json::from_str(&plan_json)?;
-        let removed: Vec<String> =
-            self.query_list("SELECT course_id FROM course_tombstones", [], |row| {
-                row.get(0)
-            })?;
-        plan.items.retain(|item| {
-            item.course_id
-                .as_ref()
-                .is_none_or(|id| !removed.contains(id))
-        });
         Ok(Some(StoredStudyPlan {
             id,
             created_at,
-            plan,
+            plan: serde_json::from_str(&plan_json)?,
+            origin: if origin == PlanOrigin::PageLamp.as_str() {
+                PlanOrigin::PageLamp
+            } else {
+                PlanOrigin::AiApp
+            },
+            generation_id,
+            // An unreadable label only loses the label.
+            ai_label: ai_label.and_then(|json| serde_json::from_str(&json).ok()),
         }))
+    }
+
+    fn removed_course_ids(&self) -> Result<Vec<String>> {
+        self.query_list("SELECT course_id FROM course_tombstones", [], |row| {
+            row.get(0)
+        })
     }
 
     // ----- settings (schema 3) --------------------------------------------------------------
@@ -2076,6 +2159,13 @@ fn fts_match_expression(query: &str) -> Option<String> {
 }
 
 // ----- study plan validation ----------------------------------------------------------------
+
+/// Whether a plan item belongs to a removed course (readers leave it out).
+fn names_removed(item: &StudyPlanItem, removed: &[String]) -> bool {
+    item.course_id
+        .as_ref()
+        .is_some_and(|id| removed.contains(id))
+}
 
 fn validate_study_plan(plan: &StudyPlan) -> Result<()> {
     if plan.horizon_start > plan.horizon_end {

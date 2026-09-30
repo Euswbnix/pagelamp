@@ -7,6 +7,9 @@
 
 pub(crate) mod codex;
 mod estimate;
+mod explain;
+mod note;
+mod plan;
 pub mod prompts;
 mod providers;
 pub(crate) mod run;
@@ -15,7 +18,15 @@ mod types;
 mod usage;
 
 pub use codex::{CHATGPT_PLAN_OFFERED, DEFAULT_WEEKLY_CAP};
-pub(crate) use estimate::{calendar_budget, feature_choice, request_shape};
+pub(crate) use estimate::{
+    calendar_budget, feature_choice, request_shape, request_shape_with_note,
+};
+pub use explain::{
+    Citation, ExplainOptions, ExplanationParagraph, ExplanationSection, OutputLanguage,
+    WeeklyExplanation,
+};
+pub use note::{MAX_FOCUS_ITEMS, NoteFocus, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings};
+pub use plan::{GeneratedStudyPlan, PlanWarning, PlanWarningCode, StudyPlanRequest};
 pub(crate) use settings::backend_key;
 pub use types::*;
 
@@ -387,6 +398,19 @@ impl App {
             self.stop_course_runs(&course.id, true);
         }
         Ok(())
+    }
+
+    /// Delete generated content (design §8): the runs of `course` (its explanations and
+    /// syllabus readings), or with `None` every run, study plan drafts included. Calendars keep
+    /// their dates and label, and an accepted plan stays with its label. How many were deleted;
+    /// `NotFound` for an unknown course.
+    pub fn delete_generated(&self, course: Option<&str>) -> Result<u32> {
+        let store = self.write_store()?;
+        let course_id = match course {
+            Some(course) => Some(store.resolve_course_with(course, true)?.id),
+            None => None,
+        };
+        Ok(store.delete_generations(course_id.as_deref())?)
     }
 
     /// Keys, providers, generations, the usage ledger, AI settings and the pre-update backup

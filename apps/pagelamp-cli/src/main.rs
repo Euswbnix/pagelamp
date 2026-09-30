@@ -11,6 +11,7 @@
 
 mod ai;
 mod course;
+mod features;
 mod text;
 
 use std::io::{BufRead, IsTerminal, Write};
@@ -95,6 +96,75 @@ enum Command {
     Ai {
         #[command(subcommand)]
         command: Option<ai::AiCommand>,
+    },
+    /// A study plan PageLamp writes with your chosen model (a draft to keep, or --save).
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
+    Plan {
+        /// Days the plan covers (1-56; default 14).
+        #[arg(long)]
+        days: Option<u32>,
+        /// Study hours per week (default 10; at most 4 a day).
+        #[arg(long)]
+        hours: Option<u32>,
+        /// A day without study; repeatable.
+        #[arg(long = "off", value_enum)]
+        days_off: Vec<features::DayArg>,
+        /// Only this course (code, name or id); repeatable. Default: every active course.
+        #[arg(long = "course")]
+        courses: Vec<String>,
+        /// A note for the plan ("focus on the midterm"), at most 500 characters.
+        #[arg(long)]
+        note: Option<String>,
+        /// Go over the monthly budget for this run.
+        #[arg(long)]
+        over_budget: bool,
+        /// Keep the plan at once instead of showing a draft.
+        #[arg(long, conflicts_with = "accept")]
+        save: bool,
+        /// Keep a draft shown earlier (its id).
+        #[arg(long)]
+        accept: Option<String>,
+    },
+    /// Explain a week of a course from its materials, with your chosen model.
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
+    Explain {
+        /// The course (code, name or id).
+        course: String,
+        /// The week (default: this week).
+        #[arg(long)]
+        week: Option<u32>,
+        /// Send a material the explanation left out (its id); repeatable.
+        #[arg(long)]
+        include: Vec<String>,
+        /// Go over the monthly budget for this run.
+        #[arg(long)]
+        over_budget: bool,
+        /// List the saved explanations instead.
+        #[arg(long)]
+        saved: bool,
+    },
+    /// Write your weekly note (a few sentences and three things to focus on) from your courses'
+    /// structure and your plan's progress, with your chosen model. No material text is sent.
+    ///
+    /// On the ChatGPT or Claude plan it runs only from a terminal: for scheduled runs (cron),
+    /// choose an API key or a model on this computer.
+    Note {
+        /// Go over the monthly budget for this run.
+        #[arg(long)]
+        over_budget: bool,
+        /// List the saved notes instead.
+        #[arg(long)]
+        saved: bool,
+    },
+    /// Reminders due now and the weekly digest (quiet when nothing is due; for cron).
+    Remind {
+        /// Print the weekly digest now.
+        #[arg(long)]
+        digest: bool,
     },
     /// Search your course materials.
     Search {
@@ -216,7 +286,8 @@ enum CourseCommand {
         /// Scan the syllabus for dates (no model).
         #[arg(long)]
         scan: bool,
-        /// Read the syllabus with the model chosen for syllabus reading.
+        /// Read the syllabus with the model chosen for syllabus reading. On the ChatGPT or
+        /// Claude plan only from a terminal (scheduled runs: an API key or a local model).
         #[arg(long)]
         read: bool,
         /// With --read: go over the monthly budget for this run.
@@ -741,6 +812,62 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
             }
             println!("Saved.");
             Ok(())
+        }
+        Command::Plan {
+            days,
+            hours,
+            days_off,
+            courses,
+            note,
+            over_budget,
+            save,
+            accept,
+        } => {
+            let app = open_app()?;
+            features::plan(
+                &app,
+                features::PlanArgs {
+                    days,
+                    hours,
+                    days_off,
+                    courses,
+                    note,
+                    over_budget,
+                    save,
+                    accept,
+                },
+                json,
+            )
+            .await
+        }
+        Command::Explain {
+            course,
+            week,
+            include,
+            over_budget,
+            saved,
+        } => {
+            let app = open_app()?;
+            features::explain(
+                &app,
+                features::ExplainArgs {
+                    course,
+                    week,
+                    include,
+                    over_budget,
+                    saved,
+                },
+                json,
+            )
+            .await
+        }
+        Command::Note { over_budget, saved } => {
+            let app = open_app()?;
+            features::note(&app, over_budget, saved, json).await
+        }
+        Command::Remind { digest } => {
+            let app = open_app()?;
+            features::remind(&app, digest, json)
         }
         Command::Search {
             query,

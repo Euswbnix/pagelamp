@@ -22,8 +22,9 @@ fn course(store: &Store, code: &str, canary: &str) -> String {
             external_id: code.into(),
             code: Some(code.into()),
             name: format!("{code} Demo Studies"),
-            term_start: None,
-            term_end: None,
+            // Teaching now: a plan's default scope is the active courses (calendar design §8.1).
+            term_start: (0..14).try_fold(AsOf::now_local().today, |d, _| d.pred_opt()),
+            term_end: (0..90).try_fold(AsOf::now_local().today, |d, _| d.succ_opt()),
             url: None,
             syllabus_text: None,
             lms: Default::default(),

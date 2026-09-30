@@ -145,6 +145,7 @@
   "settings": {
     "tabs": {
       "general": "General",
+      "reminders": "Reminders",
       "data": "Data",
       "privacy": "Privacy",
       "help": "Help"

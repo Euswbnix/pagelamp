@@ -92,6 +92,8 @@ struct MockDb: Sendable {
     /// "Not now" / "Keep" on removal suggestions, by course id.
     var removalSnoozes: [String: String] = [:]
     var bannerSnoozedUntil: String?
+    /// The M1–M3 state the mock keeps (AI settings, reminders, removed courses).
+    var features = MockFeatures()
 }
 
 /// Update settings and the launch state behind `startupTasks` (a fresh install by default).
@@ -365,7 +367,7 @@ struct MockFixtures {
             material(c.id, "Week 3 lecture recording", .file, week: 3, published: -8, .init(status: .unsupported, module: m3)),
             material(c.id, "Week 4 slides — Sampling and Surveys", .file, week: 4, published: -2, .init(chunks: 32, module: m4)),
             material(c.id, "Reading: Chapter 4, Who Gets Asked", .file, week: 4, published: -2, .init(chunks: 18, module: m4)),
-            material(c.id, "Lab 4 notebook — Survey Simulation", .file, week: 4, published: -2, .init(chunks: 15, module: m4)),
+            material(c.id, "Assignment 4 — Survey Simulation", .file, week: 4, published: -2, .init(chunks: 15, module: m4)),
             material(c.id, "Survey dataset (large archive)", .file, week: 4, published: -2, .init(status: .notDownloaded, module: m4)),
             material(c.id, "Week 4 practice questions", .page, week: 4, published: -1, .init(chunks: 3, module: m4)),
             material(
@@ -509,7 +511,8 @@ struct MockFixtures {
                     item(8, c101, "Midterm review: weeks 1–2", 90),
                 ],
                 notes: "Front-load Problem Set 2, then shift to midterm review from next week."
-            )
+            ),
+            origin: .aiApp
         )
     }
 

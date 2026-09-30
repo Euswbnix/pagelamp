@@ -4,8 +4,8 @@
 
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
-    ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, assemble, calendar_context,
-    note_context, plan_context, week_context,
+    ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote, assemble,
+    calendar_context, note_context, plan_context, week_context,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -20,6 +20,8 @@ use crate::{App, AppError, AppErrorKind, Result};
 
 /// Characters of material text an explanation may carry (design §4.2 starting value).
 pub(crate) const EXPLANATION_CONTEXT_CHARS: usize = 200_000;
+/// The same for a model on this computer (a smaller context window, design §4.2).
+pub(crate) const EXPLANATION_LOCAL_CONTEXT_CHARS: usize = 24_000;
 /// Output budgets per feature (tokens).
 pub(crate) const EXPLANATION_MAX_OUTPUT: u32 = 6_000;
 pub(crate) const PLAN_MAX_OUTPUT: u32 = 4_000;
@@ -62,12 +64,14 @@ impl App {
                 };
                 plan_context(&store, &scope, at)
             }
-            EstimateRequest::WeeklyExplanation { course, week } => {
-                let budget = ContextBudget {
-                    max_chars: EXPLANATION_CONTEXT_CHARS,
-                };
-                week_context(&store, course, *week, at, destination, budget)
-            }
+            EstimateRequest::WeeklyExplanation { course, week } => week_context(
+                &store,
+                course,
+                *week,
+                at,
+                destination,
+                explanation_budget(destination),
+            ),
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
                 note_context(&store, at)
             }
@@ -323,6 +327,17 @@ pub(crate) fn feature_choice(store: &Store, feature: AiFeature) -> Result<Option
     Ok(settings::routing(store)?.0.get(&feature).cloned())
 }
 
+/// How much course text an explanation may carry: ≈ 200k characters in the cloud, ≈ 24k on
+/// this computer.
+pub(crate) fn explanation_budget(destination: Destination) -> ContextBudget {
+    ContextBudget {
+        max_chars: match destination {
+            Destination::Cloud => EXPLANATION_CONTEXT_CHARS,
+            Destination::OnDevice => EXPLANATION_LOCAL_CONTEXT_CHARS,
+        },
+    }
+}
+
 /// How much course text a syllabus reading may carry: ≈ 60k characters in the cloud, ≈ 24k on
 /// this computer (calendar design §7.3).
 pub(crate) fn calendar_budget(destination: Destination) -> ContextBudget {
@@ -339,9 +354,19 @@ pub(crate) fn request_shape(
     feature: AiFeature,
     context: &GatedContext,
 ) -> (RenderedPrompt, OutputSpec, u32) {
+    request_shape_with_note(feature, context, None)
+}
+
+/// `request_shape` with the student's own note (a study plan's "focus on the midterm"), sent
+/// as data.
+pub(crate) fn request_shape_with_note(
+    feature: AiFeature,
+    context: &GatedContext,
+    note: Option<&StudentNote>,
+) -> (RenderedPrompt, OutputSpec, u32) {
     match feature {
         AiFeature::StudyPlan => (
-            assemble(prompts::STUDY_PLAN, context, None),
+            assemble(prompts::STUDY_PLAN, context, note),
             OutputSpec::for_type::<PlanTasks>("study_plan_tasks").unwrap_or(OutputSpec::Text),
             PLAN_MAX_OUTPUT,
         ),
@@ -352,7 +377,7 @@ pub(crate) fn request_shape(
         ),
         AiFeature::WeeklyNote => (
             assemble(prompts::WEEKLY_NOTE, context, None),
-            OutputSpec::Text,
+            super::note::note_output(),
             NOTE_MAX_OUTPUT,
         ),
         AiFeature::CourseCalendar => (

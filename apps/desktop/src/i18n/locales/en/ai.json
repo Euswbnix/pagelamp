@@ -262,7 +262,7 @@
     "course_policy_prohibited": "This course's rules say no AI, so {{product}} won't send anything from it.",
     "course_ai_turned_off": "You turned AI off for this course's materials.",
     "course_hidden": "This course is hidden.",
-    "no_readable_materials": "This week has no materials {{product}} can read.",
+    "no_readable_materials": "No materials {{product}} can read.",
     "material_sharing_not_allowed": "You said this course's materials may not be shared with AI services, so nothing was sent.",
     "coding_plan_key": "This key is from a coding plan, which {{product}} can't use.",
     "disclosure_not_acknowledged": "Read what this service receives, then turn it on.",

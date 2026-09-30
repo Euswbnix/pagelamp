@@ -8,6 +8,7 @@ use pagelamp_app::ai::GenEvent;
 use pagelamp_app::{
     App, CourseCalendarView, ReadCalendarOptions, RemoveOptions, RestoreFailure, TombstoneState,
 };
+use pagelamp_core::ai::AiFeature;
 use pagelamp_core::calendar::CourseCalendar;
 use pagelamp_core::calendar::assemble::DateKind;
 use pagelamp_core::calendar::candidates::CandidateLeftOut;
@@ -330,6 +331,7 @@ pub async fn calendar(
             None => {}
         },
         CalendarAction::Read { over_budget } => {
+            crate::features::refuse_unattended_plan_run(app, AiFeature::CourseCalendar)?;
             let generation_id = format!("cli-{}", std::process::id());
             let options = ReadCalendarOptions {
                 override_budget: over_budget,
