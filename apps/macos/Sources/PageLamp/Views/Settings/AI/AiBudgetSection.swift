@@ -12,6 +12,8 @@ struct AiBudgetSection: View {
     let budget: BudgetStatus
 
     @Environment(\.l10n) private var l10n
+    /// Offscreen renders can't draw a text field or a progress bar: the harness gets stand-ins.
+    @Environment(\.drawsControlStandIns) private var standIns
     @State private var amount: String
     @State private var noLimit: Bool
     /// The last save found an amount it couldn't read.
@@ -26,17 +28,15 @@ struct AiBudgetSection: View {
 
     var body: some View {
         Section {
-            HStack(alignment: .firstTextBaseline, spacing: PLSpace.s3) {
-                TextField(l10n("ai.budget.amount"), text: $amount)
-                    .frame(width: Self.fieldWidth)
-                    .disabled(noLimit)
-                    .onSubmit { Task { await save() } }
-                    .accessibilityHint(invalid ? l10n("ai.budget.invalid") : "")
-                Toggle(l10n("ai.budget.noLimit"), isOn: $noLimit)
-                    .toggleStyle(.checkbox)
-                Spacer()
-                Button(l10n("mac.ai.saveBudget")) { Task { await save() } }
-                    .disabled(ai.savingBudget)
+            LabeledContent(l10n("ai.budget.amount")) {
+                HStack(alignment: .firstTextBaseline, spacing: PLSpace.s3) {
+                    amountField
+                        .frame(width: Self.fieldWidth)
+                    Toggle(l10n("ai.budget.noLimit"), isOn: $noLimit)
+                        .toggleStyle(.checkbox)
+                    Button(l10n("mac.ai.saveBudget")) { Task { await save() } }
+                        .disabled(ai.savingBudget)
+                }
             }
             if invalid {
                 Text(l10n("ai.budget.invalid"))
@@ -51,7 +51,9 @@ struct AiBudgetSection: View {
         } header: {
             Text(l10n("ai.budget.title"))
         } footer: {
-            Text(l10n("ai.budget.hint")).foregroundStyle(.secondary)
+            Text(l10n("ai.budget.hint"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -63,9 +65,15 @@ struct AiBudgetSection: View {
                 Text(l10n("ai.budget.used", ["spent": spent, "budget": l10n.usd(microUsd: saved)]))
                 if saved > 0 {
                     let percent = min(100, Int((Double(budget.spentMicroUsd) / Double(saved) * 100).rounded()))
-                    ProgressView(value: Double(percent), total: 100)
-                        .accessibilityLabel(l10n("ai.budget.progress"))
-                        .accessibilityValue((Double(percent) / 100).formatted(.percent.locale(l10n.locale)))
+                    Group {
+                        if standIns {
+                            BarStandIn(fraction: Double(percent) / 100)
+                        } else {
+                            ProgressView(value: Double(percent), total: 100)
+                        }
+                    }
+                    .accessibilityLabel(l10n("ai.budget.progress"))
+                    .accessibilityValue((Double(percent) / 100).formatted(.percent.locale(l10n.locale)))
                     if percent >= Int(budget.warnAtPercent) {
                         Text(l10n("ai.budget.warn", ["percent": l10n.number(percent)]))
                             .font(PLType.body.font.weight(.semibold))
@@ -74,6 +82,19 @@ struct AiBudgetSection: View {
             } else {
                 Text(l10n("ai.budget.usedNoBudget", ["spent": spent]))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var amountField: some View {
+        if standIns {
+            FieldStandIn(text: amount)
+        } else {
+            TextField(l10n("ai.budget.amount"), text: $amount)
+                .labelsHidden()
+                .disabled(noLimit)
+                .onSubmit { Task { await save() } }
+                .accessibilityHint(invalid ? l10n("ai.budget.invalid") : "")
         }
     }
 

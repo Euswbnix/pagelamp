@@ -23,7 +23,7 @@ struct AiSettingsModelTests {
         let (ai, _) = await loaded(.demo)
         #expect(ai.statusFailure == nil)
         #expect(ai.providerBackends.isEmpty && ai.usableBackends.isEmpty && !ai.hasApiKey)
-        #expect(ai.keyPresets.allSatisfy(\.needsKey))
+        #expect(ai.keyPresets.allSatisfy { $0.needsKey })
         #expect(ai.keyPresets.map(\.id).contains("openai") && !ai.keyPresets.map(\.id).contains("ollama"))
         let servers = try #require(ai.localServers)
         #expect(servers.map(\.kind) == [.ollama, .lmStudio])

@@ -32,7 +32,9 @@ struct AiFeatureModelsSection: View {
         } header: {
             Text(l10n("ai.features.title"))
         } footer: {
-            Text(l10n("ai.features.hint")).foregroundStyle(.secondary)
+            Text(l10n("ai.features.hint"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

@@ -134,12 +134,18 @@ package struct AiDisclosureSheet: View {
     @ViewBuilder
     private func link(_ title: String, _ address: String) -> some View {
         if let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            Button {
-                openURL(url)
-            } label: {
+            if standIns {
+                // Offscreen a link button draws nothing: its look, as a label.
                 Label(title, systemImage: "arrow.up.forward.square")
+                    .foregroundStyle(.tint)
+            } else {
+                Button {
+                    openURL(url)
+                } label: {
+                    Label(title, systemImage: "arrow.up.forward.square")
+                }
+                .buttonStyle(.link)
             }
-            .buttonStyle(.link)
         } else {
             paragraph(title)
         }

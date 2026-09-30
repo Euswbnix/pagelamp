@@ -57,8 +57,10 @@ struct SettingsAiTab: View {
         // (mock ↔ live) is a new setup.
         .task(id: model.dataMode) {
             let current: AiSettingsModel
-            if let ai, loadedFor == model.dataMode {
+            // A model handed in (the snapshot harness) reads the current source.
+            if let ai, loadedFor == nil || loadedFor == model.dataMode {
                 current = ai
+                loadedFor = model.dataMode
             } else {
                 current = AiSettingsModel(service: model.service, clock: model.clock, calendar: model.calendar)
                 ai = current
@@ -148,7 +150,9 @@ struct SettingsAiTab: View {
         } header: {
             Text(l10n("ai.settings.title"))
         } footer: {
-            Text(l10n("ai.settings.description")).foregroundStyle(.secondary)
+            Text(l10n("ai.settings.description"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -171,7 +175,9 @@ struct SettingsAiTab: View {
         } header: {
             Text(l10n("explain.language.title"))
         } footer: {
-            Text(l10n("explain.language.description")).foregroundStyle(.secondary)
+            Text(l10n("explain.language.description"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

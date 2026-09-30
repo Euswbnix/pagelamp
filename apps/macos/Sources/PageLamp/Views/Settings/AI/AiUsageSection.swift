@@ -47,7 +47,9 @@ struct AiUsageSection: View {
         } header: {
             Text(l10n("ai.usage.title"))
         } footer: {
-            Text(l10n("ai.usage.description")).foregroundStyle(.secondary)
+            Text(l10n("ai.usage.description"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -43,7 +43,9 @@ struct AiLocalServersSection: View {
         } header: {
             Text(l10n("ai.local.title"))
         } footer: {
-            Text(l10n("ai.local.hint")).foregroundStyle(.secondary)
+            Text(l10n("ai.local.hint"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

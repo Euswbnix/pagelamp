@@ -18,6 +18,8 @@ package struct AiKeySheet: View {
     let done: (ModelProviderRecord?) -> Void
 
     @Environment(\.l10n) private var l10n
+    /// Offscreen renders can't draw text fields: the snapshot harness gets stand-ins.
+    @Environment(\.drawsControlStandIns) private var standIns
     @State private var presetId: String?
     @State private var baseUrl = ""
     @State private var key = ""
@@ -98,8 +100,14 @@ package struct AiKeySheet: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(l10n.labelled(l10n("ai.policy.label"), l10n.dataPolicy(preset.dataPolicy)))
             if preset.baseUrlEditable {
-                TextField(l10n("ai.addKey.baseUrl"), text: $baseUrl, prompt: Text(verbatim: preset.defaultBaseUrl ?? "https://"))
-                    .autocorrectionDisabled()
+                if standIns {
+                    LabeledContent(l10n("ai.addKey.baseUrl")) {
+                        FieldStandIn(text: baseUrl, prompt: preset.defaultBaseUrl ?? "https://")
+                    }
+                } else {
+                    TextField(l10n("ai.addKey.baseUrl"), text: $baseUrl, prompt: Text(verbatim: preset.defaultBaseUrl ?? "https://"))
+                        .autocorrectionDisabled()
+                }
                 Text(l10n("ai.addKey.baseUrlHint"))
                     .font(PLType.callout.font)
                     .foregroundStyle(.secondary)
@@ -109,10 +117,16 @@ package struct AiKeySheet: View {
 
     @ViewBuilder
     private var keyField: some View {
-        SecureField(l10n("ai.addKey.key"), text: $key)
-            .fontDesign(.monospaced)
-            .focused($keyFocused)
-            .accessibilityHint(missing ? l10n("common.errors.invalid") : l10n("ai.addKey.keyHint"))
+        if standIns {
+            // Always empty: a render never shows a key.
+            LabeledContent(l10n("ai.addKey.key")) {
+                FieldStandIn(text: "")
+            }
+        } else {
+            SecureField(l10n("ai.addKey.key"), text: $key)
+                .focused($keyFocused)
+                .accessibilityHint(missing ? l10n("common.errors.invalid") : l10n("ai.addKey.keyHint"))
+        }
         if missing {
             Text(l10n("common.errors.invalid"))
                 .font(PLType.callout.font)
