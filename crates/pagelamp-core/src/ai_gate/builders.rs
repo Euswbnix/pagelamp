@@ -170,7 +170,8 @@ pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> 
                 text.push('\n');
                 context.blocks.push(Block::Structure(text));
             }
-            if let Some(plan) = store.latest_study_plan()? {
+            // Hidden courses' items too: a hidden course is never sent.
+            if let Some(plan) = store.latest_study_plan_for_ai()? {
                 let week_ago = at.today - Duration::days(7);
                 let last_week: Vec<_> = plan
                     .plan

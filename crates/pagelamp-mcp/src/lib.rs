@@ -747,7 +747,8 @@ impl PageLampServer {
 
     #[tool(description = text::GET_STUDY_PLAN, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn get_study_plan(&self) -> CallToolResult {
-        match self.read(|store| store.latest_study_plan()).await {
+        // Hidden courses' items left out, like everything else about a hidden course.
+        match self.read(|store| store.latest_study_plan_for_ai()).await {
             Ok(Some(plan)) => match serde_json::to_string(&plan) {
                 // The origin says who made it (design §6): the student's AI app, or PageLamp.
                 Ok(json) => text_result(wrap_plan(
