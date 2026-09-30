@@ -14,7 +14,7 @@ mod settings;
 mod types;
 mod usage;
 
-pub use codex::DEFAULT_WEEKLY_CAP;
+pub use codex::{CHATGPT_PLAN_OFFERED, DEFAULT_WEEKLY_CAP};
 pub(crate) use estimate::{calendar_budget, feature_choice, request_shape};
 pub(crate) use settings::backend_key;
 pub use types::*;
@@ -98,7 +98,8 @@ impl App {
             .0
             .values()
             .any(|choice| choice.backend == BackendRef::Codex);
-        if self.codex_installed() || codex_chosen {
+        // Not offered in this build: no Codex backend at all (the UIs hide the card).
+        if self.chatgpt_plan_offered() && (self.codex_installed() || codex_chosen) {
             let disclosure = self.disclosure(&BackendRef::Codex)?;
             let acknowledged = acks
                 .get(&settings::backend_key(&BackendRef::Codex))
@@ -177,6 +178,7 @@ impl App {
             })
             .collect();
         Ok(AiStatus {
+            chatgpt_plan_offered: self.chatgpt_plan_offered(),
             backends,
             providers,
             features,
@@ -213,6 +215,7 @@ impl App {
     /// The models a backend offers: its live list with PageLamp's price and capability data.
     pub async fn list_models(&self, backend: &BackendRef) -> Result<Vec<ModelInfo>> {
         if *backend == BackendRef::Codex {
+            self.require_chatgpt_plan()?;
             return Ok(self.codex_models());
         }
         let provider = self.provider_for(backend)?;
@@ -284,6 +287,7 @@ impl App {
     pub fn set_feature_model(&self, feature: AiFeature, choice: Option<ModelChoice>) -> Result<()> {
         if let Some(choice) = &choice {
             if choice.backend == BackendRef::Codex {
+                self.require_chatgpt_plan()?;
                 codex::check_codex_model(&choice.model)?;
             } else {
                 self.provider_profile(&choice.backend)?;
@@ -305,6 +309,9 @@ impl App {
     /// The student read a backend's disclosure. `version` must be the one currently shown:
     /// facts that changed since are asked again.
     pub fn acknowledge_ai_disclosure(&self, backend: &BackendRef, version: u32) -> Result<()> {
+        if *backend == BackendRef::Codex {
+            self.require_chatgpt_plan()?;
+        }
         let current = self.disclosure(backend)?.version;
         if version != current {
             return Err(AppError::new(

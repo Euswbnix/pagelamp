@@ -263,6 +263,10 @@ impl App {
 
     /// The ChatGPT plan: the disclosure, then the weekly run cap.
     fn codex_blocks(&self, store: &Store) -> Result<Option<BlockReason>> {
+        // A Codex routing stored by an earlier build blocks here instead of running.
+        if !self.chatgpt_plan_offered() {
+            return Ok(Some(BlockReason::BackendDisabledInThisBuild));
+        }
         let version = self.disclosure(&BackendRef::Codex)?.version;
         let acknowledged = settings::disclosures(store)?
             .get(&backend_key(&BackendRef::Codex))
