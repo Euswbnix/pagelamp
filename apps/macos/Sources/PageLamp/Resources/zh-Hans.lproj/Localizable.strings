@@ -1036,6 +1036,19 @@
 "mac.actions.syncAll" = "全部同步";
 "mac.actions.syncNow" = "立即同步";
 "mac.actions.tryAgain" = "重试";
+"mac.ai.addKey" = "添加 API 密钥…";
+"mac.ai.checkAndAdd" = "验证并添加";
+"mac.ai.checkAndReplace" = "验证并更换";
+"mac.ai.lookAgain" = "重新查找";
+"mac.ai.notNow" = "以后再说";
+"mac.ai.remove" = "移除…";
+"mac.ai.removeAll" = "删除所有 AI 数据…";
+"mac.ai.removeAllConfirm" = "全部删除";
+"mac.ai.replaceKey" = "更换密钥…";
+"mac.ai.saveBudget" = "保存预算";
+"mac.ai.turnOn" = "查看并启用…";
+"mac.ai.turnOnName" = "启用 %1$@";
+"mac.ai.whatsShared" = "会发送哪些内容…";
 "mac.app.name" = "PageLamp";
 "mac.capsule.busy" = "另一个同步正在进行";
 "mac.capsule.needsFeed" = "%1$@ 需要新的日历订阅地址";
@@ -1159,6 +1172,7 @@
 "mac.settings.language.system" = "跟随系统（%1$@）";
 "mac.settings.privacy.disclosureTitle" = "你的 AI 应用如何使用你的课程";
 "mac.settings.privacy.perCourse" = "你可以让 AI 应用不再读取任何一门课的资料：打开这门课，在检查器的“课程资料”里关掉开关。";
+"mac.settings.tabs.ai" = "AI";
 "mac.settings.tabs.data" = "数据";
 "mac.settings.tabs.general" = "通用";
 "mac.settings.tabs.help" = "帮助";

@@ -65,7 +65,7 @@ public enum SnapshotCatalog {
     /// Every page, by screen.
     public static let pages: [SnapshotPage] =
         ThisWeekSnapshots.pages + CourseSnapshots.pages + SetupSnapshots.pages + SidebarSnapshots.pages
-        + WhatsNewSnapshots.pages + RemindersSnapshots.pages + [
+        + WhatsNewSnapshots.pages + RemindersSnapshots.pages + AiSettingsSnapshots.pages + [
             SnapshotPage(name: "components") { _ in AnyView(ComponentGallery()) },
         ]
 
@@ -160,13 +160,14 @@ public enum SnapshotRenderer {
             notificationCenter: NotificationCenter(),
             preferredLanguages: { languages },
             service: setup.service(mock, moment, calendar),
-            // Reminders and the menu bar extra (M3) are on in preview builds, which these are;
-            // notifications stay in memory.
+            // Reminders, the menu bar extra and Settings ▸ AI (M3) are on in preview builds,
+            // which these are; notifications stay in memory.
             reminders: true,
             reminderCenters: ReminderCenters(
                 live: { RecordingNotificationCenter() },
                 mock: RecordingNotificationCenter(permission: setup.notificationPermission, answer: setup.notificationAnswer)
-            )
+            ),
+            aiSettings: true
         )
         await model.refresh()
         // The pass the refresh asked for decides whether "Remind me" shows: let it finish.

@@ -229,6 +229,11 @@ public final class AppModel {
         didSet { settings.appearance = appearance }
     }
 
+    // MARK: AI (M3; preview builds until it ships)
+
+    /// Settings ▸ AI: the student's models, keys, budget and usage (shared with the Tauri app).
+    public let aiSettings: Bool
+
     // MARK: Reminders (M3; preview builds until they ship)
 
     /// Reminders as notifications and the catch-up card; nil where reminders aren't shown yet.
@@ -263,9 +268,11 @@ public final class AppModel {
         preferredLanguages: @escaping @Sendable () -> [String] = { Locale.preferredLanguages },
         service: (any PageLampService)? = nil,
         reminders: Bool = false,
-        reminderCenters: ReminderCenters = .standard
+        reminderCenters: ReminderCenters = .standard,
+        aiSettings: Bool = false
     ) {
         self.strings = strings
+        self.aiSettings = aiSettings
         self.reminderCenters = reminderCenters
         self.settings = settings
         self.timing = timing

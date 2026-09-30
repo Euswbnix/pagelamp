@@ -146,6 +146,7 @@
     "tabs": {
       "general": "General",
       "reminders": "Reminders",
+      "ai": "AI",
       "data": "Data",
       "privacy": "Privacy",
       "help": "Help"
