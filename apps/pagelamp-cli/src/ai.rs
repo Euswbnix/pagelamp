@@ -517,6 +517,10 @@ pub enum SourceArg {
 }
 
 async fn codex(app: &App, command: CodexCommand, json: bool) -> anyhow::Result<()> {
+    // Status and sign-out (clean-up) work in every build; the rest needs the ChatGPT plan.
+    if !matches!(command, CodexCommand::Status | CodexCommand::Logout) {
+        app.require_chatgpt_plan()?;
+    }
     let status = match command {
         CodexCommand::Status => app.codex_status().await?,
         CodexCommand::Install => {
@@ -600,6 +604,9 @@ async fn codex(app: &App, command: CodexCommand, json: bool) -> anyhow::Result<(
 }
 
 fn print_codex_status(status: &CodexStatus) {
+    if !status.chatgpt_plan_offered {
+        println!("The ChatGPT plan isn't available in this version of PageLamp.");
+    }
     let runtime = &status.runtime;
     let installed = match (runtime.state, &runtime.installed_version) {
         (CodexRuntimeState::UnsupportedPlatform, _) => {

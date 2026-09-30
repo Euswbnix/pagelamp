@@ -88,6 +88,9 @@ pub struct AiBackendStatus {
 /// Everything the AI settings page shows (no network call).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AiStatus {
+    /// This build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`). False: no Codex backend is
+    /// listed, and the UIs hide the ChatGPT card and every ChatGPT copy.
+    pub chatgpt_plan_offered: bool,
     /// In priority order.
     pub backends: Vec<AiBackendStatus>,
     pub providers: Vec<ModelProviderRecord>,
@@ -573,6 +576,9 @@ pub struct SystemCodex {
 /// The ChatGPT-plan card.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CodexStatus {
+    /// This build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`). False: hide the ChatGPT card
+    /// and every ChatGPT copy; the rest of this status is only for clean-up.
+    pub chatgpt_plan_offered: bool,
     pub runtime: CodexRuntime,
     pub outdated_action: CodexOutdatedAction,
     pub login: CodexLogin,

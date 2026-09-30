@@ -389,6 +389,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     aiStatus: async (): Promise<AiStatus> => {
       await ctx.delay();
       return structuredClone({
+        // The mock offers the ChatGPT plan; a shipped build doesn't until OpenAI confirms in
+        // writing (CHATGPT_PLAN_OFFERED in the facade).
+        chatgpt_plan_offered: true,
         // Priority order (design §7): the ChatGPT plan first, then keys and local models.
         backends: [
           codex.backendStatus(acknowledged.get("codex") ?? null, codexChosen()),

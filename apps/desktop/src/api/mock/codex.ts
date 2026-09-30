@@ -185,6 +185,8 @@ export function createMockCodex(options: {
 
   function status(): CodexStatus {
     return structuredClone({
+      // As `aiStatus` (mock/ai.ts): the mock offers the plan.
+      chatgpt_plan_offered: true,
       runtime: {
         state: state.installed ? "installed" : "not_installed",
         source: state.source,

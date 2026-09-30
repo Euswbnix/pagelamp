@@ -21,8 +21,11 @@ use serde_json::json;
 
 const COURSE: &str = "folder:demo/course/DEMO101";
 
+/// With the ChatGPT plan offered (this build switch is off by default: `chatgpt_plan_api.rs`).
 fn app_in(dir: &std::path::Path) -> App {
-    App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap()
+    let app = App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap();
+    app.set_chatgpt_plan_offered_for_tests(true);
+    app
 }
 
 /// DEMO101 with a readable week-3 material.
