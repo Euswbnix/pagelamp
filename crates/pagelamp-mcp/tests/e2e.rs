@@ -493,6 +493,33 @@ async fn study_plans_round_trip_and_are_validated() {
     assert!(stored.contains("Review week 3"), "{stored}");
     assert!(!stored.contains("Hidden course item"), "{stored}");
 
+    // An edit of what it saw never deletes what it couldn't see, and the count is its own.
+    let edited = json!({ "plan": {
+        "horizon_start": "2026-10-01", "horizon_end": "2026-10-07",
+        "items": [
+            { "date": "2026-10-01", "course_id": cid("101"), "title": "Review weeks 3 and 4" }
+        ]
+    }});
+    let saved = json_of(&call(&client, "save_study_plan", edited).await);
+    assert_eq!(saved["items"], 1);
+    let stored = text_of(&call(&client, "get_study_plan", json!({})).await);
+    assert!(stored.contains("Review weeks 3 and 4"), "{stored}");
+    assert!(!stored.contains("Hidden course item"), "{stored}");
+    let kept = pagelamp_core::store::Store::open(&temp.path().join("pagelamp.db"))
+        .unwrap()
+        .latest_study_plan()
+        .unwrap()
+        .unwrap();
+    let titles: Vec<&str> = kept.plan.items.iter().map(|i| i.title.as_str()).collect();
+    assert_eq!(
+        titles,
+        [
+            "Review weeks 3 and 4",
+            "Hidden course item",
+            "Hidden course item"
+        ]
+    );
+
     // A plan cannot close its own wrapper and pose as instructions.
     let sneaky = json!({ "plan": {
         "horizon_start": "2026-10-01", "horizon_end": "2026-10-07",

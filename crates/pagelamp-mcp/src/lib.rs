@@ -748,7 +748,7 @@ impl PageLampServer {
     #[tool(description = text::GET_STUDY_PLAN, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn get_study_plan(&self) -> CallToolResult {
         // Hidden courses' items left out, like everything else about a hidden course.
-        match self.read(|store| store.latest_study_plan_for_ai()).await {
+        match self.read(|store| store.latest_visible_study_plan()).await {
             Ok(Some(plan)) => match serde_json::to_string(&plan) {
                 // The origin says who made it (design §6): the student's AI app, or PageLamp.
                 Ok(json) => text_result(wrap_plan(
@@ -805,6 +805,8 @@ impl PageLampServer {
     #[tool(description = text::SAVE_STUDY_PLAN, annotations(read_only_hint = false, destructive_hint = false, idempotent_hint = false, open_world_hint = false))]
     async fn save_study_plan(&self, Parameters(args): Parameters<SavePlanArgs>) -> CallToolResult {
         let db = Arc::clone(&self.db_path);
+        // The items this app sent: the ones kept from courses it can't see aren't its to count.
+        let sent = args.plan.items.len();
         let saved = tokio::task::spawn_blocking(move || {
             // The one MCP write: a short read-write transaction (busy_timeout applies).
             if !db.is_file() {
@@ -812,7 +814,8 @@ impl PageLampServer {
                     db.display().to_string(),
                 ));
             }
-            Store::open(&db)?.save_study_plan(&args.plan)
+            // Items of courses it can't see (hidden, removed) are kept, never dropped by an edit.
+            Store::open(&db)?.save_study_plan_keeping_unseen(&args.plan)
         })
         .await;
         match saved {
@@ -820,7 +823,7 @@ impl PageLampServer {
                 saved: true,
                 id: stored.id,
                 created_at: stored.created_at,
-                items: stored.plan.items.len(),
+                items: sent,
             }),
             Ok(Err(err)) => core_error(err),
             Err(join) => error_result(format!("internal error: {join}")),

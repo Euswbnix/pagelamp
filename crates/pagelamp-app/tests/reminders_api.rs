@@ -281,6 +281,7 @@ fn today_s_plan_reminds_until_midnight_when_turned_on() {
     let temp = tempfile::tempdir().unwrap();
     let app = app(&temp);
     let course = fall_course(&app, "101");
+    let hidden = fall_course(&app, "303");
     let day = NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
     let item = |title: &str, done: bool| StudyPlanItem {
         date: day,
@@ -300,9 +301,18 @@ fn today_s_plan_reminds_until_midnight_when_turned_on() {
                 item("Read ch. 3", false),
                 item("Problems", false),
                 item("Done", true),
+                // A hidden course's item doesn't count.
+                StudyPlanItem {
+                    course_id: Some(hidden.clone()),
+                    ..item("Hidden course reading", false)
+                },
             ],
             notes: None,
         })
+        .unwrap();
+    Store::open(&app.db_path())
+        .unwrap()
+        .set_course_hidden(&hidden, true)
         .unwrap();
     let plan_reminders = |now| -> Vec<pagelamp_app::Reminder> {
         app.due_reminders(now)
