@@ -1126,8 +1126,13 @@
 "mac.nav.sources" = "数据来源与同步";
 "mac.nav.thisWeek" = "本周";
 "mac.reminders.catchUp.turnOn" = "改为用通知提醒";
+"mac.reminders.general.login" = "登录时打开 PageLamp";
+"mac.reminders.general.loginApproval" = "需要在「系统设置 ▸ 通用 ▸ 登录项」中批准。";
+"mac.reminders.general.loginFailed" = "没能把 PageLamp 加入或移出登录项。";
+"mac.reminders.general.loginUnavailable" = "这份 PageLamp 无法加入登录项。请把它移到“应用程序”文件夹，再从那里打开。";
 "mac.reminders.general.menuBar" = "在菜单栏中显示 PageLamp";
 "mac.reminders.general.menuBarHint" = "一眼看到本周安排。关闭最后一个窗口后，PageLamp 仍会在菜单栏中运行。";
+"mac.reminders.general.openLoginItems" = "打开登录项设置";
 "mac.reminders.remind.no" = "暂不";
 "mac.reminders.remind.offDone" = "不提醒。可以在「设置 ▸ 提醒」里开启。";
 "mac.reminders.remind.onDone" = "PageLamp 会提醒你。可以在「设置 ▸ 提醒」里更改。";

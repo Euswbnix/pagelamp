@@ -23,7 +23,12 @@
     },
     "general": {
       "menuBar": "在菜单栏中显示 {{product}}",
-      "menuBarHint": "一眼看到本周安排。关闭最后一个窗口后，{{product}} 仍会在菜单栏中运行。"
+      "menuBarHint": "一眼看到本周安排。关闭最后一个窗口后，{{product}} 仍会在菜单栏中运行。",
+      "login": "登录时打开 {{product}}",
+      "loginApproval": "需要在「系统设置 ▸ 通用 ▸ 登录项」中批准。",
+      "loginUnavailable": "这份 {{product}} 无法加入登录项。请把它移到“应用程序”文件夹，再从那里打开。",
+      "loginFailed": "没能把 {{product}} 加入或移出登录项。",
+      "openLoginItems": "打开登录项设置"
     }
   },
   "menuBar": {

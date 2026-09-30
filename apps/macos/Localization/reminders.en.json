@@ -23,7 +23,12 @@
     },
     "general": {
       "menuBar": "Show {{product}} in the menu bar",
-      "menuBarHint": "Your week at a glance. Closing the last window then leaves {{product}} running in the menu bar."
+      "menuBarHint": "Your week at a glance. Closing the last window then leaves {{product}} running in the menu bar.",
+      "login": "Open {{product}} at login",
+      "loginApproval": "macOS needs your approval in System Settings ▸ General ▸ Login Items.",
+      "loginUnavailable": "This copy of {{product}} can't be added to the login items. Move it to the Applications folder and open it from there.",
+      "loginFailed": "{{product}} couldn't be added to or removed from the login items.",
+      "openLoginItems": "Open Login Items Settings"
     }
   },
   "menuBar": {
