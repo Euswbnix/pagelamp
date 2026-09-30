@@ -217,7 +217,8 @@
     "button": "Remove all AI data",
     "hint": "Deletes your keys, model choices, usage history and everything {{product}} wrote with AI.",
     "title": "Remove all AI data?",
-    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and every plan and explanation {{product}} wrote, and signs {{product}}'s Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.",
+    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI. Your courses, their rules and your answers about sharing materials stay.",
+    "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI, and signs {{product}}'s Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.",
     "confirm": "Remove all",
     "done": "All AI data removed"
   },
