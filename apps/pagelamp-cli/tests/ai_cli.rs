@@ -8,14 +8,28 @@ use std::net::TcpListener;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use chrono::{SubsecRound, Utc};
-use pagelamp_core::ai::ProviderRow;
+use pagelamp_app::App;
+use pagelamp_app::ai::{BackendRef, CodexSource, ModelChoice};
+use pagelamp_core::ai::{AiFeature, Effort, ProviderRow};
+use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_core::store::Store;
 use serde_json::Value;
 
 /// Like `tests/cli.rs`: every location `pagelamp` could fall back to points into `home`.
 fn pagelamp(home: &Path, args: &[&str]) -> Output {
+    pagelamp_with_path(home, args, None)
+}
+
+/// `pagelamp` with `PATH` set to `path` when given.
+fn pagelamp_with_path(home: &Path, args: &[&str], path: Option<&Path>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_pagelamp"));
+    if let Some(path) = path {
+        command.env("PATH", path);
+    }
     command.env("PAGELAMP_HOME", home);
     for var in [
         "HOME",
@@ -382,4 +396,103 @@ fn remind_is_quiet_until_something_is_due_and_plan_and_note_need_a_model() {
     let note = failed(&pagelamp(&home, &["note"]));
     assert!(note.contains("blocked: no_model_chosen"), "{note}");
     assert!(ok(&pagelamp(&home, &["note", "--saved"])).contains("No saved weekly notes."));
+}
+
+/// PageLamp runs the ChatGPT and Claude plans only when the student starts the run (plan
+/// D27): with no terminal (cron, a script; a spawned test has none), the model commands refuse
+/// them first, before any other check. A Codex on PATH that leaves a mark if anything starts it guards that
+/// nothing was run. An API key or a local model is not refused.
+#[test]
+fn plan_runs_without_a_terminal_are_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    synced_demo_course(&home, &temp.path().join("Courses"));
+    let choice = |backend| ModelChoice {
+        backend,
+        model: "plan-model".into(),
+        effort: Effort::Lowest,
+    };
+    let mut routing = BTreeMap::from([
+        (AiFeature::StudyPlan, choice(BackendRef::Codex)),
+        (AiFeature::WeeklyExplanation, choice(BackendRef::ClaudeCode)),
+        (AiFeature::WeeklyNote, choice(BackendRef::Codex)),
+        (AiFeature::CourseCalendar, choice(BackendRef::ClaudeCode)),
+    ]);
+    let store = Store::open(&home.join("pagelamp.db")).unwrap();
+    store.set_setting("ai.routing", &routing).unwrap();
+    // The student's own Codex on PATH, its disclosure read: the refusal is what stops the run.
+    store
+        .set_setting("ai.codex_source", &CodexSource::System)
+        .unwrap();
+    let app = App::open_at_with_secrets(home.clone(), Arc::new(MemorySecrets::new())).unwrap();
+    let version = app
+        .ai_status()
+        .unwrap()
+        .backends
+        .iter()
+        .find(|b| b.backend == BackendRef::Codex)
+        .unwrap()
+        .disclosure
+        .version;
+    app.acknowledge_ai_disclosure(&BackendRef::Codex, version)
+        .unwrap();
+    let bin = temp.path().join("bin");
+    let path = cfg!(unix).then_some(bin.as_path());
+    std::fs::create_dir_all(&bin).unwrap();
+    let mark = temp.path().join("codex-ran");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let codex = bin.join("codex");
+        std::fs::write(
+            &codex,
+            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", mark.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    for args in [
+        &["plan"][..],
+        &["explain", "DEMO101"],
+        &["note"],
+        &["course", "calendar", "DEMO101", "--read"],
+        &["--json", "note"],
+    ] {
+        let err = failed(&pagelamp_with_path(&home, args, path));
+        assert!(
+            err.contains("refused: unattended_plan_run"),
+            "{args:?}: {err}"
+        );
+        assert!(
+            err.contains(
+                "PageLamp runs the ChatGPT and Claude plans only when you start the run yourself."
+            ),
+            "{args:?}: {err}"
+        );
+        assert!(
+            err.contains(
+                "For scheduled runs (cron), choose an API key or a model on this computer"
+            ),
+            "{args:?}: {err}"
+        );
+    }
+    assert!(!mark.exists(), "no Codex was started");
+    // What runs no model is unaffected.
+    assert!(
+        ok(&pagelamp_with_path(&home, &["note", "--saved"], path))
+            .contains("No saved weekly notes.")
+    );
+
+    // An API key or a local model may run on a schedule (here the provider doesn't exist, so
+    // the run fails later, for that reason).
+    routing.insert(
+        AiFeature::WeeklyNote,
+        choice(BackendRef::Provider {
+            provider_id: "lm_studio".into(),
+        }),
+    );
+    store.set_setting("ai.routing", &routing).unwrap();
+    let err = failed(&pagelamp_with_path(&home, &["note"], path));
+    assert!(!err.contains("unattended_plan_run"), "{err}");
 }
