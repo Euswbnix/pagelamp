@@ -1686,6 +1686,43 @@ impl Store {
         Ok(Some(stored))
     }
 
+    /// `latest_study_plan` as a model may read it (the weekly note's context, the MCP tool):
+    /// hidden courses' items are left out too, since a hidden course is never sent (design
+    /// §4.1). The student's own screens keep them (`latest_study_plan`).
+    pub fn latest_study_plan_for_ai(&self) -> Result<Option<StoredStudyPlan>> {
+        let Some(mut stored) = self.latest_study_plan()? else {
+            return Ok(None);
+        };
+        if !self.list_courses(true)?.iter().any(|course| course.hidden) {
+            return Ok(Some(stored));
+        }
+        let mut hidden = Vec::with_capacity(stored.plan.items.len());
+        for item in &stored.plan.items {
+            hidden.push(match item.course_id.as_deref() {
+                Some(reference) => self.names_hidden_course(reference)?,
+                None => false,
+            });
+        }
+        let mut hidden = hidden.into_iter();
+        stored
+            .plan
+            .items
+            .retain(|_| !hidden.next().unwrap_or(false));
+        Ok(Some(stored))
+    }
+
+    /// Whether a plan item's course reference (an id, a name or a code, as an AI app wrote it)
+    /// may name a hidden course: the course `resolve_course_with` finds is hidden, or it finds
+    /// several (one could be hidden). A reference to no known course names none.
+    fn names_hidden_course(&self, reference: &str) -> Result<bool> {
+        match self.resolve_course_with(reference, true) {
+            Ok(course) => Ok(course.hidden),
+            Err(Error::Ambiguous { .. }) => Ok(true),
+            Err(Error::NotFound(_)) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Tick item `index` of plan `plan_id` done or not. `index` counts the items as readers
     /// see them (`latest_study_plan`: removed courses' items left out); the stored plan keeps
     /// the others. Returns the plan as readers see it. `NotFound` for an unknown plan or item.
