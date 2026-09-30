@@ -6,11 +6,12 @@
 import SwiftUI
 import PageLampModel
 
-/// The Settings tabs. Reminders (M3) shows only where reminders are on (preview builds, until
+/// The Settings tabs. Reminders and AI (M3) show only where they're on (preview builds, until
 /// they ship).
 package enum SettingsTab: String, CaseIterable, Sendable {
     case general
     case reminders
+    case ai
     case data
     case privacy
     case help
@@ -37,6 +38,12 @@ struct SettingsView: View {
                 Tab(l10n("mac.settings.tabs.reminders"), systemImage: "bell") {
                     SettingsRemindersTab()
                         .frame(width: PLSize.settingsWidth, height: 520)
+                }
+            }
+            if model.aiSettings {
+                Tab(l10n("mac.settings.tabs.ai"), systemImage: "sparkles") {
+                    SettingsAiTab()
+                        .frame(width: PLSize.settingsWidth, height: SettingsAiTab.height)
                 }
             }
             Tab(l10n("mac.settings.tabs.data"), systemImage: "internaldrive") {
@@ -88,13 +95,22 @@ package struct SettingsTabPage: View {
 
     /// Settings ▸ Reminders' loaded settings (snapshots).
     let reminders: ReminderSettingsEditor?
+    /// Settings ▸ AI, loaded (snapshots).
+    let ai: AiSettingsModel?
     @State private var fallback = SettingsModel()
 
-    package init(tab: SettingsTab, title: String, settings: SettingsModel? = nil, reminders: ReminderSettingsEditor? = nil) {
+    package init(
+        tab: SettingsTab,
+        title: String,
+        settings: SettingsModel? = nil,
+        reminders: ReminderSettingsEditor? = nil,
+        ai: AiSettingsModel? = nil
+    ) {
         self.tab = tab
         self.title = title
         self.settings = settings
         self.reminders = reminders
+        self.ai = ai
     }
 
     package var body: some View {
@@ -106,6 +122,7 @@ package struct SettingsTabPage: View {
             switch tab {
             case .general: SettingsGeneralTab()
             case .reminders: SettingsRemindersTab(editor: reminders ?? ReminderSettingsEditor())
+            case .ai: SettingsAiTab(ai: ai)
             case .data: SettingsDataTab(settings: settings ?? fallback)
             case .privacy: SettingsPrivacyTab()
             case .help: SettingsHelpTab(settings: settings ?? fallback)

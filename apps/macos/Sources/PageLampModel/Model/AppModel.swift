@@ -149,7 +149,12 @@ public final class AppModel {
 
     public private(set) var dataMode: DataMode
     /// The core. Screens load their own data through it (errors are `PageLampFailure`).
-    public private(set) var service: any PageLampService
+    public private(set) var service: any PageLampService {
+        didSet { serviceGeneration += 1 }
+    }
+    /// Bumped whenever `service` is replaced (Debug ▸ Data Source, the live facade opening):
+    /// screens holding their own model of the service rebuild on it.
+    public private(set) var serviceGeneration = 0
 
     // MARK: Shell data (spec §2.8)
 
@@ -229,6 +234,11 @@ public final class AppModel {
         didSet { settings.appearance = appearance }
     }
 
+    // MARK: AI (M3; preview builds until it ships)
+
+    /// Settings ▸ AI: the student's models, keys, budget and usage (shared with the Tauri app).
+    public let aiSettings: Bool
+
     // MARK: Reminders (M3; preview builds until they ship)
 
     /// Reminders as notifications and the catch-up card; nil where reminders aren't shown yet.
@@ -263,9 +273,11 @@ public final class AppModel {
         preferredLanguages: @escaping @Sendable () -> [String] = { Locale.preferredLanguages },
         service: (any PageLampService)? = nil,
         reminders: Bool = false,
-        reminderCenters: ReminderCenters = .standard
+        reminderCenters: ReminderCenters = .standard,
+        aiSettings: Bool = false
     ) {
         self.strings = strings
+        self.aiSettings = aiSettings
         self.reminderCenters = reminderCenters
         self.settings = settings
         self.timing = timing
