@@ -163,11 +163,15 @@ struct MockAiTests {
         #expect(try await mock(.aiBudget).aiStatus().budget.spentMicroUsd == 4_960_000)
     }
 
-    @Test("Remove all AI data: keys, choices and usage go, the budget resets, sharing answers stay")
+    @Test("Remove all AI data: keys, choices, usage and AI settings go, the budget resets, sharing answers stay")
     func removeAll() async throws {
         let service = mock(.aiKey)
         try await service.setCourseMaterialSharing(course: "DEMO101", answer: .allowed)
+        try await service.setAiOutputLanguage(language: .course)
+        #expect(try await service.setPrepareWeeklyNoteOnMonday(on: true).prepareOnMonday)
         let report = try await service.removeAllAiData()
+        #expect(try await service.aiOutputLanguage() == .ui)
+        #expect(try await !service.weeklyNoteSettings().prepareOnMonday)
         #expect(report.providersRemoved == 1 && report.usageRowsRemoved == 4)
         let status = try await service.aiStatus()
         #expect(status.backends.isEmpty && status.features.allSatisfy { $0.choice == nil })

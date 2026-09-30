@@ -233,9 +233,15 @@ extension MockService {
             providersRemoved: UInt32(db.features.ai.providers.count), generationsRemoved: 0,
             usageRowsRemoved: UInt32(db.features.ai.usage.count), backupRemoved: false
         )
-        // Keys, choices, acknowledgements and the ledger go; the budget goes back to its default.
-        // The courses' answers about sharing materials stay (the facade's rule).
+        // Keys, choices, acknowledgements and the ledger go; the budget goes back to its default,
+        // and so do the AI settings (the answers' language, Monday's note, the ChatGPT plan's
+        // weekly cap and Codex source). The courses' answers about sharing materials stay (the
+        // facade's rule).
         db.features.ai = MockAi()
+        db.features.outputLanguage = .ui
+        db.features.prepareNoteOnMonday = false
+        db.features.weeklyCap = nil
+        db.features.codexSource = .managed
         return report
     }
 

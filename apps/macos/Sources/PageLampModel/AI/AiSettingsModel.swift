@@ -35,6 +35,8 @@ public final class AiSettingsModel {
     public private(set) var usageFailure: PageLampFailure?
     /// The usage month shown ("YYYY-MM-01").
     public private(set) var usageMonth: String
+    /// The student picked `usageMonth` (else it follows this month, also into a new one).
+    @ObservationIgnored private var usageMonthPicked = false
 
     // MARK: Changes in flight and their failures
 
@@ -54,6 +56,8 @@ public final class AiSettingsModel {
     public private(set) var budgetFailure: PageLampFailure?
     public private(set) var removeAllFailure: PageLampFailure?
 
+    /// Each feature's Test run: a new choice (or Remove All) makes a late result stale.
+    @ObservationIgnored private var testRuns: [AiFeature: Int] = [:]
     @ObservationIgnored private let service: any PageLampService
     @ObservationIgnored private let clock: @Sendable () -> Date
     @ObservationIgnored private let calendar: Calendar
@@ -67,8 +71,20 @@ public final class AiSettingsModel {
 
     // MARK: - Loading
 
-    /// Everything the tab shows. Each part fails on its own.
+    /// Everything the tab shows. Each part fails on its own; failures of earlier changes go.
     public func load() async {
+        removeFailure = nil
+        serverFailures = [:]
+        modelChoiceFailures = [:]
+        acknowledgeFailure = nil
+        budgetFailure = nil
+        removeAllFailure = nil
+        // This month, unless the student picked one that's still listed (a new month moves on).
+        let months = self.months
+        if !usageMonthPicked || !months.contains(usageMonth) {
+            usageMonthPicked = false
+            usageMonth = months.first ?? usageMonth
+        }
         let service = self.service
         async let presets = Self.read { () async throws(PageLampFailure) in try await service.modelProviderPresets() }
         async let language = Self.read { () async throws(PageLampFailure) in try await service.aiOutputLanguage() }
@@ -266,7 +282,7 @@ public final class AiSettingsModel {
 
     private func save(_ feature: AiFeature, _ choice: ModelChoice?) async {
         modelChoiceFailures[feature] = nil
-        tests[feature] = nil
+        forgetTest(feature)
         do throws(PageLampFailure) {
             try await service.setFeatureModel(feature: feature, choice: choice)
             await refreshStatus()
@@ -275,16 +291,30 @@ public final class AiSettingsModel {
         }
     }
 
-    /// One small real call to the feature's model.
+    /// One small real call to the feature's model (one at a time per feature). A result that
+    /// arrives after the model changed is dropped.
     public func test(_ feature: AiFeature) async {
-        guard let choice = choice(for: feature) else { return }
+        guard let choice = choice(for: feature), !testing.contains(feature) else { return }
+        let run = (testRuns[feature] ?? 0) + 1
+        testRuns[feature] = run
         testing.insert(feature)
-        defer { testing.remove(feature) }
+        let outcome: TestOutcome
         do throws(PageLampFailure) {
-            tests[feature] = .report(try await service.testModel(backend: choice.backend, model: choice.model))
+            outcome = .report(try await service.testModel(backend: choice.backend, model: choice.model))
         } catch {
-            tests[feature] = .failed(error)
+            outcome = .failed(error)
         }
+        guard testRuns[feature] == run else { return }
+        testing.remove(feature)
+        tests[feature] = outcome
+    }
+
+    /// The feature's model changed (or everything went): its last Test and one in flight no
+    /// longer apply.
+    private func forgetTest(_ feature: AiFeature) {
+        testRuns[feature, default: 0] += 1
+        testing.remove(feature)
+        tests[feature] = nil
     }
 
     // MARK: - Disclosures
@@ -333,6 +363,12 @@ public final class AiSettingsModel {
         Self.months(from: clock(), calendar: calendar)
     }
 
+    /// The month picker: the student's month, kept until it's no longer listed.
+    public func chooseUsageMonth(_ month: String) async {
+        usageMonthPicked = true
+        await loadUsage(month: month)
+    }
+
     public func loadUsage(month: String) async {
         usageMonth = month
         do throws(PageLampFailure) {
@@ -362,8 +398,7 @@ public final class AiSettingsModel {
             _ = try await service.removeAllAiData()
             models = [:]
             modelFailures = [:]
-            tests = [:]
-            modelChoiceFailures = [:]
+            for feature in Set(tests.keys).union(testing) { forgetTest(feature) }
             await load()
             return true
         } catch {

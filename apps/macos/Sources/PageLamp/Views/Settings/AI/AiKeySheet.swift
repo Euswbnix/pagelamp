@@ -5,7 +5,8 @@
 //
 // The key lives in the secure field's state only: it goes to the facade once on submit and the
 // field is cleared right after (whatever the answer) and when the sheet closes. It is never kept
-// in a model, UserDefaults, logs or snapshots.
+// in a model, UserDefaults, logs or snapshots. While the key is being checked the sheet stays:
+// a check can't be called back, so closing it would still save the key out of sight.
 
 import SwiftUI
 import PageLampKit
@@ -68,6 +69,7 @@ package struct AiKeySheet: View {
                 Spacer()
                 Button(l10n("common.actions.cancel"), action: cancel)
                     .keyboardShortcut(.cancelAction)
+                    .disabled(ai.addingKey)
                 Button(submitTitle) { Task { await submit() } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(ai.addingKey || (isAdding && preset == nil))
@@ -82,6 +84,7 @@ package struct AiKeySheet: View {
             ai.clearKeyFailure()
         }
         .onExitCommand(perform: cancel)
+        .interactiveDismissDisabled(ai.addingKey)
     }
 
     // MARK: - Fields
@@ -169,6 +172,7 @@ package struct AiKeySheet: View {
     }
 
     private func cancel() {
+        guard !ai.addingKey else { return }
         key = ""
         done(nil)
     }
