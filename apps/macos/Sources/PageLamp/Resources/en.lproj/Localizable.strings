@@ -1146,6 +1146,12 @@
 "mac.nav.connect" = "Connect AI App";
 "mac.nav.sources" = "Sources & Sync";
 "mac.nav.thisWeek" = "This Week";
+"mac.plan.closeHint" = "Closing this stops it; nothing is saved.";
+"mac.plan.readOnly" = "Read-only here. To change the plan, plan again with PageLamp.";
+"mac.plan.reason" = "(%1$@)";
+"mac.plan.useThisPlan" = "Use This Plan";
+"mac.plan.writeAgain" = "Write Again";
+"mac.plan.writeMyPlan" = "Write My Plan";
 "mac.reminders.catchUp.turnOn" = "Get These as Notifications";
 "mac.reminders.general.login" = "Open PageLamp at login";
 "mac.reminders.general.loginApproval" = "macOS needs your approval in System Settings ▸ General ▸ Login Items.";

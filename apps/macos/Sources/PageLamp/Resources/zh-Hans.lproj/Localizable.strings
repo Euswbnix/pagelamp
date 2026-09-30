@@ -1146,6 +1146,12 @@
 "mac.nav.connect" = "连接 AI 应用";
 "mac.nav.sources" = "数据来源与同步";
 "mac.nav.thisWeek" = "本周";
+"mac.plan.closeHint" = "关闭这里会停止生成，不会保存任何内容。";
+"mac.plan.readOnly" = "这里仅供查看。想调整计划，可以用 PageLamp 重新规划。";
+"mac.plan.reason" = "（%1$@）";
+"mac.plan.useThisPlan" = "使用这份计划";
+"mac.plan.writeAgain" = "重新生成";
+"mac.plan.writeMyPlan" = "生成我的计划";
 "mac.reminders.catchUp.turnOn" = "改为用通知提醒";
 "mac.reminders.general.login" = "登录时打开 PageLamp";
 "mac.reminders.general.loginApproval" = "需要在「系统设置 ▸ 通用 ▸ 登录项」中批准。";
