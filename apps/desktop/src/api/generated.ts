@@ -2065,6 +2065,11 @@ export interface DoctorReport {
    * Why the database could not be read (then the counts are 0).
    */
   database_error?: string | null;
+  /**
+   * Courses whose LMS term looks like an enrollment window, so it isn't used to count weeks
+   * (calendar design §6.3). A count, never names.
+   */
+  enrollment_window_terms?: number;
   events: number;
   extract_worker: ExtractWorkerCheck;
   hidden_courses: number;
@@ -2075,6 +2080,11 @@ export interface DoctorReport {
   materials: number;
   mcp_clients: McpClientPresence;
   os: string;
+  /**
+   * Removed courses still waiting: for their purge (the undo window) or for their downloaded
+   * files to go to the Trash (calendar design §8.3). A count, never names.
+   */
+  removals_waiting?: number;
   schema_version?: number | null;
   sources: DoctorSource[];
   /**
