@@ -132,6 +132,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
     "contract-test-plan",
     onEvent,
   );
+  await api.planLimits();
   await api.acceptStudyPlan("contract-test-plan");
   await api.setStudyPlanItemDone(1, 0, true);
   // No course in the replay's data dir: nothing to write about, before any model is asked.

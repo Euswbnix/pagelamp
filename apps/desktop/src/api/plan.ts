@@ -11,6 +11,7 @@ export type {
   GenerationMeta,
   LeftOutMaterial,
   LeftOutReason,
+  PlanLimits,
   PlanOrigin,
   PlanWarning,
   PlanWarningCode,

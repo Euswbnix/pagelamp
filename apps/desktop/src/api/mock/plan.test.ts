@@ -40,6 +40,22 @@ describe("mock study plans", () => {
     }
   });
 
+  it("answers the limits it checks", async () => {
+    const api = createMockApi(fast);
+    const { onEvent } = events();
+    const limits = await api.planLimits();
+    for (const request of [
+      { horizon_days: limits.min_horizon_days - 1 },
+      { horizon_days: limits.max_horizon_days + 1 },
+      { hours_per_week: limits.min_hours_per_week - 1 },
+      { hours_per_week: limits.max_hours_per_week + 1 },
+    ]) {
+      await expect(api.generateStudyPlan(request, "g", onEvent)).rejects.toMatchObject({
+        kind: "invalid",
+      } satisfies Partial<ApiError>);
+    }
+  });
+
   it("writes a draft on study days only, at most 4 hours a day, and saves it when accepted", async () => {
     const api = createMockApi(fast);
     const { list, onEvent } = events();

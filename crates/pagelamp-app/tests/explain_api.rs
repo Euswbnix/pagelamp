@@ -296,8 +296,12 @@ async fn an_explanation_is_grounded_in_the_week_s_materials() {
     );
     assert_eq!(result.left_out.len(), 1);
     assert_eq!(
-        (result.left_out[0].title.as_str(), result.left_out[0].reason),
-        ("Assignment 2", LeftOutReason::LooksLikeAssessment)
+        (
+            result.left_out[0].title.as_str(),
+            result.left_out[0].reason,
+            result.left_out[0].includable
+        ),
+        ("Assignment 2", LeftOutReason::LooksLikeAssessment, true)
     );
     assert!(!result.stale && !result.sharing_reminder && !result.cite_ai_use);
     assert_eq!(result.meta.backend_label, "Ollama");
@@ -388,12 +392,12 @@ async fn include_never_sends_a_material_without_readable_text() {
             .await
             .unwrap();
         // No text is decided before "looks like an assessment", and include can't lift it.
-        let reason = result
+        let left = result
             .left_out
             .iter()
             .find(|left| left.material_id == quiz)
-            .map(|left| left.reason);
-        assert_eq!(reason, Some(LeftOutReason::NoText), "run {n}");
+            .map(|left| (left.reason, left.includable));
+        assert_eq!(left, Some((LeftOutReason::NoText, false)), "run {n}");
         assert!(!sent(&server, n).await.contains("answer key"), "run {n}");
     }
 }

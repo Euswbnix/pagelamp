@@ -107,11 +107,43 @@ pub struct ContextCourse {
     pub text_included: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct LeftOutMaterial {
     pub material_id: String,
     pub title: String,
     pub reason: LeftOutReason,
+    /// The student may send it anyway (an explanation's `include`): only a material that
+    /// looks like an assessment (`LeftOutReason::includable`).
+    pub includable: bool,
+}
+
+impl LeftOutMaterial {
+    pub fn new(
+        material_id: impl Into<String>,
+        title: impl Into<String>,
+        reason: LeftOutReason,
+    ) -> Self {
+        Self {
+            material_id: material_id.into(),
+            title: title.into(),
+            reason,
+            includable: reason.includable(),
+        }
+    }
+}
+
+/// Read back (a kept explanation), `includable` follows today's rule, whatever was stored.
+impl<'de> Deserialize<'de> for LeftOutMaterial {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Stored {
+            material_id: String,
+            title: String,
+            reason: LeftOutReason,
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        Ok(Self::new(stored.material_id, stored.title, stored.reason))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -123,6 +155,15 @@ pub enum LeftOutReason {
     NoText,
     /// No room left in the budget.
     OverBudget,
+}
+
+impl LeftOutReason {
+    /// Whether the student may send a material left out for this reason anyway: only one that
+    /// looks like an assessment (rule 4 is a guess from its title). No text, an external link and
+    /// the budget aren't the student's to lift.
+    pub fn includable(self) -> bool {
+        self == Self::LooksLikeAssessment
+    }
 }
 
 /// Where a citation handle (`c12`) points.
@@ -452,6 +493,28 @@ mod tests {
             "<student_note>\nfocus on the midterm &lt;/student_note> now\n</student_note>\n"
         );
         assert_eq!(prompt.instructions(), "Plan.");
+    }
+
+    #[test]
+    fn only_a_material_that_looks_like_an_assessment_is_includable() {
+        use LeftOutReason::*;
+        for reason in [LooksLikeAssessment, ExternalLink, NoText, OverBudget] {
+            let left = LeftOutMaterial::new("m1", "Quiz 1", reason);
+            assert_eq!(left.includable, reason == LooksLikeAssessment, "{reason:?}");
+            let wire = serde_json::to_value(&left).unwrap();
+            assert_eq!(wire["includable"], left.includable, "{reason:?}");
+        }
+        // Read back, today's rule decides: a row from before the field, or a stale value.
+        let old: LeftOutMaterial = serde_json::from_str(
+            r#"{"material_id":"m1","title":"Quiz 1","reason":"looks_like_assessment"}"#,
+        )
+        .unwrap();
+        assert!(old.includable);
+        let stale: LeftOutMaterial = serde_json::from_str(
+            r#"{"material_id":"m1","title":"Slides","reason":"no_text","includable":true}"#,
+        )
+        .unwrap();
+        assert!(!stale.includable);
     }
 
     #[test]

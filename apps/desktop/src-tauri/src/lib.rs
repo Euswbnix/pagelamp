@@ -44,6 +44,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::list_deadlines,
         commands::search,
         commands::latest_study_plan,
+        commands::plan_limits,
         commands::set_course_policy,
         commands::set_course_term,
         commands::set_course_ai_access,
