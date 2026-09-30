@@ -4,12 +4,14 @@ import { createMockApi } from ".";
 import { MOCK_CODEX_PIN, MOCK_DEVICE_CODE } from "./codex";
 
 const fast = { latencyMs: 0, syncStepMs: 0 };
+/** The ChatGPT plan offered, nothing installed yet. */
+const notInstalled = { ...fast, scenario: "codex-not-installed" } as const;
 const codex = { kind: "codex" } as const;
 const DEMO101 = "folder:demo-courses/course/DEMO101";
 
 describe("mock ChatGPT plan (Codex)", () => {
   it("starts not installed, with the download size, and not among the backends", async () => {
-    const api = createMockApi(fast);
+    const api = createMockApi(notInstalled);
     const status = await api.codexStatus();
     expect(status.runtime).toMatchObject({
       state: "not_installed",
@@ -20,7 +22,7 @@ describe("mock ChatGPT plan (Codex)", () => {
   });
 
   it("installs with progress, then signs in and asks for the disclosure", async () => {
-    const api = createMockApi(fast);
+    const api = createMockApi(notInstalled);
     const events: RuntimeEvent[] = [];
     const installed = await api.installCodex("install-1", (e) => events.push(e));
     expect(events.map((e) => e.type)).toEqual([
@@ -54,7 +56,7 @@ describe("mock ChatGPT plan (Codex)", () => {
   });
 
   it("cancels a download (nothing installed) and a sign-in", async () => {
-    const api = createMockApi({ latencyMs: 0, syncStepMs: 5 });
+    const api = createMockApi({ ...notInstalled, syncStepMs: 5 });
     const install = api.installCodex("install-2", (e) => {
       if (e.type === "download_started") void api.cancelCodexInstall("install-2");
     });

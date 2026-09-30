@@ -20,7 +20,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("Use my ChatGPT plan (Codex)", () => {
   it("says what the download is, installs it and offers to sign in", async () => {
-    const { user } = renderRoute("/settings");
+    const { user } = renderRoute("/settings", { scenario: "codex-not-installed" });
     const region = await card();
     expect(
       await within(region).findByText(/≈70–80 MB, taking up to ≈330 MB once installed/),
@@ -33,7 +33,7 @@ describe("Use my ChatGPT plan (Codex)", () => {
   });
 
   it("says when another window is installing Codex (not a sync)", async () => {
-    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "codex-not-installed" });
     vi.spyOn(api, "installCodex").mockRejectedValue(new ApiError("busy", "Installing elsewhere."));
     const { user } = renderRoute("/settings", { api });
     const region = await card();
@@ -45,7 +45,7 @@ describe("Use my ChatGPT plan (Codex)", () => {
   });
 
   it("cancels a download without calling it a failure", async () => {
-    const api = createMockApi({ latencyMs: 0, syncStepMs: 40 });
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 40, scenario: "codex-not-installed" });
     const { user } = renderRoute("/settings", { api });
     const region = await card();
     await user.click(await within(region).findByRole("button", { name: "Download Codex" }));
