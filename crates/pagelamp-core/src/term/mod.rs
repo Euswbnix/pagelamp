@@ -7,6 +7,7 @@
 
 pub mod evidence;
 pub(crate) mod fit;
+pub mod institution;
 pub mod phase;
 mod resolve;
 pub mod session;

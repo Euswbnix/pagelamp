@@ -879,6 +879,7 @@ impl CourseData {
             materials: &self.materials,
             events: &self.events,
             today: at.today,
+            institution: None,
         }
     }
 

@@ -547,3 +547,47 @@ fn course_toml_names_the_outline_and_a_missing_one_only_warns() {
     );
     assert!(named_outlines(&store, &course).is_empty());
 }
+
+/// `institution = "uoft"` in course.toml opts the folder course into UofT's session codes and
+/// calendar (calendar design §6.3, D50): sync writes it, and a later sync without it clears it;
+/// a school PageLamp doesn't know is a warning, never stored.
+#[test]
+fn course_toml_names_the_institution() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    write(root, "DEM332H5 Demo Methods/notes.txt", "notes");
+    write(
+        root,
+        "DEM332H5 Demo Methods/course.toml",
+        "institution = \"UofT\"\n",
+    );
+    let store = store();
+    let extractor = Extractor::default();
+    let report = sync_folder(&store, SOURCE, root, None, &extractor, &no_progress).unwrap();
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+    let course = format!("{SOURCE}/course/DEM332H5 Demo Methods");
+    let institution = |store: &Store| {
+        store
+            .course_term_data(&course)
+            .unwrap()
+            .unwrap()
+            .institution
+    };
+    assert_eq!(institution(&store).as_deref(), Some("uoft"));
+
+    write(
+        root,
+        "DEM332H5 Demo Methods/course.toml",
+        "institution = \"elsewhere\"\n",
+    );
+    let report = sync_folder(&store, SOURCE, root, None, &extractor, &no_progress).unwrap();
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.contains("institution \"elsewhere\" isn't a school PageLamp knows")),
+        "{:?}",
+        report.warnings
+    );
+    assert_eq!(institution(&store), None);
+}
