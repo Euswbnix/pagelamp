@@ -1,6 +1,6 @@
 # Privacy
 
-*Last updated: 2026-09-29 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
+*Last updated: 2026-09-30 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
 pre-releases and later; v0.1.0 doesn't have them.*
 
 PageLamp is a local app. There is no PageLamp server, account, analytics or telemetry. The people
@@ -39,11 +39,12 @@ dates and links. It never reads your university password.
     terms and your settings with them.
   - With a model on this computer (for example Ollama or LM Studio), it stays on your computer —
     unless you set the model's address to another computer, which then receives it.
-  - *Read the syllabus* sends the text of the course materials it reads. No model gets the
-    materials of a course whose AI access you turned off or whose AI policy is "No AI", and a model
-    in the cloud doesn't get them if you answered "Not allowed" to *Is sharing this course's
-    materials allowed?*. If you haven't answered that question, PageLamp reminds you once, after
-    the first reading.
+  - *Read the syllabus* sends the text of the course materials it reads. No model gets the materials
+    of a course whose AI access you turned off or whose AI policy is "No AI", and a model in the
+    cloud doesn't get them if you answered "No, it's not allowed" to *Is sharing this course's
+    materials allowed?*. If you haven't answered that question, or answered "Not sure", PageLamp
+    reminds you once per course (again after *Remove all AI data*), after the first reading that
+    sent that course's materials to a model in the cloud.
   - Listing a provider's models asks that provider for them, and *Test* sends it one tiny request.
 - **(v0.3) Update check:** once a day PageLamp downloads a small file from GitHub to see whether
   there's a new version. GitHub sees your IP address and your PageLamp version, as with any
