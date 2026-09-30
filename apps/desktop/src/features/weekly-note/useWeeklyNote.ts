@@ -78,6 +78,16 @@ export function useWeeklyNoteRun() {
         stopping: false,
       });
       if (!automatic) store.setAutomaticProblem(null);
+      // Only while this run is still the app's run: a run that ended or was replaced (the store
+      // reset between tests, say) changes nothing when its events or its end arrive late.
+      const isCurrent = (r: NoteRunState) => r.phase === "running" && r.id === id;
+      const update = (change: (r: Extract<NoteRunState, { phase: "running" }>) => NoteRunState) =>
+        store.setRun((r) => (r.phase === "running" && r.id === id ? change(r) : r));
+      const end = (next: NoteRunState, problem?: unknown) => {
+        if (!isCurrent(useNoteRunStore.getState().run)) return;
+        store.setRun(next);
+        if (problem !== undefined) store.setAutomaticProblem(problem);
+      };
       try {
         const note = await api.writeWeeklyNote(
           id,
@@ -90,28 +100,24 @@ export function useWeeklyNoteRun() {
           (event) => {
             if (event.type === "started") {
               const { backend_label, model } = event;
-              store.setRun((r) =>
-                r.phase === "running" ? { ...r, backend: backend_label, model } : r,
-              );
+              update((r) => ({ ...r, backend: backend_label, model }));
             } else if (event.type === "stage") {
               const { stage } = event;
-              store.setRun((r) => (r.phase === "running" ? { ...r, stage } : r));
+              update((r) => ({ ...r, stage }));
             }
           },
         );
-        store.setRun({ phase: "done", note, automatic });
-        store.setAutomaticProblem(null);
+        end({ phase: "done", note, automatic }, null);
       } catch (error) {
         const kind = toApiError(error).kind;
         if (kind === "cancelled") {
-          store.setRun({ phase: "stopped", automatic });
+          end({ phase: "stopped", automatic });
         } else if (automatic) {
           // Monday's note: no alert, no dialog. Not due any more is nothing to say; anything
           // else leaves one line on the card.
-          store.setRun({ phase: "idle" });
-          if (kind !== "invalid") store.setAutomaticProblem(error);
+          end({ phase: "idle" }, kind === "invalid" ? undefined : error);
         } else {
-          store.setRun({ phase: "failed", error });
+          end({ phase: "failed", error });
         }
       } finally {
         await client.invalidateQueries({ queryKey: weeklyNoteKeys.notes() });
