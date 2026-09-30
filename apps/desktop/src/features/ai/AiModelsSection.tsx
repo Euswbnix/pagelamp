@@ -99,10 +99,7 @@ export function AiModelsSection() {
             {t("settings.addKey")}
           </Button>
 
-          <LocalServers
-            providers={status.data.providers}
-            onAdded={(record) => showAdded(record.provider_id)}
-          />
+          <LocalServers onAdded={(record) => showAdded(record.provider_id)} />
 
           {backends.length > 0 ? (
             <FeatureModels backends={backends} features={status.data.features} />

@@ -3,7 +3,7 @@ import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useApi } from "@/api/context";
-import { type Citation, INCLUDABLE_REASON, type WeeklyExplanation } from "@/api/explain";
+import type { Citation, WeeklyExplanation } from "@/api/explain";
 import { AiGeneratedLabel, aiGeneratedLabelText } from "@/components/common/AiGeneratedLabel";
 import { CopyButton } from "@/components/common/CopyButton";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
@@ -29,7 +29,8 @@ export function ExplanationView({
 }) {
   const { t, i18n } = useTranslation("explain");
   const { t: tai } = useTranslation("ai");
-  const includable = explanation.left_out.filter((m) => m.reason === INCLUDABLE_REASON);
+  // The facade says which left-out materials "include" brings back.
+  const includable = explanation.left_out.filter((m) => m.includable);
   const includeNoteId = useId();
 
   return (

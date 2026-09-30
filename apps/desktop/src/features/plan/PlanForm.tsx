@@ -2,23 +2,25 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { EstimateRequest } from "@/api/ai";
-import { type DayOfWeek, PLAN_LIMITS, type StudyPlanRequest } from "@/api/plan";
-import { useCourses } from "@/api/queries";
+import type { DayOfWeek, PlanLimits, StudyPlanRequest } from "@/api/plan";
+import { useCourses, usePlanLimits } from "@/api/queries";
 import { WEEKDAYS } from "@/api/reminders";
 import type { CourseSummary } from "@/api/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { GenerateButton } from "@/features/ai/GenerateButton";
 import { paths } from "@/lib/routes";
+import { useApiErrorText } from "@/lib/useApiErrorText";
 import { activeCourses } from "./activeCourses";
 
 /**
  * What to plan (design §5.1): days from today, hours per week, days off, which courses (the
- * current ones to start with), and a note; then "≈ $x" and Write my plan. The facade checks the
- * same limits; the form says what's wrong before anything is sent.
+ * current ones to start with), and a note; then "≈ $x" and Write my plan. The limits are the
+ * facade's (`plan_limits`); the form says what's wrong before anything is sent.
  */
 export function PlanForm({
   initial,
@@ -28,23 +30,47 @@ export function PlanForm({
   initial: StudyPlanRequest | null;
   onGenerate: (request: StudyPlanRequest) => void;
 }) {
+  const limits = usePlanLimits();
+  const errorText = useApiErrorText();
+  if (limits.isPending) return <Skeleton className="h-64" />;
+  if (limits.isError) {
+    return (
+      <p role="alert" className="text-sm">
+        {errorText(limits.error)}
+      </p>
+    );
+  }
+  return <PlanFields limits={limits.data} initial={initial} onGenerate={onGenerate} />;
+}
+
+function PlanFields({
+  limits,
+  initial,
+  onGenerate,
+}: {
+  limits: PlanLimits;
+  initial: StudyPlanRequest | null;
+  onGenerate: (request: StudyPlanRequest) => void;
+}) {
   const { t, i18n } = useTranslation("plan");
   const courses = useCourses();
   // Only active courses: the facade plans nothing else (Invalid "no active course").
   const listed = activeCourses(courses.data ?? []);
   const [horizon, setHorizon] = useState(
-    String(initial?.horizon_days ?? PLAN_LIMITS.horizonDays.default),
+    String(initial?.horizon_days ?? limits.default_horizon_days),
   );
   const [hours, setHours] = useState(
-    String(initial?.hours_per_week ?? PLAN_LIMITS.hoursPerWeek.default),
+    String(initial?.hours_per_week ?? limits.default_hours_per_week),
   );
   const [daysOff, setDaysOff] = useState<DayOfWeek[]>(initial?.days_off ?? []);
   const [picked, setPicked] = useState<string[] | null>(initial?.courses ?? null);
   const [note, setNote] = useState(initial?.note ?? "");
   const chosen = picked ?? listed.map((c) => c.course.id);
 
-  const horizonDays = wholeNumber(horizon, PLAN_LIMITS.horizonDays);
-  const hoursPerWeek = wholeNumber(hours, PLAN_LIMITS.hoursPerWeek);
+  const horizonLimits = { min: limits.min_horizon_days, max: limits.max_horizon_days };
+  const hoursLimits = { min: limits.min_hours_per_week, max: limits.max_hours_per_week };
+  const horizonDays = wholeNumber(horizon, horizonLimits);
+  const hoursPerWeek = wholeNumber(hours, hoursLimits);
   const problem =
     horizonDays === null
       ? t("form.invalidHorizon")
@@ -113,7 +139,7 @@ export function PlanForm({
           hint={t("form.horizonHint")}
           value={horizon}
           onChange={setHorizon}
-          limits={PLAN_LIMITS.horizonDays}
+          limits={horizonLimits}
           invalid={horizonDays === null}
         />
         <NumberField
@@ -123,7 +149,7 @@ export function PlanForm({
           hint={t("form.hoursHint")}
           value={hours}
           onChange={setHours}
-          limits={PLAN_LIMITS.hoursPerWeek}
+          limits={hoursLimits}
           invalid={hoursPerWeek === null}
         />
       </div>
@@ -180,7 +206,7 @@ export function PlanForm({
         <Textarea
           id={ids.note}
           value={note}
-          maxLength={PLAN_LIMITS.noteChars}
+          maxLength={limits.student_note_max_chars}
           aria-describedby={ids.noteHint}
           onChange={(event) => setNote(event.target.value)}
           rows={2}
