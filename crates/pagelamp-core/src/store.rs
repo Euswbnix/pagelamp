@@ -376,7 +376,7 @@ const COURSE_COLUMNS: &str = "id, source_id, external_id, code, name, \
 const TERM_DATA_COLUMNS: &str = "lms_term_name, lms_term_start, lms_term_end, \
      lms_course_start, lms_course_end, lms_time_zone, lms_concluded, lms_workflow_state, \
      lms_access_restricted, keep_current_until, removal_snoozed_until, term_start, term_end, \
-     user_term_start, user_term_end";
+     user_term_start, user_term_end, institution";
 const MODULE_COLUMNS: &str = "id, course_id, name, position, unlock_at, week_hint";
 const MATERIAL_COLUMNS: &str = "id, course_id, module_id, kind, title, url, local_path, mime, \
      published_at, week_hint, content_hash, text_status, text_error, text_error_kind, \
@@ -1302,6 +1302,17 @@ impl Store {
 
     /// The outline a folder's `course.toml` names (`outline = "…"`): that material is flagged,
     /// the course's others not (`None`: none named).
+    /// The school a folder course names in `course.toml` (`institution`; sync-written, never by a
+    /// setter the student uses): it opts the course into the session hint and the school's
+    /// calendar (calendar design §6.3, §6.4).
+    pub fn set_course_institution(&self, course_id: &str, institution: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE courses SET institution = ?2 WHERE id = ?1",
+            params![course_id, institution],
+        )?;
+        Ok(())
+    }
+
     pub fn set_named_outline(&self, course_id: &str, material_id: Option<&str>) -> Result<()> {
         self.conn.execute(
             "UPDATE materials SET named_outline = (id IS ?2) WHERE course_id = ?1",
@@ -2179,6 +2190,7 @@ fn term_data_from_row(row: &Row<'_>) -> rusqlite::Result<CourseTermData> {
         synced_term_end: get_opt_value(row, "term_end")?,
         user_term_start: get_opt_value(row, "user_term_start")?,
         user_term_end: get_opt_value(row, "user_term_end")?,
+        institution: row.get("institution")?,
     })
 }
 
