@@ -95,9 +95,9 @@ export function selectMaterials(
       readable.push(m);
     }
   }
-  // The two-material cap stands in for the facade's length limit; what the student included
-  // comes first, so asking for it isn't undone by the cap.
-  readable.sort((a, b) => Number(lifts(b, include)) - Number(lifts(a, include)));
+  // The first two, in the week's order, stand in for the facade's length budget. An included
+  // material gets no priority there (every candidate gets a fair share), so here neither: it
+  // can come back over the length limit like any other.
   const read = readable.slice(0, 2);
   for (const m of readable.slice(2)) {
     leftOut.push({ material_id: m.id, title: m.title, reason: "over_budget", includable: false });
