@@ -1,6 +1,6 @@
 // The draft to review (design §5.1, §7; the Tauri app's PlanDraft): by day and course, with what
 // PageLamp left out and why, which courses were planned from structure only, and the AI-generated
-// line. Write Again shows its own "≈ $x"; the sheet's buttons use, rewrite or discard it.
+// line. The sheet's buttons (with Write Again's own "≈ $x") use, rewrite or discard it.
 
 import SwiftUI
 import PageLampKit
@@ -8,8 +8,9 @@ import PageLampModel
 
 struct PlanDraftView: View {
     let draft: GeneratedStudyPlan
-    let plan: PlanModel
     let text: PlanText
+    /// The draft replaces the run (and its Stop): VoiceOver goes to its heading.
+    let titleFocus: AccessibilityFocusState<PlanSheet.Focus?>.Binding
 
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
@@ -20,6 +21,7 @@ struct PlanDraftView: View {
                 Text(l10n("plan.draft.title"))
                     .font(PLType.headline.font)
                     .accessibilityAddTraits(.isHeader)
+                    .accessibilityFocused(titleFocus, equals: .draft)
                 Text(text.summary(draft.plan))
                     .font(PLType.callout.font)
                     .foregroundStyle(.secondary)
@@ -69,8 +71,6 @@ struct PlanDraftView: View {
                     }
                 }
             }
-
-            EstimateView(estimate: plan.againEstimate)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -94,9 +94,12 @@ struct PlanDraftView: View {
                             .font(PLType.body.font.weight(.semibold))
                             .fixedSize()
                             .accessibilityHidden(index != 0)
+                        // A course's code, or its name when it has none (wrapped, never wider).
                         Text(courseLabel(item.courseId) ?? "")
                             .foregroundStyle(.secondary)
-                            .fixedSize()
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: Self.courseWidth, alignment: .leading)
                         // The task takes the width left; the other columns keep theirs.
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.title)
@@ -138,7 +141,7 @@ struct PlanDraftView: View {
             parts.append(Text(verbatim: " · ").foregroundStyle(.secondary))
         }
         parts.append(Text(task.title))
-        parts.append(Text(verbatim: " ").foregroundStyle(.secondary))
+        // " (reason)" / "（原因）": the space is the language's.
         parts.append(Text(l10n("mac.plan.reason", ["reason": text.reason(task.reason)])).foregroundStyle(.secondary))
         return InlineText.joined(parts)
             .font(PLType.callout.font)
@@ -155,4 +158,6 @@ struct PlanDraftView: View {
     private var structureOnly: String? {
         text.structureOnly(draft.meta.context.courses.filter { !$0.textIncluded }.compactMap { courseLabel($0.courseId) })
     }
+
+    private static let courseWidth: CGFloat = 140
 }

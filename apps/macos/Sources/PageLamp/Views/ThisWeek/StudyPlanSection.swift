@@ -54,7 +54,9 @@ struct StudyPlanSection: View {
         )) {
             if let planning {
                 PlanSheet(plan: planning) { stored in
-                    if let stored { model.studyPlanSaved(stored) }
+                    if let stored {
+                        Task { await model.studyPlanSaved(stored) }
+                    }
                     self.planning = nil
                 }
                 .pageLampEnvironment(model)

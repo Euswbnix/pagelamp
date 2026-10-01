@@ -1,6 +1,6 @@
 // What to plan (design §5.1; the Tauri app's PlanForm): days from today, hours per week, days
-// off, which courses (the active ones to start with) and a note; then "≈ $x". What's still
-// missing shows as a hint: nothing was sent, so it isn't an error.
+// off, which courses (the active ones to start with) and a note. What's still missing and "≈ $x"
+// sit with the buttons (PlanSheet), so they stay in view.
 
 import SwiftUI
 import PageLampKit
@@ -56,12 +56,6 @@ struct PlanFormView: View {
                     .labelsHidden()
                 }
             }
-            if let problem = plan.problem {
-                Text(problemText(problem))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            EstimateView(estimate: plan.estimate)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -80,6 +74,7 @@ struct PlanFormView: View {
         }
     }
 
+    /// A whole-number field; VoiceOver reads what's typed, then what's wrong with it (as the hint).
     private func numberField(_ label: String, hint: String, text: Binding<String>, invalid: Bool) -> some View {
         field(label, hint: hint) {
             Group {
@@ -98,7 +93,7 @@ struct PlanFormView: View {
                     RoundedRectangle(cornerRadius: 5).strokeBorder(PLColor.danger)
                 }
             }
-            .accessibilityValue(invalid ? l10n(label == "plan.form.horizon" ? "plan.form.invalidHorizon" : "plan.form.invalidHours") : "")
+            .accessibilityHint(invalid ? l10n(label == "plan.form.horizon" ? "plan.form.invalidHorizon" : "plan.form.invalidHours") : l10n(hint))
         }
     }
 
@@ -126,15 +121,6 @@ struct PlanFormView: View {
             Text(verbatim: " · ").foregroundStyle(.secondary),
             Text(summary.course.name).foregroundStyle(.secondary),
         ])
-    }
-
-    private func problemText(_ problem: PlanModel.Problem) -> String {
-        switch problem {
-        case .invalidHorizon: l10n("plan.form.invalidHorizon")
-        case .invalidHours: l10n("plan.form.invalidHours")
-        case .noStudyDays: l10n("plan.form.noStudyDays")
-        case .noCourses: l10n("plan.form.noCourses")
-        }
     }
 
     // MARK: - Weekdays

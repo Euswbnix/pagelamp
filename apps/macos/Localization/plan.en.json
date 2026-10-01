@@ -5,6 +5,6 @@
     "useThisPlan": "Use This Plan",
     "closeHint": "Closing this stops it; nothing is saved.",
     "readOnly": "Read-only here. To change the plan, plan again with {{product}}.",
-    "reason": "({{reason}})"
+    "reason": " ({{reason}})"
   }
 }

@@ -2,8 +2,10 @@
 // This Week ▸ Plan with PageLamp…: what to plan and "≈ $x"; the run with its stages and Stop;
 // then the draft to use, write again or discard. Nothing is saved until Use This Plan. VoiceOver
 // hears the stages and how the run ended, never the plan as it's written; a failure is read out
-// and takes the focus. Closing the sheet stops a run in flight.
+// and takes the focus. The estimate sits with the buttons it's for, so it's always in view.
+// However the sheet goes away, a run in flight stops.
 
+import AppKit
 import SwiftUI
 import PageLampKit
 import PageLampModel
@@ -18,11 +20,12 @@ package struct PlanSheet: View {
     @Environment(\.drawsControlStandIns) private var standIns
     @AccessibilityFocusState private var focus: Focus?
 
-    private enum Focus: Hashable {
+    enum Focus: Hashable {
         case title
         case stop
         case draft
         case outcome
+        case acceptFailure
     }
 
     package init(plan: PlanModel, done: @escaping (StoredStudyPlan?) -> Void) {
@@ -57,7 +60,11 @@ package struct PlanSheet: View {
         .padding(PLLayout.sheetInset)
         .frame(width: Self.width)
         .onAppear { focus = .title }
+        // Escape, the window closing, This Week going away: a run in flight stops.
+        .onDisappear(perform: plan.close)
         .onExitCommand(perform: close)
+        // A save can't be called back: the sheet stays until it's done.
+        .interactiveDismissDisabled(plan.accepting)
         .onChange(of: announcement) { _, text in
             if let text { AccessibilityNotification.Announcement(text).post() }
         }
@@ -68,6 +75,24 @@ package struct PlanSheet: View {
             case "stopped", "failed", "discarded": focus = .outcome
             default: break
             }
+        }
+        .onChange(of: plan.acceptFailure) { _, failure in
+            guard let failure else { return }
+            announce(l10n.sentences(l10n("plan.draft.acceptFailed"), failure.localizedDescription(in: l10n)))
+            focus = .acceptFailure
+        }
+        .onChange(of: activeEstimate.failure) { _, failure in
+            if let failure { announce(l10n.aiError(failure)) }
+        }
+        .onChange(of: activeEstimate.acknowledgeFailure) { _, failure in
+            if let failure { announce(l10n.aiError(failure)) }
+        }
+        // Back from Settings ▸ AI (or the Tauri app): a block may be settled, or the setup changed.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            Task { await plan.refreshEstimates() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await plan.refreshEstimates() }
         }
     }
 
@@ -80,8 +105,7 @@ package struct PlanSheet: View {
             case .running(let progress):
                 PlanProgressView(progress: progress, text: planText)
             case .finished(let draft):
-                PlanDraftView(draft: draft, plan: plan, text: planText)
-                    .accessibilityFocused($focus, equals: .draft)
+                PlanDraftView(draft: draft, text: planText, titleFocus: $focus)
             case .idle, .stopped, .failed:
                 outcome
                 if plan.nothingToPlan {
@@ -90,16 +114,6 @@ package struct PlanSheet: View {
                 } else {
                     PlanFormView(plan: plan)
                 }
-            }
-            if let failure = plan.acceptFailure {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(l10n("plan.draft.acceptFailed"))
-                        .font(PLType.body.font.weight(.semibold))
-                    Text(failure.localizedDescription(in: l10n))
-                        .foregroundStyle(.secondary)
-                }
-                .foregroundStyle(PLColor.danger)
-                .accessibilityElement(children: .combine)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,16 +127,8 @@ package struct PlanSheet: View {
             Text(l10n("plan.draft.stopped"))
                 .accessibilityFocused($focus, equals: .outcome)
         case .failed(let failure):
-            VStack(alignment: .leading, spacing: 2) {
-                Text(l10n("plan.draft.failed"))
-                    .font(PLType.body.font.weight(.semibold))
-                Text(l10n.aiError(failure))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundStyle(PLColor.danger)
-            .accessibilityElement(children: .combine)
-            .accessibilityFocused($focus, equals: .outcome)
+            FailureBlock(title: l10n("plan.draft.failed"), reason: l10n.aiError(failure))
+                .accessibilityFocused($focus, equals: .outcome)
         default:
             if plan.discarded {
                 Text(l10n("plan.draft.discarded"))
@@ -131,7 +137,7 @@ package struct PlanSheet: View {
         }
     }
 
-    // MARK: - Buttons
+    // MARK: - The estimate and the buttons
 
     @ViewBuilder
     private var footer: some View {
@@ -143,60 +149,103 @@ package struct PlanSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
+                Button(l10n("common.actions.close"), action: close)
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityHint(l10n("mac.plan.closeHint"))
                 Button(l10n(progress.stopping ? "plan.running.stopping" : "plan.running.stop")) {
                     Task { await plan.stop() }
                 }
                 .disabled(progress.stopping)
-                .accessibilityHint(l10n("mac.plan.closeHint"))
                 .accessibilityFocused($focus, equals: .stop)
             }
         case .finished:
-            HStack(spacing: PLSpace.s2) {
-                Button(l10n("plan.draft.discard"), action: plan.discard)
-                    .disabled(plan.accepting)
-                Spacer()
-                Button(l10n("mac.plan.writeAgain")) {
-                    Task { await plan.writeAgain() }
+            VStack(alignment: .leading, spacing: PLSpace.s3) {
+                if let failure = plan.acceptFailure {
+                    FailureBlock(title: l10n("plan.draft.acceptFailed"), reason: failure.localizedDescription(in: l10n))
+                        .accessibilityFocused($focus, equals: .acceptFailure)
                 }
-                .disabled(!plan.againEstimate.canGenerate || plan.accepting)
-                .accessibilityHint(plan.againEstimate.spokenHint(l10n))
-                Button(l10n("mac.plan.useThisPlan")) {
-                    Task {
-                        if let stored = await plan.accept() {
-                            AccessibilityNotification.Announcement(l10n("plan.draft.accepted")).post()
-                            done(stored)
+                // Write Again's "≈ $x", next to it.
+                EstimateView(estimate: plan.againEstimate)
+                HStack(spacing: PLSpace.s2) {
+                    Button(l10n("plan.draft.discard"), action: plan.discard)
+                        .disabled(plan.accepting)
+                    Spacer()
+                    Button(l10n("mac.plan.writeAgain")) {
+                        Task { await plan.writeAgain() }
+                    }
+                    .disabled(!plan.againEstimate.canGenerate || plan.accepting)
+                    .accessibilityHint(plan.againEstimate.spokenHint(l10n))
+                    Button(l10n("mac.plan.useThisPlan")) {
+                        Task {
+                            if let stored = await plan.accept() {
+                                AccessibilityNotification.Announcement(l10n("plan.draft.accepted")).post()
+                                done(stored)
+                            }
                         }
                     }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(plan.accepting)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(plan.accepting)
             }
         case .idle, .stopped, .failed:
-            HStack(spacing: PLSpace.s2) {
-                Spacer()
-                Button(l10n("common.actions.cancel"), action: close)
-                    .keyboardShortcut(.cancelAction)
+            VStack(alignment: .leading, spacing: PLSpace.s3) {
                 if !plan.nothingToPlan {
-                    Button(l10n("mac.plan.writeMyPlan")) {
-                        Task { await plan.generate() }
+                    if let problem {
+                        // What's still missing: nothing was sent, so it isn't an error.
+                        Text(problem)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!plan.estimate.canGenerate)
-                    .accessibilityHint(plan.estimate.spokenHint(l10n))
+                    EstimateView(estimate: plan.estimate)
+                }
+                HStack(spacing: PLSpace.s2) {
+                    Spacer()
+                    Button(l10n("common.actions.cancel"), action: close)
+                        .keyboardShortcut(.cancelAction)
+                    if !plan.nothingToPlan {
+                        Button(l10n("mac.plan.writeMyPlan")) {
+                            Task { await plan.generate() }
+                        }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!plan.estimate.canGenerate)
+                        .accessibilityHint(plan.estimate.spokenHint(l10n, problem: problem))
+                    }
                 }
             }
         }
     }
 
     private func close() {
+        guard !plan.accepting else { return }
         plan.close()
         done(nil)
+    }
+
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
     }
 
     // MARK: - What VoiceOver hears
 
     private var planText: PlanText {
         PlanText(l10n: l10n, calendar: model.calendar)
+    }
+
+    /// The estimate the buttons in view use: the draft's Write Again, else the form's.
+    private var activeEstimate: CostEstimateModel {
+        if case .finished = plan.run.phase { return plan.againEstimate }
+        return plan.estimate
+    }
+
+    /// What's still missing in the form, in words.
+    private var problem: String? {
+        switch plan.problem {
+        case .invalidHorizon?: l10n("plan.form.invalidHorizon")
+        case .invalidHours?: l10n("plan.form.invalidHours")
+        case .noStudyDays?: l10n("plan.form.noStudyDays")
+        case .noCourses?: l10n("plan.form.noCourses")
+        case nil: nil
+        }
     }
 
     private var phaseName: String {
@@ -221,7 +270,29 @@ package struct PlanSheet: View {
     }
 
     package static let width: CGFloat = 600
-    private static let contentMaxHeight: CGFloat = 520
+    private static let contentMaxHeight: CGFloat = 440
+}
+
+/// What failed (in the danger colour) and why (readable text), read as one.
+private struct FailureBlock: View {
+    let title: String
+    let reason: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label {
+                Text(title)
+                    .font(PLType.body.font.weight(.semibold))
+            } icon: {
+                Image(systemName: "exclamationmark.triangle")
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(PLColor.danger)
+            Text(reason)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
 }
 
 /// "Writing with OpenAI · gpt-6-luna", and the stage (VoiceOver hears it once, as an

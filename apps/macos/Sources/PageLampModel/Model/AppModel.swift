@@ -241,10 +241,13 @@ public final class AppModel {
     /// This Week ▸ Plan with PageLamp…: a study plan written by the student's model.
     public let aiPlan: Bool
 
-    /// A plan written by PageLamp was saved: This Week shows it at once.
-    public func studyPlanSaved(_ stored: StoredStudyPlan) {
+    /// A plan written by PageLamp was saved: This Week shows it at once, then everything is read
+    /// again (a refresh already under way can't put the old plan back; reminders and the menu
+    /// bar's week follow the new plan).
+    public func studyPlanSaved(_ stored: StoredStudyPlan) async {
         studyPlan = stored
         sectionErrors[.studyPlan] = nil
+        await refresh()
     }
 
     // MARK: Reminders (M3; preview builds until they ship)

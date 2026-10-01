@@ -1073,6 +1073,7 @@ nonisolated enum L10nKeys {
         "mac.ai.saveBudget",
         "mac.ai.turnOn",
         "mac.ai.turnOnName",
+        "mac.ai.useUnpriced",
         "mac.ai.whatsShared",
         "mac.app.name",
         "mac.capsule.busy",

@@ -26,6 +26,8 @@ public final class CostEstimateModel {
     @ObservationIgnored private let service: any PageLampService
     @ObservationIgnored private let debounce: Duration
     @ObservationIgnored private var pending: Task<Void, Never>?
+    /// The request `estimate` is for (it may be the last one's while a new one loads).
+    @ObservationIgnored private var estimated: EstimateRequest?
 
     /// - Parameter debounce: how long a changed request settles before it's estimated.
     public init(service: any PageLampService, debounce: Duration = .milliseconds(300)) {
@@ -36,11 +38,12 @@ public final class CostEstimateModel {
     // MARK: - The request
 
     /// A new request (the form changed). The same request isn't estimated again; the last
-    /// estimate stays while the new one loads.
+    /// estimate stays while the new one loads (and goes if the new one fails).
     public func update(_ request: EstimateRequest?) {
         guard request != self.request || (request != nil && estimate == nil && !loading) else { return }
         self.request = request
         overrideBudget = false
+        failure = nil
         pending?.cancel()
         guard let request else {
             loading = false
@@ -77,11 +80,18 @@ public final class CostEstimateModel {
             let estimate = try await service.estimateGeneration(request: request)
             guard request == self.request else { return }
             self.estimate = estimate
+            estimated = request
             failure = nil
             if case .success(let value) = await status { self.status = value }
         } catch {
             guard request == self.request else { return }
             failure = error
+            // Never another request's amount or block beside Generate (a failed re-read of the
+            // same request keeps what it had).
+            if estimated != request {
+                self.estimate = nil
+                estimated = nil
+            }
         }
         loading = false
     }

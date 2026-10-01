@@ -147,6 +147,9 @@ public final class PlanModel {
         discarded = false
         acceptFailure = nil
         againEstimate.update(nil)
+        // Going over the budget is chosen again for each run, next to its estimate (the request
+        // already has this one's choice).
+        estimate.overrideBudget = false
         await run.run { service, id, observer async throws(PageLampFailure) in
             try await service.generateStudyPlan(request: request, generationId: id, observer: observer)
         }
@@ -162,6 +165,12 @@ public final class PlanModel {
 
     public func stop() async {
         await run.stop()
+    }
+
+    /// Estimates again (back from Settings ▸ AI, where a block may have been settled).
+    public func refreshEstimates() async {
+        await estimate.refresh()
+        await againEstimate.refresh()
     }
 
     /// Discard: back to the form, and nothing is saved.

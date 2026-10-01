@@ -76,7 +76,7 @@ enum PlanSnapshots {
         await plan.estimate.settle()
         await plan.generate()
         if let stored = await plan.accept() {
-            model.studyPlanSaved(stored)
+            await model.studyPlanSaved(stored)
         }
         return AnyView(ThisWeekPage())
     }

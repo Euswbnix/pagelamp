@@ -111,6 +111,14 @@ package struct MenuBarWeekView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, PLSpace.s2)
                 }
+                // Written by PageLamp: its tasks carry the AI-generated line (Canvas §2E).
+                if !week.today.isEmpty, let label = model.studyPlan?.aiLabel {
+                    Text(l10n.aiLabel(label, calendar: model.calendar))
+                        .font(PLType.callout.font)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.horizontal, PLSpace.s2)
+                }
                 if let last = week.lastWeek {
                     Text(l10n("mac.menuBar.lastWeek", ["done": l10n.number(last.done), "planned": l10n.number(last.planned)]))
                         .font(PLType.callout.font)

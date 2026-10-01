@@ -68,7 +68,7 @@ struct EstimateView: View {
                 Text(l10n("ai.estimate.useUnpricedHint"))
                     .font(PLType.callout.font)
                     .fixedSize(horizontal: false, vertical: true)
-                Button(l10n("ai.estimate.useUnpriced")) {
+                Button(l10n("mac.ai.useUnpriced")) {
                     Task { await estimate.acknowledgeUnpriced() }
                 }
                 .controlSize(.small)
@@ -96,17 +96,22 @@ struct EstimateView: View {
 }
 
 extension CostEstimateModel {
-    /// What Generate's VoiceOver hint says: the cost, then why it's blocked.
+    /// What Generate's VoiceOver hint says, so a dimmed button says why: what's missing in the
+    /// form, an estimate that failed, the cost, then the block still in the way.
     @MainActor
-    func spokenHint(_ l10n: L10n) -> String {
+    package func spokenHint(_ l10n: L10n, problem: String? = nil) -> String {
         var parts: [String] = []
+        if let problem { parts.append(problem) }
+        if let failure { parts.append(l10n.aiError(failure)) }
         if showsCost, let value = estimate, let line = l10n.estimateLine(value, backendKind: backendKind) {
             parts.append(line.spoken)
         }
-        if let block, blocked, block != .priceUnknownNotAcknowledged {
-            parts.append(block == .budgetReached ? l10n("ai.estimate.overBudget") : l10n("ai.blocked.\(AiCodes.name(block))"))
-        } else if block == .priceUnknownNotAcknowledged {
-            parts.append(l10n("ai.estimate.useUnpricedHint"))
+        if request != nil, let block, blocked {
+            switch block {
+            case .budgetReached: parts.append(l10n("ai.estimate.overBudget"))
+            case .priceUnknownNotAcknowledged: parts.append(l10n("ai.estimate.useUnpricedHint"))
+            default: parts.append(l10n("ai.blocked.\(AiCodes.name(block))"))
+            }
         }
         return parts.joined(separator: " ")
     }

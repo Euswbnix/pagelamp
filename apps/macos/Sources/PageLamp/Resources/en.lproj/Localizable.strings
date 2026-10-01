@@ -1048,6 +1048,7 @@
 "mac.ai.saveBudget" = "Save Budget";
 "mac.ai.turnOn" = "Review and Turn On…";
 "mac.ai.turnOnName" = "Turn On %1$@";
+"mac.ai.useUnpriced" = "Use It Anyway";
 "mac.ai.whatsShared" = "What's Shared…";
 "mac.app.name" = "PageLamp";
 "mac.capsule.busy" = "Another sync is running";
@@ -1148,7 +1149,7 @@
 "mac.nav.thisWeek" = "This Week";
 "mac.plan.closeHint" = "Closing this stops it; nothing is saved.";
 "mac.plan.readOnly" = "Read-only here. To change the plan, plan again with PageLamp.";
-"mac.plan.reason" = "(%1$@)";
+"mac.plan.reason" = " (%1$@)";
 "mac.plan.useThisPlan" = "Use This Plan";
 "mac.plan.writeAgain" = "Write Again";
 "mac.plan.writeMyPlan" = "Write My Plan";

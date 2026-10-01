@@ -63,6 +63,27 @@ private struct CancelDouble: ForwardingService {
     }
 }
 
+/// Whether estimates fail (the test turns it on and off).
+private actor EstimateSwitch {
+    private(set) var failing = false
+
+    func set(_ on: Bool) {
+        failing = on
+    }
+}
+
+private struct FailingEstimates: ForwardingService {
+    let base: any PageLampService
+    let failing: EstimateSwitch
+
+    func estimateGeneration(request: EstimateRequest) async throws(PageLampFailure) -> CostEstimate {
+        if await failing.failing {
+            throw PageLampFailure(kind: .network, message: "offline")
+        }
+        return try await base.estimateGeneration(request: request)
+    }
+}
+
 /// Waits (briefly) until `condition` holds.
 @MainActor
 private func eventually(_ condition: () async -> Bool) async -> Bool {
@@ -200,6 +221,18 @@ struct PlanModelTests {
         let plan = try await plan(service)
         let active = try await service.listCourses().filter { !$0.course.hidden && $0.lifecycle.isActive }
         #expect(!active.isEmpty && plan.courses.map(\.course.id) == active.map(\.course.id))
+        // A course that isn't active (the facade's lifecycle) isn't offered.
+        let all = try await service.listCourses()
+        let first = try #require(all.first)
+        let inactive = CourseSummary(
+            course: first.course, aiMaterials: first.aiMaterials, timeline: first.timeline, lifecycle: testLifecycle(),
+            counts: first.counts, nextDeadline: first.nextDeadline, sourceLabel: first.sourceLabel,
+            lastSyncedAt: first.lastSyncedAt
+        )
+        #expect(!inactive.lifecycle.isActive)
+        let offered = PlanModel(service: service, courses: [inactive] + all.dropFirst(), debounce: .zero).courses
+        #expect(active.contains { $0.course.id == first.course.id })
+        #expect(!offered.contains { $0.course.id == first.course.id } && offered.count == active.count - 1)
         #expect(plan.horizon == "14" && plan.hours == "10" && plan.problem == nil)
         #expect(plan.request == request(courses: active.map(\.course.id)))
         #expect(plan.estimateRequest == .studyPlan(horizonDays: 14, courses: active.map(\.course.id)))
@@ -300,6 +333,70 @@ struct PlanModelTests {
             Issue.record("the run should go over the budget")
             return
         }
+        // This run only: back on the form, going over is chosen again.
+        plan.discard()
+        await plan.estimate.settle()
+        #expect(!plan.estimate.overrideBudget && plan.estimate.block == .budgetReached && !plan.estimate.canGenerate)
+    }
+
+    @Test("a failed estimate never leaves another request's amount beside Write My Plan")
+    func failedEstimate() async throws {
+        let failing = EstimateSwitch()
+        let plan = try await plan(FailingEstimates(base: mock(.aiKey), failing: failing))
+        #expect(plan.estimate.canGenerate)
+        // A failed re-read of the same request keeps its estimate.
+        await failing.set(true)
+        await plan.estimate.refresh()
+        #expect(plan.estimate.failure != nil && plan.estimate.estimate != nil)
+        // A new request whose estimate fails: no amount, no Generate, and the hint says why.
+        plan.horizon = "7"
+        await plan.estimate.settle()
+        #expect(plan.estimate.failure?.kind == .network && plan.estimate.estimate == nil)
+        #expect(!plan.estimate.canGenerate && !plan.estimate.showsCost)
+        #expect(plan.estimate.spokenHint(en).contains("Couldn't reach"))
+        // A hint for what's missing in the form comes first.
+        #expect(plan.estimate.spokenHint(en, problem: "Plan 1 to 56 days.").hasPrefix("Plan 1 to 56 days."))
+        await failing.set(false)
+        plan.horizon = "8"
+        await plan.estimate.settle()
+        #expect(plan.estimate.failure == nil && plan.estimate.canGenerate)
+    }
+
+    @Test("Write Again: a new run of the draft's request, then estimates are read again")
+    func writeAgain() async throws {
+        let service = mock(.aiKey)
+        let courses = try await service.listCourses()
+        let plan = PlanModel(service: service, courses: courses, debounce: .zero)
+        await plan.estimate.settle()
+        let before = await service.callCount("estimateGeneration")
+        await plan.generate()
+        guard case .finished(let first) = plan.run.phase else {
+            Issue.record("expected a draft")
+            return
+        }
+        // After the run, the form's estimate is read again (usage and the budget changed).
+        #expect(await service.callCount("estimateGeneration") > before)
+        await plan.againEstimate.settle()
+        await plan.writeAgain()
+        guard case .finished(let second) = plan.run.phase else {
+            Issue.record("expected a second draft")
+            return
+        }
+        #expect(second.meta.generationId != first.meta.generationId)
+        #expect(plan.draftRequest == plan.request && !plan.againEstimate.overrideBudget)
+    }
+
+    @Test("a model without a price: Use It Anyway, once, then the run can go")
+    func unpriced() async throws {
+        let estimate = CostEstimateModel(service: mock(.aiUnpriced), debounce: .zero)
+        estimate.update(.weeklyExplanation(course: "DEMO101", week: nil))
+        await estimate.settle()
+        #expect(estimate.block == .priceUnknownNotAcknowledged && !estimate.canGenerate && estimate.showsCost)
+        #expect(estimate.backendKind == .apiKey && estimate.choice?.model == "gpt-6-preview-0929")
+        let value = try #require(estimate.estimate)
+        #expect(en.estimateLine(value, backendKind: estimate.backendKind)?.text == "No price for this model")
+        await estimate.acknowledgeUnpriced()
+        #expect(estimate.acknowledgeFailure == nil && estimate.block == nil && estimate.canGenerate)
     }
 
     @Test("Stop sends one cancel per press; the run ends stopped")
@@ -359,6 +456,29 @@ struct PlanModelTests {
         #expect(await eventually { await log.count == 1 })
         await gate.open()
         await run.value
+        guard case .stopped = plan.run.phase else {
+            Issue.record("expected the run to stop")
+            return
+        }
+    }
+
+    @Test("a plan saved from the sheet shows on This Week, and everything is read again")
+    func savedPlan() async throws {
+        let service = mock(.aiKey)
+        let model = AppModel(
+            dataMode: .mock(.aiKey), strings: .app, settings: InMemorySettingsStore(language: .english),
+            timing: AppModel.Timing(finishedCapsule: .seconds(60), failedCapsule: .seconds(60), mock: .instant),
+            calendar: TestClock.calendar, clock: { TestClock.now }, notificationCenter: NotificationCenter(),
+            service: service
+        )
+        await model.refresh()
+        let draft = try await service.generateStudyPlan(request: request(), generationId: "g1", observer: GenEventStream())
+        let stored = try await service.acceptStudyPlan(generationId: draft.meta.generationId)
+        let reads = await service.callCount("latestStudyPlan")
+        await model.studyPlanSaved(stored)
+        #expect(model.studyPlan == stored && model.sectionErrors[.studyPlan] == nil)
+        #expect(await service.callCount("latestStudyPlan") > reads)
+        #expect(ThisWeekText(l10n: en, calendar: TestClock.calendar, now: TestClock.now).planMeta(stored).hasPrefix("Made by PageLamp now"))
     }
 }
 

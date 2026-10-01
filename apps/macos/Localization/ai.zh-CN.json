@@ -12,6 +12,7 @@
     "removeAll": "删除所有 AI 数据…",
     "removeAllConfirm": "全部删除",
     "turnOnName": "启用 {{name}}",
-    "notNow": "以后再说"
+    "notNow": "以后再说",
+    "useUnpriced": "仍然使用"
   }
 }

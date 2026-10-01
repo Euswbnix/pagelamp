@@ -1048,6 +1048,7 @@
 "mac.ai.saveBudget" = "保存预算";
 "mac.ai.turnOn" = "查看并启用…";
 "mac.ai.turnOnName" = "启用 %1$@";
+"mac.ai.useUnpriced" = "仍然使用";
 "mac.ai.whatsShared" = "会发送哪些内容…";
 "mac.app.name" = "PageLamp";
 "mac.capsule.busy" = "另一个同步正在进行";
@@ -1146,7 +1147,7 @@
 "mac.nav.connect" = "连接 AI 应用";
 "mac.nav.sources" = "数据来源与同步";
 "mac.nav.thisWeek" = "本周";
-"mac.plan.closeHint" = "关闭这里会停止生成，不会保存任何内容。";
+"mac.plan.closeHint" = "关闭后会停止生成，不会保存任何内容。";
 "mac.plan.readOnly" = "这里仅供查看。想调整计划，可以用 PageLamp 重新规划。";
 "mac.plan.reason" = "（%1$@）";
 "mac.plan.useThisPlan" = "使用这份计划";
