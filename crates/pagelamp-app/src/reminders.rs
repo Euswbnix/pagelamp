@@ -185,7 +185,8 @@ fn schedule(store: &Store, tz: Tz, from: Timestamp, to: Timestamp) -> Result<Vec
     let settings = settings_in(store)?;
     // A deadline's reminders fire 48 h to 24 h before it; a digest counts the next 7 days.
     let deadlines = views::deadlines_between(store, from, to + Duration::days(7))?;
-    let plan = store.latest_study_plan()?;
+    // Hidden courses' items don't count, as in the digest.
+    let plan = store.latest_visible_study_plan()?;
     let has_courses = !store.list_courses(false)?.is_empty();
     Ok(reminders::schedule(
         &settings,

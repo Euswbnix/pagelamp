@@ -100,7 +100,8 @@ pub fn weekly_digest(store: &Store, at: AsOf) -> Result<WeeklyDigest> {
         }
         courses.push(entry);
     }
-    let plan = store.latest_study_plan()?.map(|stored| {
+    // Hidden courses' items left out, like the hidden courses themselves.
+    let plan = store.latest_visible_study_plan()?.map(|stored| {
         let week_ago = at.today - Duration::days(7);
         let last_week: Vec<&StudyPlanItem> = stored
             .plan

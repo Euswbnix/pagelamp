@@ -328,12 +328,15 @@ impl Course {
 
     /// "CSC413H1 — Neural Networks and Deep Learning" or just the name.
     pub fn display_name(&self) -> String {
-        match &self.code {
-            Some(code) if !self.name.starts_with(code.as_str()) => {
-                format!("{code} — {}", self.name)
-            }
-            _ => self.name.clone(),
-        }
+        course_display_name(self.code.as_deref(), &self.name)
+    }
+}
+
+/// "CODE — Name", or the name alone when it starts with the code or there is none.
+pub(crate) fn course_display_name(code: Option<&str>, name: &str) -> String {
+    match code {
+        Some(code) if !name.starts_with(code) => format!("{code} — {name}"),
+        _ => name.to_string(),
     }
 }
 
