@@ -103,7 +103,7 @@ private struct ThisWeekDocument: View {
                 RemindersCatchUp()
                 Next7DaysSection(digest: digest, text: text)
                 if let note = model.weeklyNote {
-                    WeeklyNoteSection(note: note)
+                    WeeklyNoteSection(note: note, now: now)
                 }
                 StudyPlanSection(text: text, expanded: planExpanded)
                 ContentsSection(text: text)

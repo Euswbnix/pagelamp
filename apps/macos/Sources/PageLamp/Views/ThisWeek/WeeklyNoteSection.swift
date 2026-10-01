@@ -16,6 +16,8 @@ import PageLampModel
 
 struct WeeklyNoteSection: View {
     let note: WeeklyNoteModel
+    /// This Week's minute (its `TimelineView`): what's due within 7 days, and the day, move with it.
+    let now: Date
 
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
@@ -93,13 +95,12 @@ struct WeeklyNoteSection: View {
         }
     }
 
-    /// What the note writes about, as This Week knows it: the courses that show and whether each
-    /// is active, the next deadlines and the plan. `load()` and the estimate never change it, so
-    /// re-reading on a change can't loop.
+    /// What the note writes about at `now` (`WeeklyNoteModel.weekKey`).
     private var noteWeekKey: [String] {
-        model.courses.map { "\($0.course.id):\($0.course.hidden):\($0.lifecycle.isActive)" }
-            + model.upcomingDeadlines.map(\.event.id)
-            + [model.studyPlan.map { "plan:\($0.id):\($0.plan.items.count)" } ?? "plan:none"]
+        WeeklyNoteModel.weekKey(
+            courses: model.courses, deadlines: model.upcomingDeadlines, plan: model.studyPlan, now: now,
+            calendar: model.calendar
+        )
     }
 
     // MARK: - Write, or the run

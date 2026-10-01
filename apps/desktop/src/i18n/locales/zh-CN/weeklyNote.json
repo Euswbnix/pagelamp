@@ -50,6 +50,7 @@
     "costKey": "使用 {{backend}} · {{model}}：每周一 {{cost}}，计入你的每月预算。",
     "costLocal": "使用 {{backend}} · {{model}}，在这台电脑上运行。",
     "costUnpriced": "使用 {{backend}} · {{model}}，计入你的每月预算（这个模型没有价格信息）。",
+    "costWeekEmpty": "使用 {{backend}} · {{model}}，计入你的每月预算（费用取决于那一周的内容）。",
     "paused": "已暂停：每周笔记用的模型不再是 API 密钥或这台电脑上的模型。",
     "saveFailed": "无法保存这项设置。"
   }

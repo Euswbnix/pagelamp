@@ -339,15 +339,16 @@ describe("Settings → Weekly note", () => {
     await waitFor(() => expect(toggle).toBeChecked());
   });
 
-  it('shows no cost, and no "no price", in a week with nothing to write about', async () => {
+  it('says the cost depends on the week, with no amount and no "no price", when there\'s nothing to write about', async () => {
     const api = mockApi({ scenario: "all-past" });
     await withNoteModel(api);
-    const estimate = vi.spyOn(api, "estimateGeneration");
     renderRoute("/settings", { api });
     const toggle = await prepareSwitch();
-    await waitFor(() => expect(estimate).toHaveBeenCalled());
-    expect(toggle).not.toHaveAccessibleDescription(/no price for this model/);
-    expect(toggle).not.toHaveAccessibleDescription(/each Monday/);
+    await waitFor(() =>
+      expect(toggle).toHaveAccessibleDescription(
+        "With OpenAI · gpt-5.4-mini, counted toward your monthly budget (what it costs depends on the week).",
+      ),
+    );
   });
 
   it("isn't offered with the ChatGPT plan", async () => {

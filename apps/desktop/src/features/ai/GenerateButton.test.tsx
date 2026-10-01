@@ -93,8 +93,9 @@ describe("≈ $x before Generate", () => {
     expect(await screen.findByText(/nothing to write about this week yet/)).toBeInTheDocument();
     expect(generate()).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("link", { name: "AI models" })).toBeNull();
-    expect(screen.queryByText(/≈/)).toBeNull();
-    expect(screen.queryByText(/tokens/)).toBeNull();
+    // No cost line at all: not even "No price for this model", which the blocked estimate's empty
+    // price would read as if the cost line showed for it.
+    expect(screen.queryByText(/No price for this model/)).toBeNull();
     await user.click(generate());
     expect(onGenerate).not.toHaveBeenCalled();
   });

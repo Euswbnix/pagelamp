@@ -39,6 +39,8 @@ public final class AiSettingsModel {
     public private(set) var noteSettings: WeeklyNoteSettings?
     /// "≈ $x" of a note with its model (the opt-in's cost line).
     public private(set) var noteEstimate: CostEstimate?
+    /// This week has nothing for the note to write about, so there is no "≈ $x" to show.
+    public private(set) var noteWeekEmpty = false
     /// The student picked `usageMonth` (else it follows this month, also into a new one).
     @ObservationIgnored private var usageMonthPicked = false
 
@@ -130,8 +132,12 @@ public final class AiSettingsModel {
         switch await estimate {
         // A week with nothing to write about has no estimate: the model's own facts say the rest
         // (no amount, and no "no price" for a priced model).
-        case .success(let value): noteEstimate = value.wouldBlock == .nothingToWrite ? nil : value
-        case .failure: noteEstimate = nil
+        case .success(let value):
+            noteWeekEmpty = value.wouldBlock == .nothingToWrite
+            noteEstimate = noteWeekEmpty ? nil : value
+        case .failure:
+            noteWeekEmpty = false
+            noteEstimate = nil
         }
     }
 
@@ -143,13 +149,18 @@ public final class AiSettingsModel {
         public var onDevice: Bool
         public var priceKnown: Bool
         public var upper: UInt64?
+        /// This week has nothing to write about: the line says so instead of an amount.
+        public var weekEmpty: Bool
 
-        public init(backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?) {
+        public init(
+            backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?, weekEmpty: Bool = false
+        ) {
             self.backend = backend
             self.model = model
             self.onDevice = onDevice
             self.priceKnown = priceKnown
             self.upper = upper
+            self.weekEmpty = weekEmpty
         }
     }
 
@@ -163,7 +174,8 @@ public final class AiSettingsModel {
         let facts = chosenModel(for: .weeklyNote)
         return NoteCost(
             backend: backend.label, model: choice.model, onDevice: facts?.onDevice ?? (backend.kind == .local),
-            priceKnown: noteEstimate?.priceKnown ?? facts?.priceKnown ?? true, upper: noteEstimate?.microUsdUpper
+            priceKnown: noteEstimate?.priceKnown ?? facts?.priceKnown ?? true, upper: noteEstimate?.microUsdUpper,
+            weekEmpty: noteWeekEmpty
         )
     }
 

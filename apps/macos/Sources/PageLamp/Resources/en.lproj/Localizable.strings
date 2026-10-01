@@ -1889,6 +1889,7 @@
 "weeklyNote.settings.costKey" = "With %1$@ · %2$@: %3$@ each Monday, counted toward your monthly budget.";
 "weeklyNote.settings.costLocal" = "With %1$@ · %2$@, on this computer.";
 "weeklyNote.settings.costUnpriced" = "With %1$@ · %2$@, counted toward your monthly budget (no price for this model).";
+"weeklyNote.settings.costWeekEmpty" = "With %1$@ · %2$@, counted toward your monthly budget (what it costs depends on the week).";
 "weeklyNote.settings.paused" = "Paused: the weekly note's model is no longer an API key or a model on this computer.";
 "weeklyNote.settings.prepare" = "Prepare my weekly note when I open PageLamp on Monday";
 "weeklyNote.settings.saveFailed" = "The setting couldn't be saved.";

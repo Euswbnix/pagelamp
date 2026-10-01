@@ -212,6 +212,28 @@ struct WeeklyNoteModelTests {
         #expect(note.shown?.meta.generationId == first.meta.generationId)
     }
 
+    @Test("the week's key: the same a minute later, new when a deadline comes within 7 days or the day changes")
+    func weekKey() async throws {
+        let service = mock(.aiKey, time: TestTime())
+        let courses = try await service.listCourses()
+        let deadlines = try await service.listDeadlines(course: nil, daysAhead: 60, daysBack: 0)
+        func key(_ now: Date) -> [String] {
+            WeeklyNoteModel.weekKey(courses: courses, deadlines: deadlines, plan: nil, now: now, calendar: TestClock.calendar)
+        }
+        #expect(key(TestClock.now) == key(TestClock.now.addingTimeInterval(60)))
+        // A deadline more than 7 days out joins the key once it is 7 days away.
+        let week: TimeInterval = 7 * 86_400
+        let later = try #require(
+            deadlines.filter { ($0.event.dueAt ?? $0.event.startsAt).map { $0 > TestClock.now.addingTimeInterval(week + 3_600) } ?? false }
+                .min { ($0.event.dueAt ?? $0.event.startsAt ?? .distantFuture) < ($1.event.dueAt ?? $1.event.startsAt ?? .distantFuture) }
+        )
+        let due = try #require(later.event.dueAt ?? later.event.startsAt)
+        #expect(!key(due.addingTimeInterval(-week - 30)).contains(later.event.id))
+        #expect(key(due.addingTimeInterval(-week + 30)).contains(later.event.id))
+        // Midnight starts a new key, whatever else stays.
+        #expect(key(TestClock.at(0, 23, 59)).first != key(TestClock.at(1, 0, 1)).first)
+    }
+
     @Test("Monday's note: a read that says it's due prepares it once, marked automatic")
     func mondayNote() async throws {
         let time = TestTime()
@@ -668,6 +690,8 @@ struct NoteTextTests {
         #expect(text.mondayCost(Cost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: 900))
             == "With OpenAI · gpt-6-luna: ≈ less than $0.01 each Monday, counted toward your monthly budget.")
         #expect(text.mondayCost(Cost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: nil)) == nil)
+        #expect(text.mondayCost(Cost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: nil, weekEmpty: true))
+            == "With OpenAI · gpt-6-luna, counted toward your monthly budget (what it costs depends on the week).")
     }
 }
 
@@ -716,7 +740,10 @@ struct WeeklyNoteSettingsTests {
         await empty.setModel(.weeklyNote, backend: .provider(providerId: "openai"), model: "gpt-5.4-mini")
         await empty.load()
         let cost = try #require(empty.noteCost)
-        #expect(cost.priceKnown && cost.upper == nil)
-        #expect(words.mondayCost(cost) == nil)
+        #expect(cost.priceKnown && cost.upper == nil && cost.weekEmpty)
+        #expect(words.mondayCost(cost) == "With OpenAI · gpt-5.4-mini, counted toward your monthly budget (what it costs depends on the week).")
+        // An unpriced model still says so first.
+        await empty.setModel(.weeklyNote, backend: .provider(providerId: "openai"), model: "gpt-6-preview-0929")
+        #expect(empty.noteCost.flatMap(words.mondayCost) == "With OpenAI · gpt-6-preview-0929, counted toward your monthly budget (no price for this model).")
     }
 }

@@ -1889,6 +1889,7 @@
 "weeklyNote.settings.costKey" = "使用 %1$@ · %2$@：每周一 %3$@，计入你的每月预算。";
 "weeklyNote.settings.costLocal" = "使用 %1$@ · %2$@，在这台电脑上运行。";
 "weeklyNote.settings.costUnpriced" = "使用 %1$@ · %2$@，计入你的每月预算（这个模型没有价格信息）。";
+"weeklyNote.settings.costWeekEmpty" = "使用 %1$@ · %2$@，计入你的每月预算（费用取决于那一周的内容）。";
 "weeklyNote.settings.paused" = "已暂停：每周笔记用的模型不再是 API 密钥或这台电脑上的模型。";
 "weeklyNote.settings.prepare" = "周一打开 PageLamp 时自动准备我的每周笔记";
 "weeklyNote.settings.saveFailed" = "无法保存这项设置。";

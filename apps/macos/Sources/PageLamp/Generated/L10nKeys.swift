@@ -1955,6 +1955,7 @@ nonisolated enum L10nKeys {
         "weeklyNote.settings.costKey",
         "weeklyNote.settings.costLocal",
         "weeklyNote.settings.costUnpriced",
+        "weeklyNote.settings.costWeekEmpty",
         "weeklyNote.settings.paused",
         "weeklyNote.settings.prepare",
         "weeklyNote.settings.saveFailed",
@@ -2431,6 +2432,7 @@ nonisolated enum L10nKeys {
         "weeklyNote.settings.costKey": ["backend", "model", "cost"],
         "weeklyNote.settings.costLocal": ["backend", "model"],
         "weeklyNote.settings.costUnpriced": ["backend", "model"],
+        "weeklyNote.settings.costWeekEmpty": ["backend", "model"],
         "weeklyNote.weekOf": ["date"],
     ]
 }

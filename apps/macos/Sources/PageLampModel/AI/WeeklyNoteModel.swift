@@ -413,3 +413,25 @@ public final class WeeklyNoteModel {
         mondayRun?.cancel()
     }
 }
+
+extension WeeklyNoteModel {
+    /// What the note writes about, as This Week knows it at `now`: the day, the courses that show
+    /// and whether each is active, the deadlines due within the next 7 days and the plan. It
+    /// changes when one of those does (a sync, a hidden course, a deadline coming within 7 days,
+    /// midnight), not every minute, and the card reads "≈ $x" again then. `load()` and the estimate
+    /// never change it, so that can't loop.
+    nonisolated public static func weekKey(
+        courses: [CourseSummary], deadlines: [Deadline], plan: StoredStudyPlan?, now: Date, calendar: Calendar
+    ) -> [String] {
+        let day = calendar.startOfDay(for: now)
+        let horizon = now.addingTimeInterval(7 * 86_400)
+        let due = deadlines.filter { deadline in
+            guard let when = deadline.event.dueAt ?? deadline.event.startsAt else { return false }
+            return when >= now && when <= horizon
+        }
+        return ["day:\(day.timeIntervalSinceReferenceDate)"]
+            + courses.map { "\($0.course.id):\($0.course.hidden):\($0.lifecycle.isActive)" }
+            + due.map(\.event.id)
+            + [plan.map { "plan:\($0.id):\($0.plan.items.count)" } ?? "plan:none"]
+    }
+}
