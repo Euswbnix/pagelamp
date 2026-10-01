@@ -531,13 +531,22 @@ pub async fn remove(
         print!("{}", removal_preview_text(&preview, &options));
         return Ok(());
     }
-    if !yes {
+    let courses = if yes {
+        courses
+    } else {
         // Before the question, on stderr: stdout keeps only the result (`--json` too). An
         // unknown or already removed course fails here, before anything is asked.
-        let preview = app.removal_preview(courses.clone())?;
+        let preview = app.removal_preview(courses)?;
         eprint!("{}", removal_preview_text(&preview, &options));
         confirm(&removal_question(&preview, &options), false)?;
-    }
+        // Exactly what was shown, by id: a course removed or pruned while the question waits
+        // is then not found, and a code can't land on another course.
+        preview
+            .items
+            .iter()
+            .map(|item| item.course_id.clone())
+            .collect()
+    };
     let report = app.remove_courses(courses, options).await?;
     if json {
         return print_json(&report);

@@ -809,11 +809,32 @@ fn removing_and_purging_courses_ask_first() {
     let unknown = refused(&pagelamp(&home, &["course", "remove", "NOPE999"]));
     assert!(!unknown.contains("--yes"), "{unknown}");
 
-    // --yes: removed at once, without asking; undoable for 7 days.
+    // --yes: removed at once, without asking; undoable for 7 days. A name names the course the
+    // preview showed (after the question the shown id is what's removed).
+    let shown = json_out(&pagelamp(
+        &home,
+        &[
+            "--json",
+            "course",
+            "remove",
+            "Advanced Demo Studies",
+            "--dry-run",
+        ],
+    ));
     let report = json_out(&pagelamp(
         &home,
-        &["--json", "course", "remove", "DEMO202", "--yes"],
+        &[
+            "--json",
+            "course",
+            "remove",
+            "Advanced Demo Studies",
+            "--yes",
+        ],
     ));
+    assert_eq!(
+        report["removed"][0]["course_id"],
+        shown["items"][0]["course_id"]
+    );
     assert_eq!(report["purged_now"], false);
     let id = report["removed"][0]["removed_id"]
         .as_str()
