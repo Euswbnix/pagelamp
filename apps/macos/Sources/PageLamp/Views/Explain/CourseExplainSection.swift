@@ -88,6 +88,10 @@ private struct ExplainContent: View {
             }
         }
         .task(id: week) { await explain.load(week: week) }
+        // Include It and Write Again are priced for the explanation on screen.
+        .onChange(of: "\(explain.shown(week: week)?.meta.generationId ?? "")|\(week.map(String.init) ?? "")", initial: true) {
+            explain.prepare(for: explain.shown(week: week), week: week)
+        }
         .onChange(of: announcement) { _, text in
             if let text { announce(text) }
         }
@@ -233,22 +237,28 @@ private struct ExplainContent: View {
                             .accessibilityHidden(true)
                     }
                     Spacer(minLength: PLSpace.s3)
+                    let again = explain.againEstimate(for: shown)
                     Button(l10n("mac.explain.writeAgain")) {
-                        Task { await explain.generate(week: week, uiLanguage: model.localization) }
+                        Task { await explain.writeAgain(shown, week: week, uiLanguage: model.localization) }
                     }
                     .controlSize(.small)
-                    .disabled(!explain.estimate.canGenerate || explain.run.isRunning)
-                    .accessibilityHint(explain.estimate.spokenHint(l10n))
+                    .disabled(!again.canGenerate || explain.run.isRunning)
+                    .accessibilityHint(again.spokenHint(l10n))
+                }
+                // Written with materials included: Write Again sends them again, at this price
+                // (otherwise the week's "≈ $x" above is the one).
+                if !explain.againIds(shown).isEmpty {
+                    EstimateView(estimate: explain.againEstimate)
                 }
             }
             ExplanationView(
                 explanation: shown,
                 text: text,
                 deleting: explain.deleting,
-                includeDisabled: !explain.estimate.canGenerate || explain.run.isRunning,
-                includeHint: explain.estimate.spokenHint(l10n),
-                onInclude: { ids in
-                    Task { await explain.generate(week: week, include: ids, uiLanguage: model.localization) }
+                includeEstimate: explain.includeEstimate,
+                running: explain.run.isRunning,
+                onInclude: {
+                    Task { await explain.includeAndWriteAgain(shown, week: week, uiLanguage: model.localization) }
                 },
                 onDelete: { delete(shown, week: week) }
             )

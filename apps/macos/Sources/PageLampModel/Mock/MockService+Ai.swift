@@ -165,16 +165,16 @@ extension MockService {
 
     /// The facade's estimate: nothing chosen, the course's own rules and a week with nothing to
     /// read block with no amount; the other blocks keep it (only an acknowledgement or the budget
-    /// stops the run). `include`: the materials a run of an explanation brings back (a run's
-    /// gate reads the week as the run does; "≈ $x" has none).
-    func estimate(_ request: EstimateRequest, include: [String] = []) throws(PageLampFailure) -> CostEstimate {
+    /// stops the run). An explanation's `include` is priced as its run sends it: only the
+    /// graded-looking materials of that week it lifts and reads (an id naming nothing there, or a
+    /// material read anyway, adds nothing).
+    func estimate(_ request: EstimateRequest) throws(PageLampFailure) -> CostEstimate {
         let gateBlocked = { (reason: BlockReason) in
             CostEstimate(
                 microUsdUpper: nil, inputTokens: 0, maxOutputTokens: 0, reasoningAllowance: 0,
                 repairPossible: false, priceKnown: false, wouldBlock: reason
             )
         }
-        let work = MockAiFixtures.workload(request)
         guard let choice = db.features.ai.routing[request.aiFeature] else { return gateBlocked(.noModelChosen) }
         let record = try provider(of: choice.backend)
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
@@ -188,12 +188,16 @@ extension MockService {
             if let reason = try courseGate(course, onDevice: onDevice) { return gateBlocked(reason) }
         }
         // Like the facade's week context: a week with nothing to read is refused before a run.
-        if case .weeklyExplanation(let course, let week, _) = request {
+        var lifted = 0
+        if case .weeklyExplanation(let course, let week, let include) = request {
             let materials = explanationWeek(db.courses[try courseIndex(course)], week).materials
-            if Self.explanationSelection(materials, include: include).read.isEmpty {
+            let read = Self.explanationSelection(materials, include: include).read
+            if read.isEmpty {
                 return gateBlocked(.noReadableMaterials)
             }
+            lifted = Self.liftedIncludes(read, include).count
         }
+        let work = MockAiFixtures.workload(request, lifted: lifted)
         let status = backendStatus(record)
         let reasoning = max(MockAiFixtures.reasoning(choice.effort), info?.reasoningAlwaysOn == true ? 8_000 : 0)
         let repair = record.wire == .openaiChat
@@ -327,8 +331,8 @@ extension MockService {
 
     /// The facade's gate before a run: the estimate's block (only going over the budget can be
     /// overridden), then who the run goes to.
-    func aiRun(_ request: EstimateRequest, overrideBudget: Bool, include: [String] = []) throws(PageLampFailure) -> MockAiRun {
-        let estimate = try estimate(request, include: include)
+    func aiRun(_ request: EstimateRequest, overrideBudget: Bool) throws(PageLampFailure) -> MockAiRun {
+        let estimate = try estimate(request)
         if let block = estimate.wouldBlock, !(block == .budgetReached && overrideBudget) {
             throw PageLampFailure(kind: .blocked, message: "The AI gate stopped this run.", blocked: block)
         }
