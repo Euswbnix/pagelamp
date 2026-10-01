@@ -33,7 +33,10 @@ const RECENT = "recent";
 /**
  * Course → Explain (design §5.2, §7): a week, "≈ $x" and Explain, the run's stages with Stop
  * (no text arrives before the end), the explanation with its citations, and the last 5 of the
- * week. Disabled with the course's reason when its materials aren't readable.
+ * week. Disabled with the course's reason when its materials aren't readable. Every run starts
+ * from "≈ $x" for exactly what it sends: Explain from the week's; Include from its own (the
+ * explanation's include plus what the facade brings back); Regenerate of an explanation whose
+ * run included materials from its own (the same include again).
  */
 export function ExplainTab({
   overview,
@@ -55,13 +58,15 @@ export function ExplainTab({
   const [shownId, setShownId] = useState<string | null>(null);
   const [reminderClosed, setReminderClosed] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
+  /** Runs started: each one's estimates start again (going over the budget is per run). */
+  const [runs, setRuns] = useState(0);
   const weekLabelId = useId();
   const resultRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   /** After the shown explanation changes or goes: its region, else the tab's heading. */
   const focusResult = () =>
     requestAnimationFrame(() => (resultRef.current ?? titleRef.current)?.focus());
-  const { state, stop } = run;
+  const { state, stop, sentInclude } = run;
   // A run's explanation replaces its progress (and Stop): the focus goes to the result.
   useEffect(() => {
     if (state.phase === "done") resultRef.current?.focus();
@@ -112,8 +117,24 @@ export function ExplainTab({
   const request: EstimateRequest = { feature: "weekly_explanation", course: course.id, week };
   const start = (include: string[], overrideBudget = false) => {
     setShownId(null);
+    setRuns((n) => n + 1);
     void run.start(week, { overrideBudget, include, uiLanguage: i18n.language });
   };
+  // What the shown explanation's run included (one written here), and what Include sends: that,
+  // plus the left-out materials the facade brings back (sending only the new ones would drop the
+  // first include's materials back to "left out").
+  const again = shown ? sentInclude(shown.meta.generation_id) : [];
+  const includable = shown
+    ? shown.left_out.filter((m) => m.includable).map((m) => m.material_id)
+    : [];
+  const include =
+    includable.length > 0 ? [...again, ...includable.filter((id) => !again.includes(id))] : [];
+  const withInclude = (ids: string[]): EstimateRequest => ({
+    feature: "weekly_explanation",
+    course: course.id,
+    week,
+    include: ids,
+  });
 
   return (
     <div className="space-y-6">
@@ -163,6 +184,7 @@ export function ExplainTab({
           <ExplainProgress state={state} onStop={() => void run.stop()} />
         ) : (
           <GenerateButton
+            key={runs}
             request={request}
             label={week === null ? t("generateRecent") : t("generate", { week })}
             onGenerate={({ overrideBudget }) => start([], overrideBudget)}
@@ -183,16 +205,38 @@ export function ExplainTab({
           className="space-y-4 border-t pt-4 outline-none"
         >
           {shown.stale ? (
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <p>{t("result.stale")}</p>
-              <Button type="button" size="sm" variant="outline" onClick={() => start([])}>
-                {t("result.regenerate")}
-              </Button>
-            </div>
+            again.length > 0 ? (
+              // Its run included materials: Regenerate sends them again, at their own price.
+              <div className="space-y-2 text-sm">
+                <p>{t("result.stale")}</p>
+                <GenerateButton
+                  key={runs}
+                  request={withInclude(again)}
+                  label={t("result.regenerate")}
+                  variant="outline"
+                  onGenerate={({ overrideBudget }) => start(again, overrideBudget)}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <p>{t("result.stale")}</p>
+                <Button type="button" size="sm" variant="outline" onClick={() => start([])}>
+                  {t("result.regenerate")}
+                </Button>
+              </div>
+            )
           ) : null}
           <ExplanationView
             explanation={shown}
-            onIncludeLeftOut={(ids) => start(ids)}
+            include={
+              include.length > 0
+                ? {
+                    request: withInclude(include),
+                    resetKey: runs,
+                    onInclude: ({ overrideBudget }) => start(include, overrideBudget),
+                  }
+                : undefined
+            }
             actions={
               <DeleteExplanation
                 deleting={remove.isPending}

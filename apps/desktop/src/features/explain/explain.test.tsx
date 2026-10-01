@@ -161,9 +161,10 @@ describe("Course → Explain: what the facade does", () => {
     const includeButton = within(article).getByRole("button", {
       name: "Not graded work? Include it and write again",
     });
-    // What PageLamp does with it is said right there, and read with the button.
+    // Its own "≈ $x", and what PageLamp does with it, said right there and read with the button.
+    await waitFor(() => expect(includeButton).not.toHaveAttribute("aria-disabled"));
     expect(includeButton).toHaveAccessibleDescription(
-      "PageLamp explains concepts; it doesn't answer assignments, quizzes or exams.",
+      /≈.*PageLamp explains concepts; it doesn't answer assignments, quizzes or exams\.$/,
     );
     await user.click(includeButton);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
@@ -173,6 +174,177 @@ describe("Course → Explain: what the facade does", () => {
       m.title.startsWith("Assignment 4"),
     );
     expect(include).toEqual([assignment?.id]);
+  });
+
+  it("prices Include with what it sends: blocked over the budget until its own tick, used once", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    // A budget every run would go over: each line says so and waits for its own tick.
+    await api.setMonthlyBudget(1);
+    const explain = vi.spyOn(api, "explainWeek");
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
+      m.title.startsWith("Assignment 4"),
+    );
+    if (!assignment) throw new Error("week 4 has Assignment 4");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    const tick = (name = "Go over the budget this time") =>
+      screen.findAllByRole("checkbox", { name });
+    const button = await screen.findByRole("button", { name: "Explain week 4" });
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    await user.click((await tick())[0] as HTMLElement);
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    await screen.findByText("The explanation is ready.");
+    const article = await screen.findByRole("article");
+    const include = within(article).getByRole("button", {
+      name: "Not graded work? Include it and write again",
+    });
+    await waitFor(() =>
+      expect(estimate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          feature: "weekly_explanation",
+          week: 4,
+          include: [assignment.id],
+        }),
+      ),
+    );
+    // Include is blocked on its own line, and a click does nothing.
+    await waitFor(() => expect(include).toHaveAttribute("aria-disabled", "true"));
+    await user.click(include);
+    expect(explain).toHaveBeenCalledTimes(1);
+    // The week's tick went with the first run: both lines wait for a tick again.
+    const ticks = await tick();
+    expect(ticks).toHaveLength(2);
+    for (const box of ticks) expect(box).not.toBeChecked();
+    // Both ticked; Include runs, going over for that run only.
+    for (const box of ticks) await user.click(box);
+    await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
+    await user.click(include);
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
+    expect(explain.mock.calls[1]?.[3]).toMatchObject({
+      include: [assignment.id],
+      override_budget: true,
+    });
+    // The run's end: Stop goes, the new explanation shows.
+    await explain.mock.results[1]?.value;
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull());
+    // No tick is left for a later run.
+    await waitFor(() => {
+      const left = screen.queryAllByRole("checkbox", { name: "Go over the budget this time" });
+      expect(left.length).toBeGreaterThan(0);
+      for (const box of left) expect(box).not.toBeChecked();
+    });
+  });
+
+  it("a stopped Include leaves no tick behind: going over the budget is chosen for each run", async () => {
+    const api = mockApi({ scenario: "ai-key", syncStepMs: 400 });
+    await api.setMonthlyBudget(1);
+    const explain = vi.spyOn(api, "explainWeek");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    const ticks = () => screen.findAllByRole("checkbox", { name: "Go over the budget this time" });
+    const button = await screen.findByRole("button", { name: "Explain week 4" });
+    await user.click((await ticks())[0] as HTMLElement);
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull(), {
+      timeout: 5000,
+    });
+    const article = await screen.findByRole("article");
+    const include = within(article).getByRole("button", {
+      name: "Not graded work? Include it and write again",
+    });
+    const includeTick = (await ticks()).at(-1) as HTMLElement;
+    await user.click(includeTick);
+    await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
+    await user.click(include);
+    await user.click(await screen.findByRole("button", { name: "Stop" }));
+    await screen.findByText("Stopped. Nothing was saved.", undefined, { timeout: 5000 });
+    expect(explain).toHaveBeenCalledTimes(2);
+    // The same explanation and its Include are back, and Include waits for a tick again.
+    const again = within(await screen.findByRole("article")).getByRole("button", {
+      name: "Not graded work? Include it and write again",
+    });
+    await waitFor(() => expect(again).toHaveAttribute("aria-disabled", "true"));
+    for (const box of await ticks()) expect(box).not.toBeChecked();
+  });
+
+  it("Include adds to what the explanation's run included, and Regenerate sends that again", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
+      m.title.startsWith("Assignment 4"),
+    );
+    if (!assignment) throw new Error("week 4 has Assignment 4");
+    const original = api.explainWeek.bind(api);
+    // The included run's explanation: stale since, and with one more graded-looking material
+    // left out (the facade's answer after the course changed).
+    const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
+      const written = await original(...args);
+      if (args[3].include?.length !== 1) return written;
+      return {
+        ...written,
+        stale: true,
+        left_out: [
+          ...written.left_out,
+          {
+            material_id: "quiz-5",
+            title: "Quiz 5",
+            reason: "looks_like_assessment",
+            includable: true,
+          },
+        ],
+      };
+    });
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    const button = await screen.findByRole("button", { name: "Explain week 4" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    const include = async () => {
+      const article = await screen.findByRole("article");
+      const found = within(article).getByRole("button", {
+        name: "Not graded work? Include it and write again",
+      });
+      await waitFor(() => expect(found).not.toHaveAttribute("aria-disabled"));
+      return found;
+    };
+    await user.click(await include());
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
+    await screen.findByText("The explanation is ready.");
+    // The second Include: the assignment again, and the quiz.
+    await user.click(await include());
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(3));
+    expect(explain.mock.calls[2]?.[3].include).toEqual([assignment.id, "quiz-5"]);
+  });
+
+  it("Regenerate of an explanation whose run included materials sends them again, at its own price", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
+      m.title.startsWith("Assignment 4"),
+    );
+    if (!assignment) throw new Error("week 4 has Assignment 4");
+    const original = api.explainWeek.bind(api);
+    const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
+      const written = await original(...args);
+      return (args[3].include?.length ?? 0) > 0 ? { ...written, stale: true } : written;
+    });
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    const button = await screen.findByRole("button", { name: "Explain week 4" });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    const article = await screen.findByRole("article");
+    const includeButton = within(article).getByRole("button", {
+      name: "Not graded work? Include it and write again",
+    });
+    await waitFor(() => expect(includeButton).not.toHaveAttribute("aria-disabled"));
+    await user.click(includeButton);
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
+    const regenerate = await screen.findByRole("button", { name: "Write again" });
+    await waitFor(() => expect(regenerate).not.toHaveAttribute("aria-disabled"));
+    expect(regenerate).toHaveAccessibleDescription(/≈/);
+    expect(estimate).toHaveBeenCalledWith(expect.objectContaining({ include: [assignment.id] }));
+    await user.click(regenerate);
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(3));
+    expect(explain.mock.calls[2]?.[3].include).toEqual([assignment.id]);
   });
 
   it("says “include it” for one graded-looking material in Chinese too (one plural form)", async () => {
