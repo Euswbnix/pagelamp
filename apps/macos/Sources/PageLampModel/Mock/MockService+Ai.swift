@@ -14,9 +14,25 @@ extension MockService {
         return MockAiFixtures.presets
     }
 
+    /// Like the facade: each server's preset, and the provider already added with that preset
+    /// and address (a trailing "/" and localhost vs 127.0.0.1 don't count).
     public func detectLocalServers() async throws(PageLampFailure) -> [LocalServer] {
         await respond("detectLocalServers")
-        return MockAiFixtures.localServers
+        func normal(_ url: String) -> String {
+            var url = url.replacingOccurrences(of: "//localhost", with: "//127.0.0.1")
+            while url.hasSuffix("/") { url.removeLast() }
+            return url
+        }
+        return MockAiFixtures.localServers.map { server in
+            let preset = MockAi.presetName(server.kind)
+            let added = db.features.ai.providers.first {
+                $0.preset == preset && normal($0.baseUrl) == normal(server.baseUrl)
+            }
+            return LocalServer(
+                kind: server.kind, preset: preset, baseUrl: server.baseUrl, running: server.running,
+                providerId: added?.providerId
+            )
+        }
     }
 
     public func aiStatus() async throws(PageLampFailure) -> AiStatus {
@@ -157,7 +173,7 @@ extension MockService {
             )
         }
         let work = MockAiFixtures.workload(request)
-        guard let choice = db.features.ai.routing[request.feature] else { return gateBlocked(.noModelChosen) }
+        guard let choice = db.features.ai.routing[request.aiFeature] else { return gateBlocked(.noModelChosen) }
         let record = try provider(of: choice.backend)
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
         let onDevice = info?.onDevice ?? false
@@ -296,6 +312,20 @@ extension MockService {
     }
 
     /// A provider backend's record; the other backends aren't in this build.
+    /// The facade's gate before a run: the estimate's block (only going over the budget can be
+    /// overridden), then who the run goes to.
+    func aiRun(_ request: EstimateRequest, overrideBudget: Bool) throws(PageLampFailure) -> MockAiRun {
+        let estimate = try estimate(request)
+        if let block = estimate.wouldBlock, !(block == .budgetReached && overrideBudget) {
+            throw PageLampFailure(kind: .blocked, message: "The AI gate stopped this run.", blocked: block)
+        }
+        guard let choice = db.features.ai.routing[request.aiFeature] else {
+            throw PageLampFailure(kind: .blocked, message: "No model chosen.", blocked: .noModelChosen)
+        }
+        let record = try provider(of: choice.backend)
+        return MockAiRun(backendLabel: record.label, model: choice.model, onDevice: record.onDevice)
+    }
+
     private func provider(of backend: BackendRef) throws(PageLampFailure) -> ModelProviderRecord {
         guard case .provider(let id) = backend else {
             throw PageLampFailure(kind: .blocked, message: "Not available in this build.", blocked: .backendDisabledInThisBuild)
@@ -343,4 +373,11 @@ extension MockService {
             throw PageLampFailure(kind: .model, message: "Couldn't reach the provider.", modelError: .network)
         }
     }
+}
+
+/// Who a mock run goes to.
+struct MockAiRun: Sendable {
+    let backendLabel: String
+    let model: String
+    let onDevice: Bool
 }

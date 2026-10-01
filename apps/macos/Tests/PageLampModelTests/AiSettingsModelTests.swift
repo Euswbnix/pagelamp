@@ -124,16 +124,21 @@ struct AiSettingsModelTests {
         #expect(ai.keyFailure == nil)
     }
 
-    @Test("a running local server is added once; it then shows as added")
+    @Test("a running local server is added as the facade's preset; detection then names its provider")
     func localServer() async throws {
         let (ai, _) = await loaded(.demo)
         let ollama = try #require(ai.localServers?.first { $0.kind == .ollama })
-        #expect(!ai.isAdded(ollama))
+        #expect(!ai.isAdded(ollama) && ollama.preset == "ollama")
         let record = try #require(await ai.useLocalServer(ollama))
-        #expect(record.onDevice && record.keyLast4 == nil)
-        #expect(ai.isAdded(ollama))
+        #expect(record.onDevice && record.keyLast4 == nil && record.preset == "ollama")
+        // The facade's detection now names the provider it was added as.
+        let added = try #require(ai.localServers?.first { $0.kind == .ollama })
+        #expect(ai.isAdded(added) && added.providerId == record.providerId)
+        #expect(ai.localServers?.first { $0.kind == .lmStudio }?.providerId == nil)
         #expect(ai.providerBackends.first?.kind == .local)
         #expect(!ai.hasApiKey)
+        #expect(await ai.removeProvider(record.providerId))
+        #expect(ai.localServers?.allSatisfy { !ai.isAdded($0) } == true)
     }
 
     @Test("a feature's model and effort are saved and re-read; Test reports the probe")

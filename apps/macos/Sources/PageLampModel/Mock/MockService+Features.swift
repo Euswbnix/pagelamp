@@ -22,6 +22,15 @@ struct MockFeatures: Sendable {
     var shownReminders: Set<String> = []
     /// Removed courses, with the course to put back on restore.
     var removed: [MockRemoval] = []
+    /// Model runs in flight, the ones asked to stop, and the study plan drafts.
+    var runs = MockRuns()
+}
+
+struct MockRuns: Sendable {
+    var running: Set<String> = []
+    var cancelled: Set<String> = []
+    var planDrafts: [String: GeneratedStudyPlan] = [:]
+    var acceptedDrafts: Set<String> = []
 }
 
 struct MockRemoval: Sendable {
@@ -191,18 +200,6 @@ extension MockService {
         return WeeklyNoteSettings(prepareOnMonday: db.features.prepareNoteOnMonday, prepareOnMondayAllowed: allowed)
     }
 
-    public func generateStudyPlan(
-        request: StudyPlanRequest, generationId: String, observer: any GenObserver
-    ) async throws(PageLampFailure) -> GeneratedStudyPlan {
-        await respond("generateStudyPlan")
-        throw Self.noModel
-    }
-
-    public func acceptStudyPlan(generationId: String) async throws(PageLampFailure) -> StoredStudyPlan {
-        await respond("acceptStudyPlan")
-        throw PageLampFailure(kind: .notFound, message: "No study plan draft with id \(generationId)")
-    }
-
     public func setStudyPlanItemDone(planId: Int64, itemIndex: UInt32, done: Bool) async throws(PageLampFailure) -> StoredStudyPlan {
         await respond("setStudyPlanItemDone")
         guard let stored = db.studyPlan, stored.id == planId else {
@@ -230,8 +227,12 @@ extension MockService {
         return updated
     }
 
+    /// One Stop for every run: a run in flight stops at its next step.
     public func cancelGeneration(generationId: String) async throws(PageLampFailure) {
         await respond("cancelGeneration")
+        if db.features.runs.running.contains(generationId) {
+            db.features.runs.cancelled.insert(generationId)
+        }
     }
 
     // MARK: - Course calendars (none read or proposed in the mock)

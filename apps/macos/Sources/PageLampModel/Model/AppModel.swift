@@ -238,6 +238,17 @@ public final class AppModel {
 
     /// Settings ▸ AI: the student's models, keys, budget and usage (shared with the Tauri app).
     public let aiSettings: Bool
+    /// This Week ▸ Plan with PageLamp…: a study plan written by the student's model.
+    public let aiPlan: Bool
+
+    /// A plan written by PageLamp was saved: This Week shows it at once, then everything is read
+    /// again (a refresh already under way can't put the old plan back; reminders and the menu
+    /// bar's week follow the new plan).
+    public func studyPlanSaved(_ stored: StoredStudyPlan) async {
+        studyPlan = stored
+        sectionErrors[.studyPlan] = nil
+        await refresh()
+    }
 
     // MARK: Reminders (M3; preview builds until they ship)
 
@@ -248,6 +259,8 @@ public final class AppModel {
     public private(set) var menuBarWeek: MenuBarWeek?
     /// Why the last `weekly_digest()` failed (the menu says so and offers Try Again).
     public private(set) var menuBarWeekFailure: PageLampFailure?
+    /// Reads of the menu bar's week started: a late, older one is dropped.
+    @ObservationIgnored private var menuBarLoads = 0
     @ObservationIgnored private let reminderCenters: ReminderCenters
     @ObservationIgnored private var reminderTasks: [Task<Void, Never>] = []
     @ObservationIgnored private var reminderResponder: ReminderResponder?
@@ -274,10 +287,12 @@ public final class AppModel {
         service: (any PageLampService)? = nil,
         reminders: Bool = false,
         reminderCenters: ReminderCenters = .standard,
-        aiSettings: Bool = false
+        aiSettings: Bool = false,
+        aiPlan: Bool = false
     ) {
         self.strings = strings
         self.aiSettings = aiSettings
+        self.aiPlan = aiPlan
         self.reminderCenters = reminderCenters
         self.settings = settings
         self.timing = timing
@@ -465,13 +480,21 @@ public final class AppModel {
         let generation = self.generation
         let service = self.service
         let now = clock()
+        menuBarLoads += 1
+        let load = menuBarLoads
+        // The plan with the digest: its tasks carry its AI-generated line (a plan PageLamp wrote).
+        // The week and the label are one pair, read together: both are new, or neither.
+        async let plan = Self.load { () async throws(PageLampFailure) in try await service.latestStudyPlan() }
         do throws(PageLampFailure) {
             let digest = try await service.weeklyDigest()
-            guard generation == self.generation else { return }
-            menuBarWeek = MenuBarWeek(digest: digest, now: now)
+            let stored = try await plan.get()
+            guard generation == self.generation, load == menuBarLoads else { return }
+            menuBarWeek = MenuBarWeek(digest: digest, now: now, aiLabel: stored?.aiLabel)
             menuBarWeekFailure = nil
         } catch {
-            guard generation == self.generation else { return }
+            guard generation == self.generation, load == menuBarLoads else { return }
+            // Either read failed: the week shown stays with its own label (they were read
+            // together), and the menu offers Try Again.
             menuBarWeekFailure = error
         }
     }

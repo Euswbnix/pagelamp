@@ -72,6 +72,14 @@ struct MockAi: Sendable {
 
     // MARK: - Helpers (the Tauri mock's)
 
+    /// The preset a local server is added as (the facade's `LocalServer.preset`).
+    static func presetName(_ kind: LocalServerKind) -> String {
+        switch kind {
+        case .ollama: "ollama"
+        case .lmStudio: "lm_studio"
+        }
+    }
+
     static func last4(_ key: String) -> String {
         String(key.trimmingCharacters(in: .whitespacesAndNewlines).suffix(4))
     }
@@ -308,18 +316,6 @@ enum MockAiFixtures {
         case .low: 2_000
         case .medium: 8_000
         case .high: 24_000
-        }
-    }
-}
-
-extension EstimateRequest {
-    /// The feature the request is for.
-    var feature: AiFeature {
-        switch self {
-        case .studyPlan: .studyPlan
-        case .weeklyExplanation: .weeklyExplanation
-        case .weeklyNote: .weeklyNote
-        case .courseCalendar: .courseCalendar
         }
     }
 }

@@ -12,6 +12,7 @@
     "removeAll": "Remove All AI Data…",
     "removeAllConfirm": "Remove All",
     "turnOnName": "Turn On {{name}}",
-    "notNow": "Not Now"
+    "notNow": "Not Now",
+    "useUnpriced": "Use It Anyway"
   }
 }

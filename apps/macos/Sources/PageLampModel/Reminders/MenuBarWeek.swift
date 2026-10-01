@@ -33,8 +33,13 @@ public struct MenuBarWeek: Sendable {
     public let courses: [DigestCourse]
     /// How many deadlines are due within 24 hours (the lamp lights: spec §6.5).
     public let dueWithin24h: Int
+    /// The AI-generated line of the plan the tasks come from (a plan PageLamp wrote), read
+    /// with the digest; nil for the AI app's plan or when it couldn't be read.
+    public internal(set) var aiLabel: AiLabel?
 
-    public init(digest: WeeklyDigest, now: Date) {
+    /// - Parameter aiLabel: the latest plan's label, read together with `digest`.
+    public init(digest: WeeklyDigest, now: Date, aiLabel: AiLabel? = nil) {
+        self.aiLabel = aiLabel
         let all = digest.courses.flatMap { course in
             course.deadlines.compactMap { deadline -> DueItem? in
                 guard let due = deadline.event.dueAt ?? deadline.event.startsAt else { return nil }
