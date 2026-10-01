@@ -112,7 +112,7 @@ struct MockAiTests {
         try await unpriced.acknowledgeUnpricedModel(backend: openai, model: "gpt-6-preview-0929")
         #expect(try await unpriced.estimateGeneration(request: .weeklyExplanation(course: "DEMO101", week: nil)).wouldBlock == nil)
         // On this computer: free, and question (b) doesn't apply.
-        let local = try await mock(.aiLocal).estimateGeneration(request: .weeklyExplanation(course: "DEMO205", week: nil))
+        let local = try await mock(.aiLocal).estimateGeneration(request: .weeklyExplanation(course: "DEMO205", week: 1))
         #expect(local.microUsdUpper == 0 && local.priceKnown && local.wouldBlock == nil)
         // A changed disclosure: the full estimate, blocked until it's read again.
         let changed = try await mock(.aiDisclosureChanged).estimateGeneration(request: .weeklyNote)

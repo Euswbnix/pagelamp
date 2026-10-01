@@ -313,7 +313,7 @@ ScrollView {
 | plan | Made by your AI app 2 days ago · covers Sep 22 – Oct 5 | 2天前由你的 AI 应用生成 · 覆盖 9月22日 至 10月5日 |
 | read-only | Read-only here. To change the plan, ask your AI app. | 这里仅供查看。想调整计划，直接跟你的 AI 应用说就行。 |
 
-### 3.2 Course detail [M1 read-only · M2 editing, scrubber, downloads · M3 Quick Look]
+### 3.2 Course detail [M1 read-only · M2 editing, scrubber, downloads · M3 Quick Look, Explain]
 
 ```text
 W2 · Course detail, This Week section, current week, inspector open
@@ -322,7 +322,7 @@ W2 · Course detail, This Week section, current week, inspector open
 │ ▪ This Week        ░░│░░ DEMO205 · Canvas · synced 2 h ago                │ AI Policy                    │  ← C eyebrow · G inspector (system)
 │                     ░│░░ Foundations of Sample Data                       │ How can you use AI in        │
 │ Courses              │░░ ▪ Learning aid only · ▪ 12 of 14 readable        │ this course?                 │  ← C AI status line → inspector
-│  ▪ DEMO101    Wk 4   │░░ [ This Week │ Deadlines │ Timeline ]             │ ( ) Not set                  │  ← custom glass segmented control (§3.2.1)
+│  ▪ DEMO101    Wk 4   │░░ [ This Week │ Deadlines │ Timeline │ Explain ]   │ ( ) Not set                  │  ← custom glass segmented control (§3.2.1)
 │ [▪ DEMO205    Wk 4 ] │░░ Week 4 · Sep 22 – 28         This week           │ ( ) No AI                    │  ← C week line (adjustable); lit = now
 │  ▪ DEMO310  ▪ Wk 5   │                                                    │ (•) Learning aid only        │
 │  ▪ DEMO099    Wk 2   │   Modules  ▪ Week 4: Sampling  ▪ Lab 3             │     AI can help you under-   │
@@ -362,7 +362,7 @@ ScrollView {
 **Header band.**
 - Eyebrow "DEMO205 · Canvas · synced 2 h ago" (*new* `mac.course.eyebrow`; + " · Syncing now…" / " · 正在同步…"). Title: course name, Large Title Semibold, always sans.
 - **AI status line:** one plain Button → inspector at AI Policy; neutral glyph + ink text, **never colour-coded**: `questionmark.circle` "AI policy not set · Set…" / "尚未设置 AI 使用规定 · 去设置…" (*new* `course.aiStatus.notSet`) · `hand.raised` No AI / 禁止使用 AI · `lightbulb` Learning aid only / 仅限辅助学习 · `quote.opening` Allowed with citation / 注明后可用 · `checkmark.circle` No restrictions / 没有限制; then `common.aiMaterials.*` ("12 of 14 readable by your AI app" / "共 14 份资料，AI 应用可读取 12 份" · "AI access to materials is off" / "已关闭 AI 读取资料" · "Materials not shared (No AI course)" / "资料不共享（禁止使用 AI 的课程）"), plus Past course / 往期课程 and Hidden / 已隐藏.
-- **Section picker:** This Week · Deadlines · Timeline / 本周 · 截止日期 · 教学进度: a custom segmented control that reads as the system's 27 tabs control, whose selected segment is one glass thumb that slides on every change (§3.2.1); where the band is narrower than its natural width (273 pt English, 243 Chinese), the system pop-up menu (`.pickerStyle(.menu)`).
+- **Section picker:** This Week · Deadlines · Timeline / 本周 · 截止日期 · 教学进度, then Explain / 讲解 [M3] in preview builds until shipped: a custom segmented control that reads as the system's 27 tabs control, whose selected segment is one glass thumb that slides on every change (§3.2.1); where the band is narrower than its natural width (273 pt English, 243 Chinese; with Explain 364 and 324, so the menu takes over below a window of about 943 / 903 pt with the sidebar and inspector at their ideal widths [estimated]), the system pop-up menu (`.pickerStyle(.menu)`). A course opened at Explain where it is off shows This Week.
 - **Week line:** "Week 4 · Sep 22 – 28" (Title 1, mono digits, `.numericText(value:)`) + a word tag: This week / 本周 · Last week / 上周 · Next week / 下周 · In 2 weeks / 2 周后 · 2 weeks ago / 2 周前 (*new* `course.week.relative.*`). "Week 4 of 12" / "第 4 周（共 12 周）" (*new* `common.week.ofTotal`) needs §13 #3; the date range needs §13 #4 (else omitted). One adjustable VoiceOver element (§6.3).
 - **Lit** when the line shows the current week and today is inside the term (This Week section: displayed week = `timeline.current_week`; other sections always show the current week). Away from now (week 6): band unlit, tag "In 2 weeks", toolbar **This Week**, and the scrubber's "↩ This Week" capsule splits off. Unknown: "Week unknown" / 周次未知, no pool (S11).
 
@@ -402,6 +402,26 @@ W3b · Timeline section
 
 **Timeline:** confidence in words (`timeline.confidence.*` + `common.confidence.*`). **Term strip [M2]:** plain buttons 1…`total_weeks` (else up to `max(available_weeks)`), empty weeks `.tertiary`, the current week marked "▲ now" in `.primary` (not a second lamp); a click opens This Week at that week. Evidence verbatim, tagged English (§7.1). **Set Term Dates…** opens the inspector (tinted only via the arbiter).
 
+```text
+W3c · Explain section [M3]
+╭──────────────────────────────────────────────────────────────╮
+│   Explain a week                                             │
+│   PageLamp asks your model to explain the week's materials…  │
+│   Week  [ Week 4 (this week) ▾ ]                             │
+│   ≈ $0.01 · OpenAI · gpt-6-luna         [ Explain Week 4 ]   │
+│   AI-generated · OpenAI · gpt-6-luna · Sep 25…  Copy Delete… │
+│   Week 4 slides — Sampling and Surveys                       │
+│   The key idea of **…** is …   [▤ Week 4 slides…, p. 2]      │
+│   Check your understanding   1. What is the main point of …? │
+│   Not read this time                                         │
+│   Assignment 4 — Survey Simulation (looks like graded work)  │
+│   [ Not Graded Work? Include It and Write Again ]            │
+│   Earlier explanations   Fri, Sep 25, 9:40 AM        Show    │
+╰──────────────────────────────────────────────────────────────╯
+```
+
+**Explain [M3]** (design §5.2, §7; the Tauri app's Explain tab), preview builds until shipped: the fourth section, with its own week (the course's default week; a picker of the weeks with materials; "Recent materials" when the weeks aren't known). Hidden, No AI and AI access off say why instead of Generate (off: **Course Materials…** shows the course's state in the inspector, read-only in M1; No AI: **AI Policy…**). "≈ $x" and the facade's block as in Plan, then **Explain Week 4**; the run's headline ("Writing with OpenAI · gpt-6-luna"), how many materials it reads and its stage, with Stop (one cancel per press). The explanation: the AI-generated line with **Copy** (the text, each paragraph's sources and the label, as the Tauri app copies it) and **Delete…** (asked first); each section's paragraphs (the Markdown subset: strong, emphasis in medium weight, code; links, images and HTML stay text) with source chips that open the material (its file on this computer, else its link); citations the facade removed; the check questions; what wasn't read and why, with **Not Graded Work? Include It and Write Again** for what only looks like graded work; the course's "cite AI use" note; after a course's first cloud run, the one-time question whether its materials may be shared with AI services (three answers and Dismiss). A stale explanation offers **Write Again**; Write Again and Include each run from the week's own "≈ $x". Earlier explanations of the week (the last 5) can be shown again. The run belongs to the course: switching sections keeps it going, leaving the course stops it, and a cloud run stops when the course's answer becomes "not allowed" or it becomes hidden, No AI or off in another app. VoiceOver hears the stages and how the run ended (announcements, no capsule), never the text as it's written; focus moves to the result.
+
 **Download flow [M2]** (W6e): `.confirmationDialog(titleVisibility: .visible)` + `.dialogIcon(Image(systemName: "arrow.down.circle"))`; message = `download.viewingNotice` **first** ("Downloading files through Canvas can count as viewing them (e.g. module 'must view' requirements)." / "通过 Canvas 下载文件可能会被算作“已查看”（例如满足模块里“必须查看”的要求）。") then `download.dialogDetail`; **Download** / Cancel. Progress runs in the capsule ("Downloading 12 of 40 files · DEMO205" / "正在下载 12/40 个文件 · DEMO205"); result `download.done_*`, plus a fused **Details** bubble listing skipped files (first 5 + `moreWarnings_*`).
 
 **Inspector [M1 read-only · M2 editable].**
@@ -423,7 +443,7 @@ W3b · Timeline section
 **Why AppKit, not SwiftUI with `.accessibilityRepresentation`.**
 
 - `GlassSegmentedControl` subclasses `NSControl`, so it keeps AppKit's own focus rules of the system control (`acceptsFirstResponder` true, `canBecomeKeyView` and `needsPanelToBecomeKey` false with Full Keyboard Access off: no Tab stop; with it on, a Tab stop at the system control's place), first mouse, key routing and the automatic focus ring (`drawFocusRingMask` around the key segment). A click never takes focus, with Full Keyboard Access off or on, as with the system control (its `mouseDown` doesn't call `NSControl`'s).
-- Its accessibility is written by hand: the control is the tab group, three `NSAccessibilityElement`s are the tabs (`GlassSegmentedAccessibility.swift`), so VoiceOver's focus can sit on one segment like the system control's.
+- Its accessibility is written by hand: the control is the tab group, one `NSAccessibilityElement` per section is a tab (three; four with Explain) (`GlassSegmentedAccessibility.swift`), so VoiceOver's focus can sit on one segment like the system control's.
 - Pointer events arrive directly: a mouse-down and mouse-up in the same run-loop pass still select (the system control ignores them).
 - An `NSControl` answers AppKit's legacy accessibility queries from its cell (it has none here), so in-process legacy reads say `AXUnknown`; what VoiceOver reads is SwiftUI's node for the view, which reflects the modern overrides. Verify out of process (below).
 
@@ -431,11 +451,11 @@ W3b · Timeline section
 
 | | Value |
 |---|---|
-| Control | 273 × 24 / 243 × 24: each segment wants its text + 24 rounded up to 0.5, + 4 (tabs style), + 1 before every segment but the first; every slot takes the widest (91 / 81); checked against AppKit's `intrinsicContentSize` in the tests |
+| Control | 273 × 24 / 243 × 24: each segment wants its text + 24 rounded up to 0.5, + 4 (tabs style), + 1 before every segment but the first; every slot takes the widest (91 / 81); checked against AppKit's `intrinsicContentSize` in the tests. With Explain [M3]: 364 × 24 / 324 × 24 (the widest slot is unchanged) |
 | Track | radius 6 continuous; ink (black light, white dark) 4.7 % + a 3.0 % sheen; Increase Contrast 14.9 %; Show Borders 1 pt ink 12.5 %, plus-darker / plus-lighter, track only |
-| Thumb | inset 2, height 20, radius 4 continuous: 87 / 86 / 86 at x 2 / 94 / 185 (77 / 76 / 76 at 2 / 84 / 165) |
+| Thumb | inset 2, height 20, radius 4 continuous: 87 / 86 / 86 at x 2 / 94 / 185 (77 / 76 / 76 at 2 / 84 / 165); Explain's 86 at 276 (76 at 246) |
 | Labels | system 13 Regular in every state, `labelColor` (84.7 %), 100 % with Increase Contrast; boxes 16 tall at y 4, their text width rounded up, centred on the thumb (x 14 / 107 / 202.5); baseline 17 pt from the top: each title's line fragment drawn at its box's top-left (`NSString.draw(at:)`), as SwiftUI lays out the system control's labels (a 13 pt line 16 tall, baseline at 13) |
-| VoiceOver frames | the slots: 91 wide at x 0 / 91 / 182 (81), full height, as VoiceOver reads the system control's segments |
+| VoiceOver frames | the slots: 91 wide at x 0 / 91 / 182, Explain 273 (81), full height, as VoiceOver reads the system control's segments |
 
 **States:**
 
@@ -477,7 +497,7 @@ AXTabGroup "Course sections"   value = selected tab; no actions of its own (Swif
   AXRadioButton/AXTabButton "Timeline"
 ```
 
-The title is the description (no AXTitle, no AXSelected). Focus is on a segment, never the group: the key segment while the control is first responder (setting AXFocused on a segment makes the control first responder at that segment). Press selects and slides, focus unchanged; pressing while disabled does nothing. Notifications, as the system control posts them (measured out of process with an `AXObserver`, the way VoiceOver listens): **no value-changed notification** for any selection change; focused-element-changed on the key segment when it moves while the control is first responder and when a focused control selects (Space, also on the selected segment, a click, VoiceOver's press); nothing when a click or press selects on an unfocused control. When focus arrives (Tab, ⇧Tab, VoiceOver focus), AppKit posts the one focused-element notification for the key segment itself (the control adds none), and SwiftUI posts one for its own node of the view, which reads the SwiftUI label: `.accessibilityLabel` on the representable ("Course sections"), as the system Picker's label reaches it. "1 of 3" is VoiceOver's count of the children [verify U3].
+The title is the description (no AXTitle, no AXSelected). Focus is on a segment, never the group: the key segment while the control is first responder (setting AXFocused on a segment makes the control first responder at that segment). Press selects and slides, focus unchanged; pressing while disabled does nothing. Notifications, as the system control posts them (measured out of process with an `AXObserver`, the way VoiceOver listens): **no value-changed notification** for any selection change; focused-element-changed on the key segment when it moves while the control is first responder and when a focused control selects (Space, also on the selected segment, a click, VoiceOver's press); nothing when a click or press selects on an unfocused control. When focus arrives (Tab, ⇧Tab, VoiceOver focus), AppKit posts the one focused-element notification for the key segment itself (the control adds none), and SwiftUI posts one for its own node of the view, which reads the SwiftUI label: `.accessibilityLabel` on the representable ("Course sections"), as the system Picker's label reaches it. "1 of 3" ("1 of 4" with Explain) is VoiceOver's count of the children [verify U3].
 
 **Motion** (`perf-probe.sh segment`): one additive `CASpringAnimation` on `position` (`sectionSpring`, 0.25 s, bounce 0; the system click slide, ω 26.4, ζ 1.05), started in the input's own handler; the control writes the selection to the model on the next run-loop turn, so this turn's commit carries the slide to the render server before the new section builds (a forced `CATransaction.flush()` did the same but stalled the content's crossfade on back-to-back switches). The new frame and its spring are committed in one transaction (`GlassThumbMover.slide`): outside an event (VoiceOver's press) no implicit transaction is open, and committed apart the thumb would show at its destination until the spring arrived with the next commit, after the section build; a model change starts in the SwiftUI update that carries it (with that update's commit); a cross-link's new control starts at `CourseUIState.pickerSection` (where the thumb last stood) and slides once in the page's first frame; later visits start in place. Retargets add up (the velocity carries over). Reduce Motion: jumps.
 
@@ -1236,7 +1256,7 @@ Once, on first appearance; skipped under Reduce Motion; a content gradient, not 
 ### 7.1 VoiceOver and keyboard
 
 - **Contents row** (combined): "DEMO101, Intro to Demo Studies. Week 4, this week. Next: Quiz 3, Saturday 9 AM. AI policy: Learning aid only. 12 of 14 materials readable by your AI app." **Sidebar course row:** "DEMO099, Orientation Placeholder, week 2, No AI" (+ ", source needs attention"). **Sidebar:** "Sidebar, list"; rows are static text with "selected" on the current destination, headers are headings, Sources & Sync's value "1 source needs attention"; ↑/↓ and type-select announce the new row (pointer, menu and VoiceOver presses don't), and so does keyboard focus entering the list; the capsule is hidden (§2.3). **Deadline row:** full date — "Problem Set 2, questions 1 to 3. DEMO205, Assignment. Due today at 11:59 PM, in 58 minutes."
-- **Section picker** (§3.2.1): "Course sections", a tab group of three tabs ("This Week, selected, tab, 1 of 3"); focus on the key segment, VO-Space selects; the glass thumb is not an element.
+- **Section picker** (§3.2.1): "Course sections", a tab group of three tabs ("This Week, selected, tab, 1 of 3"; four with Explain [M3], "1 of 4"); focus on the key segment, VO-Space selects; the glass thumb is not an element.
 - **Capsule:** "Sync status: syncing 2 of 3, Canvas", hint "Shows details"; `AccessibilityNotification.Announcement` on start, finish, new problems and "Copied" only. **Week line [M2]:** adjustable, announces the new week. Every icon-only toolbar item is labelled.
 - Section and day headings `.isHeader`; rotors **Deadlines** (This Week) and **Materials** (course); lamp wash, leaders and ribbon dots `.accessibilityHidden(true)`; plan items static ("…, 30 minutes, not done yet"); the disabled No AI switch's note is visible text and its hint.
 
