@@ -133,6 +133,38 @@ public final class AiSettingsModel {
         }
     }
 
+    /// What Monday's note runs on and what it costs (the opt-in's hint).
+    public struct NoteCost: Equatable, Sendable {
+        public var backend: String
+        public var model: String
+        /// On this computer, as the chosen model's facts say (else the backend's kind).
+        public var onDevice: Bool
+        public var priceKnown: Bool
+        public var upper: UInt64?
+
+        public init(backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?) {
+            self.backend = backend
+            self.model = model
+            self.onDevice = onDevice
+            self.priceKnown = priceKnown
+            self.upper = upper
+        }
+    }
+
+    /// Monday's note's model and cost; nil without a model for the note. On this computer by the
+    /// model's facts (a cloud model through Ollama isn't); without them, by the backend's kind, as
+    /// the Tauri app decides. The price from "≈ $x" for a note, else the model's facts.
+    public var noteCost: NoteCost? {
+        guard let choice = choice(for: .weeklyNote), let backend = backend(key: AiCodes.key(choice.backend)) else {
+            return nil
+        }
+        let facts = chosenModel(for: .weeklyNote)
+        return NoteCost(
+            backend: backend.label, model: choice.model, onDevice: facts?.onDevice ?? (backend.kind == .local),
+            priceKnown: noteEstimate?.priceKnown ?? facts?.priceKnown ?? true, upper: noteEstimate?.microUsdUpper
+        )
+    }
+
     /// "Prepare my weekly note when I open PageLamp on Monday". The facade refuses turning it on
     /// unless the note's model allows it; turning it off always works. False with
     /// `noteSettingFailure` set.

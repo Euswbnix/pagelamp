@@ -83,11 +83,11 @@ public struct NoteText: Sendable {
     /// The Monday opt-in's cost line: "With Ollama · qwen3.5:9b, on this computer." (a model on
     /// this computer, as its facts say), "…, counted toward your monthly budget (no price for this
     /// model)." without a price, else "…: ≈ $0.01 at most each Monday, …"; nil without an amount.
-    public func mondayCost(backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?) -> String? {
-        let names = ["backend": backend, "model": model]
-        if onDevice { return l10n("weeklyNote.settings.costLocal", names) }
-        if !priceKnown { return l10n("weeklyNote.settings.costUnpriced", names) }
-        guard let upper else { return nil }
+    public func mondayCost(_ cost: AiSettingsModel.NoteCost) -> String? {
+        let names = ["backend": cost.backend, "model": cost.model]
+        if cost.onDevice { return l10n("weeklyNote.settings.costLocal", names) }
+        if !cost.priceKnown { return l10n("weeklyNote.settings.costUnpriced", names) }
+        guard let upper = cost.upper else { return nil }
         return l10n("weeklyNote.settings.costKey", names.merging(["cost": l10n.estimateAmount(microUsd: upper)]) { $1 })
     }
 

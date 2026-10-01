@@ -61,6 +61,29 @@ private struct CountingCancels: ForwardingService {
     }
 }
 
+/// Counts note runs started (clicks and Monday's).
+private actor Writes {
+    private(set) var count = 0
+    func record() { count += 1 }
+}
+
+private struct CountingWrites: ForwardingService {
+    let base: any PageLampService
+    let writes: Writes
+
+    func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote {
+        await writes.record()
+        return try await base.writeWeeklyNote(generationId: generationId, options: options, observer: observer)
+    }
+}
+
+/// Lets tasks the code under test started run (Monday's run starts in a task of its own).
+@MainActor
+private func settle() async {
+    for _ in 0..<20 { await Task.yield() }
+    try? await Task.sleep(for: .milliseconds(10))
+}
+
 /// Reads of the kept notes fail while the switch is on.
 private actor NotesSwitch {
     private(set) var failing = false
@@ -183,7 +206,8 @@ struct WeeklyNoteModelTests {
     @Test("Monday's note: a read that says it's due prepares it once, marked automatic")
     func mondayNote() async throws {
         let time = TestTime()
-        let note = noteModel(mock(.weeklyNoteMonday, time: time), time: time)
+        let writes = Writes()
+        let note = noteModel(CountingWrites(base: mock(.weeklyNoteMonday, time: time), writes: writes), time: time)
         await note.load()
         await note.check()
         #expect(await eventually { finished(note) != nil })
@@ -191,7 +215,8 @@ struct WeeklyNoteModelTests {
         #expect(written.automatic && note.automatic && note.automaticProblem == nil)
         // Asked again: not due any more, nothing starts.
         await note.check()
-        #expect(!note.run.isRunning && note.history.count == 1)
+        await settle()
+        #expect(await writes.count == 1 && note.history.count == 1)
     }
 
     @Test("Monday's run never fails loudly: blocked leaves one line, \"not due\" says nothing")
@@ -229,19 +254,67 @@ struct WeeklyNoteModelTests {
         #expect(note.automaticProblem == nil && finished(note) != nil)
     }
 
+    @Test("coming back to the card estimates again, and going over the budget is chosen again")
+    func revisit() async throws {
+        let time = TestTime()
+        let base = mock(.aiKey, time: time)
+        let note = noteModel(base, time: time)
+        await note.load()
+        await note.estimate.settle()
+        #expect(note.estimate.canGenerate && note.estimate.block == nil)
+        // Meanwhile (an explanation elsewhere, Settings ▸ AI) the budget is all but spent.
+        try await base.setMonthlyBudget(microUsd: 1)
+        await note.load()
+        #expect(note.estimate.block == .budgetReached && !note.estimate.canGenerate)
+        note.estimate.overrideBudget = true
+        #expect(note.estimate.canGenerate)
+        // Away and back: the tick goes.
+        await note.load()
+        #expect(!note.estimate.overrideBudget && !note.estimate.canGenerate)
+    }
+
+    @Test("a click clears Monday's line even when it doesn't write a note (stopped)")
+    func clickClearsLine() async throws {
+        let gate = SyncStepGate()
+        let time = TestTime(monday())
+        let base = mock(.aiKey, time: time, gate: gate)
+        _ = try await base.setPrepareWeeklyNoteOnMonday(on: true)
+        try await base.setMonthlyBudget(microUsd: 1)
+        let note = noteModel(base, time: time)
+        await note.check()
+        #expect(await eventually { note.automaticProblem != nil })
+        // The budget raised: a click, stopped before it writes.
+        try await base.setMonthlyBudget(microUsd: nil)
+        await note.load()
+        await note.estimate.settle()
+        let click = Task { await note.write(uiLanguage: "en") }
+        _ = await gate.held()
+        await note.stop()
+        await gate.open()
+        await click.value
+        guard case .stopped = note.run.phase else {
+            Issue.record("expected stopped")
+            return
+        }
+        #expect(note.automaticProblem == nil)
+    }
+
     @Test("a read while a click's run goes starts nothing; the next read does (no answer is skipped for good)")
     func busy() async throws {
         let gate = SyncStepGate()
         let time = TestTime()
-        let note = noteModel(mock(.weeklyNoteMonday, time: time, gate: gate), time: time)
+        let writes = Writes()
+        let note = noteModel(CountingWrites(base: mock(.weeklyNoteMonday, time: time, gate: gate), writes: writes), time: time)
         await note.load()
         await note.estimate.settle()
         let click = Task { await note.write(uiLanguage: "en") }
         _ = await gate.held()
         await note.check()
-        #expect(!note.automatic)
+        await settle()
+        #expect(await writes.count == 1 && !note.automatic)
         await gate.open()
         await click.value
+        #expect(await writes.count == 1 && !note.automatic)
         // The click's note was written today: in the scenario a note today isn't due (the facade's
         // rule), so delete it; the next read then prepares Monday's.
         let clicked = try #require(finished(note))
@@ -272,6 +345,35 @@ struct WeeklyNoteModelTests {
         await timers.fire(.seconds(60))
         #expect(await eventually { await reads.count == 2 })
         await timers.waitForTimer(.seconds(3600))
+        note.close()
+    }
+
+    @Test("after a wake an activation waits for the settle read, even on a new day")
+    func wakeSettles() async throws {
+        let time = TestTime()
+        let timers = ManualTimers()
+        let app = NotificationCenter()
+        let workspace = NotificationCenter()
+        let reads = Reads()
+        let service = CountingReads(base: mock(.aiKey, time: time), reads: reads)
+        let note = noteModel(service, time: time, timers: timers, app: app, workspace: workspace)
+        note.start()
+        try await Task.sleep(for: .milliseconds(20))
+        note.launched(try await service.startupTasks(now: time.now))
+        #expect(await reads.count == 1)
+        // Overnight asleep; Monday morning the Mac wakes and is unlocked at once.
+        workspace.post(name: NSWorkspace.willSleepNotification, object: nil)
+        time.set(TestClock.at(3, 7))
+        workspace.post(name: NSWorkspace.didWakeNotification, object: nil)
+        await timers.waitForTimer(.seconds(60))
+        time.set(TestClock.at(3, 7).addingTimeInterval(5))
+        app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(await reads.count == 1)
+        // The settle read.
+        time.set(TestClock.at(3, 7).addingTimeInterval(60))
+        await timers.fire(.seconds(60))
+        #expect(await eventually { await reads.count == 2 })
         note.close()
     }
 
@@ -417,6 +519,22 @@ struct WeeklyNoteModelTests {
         #expect(try await first.weeklyNotes().isEmpty)
     }
 
+    @Test("the app's launch: Monday's note is prepared from the launch's read, and the hour is waiting")
+    func appLaunch() async throws {
+        let timers = ManualTimers()
+        let model = AppModel(
+            dataMode: .mock(.weeklyNoteMonday), strings: .app, settings: InMemorySettingsStore(language: .english),
+            timing: AppModel.Timing(finishedCapsule: .seconds(60), failedCapsule: .seconds(60), mock: .instant, sleep: timers.sleep),
+            calendar: TestClock.calendar, clock: { TestClock.now }, notificationCenter: NotificationCenter(),
+            aiNote: true
+        )
+        let note = try #require(model.weeklyNote)
+        await model.start()
+        #expect(await eventually { finished(note)?.automatic == true })
+        await timers.waitForTimer(.seconds(3600))
+        note.close()
+    }
+
     @Test("the app's model: on where it's turned on, following the data source; a scenario's Monday shows at once")
     func appModel() async throws {
         let (off, _) = makeModel(scenario: .aiKey)
@@ -496,15 +614,58 @@ struct NoteTextTests {
 
     @Test("the opt-in's cost line: on this computer by the model's facts, no price, or ≈ $x")
     func mondayCost() {
-        #expect(text.mondayCost(backend: "Ollama", model: "qwen3.5:9b", onDevice: true, priceKnown: true, upper: 0)
+        typealias Cost = AiSettingsModel.NoteCost
+        #expect(text.mondayCost(Cost(backend: "Ollama", model: "qwen3.5:9b", onDevice: true, priceKnown: true, upper: 0))
             == "With Ollama · qwen3.5:9b, on this computer.")
         // A cloud model priced at $0 is not "on this computer".
-        #expect(text.mondayCost(backend: "Ollama", model: "gpt-oss:120b-cloud", onDevice: false, priceKnown: true, upper: 0)
+        #expect(text.mondayCost(Cost(backend: "Ollama", model: "gpt-oss:120b-cloud", onDevice: false, priceKnown: true, upper: 0))
             == "With Ollama · gpt-oss:120b-cloud: ≈ less than $0.01 each Monday, counted toward your monthly budget.")
-        #expect(text.mondayCost(backend: "OpenAI", model: "x", onDevice: false, priceKnown: false, upper: nil)
+        #expect(text.mondayCost(Cost(backend: "OpenAI", model: "x", onDevice: false, priceKnown: false, upper: nil))
             == "With OpenAI · x, counted toward your monthly budget (no price for this model).")
-        #expect(text.mondayCost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: 900)
+        #expect(text.mondayCost(Cost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: 900))
             == "With OpenAI · gpt-6-luna: ≈ less than $0.01 each Monday, counted toward your monthly budget.")
-        #expect(text.mondayCost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: nil) == nil)
+        #expect(text.mondayCost(Cost(backend: "OpenAI", model: "gpt-6-luna", onDevice: false, priceKnown: true, upper: nil)) == nil)
+    }
+}
+
+// MARK: - Settings ▸ AI ▸ Weekly note
+
+@Suite("Settings: Monday's weekly note") @MainActor
+struct WeeklyNoteSettingsTests {
+    func loaded(_ scenario: MockScenario) async -> (AiSettingsModel, MockService) {
+        let time = TestTime()
+        let service = mock(scenario, time: time)
+        let ai = AiSettingsModel(service: service, clock: { time.now }, calendar: TestClock.calendar)
+        await ai.load()
+        return (ai, service)
+    }
+
+    @Test("the opt-in: on with a provider, refused without one (and says why), paused once the model goes")
+    func optIn() async throws {
+        let (none, _) = await loaded(.demo)
+        #expect(none.noteSettings == WeeklyNoteSettings(prepareOnMonday: false, prepareOnMondayAllowed: false))
+        #expect(await none.setPrepareOnMonday(true) == false && none.noteSettingFailure?.kind == .invalid)
+        let (ai, _) = await loaded(.aiKey)
+        #expect(await ai.setPrepareOnMonday(true) && ai.noteSettings?.prepareOnMonday == true && ai.noteSettingFailure == nil)
+        await ai.setModel(.weeklyNote, backend: nil, model: nil)
+        #expect(ai.noteSettings == WeeklyNoteSettings(prepareOnMonday: true, prepareOnMondayAllowed: false))
+        #expect(ai.noteCost == nil)
+        // Paused, it can still be turned off.
+        #expect(await ai.setPrepareOnMonday(false) && ai.noteSettings?.prepareOnMonday == false)
+    }
+
+    @Test("the cost: on this computer by the model's facts (a cloud model through Ollama isn't), else priced or not")
+    func cost() async throws {
+        let (local, _) = await loaded(.aiLocal)
+        #expect(local.noteCost?.onDevice == true)
+        await local.setModel(.weeklyNote, backend: .provider(providerId: "ollama"), model: "gpt-oss:120b-cloud")
+        #expect(local.noteCost?.model == "gpt-oss:120b-cloud" && local.noteCost?.onDevice == false)
+        let (key, _) = await loaded(.aiKey)
+        let priced = try #require(key.noteCost)
+        #expect(!priced.onDevice && priced.priceKnown && priced.upper == 900)
+        await key.setModel(.weeklyNote, backend: .provider(providerId: "openai"), model: "gpt-6-preview-0929")
+        #expect(key.noteCost?.priceKnown == false)
+        let words = NoteText(l10n: en, calendar: TestClock.calendar)
+        #expect(key.noteCost.flatMap(words.mondayCost) == "With OpenAI · gpt-6-preview-0929, counted toward your monthly budget (no price for this model).")
     }
 }

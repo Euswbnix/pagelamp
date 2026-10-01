@@ -51,20 +51,9 @@ struct AiWeeklyNoteSection: View {
         }
     }
 
-    /// Paused, or what Monday's note costs with its model.
+    /// Paused, or what Monday's note costs with its model (`AiSettingsModel.noteCost`).
     private func hint(_ settings: WeeklyNoteSettings) -> String? {
         guard settings.prepareOnMondayAllowed else { return l10n("weeklyNote.settings.paused") }
-        guard let choice = ai.choice(for: .weeklyNote), let backend = ai.backend(key: AiCodes.key(choice.backend)) else {
-            return nil
-        }
-        let facts = ai.chosenModel(for: .weeklyNote)
-        // Without the model's facts: the backend's kind (a cloud model through Ollama then reads
-        // as on this computer, as in the Tauri app).
-        let onDevice = facts?.onDevice ?? (backend.kind == .local)
-        let priceKnown = ai.noteEstimate?.priceKnown ?? facts?.priceKnown ?? true
-        return NoteText(l10n: l10n, calendar: model.calendar).mondayCost(
-            backend: backend.label, model: choice.model, onDevice: onDevice, priceKnown: priceKnown,
-            upper: ai.noteEstimate?.microUsdUpper
-        )
+        return ai.noteCost.flatMap(NoteText(l10n: l10n, calendar: model.calendar).mondayCost)
     }
 }

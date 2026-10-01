@@ -73,6 +73,8 @@ public final class WeeklyNoteModel {
     @ObservationIgnored private let startsAtLogin: @MainActor () -> Bool
     @ObservationIgnored private let uiLanguage: @MainActor () -> String
     @ObservationIgnored private var lastRead: Date?
+    /// Until then (60 s after a wake), an activation doesn't ask: the settle read does.
+    @ObservationIgnored private var settleUntil: Date?
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var observers: [Task<Void, Never>] = []
     @ObservationIgnored private var mondayRun: Task<Void, Never>?
@@ -118,9 +120,16 @@ public final class WeeklyNoteModel {
     // MARK: - The notes
 
     /// Reads the kept notes and "≈ $x" (the card shows, the data source changed, or something
-    /// else may have deleted notes: Settings ▸ AI, another app).
+    /// else may have deleted notes: Settings ▸ AI, another app). The note's request never changes,
+    /// so "≈ $x" is read anew each time (a run elsewhere may have spent the budget, a sync grown the
+    /// week), and going over the budget is chosen again on each visit.
     public func load() async {
-        estimate.update(.weeklyNote)
+        estimate.overrideBudget = false
+        if estimate.request == .weeklyNote {
+            await estimate.refresh()
+        } else {
+            estimate.update(.weeklyNote)
+        }
         await loadNotes()
     }
 
@@ -203,6 +212,8 @@ public final class WeeklyNoteModel {
         let options = WeeklyNoteOptions(uiLanguage: uiLanguage(), overrideBudget: false, automatic: true)
         let generation = self.generation
         automatic = true
+        // A tick left from an earlier visit never rides on a later click.
+        estimate.overrideBudget = false
         await run.run(
             { service, id, observer async throws(PageLampFailure) in
                 try await service.writeWeeklyNote(generationId: id, options: options, observer: observer)
@@ -278,7 +289,7 @@ public final class WeeklyNoteModel {
             },
             Task { [weak self] in
                 for await _ in workspace.notifications(named: NSWorkspace.didWakeNotification) {
-                    self?.schedule(first: self?.timing.settle ?? .zero)
+                    self?.woke()
                 }
             },
         ]
@@ -326,12 +337,26 @@ public final class WeeklyNoteModel {
         }
     }
 
+    /// The wake: the read comes once things are up (60 s), and the hour restarts from it. An
+    /// activation meanwhile (unlocking, a Dock click, a notification clicked at the wake) waits
+    /// for that read rather than spending Monday's one try on a network still coming back.
+    private func woke() {
+        settleUntil = clock().addingTimeInterval(Self.seconds(timing.settle))
+        schedule(first: timing.settle)
+    }
+
     private func activated() async {
         guard let last = lastRead else { return }
         let now = clock()
+        if let settleUntil, now < settleUntil { return }
         if now.timeIntervalSince(last) >= timing.activationGap || !calendar.isDate(now, inSameDayAs: last) {
             await check()
         }
+    }
+
+    private static func seconds(_ duration: Duration) -> TimeInterval {
+        let parts = duration.components
+        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) / 1e18
     }
 
     /// The Mac goes to sleep: no countdown until the wake starts one.

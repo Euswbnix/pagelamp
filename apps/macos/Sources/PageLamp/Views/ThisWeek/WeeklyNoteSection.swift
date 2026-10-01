@@ -60,7 +60,11 @@ struct WeeklyNoteSection: View {
                 history
             }
         }
-        .task(id: model.serviceGeneration) { await note.load() }
+        .task(id: model.serviceGeneration) {
+            // Offscreen the harness has read it already (a read in flight would show as loading).
+            guard !standIns else { return }
+            await note.load()
+        }
         // Back from Settings ▸ AI (a model, Remove All AI Data) or the Tauri app: read again.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Task { await note.refresh() }
