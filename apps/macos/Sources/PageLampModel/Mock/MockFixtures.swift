@@ -384,8 +384,11 @@ struct MockFixtures {
             material(c.id, "Lab 3 notebook", .file, week: 3, published: -9, .init(chunks: 12, module: m3)),
             material(c.id, "Week 3 lecture recording", .file, week: 3, published: -8, .init(status: .unsupported, module: m3)),
             material(c.id, "Week 4 slides — Sampling and Surveys", .file, week: 4, published: -2, .init(chunks: 32, module: m4)),
-            material(c.id, "Reading: Chapter 4, Who Gets Asked", .file, week: 4, published: -2, .init(chunks: 18, module: m4)),
+            // Looks like graded work: left out of an explanation unless the student includes it
+            // (then it is the week's second readable material, so the mock's two-material limit
+            // reads it, as in the Tauri mock).
             material(c.id, "Assignment 4 — Survey Simulation", .file, week: 4, published: -2, .init(chunks: 15, module: m4)),
+            material(c.id, "Reading: Chapter 4, Who Gets Asked", .file, week: 4, published: -2, .init(chunks: 18, module: m4)),
             material(c.id, "Survey dataset (large archive)", .file, week: 4, published: -2, .init(status: .notDownloaded, module: m4)),
             material(c.id, "Week 4 practice questions", .page, week: 4, published: -1, .init(chunks: 3, module: m4)),
             material(

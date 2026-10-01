@@ -301,10 +301,12 @@ enum MockAiFixtures {
     }
 
     /// The tokens a run of `request` sends and may get back (the Tauri mock's workload).
-    static func workload(_ request: EstimateRequest) -> (input: UInt64, output: UInt64) {
+    /// - Parameter lifted: the included materials an explanation sends too (each one more
+    ///   material's worth, like the Tauri mock's).
+    static func workload(_ request: EstimateRequest, lifted: Int = 0) -> (input: UInt64, output: UInt64) {
         switch request {
         case .studyPlan(_, let courses): (6_000 + 1_500 * UInt64(courses.count), 8_000)
-        case .weeklyExplanation: (45_000, 6_000)
+        case .weeklyExplanation: (45_000 + 15_000 * UInt64(lifted), 6_000)
         case .weeklyNote: (3_000, 1_500)
         case .courseCalendar(let courses): (15_000 * UInt64(max(1, courses.count)), 4_000)
         }

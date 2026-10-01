@@ -3,7 +3,8 @@
 // gate, the run's stages (Stop between them), an explanation citing every paragraph, and the last
 // 5 kept per course and week, newest first. Where the Tauri mock is silent it follows the facade:
 // an external link and a material without chunks are left out too, "≈ $x" refuses a week with
-// nothing to read (MockService+Ai), and removing AI data drops the explanations.
+// nothing to read (MockService+Ai), an included material is priced only where the run lifts it,
+// and removing AI data drops the explanations.
 
 import Foundation
 import PageLampKit
@@ -93,6 +94,13 @@ extension MockService {
             }
     }
 
+    /// What an explanation sends of `include`: the graded-looking materials it lifts and reads
+    /// (pagelamp-core's `week_context_including`). An id that names nothing read there, or a
+    /// material read anyway, isn't lifted.
+    static func liftedIncludes(_ read: [MaterialView], _ include: [String]) -> [String] {
+        read.filter { include.contains($0.id) && looksLikeAssessment($0.title) }.map { $0.id }
+    }
+
     /// What an explanation reads and leaves out, in the facade's order: an external link, then no
     /// readable text (whatever the title says), then what looks like graded work unless `include`
     /// names it. The first two readable materials are read; the rest are over the length limit,
@@ -172,8 +180,10 @@ extension MockService {
         guard !read.isEmpty else {
             throw PageLampFailure(kind: .blocked, message: "No readable materials this week.", blocked: .noReadableMaterials)
         }
+        // Priced with what the run sends (the facade's run checks its own prompt).
         let run = try aiRun(
-            .weeklyExplanation(course: id, week: week), overrideBudget: options.overrideBudget, include: options.include
+            .weeklyExplanation(course: id, week: week, include: Self.liftedIncludes(read, options.include)),
+            overrideBudget: options.overrideBudget
         )
 
         let tokens = Self.tokensPerMaterial * UInt64(read.count)

@@ -1,5 +1,6 @@
 // A course's Explain section (design §5.2, §7; the Tauri app's ExplainTab and useExplanation):
-// the week to explain, "≈ $x" and the facade's block, the run with its stages and Stop, the
+// the week to explain, "≈ $x" and the facade's block (for Generate, and for Include It and Write
+// Again priced with the include each sends), the run with its stages and Stop, the
 // explanation shown (the run's new one, or one the student picked from the history), Delete, and
 // the one-time question about sharing the course's materials. It lives as long as the student
 // is on the course (the section can be left and come back to while a run goes on); leaving the
@@ -26,8 +27,13 @@ public final class ExplainModel {
 
     public let courseId: String
     public let run: GenerationRun<WeeklyExplanation>
-    /// "≈ $x" for the week (Generate, Write Again and Include use it alike).
+    /// "≈ $x" for the week (Generate, and Write Again of an explanation written without include).
     public let estimate: CostEstimateModel
+    /// "≈ $x" for Include It and Write Again, priced with the materials it sends
+    /// (`prepare(for:week:)` sets it to the explanation on screen).
+    public let includeEstimate: CostEstimateModel
+    /// "≈ $x" for Write Again of an explanation written with include (the same include again).
+    public let againEstimate: CostEstimateModel
 
     /// The numbered week the student picked; nil = the course's default week, or the recent
     /// materials while the course has none (like the Tauri app, "Recent materials" isn't kept:
@@ -48,6 +54,9 @@ public final class ExplainModel {
 
     @ObservationIgnored private let service: any PageLampService
     @ObservationIgnored private var savedLoads = 0
+    /// The include each run here sent, by its explanation (Write Again sends it again; Include It
+    /// adds to it). Saved explanations from before don't say: none.
+    @ObservationIgnored private var sentIncludes: [String: [String]] = [:]
     /// The week the section shows (`load(week:)`): a list read for another week is dropped.
     @ObservationIgnored private var shownWeek: UInt32??
 
@@ -61,6 +70,8 @@ public final class ExplainModel {
         self.service = service
         run = GenerationRun(service: service, newId: newId)
         estimate = CostEstimateModel(service: service, debounce: debounce)
+        includeEstimate = CostEstimateModel(service: service, debounce: debounce)
+        againEstimate = CostEstimateModel(service: service, debounce: debounce)
     }
 
     // MARK: - Which week
@@ -110,6 +121,8 @@ public final class ExplainModel {
     /// Back from Settings ▸ AI or another app: the setup or the saved list may have changed.
     public func refresh(week: UInt32?) async {
         await estimate.refresh()
+        await includeEstimate.refresh()
+        await againEstimate.refresh()
         await loadSaved(week: week)
     }
 
@@ -156,17 +169,69 @@ public final class ExplainModel {
 
     // MARK: - The run
 
-    /// Explain week `week` (Generate, Write Again; with `include`, the left-out materials the
-    /// student says aren't graded work). Each run starts from its own "≈ $x": going over the
-    /// budget is chosen again next to it.
-    public func generate(week: UInt32?, include: [String] = [], uiLanguage: String) async {
-        guard estimate.canGenerate, !run.isRunning else { return }
-        let options = ExplainOptions(include: include, uiLanguage: uiLanguage, overrideBudget: estimate.goesOverBudget)
+    /// Explain week `week` (Generate), from the week's "≈ $x".
+    public func generate(week: UInt32?, uiLanguage: String) async {
+        await start(week: week, include: [], from: estimate, uiLanguage: uiLanguage)
+    }
+
+    /// Include It and Write Again: `explanation`'s include plus the left-out materials the facade
+    /// brings back, from that request's own "≈ $x" (`includeEstimate`).
+    public func includeAndWriteAgain(_ explanation: WeeklyExplanation, week: UInt32?, uiLanguage: String) async {
+        let include = includeIds(explanation)
+        guard !include.isEmpty else { return }
+        await start(week: week, include: include, from: includeEstimate, uiLanguage: uiLanguage)
+    }
+
+    /// Write Again (a stale explanation): the same include as its run, from that request's
+    /// "≈ $x" (the week's when it had none).
+    public func writeAgain(_ explanation: WeeklyExplanation, week: UInt32?, uiLanguage: String) async {
+        let include = againIds(explanation)
+        await start(week: week, include: include, from: againEstimate(for: explanation), uiLanguage: uiLanguage)
+    }
+
+    /// What Include It sends: what `explanation`'s run included, then the left-out materials the
+    /// facade would bring back; empty when there are none of those.
+    public func includeIds(_ explanation: WeeklyExplanation) -> [String] {
+        let more = explanation.leftOut.filter { $0.includable }.map { $0.materialId }
+        guard !more.isEmpty else { return [] }
+        let sent = againIds(explanation)
+        return sent + more.filter { !sent.contains($0) }
+    }
+
+    /// What Write Again sends: the include of `explanation`'s run (one written here), else none.
+    public func againIds(_ explanation: WeeklyExplanation) -> [String] {
+        sentIncludes[explanation.meta.generationId] ?? []
+    }
+
+    /// The "≈ $x" Write Again runs from: its own with an include, else the week's.
+    public func againEstimate(for explanation: WeeklyExplanation) -> CostEstimateModel {
+        againIds(explanation).isEmpty ? estimate : againEstimate
+    }
+
+    /// Prices Include It and Write Again for the explanation on screen (none: nothing to price).
+    public func prepare(for explanation: WeeklyExplanation?, week: UInt32?) {
+        let include = explanation.map(includeIds) ?? []
+        includeEstimate.update(include.isEmpty ? nil : .weeklyExplanation(course: courseId, week: week, include: include))
+        let again = explanation.map(againIds) ?? []
+        againEstimate.update(again.isEmpty ? nil : .weeklyExplanation(course: courseId, week: week, include: again))
+    }
+
+    /// A run from `source` ("≈ $x" for exactly this request): going over the budget is chosen
+    /// again for each run, so every line's tick goes with it (a tick left on another line would
+    /// ride on its next run, the budget still reached).
+    private func start(week: UInt32?, include: [String], from source: CostEstimateModel, uiLanguage: String) async {
+        guard source.canGenerate, !run.isRunning else { return }
+        let options = ExplainOptions(include: include, uiLanguage: uiLanguage, overrideBudget: source.goesOverBudget)
         let courseId = self.courseId
         shownId = nil
-        estimate.overrideBudget = false
+        for line in [estimate, includeEstimate, againEstimate] {
+            line.overrideBudget = false
+        }
         await run.run { service, id, observer async throws(PageLampFailure) in
             try await service.explainWeek(course: courseId, week: week, generationId: id, options: options, observer: observer)
+        }
+        if case .finished(let fresh) = run.phase {
+            sentIncludes[fresh.meta.generationId] = include
         }
         // Usage, the budget and the saved list changed, whatever the end (a stopped run is billed).
         await refresh(week: week)
@@ -248,7 +313,10 @@ public final class ExplainModel {
             return false
         }
         reminderClosed = explanation.meta.generationId
+        // What may be sent changed: every line is priced again (Include It and Write Again too).
         await estimate.refresh()
+        await includeEstimate.refresh()
+        await againEstimate.refresh()
         return true
     }
 }

@@ -161,11 +161,14 @@ struct ExplainMockTests {
             #expect(explanation.leftOut == usual, "include \(include)")
             #expect(explanation.sections.map(\.heading) == [Title.slides, Title.reading])
         }
-        // Included, the assignment is readable, but only two materials fit: now it is over the limit.
+        // Included, the assignment is read in its own place (the week's second readable material),
+        // and the reading is over the limit instead.
+        let reading = try #require(week[Title.reading])
         let included = try await explain(service, "ex-included", options: ExplainOptions(include: [assignment.id]))
         #expect(included.leftOut == [
-            left(archive, .noText), left(scan, .noText), left(assignment, .overBudget), left(practice, .overBudget),
+            left(archive, .noText), left(scan, .noText), left(reading, .overBudget), left(practice, .overBudget),
         ])
+        #expect(included.sections.map(\.heading) == [Title.slides, Title.assignment])
         #expect(included.meta.context.leftOut == included.leftOut)
 
         // Week 3: the recording has no text. Week 1: one material, one section, one question.

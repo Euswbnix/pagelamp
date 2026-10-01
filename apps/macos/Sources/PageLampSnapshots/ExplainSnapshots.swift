@@ -75,6 +75,11 @@ enum ExplainSnapshots {
             await explain.load(week: week)
             await explain.estimate.settle()
             await prepare(explain, week, model)
+            // Include It and Write Again priced for the explanation shown (the view's onChange
+            // comes too late for the render).
+            explain.prepare(for: explain.shown(week: week), week: week)
+            await explain.includeEstimate.settle()
+            await explain.againEstimate.settle()
             return AnyView(CourseDetailPage(summary: summary, detail: detail))
         }
     }

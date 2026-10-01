@@ -14,10 +14,13 @@ struct ExplanationView: View {
     let explanation: WeeklyExplanation
     let text: ExplainText
     let deleting: Bool
-    /// Include … and write again runs from the week's own "≈ $x" (off without it, or while running).
-    let includeDisabled: Bool
-    let includeHint: String
-    let onInclude: ([String]) -> Void
+    /// "≈ $x" of Include It and Write Again, priced with what it sends (off without it, or while
+    /// running).
+    let includeEstimate: CostEstimateModel
+    let running: Bool
+    /// "Use It Anyway" on Include It's line worked: every line of the section reads again.
+    let onAcknowledged: @MainActor () async -> Void
+    let onInclude: () -> Void
     let onDelete: () -> Void
 
     @Environment(AppModel.self) private var model
@@ -161,12 +164,14 @@ struct ExplanationView: View {
             }
             if !includable.isEmpty {
                 VStack(alignment: .leading, spacing: PLSpace.s1) {
+                    // "≈ $x" before a run: Include It is one.
+                    EstimateView(estimate: includeEstimate, onAcknowledged: onAcknowledged)
                     Button(text.include(includable.count)) {
-                        onInclude(includable.map(\.materialId))
+                        onInclude()
                     }
                     .controlSize(.small)
-                    .disabled(includeDisabled)
-                    .accessibilityHint(l10n.sentences(l10n("explain.result.includeNote"), includeHint))
+                    .disabled(!includeEstimate.canGenerate || running)
+                    .accessibilityHint(l10n.sentences(l10n("explain.result.includeNote"), includeEstimate.spokenHint(l10n)))
                     Text(l10n("explain.result.includeNote"))
                         .font(PLType.callout.font)
                         .foregroundStyle(.secondary)
