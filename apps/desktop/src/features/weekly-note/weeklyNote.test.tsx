@@ -56,6 +56,23 @@ describe("Courses → Weekly note", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it("reads its estimate again when the window comes back (a sync elsewhere filled the week)", async () => {
+    const api = mockApi({ scenario: "all-past", now: () => TUESDAY });
+    await withNoteModel(api);
+    renderRoute("/courses", { api });
+    const region = await card();
+    await within(region).findByText(/nothing to write about this week yet/);
+    // Elsewhere, a course counts as current again.
+    const [course] = await api.listCourses();
+    if (!course) throw new Error("all-past has courses");
+    await api.keepCourseCurrent(course.course.id, null);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await writeButton()).toBeInTheDocument();
+    expect(within(region).queryByText(/nothing to write about this week yet/)).toBeNull();
+  });
+
   it("sits between the week's deadlines and the study plan", async () => {
     renderRoute("/courses", { api: mockApi({ now: () => TUESDAY }) });
     await card();

@@ -164,14 +164,16 @@ export function useRefreshOnWindowFocus() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
-        // The estimates too (ai-queries' aiKeys.estimate prefix, spelled out: importing it here
-        // would be circular): a sync elsewhere can give an empty week something to write about.
-        const estimates = [...queryKeys.all, "ai", "estimate"];
+        // The weekly note's estimate too (ai-queries' aiKeys.estimate key, spelled out: importing
+        // it here would be circular): a sync elsewhere can give a week with nothing to write
+        // about something to write about, and only that one keeps Write off. The other estimates
+        // stay as they are, so their buttons don't change on every focus.
+        const noteEstimate = [...queryKeys.all, "ai", "estimate", { feature: "weekly_note" }];
         for (const queryKey of [
           queryKeys.studyPlan(),
           queryKeys.courses(),
           queryKeys.status(),
-          estimates,
+          noteEstimate,
         ]) {
           void client.invalidateQueries({ queryKey });
         }
