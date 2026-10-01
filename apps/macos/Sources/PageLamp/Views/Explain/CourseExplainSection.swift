@@ -184,7 +184,7 @@ private struct ExplainContent: View {
 
     private func generate(_ week: UInt32?) -> some View {
         VStack(alignment: .leading, spacing: PLSpace.s2) {
-            EstimateView(estimate: explain.estimate)
+            EstimateView(estimate: explain.estimate) { await explain.refresh(week: week) }
             Button(text.generate(week)) {
                 Task { await explain.generate(week: week, uiLanguage: model.localization) }
             }
@@ -248,7 +248,7 @@ private struct ExplainContent: View {
                 // Written with materials included: Write Again sends them again, at this price
                 // (otherwise the week's "≈ $x" above is the one).
                 if !explain.againIds(shown).isEmpty {
-                    EstimateView(estimate: explain.againEstimate)
+                    EstimateView(estimate: explain.againEstimate) { await explain.refresh(week: week) }
                 }
             }
             ExplanationView(
@@ -257,6 +257,7 @@ private struct ExplainContent: View {
                 deleting: explain.deleting,
                 includeEstimate: explain.includeEstimate,
                 running: explain.run.isRunning,
+                onAcknowledged: { await explain.refresh(week: week) },
                 onInclude: {
                     Task { await explain.includeAndWriteAgain(shown, week: week, uiLanguage: model.localization) }
                 },

@@ -216,14 +216,17 @@ public final class ExplainModel {
         againEstimate.update(again.isEmpty ? nil : .weeklyExplanation(course: courseId, week: week, include: again))
     }
 
-    /// A run from `estimate` ("≈ $x" for exactly this request): going over the budget is chosen
-    /// again next to it for each run.
-    private func start(week: UInt32?, include: [String], from estimate: CostEstimateModel, uiLanguage: String) async {
-        guard estimate.canGenerate, !run.isRunning else { return }
-        let options = ExplainOptions(include: include, uiLanguage: uiLanguage, overrideBudget: estimate.goesOverBudget)
+    /// A run from `source` ("≈ $x" for exactly this request): going over the budget is chosen
+    /// again for each run, so every line's tick goes with it (a tick left on another line would
+    /// ride on its next run, the budget still reached).
+    private func start(week: UInt32?, include: [String], from source: CostEstimateModel, uiLanguage: String) async {
+        guard source.canGenerate, !run.isRunning else { return }
+        let options = ExplainOptions(include: include, uiLanguage: uiLanguage, overrideBudget: source.goesOverBudget)
         let courseId = self.courseId
         shownId = nil
-        estimate.overrideBudget = false
+        for line in [estimate, includeEstimate, againEstimate] {
+            line.overrideBudget = false
+        }
         await run.run { service, id, observer async throws(PageLampFailure) in
             try await service.explainWeek(course: courseId, week: week, generationId: id, options: options, observer: observer)
         }
@@ -310,7 +313,10 @@ public final class ExplainModel {
             return false
         }
         reminderClosed = explanation.meta.generationId
+        // What may be sent changed: every line is priced again (Include It and Write Again too).
         await estimate.refresh()
+        await includeEstimate.refresh()
+        await againEstimate.refresh()
         return true
     }
 }

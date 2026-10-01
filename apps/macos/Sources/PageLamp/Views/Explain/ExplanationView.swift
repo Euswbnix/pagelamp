@@ -18,6 +18,8 @@ struct ExplanationView: View {
     /// running).
     let includeEstimate: CostEstimateModel
     let running: Bool
+    /// "Use It Anyway" on Include It's line worked: every line of the section reads again.
+    let onAcknowledged: @MainActor () async -> Void
     let onInclude: () -> Void
     let onDelete: () -> Void
 
@@ -163,7 +165,7 @@ struct ExplanationView: View {
             if !includable.isEmpty {
                 VStack(alignment: .leading, spacing: PLSpace.s1) {
                     // "≈ $x" before a run: Include It is one.
-                    EstimateView(estimate: includeEstimate)
+                    EstimateView(estimate: includeEstimate, onAcknowledged: onAcknowledged)
                     Button(text.include(includable.count)) {
                         onInclude()
                     }

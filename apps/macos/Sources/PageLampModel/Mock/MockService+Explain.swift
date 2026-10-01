@@ -94,10 +94,6 @@ extension MockService {
             }
     }
 
-    /// What an explanation reads and leaves out, in the facade's order: an external link, then no
-    /// readable text (whatever the title says), then what looks like graded work unless `include`
-    /// names it. The first two readable materials are read; the rest are over the length limit,
-    /// which `include` doesn't change. Only graded-looking work can be brought back (`includable`).
     /// What an explanation sends of `include`: the graded-looking materials it lifts and reads
     /// (pagelamp-core's `week_context_including`). An id that names nothing read there, or a
     /// material read anyway, isn't lifted.
@@ -105,6 +101,10 @@ extension MockService {
         read.filter { include.contains($0.id) && looksLikeAssessment($0.title) }.map { $0.id }
     }
 
+    /// What an explanation reads and leaves out, in the facade's order: an external link, then no
+    /// readable text (whatever the title says), then what looks like graded work unless `include`
+    /// names it. The first two readable materials are read; the rest are over the length limit,
+    /// which `include` doesn't change. Only graded-looking work can be brought back (`includable`).
     static func explanationSelection(
         _ materials: [MaterialView], include: [String]
     ) -> (read: [MaterialView], leftOut: [LeftOutMaterial]) {

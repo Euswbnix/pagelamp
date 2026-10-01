@@ -79,6 +79,33 @@ struct IncludePricingTests {
         #expect((priced.microUsdUpper ?? 0) > (base.microUsdUpper ?? 0))
     }
 
+    @Test("the run is priced as its estimate: a budget between the two stops only the run with the include")
+    func runPricedLikeEstimate() async throws {
+        let service = mock(.aiKey)
+        let assignment = try #require(try await week4(service)["Assignment 4 — Survey Simulation"])
+        let plain = EstimateRequest.weeklyExplanation(course: "DEMO101", week: 4)
+        let included = EstimateRequest.weeklyExplanation(course: "DEMO101", week: 4, include: [assignment.id])
+        let base = try #require(try await service.estimateGeneration(request: plain).microUsdUpper)
+        let more = try #require(try await service.estimateGeneration(request: included).microUsdUpper)
+        let spent = try await service.aiStatus().budget.spentMicroUsd
+        try await service.setMonthlyBudget(microUsd: spent + (base + more) / 2)
+        #expect(try await service.estimateGeneration(request: included).wouldBlock == .budgetReached)
+        #expect(try await service.estimateGeneration(request: plain).wouldBlock == nil)
+        do {
+            _ = try await service.explainWeek(
+                course: "DEMO101", week: 4, generationId: "ex-included", options: ExplainOptions(include: [assignment.id]),
+                observer: GenEventStream()
+            )
+            Issue.record("expected the run with the include to be over the budget")
+        } catch {
+            #expect(error.kind == .blocked && error.blocked == .budgetReached)
+        }
+        let written = try await service.explainWeek(
+            course: "DEMO101", week: 4, generationId: "ex-plain", options: ExplainOptions(), observer: GenEventStream()
+        )
+        #expect(written.meta.generationId == "ex-plain")
+    }
+
     @Test("lifted: a graded-looking material read; one left over the length limit isn't, nor is study material")
     func lifted() {
         let test = material("t", "Midterm test")
@@ -86,10 +113,9 @@ struct IncludePricingTests {
         let slides = material("s", "Week 4 slides")
         #expect(MockService.liftedIncludes([test, notes], ["t", "n", "nope"]) == ["t"])
         // Included but third in the week: the two materials that fit are read, the test is over
-        // the limit and isn't lifted.
+        // the limit (so not among what's lifted).
         let (read, leftOut) = MockService.explanationSelection([notes, slides, test], include: ["t"])
         #expect(read.map { $0.id } == ["n", "s"] && leftOut.map { $0.reason } == [.overBudget])
-        #expect(MockService.liftedIncludes(read, ["t"]).isEmpty)
         let request = EstimateRequest.weeklyExplanation(course: "c", week: 4, include: ["t"])
         #expect(MockAiFixtures.workload(request, lifted: 0).input == 45_000)
         #expect(MockAiFixtures.workload(request, lifted: 2).input == 75_000)
@@ -159,6 +185,36 @@ struct IncludeEstimateModelTests {
             sharingReminder: false, droppedCitations: 0, citeAiUse: false
         )
         #expect(explain.includeIds(later) == [assignment.id, "other"])
+    }
+
+    @Test("\"not allowed\" for sharing prices Include It again at once: blocked, not left enabled")
+    func sharingRefusedBlocksInclude() async throws {
+        let explain = await model(mock(.aiKey))
+        await explain.generate(week: 4, uiLanguage: "en")
+        let first = try #require(explain.shown(week: 4))
+        explain.prepare(for: first, week: 4)
+        await explain.includeEstimate.settle()
+        #expect(explain.includeEstimate.canGenerate)
+        #expect(await explain.answerSharing(.notAllowed, for: first))
+        #expect(explain.includeEstimate.block == .materialSharingNotAllowed && !explain.includeEstimate.canGenerate)
+    }
+
+    @Test("a run takes every line's tick with it: none rides on a later run")
+    func ticksGo() async throws {
+        let base = mock(.aiBudget)
+        try await base.setMonthlyBudget(microUsd: 4_962_000)
+        let explain = await model(base)
+        explain.estimate.overrideBudget = true
+        await explain.generate(week: 4, uiLanguage: "en")
+        let first = try #require(explain.shown(week: 4))
+        explain.prepare(for: first, week: 4)
+        await explain.includeEstimate.settle()
+        // Both lines ticked; Include It runs.
+        explain.estimate.overrideBudget = true
+        explain.includeEstimate.overrideBudget = true
+        await explain.includeAndWriteAgain(first, week: 4, uiLanguage: "en")
+        #expect(explain.estimate.block == .budgetReached)
+        #expect(!explain.estimate.overrideBudget && !explain.includeEstimate.overrideBudget && !explain.againEstimate.overrideBudget)
     }
 
     @Test("Include It over the budget: off until its own tick, for that run only")

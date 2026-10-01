@@ -9,6 +9,9 @@ import PageLampModel
 
 struct EstimateView: View {
     let estimate: CostEstimateModel
+    /// After "Use It Anyway" worked: other lines of the same screen price the same model (an
+    /// explanation's Include It and Write Again) and read again.
+    var onAcknowledged: (@MainActor () async -> Void)?
 
     @Environment(\.l10n) private var l10n
 
@@ -69,7 +72,10 @@ struct EstimateView: View {
                     .font(PLType.callout.font)
                     .fixedSize(horizontal: false, vertical: true)
                 Button(l10n("mac.ai.useUnpriced")) {
-                    Task { await estimate.acknowledgeUnpriced() }
+                    Task {
+                        await estimate.acknowledgeUnpriced()
+                        if estimate.acknowledgeFailure == nil { await onAcknowledged?() }
+                    }
                 }
                 .controlSize(.small)
                 .disabled(estimate.acknowledging)
