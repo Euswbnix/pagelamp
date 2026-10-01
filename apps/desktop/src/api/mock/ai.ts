@@ -40,6 +40,7 @@ import {
   ollamaCloudFacts,
 } from "./ai-fixtures";
 import { createMockCodex } from "./codex";
+import { liftedIncludes } from "./explain";
 import type { MockCourse, MockScenario } from "./fixtures";
 
 type AiApi = Pick<
@@ -116,13 +117,13 @@ function last4(key: string): string {
 }
 
 /** Input tokens and output limits per feature (a rough stand-in for the backend's estimator). */
-function workload(req: EstimateRequest): { input: number; output: number } {
+/** `lifted`: the included materials an explanation sends too (`liftedIncludes`). */
+function workload(req: EstimateRequest, lifted: number): { input: number; output: number } {
   switch (req.feature) {
     case "study_plan":
       return { input: 6_000 + 1_500 * req.courses.length, output: 8_000 };
     case "weekly_explanation":
-      // Each included material is sent too (pagelamp-core's week_context_including).
-      return { input: 45_000 + 15_000 * (req.include?.length ?? 0), output: 6_000 };
+      return { input: 45_000 + 15_000 * lifted, output: 6_000 };
     case "weekly_note":
       return { input: 3_000, output: 1_500 };
     case "course_calendar":
@@ -562,7 +563,6 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     estimateGeneration: async (req): Promise<CostEstimate> => {
       await ctx.delay();
       const choice = features.get(req.feature) ?? null;
-      const { input, output } = workload(req);
       // Like the facade (pinned in its tests/ai_api.rs): no model and the gate's blocks
       // (question (b) included) carry no amount and 0 tokens; the other blocks leave the
       // estimate complete, since only an acknowledgement or a cap stops the run.
@@ -592,6 +592,17 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         const gate = courseGate(course, onDevice);
         if (gate) return gateBlocked(gate);
       }
+      // An explanation's included materials count only where its run would send them.
+      const lifted =
+        req.feature === "weekly_explanation"
+          ? liftedIncludes(
+              ctx.findCourse(req.course),
+              req.week ?? null,
+              req.include ?? [],
+              ctx.now(),
+            ).length
+          : 0;
+      const { input, output } = workload(req, lifted);
 
       const status = statusOf(choice.backend);
       const reasoning = Math.max(REASONING[choice.effort], info?.reasoning_always_on ? 8_000 : 0);
