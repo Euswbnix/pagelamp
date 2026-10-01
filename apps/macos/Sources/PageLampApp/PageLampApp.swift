@@ -10,9 +10,9 @@ import PageLampModel
 struct PageLampApp: App {
     @NSApplicationDelegateAdaptor(PageLampAppDelegate.self) private var appDelegate
     /// Starts on mock data (the preview's default); Debug ▸ Data Source switches. Reminders,
-    /// Settings ▸ AI and Plan with PageLamp (M3) are on in preview builds until they ship.
+    /// Settings ▸ AI, Plan with PageLamp and Explain (M3) are on in preview builds until they ship.
     #if PAGELAMP_PREVIEW
-    @State private var model = AppModel(strings: .app, reminders: true, aiSettings: true, aiPlan: true)
+    @State private var model = AppModel(strings: .app, reminders: true, aiSettings: true, aiPlan: true, aiExplain: true)
     #else
     @State private var model = AppModel(strings: .app)
     #endif

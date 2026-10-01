@@ -1,7 +1,9 @@
 // The mock's M1–M3 calls (course calendars, removal, reminders, generations; AI setup is in
-// MockService+Ai). Settings, removing and restoring courses and reminders behave like the facade
-// on the mock's own data. Generations still end `blocked` like the facade without a model until
-// their screens come to the Mac, and Codex isn't offered (the ChatGPT plan's build switch).
+// MockService+Ai, study plans in MockService+Plan, weekly explanations in MockService+Explain).
+// Settings, removing and restoring courses and reminders behave like the facade on the mock's own
+// data. The weekly note and reading course calendars still end `blocked` like the facade without a
+// model until their screens come to the Mac, and Codex isn't offered (the ChatGPT plan's build
+// switch).
 
 import Foundation
 import PageLampKit
@@ -22,7 +24,8 @@ struct MockFeatures: Sendable {
     var shownReminders: Set<String> = []
     /// Removed courses, with the course to put back on restore.
     var removed: [MockRemoval] = []
-    /// Model runs in flight, the ones asked to stop, and the study plan drafts.
+    /// Model runs in flight, the ones asked to stop, the study plan drafts, the explanations and
+    /// the courses already asked about sharing their materials.
     var runs = MockRuns()
 }
 
@@ -31,6 +34,10 @@ struct MockRuns: Sendable {
     var cancelled: Set<String> = []
     var planDrafts: [String: GeneratedStudyPlan] = [:]
     var acceptedDrafts: Set<String> = []
+    /// Kept explanations, newest first (the facade's `created_at DESC, rowid DESC`).
+    var explanations: [WeeklyExplanation] = []
+    /// Courses whose reminder about sharing materials was shown (the facade's `reminders_shown`).
+    var sharingReminded: Set<String> = []
 }
 
 struct MockRemoval: Sendable {
@@ -48,10 +55,18 @@ extension MockService {
         db.features.sharing[db.courses[try courseIndex(reference)].course.id] = answer
     }
 
+    /// Drops the course's explanations (every course's when nil); the answers about sharing stay.
     public func deleteGenerated(course reference: String?) async throws(PageLampFailure) -> UInt32 {
         await respond("deleteGenerated")
-        if let reference { _ = try courseIndex(reference) }
-        return 0
+        let id: String?
+        if let reference {
+            id = db.courses[try courseIndex(reference)].course.id
+        } else {
+            id = nil
+        }
+        let before = db.features.runs.explanations.count
+        db.features.runs.explanations.removeAll { id == nil || $0.courseId == id }
+        return UInt32(before - db.features.runs.explanations.count)
     }
 
     // MARK: - The ChatGPT plan through Codex (not offered: every way in refuses, clean-up works)
@@ -120,26 +135,7 @@ extension MockService {
         )
     }
 
-    // MARK: - Explanations and study plans (no model: blocked, like the facade without one)
-
-    public func explainWeek(
-        course reference: String, week: UInt32?, generationId: String, options: ExplainOptions, observer: any GenObserver
-    ) async throws(PageLampFailure) -> WeeklyExplanation {
-        await respond("explainWeek")
-        _ = try courseIndex(reference)
-        throw Self.noModel
-    }
-
-    public func savedExplanations(course reference: String, week: UInt32?) async throws(PageLampFailure) -> [WeeklyExplanation] {
-        await respond("savedExplanations")
-        _ = try courseIndex(reference)
-        return []
-    }
-
-    public func deleteExplanation(generationId: String) async throws(PageLampFailure) {
-        await respond("deleteExplanation")
-        throw PageLampFailure(kind: .notFound, message: "No explanation with id \(generationId)")
-    }
+    // MARK: - The answers' language (explanations and the weekly note; the mock writes in English)
 
     public func aiOutputLanguage() async throws(PageLampFailure) -> OutputLanguage {
         await respond("aiOutputLanguage")

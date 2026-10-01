@@ -434,7 +434,7 @@ struct MockFeatureTests {
             )
             Issue.record("expected blocked")
         } catch {
-            #expect(error.kind == .blocked)
+            #expect(error.kind == .blocked && error.blocked == .noModelChosen)
         }
         try await service.cancelGeneration(generationId: "g1")
         #expect(try await service.removeAllAiData().providersRemoved == 0)

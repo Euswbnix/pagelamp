@@ -158,6 +158,21 @@ public actor MockService: PageLampService {
         return .readable
     }
 
+    /// The course as the facade returns it: with the student's answer about sharing its materials
+    /// (`setCourseMaterialSharing`, and DEMO205's from `init`), which the mock keeps apart from
+    /// the fixture. Records are immutable, so a changed answer makes a new one.
+    func courseRecord(_ course: MockCourse) -> Course {
+        let record = course.course
+        guard let answer = db.features.sharing[record.id], answer != record.materialSharing else { return record }
+        return Course(
+            id: record.id, sourceId: record.sourceId, externalId: record.externalId, code: record.code,
+            name: record.name, termStart: record.termStart, termEnd: record.termEnd, termSource: record.termSource,
+            url: record.url, aiPolicy: record.aiPolicy, aiPolicyNote: record.aiPolicyNote, aiAccess: record.aiAccess,
+            materialSharing: answer, hidden: record.hidden, enrollmentActive: record.enrollmentActive,
+            updatedAt: record.updatedAt
+        )
+    }
+
     /// Every week with a module or material, plus the current week, ascending (like Rust).
     private static func availableWeeks(_ course: MockCourse) -> [UInt32] {
         var weeks = Set(course.modules.compactMap(\.weekHint) + course.materials.compactMap(\.weekHint))
@@ -171,7 +186,7 @@ public actor MockService: PageLampService {
         // Like the facade: "readable by your AI app" is 0 unless the AI may read materials.
         let readable = aiMaterials == .readable ? course.materials.filter { $0.textStatus == .ok }.count : 0
         return CourseSummary(
-            course: course.course,
+            course: courseRecord(course),
             aiMaterials: aiMaterials,
             timeline: course.timeline,
             lifecycle: MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil),
@@ -252,7 +267,7 @@ public actor MockService: PageLampService {
         let cutoff = now().addingTimeInterval(-14 * 86_400)
         let isRecent = { (material: MaterialView) in (material.publishedAt ?? .distantPast) >= cutoff }
         return CourseOverview(
-            course: course.course,
+            course: courseRecord(course),
             aiMaterials: Self.aiMaterials(course.course),
             timeline: course.timeline,
             lifecycle: MockCalendar.lifecycle(course.timeline, keptCurrentUntil: course.keptCurrentUntil),
@@ -278,7 +293,7 @@ public actor MockService: PageLampService {
         guard let shown = week ?? course.timeline.currentWeek else {
             let cutoff = now().addingTimeInterval(-14 * 86_400)
             return WeekMaterials(
-                course: course.course,
+                course: courseRecord(course),
                 aiMaterials: aiMaterials,
                 week: nil,
                 requestedWeek: week,
@@ -292,7 +307,7 @@ public actor MockService: PageLampService {
         }
         let materials = course.materials.filter { $0.weekHint == shown }
         return WeekMaterials(
-            course: course.course,
+            course: courseRecord(course),
             aiMaterials: aiMaterials,
             week: shown,
             requestedWeek: week,
@@ -334,14 +349,14 @@ public actor MockService: PageLampService {
         let index = try courseIndex(reference)
         // The mock has no term dates: today + keepCurrentDays().
         db.courses[index].keptCurrentUntil = until ?? isoDay(daysFromToday: Int(keepCurrentDays()))
-        return db.courses[index].course
+        return courseRecord(db.courses[index])
     }
 
     public func clearKeepCourseCurrent(course reference: String) async throws(PageLampFailure) -> Course {
         await respond("clearKeepCourseCurrent")
         let index = try courseIndex(reference)
         db.courses[index].keptCurrentUntil = nil
-        return db.courses[index].course
+        return courseRecord(db.courses[index])
     }
 
     public func snoozeRemovalSuggestions(courses: [String], kind: SnoozeKind) async throws(PageLampFailure) {
