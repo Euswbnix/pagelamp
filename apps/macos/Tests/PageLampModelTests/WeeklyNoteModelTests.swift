@@ -100,6 +100,7 @@ private func eventually(_ condition: () async -> Bool) async -> Bool {
     return await condition()
 }
 
+@MainActor
 private func finished(_ note: WeeklyNoteModel) -> WeeklyNote? {
     if case .finished(let written) = note.run.phase { return written }
     return nil
@@ -159,7 +160,7 @@ struct WeeklyNoteModelTests {
     }
 
     @Test("Monday's note: a read that says it's due prepares it once, marked automatic")
-    func monday() async throws {
+    func mondayNote() async throws {
         let time = TestTime()
         let note = noteModel(mock(.weeklyNoteMonday, time: time), time: time)
         await note.load()
@@ -199,7 +200,9 @@ struct WeeklyNoteModelTests {
             return
         }
         // A click clears the line, whatever its end.
+        await note.load()
         await note.estimate.settle()
+        #expect(note.estimate.block == .budgetReached)
         note.estimate.overrideBudget = true
         await note.write(uiLanguage: "en")
         #expect(note.automaticProblem == nil && finished(note) != nil)

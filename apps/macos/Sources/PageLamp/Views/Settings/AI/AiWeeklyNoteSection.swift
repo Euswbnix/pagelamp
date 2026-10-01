@@ -32,7 +32,6 @@ struct AiWeeklyNoteSection: View {
                         }
                     }
                 ))
-                .toggleStyle(.switch)
                 .disabled(ai.savingNoteSetting)
                 .accessibilityHint(hint ?? "")
                 if let failure = ai.noteSettingFailure {

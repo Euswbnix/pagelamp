@@ -39,14 +39,15 @@ private func names(_ stream: GenEventStream) async -> [String] {
     stream.finish()
     var all: [String] = []
     for await event in stream.events {
-        all.append(switch event {
+        let name = switch event {
         case .started(let id, let backend, let model, _): "started \(id) \(backend) \(model)"
         case .stage(let stage): AiCodes.name(stage)
         case .context(let summary, let tokens): "context \(summary.courses.count) \(tokens ?? 0)"
         case .usage: "usage"
         case .finished(let ok): "finished \(ok)"
         default: "other"
-        })
+        }
+        all.append(name)
     }
     return all
 }
