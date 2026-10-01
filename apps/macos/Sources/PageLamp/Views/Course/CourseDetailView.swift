@@ -134,11 +134,28 @@ package struct CourseDetailPage: View {
         // section shows, and stops when the student leaves the course (another course, another
         // page, the window closing).
         .onDisappear { detail.leaveExplain() }
+        // Explain's model, made when the section shows (also on coming back to the course, whose
+        // model left with it) and again for a new service.
+        .onChange(of: section, initial: true) { _, section in
+            makeExplain(section)
+        }
+        .onChange(of: model.serviceGeneration) {
+            makeExplain(section)
+        }
         // A course hidden, AI turned off or materials no longer shareable (from another app)
-        // stops a run it no longer allows.
+        // stops a run it no longer allows; so does a refused course once a run says it goes to
+        // the cloud.
         .onChange(of: summary) { _, summary in
             Task { await detail.explain?.stopIfRefused(summary) }
         }
+        .onChange(of: detail.explain?.runOnDevice) {
+            Task { await detail.explain?.stopIfRefused(summary) }
+        }
+    }
+
+    private func makeExplain(_ section: CourseSection) {
+        guard section == .explain else { return }
+        _ = detail.explainModel(using: model)
     }
 }
 

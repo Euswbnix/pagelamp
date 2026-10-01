@@ -45,8 +45,10 @@ struct ExplanationView: View {
                                         Button {
                                             Task { await open(citation) }
                                         } label: {
+                                            // A long title gives way in the middle: the page stays.
                                             Label(text.citation(citation), systemImage: "doc.text")
                                                 .lineLimit(1)
+                                                .truncationMode(.middle)
                                         }
                                         .buttonStyle(.bordered)
                                         .controlSize(.small)
@@ -222,7 +224,8 @@ struct MarkdownText: View {
     }
 }
 
-/// Chips left to right, wrapping to the next line when the row is full.
+/// Chips left to right, wrapping to the next line when the row is full; a chip wider than the
+/// row is given the row's width (its title then truncates).
 struct ChipFlow: Layout {
     var spacing: CGFloat
 
@@ -237,8 +240,7 @@ struct ChipFlow: Layout {
         var y = bounds.minY
         for row in rows(subviews, width: bounds.width) {
             var x = bounds.minX
-            for index in row.indices {
-                let size = subviews[index].sizeThatFits(.unspecified)
+            for (index, size) in zip(row.indices, row.sizes) {
                 subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
                 x += size.width + spacing
             }
@@ -248,15 +250,24 @@ struct ChipFlow: Layout {
 
     private struct Row {
         var indices: [Int] = []
+        var sizes: [CGSize] = []
         var width: CGFloat = 0
         var height: CGFloat = 0
+    }
+
+    /// A chip's size: its one-line width, else (wider than the row) measured at the row's width.
+    private func size(of subview: LayoutSubview, within width: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard ideal.width > width, width.isFinite else { return ideal }
+        let fitted = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
+        return CGSize(width: min(fitted.width, width), height: fitted.height)
     }
 
     private func rows(_ subviews: Subviews, width: CGFloat) -> [Row] {
         var rows: [Row] = []
         var row = Row()
         for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
+            let size = size(of: subviews[index], within: width)
             let needed = row.indices.isEmpty ? size.width : row.width + spacing + size.width
             if needed > width, !row.indices.isEmpty {
                 rows.append(row)
@@ -265,6 +276,7 @@ struct ChipFlow: Layout {
             row.width = row.indices.isEmpty ? size.width : row.width + spacing + size.width
             row.height = max(row.height, size.height)
             row.indices.append(index)
+            row.sizes.append(size)
         }
         if !row.indices.isEmpty { rows.append(row) }
         return rows

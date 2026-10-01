@@ -1133,7 +1133,7 @@
 "mac.explain.leaveHint" = "Switching to another section keeps it going; leaving this course stops it, and nothing is saved.";
 "mac.explain.reason" = " (%1$@)";
 "mac.explain.showFrom" = "Show the explanation from %1$@";
-"mac.explain.turnedOff" = "AI access is off for this course. Turn it on under Course Materials in its inspector to explain its weeks.";
+"mac.explain.turnedOff" = "AI access is off for this course, so its weeks can't be explained.";
 "mac.explain.writeAgain" = "Write Again";
 "mac.inspector.aiPolicy" = "AI Policy";
 "mac.inspector.course" = "Course";

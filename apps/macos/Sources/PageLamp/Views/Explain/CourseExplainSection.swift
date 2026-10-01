@@ -19,16 +19,12 @@ struct CourseExplainSection: View {
     let detail: CourseDetailModel
     let timeline: CourseTimeline
 
-    @Environment(AppModel.self) private var model
-
+    // The section's model is made by the course page (CourseDetailPage), which always exists:
+    // an `.onAppear` here would hang on nothing while there's no model yet.
     var body: some View {
-        Group {
-            if let explain = detail.explain {
-                ExplainContent(explain: explain, summary: summary, detail: detail, timeline: timeline)
-            }
+        if let explain = detail.explain {
+            ExplainContent(explain: explain, summary: summary, detail: detail, timeline: timeline)
         }
-        // Made on first show, and again for a new service (snapshots make it beforehand).
-        .onAppear { _ = detail.explainModel(using: model) }
     }
 }
 

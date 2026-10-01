@@ -193,17 +193,16 @@ struct ExplainModelTests {
         #expect(ExplainModel.block(try await course(off, "DEMO101")) == .turnedOff)
     }
 
-    @Test("the week: the course's default, a picked one, or the recent materials")
+    @Test("the week: the course's default, or a picked one")
     func weeks() async throws {
         let service = mock(.aiKey)
         let summary = try await course(service, "DEMO101")
         let (explain, week) = await model(service, summary)
         #expect(week == summary.timeline.defaultWeek && week != nil)
+        // A course with a default week has no "Recent materials" choice.
         #expect(ExplainModel.choices(summary.timeline, weeks: [1, 2, 3, 4]) == [.week(1), .week(2), .week(3), .week(4)])
         explain.pick(.week(2))
         #expect(explain.week(summary.timeline) == 2)
-        explain.pick(.recent)
-        #expect(explain.week(summary.timeline) == nil)
     }
 
     @Test("Explain: the run's end shows the new explanation, kept; a second one goes to the history")
@@ -219,7 +218,6 @@ struct ExplainModelTests {
         }
         #expect(first.week == week && explain.shown(week: week)?.meta.generationId == first.meta.generationId)
         #expect(explain.history.map { $0.meta.generationId } == [first.meta.generationId])
-        #expect(!explain.estimate.overrideBudget)
         await explain.generate(week: week, uiLanguage: "en")
         guard case .finished(let second) = explain.run.phase else {
             Issue.record("expected a second explanation")
@@ -267,28 +265,36 @@ struct ExplainModelTests {
         #expect(!other.asksAboutSharing(shown))
     }
 
-    @Test("a cloud run stops once the course's materials may not be shared, not before it says where it runs")
-    func stops() async throws {
+    /// A run of DEMO101's week held at its first step (before `started`), counting cancels.
+    private func heldRun(
+        _ scenario: MockScenario
+    ) async throws -> (ExplainModel, MockService, SyncStepGate, Cancels, CourseSummary, Task<Void, Never>) {
         let gate = SyncStepGate()
         let cancels = Cancels()
-        let base = mock(.aiKey, gate: gate)
+        let base = mock(scenario, gate: gate)
         let service = CountingCancels(base: base, cancels: cancels)
         let summary = try await course(service, "DEMO101")
         let (explain, week) = await model(service, summary)
         let run = Task { await explain.generate(week: week, uiLanguage: "en") }
         _ = await gate.held()
         #expect(await eventually { explain.run.isRunning })
-        // Before the run has said where it runs, nothing is stopped.
-        await explain.stopIfRefused(summary)
+        return (explain, base, gate, cancels, summary, run)
+    }
+
+    @Test("materials that may not be shared stop a cloud run once it says it goes to the cloud, not before")
+    func sharingRefused() async throws {
+        let (explain, base, gate, cancels, summary, run) = try await heldRun(.aiKey)
+        // "Not allowed" arrives (from another app) before the run has said where it goes.
+        try await base.setCourseMaterialSharing(course: summary.course.id, answer: .notAllowed)
+        let refused = try await course(base, "DEMO101")
+        #expect(refused.course.materialSharing == .notAllowed && explain.runOnDevice == nil)
+        await explain.stopIfRefused(refused)
         #expect(await cancels.count == 0)
+        // `started` says the cloud: the course page checks again (its onChange of runOnDevice).
         await gate.advance()
         _ = await gate.held()
-        #expect(await eventually {
-            if case .running(let progress) = explain.run.phase { return progress.onDevice == false }
-            return false
-        })
-        try await base.setCourseMaterialSharing(course: summary.course.id, answer: .notAllowed)
-        await explain.stopIfRefused(try await course(service, "DEMO101"))
+        #expect(await eventually { explain.runOnDevice == false })
+        await explain.stopIfRefused(refused)
         #expect(await cancels.count == 1)
         await gate.open()
         await run.value
@@ -296,6 +302,98 @@ struct ExplainModelTests {
             Issue.record("expected the run to stop")
             return
         }
+        #expect(explain.runOnDevice == nil)
+    }
+
+    @Test("a model on this computer goes on whatever the answer about sharing")
+    func sharingRefusedOnDevice() async throws {
+        let (explain, base, gate, cancels, summary, run) = try await heldRun(.aiLocal)
+        try await base.setCourseMaterialSharing(course: summary.course.id, answer: .notAllowed)
+        let refused = try await course(base, "DEMO101")
+        await gate.advance()
+        _ = await gate.held()
+        #expect(await eventually { explain.runOnDevice == true })
+        await explain.stopIfRefused(refused)
+        #expect(await cancels.count == 0)
+        await gate.open()
+        await run.value
+        guard case .finished = explain.run.phase else {
+            Issue.record("expected the run to finish")
+            return
+        }
+    }
+
+    @Test("a course turned off or hidden stops the run at once, wherever it goes")
+    func courseRefused() async throws {
+        let (explain, base, gate, cancels, _, run) = try await heldRun(.aiKey)
+        let off = try await course(FixtureService(base: base, aiAccessOff: true), "DEMO101")
+        #expect(off.aiMaterials == .turnedOff && explain.runOnDevice == nil)
+        await explain.stopIfRefused(off)
+        #expect(await cancels.count == 1)
+        await gate.open()
+        await run.value
+        guard case .stopped = explain.run.phase else {
+            Issue.record("expected the run to stop")
+            return
+        }
+    }
+
+    @Test("going over the budget: off until ticked, for one run only")
+    func overBudget() async throws {
+        let service = mock(.aiBudget)
+        try await service.setMonthlyBudget(microUsd: 4_962_000)
+        let summary = try await course(service, "DEMO101")
+        let (explain, week) = await model(service, summary)
+        #expect(explain.estimate.block == .budgetReached && !explain.estimate.canGenerate)
+        await explain.generate(week: week, uiLanguage: "en")
+        guard case .idle = explain.run.phase else {
+            Issue.record("nothing should run without the tick")
+            return
+        }
+        explain.estimate.overrideBudget = true
+        #expect(explain.estimate.canGenerate)
+        await explain.generate(week: week, uiLanguage: "en")
+        guard case .finished = explain.run.phase else {
+            Issue.record("the run should go over the budget")
+            return
+        }
+        #expect(explain.history.count == 1)
+        // That run only: the next is blocked again until the tick is chosen again.
+        #expect(!explain.estimate.overrideBudget && explain.estimate.block == .budgetReached && !explain.estimate.canGenerate)
+        await explain.generate(week: week, uiLanguage: "en")
+        #expect(try await service.savedExplanations(course: summary.course.id, week: week).count == 1)
+    }
+
+    @Test("Recent materials isn't kept: once the course knows its weeks, its default week shows")
+    func recentNotKept() {
+        let explain = ExplainModel(courseId: "c", service: mock(.aiKey), debounce: .zero)
+        let unknown = testTimeline(week: nil)
+        #expect(ExplainModel.choices(unknown, weeks: []) == [.recent])
+        explain.pick(.recent)
+        #expect(explain.picked == nil && explain.week(unknown) == nil)
+        // Term dates set, or a sync: the course now has a default week.
+        let known = testTimeline(week: 3)
+        #expect(explain.week(known) == 3)
+        explain.pick(.week(2))
+        #expect(explain.week(known) == 2)
+    }
+
+    @Test("a list read for a week no longer shown is dropped")
+    func staleList() async throws {
+        let gate = SyncStepGate()
+        let service = mock(.aiKey, gate: gate)
+        let summary = try await course(service, "DEMO101")
+        let (explain, week) = await model(service, summary)
+        let run = Task { await explain.generate(week: week, uiLanguage: "en") }
+        _ = await gate.held()
+        // The section moves to week 3 while week 4 is written.
+        await explain.load(week: 3)
+        #expect(explain.saved.isEmpty)
+        await gate.open()
+        await run.value
+        // The run's end reads week 4's list: not week 3's.
+        #expect(explain.saved.isEmpty)
+        #expect(try await service.savedExplanations(course: summary.course.id, week: week).count == 1)
     }
 
     @Test("the course keeps one section model; leaving the course stops its run and drops it")

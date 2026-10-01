@@ -29,7 +29,9 @@ public final class ExplainModel {
     /// "≈ $x" for the week (Generate, Write Again and Include use it alike).
     public let estimate: CostEstimateModel
 
-    /// What the student picked; nil = the course's default week.
+    /// The numbered week the student picked; nil = the course's default week, or the recent
+    /// materials while the course has none (like the Tauri app, "Recent materials" isn't kept:
+    /// once the course knows its weeks, its default week shows).
     public private(set) var picked: WeekChoice?
     /// The saved explanations of the week on screen, newest first.
     public private(set) var saved: [WeeklyExplanation] = []
@@ -46,6 +48,8 @@ public final class ExplainModel {
 
     @ObservationIgnored private let service: any PageLampService
     @ObservationIgnored private var savedLoads = 0
+    /// The week the section shows (`load(week:)`): a list read for another week is dropped.
+    @ObservationIgnored private var shownWeek: UInt32??
 
     public init(
         courseId: String,
@@ -77,8 +81,7 @@ public final class ExplainModel {
     public func week(_ timeline: CourseTimeline) -> UInt32? {
         switch picked {
         case .week(let week)?: week
-        case .recent?: nil
-        case nil: timeline.defaultWeek ?? timeline.currentWeek
+        case .recent?, nil: timeline.defaultWeek ?? timeline.currentWeek
         }
     }
 
@@ -93,12 +96,13 @@ public final class ExplainModel {
 
     public func pick(_ choice: WeekChoice) {
         guard !run.isRunning else { return }
-        picked = choice
+        picked = choice == .recent ? nil : choice
         shownId = nil
     }
 
     /// Estimates the week and reads its saved explanations (each time the section shows a week).
     public func load(week: UInt32?) async {
+        shownWeek = .some(week)
         estimate.update(.weeklyExplanation(course: courseId, week: week))
         await loadSaved(week: week)
     }
@@ -119,7 +123,9 @@ public final class ExplainModel {
             // Like the Tauri app: none to show (the run and Generate still work).
             list = []
         }
-        guard load == savedLoads else { return }
+        // The latest read, of the week on screen (a run or a delete that ends after the shown
+        // week changed reads its own week).
+        guard load == savedLoads, shownWeek == .some(week) else { return }
         // Without a week the facade answers every week's: keep the recent materials' own.
         saved = week == nil ? list.filter { $0.week == nil } : list
     }
@@ -168,6 +174,13 @@ public final class ExplainModel {
 
     public func stop() async {
         await run.stop()
+    }
+
+    /// Whether the run in flight goes to a model on this computer (nil until it says, or when
+    /// nothing runs): the course page checks the course again once it's known.
+    public var runOnDevice: Bool? {
+        guard case .running(let progress) = run.phase else { return nil }
+        return progress.onDevice
     }
 
     /// Stops a run the course no longer allows: hidden, AI off or withheld (changed from another
