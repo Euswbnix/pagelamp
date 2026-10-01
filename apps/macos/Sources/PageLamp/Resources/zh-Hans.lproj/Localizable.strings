@@ -1011,6 +1011,7 @@
 "mac.actions.copyServersSection" = "复制 mcpServers 部分";
 "mac.actions.copyThePrompt" = "复制这句话";
 "mac.actions.copyTitle" = "复制标题";
+"mac.actions.courseMaterials" = "课程资料…";
 "mac.actions.currentWeek" = "当前周";
 "mac.actions.dismiss" = "关闭";
 "mac.actions.done" = "完成";
@@ -1046,6 +1047,9 @@
 "mac.ai.removeAllConfirm" = "全部删除";
 "mac.ai.replaceKey" = "更换密钥…";
 "mac.ai.saveBudget" = "保存预算";
+"mac.ai.sharingAllowed" = "可以";
+"mac.ai.sharingNotAllowed" = "不可以";
+"mac.ai.sharingNotSure" = "不确定";
 "mac.ai.turnOn" = "查看并启用…";
 "mac.ai.turnOnName" = "启用 %1$@";
 "mac.ai.useUnpriced" = "仍然使用";
@@ -1123,6 +1127,15 @@
 "mac.diagnostics.previewTitle" = "诊断报告";
 "mac.errors.panic" = "PageLamp 遇到了一个错误。请重试，或重新打开 PageLamp。";
 "mac.errors.schema" = "这些数据是由更新版本的 PageLamp 保存的。请先更新 PageLamp，再打开它们。";
+"mac.explain.generate" = "讲解第 %1$@ 周";
+"mac.explain.generateRecent" = "讲解最近的资料";
+"mac.explain.includeOne" = "不是计分作业？纳入它并重新生成";
+"mac.explain.includeSeveral" = "不是计分作业？纳入这 %1$@ 份并重新生成";
+"mac.explain.leaveHint" = "切换到这门课的其他部分不会中断；离开这门课程会停止生成，不会保存任何内容。";
+"mac.explain.reason" = "（%1$@）";
+"mac.explain.showFrom" = "显示 %1$@ 的讲解";
+"mac.explain.turnedOff" = "这门课的 AI 访问已关闭，所以无法讲解。";
+"mac.explain.writeAgain" = "重新生成";
 "mac.inspector.aiPolicy" = "AI 使用规定";
 "mac.inspector.course" = "课程";
 "mac.inspector.courseMaterials" = "课程资料";

@@ -13,6 +13,9 @@
     "removeAllConfirm": "Remove All",
     "turnOnName": "Turn On {{name}}",
     "notNow": "Not Now",
-    "useUnpriced": "Use It Anyway"
+    "useUnpriced": "Use It Anyway",
+    "sharingAllowed": "Yes, It's Allowed",
+    "sharingNotSure": "Not Sure",
+    "sharingNotAllowed": "No, It's Not Allowed"
   }
 }

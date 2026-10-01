@@ -243,6 +243,8 @@ public final class AppModel {
     public let aiSettings: Bool
     /// This Week ▸ Plan with PageLamp…: a study plan written by the student's model.
     public let aiPlan: Bool
+    /// A course's Explain section: a week explained by the student's model.
+    public let aiExplain: Bool
     /// This Week's weekly note and Monday's (Settings ▸ AI); nil where it's off.
     public private(set) var weeklyNote: WeeklyNoteModel?
 
@@ -294,11 +296,13 @@ public final class AppModel {
         reminderCenters: ReminderCenters = .standard,
         aiSettings: Bool = false,
         aiPlan: Bool = false,
+        aiExplain: Bool = false,
         aiNote: Bool = false
     ) {
         self.strings = strings
         self.aiSettings = aiSettings
         self.aiPlan = aiPlan
+        self.aiExplain = aiExplain
         self.reminderCenters = reminderCenters
         self.settings = settings
         self.timing = timing
@@ -508,7 +512,7 @@ public final class AppModel {
         } catch {
             guard generation == self.generation, load == menuBarLoads else { return }
             // Either read failed: the week shown stays with its own label (they were read
-            // together), and the menu offers Try Again.
+            // together); the failure is kept for the next look.
             menuBarWeekFailure = error
         }
     }

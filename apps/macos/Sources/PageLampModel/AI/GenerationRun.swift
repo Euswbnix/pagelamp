@@ -13,6 +13,9 @@ public final class GenerationRun<Output: Sendable> {
     public struct Progress: Equatable, Sendable {
         public var backend: String?
         public var model: String?
+        /// Whether the model runs on this computer (nil until the run has said): a cloud run of a
+        /// course whose materials may not be shared is stopped.
+        public var onDevice: Bool?
         public var stage: GenStage?
         /// Explanations: how many materials the model reads (the `context` event).
         public var materialsIncluded: UInt32?
@@ -113,9 +116,10 @@ public final class GenerationRun<Output: Sendable> {
     private func apply(_ event: GenEvent, to id: String) {
         guard generationId == id, case .running(var progress) = phase else { return }
         switch event {
-        case .started(_, let backendLabel, let model, _):
+        case .started(_, let backendLabel, let model, let onDevice):
             progress.backend = backendLabel
             progress.model = model
+            progress.onDevice = onDevice
         case .stage(let stage):
             progress.stage = stage
         case .context(let summary, _):
