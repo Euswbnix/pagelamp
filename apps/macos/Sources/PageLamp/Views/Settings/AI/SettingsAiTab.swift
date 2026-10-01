@@ -2,7 +2,8 @@
 // usage; preview builds until it ships): the student's models in priority order with their state,
 // problems and data policy; "Add an API Key…"; models on this computer; which model does what,
 // with effort and Test; the disclosure before a backend's first run; the monthly budget; the
-// answers' language; usage per month; Remove All AI Data. Everything comes from the facade
+// answers' language; Monday's weekly note (where the note is on); usage per month; Remove All AI
+// Data. Everything comes from the facade
 // (`AiSettingsModel`); the ChatGPT plan isn't offered, so it has no card here.
 
 import AppKit
@@ -49,6 +50,9 @@ struct SettingsAiTab: View {
                         .id(budget.monthlyMicroUsd.map { String($0) } ?? "none")
                 }
                 outputLanguageSection(ai)
+                if model.weeklyNote != nil {
+                    AiWeeklyNoteSection(ai: ai)
+                }
                 AiUsageSection(ai: ai)
                 removeAllSection(ai)
             }

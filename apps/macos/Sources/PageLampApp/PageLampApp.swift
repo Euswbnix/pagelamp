@@ -12,7 +12,7 @@ struct PageLampApp: App {
     /// Starts on mock data (the preview's default); Debug ▸ Data Source switches. Reminders,
     /// Settings ▸ AI and Plan with PageLamp (M3) are on in preview builds until they ship.
     #if PAGELAMP_PREVIEW
-    @State private var model = AppModel(strings: .app, reminders: true, aiSettings: true, aiPlan: true)
+    @State private var model = AppModel(strings: .app, reminders: true, aiSettings: true, aiPlan: true, aiNote: true)
     #else
     @State private var model = AppModel(strings: .app)
     #endif

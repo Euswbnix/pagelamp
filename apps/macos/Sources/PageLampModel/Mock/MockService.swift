@@ -58,6 +58,7 @@ public actor MockService: PageLampService {
         if let demo205 = db.courses.first(where: { $0.course.code == "DEMO205" }) {
             db.features.sharing[demo205.course.id] = .notAllowed
         }
+        db.features.prepareNoteOnMonday = scenario == .weeklyNoteMonday
     }
 
     // MARK: - Debug controls (preview Debug menu, tests)
@@ -133,7 +134,7 @@ public actor MockService: PageLampService {
         deadline.event.dueAt ?? deadline.event.startsAt
     }
 
-    private func deadlines(in courses: [MockCourse], daysAhead: Int, daysBack: Int) -> [Deadline] {
+    func deadlines(in courses: [MockCourse], daysAhead: Int, daysBack: Int) -> [Deadline] {
         let t = now()
         let from = t.addingTimeInterval(-Double(daysBack) * 86_400)
         let to = t.addingTimeInterval(Double(daysAhead) * 86_400)
@@ -383,7 +384,9 @@ public actor MockService: PageLampService {
         return StartupTasks(
             whatsNew: whatsNew,
             updateCheckDue: updates.prefs.autoCheck && updates.disclosureSeen && whatsNew == nil && checkIsOld,
-            updatedFrom: updates.upgraded ? updates.upgradedFrom : nil
+            updatedFrom: updates.upgraded ? updates.upgradedFrom : nil,
+            // Monday's note, at the caller's moment (MockService+Note).
+            prepareWeeklyNote: noteDue(at: date)
         )
     }
 

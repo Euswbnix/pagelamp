@@ -65,7 +65,7 @@ public enum SnapshotCatalog {
     /// Every page, by screen.
     public static let pages: [SnapshotPage] =
         ThisWeekSnapshots.pages + CourseSnapshots.pages + SetupSnapshots.pages + SidebarSnapshots.pages
-        + WhatsNewSnapshots.pages + RemindersSnapshots.pages + AiSettingsSnapshots.pages + PlanSnapshots.pages + [
+        + WhatsNewSnapshots.pages + RemindersSnapshots.pages + AiSettingsSnapshots.pages + PlanSnapshots.pages + WeeklyNoteSnapshots.pages + [
             SnapshotPage(name: "components") { _ in AnyView(ComponentGallery()) },
         ]
 
@@ -160,7 +160,7 @@ public enum SnapshotRenderer {
             notificationCenter: NotificationCenter(),
             preferredLanguages: { languages },
             service: setup.service(mock, moment, calendar),
-            // Reminders, the menu bar extra, Settings ▸ AI and Plan (M3) are on in preview builds,
+            // Reminders, the menu bar extra, Settings ▸ AI, Plan and the weekly note (M3) are on in preview builds,
             // which these are; notifications stay in memory.
             reminders: true,
             reminderCenters: ReminderCenters(
@@ -168,11 +168,17 @@ public enum SnapshotRenderer {
                 mock: RecordingNotificationCenter(permission: setup.notificationPermission, answer: setup.notificationAnswer)
             ),
             aiSettings: true,
-            aiPlan: true
+            aiPlan: true,
+            aiNote: true
         )
         await model.refresh()
         // The pass the refresh asked for decides whether "Remind me" shows: let it finish.
         await model.reminderDelivery?.settle()
+        // This Week's weekly note, read now (its `.task` comes too late for the render).
+        if let note = model.weeklyNote {
+            await note.load()
+            await note.estimate.refresh()
+        }
         return model
     }
 

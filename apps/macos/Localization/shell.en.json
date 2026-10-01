@@ -42,7 +42,8 @@
       "aiUnpriced": "AI: Model Without a Price",
       "aiBudget": "AI: Budget Almost Used",
       "aiDisclosureChanged": "AI: Disclosure Changed",
-      "aiErrors": "AI: Provider Errors"
+      "aiErrors": "AI: Provider Errors",
+      "weeklyNoteMonday": "AI: Weekly Note on Monday"
     },
     "runMockSync": "Run Mock Sync",
     "runMockSyncRejected": "Run Mock Sync with a Rejected Token",

@@ -1,7 +1,8 @@
 // The mock's M1–M3 calls (course calendars, removal, reminders, generations; AI setup is in
-// MockService+Ai). Settings, removing and restoring courses and reminders behave like the facade
-// on the mock's own data. Generations still end `blocked` like the facade without a model until
-// their screens come to the Mac, and Codex isn't offered (the ChatGPT plan's build switch).
+// MockService+Ai, study plans in MockService+Plan, weekly notes in MockService+Note). Settings,
+// removing and restoring courses and reminders behave like the facade on the mock's own data.
+// Explanations and reading course calendars still end `blocked` like the facade without a model
+// until their screens come to the Mac, and Codex isn't offered (the ChatGPT plan's build switch).
 
 import Foundation
 import PageLampKit
@@ -13,6 +14,8 @@ struct MockFeatures: Sendable {
     var sharing: [String: MaterialSharing] = [:]
     var outputLanguage: OutputLanguage = .ui
     var prepareNoteOnMonday = false
+    /// The day Monday's note was last tried, "YYYY-MM-DD" (the facade's `ai.weekly_note_tried_on`).
+    var noteTriedOn: String?
     var weeklyCap: UInt32?
     var codexSource: CodexSource = .managed
     var reminderSettings = ReminderSettings(
@@ -22,7 +25,7 @@ struct MockFeatures: Sendable {
     var shownReminders: Set<String> = []
     /// Removed courses, with the course to put back on restore.
     var removed: [MockRemoval] = []
-    /// Model runs in flight, the ones asked to stop, and the study plan drafts.
+    /// Model runs in flight, the ones asked to stop, the study plan drafts and the weekly notes.
     var runs = MockRuns()
 }
 
@@ -31,6 +34,8 @@ struct MockRuns: Sendable {
     var cancelled: Set<String> = []
     var planDrafts: [String: GeneratedStudyPlan] = [:]
     var acceptedDrafts: Set<String> = []
+    /// Kept weekly notes, newest first.
+    var notes: [WeeklyNote] = []
 }
 
 struct MockRemoval: Sendable {
@@ -48,10 +53,21 @@ extension MockService {
         db.features.sharing[db.courses[try courseIndex(reference)].course.id] = answer
     }
 
+    /// Drops the weekly notes that cover the course (every note when nil); the answers about
+    /// sharing stay.
     public func deleteGenerated(course reference: String?) async throws(PageLampFailure) -> UInt32 {
         await respond("deleteGenerated")
-        if let reference { _ = try courseIndex(reference) }
-        return 0
+        let id: String?
+        if let reference {
+            id = db.courses[try courseIndex(reference)].course.id
+        } else {
+            id = nil
+        }
+        let before = db.features.runs.notes.count
+        db.features.runs.notes.removeAll { note in
+            id == nil || note.meta.context.courses.contains { $0.courseId == id }
+        }
+        return UInt32(before - db.features.runs.notes.count)
     }
 
     // MARK: - The ChatGPT plan through Codex (not offered: every way in refuses, clean-up works)
@@ -149,55 +165,6 @@ extension MockService {
     public func setAiOutputLanguage(language: OutputLanguage) async throws(PageLampFailure) {
         await respond("setAiOutputLanguage")
         db.features.outputLanguage = language
-    }
-
-    // MARK: - The weekly note (no model: blocked; the facade's rules for "prepare it on Monday")
-
-    public func writeWeeklyNote(
-        generationId: String, options: WeeklyNoteOptions, observer: any GenObserver
-    ) async throws(PageLampFailure) -> WeeklyNote {
-        await respond("writeWeeklyNote")
-        if options.automatic {
-            // The mock's launch tasks never ask for one.
-            throw PageLampFailure(kind: .invalid, message: "The weekly note isn't due to be prepared now.")
-        }
-        throw Self.noModel
-    }
-
-    public func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] {
-        await respond("weeklyNotes")
-        return []
-    }
-
-    public func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) {
-        await respond("deleteWeeklyNote")
-        throw PageLampFailure(kind: .notFound, message: "No weekly note with id \(generationId)")
-    }
-
-    public func weeklyNoteSettings() async throws(PageLampFailure) -> WeeklyNoteSettings {
-        await respond("weeklyNoteSettings")
-        return noteSettings()
-    }
-
-    public func setPrepareWeeklyNoteOnMonday(on: Bool) async throws(PageLampFailure) -> WeeklyNoteSettings {
-        await respond("setPrepareWeeklyNoteOnMonday")
-        if on && !noteSettings().prepareOnMondayAllowed {
-            throw PageLampFailure(
-                kind: .invalid,
-                message: "Preparing the note on Monday needs an API key or a model on this computer for weekly notes."
-            )
-        }
-        db.features.prepareNoteOnMonday = on
-        return noteSettings()
-    }
-
-    /// Only an API key or a model on this computer may prepare it (plan D27).
-    private func noteSettings() -> WeeklyNoteSettings {
-        var allowed = false
-        if case .provider = db.features.ai.routing[.weeklyNote]?.backend {
-            allowed = true
-        }
-        return WeeklyNoteSettings(prepareOnMonday: db.features.prepareNoteOnMonday, prepareOnMondayAllowed: allowed)
     }
 
     public func setStudyPlanItemDone(planId: Int64, itemIndex: UInt32, done: Bool) async throws(PageLampFailure) -> StoredStudyPlan {
