@@ -163,9 +163,11 @@ extension MockService {
         return try estimate(request)
     }
 
-    /// The facade's estimate: nothing chosen and the course's own rules block with no amount; the
-    /// other blocks keep it (only an acknowledgement or the budget stops the run).
-    func estimate(_ request: EstimateRequest) throws(PageLampFailure) -> CostEstimate {
+    /// The facade's estimate: nothing chosen, the course's own rules and a week with nothing to
+    /// read block with no amount; the other blocks keep it (only an acknowledgement or the budget
+    /// stops the run). `include`: the materials a run of an explanation brings back (a run's
+    /// gate reads the week as the run does; "≈ $x" has none).
+    func estimate(_ request: EstimateRequest, include: [String] = []) throws(PageLampFailure) -> CostEstimate {
         let gateBlocked = { (reason: BlockReason) in
             CostEstimate(
                 microUsdUpper: nil, inputTokens: 0, maxOutputTokens: 0, reasoningAllowance: 0,
@@ -184,6 +186,13 @@ extension MockService {
         }
         for course in courses {
             if let reason = try courseGate(course, onDevice: onDevice) { return gateBlocked(reason) }
+        }
+        // Like the facade's week context: a week with nothing to read is refused before a run.
+        if case .weeklyExplanation(let course, let week) = request {
+            let materials = explanationWeek(db.courses[try courseIndex(course)], week).materials
+            if Self.explanationSelection(materials, include: include).read.isEmpty {
+                return gateBlocked(.noReadableMaterials)
+            }
         }
         let status = backendStatus(record)
         let reasoning = max(MockAiFixtures.reasoning(choice.effort), info?.reasoningAlwaysOn == true ? 8_000 : 0)
@@ -246,18 +255,21 @@ extension MockService {
     public func removeAllAiData() async throws(PageLampFailure) -> RemoveAiDataReport {
         await respond("removeAllAiData")
         let report = RemoveAiDataReport(
-            providersRemoved: UInt32(db.features.ai.providers.count), generationsRemoved: 0,
+            providersRemoved: UInt32(db.features.ai.providers.count),
+            generationsRemoved: UInt32(db.features.runs.explanations.count),
             usageRowsRemoved: UInt32(db.features.ai.usage.count), backupRemoved: false
         )
-        // Keys, choices, acknowledgements and the ledger go; the budget goes back to its default,
-        // and so do the AI settings (the answers' language, Monday's note, the ChatGPT plan's
-        // weekly cap and Codex source). The courses' answers about sharing materials stay (the
-        // facade's rule).
+        // Keys, choices, acknowledgements, the ledger and the explanations go; the budget goes
+        // back to its default, and so do the AI settings (the answers' language, Monday's note,
+        // the ChatGPT plan's weekly cap and Codex source). The reminders about sharing materials
+        // show again, but the courses' answers stay (the facade's rule).
         db.features.ai = MockAi()
         db.features.outputLanguage = .ui
         db.features.prepareNoteOnMonday = false
         db.features.weeklyCap = nil
         db.features.codexSource = .managed
+        db.features.runs.explanations = []
+        db.features.runs.sharingReminded = []
         return report
     }
 
@@ -311,11 +323,10 @@ extension MockService {
         return index
     }
 
-    /// A provider backend's record; the other backends aren't in this build.
     /// The facade's gate before a run: the estimate's block (only going over the budget can be
     /// overridden), then who the run goes to.
-    func aiRun(_ request: EstimateRequest, overrideBudget: Bool) throws(PageLampFailure) -> MockAiRun {
-        let estimate = try estimate(request)
+    func aiRun(_ request: EstimateRequest, overrideBudget: Bool, include: [String] = []) throws(PageLampFailure) -> MockAiRun {
+        let estimate = try estimate(request, include: include)
         if let block = estimate.wouldBlock, !(block == .budgetReached && overrideBudget) {
             throw PageLampFailure(kind: .blocked, message: "The AI gate stopped this run.", blocked: block)
         }
@@ -326,6 +337,7 @@ extension MockService {
         return MockAiRun(backendLabel: record.label, model: choice.model, onDevice: record.onDevice)
     }
 
+    /// A provider backend's record; the other backends aren't in this build.
     private func provider(of backend: BackendRef) throws(PageLampFailure) -> ModelProviderRecord {
         guard case .provider(let id) = backend else {
             throw PageLampFailure(kind: .blocked, message: "Not available in this build.", blocked: .backendDisabledInThisBuild)
