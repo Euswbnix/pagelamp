@@ -84,10 +84,12 @@ private struct FailingEstimates: ForwardingService {
     }
 }
 
-/// The last study plan request sent, and whether the digest fails (the test turns it on).
+/// The last study plan request sent, and whether the digest or the plan read fails (the test
+/// turns them on).
 private actor SentLog {
     private(set) var overrideBudget: Bool?
     private(set) var digestFails = false
+    private(set) var planFails = false
 
     func record(_ request: StudyPlanRequest) {
         overrideBudget = request.overrideBudget
@@ -95,6 +97,10 @@ private actor SentLog {
 
     func failDigest(_ on: Bool) {
         digestFails = on
+    }
+
+    func failPlan(_ on: Bool) {
+        planFails = on
     }
 }
 
@@ -114,6 +120,13 @@ private struct RecordingPlans: ForwardingService {
             throw PageLampFailure(kind: .internal, message: "digest failed")
         }
         return try await base.weeklyDigest()
+    }
+
+    func latestStudyPlan() async throws(PageLampFailure) -> StoredStudyPlan? {
+        if await log.planFails {
+            throw PageLampFailure(kind: .internal, message: "plan failed")
+        }
+        return try await base.latestStudyPlan()
     }
 }
 
@@ -425,10 +438,22 @@ struct PlanModelTests {
         await model.loadMenuBarWeek()
         let week = try #require(model.menuBarWeek)
         #expect(!week.today.isEmpty && week.aiLabel?.backendLabel == "OpenAI" && week.aiLabel?.model == "gpt-6-luna")
-        // A failed read keeps the week shown, but not a label it may no longer have.
+        // The week and its label are one pair: a failed digest read keeps both.
         await log.failDigest(true)
         await model.loadMenuBarWeek()
-        #expect(model.menuBarWeekFailure != nil && model.menuBarWeek != nil && model.menuBarWeek?.aiLabel == nil)
+        #expect(model.menuBarWeekFailure?.message == "digest failed")
+        #expect(model.menuBarWeek?.today.map(\.title) == week.today.map(\.title))
+        #expect(model.menuBarWeek?.aiLabel?.backendLabel == "OpenAI" && model.menuBarWeek?.aiLabel?.model == "gpt-6-luna")
+        // So does a failed plan read (the digest alone would show the tasks without their label).
+        await log.failDigest(false)
+        await log.failPlan(true)
+        await model.loadMenuBarWeek()
+        #expect(model.menuBarWeekFailure?.message == "plan failed")
+        #expect(model.menuBarWeek?.aiLabel?.model == "gpt-6-luna" && model.menuBarWeek?.today.isEmpty == false)
+        // Both read again: a new pair, and no failure.
+        await log.failPlan(false)
+        await model.loadMenuBarWeek()
+        #expect(model.menuBarWeekFailure == nil && model.menuBarWeek?.aiLabel?.backendLabel == "OpenAI")
     }
 
     @Test("a failed estimate never leaves another request's amount beside Write My Plan")

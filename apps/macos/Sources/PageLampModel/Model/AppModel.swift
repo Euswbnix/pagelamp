@@ -483,18 +483,18 @@ public final class AppModel {
         menuBarLoads += 1
         let load = menuBarLoads
         // The plan with the digest: its tasks carry its AI-generated line (a plan PageLamp wrote).
+        // The week and the label are one pair, read together: both are new, or neither.
         async let plan = Self.load { () async throws(PageLampFailure) in try await service.latestStudyPlan() }
         do throws(PageLampFailure) {
             let digest = try await service.weeklyDigest()
-            let label: AiLabel? = if case .success(let stored) = await plan { stored?.aiLabel } else { nil }
+            let stored = try await plan.get()
             guard generation == self.generation, load == menuBarLoads else { return }
-            menuBarWeek = MenuBarWeek(digest: digest, now: now, aiLabel: label)
+            menuBarWeek = MenuBarWeek(digest: digest, now: now, aiLabel: stored?.aiLabel)
             menuBarWeekFailure = nil
         } catch {
-            _ = await plan
             guard generation == self.generation, load == menuBarLoads else { return }
-            // The week shown stays, but not a label it may no longer have.
-            menuBarWeek?.aiLabel = nil
+            // Either read failed: the week shown stays with its own label (they were read
+            // together), and the menu offers Try Again.
             menuBarWeekFailure = error
         }
     }
