@@ -447,9 +447,10 @@ fn plan_runs_without_a_terminal_are_refused() {
     {
         use std::os::unix::fs::PermissionsExt;
         let codex = bin.join("codex");
+        // Shell builtins only: PATH is just `bin`, so `touch` would never be found.
         std::fs::write(
             &codex,
-            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", mark.display()),
+            format!("#!/bin/sh\necho \"$*\" >> '{}'\nexit 1\n", mark.display()),
         )
         .unwrap();
         std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -501,8 +502,8 @@ fn plan_runs_without_a_terminal_are_refused() {
 }
 
 /// A build that doesn't offer the ChatGPT plan (`CHATGPT_PLAN_OFFERED`): `ai codex …` refuses
-/// with the facade's message before anything is printed or started (status and sign-out, which
-/// clean up, still work; they aren't run here because they would look for a `codex` on PATH).
+/// with the facade's message before anything is printed or started (status and sign-out still
+/// work: see the next test).
 #[test]
 fn codex_commands_refuse_when_the_plan_is_not_offered() {
     if pagelamp_app::ai::CHATGPT_PLAN_OFFERED {
@@ -515,6 +516,7 @@ fn codex_commands_refuse_when_the_plan_is_not_offered() {
         &["ai", "codex", "login"],
         &["ai", "codex", "use", "system"],
         &["ai", "codex", "cap", "5"],
+        &["ai", "use", "study-plan", "codex", "gpt-6-luna", "--yes"],
     ] {
         let output = pagelamp(&home, args);
         let err = failed(&output);
@@ -528,4 +530,64 @@ fn codex_commands_refuse_when_the_plan_is_not_offered() {
         );
         assert!(!err.contains("Downloading"), "{args:?}: {err}");
     }
+}
+
+/// With the plan not offered, `ai codex status` says so and starts nothing: neither a Codex on
+/// PATH nor a managed one runs, and no Codex sign-in folder appears. Signing out is clean-up:
+/// with no sign-in folder nothing starts; with one, the Codex "Remove all AI data" would use
+/// signs out, and nothing else runs.
+#[cfg(unix)]
+#[test]
+fn codex_status_starts_nothing_when_the_plan_is_not_offered() {
+    use std::os::unix::fs::PermissionsExt;
+    if pagelamp_app::ai::CHATGPT_PLAN_OFFERED {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let bin = temp.path().join("bin");
+    let mark = temp.path().join("codex-ran");
+    // Codexes that note every start, with shell builtins only (PATH is just `bin`).
+    let fake = |dir: &Path, who: &str| {
+        std::fs::create_dir_all(dir).unwrap();
+        let codex = dir.join("codex");
+        std::fs::write(
+            &codex,
+            format!("#!/bin/sh\necho \"{who} $*\" >> '{}'\n", mark.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    fake(&bin, "path");
+    let started = || std::fs::read_to_string(&mark).unwrap_or_default();
+    let run = |args: &[&str]| pagelamp_with_path(&home, args, Some(&bin));
+
+    let text = ok(&run(&["ai", "codex", "status"]));
+    assert_eq!(
+        text.trim(),
+        "The ChatGPT plan isn't available in this version of PageLamp."
+    );
+    let status = json_out(&run(&["--json", "ai", "codex", "status"]));
+    assert_eq!(status["chatgpt_plan_offered"], false);
+    assert_eq!(status["system_codex"], Value::Null);
+    assert_eq!(status["login"]["state"], "signed_out");
+    assert_eq!(started(), "", "no Codex was started");
+    assert!(!home.join("codex-home").exists());
+
+    // A managed Codex as well: status still starts nothing, and with no sign-in folder neither
+    // does sign-out.
+    fake(
+        &home.join("runtimes").join("codex").join("0.1.0"),
+        "managed",
+    );
+    ok(&run(&["ai", "codex", "status"]));
+    ok(&run(&["ai", "codex", "logout"]));
+    assert_eq!(started(), "");
+    assert!(!home.join("codex-home").exists());
+
+    // A sign-in folder left by an earlier build: the managed Codex signs out, and only that.
+    std::fs::create_dir_all(home.join("codex-home")).unwrap();
+    let text = ok(&run(&["ai", "codex", "logout"]));
+    assert!(text.contains("isn't available"), "{text}");
+    assert_eq!(started(), "managed logout\n");
 }

@@ -149,24 +149,61 @@ async fn a_stored_codex_routing_blocks_and_clean_up_still_works() {
 }
 
 /// `codex_status` keeps answering with the switch off (the "Remove all AI data" dialog reads the
-/// sign-in from it). It looks for a `codex` on PATH, so it only runs where there is none: these
-/// tests never start a Codex found on this computer.
+/// sign-in from it), and starts nothing: a managed Codex that notes every start is never run,
+/// and no Codex sign-in folder appears. (It doesn't look on PATH either; the CLI test with a
+/// Codex on PATH checks that.) Signing out is clean-up: with no sign-in folder nothing starts,
+/// with one the managed Codex signs out.
 #[tokio::test]
-async fn codex_status_still_answers_when_the_plan_is_not_offered() {
-    let exe = if cfg!(windows) { "codex.exe" } else { "codex" };
-    let on_path = std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(exe).is_file()));
-    if on_path {
+async fn codex_status_starts_nothing_when_the_plan_is_not_offered() {
+    if !cfg!(debug_assertions) && CHATGPT_PLAN_OFFERED {
         return;
     }
     let temp = tempfile::tempdir().unwrap();
     let app = app_in(temp.path());
+    let data = temp.path().join("data");
+    let mark = temp.path().join("codex-ran");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = data.join("runtimes").join("codex").join("0.1.0");
+        std::fs::create_dir_all(&dir).unwrap();
+        let codex = dir.join("codex");
+        std::fs::write(
+            &codex,
+            format!("#!/bin/sh\necho \"$*\" >> '{}'\n", mark.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&codex, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let started = || std::fs::read_to_string(&mark).unwrap_or_default();
+
     let status = app.codex_status().await.unwrap();
     assert!(!status.chatgpt_plan_offered);
     assert_eq!(
         status.login.state,
         pagelamp_app::ai::CodexLoginState::SignedOut
     );
+    assert_eq!(status.system_codex, None);
+    assert_eq!(status.runtime.installed_version, None);
+    assert_eq!(
+        status.outdated_action,
+        pagelamp_app::ai::CodexOutdatedAction::None
+    );
+    assert_eq!(started(), "", "no Codex was started");
+    assert!(!data.join("codex-home").exists());
+
+    // Nothing to sign out of: nothing starts, no folder appears.
+    app.codex_logout().await.unwrap();
+    assert_eq!(started(), "");
+    assert!(!data.join("codex-home").exists());
+    // A sign-in folder left by an earlier build: the managed Codex signs out, nothing else runs.
+    #[cfg(unix)]
+    {
+        std::fs::create_dir_all(data.join("codex-home")).unwrap();
+        let status = app.codex_logout().await.unwrap();
+        assert!(!status.chatgpt_plan_offered);
+        assert_eq!(started(), "logout\n");
+    }
 }
 
 /// The switch on (tests only): the same calls reach Codex's own checks again.
