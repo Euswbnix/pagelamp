@@ -4,8 +4,8 @@
 
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
-    ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote, assemble,
-    calendar_context, note_context, plan_context, week_context,
+    AnswerLanguage, ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote,
+    assemble_in, calendar_context, note_context, plan_context, week_context_including,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -64,13 +64,19 @@ impl App {
                 };
                 plan_context(&store, &scope, at)
             }
-            EstimateRequest::WeeklyExplanation { course, week } => week_context(
+            // The run's own builder, so an include is priced as the run sends it.
+            EstimateRequest::WeeklyExplanation {
+                course,
+                week,
+                include,
+            } => week_context_including(
                 &store,
                 course,
                 *week,
                 at,
                 destination,
                 explanation_budget(destination),
+                include,
             ),
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
                 note_context(&store, at)
@@ -81,7 +87,8 @@ impl App {
             Err(GateError::Blocked(reason)) => return Ok(blocked_estimate(reason)),
             Err(GateError::Store(err)) => return Err(err.into()),
         };
-        let (prompt, output, max_output) = request_shape(feature, &context);
+        let language = estimate_language(&store, feature)?;
+        let (prompt, output, max_output) = request_shape_in(feature, &context, None, language);
         let estimate = pagelamp_llm::estimate::estimate(
             &profile,
             &choice.model,
@@ -354,7 +361,7 @@ pub(crate) fn request_shape(
     feature: AiFeature,
     context: &GatedContext,
 ) -> (RenderedPrompt, OutputSpec, u32) {
-    request_shape_with_note(feature, context, None)
+    request_shape_in(feature, context, None, None)
 }
 
 /// `request_shape` with the student's own note (a study plan's "focus on the midterm"), sent
@@ -364,30 +371,66 @@ pub(crate) fn request_shape_with_note(
     context: &GatedContext,
     note: Option<&StudentNote>,
 ) -> (RenderedPrompt, OutputSpec, u32) {
+    request_shape_in(feature, context, note, None)
+}
+
+/// `request_shape_with_note` with the answer-language line the run adds (an explanation's and
+/// the note's), in the answer format the run asks for.
+pub(crate) fn request_shape_in(
+    feature: AiFeature,
+    context: &GatedContext,
+    note: Option<&StudentNote>,
+    language: Option<AnswerLanguage>,
+) -> (RenderedPrompt, OutputSpec, u32) {
     match feature {
         AiFeature::StudyPlan => (
-            assemble(prompts::STUDY_PLAN, context, note),
+            assemble_in(prompts::STUDY_PLAN, context, note, language),
             OutputSpec::for_type::<PlanTasks>("study_plan_tasks").unwrap_or(OutputSpec::Text),
             PLAN_MAX_OUTPUT,
         ),
         AiFeature::WeeklyExplanation => (
-            assemble(prompts::WEEKLY_EXPLANATION, context, None),
-            OutputSpec::Text,
+            assemble_in(prompts::WEEKLY_EXPLANATION, context, None, language),
+            super::explain::explanation_output(),
             EXPLANATION_MAX_OUTPUT,
         ),
         AiFeature::WeeklyNote => (
-            assemble(prompts::WEEKLY_NOTE, context, None),
+            assemble_in(prompts::WEEKLY_NOTE, context, None, language),
             super::note::note_output(),
             NOTE_MAX_OUTPUT,
         ),
         AiFeature::CourseCalendar => (
-            assemble(prompts::COURSE_CALENDAR, context, None),
+            assemble_in(prompts::COURSE_CALENDAR, context, None, language),
             OutputSpec::for_type::<CalendarExtraction>("course_calendar")
                 .unwrap_or(OutputSpec::Text),
             CALENDAR_MAX_OUTPUT,
         ),
     }
 }
+
+/// The answer-language line the estimate assumes for a run of `feature`, never shorter than the
+/// run's: an explanation in the course's language gets that line exactly; one in the UI's
+/// language, and the note (whose language is the UI's too), get the longest line the run could
+/// add, since the estimate doesn't know the UI's language. A failed read is an error, as in
+/// the run.
+fn estimate_language(store: &Store, feature: AiFeature) -> Result<Option<AnswerLanguage>> {
+    Ok(match feature {
+        AiFeature::WeeklyExplanation => {
+            let setting: super::OutputLanguage = store
+                .setting_or_absent(settings::OUTPUT_LANGUAGE)?
+                .unwrap_or_default();
+            Some(match setting {
+                super::OutputLanguage::Course => AnswerLanguage::CourseLanguage,
+                super::OutputLanguage::Ui => LONGEST_UI_LANGUAGE,
+            })
+        }
+        AiFeature::WeeklyNote => Some(LONGEST_UI_LANGUAGE),
+        AiFeature::StudyPlan | AiFeature::CourseCalendar => None,
+    })
+}
+
+/// Of the languages a run in the UI's language can use (English, Simplified Chinese), the one
+/// with the longer instruction.
+const LONGEST_UI_LANGUAGE: AnswerLanguage = AnswerLanguage::SimplifiedChinese;
 
 /// An estimate for a run that can't start.
 fn blocked_estimate(reason: BlockReason) -> CostEstimate {
@@ -399,5 +442,78 @@ fn blocked_estimate(reason: BlockReason) -> CostEstimate {
         repair_possible: false,
         price_known: false,
         would_block: Some(reason),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pagelamp_core::ai::Effort;
+
+    use super::super::OutputLanguage;
+    use super::super::explain::{answer_language, explanation_output};
+    use super::super::note::{note_language, note_output};
+    use super::*;
+
+    /// For every output-language setting and UI language, the estimate's prompt costs at least
+    /// what the run's does, on a model whose structured answers may need a second, repaired
+    /// call (`structured_output: false` in the catalog): the estimate and the run's own check
+    /// (`run_blocks`) agree on the answer format, and the estimate's language line is never the
+    /// shorter one.
+    #[test]
+    fn the_estimate_is_never_below_the_run() {
+        let profile = pagelamp_llm::profile::preset("openai").unwrap();
+        let model = "gpt-5.2-pro";
+        let price = |prompt: &RenderedPrompt, output: &OutputSpec, max_output: u32| {
+            pagelamp_llm::estimate::estimate(
+                profile,
+                model,
+                prompt,
+                output,
+                Effort::Lowest,
+                max_output,
+            )
+        };
+        let context = GatedContext::empty();
+        let store = Store::open_in_memory().unwrap();
+        for setting in [OutputLanguage::Ui, OutputLanguage::Course] {
+            store
+                .set_setting(settings::OUTPUT_LANGUAGE, &setting)
+                .unwrap();
+            let language = estimate_language(&store, AiFeature::WeeklyExplanation).unwrap();
+            let (prompt, output, max_output) =
+                request_shape_in(AiFeature::WeeklyExplanation, &context, None, language);
+            let estimated = price(&prompt, &output, max_output);
+            assert!(estimated.repair_possible, "{setting:?}: the run's format");
+            for ui in [None, Some("en"), Some("zh-CN")] {
+                let run = assemble_in(
+                    prompts::WEEKLY_EXPLANATION,
+                    &context,
+                    None,
+                    Some(answer_language(setting, ui)),
+                );
+                let run = price(&run, &explanation_output(), EXPLANATION_MAX_OUTPUT);
+                assert!(
+                    estimated.micro_usd_upper >= run.micro_usd_upper,
+                    "{setting:?} {ui:?}: {estimated:?} < {run:?}"
+                );
+            }
+        }
+        let language = estimate_language(&store, AiFeature::WeeklyNote).unwrap();
+        let (prompt, output, max_output) =
+            request_shape_in(AiFeature::WeeklyNote, &context, None, language);
+        let estimated = price(&prompt, &output, max_output);
+        for ui in [None, Some("en"), Some("zh-CN")] {
+            let run = assemble_in(
+                prompts::WEEKLY_NOTE,
+                &context,
+                None,
+                Some(note_language(ui)),
+            );
+            let run = price(&run, &note_output(), NOTE_MAX_OUTPUT);
+            assert!(
+                estimated.micro_usd_upper >= run.micro_usd_upper,
+                "note {ui:?}: {estimated:?} < {run:?}"
+            );
+        }
     }
 }

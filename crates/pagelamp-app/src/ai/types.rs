@@ -326,6 +326,10 @@ pub enum EstimateRequest {
     WeeklyExplanation {
         course: String,
         week: Option<u32>,
+        /// Materials to send although they look like assessments (`ExplainOptions.include`):
+        /// priced as the run with the same `include` sends them.
+        #[serde(default)]
+        include: Vec<String>,
     },
     WeeklyNote,
     CourseCalendar {

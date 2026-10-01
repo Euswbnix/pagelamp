@@ -464,7 +464,11 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                     let [course] = <[String; 1]>::try_from(courses).map_err(|_| {
                         anyhow::anyhow!("weekly-explanation needs exactly one --course")
                     })?;
-                    EstimateRequest::WeeklyExplanation { course, week }
+                    EstimateRequest::WeeklyExplanation {
+                        course,
+                        week,
+                        include: Vec::new(),
+                    }
                 }
                 FeatureArg::WeeklyNote => EstimateRequest::WeeklyNote,
                 FeatureArg::CourseCalendar => EstimateRequest::CourseCalendar { courses },

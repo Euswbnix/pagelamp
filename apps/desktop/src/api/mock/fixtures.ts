@@ -497,14 +497,15 @@ function demo101(now: Date): MockCourse {
       module: m4,
       chunks: 32,
     }),
-    material(c.id, "Reading: Chapter 4, Who Gets Asked", "file", 4, -2, now, {
-      module: m4,
-      chunks: 18,
-    }),
-    // Looks like graded work: left out of an explanation unless the student includes it.
+    // Looks like graded work: left out of an explanation unless the student includes it (then
+    // it is the week's second readable material, so the mock's two-material limit reads it).
     material(c.id, "Assignment 4 — Survey Simulation", "file", 4, -2, now, {
       module: m4,
       chunks: 15,
+    }),
+    material(c.id, "Reading: Chapter 4, Who Gets Asked", "file", 4, -2, now, {
+      module: m4,
+      chunks: 18,
     }),
     material(c.id, "Survey dataset (large archive)", "file", 4, -2, now, {
       module: m4,

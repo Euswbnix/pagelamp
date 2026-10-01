@@ -95,6 +95,9 @@ export function selectMaterials(
       readable.push(m);
     }
   }
+  // The first two, in the week's order, stand in for the facade's length budget. An included
+  // material gets no priority there (every candidate gets a fair share), so here neither: it
+  // can come back over the length limit like any other.
   const read = readable.slice(0, 2);
   for (const m of readable.slice(2)) {
     leftOut.push({ material_id: m.id, title: m.title, reason: "over_budget", includable: false });
@@ -102,12 +105,62 @@ export function selectMaterials(
   return { read, leftOut };
 }
 
+/** A graded-looking material the student included: the only kind `include` lifts. */
+function lifts(m: MaterialView, include: string[]): boolean {
+  return include.includes(m.id) && looksLikeAssessment(m.title);
+}
+
+/**
+ * The week an explanation reads, as pagelamp-core's week_materials picks it: `week`, else the
+ * course's default week, else the last 14 days.
+ */
+export function explanationWeek(
+  c: MockCourse,
+  requestedWeek: number | null,
+  now: Date,
+): { week: number | null; materials: MaterialView[] } {
+  const week = requestedWeek ?? c.timeline.default_week ?? null;
+  if (week !== null) return { week, materials: c.materials.filter((m) => m.week_hint === week) };
+  const until = now.getTime();
+  const since = until - 14 * DAY;
+  const materials = c.materials.filter((m) => {
+    const at = m.published_at ? Date.parse(m.published_at) : Number.NaN;
+    return at >= since && at <= until;
+  });
+  return { week, materials };
+}
+
+/**
+ * What an explanation of that week sends of `include`: the graded-looking materials it lifts and
+ * reads (pagelamp-core's week_context_including). The estimate prices these, as the run does;
+ * an id that names nothing there adds nothing.
+ */
+export function liftedIncludes(
+  c: MockCourse,
+  requestedWeek: number | null,
+  include: string[],
+  now: Date,
+): string[] {
+  const { materials } = explanationWeek(c, requestedWeek, now);
+  return liftedOf(selectMaterials(materials, include).read, include);
+}
+
+function liftedOf(read: MaterialView[], include: string[]): string[] {
+  return read.filter((m) => lifts(m, include)).map((m) => m.id);
+}
+
 export function createExplainMock(deps: {
   now: () => Date;
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   step: () => Promise<void>;
   activity: MockActivity;
-  gate: (courseId: string, week: number | null, overrideBudget: boolean) => Promise<MockAiRun>;
+  /** `include`: the materials the run sends although they look like assessments. */
+  gate: (
+    courseId: string,
+    week: number | null,
+    include: string[],
+    overrideBudget: boolean,
+  ) => Promise<MockAiRun>;
   findCourse: (courseId: string) => MockCourse;
 }): ExplainApi & { cancel: (generationId: string) => void } {
   const { now, respond } = deps;
@@ -142,24 +195,15 @@ export function createExplainMock(deps: {
         blocked: "course_ai_turned_off",
       });
     }
-    // pagelamp-core's week_materials: `week.or(timeline.default_week)`, else the last 14 days.
-    const week = requestedWeek ?? c.timeline.default_week ?? null;
-    const until = now().getTime();
-    const since = until - 14 * DAY;
-    const materials =
-      week === null
-        ? c.materials.filter((m) => {
-            const at = m.published_at ? Date.parse(m.published_at) : Number.NaN;
-            return at >= since && at <= until;
-          })
-        : c.materials.filter((m) => m.week_hint === week);
+    const { week, materials } = explanationWeek(c, requestedWeek, now());
     const { read, leftOut } = selectMaterials(materials, include);
     if (read.length === 0) {
       throw new ApiError("blocked", "No readable materials this week.", {
         blocked: "no_readable_materials",
       });
     }
-    const run = await deps.gate(c.course.id, week, overrideBudget);
+    // Priced with what the run sends, as the facade's run checks its own prompt.
+    const run = await deps.gate(c.course.id, week, liftedOf(read, include), overrideBudget);
     const stop = () => {
       if (cancelled.has(generationId)) {
         onEvent({ type: "finished", ok: false });

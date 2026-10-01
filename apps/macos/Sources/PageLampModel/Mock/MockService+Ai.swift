@@ -180,7 +180,7 @@ extension MockService {
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
         let onDevice = info?.onDevice ?? false
         let courses: [String] = switch request {
-        case .weeklyExplanation(let course, _): [course]
+        case .weeklyExplanation(let course, _, _): [course]
         case .courseCalendar(let courses): courses
         case .studyPlan, .weeklyNote: []
         }
@@ -188,7 +188,7 @@ extension MockService {
             if let reason = try courseGate(course, onDevice: onDevice) { return gateBlocked(reason) }
         }
         // Like the facade's week context: a week with nothing to read is refused before a run.
-        if case .weeklyExplanation(let course, let week) = request {
+        if case .weeklyExplanation(let course, let week, _) = request {
             let materials = explanationWeek(db.courses[try courseIndex(course)], week).materials
             if Self.explanationSelection(materials, include: include).read.isEmpty {
                 return gateBlocked(.noReadableMaterials)

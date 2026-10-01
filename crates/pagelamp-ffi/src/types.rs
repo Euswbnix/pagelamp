@@ -1604,6 +1604,8 @@ pub enum EstimateRequest {
     WeeklyExplanation {
         course: String,
         week: Option<u32>,
+        #[uniffi(default)]
+        include: Vec<String>,
     },
     WeeklyNote,
     CourseCalendar {

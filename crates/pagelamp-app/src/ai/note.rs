@@ -494,7 +494,7 @@ fn cut(text: &str, max: usize) -> String {
 }
 
 /// The note's language: the UI's when PageLamp speaks it, else English.
-fn note_language(ui_language: Option<&str>) -> AnswerLanguage {
+pub(crate) fn note_language(ui_language: Option<&str>) -> AnswerLanguage {
     match ui_language.map(str::to_ascii_lowercase).as_deref() {
         Some("zh" | "zh-cn" | "zh-hans" | "zh-hans-cn") => AnswerLanguage::SimplifiedChinese,
         _ => AnswerLanguage::English,
