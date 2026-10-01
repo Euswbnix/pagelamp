@@ -15,7 +15,7 @@ use pagelamp_app::ai::{
 use pagelamp_core::ai::{AiFeature, Effort};
 use pagelamp_core::brand::CLI_NAME;
 
-use crate::{print_json, read_secret, text};
+use crate::{confirm, print_json, read_secret, text};
 
 #[derive(Subcommand)]
 pub enum AiCommand {
@@ -796,26 +796,6 @@ async fn use_model(
         choice.effort.as_str()
     );
     Ok(())
-}
-
-/// Ask on the terminal; with `--yes` (or answered "y") go on. Piped without `--yes`: stop.
-fn confirm(question: &str, yes: bool) -> anyhow::Result<()> {
-    use std::io::{BufRead, IsTerminal, Write};
-    if yes {
-        return Ok(());
-    }
-    if !std::io::stdin().is_terminal() {
-        anyhow::bail!("nothing changed: read the above, then run again with --yes to accept");
-    }
-    eprint!("{question} [y/N] ");
-    std::io::stderr().flush()?;
-    let mut answer = String::new();
-    std::io::stdin().lock().read_line(&mut answer)?;
-    if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
-        Ok(())
-    } else {
-        anyhow::bail!("nothing changed")
-    }
 }
 
 fn estimate_line(estimate: &CostEstimate) -> String {

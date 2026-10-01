@@ -43,8 +43,9 @@ pub use course::calendar::{
 };
 pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
 pub use course::removal::{
-    BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
-    RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, TombstoneState,
+    BackupInfo, LostAfterPurge, PurgeReport, PurgeTargets, RemovalPreview, RemovalPreviewItem,
+    RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome,
+    TombstoneState,
 };
 pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,

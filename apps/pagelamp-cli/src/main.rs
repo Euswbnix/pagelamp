@@ -301,7 +301,8 @@ enum CourseCommand {
         dismiss: Option<i64>,
     },
     /// Remove courses from PageLamp: hidden at once, their local data deleted after 7 days
-    /// (or now with --now). Your own folders are never changed. --dry-run shows what goes.
+    /// (or now with --now). Your own folders are never changed. Shows what goes, then asks;
+    /// --dry-run only shows it.
     Remove {
         /// The courses' codes, names or ids.
         #[arg(required = true)]
@@ -319,6 +320,9 @@ enum CourseCommand {
         /// with the local data (now with --now, else in 7 days; an undo keeps it).
         #[arg(long)]
         delete_backup: bool,
+        /// Don't show what goes or ask first (needed without a terminal, e.g. in a script).
+        #[arg(long)]
+        yes: bool,
     },
     /// Removed courses: undo within 7 days, restore by syncing again after that.
     Removed,
@@ -327,13 +331,17 @@ enum CourseCommand {
         /// The removed course's id (see `course removed`).
         removed_id: String,
     },
-    /// Delete removed courses' data now (or every due removal without ids).
+    /// Delete removed courses' data now (or every due removal without ids). Shows what goes,
+    /// then asks.
     Purge {
         /// The removed courses' ids (see `course removed`).
         removed_ids: Vec<String>,
         /// If the Trash can't take the downloaded files, delete them permanently.
         #[arg(long)]
         permanent: bool,
+        /// Don't show what goes or ask first (needed without a terminal, e.g. in a script).
+        #[arg(long)]
+        yes: bool,
     },
     /// Forget a purged course: the next sync brings it back.
     Forget {
@@ -764,6 +772,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     now,
                     keep_files,
                     delete_backup,
+                    yes,
                 } => {
                     let options = pagelamp_app::RemoveOptions {
                         reason: None,
@@ -771,7 +780,7 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                         purge_now: now,
                         delete_pre_update_backup: delete_backup,
                     };
-                    return course::remove(&app, courses, dry_run, options, json).await;
+                    return course::remove(&app, courses, dry_run, options, yes, json).await;
                 }
                 CourseCommand::Removed => return course::removed(&app, json),
                 CourseCommand::Restore { removed_id } => {
@@ -780,7 +789,8 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 CourseCommand::Purge {
                     removed_ids,
                     permanent,
-                } => return course::purge(&app, removed_ids, permanent, json).await,
+                    yes,
+                } => return course::purge(&app, removed_ids, permanent, yes, json).await,
                 CourseCommand::Forget { removed_id } => app.forget_removed_course(&removed_id)?,
                 CourseCommand::Policy {
                     course,
@@ -900,6 +910,26 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 // ----- helpers --------------------------------------------------------------------------------
+
+/// Ask on the terminal; with `--yes` (or answered "y") go on. Piped without `--yes`: stop, with
+/// nothing changed (what the question is about is printed before it).
+fn confirm(question: &str, yes: bool) -> anyhow::Result<()> {
+    if yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!("nothing changed: read the above, then run again with --yes to accept");
+    }
+    eprint!("{question} [y/N] ");
+    std::io::stderr().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().lock().read_line(&mut answer)?;
+    if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+        Ok(())
+    } else {
+        anyhow::bail!("nothing changed")
+    }
+}
 
 /// Read a secret: from the terminal without echo, or one line from stdin when piped.
 fn read_secret(prompt: &str) -> anyhow::Result<String> {
