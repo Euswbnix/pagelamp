@@ -1794,7 +1794,8 @@ export interface CodexRuntime {
 export interface CodexStatus {
   /**
    * This build offers the ChatGPT plan (`CHATGPT_PLAN_OFFERED`). False: hide the ChatGPT card
-   * and every ChatGPT copy; the rest of this status is only for clean-up.
+   * and every ChatGPT copy; nothing was looked for or started, and the rest is neutral (not
+   * installed, signed out, no Codex of the student's own).
    */
   chatgpt_plan_offered: boolean;
   /**

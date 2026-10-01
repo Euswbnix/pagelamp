@@ -517,7 +517,8 @@ pub enum SourceArg {
 }
 
 async fn codex(app: &App, command: CodexCommand, json: bool) -> anyhow::Result<()> {
-    // Status and sign-out (clean-up) work in every build; the rest needs the ChatGPT plan.
+    // Status (which then starts nothing) and sign-out (clean-up) work in every build; the rest
+    // needs the ChatGPT plan.
     if !matches!(command, CodexCommand::Status | CodexCommand::Logout) {
         app.require_chatgpt_plan()?;
     }
@@ -604,8 +605,11 @@ async fn codex(app: &App, command: CodexCommand, json: bool) -> anyhow::Result<(
 }
 
 fn print_codex_status(status: &CodexStatus) {
+    // Nothing else to show: no Codex was looked for, and every hint below names a command that
+    // refuses in this build.
     if !status.chatgpt_plan_offered {
         println!("The ChatGPT plan isn't available in this version of PageLamp.");
+        return;
     }
     let runtime = &status.runtime;
     let installed = match (runtime.state, &runtime.installed_version) {
@@ -748,6 +752,8 @@ async fn use_model(
     let status = app.ai_status()?;
     let Some(backend) = status.backends.iter().find(|b| b.backend == choice.backend) else {
         if choice.backend == BackendRef::Codex {
+            // In a build that doesn't offer the plan, its own refusal (no setup copy).
+            app.require_chatgpt_plan()?;
             anyhow::bail!(
                 "set up the ChatGPT plan first: `{CLI_NAME} ai codex install`, then `{CLI_NAME} ai codex login`"
             );
