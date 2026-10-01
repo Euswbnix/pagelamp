@@ -47,6 +47,7 @@
 "ai.blocked.material_sharing_not_allowed" = "你表示这门课的资料不能分享给 AI 服务，所以没有发送任何内容。";
 "ai.blocked.no_model_chosen" = "请在“设置 → AI 模型”中为这项功能选择模型。";
 "ai.blocked.no_readable_materials" = "没有 PageLamp 能读取的资料。";
+"ai.blocked.nothing_to_write" = "这周还没有可写的内容：没有进行中的课程，未来 7 天内没有截止日期，也没有学习计划项。";
 "ai.blocked.price_unknown_not_acknowledged" = "PageLamp 没有这个模型的价格。确认后可在不执行预算的情况下使用。";
 "ai.blocked.weekly_run_cap_reached" = "已达到本周的运行次数上限。";
 "ai.budget.amount" = "预算（美元）";

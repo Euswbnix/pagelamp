@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, SubsecRound, TimeZone, Utc};
-use pagelamp_app::ai::{BackendRef, GenEvent, ModelChoice, WeeklyNoteOptions};
+use pagelamp_app::ai::{
+    BackendRef, EstimateRequest, GenEvent, GenStage, ModelChoice, WeeklyNoteOptions,
+};
 use pagelamp_app::{App, AppErrorKind, BreakInput, CourseDatesInput};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
 use pagelamp_core::model::*;
@@ -419,7 +421,7 @@ async fn a_note_is_written_from_structure_and_progress_only() {
 }
 
 #[tokio::test]
-async fn an_empty_answer_is_bad_output_and_no_active_course_is_refused() {
+async fn an_empty_answer_is_bad_output_and_nothing_to_write_about_is_blocked() {
     let temp = tempfile::tempdir().unwrap();
     let (app, _) = app_with_courses(temp.path());
     let server = with_local_model(&app).await;
@@ -450,8 +452,131 @@ async fn an_empty_answer_is_bad_output_and_no_active_course_is_refused() {
         .write_weekly_note("note-none", click(), |_| {})
         .await
         .unwrap_err();
-    assert_eq!(err.kind, AppErrorKind::Invalid);
+    assert_eq!(
+        (err.kind, err.blocked),
+        (AppErrorKind::Blocked, Some(BlockReason::NothingToWrite))
+    );
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+/// A week with nothing to write about is known before the click: the estimate says so (after
+/// no model chosen, as the run checks), a click is blocked before anything is sent, and
+/// Monday's note isn't due, so that Monday's try stays for a course synced later that day.
+#[tokio::test]
+async fn nothing_to_write_about_is_known_before_the_click_and_spends_no_monday() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = open(temp.path());
+    app.set_time_zone(Some("America/Toronto")).unwrap();
+    let estimate = || {
+        app.estimate_generation(&EstimateRequest::WeeklyNote)
+            .unwrap()
+    };
+    assert_eq!(estimate().would_block, Some(BlockReason::NoModelChosen));
+    let server = with_local_model(&app).await;
+    let blocked = estimate();
+    assert_eq!(
+        (
+            blocked.would_block,
+            blocked.input_tokens,
+            blocked.micro_usd_upper
+        ),
+        (Some(BlockReason::NothingToWrite), 0, None)
+    );
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&events);
+    let err = app
+        .write_weekly_note("note-none", click(), move |event| {
+            sink.lock().unwrap().push(event)
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (err.kind, err.blocked),
+        (AppErrorKind::Blocked, Some(BlockReason::NothingToWrite))
+    );
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            GenEvent::Stage {
+                stage: GenStage::BuildingContext
+            },
+            GenEvent::Finished { ok: false }
+        ]
+    );
+    assert!(app.weekly_notes().unwrap().is_empty());
+
+    // Monday 2026-11-02, 09:00 in Toronto, opted in: not due, and an automatic run records no
+    // try.
+    app.set_prepare_weekly_note_on_monday(true).unwrap();
+    let monday = Utc.with_ymd_and_hms(2026, 11, 2, 14, 0, 0).unwrap();
+    let prepare = |at| app.startup_tasks(at).unwrap().prepare_weekly_note;
+    assert!(!prepare(monday), "nothing to write about");
+    let automatic = WeeklyNoteOptions {
+        automatic: true,
+        ..click()
+    };
+    let err = app
+        .write_weekly_note_at(monday, "auto-empty", automatic.clone(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Invalid);
+    let tried: Option<NaiveDate> = Store::open(&app.db_path())
+        .unwrap()
+        .setting_or_absent("ai.weekly_note_tried_on")
+        .unwrap();
+    assert_eq!(tried, None, "no try recorded");
+    assert!(server.received_requests().await.unwrap().is_empty());
+
+    // A course synced later that Monday: due, and prepared then.
+    add_course(
+        &Store::open(&app.db_path()).unwrap(),
+        "101",
+        NaiveDate::from_ymd_opt(2026, 9, 8).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 12, 18).unwrap(),
+    );
+    let later = monday + Duration::hours(1);
+    assert!(prepare(later));
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    let note = app
+        .write_weekly_note_at(later, "auto-later", automatic, |_| {})
+        .await
+        .unwrap();
+    assert!(note.automatic);
+    assert!(!prepare(later + Duration::hours(1)));
+}
+
+/// A study plan item today is something to write about, with no course at all.
+#[tokio::test]
+async fn a_plan_item_alone_is_something_to_write_about() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = open(temp.path());
+    let _server = with_local_model(&app).await;
+    Store::open(&app.db_path())
+        .unwrap()
+        .save_study_plan(&StudyPlan {
+            horizon_start: day(0),
+            horizon_end: day(6),
+            items: vec![StudyPlanItem {
+                date: day(0),
+                course_id: None,
+                title: "Read chapter 1".into(),
+                description: None,
+                material_ids: Vec::new(),
+                minutes: Some(30),
+                done: false,
+            }],
+            notes: None,
+        })
+        .unwrap();
+    let estimate = app
+        .estimate_generation(&EstimateRequest::WeeklyNote)
+        .unwrap();
+    assert_eq!(estimate.would_block, None);
+    assert!(estimate.input_tokens > 0);
 }
 
 /// The latest 5 are kept; deleting a course's generated content deletes the notes that
@@ -531,6 +656,13 @@ async fn preparing_on_monday_is_for_api_keys_and_local_models_only() {
     let temp = tempfile::tempdir().unwrap();
     let (app, secrets) = open(temp.path());
     app.set_time_zone(Some("America/Toronto")).unwrap();
+    // A course with fixed dates around those Mondays: the note has something to write about.
+    add_course(
+        &Store::open(&app.db_path()).unwrap(),
+        "101",
+        NaiveDate::from_ymd_opt(2026, 9, 8).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 12, 18).unwrap(),
+    );
     // Monday 2026-11-02, 09:00 in Toronto; the Tuesday after.
     let monday = Utc.with_ymd_and_hms(2026, 11, 2, 14, 0, 0).unwrap();
     let tuesday = monday + Duration::days(1);
@@ -804,6 +936,13 @@ async fn monday_is_the_student_s_monday_across_the_end_of_dst() {
     app.set_time_zone(Some("America/Toronto")).unwrap();
     let server = with_local_model(&app).await;
     app.set_prepare_weekly_note_on_monday(true).unwrap();
+    // A course with fixed dates, so the note has something to say on those Mondays.
+    add_course(
+        &Store::open(&app.db_path()).unwrap(),
+        "101",
+        NaiveDate::from_ymd_opt(2026, 9, 8).unwrap(),
+        NaiveDate::from_ymd_opt(2026, 12, 18).unwrap(),
+    );
     let prepare = |y, m, d, h, min| {
         app.startup_tasks(Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap())
             .unwrap()
@@ -817,13 +956,7 @@ async fn monday_is_the_student_s_monday_across_the_end_of_dst() {
     assert!(prepare(2026, 10, 26, 4, 30));
 
     // The automatic run itself checks the same Monday: refused on Sunday 23:30, run at Monday
-    // 00:30 (a course with fixed dates, so the note has something to say then).
-    add_course(
-        &Store::open(&app.db_path()).unwrap(),
-        "101",
-        NaiveDate::from_ymd_opt(2026, 9, 8).unwrap(),
-        NaiveDate::from_ymd_opt(2026, 12, 18).unwrap(),
-    );
+    // 00:30.
     Mock::given(method("POST"))
         .respond_with(answer(&a_note()))
         .mount(&server)

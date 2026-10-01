@@ -270,7 +270,8 @@
     "budget_reached": "这次运行会超出本月预算。",
     "price_unknown_not_acknowledged": "{{product}} 没有这个模型的价格。确认后可在不执行预算的情况下使用。",
     "weekly_run_cap_reached": "已达到本周的运行次数上限。",
-    "backend_disabled_in_this_build": "这个版本的 {{product}} 不提供这个服务。"
+    "backend_disabled_in_this_build": "这个版本的 {{product}} 不提供这个服务。",
+    "nothing_to_write": "这周还没有可写的内容：没有进行中的课程，未来 7 天内没有截止日期，也没有学习计划项。"
   },
   "modelError": {
     "not_signed_in": "你还没有登录这个服务。",

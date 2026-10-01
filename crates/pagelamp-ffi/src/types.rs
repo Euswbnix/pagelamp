@@ -1344,6 +1344,7 @@ pub enum BlockReason {
     PriceUnknownNotAcknowledged,
     WeeklyRunCapReached,
     BackendDisabledInThisBuild,
+    NothingToWrite,
 }
 
 /// Why a model call failed.

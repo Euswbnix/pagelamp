@@ -128,7 +128,9 @@ public final class AiSettingsModel {
         // Unread: the section stays as it was (hidden before the first read, like the Tauri app).
         if case .success(let value) = await settings { noteSettings = value }
         switch await estimate {
-        case .success(let value): noteEstimate = value
+        // A week with nothing to write about has no estimate: the model's own facts say the rest
+        // (no amount, and no "no price" for a priced model).
+        case .success(let value): noteEstimate = value.wouldBlock == .nothingToWrite ? nil : value
         case .failure: noteEstimate = nil
         }
     }

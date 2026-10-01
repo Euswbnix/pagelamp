@@ -59,6 +59,7 @@ nonisolated enum L10nKeys {
         "ai.blocked.material_sharing_not_allowed",
         "ai.blocked.no_model_chosen",
         "ai.blocked.no_readable_materials",
+        "ai.blocked.nothing_to_write",
         "ai.blocked.price_unknown_not_acknowledged",
         "ai.blocked.weekly_run_cap_reached",
         "ai.budget.amount",

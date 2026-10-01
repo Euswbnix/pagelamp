@@ -77,6 +77,15 @@ private struct CountingWrites: ForwardingService {
     }
 }
 
+/// A run that finds the week empty as it starts (the race after Monday's check).
+private struct EmptyWeekWrites: ForwardingService {
+    let base: any PageLampService
+
+    func writeWeeklyNote(generationId: String, options: WeeklyNoteOptions, observer: any GenObserver) async throws(PageLampFailure) -> WeeklyNote {
+        throw PageLampFailure(kind: .blocked, message: "There is nothing to write about this week.", blocked: .nothingToWrite)
+    }
+}
+
 /// Lets tasks the code under test started run (Monday's run starts in a task of its own).
 @MainActor
 private func settle() async {
@@ -252,6 +261,40 @@ struct WeeklyNoteModelTests {
         note.estimate.overrideBudget = true
         await note.write(uiLanguage: "en")
         #expect(note.automaticProblem == nil && finished(note) != nil)
+    }
+
+    @Test("an empty week: Write is off and says why before the click")
+    func nothingToWrite() async throws {
+        let time = TestTime()
+        let empty = mock(.empty, time: time)
+        _ = try await empty.addModelProvider(preset: "ollama", baseUrl: nil, apiKey: nil)
+        try await empty.setFeatureModel(
+            feature: .weeklyNote, choice: ModelChoice(backend: .provider(providerId: "ollama"), model: "qwen3.5:9b", effort: .lowest)
+        )
+        let note = noteModel(empty, time: time)
+        await note.load()
+        await note.estimate.settle()
+        #expect(note.estimate.block == .nothingToWrite && !note.estimate.canGenerate && !note.estimate.showsCost)
+        await note.write(uiLanguage: "en")
+        guard case .idle = note.run.phase else {
+            Issue.record("Write is off: nothing should start")
+            return
+        }
+    }
+
+    @Test("Monday's run that finds the week empty as it starts says nothing")
+    func mondayEmptyIsQuiet() async throws {
+        let time = TestTime(monday())
+        let base = mock(.aiKey, time: time)
+        _ = try await base.setPrepareWeeklyNoteOnMonday(on: true)
+        let note = noteModel(EmptyWeekWrites(base: base), time: time)
+        await note.check()
+        #expect(await eventually { note.automatic && !note.run.isRunning })
+        #expect(note.automaticProblem == nil)
+        guard case .idle = note.run.phase else {
+            Issue.record("expected idle")
+            return
+        }
     }
 
     @Test("coming back to the card estimates again, and going over the budget is chosen again")
@@ -667,5 +710,13 @@ struct WeeklyNoteSettingsTests {
         #expect(key.noteCost?.priceKnown == false)
         let words = NoteText(l10n: en, calendar: TestClock.calendar)
         #expect(key.noteCost.flatMap(words.mondayCost) == "With OpenAI · gpt-6-preview-0929, counted toward your monthly budget (no price for this model).")
+        // A week with nothing to write about: no amount, and no "no price" for a priced model.
+        let (empty, service) = await loaded(.empty)
+        _ = try await service.addModelProvider(preset: "openai", baseUrl: nil, apiKey: "sk-demo-key-7731")
+        await empty.setModel(.weeklyNote, backend: .provider(providerId: "openai"), model: "gpt-5.4-mini")
+        await empty.load()
+        let cost = try #require(empty.noteCost)
+        #expect(cost.priceKnown && cost.upper == nil)
+        #expect(words.mondayCost(cost) == nil)
     }
 }

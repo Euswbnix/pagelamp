@@ -69,6 +69,12 @@ struct WeeklyNoteSection: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Task { await note.refresh() }
         }
+        // The week changed (a sync brought courses, a course was hidden, the plan changed): "≈ $x"
+        // and "nothing to write about" are read again. Only the estimate: it never changes these.
+        .onChange(of: noteWeekKey) {
+            guard !standIns else { return }
+            Task { await note.estimate.refresh() }
+        }
         .onChange(of: announcement) { _, text in
             if let text { AccessibilityNotification.Announcement(text).post() }
         }
@@ -85,6 +91,15 @@ struct WeeklyNoteSection: View {
         .onChange(of: note.estimate.failure) { _, failure in
             if let failure { AccessibilityNotification.Announcement(l10n.aiError(failure)).post() }
         }
+    }
+
+    /// What the note writes about, as This Week knows it: the courses that show and whether each
+    /// is active, the next deadlines and the plan. `load()` and the estimate never change it, so
+    /// re-reading on a change can't loop.
+    private var noteWeekKey: [String] {
+        model.courses.map { "\($0.course.id):\($0.course.hidden):\($0.lifecycle.isActive)" }
+            + model.upcomingDeadlines.map(\.event.id)
+            + [model.studyPlan.map { "plan:\($0.id):\($0.plan.items.count)" } ?? "plan:none"]
     }
 
     // MARK: - Write, or the run

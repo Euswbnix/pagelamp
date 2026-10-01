@@ -10,8 +10,9 @@
 // the app runs, 60 s after a wake (the hour stops when the Mac goes to sleep and restarts at the
 // wake, so an hour that passed asleep never fires then), and on activation at most every 15
 // minutes or on a new day. Monday's run never
-// goes over the budget, never moves focus, and ends quietly: "not due any more" says nothing,
-// anything else leaves one line on the card.
+// goes over the budget, never moves focus, and ends quietly: "not due any more" and "nothing to
+// write about" (the week emptied as the run started; Write already says so) say nothing, anything
+// else leaves one line on the card.
 
 import AppKit
 import Foundation
@@ -205,8 +206,8 @@ public final class WeeklyNoteModel {
     }
 
     /// Monday's note, when the facade said it's due and nothing runs. It never goes over the
-    /// budget; "not due any more" (another app, or an earlier read, got there first) ends
-    /// silently, anything else leaves `automaticProblem`.
+    /// budget; "not due any more" (another app, or an earlier read, got there first) and
+    /// "nothing to write about" end silently, anything else leaves `automaticProblem`.
     private func writeMonday() async {
         guard !run.isRunning else { return }
         let options = WeeklyNoteOptions(uiLanguage: uiLanguage(), overrideBudget: false, automatic: true)
@@ -220,7 +221,8 @@ public final class WeeklyNoteModel {
             },
             onFailure: { [weak self] failure in
                 // A run of the data source before says nothing about this one.
-                if let self, self.generation == generation, failure.kind != .invalid { self.automaticProblem = failure }
+                let quiet = failure.kind == .invalid || failure.blocked == .nothingToWrite
+                if let self, self.generation == generation, !quiet { self.automaticProblem = failure }
                 return .idle
             }
         )

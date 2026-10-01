@@ -47,6 +47,7 @@
 "ai.blocked.material_sharing_not_allowed" = "You said this course's materials may not be shared with AI services, so nothing was sent.";
 "ai.blocked.no_model_chosen" = "Choose a model for this in Settings → AI models.";
 "ai.blocked.no_readable_materials" = "No materials PageLamp can read.";
+"ai.blocked.nothing_to_write" = "There's nothing to write about this week yet: no active course, no deadline in the next 7 days and no study plan item.";
 "ai.blocked.price_unknown_not_acknowledged" = "PageLamp has no price for this model. Confirm to use it without a budget.";
 "ai.blocked.weekly_run_cap_reached" = "You've reached this week's run limit.";
 "ai.budget.amount" = "Budget in US dollars";

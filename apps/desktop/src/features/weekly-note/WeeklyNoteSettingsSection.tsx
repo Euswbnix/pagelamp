@@ -62,9 +62,11 @@ function CostLine() {
   if (!choice || !backend) return null;
   const names = { backend: backend.label, model: choice.model };
   if (backend.kind === "local") return t("settings.costLocal", names);
-  const upper = estimate.data?.micro_usd_upper ?? null;
+  // A week with nothing to write about has no estimate (no amount, and no "no price" either).
+  const data = estimate.data?.would_block === "nothing_to_write" ? undefined : estimate.data;
+  const upper = data?.micro_usd_upper ?? null;
   if (upper === null) {
-    return estimate.data ? t("settings.costUnpriced", names) : null;
+    return data ? t("settings.costUnpriced", names) : null;
   }
   const shown = estimateAmount(upper, i18n.language);
   const cost =

@@ -3,10 +3,11 @@
 // the plan (never a material's text), the AI gate (Monday's run never goes over the budget), the
 // run's stages with Stop between them, the last 5 kept, and "prepare it when I open PageLamp on
 // Monday": due on a Monday in the calendar's zone, with the opt-in on, a provider for the note
-// (an API key or a model on this computer) and no try yet that day, the try recorded as the run
-// starts so a failed, blocked or stopped one still uses up the Monday. Where the Tauri mock
-// differs from the facade it follows the facade: no model is checked before "nothing to write
-// about", the courses keep their own AI state, a note is dated when its run starts, and removing
+// (an API key or a model on this computer), no try yet that day and something to write about, the
+// try recorded as the run starts so a failed, blocked or stopped one still uses up the Monday (a
+// week with nothing to write about isn't due, so it keeps its try). Nothing to write about is
+// blocked with `nothingToWrite`, which the estimate says first, after no model chosen. Like the
+// facade: the courses keep their own AI state, a note is dated when its run starts, and removing
 // AI data or a course's generated content drops its notes.
 
 import Foundation
@@ -91,7 +92,8 @@ extension MockService {
 
     /// Whether Monday's note is due at `date` (`startupTasks(now:)` and Monday's run alike): a
     /// Monday in the calendar's zone (its wall clock: daylight saving doesn't move it), the opt-in
-    /// on and allowed, no try yet that day, and no note written that day (dated by its run's start).
+    /// on and allowed, no try yet that day, no note written that day (dated by its run's start), and
+    /// something to write about.
     func noteDue(at date: Date) -> Bool {
         let settings = noteSettings()
         let day = IsoDate.string(from: date, calendar: calendar)
@@ -101,7 +103,34 @@ extension MockService {
         // The weekly-note-on-Monday scenario: every day is a Monday.
         let monday = scenario == .weeklyNoteMonday || calendar.component(.weekday, from: date) == 2
         return settings.prepareOnMonday && settings.prepareOnMondayAllowed && monday
-            && db.features.noteTriedOn != day && !writtenToday
+            && db.features.noteTriedOn != day && !writtenToday && !noteWeek(at: date).isEmpty
+    }
+
+    /// What the note writes about at `date` (the facade's note context): the active courses that
+    /// show, the next 7 days' deadlines and the plan's items of the last week, a hidden or removed
+    /// course's left out.
+    struct NoteWeek {
+        var active: [MockCourse]
+        var due: [Deadline]
+        var planItems: [StudyPlanItem]
+        /// Nothing at all: nothing to write about (`nothingToWrite`).
+        var isEmpty: Bool { active.isEmpty && due.isEmpty && planItems.isEmpty }
+    }
+
+    func noteWeek(at date: Date) -> NoteWeek {
+        let courses = db.courses.filter { !$0.course.hidden }
+        let active = courses.filter {
+            MockCalendar.lifecycle($0.timeline, keptCurrentUntil: $0.keptCurrentUntil).isActive
+        }
+        let today = IsoDate.string(from: date, calendar: calendar)
+        let weekAgo = IsoDate.string(from: date.addingTimeInterval(-7 * 86_400), calendar: calendar)
+        let leftOut = Set(db.courses.filter { $0.course.hidden }.map { $0.course.id } + db.features.removed.map { $0.course.course.id })
+        let planItems = db.studyPlan?.plan.items.filter { item in
+            item.date >= weekAgo && item.date <= today && !(item.courseId.map { leftOut.contains($0) } ?? false)
+        } ?? []
+        return NoteWeek(
+            active: active, due: deadlines(in: courses, daysAhead: 7, daysBack: 0, at: date), planItems: planItems
+        )
     }
 
     /// The Monday of `date`'s week, "YYYY-MM-DD" (whatever day the calendar's weeks start on).
@@ -120,26 +149,19 @@ extension MockService {
         guard db.features.ai.routing[.weeklyNote] != nil else {
             throw PageLampFailure(kind: .blocked, message: "Choose a model for weekly notes first.", blocked: .noModelChosen)
         }
-        // The week from its structure: the active courses that show, the next 7 days' deadlines
-        // and the plan's items of the last week. Nothing at all: nothing to write about.
+        // The week from its structure (`noteWeek`). Nothing at all: nothing to write about,
+        // blocked before anything is sent (the estimate said so first).
         let started = now()
-        let courses = db.courses.filter { !$0.course.hidden }
-        let active = courses.filter {
-            MockCalendar.lifecycle($0.timeline, keptCurrentUntil: $0.keptCurrentUntil).isActive
-        }
-        let due = deadlines(in: courses, daysAhead: 7, daysBack: 0)
-        let today = IsoDate.string(from: started, calendar: calendar)
-        let weekAgo = IsoDate.string(from: started.addingTimeInterval(-7 * 86_400), calendar: calendar)
-        // The plan's items of courses that show (a hidden or removed course's are left out).
-        let leftOut = Set(db.courses.filter { $0.course.hidden }.map { $0.course.id } + db.features.removed.map { $0.course.course.id })
-        let planItems = db.studyPlan?.plan.items.filter { item in
-            item.date >= weekAgo && item.date <= today && !(item.courseId.map { leftOut.contains($0) } ?? false)
-        } ?? []
-        guard !active.isEmpty || !due.isEmpty || !planItems.isEmpty else {
+        let week = noteWeek(at: started)
+        guard !week.isEmpty else {
             throw PageLampFailure(
-                kind: .invalid, message: "There is nothing to write about this week: no active course, deadline or plan item."
+                kind: .blocked,
+                message: "There is nothing to write about this week: no active course, no deadline in the next 7 days and no study plan item.",
+                blocked: .nothingToWrite
             )
         }
+        let active = week.active
+        let due = week.due
         let run = try aiRun(.weeklyNote, overrideBudget: options.overrideBudget && !options.automatic)
         // The "model's" note: what's due (not the classes) and the first things to get ahead on.
         let dueWork = due.filter { $0.event.kind != .classEvent }

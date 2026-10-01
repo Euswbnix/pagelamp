@@ -134,8 +134,8 @@ public actor MockService: PageLampService {
         deadline.event.dueAt ?? deadline.event.startsAt
     }
 
-    func deadlines(in courses: [MockCourse], daysAhead: Int, daysBack: Int) -> [Deadline] {
-        let t = now()
+    func deadlines(in courses: [MockCourse], daysAhead: Int, daysBack: Int, at date: Date? = nil) -> [Deadline] {
+        let t = date ?? now()
         let from = t.addingTimeInterval(-Double(daysBack) * 86_400)
         let to = t.addingTimeInterval(Double(daysAhead) * 86_400)
         return courses
