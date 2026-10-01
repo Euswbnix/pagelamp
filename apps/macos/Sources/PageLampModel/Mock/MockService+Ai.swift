@@ -256,20 +256,22 @@ extension MockService {
         await respond("removeAllAiData")
         let report = RemoveAiDataReport(
             providersRemoved: UInt32(db.features.ai.providers.count),
-            generationsRemoved: UInt32(db.features.runs.explanations.count),
+            generationsRemoved: UInt32(db.features.runs.explanations.count + db.features.runs.notes.count),
             usageRowsRemoved: UInt32(db.features.ai.usage.count), backupRemoved: false
         )
-        // Keys, choices, acknowledgements, the ledger and the explanations go; the budget goes
-        // back to its default, and so do the AI settings (the answers' language, Monday's note,
-        // the ChatGPT plan's weekly cap and Codex source). The reminders about sharing materials
-        // show again, but the courses' answers stay (the facade's rule).
+        // Keys, choices, acknowledgements, the ledger, the explanations and the weekly notes go;
+        // the budget goes back to its default, and so do the AI settings (the answers' language,
+        // Monday's note and its try, the ChatGPT plan's weekly cap and Codex source). The reminders
+        // about sharing materials show again, but the courses' answers stay (the facade's rule).
         db.features.ai = MockAi()
         db.features.outputLanguage = .ui
         db.features.prepareNoteOnMonday = false
+        db.features.noteTriedOn = nil
         db.features.weeklyCap = nil
         db.features.codexSource = .managed
         db.features.runs.explanations = []
         db.features.runs.sharingReminded = []
+        db.features.runs.notes = []
         return report
     }
 

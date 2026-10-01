@@ -470,7 +470,7 @@ struct MockFeatureTests {
             _ = try await service.writeWeeklyNote(generationId: "n1", options: WeeklyNoteOptions(), observer: GenEventStream())
             Issue.record("expected blocked")
         } catch {
-            #expect(error.kind == .blocked)
+            #expect(error.kind == .blocked && error.blocked == .noModelChosen)
         }
     }
 

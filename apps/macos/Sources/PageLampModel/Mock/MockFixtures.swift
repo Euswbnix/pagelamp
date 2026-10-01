@@ -33,6 +33,9 @@ public enum MockScenario: String, CaseIterable, Codable, Sendable {
     case aiDisclosureChanged
     /// A custom endpoint that can't be reached (listing models fails; "Test" is rate-limited).
     case aiErrors
+    /// Like aiKey, with "prepare it on Monday" on and every day a Monday (the Tauri mock's
+    /// weekly-note-monday): Monday's note is prepared once.
+    case weeklyNoteMonday
 
     /// What the preview app starts with: the demo plus a failing Canvas token, so the attention
     /// states are visible without setup.

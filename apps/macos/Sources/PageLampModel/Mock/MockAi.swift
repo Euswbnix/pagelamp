@@ -41,7 +41,7 @@ struct MockAi: Sendable {
             }
         }
         switch scenario {
-        case .aiKey, .aiBudget, .aiUnpriced:
+        case .aiKey, .aiBudget, .aiUnpriced, .weeklyNoteMonday:
             record("openai", id: "openai", url: "https://api.openai.com/v1", key: "sk-demo-000000000000007Qx2")
             ai.acknowledged["provider:openai"] = 3101
             route("openai", "gpt-6-luna")

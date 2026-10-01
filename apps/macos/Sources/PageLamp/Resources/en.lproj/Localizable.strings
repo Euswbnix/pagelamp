@@ -1122,6 +1122,7 @@
 "mac.debug.scenario.empty" = "No Sources";
 "mac.debug.scenario.error" = "Missing Course Folder";
 "mac.debug.scenario.expired" = "Expired Canvas Token";
+"mac.debug.scenario.weeklyNoteMonday" = "AI: Weekly Note on Monday";
 "mac.debug.systemSectionPicker" = "Course Pages Use the System Section Picker";
 "mac.diagnostics.previewTitle" = "Diagnostic Report";
 "mac.errors.panic" = "PageLamp ran into a bug. Try again, or restart PageLamp.";
@@ -1228,6 +1229,9 @@
 "mac.toolbar.backToCurrentWeek" = "This Week";
 "mac.toolbar.inspector" = "Inspector";
 "mac.toolbar.showRecentMaterials" = "Show Recent Materials";
+"mac.weeklyNote.showFrom" = "Show the note from %1$@";
+"mac.weeklyNote.write" = "Write My Weekly Note";
+"mac.weeklyNote.writeAgain" = "Write a New Note";
 "onboarding.aiOffer.body" = "With a model you choose, PageLamp can plan your study week and explain a week's materials, citing the pages it read. Nothing is sent to an AI service until you set one up and read what it receives.";
 "onboarding.aiOffer.later" = "You can set one up any time in Settings → AI models.";
 "onboarding.aiOffer.notNow" = "Not now";

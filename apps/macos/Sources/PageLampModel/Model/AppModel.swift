@@ -150,7 +150,10 @@ public final class AppModel {
     public private(set) var dataMode: DataMode
     /// The core. Screens load their own data through it (errors are `PageLampFailure`).
     public private(set) var service: any PageLampService {
-        didSet { serviceGeneration += 1 }
+        didSet {
+            serviceGeneration += 1
+            weeklyNote?.replace(service: service)
+        }
     }
     /// Bumped whenever `service` is replaced (Debug ▸ Data Source, the live facade opening):
     /// screens holding their own model of the service rebuild on it.
@@ -242,6 +245,8 @@ public final class AppModel {
     public let aiPlan: Bool
     /// A course's Explain section: a week explained by the student's model.
     public let aiExplain: Bool
+    /// This Week's weekly note and Monday's (Settings ▸ AI); nil where it's off.
+    public private(set) var weeklyNote: WeeklyNoteModel?
 
     /// A plan written by PageLamp was saved: This Week shows it at once, then everything is read
     /// again (a refresh already under way can't put the old plan back; reminders and the menu
@@ -291,7 +296,8 @@ public final class AppModel {
         reminderCenters: ReminderCenters = .standard,
         aiSettings: Bool = false,
         aiPlan: Bool = false,
-        aiExplain: Bool = false
+        aiExplain: Bool = false,
+        aiNote: Bool = false
     ) {
         self.strings = strings
         self.aiSettings = aiSettings
@@ -317,6 +323,13 @@ public final class AppModel {
             self.service = MockService(scenario: .preview, timing: timing.mock, calendar: calendar, now: clock)
         }
         L10n.current = l10n
+        if aiNote {
+            weeklyNote = WeeklyNoteModel(
+                service: self.service, clock: clock, calendar: calendar,
+                timing: WeeklyNoteModel.Timing(sleep: timing.sleep), notificationCenter: notificationCenter,
+                uiLanguage: { [weak self] in self?.localization ?? "en" }
+            )
+        }
         if reminders {
             reminderDelivery = ReminderDelivery(
                 service: self.service, center: reminderCenters.mock, record: InMemorySettingsStore(),
@@ -396,6 +409,7 @@ public final class AppModel {
                 }
             }
         }
+        if firstStart { weeklyNote?.start() }
         if firstStart, reminderDelivery != nil {
             // A new zone or a wake: the week ahead is scheduled again.
             let center = notificationCenter
@@ -848,9 +862,11 @@ public final class AppModel {
         do throws(PageLampFailure) {
             tasks = try await service.startupTasks(now: clock())
         } catch {
+            if generation == self.generation { weeklyNote?.launched(nil) }
             return
         }
         guard generation == self.generation else { return }
+        weeklyNote?.launched(tasks)
         await reminderDelivery?.launch(due: tasks.dueReminders)
         guard generation == self.generation, let offered = tasks.whatsNew else { return }
         let l10n = self.l10n
@@ -881,6 +897,8 @@ public final class AppModel {
             mode: .mock(scenario)
         )
         await refresh()
+        // A scenario's Monday shows without waiting for the hour.
+        await weeklyNote?.check()
     }
 
     /// Opens the real facade (default data folder, keychain). Call only after the student

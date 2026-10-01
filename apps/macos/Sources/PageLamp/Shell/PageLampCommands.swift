@@ -169,6 +169,7 @@ struct DebugCommands: Commands {
         case .aiBudget: l10n("mac.debug.scenario.aiBudget")
         case .aiDisclosureChanged: l10n("mac.debug.scenario.aiDisclosureChanged")
         case .aiErrors: l10n("mac.debug.scenario.aiErrors")
+        case .weeklyNoteMonday: l10n("mac.debug.scenario.weeklyNoteMonday")
         }
     }
 }

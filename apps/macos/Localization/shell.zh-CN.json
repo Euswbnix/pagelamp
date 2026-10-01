@@ -42,7 +42,8 @@
       "aiUnpriced": "AI：没有价格的模型",
       "aiBudget": "AI：预算快用完",
       "aiDisclosureChanged": "AI：披露说明有变",
-      "aiErrors": "AI：服务出错"
+      "aiErrors": "AI：服务出错",
+      "weeklyNoteMonday": "AI：周一的每周笔记"
     },
     "runMockSync": "运行模拟同步",
     "runMockSyncRejected": "运行模拟同步（访问令牌被拒绝）",

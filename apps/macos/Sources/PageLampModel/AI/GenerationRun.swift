@@ -55,7 +55,9 @@ public final class GenerationRun<Output: Sendable> {
     public var isRunning: Bool { generationId != nil }
 
     /// Runs `call` unless a run is in flight; returns once it has ended.
-    public func run(_ call: Call) async {
+    /// - Parameter onFailure: where a failure (not a Stop) leaves the run, instead of `.failed`
+    ///   (Monday's weekly note ends quietly); nil: `.failed`.
+    public func run(_ call: Call, onFailure: ((PageLampFailure) -> Phase)? = nil) async {
         guard generationId == nil else { return }
         let id = newId()
         generationId = id
@@ -78,7 +80,8 @@ public final class GenerationRun<Output: Sendable> {
         generationId = nil
         switch result {
         case .success(let output): phase = .finished(output)
-        case .failure(let failure): phase = failure.kind == .cancelled ? .stopped : .failed(failure)
+        case .failure(let failure) where failure.kind == .cancelled: phase = .stopped
+        case .failure(let failure): phase = onFailure?(failure) ?? .failed(failure)
         }
     }
 

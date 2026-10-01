@@ -35,6 +35,10 @@ public final class AiSettingsModel {
     public private(set) var usageFailure: PageLampFailure?
     /// The usage month shown ("YYYY-MM-01").
     public private(set) var usageMonth: String
+    /// Monday's weekly note: the opt-in and whether the note's model allows it (nil until read).
+    public private(set) var noteSettings: WeeklyNoteSettings?
+    /// "≈ $x" of a note with its model (the opt-in's cost line).
+    public private(set) var noteEstimate: CostEstimate?
     /// The student picked `usageMonth` (else it follows this month, also into a new one).
     @ObservationIgnored private var usageMonthPicked = false
 
@@ -55,6 +59,8 @@ public final class AiSettingsModel {
     public private(set) var savingBudget = false
     public private(set) var budgetFailure: PageLampFailure?
     public private(set) var removeAllFailure: PageLampFailure?
+    public private(set) var savingNoteSetting = false
+    public private(set) var noteSettingFailure: PageLampFailure?
 
     /// Each feature's Test run: a new choice (or Remove All) makes a late result stale.
     @ObservationIgnored private var testRuns: [AiFeature: Int] = [:]
@@ -79,6 +85,7 @@ public final class AiSettingsModel {
         acknowledgeFailure = nil
         budgetFailure = nil
         removeAllFailure = nil
+        noteSettingFailure = nil
         // This month, unless the student picked one that's still listed (a new month moves on).
         let months = self.months
         if !usageMonthPicked || !months.contains(usageMonth) {
@@ -98,7 +105,8 @@ public final class AiSettingsModel {
         await loadUsage(month: usageMonth)
     }
 
-    /// Re-reads the AI status and the models of every usable backend.
+    /// Re-reads the AI status and the models of every usable backend, and Monday's note (a
+    /// model change can allow or pause it, and changes its cost).
     public func refreshStatus() async {
         do throws(PageLampFailure) {
             let status = try await service.aiStatus()
@@ -107,6 +115,70 @@ public final class AiSettingsModel {
             await loadModels(for: status.backends.filter(Self.isUsable))
         } catch {
             statusFailure = error
+        }
+        await loadNoteSettings()
+    }
+
+    private func loadNoteSettings() async {
+        let service = self.service
+        async let settings = Self.read { () async throws(PageLampFailure) in try await service.weeklyNoteSettings() }
+        async let estimate = Self.read { () async throws(PageLampFailure) in
+            try await service.estimateGeneration(request: .weeklyNote)
+        }
+        // Unread: the section stays as it was (hidden before the first read, like the Tauri app).
+        if case .success(let value) = await settings { noteSettings = value }
+        switch await estimate {
+        case .success(let value): noteEstimate = value
+        case .failure: noteEstimate = nil
+        }
+    }
+
+    /// What Monday's note runs on and what it costs (the opt-in's hint).
+    public struct NoteCost: Equatable, Sendable {
+        public var backend: String
+        public var model: String
+        /// On this computer, as the chosen model's facts say (else the backend's kind).
+        public var onDevice: Bool
+        public var priceKnown: Bool
+        public var upper: UInt64?
+
+        public init(backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?) {
+            self.backend = backend
+            self.model = model
+            self.onDevice = onDevice
+            self.priceKnown = priceKnown
+            self.upper = upper
+        }
+    }
+
+    /// Monday's note's model and cost; nil without a model for the note. On this computer by the
+    /// model's facts (a cloud model through Ollama isn't); without them, by the backend's kind, as
+    /// the Tauri app decides. The price from "≈ $x" for a note, else the model's facts.
+    public var noteCost: NoteCost? {
+        guard let choice = choice(for: .weeklyNote), let backend = backend(key: AiCodes.key(choice.backend)) else {
+            return nil
+        }
+        let facts = chosenModel(for: .weeklyNote)
+        return NoteCost(
+            backend: backend.label, model: choice.model, onDevice: facts?.onDevice ?? (backend.kind == .local),
+            priceKnown: noteEstimate?.priceKnown ?? facts?.priceKnown ?? true, upper: noteEstimate?.microUsdUpper
+        )
+    }
+
+    /// "Prepare my weekly note when I open PageLamp on Monday". The facade refuses turning it on
+    /// unless the note's model allows it; turning it off always works. False with
+    /// `noteSettingFailure` set.
+    public func setPrepareOnMonday(_ on: Bool) async -> Bool {
+        guard !savingNoteSetting else { return false }
+        savingNoteSetting = true
+        noteSettingFailure = nil
+        defer { savingNoteSetting = false }
+        do throws(PageLampFailure) {
+            noteSettings = try await service.setPrepareWeeklyNoteOnMonday(on: on)
+            return true
+        } catch {
+            noteSettingFailure = error
+            return false
         }
     }
 

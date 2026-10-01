@@ -274,7 +274,7 @@ package struct PlanSheet: View {
 }
 
 /// What failed (in the danger colour) and why (readable text), read as one.
-private struct FailureBlock: View {
+struct FailureBlock: View {
     let title: String
     let reason: String
 

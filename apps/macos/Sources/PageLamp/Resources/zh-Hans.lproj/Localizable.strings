@@ -1122,6 +1122,7 @@
 "mac.debug.scenario.empty" = "没有数据来源";
 "mac.debug.scenario.error" = "课程文件夹不见了";
 "mac.debug.scenario.expired" = "Canvas 访问令牌已过期";
+"mac.debug.scenario.weeklyNoteMonday" = "AI：周一的每周笔记";
 "mac.debug.systemSectionPicker" = "课程页面使用系统的分段选择器";
 "mac.diagnostics.previewTitle" = "诊断报告";
 "mac.errors.panic" = "PageLamp 遇到了一个错误。请重试，或重新打开 PageLamp。";
@@ -1228,6 +1229,9 @@
 "mac.toolbar.backToCurrentWeek" = "回到本周";
 "mac.toolbar.inspector" = "检查器";
 "mac.toolbar.showRecentMaterials" = "查看近期资料";
+"mac.weeklyNote.showFrom" = "查看 %1$@ 的笔记";
+"mac.weeklyNote.write" = "写我的每周笔记";
+"mac.weeklyNote.writeAgain" = "重新写一份";
 "onboarding.aiOffer.body" = "用你选的模型，PageLamp 可以帮你安排一周的学习，也可以讲解某一周的材料，并注明读过的页码。在你设置好一个模型、并看过它会收到哪些内容之前，不会有任何内容发给 AI 服务。";
 "onboarding.aiOffer.later" = "随时可以在「设置 → AI 模型」里设置。";
 "onboarding.aiOffer.notNow" = "暂不";
