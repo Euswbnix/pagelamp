@@ -176,29 +176,39 @@ describe("Course → Explain: what the facade does", () => {
     expect(include).toEqual([assignment?.id]);
   });
 
-  it("prices Include with what it sends: blocked over the budget until its own tick, used once", async () => {
-    const api = mockApi({ scenario: "ai-key" });
-    // A budget every run would go over: each line says so and waits for its own tick.
-    await api.setMonthlyBudget(1);
-    const explain = vi.spyOn(api, "explainWeek");
-    const estimate = vi.spyOn(api, "estimateGeneration");
-    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
+  const TICK = "Go over the budget this time";
+  const INCLUDE = "Not graded work? Include it and write again";
+  /** The GenerateButton line a button sits in (its own "≈ $x" and tick). */
+  const lineOf = (button: HTMLElement) => button.closest("div.space-y-2") as HTMLElement;
+  async function assignmentOf(api: ReturnType<typeof mockApi>) {
+    const found = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
       m.title.startsWith("Assignment 4"),
     );
-    if (!assignment) throw new Error("week 4 has Assignment 4");
-    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
-    const tick = (name = "Go over the budget this time") =>
-      screen.findAllByRole("checkbox", { name });
+    if (!found) throw new Error("week 4 has Assignment 4");
+    return found;
+  }
+  /** Ticks the week's line and explains it (a budget every run goes over). */
+  async function explainOverBudget(user: ReturnType<typeof renderRoute>["user"]) {
     const button = await screen.findByRole("button", { name: "Explain week 4" });
     await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
-    await user.click((await tick())[0] as HTMLElement);
+    await user.click(within(lineOf(button)).getByRole("checkbox", { name: TICK }));
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     await user.click(button);
-    await screen.findByText("The explanation is ready.");
-    const article = await screen.findByRole("article");
-    const include = within(article).getByRole("button", {
-      name: "Not graded work? Include it and write again",
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull(), {
+      timeout: 5000,
     });
+  }
+
+  it("prices Include with what it sends: blocked on its own line until its own tick, used once", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    await api.setMonthlyBudget(1);
+    const assignment = await assignmentOf(api);
+    const explain = vi.spyOn(api, "explainWeek");
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    await explainOverBudget(user);
+    const article = await screen.findByRole("article");
+    const include = within(article).getByRole("button", { name: INCLUDE });
     await waitFor(() =>
       expect(estimate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -208,16 +218,20 @@ describe("Course → Explain: what the facade does", () => {
         }),
       ),
     );
-    // Include is blocked on its own line, and a click does nothing.
+    // Blocked on its own line ("≈ $x" and the reason there), and a click does nothing.
     await waitFor(() => expect(include).toHaveAttribute("aria-disabled", "true"));
+    const includeTick = within(lineOf(include)).getByRole("checkbox", { name: TICK });
+    expect(
+      within(lineOf(include)).getByText("This would go over this month's budget."),
+    ).toBeInTheDocument();
     await user.click(include);
     expect(explain).toHaveBeenCalledTimes(1);
-    // The week's tick went with the first run: both lines wait for a tick again.
-    const ticks = await tick();
-    expect(ticks).toHaveLength(2);
-    for (const box of ticks) expect(box).not.toBeChecked();
-    // Both ticked; Include runs, going over for that run only.
-    for (const box of ticks) await user.click(box);
+    // Ticking Include's box leaves the week's alone.
+    const week = screen.getByRole("button", { name: "Explain week 4" });
+    const weekTick = within(lineOf(week)).getByRole("checkbox", { name: TICK });
+    expect(weekTick).not.toBeChecked();
+    await user.click(includeTick);
+    expect(weekTick).not.toBeChecked();
     await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
     await user.click(include);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
@@ -225,15 +239,10 @@ describe("Course → Explain: what the facade does", () => {
       include: [assignment.id],
       override_budget: true,
     });
-    // The run's end: Stop goes, the new explanation shows.
-    await explain.mock.results[1]?.value;
     await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull());
-    // No tick is left for a later run.
-    await waitFor(() => {
-      const left = screen.queryAllByRole("checkbox", { name: "Go over the budget this time" });
-      expect(left.length).toBeGreaterThan(0);
-      for (const box of left) expect(box).not.toBeChecked();
-    });
+    // The week's line, back after the run, waits for a tick of its own.
+    const weekAfter = screen.getByRole("button", { name: "Explain week 4" });
+    expect(within(lineOf(weekAfter)).getByRole("checkbox", { name: TICK })).not.toBeChecked();
   });
 
   it("a stopped Include leaves no tick behind: going over the budget is chosen for each run", async () => {
@@ -241,48 +250,35 @@ describe("Course → Explain: what the facade does", () => {
     await api.setMonthlyBudget(1);
     const explain = vi.spyOn(api, "explainWeek");
     const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
-    const ticks = () => screen.findAllByRole("checkbox", { name: "Go over the budget this time" });
-    const button = await screen.findByRole("button", { name: "Explain week 4" });
-    await user.click((await ticks())[0] as HTMLElement);
-    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
-    await user.click(button);
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull(), {
-      timeout: 5000,
+    await explainOverBudget(user);
+    const include = within(await screen.findByRole("article")).getByRole("button", {
+      name: INCLUDE,
     });
-    const article = await screen.findByRole("article");
-    const include = within(article).getByRole("button", {
-      name: "Not graded work? Include it and write again",
-    });
-    const includeTick = (await ticks()).at(-1) as HTMLElement;
-    await user.click(includeTick);
+    await user.click(within(lineOf(include)).getByRole("checkbox", { name: TICK }));
     await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
     await user.click(include);
+    // While it runs, Include isn't offered.
     await user.click(await screen.findByRole("button", { name: "Stop" }));
+    expect(within(screen.getByRole("article")).queryByRole("button", { name: INCLUDE })).toBeNull();
     await screen.findByText("Stopped. Nothing was saved.", undefined, { timeout: 5000 });
     expect(explain).toHaveBeenCalledTimes(2);
     // The same explanation and its Include are back, and Include waits for a tick again.
-    const again = within(await screen.findByRole("article")).getByRole("button", {
-      name: "Not graded work? Include it and write again",
-    });
+    const again = within(await screen.findByRole("article")).getByRole("button", { name: INCLUDE });
     await waitFor(() => expect(again).toHaveAttribute("aria-disabled", "true"));
-    for (const box of await ticks()) expect(box).not.toBeChecked();
+    expect(within(lineOf(again)).getByRole("checkbox", { name: TICK })).not.toBeChecked();
   });
 
-  it("Include adds to what the explanation's run included, and Regenerate sends that again", async () => {
+  it("a tick answers one request: Show another explanation, and Include's box starts unticked", async () => {
     const api = mockApi({ scenario: "ai-key" });
-    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
-      m.title.startsWith("Assignment 4"),
-    );
-    if (!assignment) throw new Error("week 4 has Assignment 4");
+    await api.setMonthlyBudget(1);
     const original = api.explainWeek.bind(api);
-    // The included run's explanation: stale since, and with one more graded-looking material
-    // left out (the facade's answer after the course changed).
+    let plain = 0;
+    // The second explanation leaves out one more graded-looking material: its Include asks for more.
     const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
       const written = await original(...args);
-      if (args[3].include?.length !== 1) return written;
+      if ((args[3].include?.length ?? 0) > 0 || ++plain !== 2) return written;
       return {
         ...written,
-        stale: true,
         left_out: [
           ...written.left_out,
           {
@@ -295,32 +291,74 @@ describe("Course → Explain: what the facade does", () => {
       };
     });
     const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    await explainOverBudget(user);
+    await explainOverBudget(user);
+    // B's Include, ticked against B's "≈ $x".
+    const includeB = within(await screen.findByRole("article")).getByRole("button", {
+      name: "Not graded work? Include these 2 and write again",
+    });
+    await user.click(within(lineOf(includeB)).getByRole("checkbox", { name: TICK }));
+    // Show A: another request, so another line, with nothing ticked.
+    await user.click(screen.getByRole("button", { name: /^Show / }));
+    const includeA = within(await screen.findByRole("article")).getByRole("button", {
+      name: INCLUDE,
+    });
+    await waitFor(() => expect(includeA).toHaveAttribute("aria-disabled", "true"));
+    expect(within(lineOf(includeA)).getByRole("checkbox", { name: TICK })).not.toBeChecked();
+    await user.click(includeA);
+    expect(explain).toHaveBeenCalledTimes(2);
+  });
+
+  it("Include adds to what the explanation's run included", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    const assignment = await assignmentOf(api);
+    const original = api.explainWeek.bind(api);
+    // The included run's explanation leaves out one more graded-looking material (the facade's
+    // answer after the course changed).
+    const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
+      const written = await original(...args);
+      if (args[3].include?.length !== 1) return written;
+      return {
+        ...written,
+        left_out: [
+          ...written.left_out,
+          {
+            material_id: "quiz-5",
+            title: "Quiz 5",
+            reason: "looks_like_assessment",
+            includable: true,
+          },
+        ],
+      };
+    });
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
     const button = await screen.findByRole("button", { name: "Explain week 4" });
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     await user.click(button);
-    const include = async () => {
-      const article = await screen.findByRole("article");
-      const found = within(article).getByRole("button", {
-        name: "Not graded work? Include it and write again",
-      });
-      await waitFor(() => expect(found).not.toHaveAttribute("aria-disabled"));
-      return found;
-    };
-    await user.click(await include());
+    const first = within(await screen.findByRole("article")).getByRole("button", { name: INCLUDE });
+    await waitFor(() => expect(first).not.toHaveAttribute("aria-disabled"));
+    await user.click(first);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
-    await screen.findByText("The explanation is ready.");
-    // The second Include: the assignment again, and the quiz.
-    await user.click(await include());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull());
+    // The second Include is priced and sent with the assignment again and the quiz.
+    const second = within(await screen.findByRole("article")).getByRole("button", {
+      name: INCLUDE,
+    });
+    await waitFor(() =>
+      expect(estimate).toHaveBeenCalledWith(
+        expect.objectContaining({ include: [assignment.id, "quiz-5"] }),
+      ),
+    );
+    await waitFor(() => expect(second).not.toHaveAttribute("aria-disabled"));
+    await user.click(second);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(3));
     expect(explain.mock.calls[2]?.[3].include).toEqual([assignment.id, "quiz-5"]);
   });
 
   it("Regenerate of an explanation whose run included materials sends them again, at its own price", async () => {
     const api = mockApi({ scenario: "ai-key" });
-    const assignment = (await api.weekMaterials(DEMO101, 4)).materials.find((m) =>
-      m.title.startsWith("Assignment 4"),
-    );
-    if (!assignment) throw new Error("week 4 has Assignment 4");
+    const assignment = await assignmentOf(api);
     const original = api.explainWeek.bind(api);
     const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
       const written = await original(...args);
@@ -331,20 +369,57 @@ describe("Course → Explain: what the facade does", () => {
     const button = await screen.findByRole("button", { name: "Explain week 4" });
     await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
     await user.click(button);
-    const article = await screen.findByRole("article");
-    const includeButton = within(article).getByRole("button", {
-      name: "Not graded work? Include it and write again",
+    const include = within(await screen.findByRole("article")).getByRole("button", {
+      name: INCLUDE,
     });
-    await waitFor(() => expect(includeButton).not.toHaveAttribute("aria-disabled"));
-    await user.click(includeButton);
+    await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
+    // From the click on, Include's line is gone: an estimate with the include is Regenerate's own.
+    estimate.mockClear();
+    await user.click(include);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
     const regenerate = await screen.findByRole("button", { name: "Write again" });
+    await waitFor(() =>
+      expect(estimate).toHaveBeenCalledWith(expect.objectContaining({ include: [assignment.id] })),
+    );
     await waitFor(() => expect(regenerate).not.toHaveAttribute("aria-disabled"));
     expect(regenerate).toHaveAccessibleDescription(/≈/);
-    expect(estimate).toHaveBeenCalledWith(expect.objectContaining({ include: [assignment.id] }));
     await user.click(regenerate);
     await waitFor(() => expect(explain).toHaveBeenCalledTimes(3));
     expect(explain.mock.calls[2]?.[3].include).toEqual([assignment.id]);
+  });
+
+  it("Regenerate's tick goes with its run: the next stale explanation's line starts unticked", async () => {
+    const api = mockApi({ scenario: "ai-key" });
+    await api.setMonthlyBudget(1);
+    const assignment = await assignmentOf(api);
+    const original = api.explainWeek.bind(api);
+    const explain = vi.spyOn(api, "explainWeek").mockImplementation(async (...args) => {
+      const written = await original(...args);
+      return (args[3].include?.length ?? 0) > 0 ? { ...written, stale: true } : written;
+    });
+    const { user } = renderRoute(`${paths.course(DEMO101)}?tab=explain`, { api });
+    await explainOverBudget(user);
+    const include = within(await screen.findByRole("article")).getByRole("button", {
+      name: INCLUDE,
+    });
+    await user.click(within(lineOf(include)).getByRole("checkbox", { name: TICK }));
+    await waitFor(() => expect(include).not.toHaveAttribute("aria-disabled"));
+    await user.click(include);
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(2));
+    const regenerate = await screen.findByRole("button", { name: "Write again" });
+    await user.click(within(lineOf(regenerate)).getByRole("checkbox", { name: TICK }));
+    await waitFor(() => expect(regenerate).not.toHaveAttribute("aria-disabled"));
+    await user.click(regenerate);
+    await waitFor(() => expect(explain).toHaveBeenCalledTimes(3));
+    expect(explain.mock.calls[2]?.[3]).toMatchObject({
+      include: [assignment.id],
+      override_budget: true,
+    });
+    // Its result is stale too: a new Regenerate line, waiting for a tick of its own.
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop" })).toBeNull());
+    const next = await screen.findByRole("button", { name: "Write again" });
+    await waitFor(() => expect(next).toHaveAttribute("aria-disabled", "true"));
+    expect(within(lineOf(next)).getByRole("checkbox", { name: TICK })).not.toBeChecked();
   });
 
   it("says “include it” for one graded-looking material in Chinese too (one plural form)", async () => {

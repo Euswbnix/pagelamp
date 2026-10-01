@@ -33,7 +33,7 @@ export function ExplanationView({
    */
   include?: {
     request: EstimateRequest;
-    resetKey: number;
+    resetKey: string;
     onInclude: (options: { overrideBudget: boolean }) => void;
   };
 }) {

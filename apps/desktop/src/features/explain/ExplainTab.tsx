@@ -116,10 +116,17 @@ export function ExplainTab({
   // materials of the last 14 days.
   const request: EstimateRequest = { feature: "weekly_explanation", course: course.id, week };
   const start = (include: string[], overrideBudget = false) => {
+    // One run at a time: nothing changes for a click while one goes on.
+    if (running) return;
     setShownId(null);
     setRuns((n) => n + 1);
     void run.start(week, { overrideBudget, include, uiLanguage: i18n.language });
   };
+  /**
+   * A GenerateButton's key: it starts again with each run and with each request (its tick
+   * answers one "≈ $x"; a history pick or another week is another request).
+   */
+  const keyOf = (req: EstimateRequest) => `${runs}|${JSON.stringify(req)}`;
   // What the shown explanation's run included (one written here), and what Include sends: that,
   // plus the left-out materials the facade brings back (sending only the new ones would drop the
   // first include's materials back to "left out").
@@ -184,7 +191,7 @@ export function ExplainTab({
           <ExplainProgress state={state} onStop={() => void run.stop()} />
         ) : (
           <GenerateButton
-            key={runs}
+            key={keyOf(request)}
             request={request}
             label={week === null ? t("generateRecent") : t("generate", { week })}
             onGenerate={({ overrideBudget }) => start([], overrideBudget)}
@@ -205,34 +212,28 @@ export function ExplainTab({
           className="space-y-4 border-t pt-4 outline-none"
         >
           {shown.stale ? (
-            again.length > 0 ? (
-              // Its run included materials: Regenerate sends them again, at their own price.
-              <div className="space-y-2 text-sm">
-                <p>{t("result.stale")}</p>
+            // Regenerate sends what the explanation's run included (none for one saved before),
+            // from "≈ $x" for exactly that; not offered while a run goes on.
+            <div className="space-y-2 text-sm">
+              <p>{t("result.stale")}</p>
+              {running ? null : (
                 <GenerateButton
-                  key={runs}
-                  request={withInclude(again)}
+                  key={keyOf(again.length > 0 ? withInclude(again) : request)}
+                  request={again.length > 0 ? withInclude(again) : request}
                   label={t("result.regenerate")}
                   variant="outline"
                   onGenerate={({ overrideBudget }) => start(again, overrideBudget)}
                 />
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <p>{t("result.stale")}</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => start([])}>
-                  {t("result.regenerate")}
-                </Button>
-              </div>
-            )
+              )}
+            </div>
           ) : null}
           <ExplanationView
             explanation={shown}
             include={
-              include.length > 0
+              include.length > 0 && !running
                 ? {
                     request: withInclude(include),
-                    resetKey: runs,
+                    resetKey: keyOf(withInclude(include)),
                     onInclude: ({ overrideBudget }) => start(include, overrideBudget),
                   }
                 : undefined
