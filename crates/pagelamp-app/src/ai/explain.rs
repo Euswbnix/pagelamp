@@ -518,13 +518,13 @@ fn reminds_about_sharing(destination: Destination, sharing: MaterialSharing) -> 
         )
 }
 
-/// The answer's language: the course's, or the UI's when it is one PageLamp speaks (English
-/// otherwise).
 /// The explanation's answer format (the estimate prices the same one).
 pub(crate) fn explanation_output() -> OutputSpec {
     OutputSpec::for_type::<ExplanationAnswer>("weekly_explanation").unwrap_or(OutputSpec::Text)
 }
 
+/// The answer's language: the course's, or the UI's when it is one PageLamp speaks (English
+/// otherwise).
 pub(crate) fn answer_language(
     setting: OutputLanguage,
     ui_language: Option<&str>,
