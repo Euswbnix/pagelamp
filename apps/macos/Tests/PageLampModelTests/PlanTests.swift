@@ -84,6 +84,39 @@ private struct FailingEstimates: ForwardingService {
     }
 }
 
+/// The last study plan request sent, and whether the digest fails (the test turns it on).
+private actor SentLog {
+    private(set) var overrideBudget: Bool?
+    private(set) var digestFails = false
+
+    func record(_ request: StudyPlanRequest) {
+        overrideBudget = request.overrideBudget
+    }
+
+    func failDigest(_ on: Bool) {
+        digestFails = on
+    }
+}
+
+private struct RecordingPlans: ForwardingService {
+    let base: any PageLampService
+    let log: SentLog
+
+    func generateStudyPlan(
+        request: StudyPlanRequest, generationId: String, observer: any GenObserver
+    ) async throws(PageLampFailure) -> GeneratedStudyPlan {
+        await log.record(request)
+        return try await base.generateStudyPlan(request: request, generationId: generationId, observer: observer)
+    }
+
+    func weeklyDigest() async throws(PageLampFailure) -> WeeklyDigest {
+        if await log.digestFails {
+            throw PageLampFailure(kind: .internal, message: "digest failed")
+        }
+        return try await base.weeklyDigest()
+    }
+}
+
 /// Waits (briefly) until `condition` holds.
 @MainActor
 private func eventually(_ condition: () async -> Bool) async -> Bool {
@@ -337,6 +370,65 @@ struct PlanModelTests {
         plan.discard()
         await plan.estimate.settle()
         #expect(!plan.estimate.overrideBudget && plan.estimate.block == .budgetReached && !plan.estimate.canGenerate)
+    }
+
+    @Test("going over the budget is sent only with that block: a raised budget drops the tick")
+    func staleOverride() async throws {
+        let base = mock(.aiBudget)
+        try await base.setMonthlyBudget(microUsd: 4_962_000)
+        let log = SentLog()
+        let plan = try await plan(RecordingPlans(base: base, log: log))
+        #expect(plan.estimate.block == .budgetReached)
+        plan.estimate.overrideBudget = true
+        #expect(plan.estimate.goesOverBudget)
+        // The budget is raised in Settings ▸ AI, and the sheet estimates again.
+        try await base.setMonthlyBudget(microUsd: nil)
+        await plan.refreshEstimates()
+        #expect(plan.estimate.block == nil && !plan.estimate.overrideBudget && !plan.estimate.goesOverBudget)
+        // Even a tick left over is never sent without the block.
+        plan.estimate.overrideBudget = true
+        #expect(!plan.estimate.goesOverBudget)
+        await plan.generate()
+        #expect(await log.overrideBudget == false)
+    }
+
+    @Test("the note is capped the way the facade counts (Unicode scalars), never inside a character")
+    func noteCap() async throws {
+        let family = "👨‍👩‍👧‍👦"
+        #expect(family.count == 1 && family.unicodeScalars.count == 7)
+        let a498 = String(repeating: "a", count: 498)
+        #expect(PlanModel.capped(a498 + family, to: 500) == a498)
+        #expect(PlanModel.capped("e\u{301}", to: 1).isEmpty)
+        #expect(PlanModel.capped("short", to: 500) == "short")
+        let plan = try await plan(mock(.aiKey))
+        plan.note = "  " + String(repeating: "a", count: 499) + family + "  "
+        let sent = try #require(plan.request?.note)
+        #expect(sent == String(repeating: "a", count: 499) && sent.unicodeScalars.count <= plan.noteMaxChars)
+    }
+
+    @Test("the menu bar's today carries the label of the plan it comes from")
+    func menuBarLabel() async throws {
+        let base = mock(.aiKey)
+        let log = SentLog()
+        let model = AppModel(
+            dataMode: .mock(.aiKey), strings: .app, settings: InMemorySettingsStore(language: .english),
+            timing: AppModel.Timing(finishedCapsule: .seconds(60), failedCapsule: .seconds(60), mock: .instant),
+            calendar: TestClock.calendar, clock: { TestClock.now }, notificationCenter: NotificationCenter(),
+            service: RecordingPlans(base: base, log: log), reminders: true,
+            reminderCenters: ReminderCenters(live: { RecordingNotificationCenter() }, mock: RecordingNotificationCenter())
+        )
+        await model.refresh()
+        // The AI app's plan: no label.
+        #expect(model.menuBarWeek != nil && model.menuBarWeek?.aiLabel == nil)
+        let draft = try await base.generateStudyPlan(request: request(), generationId: "g1", observer: GenEventStream())
+        _ = try await base.acceptStudyPlan(generationId: draft.meta.generationId)
+        await model.loadMenuBarWeek()
+        let week = try #require(model.menuBarWeek)
+        #expect(!week.today.isEmpty && week.aiLabel?.backendLabel == "OpenAI" && week.aiLabel?.model == "gpt-6-luna")
+        // A failed read keeps the week shown, but not a label it may no longer have.
+        await log.failDigest(true)
+        await model.loadMenuBarWeek()
+        #expect(model.menuBarWeekFailure != nil && model.menuBarWeek != nil && model.menuBarWeek?.aiLabel == nil)
     }
 
     @Test("a failed estimate never leaves another request's amount beside Write My Plan")

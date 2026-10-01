@@ -50,7 +50,7 @@ struct PlanFormView: View {
                 } else {
                     TextField(l10n("plan.form.note"), text: Binding(
                         get: { plan.note },
-                        set: { plan.note = String($0.prefix(plan.noteMaxChars)) }
+                        set: { plan.note = PlanModel.capped($0, to: plan.noteMaxChars) }
                     ), axis: .vertical)
                     .lineLimit(2...4)
                     .labelsHidden()

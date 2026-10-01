@@ -26,7 +26,7 @@ public final class PlanModel {
     public var daysOff: Set<DayOfWeek> { didSet { formChanged() } }
     /// The courses ticked (by id); nil: every active course.
     public var picked: [String]? { didSet { formChanged() } }
-    /// "Anything to focus on?" (at most the limits' `studentNoteMaxChars` characters are sent).
+    /// "Anything to focus on?" (at most the limits' `studentNoteMaxChars` Unicode scalars are sent).
     public var note: String
 
     /// The active courses, in the app's order.
@@ -102,7 +102,7 @@ public final class PlanModel {
     /// What Write My Plan sends; nil while there's a problem.
     public var request: StudyPlanRequest? {
         guard problem == nil, let horizonDays, let hoursPerWeek else { return nil }
-        let note = String(note.prefix(noteMaxChars)).trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = Self.capped(note.trimmingCharacters(in: .whitespacesAndNewlines), to: noteMaxChars)
         return StudyPlanRequest(
             horizonDays: horizonDays, hoursPerWeek: hoursPerWeek,
             daysOff: ReminderSettingsEditor.weekdays.filter(daysOff.contains), courses: chosen,
@@ -134,13 +134,13 @@ public final class PlanModel {
     /// Write My Plan (going over the budget if the student ticked it).
     public func generate() async {
         guard let request, estimate.canGenerate else { return }
-        await start(request.with(overrideBudget: estimate.overrideBudget))
+        await start(request.with(overrideBudget: estimate.goesOverBudget))
     }
 
     /// Write Again: the draft's request, as a new run with its own "≈ $x".
     public func writeAgain() async {
         guard let draftRequest, againEstimate.canGenerate, !accepting else { return }
-        await start(draftRequest.with(overrideBudget: againEstimate.overrideBudget))
+        await start(draftRequest.with(overrideBudget: againEstimate.goesOverBudget))
     }
 
     private func start(_ request: StudyPlanRequest) async {
@@ -199,6 +199,17 @@ public final class PlanModel {
     /// The sheet closed: a run in flight stops (nothing keeps writing, or costing, out of sight).
     public func close() {
         run.cancelInFlight()
+    }
+
+    /// `text` with at most `max` Unicode scalars, the facade's count (StudentNote takes that many
+    /// `char`s after trimming), cut between characters, never inside one (an emoji stays whole or
+    /// goes). Nothing the field shows is cut by the facade.
+    public static func capped(_ text: String, to max: Int) -> String {
+        var text = text
+        while text.unicodeScalars.count > max {
+            text.removeLast()
+        }
+        return text
     }
 
     /// A whole number within the limits, else nil.

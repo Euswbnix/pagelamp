@@ -112,7 +112,7 @@ package struct MenuBarWeekView: View {
                         .padding(.horizontal, PLSpace.s2)
                 }
                 // Written by PageLamp: its tasks carry the AI-generated line (Canvas §2E).
-                if !week.today.isEmpty, let label = model.studyPlan?.aiLabel {
+                if !week.today.isEmpty, let label = week.aiLabel {
                     Text(l10n.aiLabel(label, calendar: model.calendar))
                         .font(PLType.callout.font)
                         .foregroundStyle(.secondary)

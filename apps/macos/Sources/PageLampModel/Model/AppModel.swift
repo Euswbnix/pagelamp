@@ -259,6 +259,8 @@ public final class AppModel {
     public private(set) var menuBarWeek: MenuBarWeek?
     /// Why the last `weekly_digest()` failed (the menu says so and offers Try Again).
     public private(set) var menuBarWeekFailure: PageLampFailure?
+    /// Reads of the menu bar's week started: a late, older one is dropped.
+    @ObservationIgnored private var menuBarLoads = 0
     @ObservationIgnored private let reminderCenters: ReminderCenters
     @ObservationIgnored private var reminderTasks: [Task<Void, Never>] = []
     @ObservationIgnored private var reminderResponder: ReminderResponder?
@@ -478,13 +480,21 @@ public final class AppModel {
         let generation = self.generation
         let service = self.service
         let now = clock()
+        menuBarLoads += 1
+        let load = menuBarLoads
+        // The plan with the digest: its tasks carry its AI-generated line (a plan PageLamp wrote).
+        async let plan = Self.load { () async throws(PageLampFailure) in try await service.latestStudyPlan() }
         do throws(PageLampFailure) {
             let digest = try await service.weeklyDigest()
-            guard generation == self.generation else { return }
-            menuBarWeek = MenuBarWeek(digest: digest, now: now)
+            let label: AiLabel? = if case .success(let stored) = await plan { stored?.aiLabel } else { nil }
+            guard generation == self.generation, load == menuBarLoads else { return }
+            menuBarWeek = MenuBarWeek(digest: digest, now: now, aiLabel: label)
             menuBarWeekFailure = nil
         } catch {
-            guard generation == self.generation else { return }
+            _ = await plan
+            guard generation == self.generation, load == menuBarLoads else { return }
+            // The week shown stays, but not a label it may no longer have.
+            menuBarWeek?.aiLabel = nil
             menuBarWeekFailure = error
         }
     }

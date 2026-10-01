@@ -82,6 +82,9 @@ public final class CostEstimateModel {
             self.estimate = estimate
             estimated = request
             failure = nil
+            // The tick is for going over this block; with the block gone (a budget raised in
+            // Settings ▸ AI), it goes too.
+            if estimate.wouldBlock != .budgetReached { overrideBudget = false }
             if case .success(let value) = await status { self.status = value }
         } catch {
             guard request == self.request else { return }
@@ -104,6 +107,12 @@ public final class CostEstimateModel {
     public var blocked: Bool {
         guard let block else { return false }
         return !(block == .budgetReached && overrideBudget)
+    }
+
+    /// What a run sends: going over the budget only when that's the block and the student
+    /// chose to (the Tauri app's `overrideBudget: block === "budget_reached"`).
+    public var goesOverBudget: Bool {
+        overrideBudget && block == .budgetReached
     }
 
     /// Generate can run: a request, its estimate, no block left, nothing loading.

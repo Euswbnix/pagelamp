@@ -35,7 +35,8 @@ struct StudyPlanSection: View {
             } else {
                 StudyPlanEmpty()
             }
-            if model.aiPlan {
+            // Not while the courses couldn't be read: the sheet would say none is active.
+            if model.aiPlan, model.sectionErrors[.courses] == nil {
                 Button {
                     planning = PlanModel(service: model.service, courses: model.courses)
                 } label: {
