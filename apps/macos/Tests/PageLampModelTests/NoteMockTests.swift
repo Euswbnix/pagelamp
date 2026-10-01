@@ -160,6 +160,17 @@ struct NoteMockTests {
         #expect(try await write(budget, "n2", overrideBudget: true).meta.generationId == "n2")
     }
 
+    @Test("removed courses take their deadlines and plan items with them: then nothing to write about")
+    func removedCourses() async throws {
+        let service = mock(.aiKey)
+        _ = try await service.removeCourses(
+            courses: ["DEMO101", "DEMO205", "DEMO310"],
+            options: RemoveOptions(reason: nil, keepDownloadedFiles: false, purgeNow: false, deletePreUpdateBackup: false)
+        )
+        let refused = await failure { () async throws(PageLampFailure) in try await write(service, "n1") }
+        #expect(refused?.kind == .invalid)
+    }
+
     @Test("the opt-in: only a provider may prepare it; kept, and paused, when the model goes")
     func optIn() async throws {
         let none = mock(.demo)

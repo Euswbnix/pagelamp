@@ -61,6 +61,27 @@ private struct CountingCancels: ForwardingService {
     }
 }
 
+/// Reads of the kept notes fail while the switch is on.
+private actor NotesSwitch {
+    private(set) var failing = false
+    func set(_ on: Bool) { failing = on }
+}
+
+private struct FailingNotes: ForwardingService {
+    let base: any PageLampService
+    let notes: NotesSwitch
+
+    func weeklyNotes() async throws(PageLampFailure) -> [WeeklyNote] {
+        if await notes.failing { throw PageLampFailure(kind: .internal, message: "unreadable") }
+        return try await base.weeklyNotes()
+    }
+
+    func deleteWeeklyNote(generationId: String) async throws(PageLampFailure) {
+        if await notes.failing { throw PageLampFailure(kind: .internal, message: "locked") }
+        try await base.deleteWeeklyNote(generationId: generationId)
+    }
+}
+
 /// Monday 2026-09-28 at `hour` (Toronto).
 private func monday(_ hour: Int = 10) -> Date {
     TestClock.at(3, hour)
@@ -229,7 +250,7 @@ struct WeeklyNoteModelTests {
         #expect(await eventually { finished(note)?.automatic == true })
     }
 
-    @Test("it asks every hour, and 60 s after a wake, which restarts the hour")
+    @Test("it asks every hour; asleep, no hour runs; 60 s after a wake it asks, and the hour restarts")
     func hourAndWake() async throws {
         let time = TestTime()
         let timers = ManualTimers()
@@ -241,7 +262,10 @@ struct WeeklyNoteModelTests {
         await timers.fire(.seconds(3600))
         #expect(await eventually { await reads.count == 1 })
         await timers.waitForTimer(.seconds(3600))
-        // A wake: the hour waiting is dropped, the next read is 60 s away.
+        // Going to sleep: the hour waiting is dropped (time asleep must not run it out).
+        workspace.post(name: NSWorkspace.willSleepNotification, object: nil)
+        #expect(await eventually { await timers.pending.isEmpty })
+        // The wake: the next read is 60 s away.
         workspace.post(name: NSWorkspace.didWakeNotification, object: nil)
         await timers.waitForTimer(.seconds(60))
         #expect(await eventually { await timers.pending == [.seconds(60)] })
@@ -259,6 +283,8 @@ struct WeeklyNoteModelTests {
         let service = CountingReads(base: mock(.aiKey, time: time), reads: reads)
         let note = noteModel(service, time: time, app: app)
         note.start()
+        // The observers listen once the main actor is free.
+        try await Task.sleep(for: .milliseconds(20))
         app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         try await Task.sleep(for: .milliseconds(20))
         #expect(await reads.count == 0)
@@ -271,10 +297,32 @@ struct WeeklyNoteModelTests {
         time.set(TestClock.now.addingTimeInterval(16 * 60))
         app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         #expect(await eventually { await reads.count == 2 })
-        // Past midnight: a new day reads at once.
-        time.set(TestClock.at(1, 0, 5))
+        // A read just before midnight, then one 10 minutes on: a new day reads at once.
+        time.set(TestClock.at(0, 23, 55))
         app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         #expect(await eventually { await reads.count == 3 })
+        time.set(TestClock.at(1, 0, 5))
+        app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        #expect(await eventually { await reads.count == 4 })
+        note.close()
+    }
+
+    @Test("a launch whose read failed counts as a read: an activation 15 minutes on asks")
+    func launchReadFailed() async throws {
+        let time = TestTime()
+        let app = NotificationCenter()
+        let reads = Reads()
+        let note = noteModel(CountingReads(base: mock(.aiKey, time: time), reads: reads), time: time, app: app)
+        note.start()
+        try await Task.sleep(for: .milliseconds(20))
+        note.launched(nil)
+        time.set(TestClock.now.addingTimeInterval(5 * 60))
+        app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(await reads.count == 0)
+        time.set(TestClock.now.addingTimeInterval(16 * 60))
+        app.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        #expect(await eventually { await reads.count == 1 })
         note.close()
     }
 
@@ -319,6 +367,30 @@ struct WeeklyNoteModelTests {
         _ = try await service.removeAllAiData()
         await note.refresh()
         #expect(note.shown == nil && note.history.isEmpty)
+    }
+
+    @Test("a failed read of the notes keeps what was read; a failed Delete says so until a pick or a run")
+    func failedReads() async throws {
+        let time = TestTime()
+        let notesSwitch = NotesSwitch()
+        let note = noteModel(FailingNotes(base: mock(.aiKey, time: time), notes: notesSwitch), time: time)
+        await note.load()
+        await note.estimate.settle()
+        await note.write(uiLanguage: "en")
+        let written = try #require(finished(note))
+        await notesSwitch.set(true)
+        await note.refresh()
+        #expect(note.shown?.meta.generationId == written.meta.generationId)
+        #expect(note.history.count == 1 && note.deleted.isEmpty)
+        #expect(await note.delete(written) == false && note.deleteFailure != nil)
+        note.show(written)
+        #expect(note.deleteFailure == nil)
+        #expect(await note.delete(written) == false && note.deleteFailure != nil)
+        await notesSwitch.set(false)
+        time.set(TestClock.now.addingTimeInterval(60))
+        await note.write(uiLanguage: "en")
+        #expect(note.deleteFailure == nil)
+        #expect(await note.delete(written))
     }
 
     @Test("another data source: the run in flight is cancelled, everything read anew")

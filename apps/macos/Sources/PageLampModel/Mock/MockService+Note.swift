@@ -130,7 +130,11 @@ extension MockService {
         let due = deadlines(in: courses, daysAhead: 7, daysBack: 0)
         let today = IsoDate.string(from: started, calendar: calendar)
         let weekAgo = IsoDate.string(from: started.addingTimeInterval(-7 * 86_400), calendar: calendar)
-        let planItems = db.studyPlan?.plan.items.filter { $0.date >= weekAgo && $0.date <= today } ?? []
+        // The plan's items of courses that show (a hidden or removed course's are left out).
+        let leftOut = Set(db.courses.filter { $0.course.hidden }.map { $0.course.id } + db.features.removed.map { $0.course.course.id })
+        let planItems = db.studyPlan?.plan.items.filter { item in
+            item.date >= weekAgo && item.date <= today && !(item.courseId.map { leftOut.contains($0) } ?? false)
+        } ?? []
         guard !active.isEmpty || !due.isEmpty || !planItems.isEmpty else {
             throw PageLampFailure(
                 kind: .invalid, message: "There is nothing to write about this week: no active course, deadline or plan item."

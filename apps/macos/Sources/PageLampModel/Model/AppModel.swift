@@ -862,6 +862,7 @@ public final class AppModel {
         do throws(PageLampFailure) {
             tasks = try await service.startupTasks(now: clock())
         } catch {
+            if generation == self.generation { weeklyNote?.launched(nil) }
             return
         }
         guard generation == self.generation else { return }

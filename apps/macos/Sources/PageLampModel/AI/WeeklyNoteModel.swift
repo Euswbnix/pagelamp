@@ -7,8 +7,9 @@
 // one try a Monday in the same transaction as the run's start, so this asks as often as it likes
 // and starts a run whenever the answer says so and nothing runs. It asks at launch (60 s later
 // when PageLamp opens at login, before the network or a local model may be up), every hour while
-// the app runs, 60 s after a wake (the hour restarts then: an hour that passed asleep never fires
-// at the wake), and on activation at most every 15 minutes or on a new day. Monday's run never
+// the app runs, 60 s after a wake (the hour stops when the Mac goes to sleep and restarts at the
+// wake, so an hour that passed asleep never fires then), and on activation at most every 15
+// minutes or on a new day. Monday's run never
 // goes over the budget, never moves focus, and ends quietly: "not due any more" says nothing,
 // anything else leaves one line on the card.
 
@@ -136,8 +137,11 @@ public final class WeeklyNoteModel {
         do throws(PageLampFailure) {
             list = try await service.weeklyNotes()
         } catch {
-            // Like the Tauri app: none to show (Write still works).
-            list = []
+            // Unread: what was read before stays (a failed read says nothing about what's gone;
+            // Write still works).
+            guard load == noteLoads, generation == self.generation else { return }
+            loaded = true
+            return
         }
         guard load == noteLoads, generation == self.generation else { return }
         notes = list
@@ -169,6 +173,7 @@ public final class WeeklyNoteModel {
 
     public func show(_ note: WeeklyNote) {
         shownId = note.meta.generationId
+        deleteFailure = nil
     }
 
     // MARK: - Writing
@@ -178,14 +183,16 @@ public final class WeeklyNoteModel {
     public func write(uiLanguage: String) async {
         guard estimate.canGenerate, !run.isRunning else { return }
         let options = WeeklyNoteOptions(uiLanguage: uiLanguage, overrideBudget: estimate.goesOverBudget, automatic: false)
+        let generation = self.generation
         automatic = false
         automaticProblem = nil
+        deleteFailure = nil
         shownId = nil
         estimate.overrideBudget = false
         await run.run { service, id, observer async throws(PageLampFailure) in
             try await service.writeWeeklyNote(generationId: id, options: options, observer: observer)
         }
-        await ended()
+        await ended(generation)
     }
 
     /// Monday's note, when the facade said it's due and nothing runs. It never goes over the
@@ -194,23 +201,29 @@ public final class WeeklyNoteModel {
     private func writeMonday() async {
         guard !run.isRunning else { return }
         let options = WeeklyNoteOptions(uiLanguage: uiLanguage(), overrideBudget: false, automatic: true)
+        let generation = self.generation
         automatic = true
         await run.run(
             { service, id, observer async throws(PageLampFailure) in
                 try await service.writeWeeklyNote(generationId: id, options: options, observer: observer)
             },
             onFailure: { [weak self] failure in
-                if failure.kind != .invalid { self?.automaticProblem = failure }
+                // A run of the data source before says nothing about this one.
+                if let self, self.generation == generation, failure.kind != .invalid { self.automaticProblem = failure }
                 return .idle
             }
         )
-        await ended()
+        await ended(generation)
     }
 
     /// After any end: a note clears Monday's line; the list and "≈ $x" are read again (a stopped
-    /// or failed run is billed too).
-    private func ended() async {
-        if case .finished = run.phase { automaticProblem = nil }
+    /// or failed run is billed too). Nothing, when the data source changed meanwhile.
+    private func ended(_ generation: Int) async {
+        guard generation == self.generation else { return }
+        if case .finished = run.phase {
+            automaticProblem = nil
+            deleteFailure = nil
+        }
         await loadNotes()
         await estimate.refresh()
     }
@@ -227,13 +240,15 @@ public final class WeeklyNoteModel {
         deleting = true
         deleteFailure = nil
         defer { deleting = false }
-        let id = note.meta.generationId
+        let (id, generation, service) = (note.meta.generationId, self.generation, self.service)
         do throws(PageLampFailure) {
             try await service.deleteWeeklyNote(generationId: id)
         } catch {
+            guard generation == self.generation else { return false }
             deleteFailure = error
             return false
         }
+        guard generation == self.generation else { return false }
         deleted.insert(id)
         shownId = nil
         await loadNotes()
@@ -254,6 +269,13 @@ public final class WeeklyNoteModel {
                     await self?.activated()
                 }
             },
+            // Asleep, no countdown runs: the timers count time asleep, and an hour that ran out
+            // then would fire at the wake, before the network or a local model is up.
+            Task { [weak self] in
+                for await _ in workspace.notifications(named: NSWorkspace.willSleepNotification) {
+                    self?.pause()
+                }
+            },
             Task { [weak self] in
                 for await _ in workspace.notifications(named: NSWorkspace.didWakeNotification) {
                     self?.schedule(first: self?.timing.settle ?? .zero)
@@ -263,13 +285,15 @@ public final class WeeklyNoteModel {
         if loop == nil { schedule(first: timing.interval) }
     }
 
-    /// The launch's answer (read with What's new): used at once, unless PageLamp opened at
-    /// login, when the network or a local model may not be up yet: then it asks again shortly.
-    public func launched(_ tasks: StartupTasks) {
+    /// The launch's answer (read with What's new; nil when that read failed): used at once,
+    /// unless PageLamp opened at login, when the network or a local model may not be up yet: then
+    /// it asks again shortly. A failed read counts as a read (the next activation 15 minutes on,
+    /// or the hour, asks again).
+    public func launched(_ tasks: StartupTasks?) {
         lastRead = clock()
         if startsAtLogin() {
             schedule(first: timing.settle)
-        } else {
+        } else if let tasks {
             prepare(tasks)
             schedule(first: timing.interval)
         }
@@ -308,6 +332,12 @@ public final class WeeklyNoteModel {
         if now.timeIntervalSince(last) >= timing.activationGap || !calendar.isDate(now, inSameDayAs: last) {
             await check()
         }
+    }
+
+    /// The Mac goes to sleep: no countdown until the wake starts one.
+    private func pause() {
+        loop?.cancel()
+        loop = nil
     }
 
     /// (Re)starts the countdown: the first read after `first`, then every `interval`.
