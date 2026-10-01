@@ -164,7 +164,15 @@ export function useRefreshOnWindowFocus() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
-        for (const queryKey of [queryKeys.studyPlan(), queryKeys.courses(), queryKeys.status()]) {
+        // The estimates too (ai-queries' aiKeys.estimate prefix, spelled out: importing it here
+        // would be circular): a sync elsewhere can give an empty week something to write about.
+        const estimates = [...queryKeys.all, "ai", "estimate"];
+        for (const queryKey of [
+          queryKeys.studyPlan(),
+          queryKeys.courses(),
+          queryKeys.status(),
+          estimates,
+        ]) {
           void client.invalidateQueries({ queryKey });
         }
       }),
