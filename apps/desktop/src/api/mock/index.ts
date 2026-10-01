@@ -307,8 +307,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     respond,
     step: () => sleep(syncStep),
     activity,
-    gate: (courseId, week, overrideBudget) =>
-      aiGate({ feature: "weekly_explanation", course: courseId, week }, overrideBudget),
+    gate: (courseId, week, include, overrideBudget) =>
+      aiGate({ feature: "weekly_explanation", course: courseId, week, include }, overrideBudget),
     findCourse,
   });
 

@@ -178,7 +178,7 @@ extension MockService {
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
         let onDevice = info?.onDevice ?? false
         let courses: [String] = switch request {
-        case .weeklyExplanation(let course, _): [course]
+        case .weeklyExplanation(let course, _, _): [course]
         case .courseCalendar(let courses): courses
         case .studyPlan, .weeklyNote: []
         }

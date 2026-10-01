@@ -5,7 +5,7 @@
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
     ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote, assemble,
-    calendar_context, note_context, plan_context, week_context,
+    calendar_context, note_context, plan_context, week_context_including,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -64,13 +64,19 @@ impl App {
                 };
                 plan_context(&store, &scope, at)
             }
-            EstimateRequest::WeeklyExplanation { course, week } => week_context(
+            // The run's own builder, so an include is priced as the run sends it.
+            EstimateRequest::WeeklyExplanation {
+                course,
+                week,
+                include,
+            } => week_context_including(
                 &store,
                 course,
                 *week,
                 at,
                 destination,
                 explanation_budget(destination),
+                include,
             ),
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
                 note_context(&store, at)

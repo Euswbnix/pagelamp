@@ -112,6 +112,22 @@ describe("mock AI setup", () => {
     expect(after.would_block).toBeNull();
   });
 
+  it("prices what Include sends, so a budget can stop only the run that includes", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-key" });
+    const demo101 = await courseId(api, "DEMO101");
+    const plain = { feature: "weekly_explanation", course: demo101.id } as const;
+    const withQuiz = { ...plain, include: ["demo101-quiz"] };
+    const base = await api.estimateGeneration(plain);
+    const included = await api.estimateGeneration(withQuiz);
+    expect(included.input_tokens).toBeGreaterThan(base.input_tokens);
+    const [low, high] = [base.micro_usd_upper ?? 0, included.micro_usd_upper ?? 0];
+    expect(high).toBeGreaterThan(low + 1);
+    const { spent_micro_usd } = (await api.aiStatus()).budget;
+    await api.setMonthlyBudget(spent_micro_usd + Math.floor((low + high) / 2));
+    expect((await api.estimateGeneration(plain)).would_block).toBeNull();
+    expect((await api.estimateGeneration(withQuiz)).would_block).toBe("budget_reached");
+  });
+
   it("blocks a run over the budget until the cap is raised or removed", async () => {
     const api = createMockApi({ ...fast, scenario: "ai-budget" });
     expect((await api.aiStatus()).budget.spent_micro_usd).toBe(4_960_000);

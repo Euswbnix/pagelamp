@@ -121,7 +121,8 @@ function workload(req: EstimateRequest): { input: number; output: number } {
     case "study_plan":
       return { input: 6_000 + 1_500 * req.courses.length, output: 8_000 };
     case "weekly_explanation":
-      return { input: 45_000, output: 6_000 };
+      // Each included material is sent too (pagelamp-core's week_context_including).
+      return { input: 45_000 + 15_000 * (req.include?.length ?? 0), output: 6_000 };
     case "weekly_note":
       return { input: 3_000, output: 1_500 };
     case "course_calendar":

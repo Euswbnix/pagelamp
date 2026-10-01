@@ -612,6 +612,11 @@ export type EstimateRequest =
   | {
       course: string;
       feature: "weekly_explanation";
+      /**
+       * Materials to send although they look like assessments (`ExplainOptions.include`):
+       * priced as the run with the same `include` sends them.
+       */
+      include?: string[];
       week?: number | null;
     }
   | {

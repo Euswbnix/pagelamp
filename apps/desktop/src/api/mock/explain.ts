@@ -107,7 +107,13 @@ export function createExplainMock(deps: {
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   step: () => Promise<void>;
   activity: MockActivity;
-  gate: (courseId: string, week: number | null, overrideBudget: boolean) => Promise<MockAiRun>;
+  /** `include`: the materials the run sends although they look like assessments. */
+  gate: (
+    courseId: string,
+    week: number | null,
+    include: string[],
+    overrideBudget: boolean,
+  ) => Promise<MockAiRun>;
   findCourse: (courseId: string) => MockCourse;
 }): ExplainApi & { cancel: (generationId: string) => void } {
   const { now, respond } = deps;
@@ -159,7 +165,9 @@ export function createExplainMock(deps: {
         blocked: "no_readable_materials",
       });
     }
-    const run = await deps.gate(c.course.id, week, overrideBudget);
+    // Priced with what the run sends, as the facade's run checks its own prompt.
+    const included = include.filter((id) => read.some((m) => m.id === id));
+    const run = await deps.gate(c.course.id, week, included, overrideBudget);
     const stop = () => {
       if (cancelled.has(generationId)) {
         onEvent({ type: "finished", ok: false });

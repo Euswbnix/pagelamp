@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use chrono::{SubsecRound, Utc};
 use pagelamp_app::ai::{
-    BackendProblem, BackendRef, BackendState, CostBasis, EstimateRequest, LocalServerKind,
-    ModelChoice, StructuredOutputTier,
+    BackendProblem, BackendRef, BackendState, CostBasis, EstimateRequest, ExplainOptions,
+    LocalServerKind, ModelChoice, StructuredOutputTier,
 };
 use pagelamp_app::{App, AppErrorKind};
 use pagelamp_core::ai::{
@@ -283,6 +283,106 @@ async fn status_asks_for_the_disclosure_then_is_ready() {
     );
 }
 
+/// "Include it" is priced as the run sends it: an included assessment raises the estimate, and
+/// when it alone takes the run over the budget, the estimate and the run both say so.
+#[tokio::test]
+async fn the_estimate_prices_what_include_sends() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    seed_course(&app);
+    // A long week-3 material that looks like an assessment: left out unless included.
+    let quiz = format!("{COURSE}/material/quiz");
+    {
+        let store = Store::open(&app.db_path()).unwrap();
+        store
+            .upsert_material(&MaterialUpsert {
+                id: quiz.clone(),
+                course_id: COURSE.into(),
+                module_id: None,
+                kind: MaterialKind::File,
+                title: "Quiz 3".into(),
+                url: None,
+                local_path: None,
+                mime: None,
+                published_at: None,
+                week_hint: Some(3),
+            })
+            .unwrap();
+        store
+            .set_text_state(&quiz, TextStatus::Ok, None, Some("quiz-hash"))
+            .unwrap();
+        store
+            .replace_chunks(
+                &quiz,
+                &[Chunk {
+                    material_id: quiz.clone(),
+                    ord: 0,
+                    locator: None,
+                    text: "Guard cells swell with water and open the pore. ".repeat(1_200),
+                }],
+            )
+            .unwrap();
+    }
+    let backend = add_cloud_openai(&app, &secrets);
+    app.set_feature_model(
+        AiFeature::WeeklyExplanation,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "gpt-6-luna".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let version = app.ai_status().unwrap().backends[0].disclosure.version;
+    app.acknowledge_ai_disclosure(&backend, version).unwrap();
+    let request = |include: Vec<String>| EstimateRequest::WeeklyExplanation {
+        course: "DEMO101".into(),
+        week: Some(3),
+        include,
+    };
+
+    let base = app.estimate_generation(&request(Vec::new())).unwrap();
+    let included = app
+        .estimate_generation(&request(vec![quiz.clone()]))
+        .unwrap();
+    assert_eq!((base.would_block, included.would_block), (None, None));
+    assert!(
+        included.input_tokens > base.input_tokens + 10_000,
+        "{base:?} {included:?}"
+    );
+    let (base_usd, included_usd) = (
+        base.micro_usd_upper.unwrap(),
+        included.micro_usd_upper.unwrap(),
+    );
+    assert!(included_usd > base_usd + 1, "{base:?} {included:?}");
+
+    // A budget the week fits in, but not with the quiz.
+    app.set_monthly_budget(Some((base_usd + included_usd) / 2))
+        .unwrap();
+    let base = app.estimate_generation(&request(Vec::new())).unwrap();
+    assert_eq!(base.would_block, None);
+    let over = app
+        .estimate_generation(&request(vec![quiz.clone()]))
+        .unwrap();
+    assert_eq!(over.would_block, Some(BlockReason::BudgetReached));
+    assert_eq!(over.micro_usd_upper, Some(included_usd));
+    // The run with the same include stops for the same reason, before anything is sent.
+    let err = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "explain-include",
+            ExplainOptions {
+                include: vec![quiz],
+                ..ExplainOptions::default()
+            },
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::BudgetReached));
+}
+
 #[tokio::test]
 async fn the_estimate_says_what_would_block_a_run() {
     let temp = tempfile::tempdir().unwrap();
@@ -291,6 +391,7 @@ async fn the_estimate_says_what_would_block_a_run() {
     let request = EstimateRequest::WeeklyExplanation {
         course: "DEMO101".into(),
         week: Some(3),
+        include: Vec::new(),
     };
     let block = |app: &App| app.estimate_generation(&request).unwrap().would_block;
     assert_eq!(block(&app), Some(BlockReason::NoModelChosen));
@@ -422,6 +523,7 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
         .estimate_generation(&EstimateRequest::WeeklyExplanation {
             course: "DEMO101".into(),
             week: Some(3),
+            include: Vec::new(),
         })
         .unwrap();
     assert_eq!(estimate.would_block, None, "{estimate:?}");
@@ -632,6 +734,7 @@ async fn local_work_and_keyless_providers_never_touch_the_keychain() {
     let request = EstimateRequest::WeeklyExplanation {
         course: "DEMO101".into(),
         week: Some(3),
+        include: Vec::new(),
     };
     // Routing, acknowledgements and estimates are local, even for a provider with a key.
     for id in ["openai", "lm_studio"] {
