@@ -31,9 +31,10 @@ private struct CountingCancels: ForwardingService {
     let base: any PageLampService
     let cancels: Cancels
 
+    /// Counted once the cancel has reached the service (a test may then let the run go on).
     func cancelGeneration(generationId: String) async throws(PageLampFailure) {
-        await cancels.record()
         try await base.cancelGeneration(generationId: generationId)
+        await cancels.record()
     }
 }
 
