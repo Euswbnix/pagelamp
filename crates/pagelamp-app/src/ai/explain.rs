@@ -298,8 +298,7 @@ impl App {
                 .unwrap_or_default();
             let language = answer_language(setting, options.ui_language.as_deref());
             let prompt = assemble_in(WEEKLY_EXPLANATION, &context, None, Some(language));
-            let output = OutputSpec::for_type::<ExplanationAnswer>("weekly_explanation")
-                .unwrap_or(OutputSpec::Text);
+            let output = explanation_output();
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
@@ -521,7 +520,15 @@ fn reminds_about_sharing(destination: Destination, sharing: MaterialSharing) -> 
 
 /// The answer's language: the course's, or the UI's when it is one PageLamp speaks (English
 /// otherwise).
-fn answer_language(setting: OutputLanguage, ui_language: Option<&str>) -> AnswerLanguage {
+/// The explanation's answer format (the estimate prices the same one).
+pub(crate) fn explanation_output() -> OutputSpec {
+    OutputSpec::for_type::<ExplanationAnswer>("weekly_explanation").unwrap_or(OutputSpec::Text)
+}
+
+pub(crate) fn answer_language(
+    setting: OutputLanguage,
+    ui_language: Option<&str>,
+) -> AnswerLanguage {
     match setting {
         OutputLanguage::Course => AnswerLanguage::CourseLanguage,
         OutputLanguage::Ui => match ui_language.map(str::to_ascii_lowercase).as_deref() {
