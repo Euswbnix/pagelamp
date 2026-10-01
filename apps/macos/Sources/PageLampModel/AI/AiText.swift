@@ -165,6 +165,17 @@ public enum AiCodes {
         }
     }
 
+    /// Why a material was left out of an explanation: the key's last part in
+    /// `explain.result.leftOutReason.*`.
+    public static func name(_ reason: LeftOutReason) -> String {
+        switch reason {
+        case .looksLikeAssessment: "looks_like_assessment"
+        case .externalLink: "external_link"
+        case .noText: "no_text"
+        case .overBudget: "over_budget"
+        }
+    }
+
     /// A backend's key, as the facade's routing and acknowledgements name it.
     public static func key(_ backend: BackendRef) -> String {
         switch backend {

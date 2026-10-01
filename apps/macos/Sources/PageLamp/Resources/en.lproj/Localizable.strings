@@ -1011,6 +1011,7 @@
 "mac.actions.copyServersSection" = "Copy mcpServers Section";
 "mac.actions.copyThePrompt" = "Copy the Prompt";
 "mac.actions.copyTitle" = "Copy Title";
+"mac.actions.courseMaterials" = "Course Materials…";
 "mac.actions.currentWeek" = "Current Week";
 "mac.actions.dismiss" = "Dismiss";
 "mac.actions.done" = "Done";
@@ -1046,6 +1047,9 @@
 "mac.ai.removeAllConfirm" = "Remove All";
 "mac.ai.replaceKey" = "Replace Key…";
 "mac.ai.saveBudget" = "Save Budget";
+"mac.ai.sharingAllowed" = "Yes, It's Allowed";
+"mac.ai.sharingNotAllowed" = "No, It's Not Allowed";
+"mac.ai.sharingNotSure" = "Not Sure";
 "mac.ai.turnOn" = "Review and Turn On…";
 "mac.ai.turnOnName" = "Turn On %1$@";
 "mac.ai.useUnpriced" = "Use It Anyway";
@@ -1122,6 +1126,15 @@
 "mac.diagnostics.previewTitle" = "Diagnostic Report";
 "mac.errors.panic" = "PageLamp ran into a bug. Try again, or restart PageLamp.";
 "mac.errors.schema" = "This data was saved by a newer version of PageLamp. Update PageLamp to open it.";
+"mac.explain.generate" = "Explain Week %1$@";
+"mac.explain.generateRecent" = "Explain the Recent Materials";
+"mac.explain.includeOne" = "Not Graded Work? Include It and Write Again";
+"mac.explain.includeSeveral" = "Not Graded Work? Include These %1$@ and Write Again";
+"mac.explain.leaveHint" = "Switching to another section keeps it going; leaving this course stops it, and nothing is saved.";
+"mac.explain.reason" = " (%1$@)";
+"mac.explain.showFrom" = "Show the explanation from %1$@";
+"mac.explain.turnedOff" = "AI access is off for this course. Turn it on under Course Materials in its inspector to explain its weeks.";
+"mac.explain.writeAgain" = "Write Again";
 "mac.inspector.aiPolicy" = "AI Policy";
 "mac.inspector.course" = "Course";
 "mac.inspector.courseMaterials" = "Course Materials";

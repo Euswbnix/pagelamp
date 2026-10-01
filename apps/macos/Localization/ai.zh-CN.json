@@ -13,6 +13,9 @@
     "removeAllConfirm": "全部删除",
     "turnOnName": "启用 {{name}}",
     "notNow": "以后再说",
-    "useUnpriced": "仍然使用"
+    "useUnpriced": "仍然使用",
+    "sharingAllowed": "可以",
+    "sharingNotSure": "不确定",
+    "sharingNotAllowed": "不可以"
   }
 }
