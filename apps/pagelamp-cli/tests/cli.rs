@@ -722,6 +722,12 @@ fn a_finished_course_shows_its_lifecycle_not_a_week() {
     ));
     assert_eq!(timeline["timeline"]["current_week"], Value::Null);
     assert_eq!(timeline["timeline"]["default_week"], Value::Null);
+    assert_eq!(timeline["lifecycle"]["suggest_removal"], true);
+    // The text names the lifecycle once, and offers no removal: this version has none.
+    let text = ok(&pagelamp(&home, &["course", "timeline", "OLD909"]));
+    assert!(text.contains("Now:       inactive (phase"), "{text}");
+    assert!(text.contains("Lifecycle: inactive ("), "{text}");
+    assert!(!text.contains("removal"), "{text}");
 }
 
 #[test]

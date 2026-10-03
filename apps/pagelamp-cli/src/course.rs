@@ -182,8 +182,9 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
     let lifecycle = &overview.lifecycle;
     println!("{}", overview.course.display_name());
     let phase = match timeline.phase {
-        // The label names the other phases already ("exams (after week 12)", "ended").
-        CoursePhase::Teaching | CoursePhase::Unknown => {
+        // The label names the other phases already ("exams (after week 12)", "ended"), and a
+        // course outside the week views by its lifecycle ("inactive").
+        CoursePhase::Teaching | CoursePhase::Unknown if lifecycle.state.in_week_views() => {
             format!(" · {}", timeline.phase.as_str())
         }
         _ => String::new(),
@@ -193,15 +194,11 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
         week_label(timeline, lifecycle),
         confidence(timeline.phase_confidence)
     );
+    // No removal hint: this version can't remove a course (`--json` keeps `suggest_removal`).
     println!(
-        "  Lifecycle: {} ({}){}",
+        "  Lifecycle: {} ({})",
         lifecycle.state.as_str(),
-        confidence(lifecycle.confidence),
-        if lifecycle.suggest_removal {
-            " — suggested for removal"
-        } else {
-            ""
-        }
+        confidence(lifecycle.confidence)
     );
     println!("  Dates:     {}", dates_used(timeline));
     if let Some(label) = &timeline.term.ai_label {
