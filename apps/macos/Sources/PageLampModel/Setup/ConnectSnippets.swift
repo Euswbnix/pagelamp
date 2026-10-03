@@ -1,6 +1,7 @@
 // Connect your AI app (spec §3.4): what can be derived from the core's config snippets. A port of
-// the Tauri app's apps/desktop/src/features/connect/{snippet,order}.ts and QuarantineHint.tsx,
-// kept until the facade returns the variants itself (spec §13 #5).
+// the Tauri app's apps/desktop/src/features/connect/{snippet,order}.ts, kept until the facade
+// returns the variants itself (spec §13 #5), plus the quarantine command for ad-hoc builds, which
+// only this app shows.
 
 import Foundation
 import PageLampKit
@@ -86,8 +87,8 @@ public enum ConnectSnippets {
     }
 }
 
-/// The macOS quarantine fallback (Connect ▸ "If macOS blocks PageLamp"): the beta is only
-/// ad-hoc signed, so the bundled `pagelamp` may be blocked when an AI app starts it.
+/// The macOS quarantine fallback (Connect ▸ "If macOS blocks PageLamp"): in a build that is
+/// only ad-hoc signed, the bundled `pagelamp` may be blocked when an AI app starts it.
 public enum QuarantineHint {
     /// What to clear the flag on: the whole `.app` when the binary is inside one, else the binary.
     public static func target(command: String) -> (path: String, recursive: Bool) {

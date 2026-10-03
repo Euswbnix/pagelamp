@@ -202,6 +202,28 @@ fn app_error(err: &tauri_plugin_updater::Error) -> AppError {
     AppError::new(kind, err.to_string())
 }
 
+/// A failed check, as the window hears it. For a test version on Stable, `ReleaseNotFound` (every
+/// address answered, none with update information) means no stable release has any yet. The
+/// window says that in its own words, so it gets its own kind; the diagnostic report keeps the
+/// "manifest" code.
+///
+/// Only for a pre-release build: a stable build was itself installed from a stable release, so
+/// for it the same answer is a real failure (an outage, a rate limit, a proxy in the way).
+fn check_error(
+    err: &tauri_plugin_updater::Error,
+    channel: UpdateChannel,
+    version: &Version,
+) -> AppError {
+    match (err, channel) {
+        (tauri_plugin_updater::Error::ReleaseNotFound, UpdateChannel::Stable)
+            if !version.pre.is_empty() =>
+        {
+            AppError::new(AppErrorKind::NotFound, err.to_string())
+        }
+        _ => app_error(err),
+    }
+}
+
 #[tauri::command]
 pub fn updates_status() -> UpdaterStatus {
     UpdaterStatus {
@@ -276,7 +298,7 @@ pub async fn updates_check<R: Runtime>(
         tracing::warn!(target: "pagelamp::updates", "couldn't record the update check: {}", err.message);
     }
 
-    let found = result.map_err(|err| app_error(&err))?;
+    let found = result.map_err(|err| check_error(&err, channel, &current_version()))?;
     let mut slot = lock(&pending.update);
     // A package kept for the same update stays; any other is dropped.
     let key = found.as_ref().map(package_key);
@@ -496,6 +518,38 @@ mod tests {
         assert!(is_newer(&v("0.3.0-alpha.1"), &v("0.3.0-alpha.2")));
         assert!(is_newer(&v("0.3.0-alpha.9"), &v("0.3.0-beta.1")));
         assert!(is_newer(&v("0.3.0"), &v("0.3.1")));
+    }
+
+    #[test]
+    fn stable_without_a_release_is_not_a_failed_check() {
+        use pagelamp_app::{AppErrorKind, UpdateChannel};
+        use tauri_plugin_updater::Error;
+
+        use super::check_error;
+        let test_version = v("0.3.0-alpha.1");
+        assert_eq!(
+            check_error(
+                &Error::ReleaseNotFound,
+                UpdateChannel::Stable,
+                &test_version
+            )
+            .kind,
+            AppErrorKind::NotFound
+        );
+        // Beta always has a release (this build came from it): a missing one is a real failure.
+        assert_eq!(
+            check_error(&Error::ReleaseNotFound, UpdateChannel::Beta, &test_version).kind,
+            AppErrorKind::Internal
+        );
+        assert_eq!(
+            check_error(&Error::EmptyEndpoints, UpdateChannel::Stable, &test_version).kind,
+            AppErrorKind::Internal
+        );
+        // So does Stable for a stable build: it came from a stable release.
+        assert_eq!(
+            check_error(&Error::ReleaseNotFound, UpdateChannel::Stable, &v("0.3.0")).kind,
+            AppErrorKind::Internal
+        );
     }
 
     #[test]

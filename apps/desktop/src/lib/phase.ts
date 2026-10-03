@@ -2,7 +2,7 @@
 // "Starts Jan 11", …). The facade decides the phase and the numbers (calendar design §6.6);
 // this only picks the words for them.
 
-import type { BreakKind, Confidence, CourseTimeline } from "@/api/types";
+import type { BreakKind, Confidence, CourseLifecycle, CourseTimeline } from "@/api/types";
 
 export type PhaseLabel =
   | { kind: "teaching"; week: number; confidence: Confidence }
@@ -12,12 +12,32 @@ export type PhaseLabel =
   | { kind: "examsAfter"; week: number }
   | { kind: "exams" }
   | { kind: "ended" }
+  | { kind: "inactive" }
   | { kind: "startsOn"; date: string }
   | { kind: "notStarted" }
   | { kind: "unknown" };
 
-export function describePhase(timeline: CourseTimeline): PhaseLabel {
+/**
+ * A course that is over, inactive or hasn't started has no current week (the facade clears it):
+ * its lifecycle says where it stands, whatever the phase (the CLI's `week_label` does the same).
+ */
+export function outsideWeekViews(timeline: CourseTimeline, lifecycle: CourseLifecycle): boolean {
+  return (
+    lifecycle.state === "ended" ||
+    lifecycle.state === "inactive" ||
+    // The student's own dates can put an upcoming course in a week; it keeps that week.
+    (lifecycle.state === "upcoming" && (timeline.current_week ?? null) === null)
+  );
+}
+
+export function describePhase(timeline: CourseTimeline, lifecycle?: CourseLifecycle): PhaseLabel {
   const week = timeline.current_week ?? null;
+  if (lifecycle && outsideWeekViews(timeline, lifecycle)) {
+    if (lifecycle.state === "ended") return { kind: "ended" };
+    if (lifecycle.state === "inactive") return { kind: "inactive" };
+    const start = lifecycle.starts_on ?? timeline.starts_on ?? null;
+    return start ? { kind: "startsOn", date: start } : { kind: "notStarted" };
+  }
   switch (timeline.phase) {
     case "teaching": {
       const shown = week ?? timeline.default_week ?? null;

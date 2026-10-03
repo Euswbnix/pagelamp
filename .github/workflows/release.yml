@@ -316,7 +316,7 @@ jobs:
             36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62
           fetch linuxdeploy-plugin-appimage.AppImage \
             https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage \
-            0441769ab38009504d2678c38cd7e526955388dd30a215b4a20afaa5471652f2
+            49d6a17160675a6bd1781699aae6bdf7692d98552e02a3671d2183d10547842e
       # Any other tool download of tauri-bundler goes to a host that never resolves (RFC 2606), so
       # a CLI update that wants a new tool fails here instead of fetching it unchecked.
       - name: Bundle the packages
