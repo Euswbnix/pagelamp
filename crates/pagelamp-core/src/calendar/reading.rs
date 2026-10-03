@@ -52,7 +52,8 @@ pub fn reading_inputs(
     signals: &CandidateSignals,
 ) -> crate::Result<ReadingInputs> {
     let data = CourseData::load(store, course)?;
-    let (resolved, timeline) = data.timeline(course, at);
+    // The week the views show today (none for a course that is over or hasn't started).
+    let (resolved, timeline, _) = data.state(course, at);
     let candidates = candidates_in(store, &data, &resolved, signals)?;
     let mut sources = HashMap::new();
     let mut manifest = Vec::new();

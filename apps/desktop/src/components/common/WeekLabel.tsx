@@ -1,17 +1,24 @@
 import { useTranslation } from "react-i18next";
-import type { CourseTimeline } from "@/api/types";
+import type { CourseLifecycle, CourseTimeline } from "@/api/types";
 import { describePhase, formatShortDate } from "@/lib/phase";
 import { useToday } from "@/lib/useToday";
 
 /**
  * Where the course is: "Week 4 · medium confidence", "Reading week (after week 7)", "Exams",
- * "Ended", "Starts Jan 11" or "Week unknown" (calendar design §7.13).
+ * "Ended", "Inactive", "Starts Jan 11" or "Week unknown" (calendar design §7.13). With the
+ * lifecycle, a course that is over, inactive or not started says so instead of a week.
  */
-export function WeekLabel({ timeline }: { timeline: CourseTimeline }) {
+export function WeekLabel({
+  timeline,
+  lifecycle,
+}: {
+  timeline: CourseTimeline;
+  lifecycle?: CourseLifecycle;
+}) {
   const { t, i18n } = useTranslation("calendar");
   const { t: tc } = useTranslation();
   const today = useToday();
-  const label = describePhase(timeline);
+  const label = describePhase(timeline, lifecycle);
   const muted = (text: string) => <span className="text-muted-foreground">{text}</span>;
   const strong = (text: string) => <span className="font-medium">{text}</span>;
 
@@ -39,6 +46,8 @@ export function WeekLabel({ timeline }: { timeline: CourseTimeline }) {
       return strong(t("phase.exams"));
     case "ended":
       return muted(t("phase.ended"));
+    case "inactive":
+      return muted(t("status.state.inactive"));
     case "startsOn":
       return muted(
         t("phase.startsOn", { date: formatShortDate(label.date, i18n.language, today) }),

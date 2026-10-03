@@ -290,11 +290,27 @@ describe("Settings → Updates", () => {
     expect(await within(section).findByText(/^Last checked/)).toBeInTheDocument();
     // A pre-release build defaults to the beta channel.
     expect(within(section).getByRole("radio", { name: "Beta" })).toBeChecked();
-    await user.click(within(section).getByRole("radio", { name: "Stable" }));
-    expect(setPrefs).toHaveBeenCalledWith({ auto_check: true, channel: "stable" });
-
     await user.click(within(section).getByRole("button", { name: "Check now" }));
     expect(await within(section).findByText("PageLamp is up to date.")).toBeInTheDocument();
+
+    await user.click(within(section).getByRole("radio", { name: "Stable" }));
+    expect(setPrefs).toHaveBeenCalledWith({ auto_check: true, channel: "stable" });
+  });
+
+  it("says Stable has no release yet, not that the check failed", async () => {
+    const { user } = renderRoute("/settings");
+    const section = await updatesSection();
+    await user.click(await within(section).findByRole("radio", { name: "Stable" }));
+    await waitFor(() =>
+      expect(within(section).getByRole("radio", { name: "Stable" })).toBeChecked(),
+    );
+    await user.click(within(section).getByRole("button", { name: "Check now" }));
+    const line = await within(section).findByText(
+      "PageLamp didn't find a stable release with update information yet. Early versions for testing are on the Beta channel.",
+    );
+    expect(line.closest(".text-destructive")).toBeNull();
+    expect(within(section).queryByText("Couldn't check for updates.")).toBeNull();
+    expect(within(section).queryByText("We couldn't find that.")).toBeNull();
   });
 
   it("offers the update it finds, with its release notes", async () => {
@@ -351,6 +367,18 @@ describe("database from another version", () => {
     ).toBeInTheDocument();
     // Still a way to get help.
     expect(screen.getByRole("button", { name: "Copy diagnostic report…" })).toBeInTheDocument();
+  });
+
+  it("says the same when the channel has no release with update information", async () => {
+    const api = mockApi();
+    vi.spyOn(api, "status").mockRejectedValue(new ApiError("schema_too_new", "schema 4 > 3"));
+    vi.spyOn(api, "checkForUpdate").mockRejectedValue(new ApiError("not_found", "no release"));
+    const { user } = renderRoute("/", { api });
+    await user.click(await screen.findByRole("button", { name: "Check for updates" }));
+    expect(
+      await screen.findByText(/No newer version is available on your update channel yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't check for updates.")).toBeNull();
   });
 
   it("points data too old to open at the backups", async () => {

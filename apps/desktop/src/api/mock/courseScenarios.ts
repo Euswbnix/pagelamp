@@ -546,9 +546,10 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
     key: "PHS190",
     code: "PHS190",
     name: "Orientation Site",
-    week: null,
+    // An old week-numbered material still names a week; an inactive course shows none.
+    week: 12,
     confidence: "low",
-    calendar: { phase: "unknown", phase_confidence: "low" },
+    calendar: { phase: "unknown", phase_confidence: "low", default_week: 12 },
     lifecycle: lifecycle({
       state: "inactive",
       last_activity: dayFrom(now, -150),

@@ -84,11 +84,5 @@
     "restart_client_after_change": "Quit and reopen the app after changing its config.",
     "custom_data_dir": "This setup includes PAGELAMP_HOME because {{product}} uses a custom data folder.",
     "generic_stdio_client": "Any other AI app that supports local (stdio) MCP servers works too: adapt the command, arguments and environment to its config format."
-  },
-  "quarantine": {
-    "title": "If macOS blocks {{product}}",
-    "body": "This beta isn't notarized by Apple yet. If macOS won't open {{product}}, or stops it when your AI app starts it: open {{product}} once, then go to System Settings › Privacy & Security and click “Open Anyway”.",
-    "fallback": "Still blocked? Run this once in Terminal:",
-    "copy": "Copy the Terminal command"
   }
 }
