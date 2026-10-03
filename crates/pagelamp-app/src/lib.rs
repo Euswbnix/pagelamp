@@ -469,6 +469,28 @@ impl std::fmt::Debug for App {
     }
 }
 
+/// The `settings` key that records which version of the link-address rules the stored text
+/// was last cleaned under.
+const SCRUBBED_TEXT_KEY: &str = "text.scrubbed";
+
+/// Link addresses in text an earlier version stored may carry a parameter that gives access to
+/// a file. They are removed once per version of the rules (`pagelamp_core::scrub`), when an app
+/// or the CLI opens the data; new text is cleaned as it is stored. (The MCP server, which only
+/// reads, cleans what it gives out.)
+fn scrub_text_stored_earlier(store: &Store) -> Result<()> {
+    let done: u32 = store.setting_or_absent(SCRUBBED_TEXT_KEY)?.unwrap_or(0);
+    if done >= pagelamp_core::scrub::VERSION {
+        return Ok(());
+    }
+    Ok(store.in_transaction(|store| {
+        let changed = store.scrub_stored_text()?;
+        if changed > 0 {
+            tracing::info!("removed access parameters from {changed} stored texts");
+        }
+        store.set_setting(SCRUBBED_TEXT_KEY, &pagelamp_core::scrub::VERSION)
+    })?)
+}
+
 impl App {
     /// Default data dir (`PAGELAMP_HOME` respected). Creates it and migrates the DB.
     pub fn open() -> Result<App> {
@@ -498,6 +520,7 @@ impl App {
         let store = Store::open(&db_path)?;
         let used_before_at_open =
             !store.list_sources()?.is_empty() || store.last_migration_backup()?.is_some();
+        scrub_text_stored_earlier(&store)?;
         drop(store);
         let app = App {
             data_dir,
