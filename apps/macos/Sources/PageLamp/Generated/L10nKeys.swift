@@ -863,6 +863,7 @@ nonisolated enum L10nKeys {
         "course.week.note.exam_period",
         "course.week.note.no_current_week.ended",
         "course.week.note.no_current_week.inactive",
+        "course.week.note.no_current_week.pick_week",
         "course.week.note.no_current_week.upcoming",
         "course.week.note.no_materials_this_week",
         "course.week.note.outside_term",

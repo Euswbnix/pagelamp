@@ -51,7 +51,8 @@ describe("a course with no current week: the Timeline card", () => {
         .parentElement as HTMLElement;
       expect(within(card).getByText(label)).toBeInTheDocument();
       expect(within(card).queryByText("Week unknown")).toBeNull();
-      // No confidence sentence and no "materials have reached week N" for a course that is over.
+      // No confidence sentence and no "materials have reached week N" for a course that is over
+      // (DEMO099's fixture has a notes week, so the line would show if the card allowed it).
       expect(within(panel).queryByText(/This is very likely right/)).toBeNull();
       expect(within(panel).queryByText(/This is a good estimate/)).toBeNull();
       expect(within(panel).queryByText(/We couldn't work this out reliably/)).toBeNull();
@@ -72,12 +73,30 @@ describe("a course with no current week: the week tab", () => {
     expect(screen.queryByRole("button", { name: "Set term dates" })).toBeNull();
   });
 
-  it("says an inactive site has no current week", async () => {
+  it("says an inactive site has no current week, and still offers to set its dates", async () => {
+    // With dates of its own an inactive course is current again, so the button stays.
     await openCourse(INACTIVE, { scenario: "phases" });
     expect(
       await screen.findByText(/Nothing has happened in this course for a long time/),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Set term dates" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Set term dates" })).toBeInTheDocument();
+  });
+
+  it("offers to pick a week only when the course has one", async () => {
+    const pick = /Pick a week above to see its materials\./;
+    for (const weeks of [[], [3, 5]]) {
+      const api = createMockApi({ latencyMs: 0 });
+      const real = api.weekMaterials.bind(api);
+      vi.spyOn(api, "weekMaterials").mockImplementation(async (course, week) => ({
+        ...(await real(course, week)),
+        available_weeks: weeks,
+      }));
+      const { unmount } = await openCourse(DEMO099, { api });
+      const note = await screen.findByText(/This course is over, so it has no current week\./);
+      if (weeks.length > 0) expect(note).toHaveTextContent(pick);
+      else expect(note).not.toHaveTextContent(pick);
+      unmount();
+    }
   });
 });
 

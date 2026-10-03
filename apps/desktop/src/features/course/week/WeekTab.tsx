@@ -92,8 +92,10 @@ function WeekView({
   const week = data.week ?? null;
   // "No materials this week" is already what the empty state below says.
   const showNote = !!data.note && data.note_kind !== "no_materials_this_week";
-  // A course that is over, inactive or not started has no current week whatever its dates
-  // say: the note gives that reason, and setting term dates wouldn't bring a week back.
+  // A course that is over, inactive or not started has no current week: the note gives that
+  // reason. Term dates can't bring a week back for a course that has ended. They can for an
+  // inactive one (with dates it is current again) and for one that hasn't started (its own
+  // dates count), so those two keep the "Set term dates" button.
   const noCurrentWeek =
     data.note_kind === "outside_term" && outsideWeekViews(data.timeline, lifecycle)
       ? lifecycle.state
@@ -114,14 +116,20 @@ function WeekView({
             {noCurrentWeek === "ended" ||
             noCurrentWeek === "inactive" ||
             noCurrentWeek === "upcoming" ? (
-              t(`week.note.no_current_week.${noCurrentWeek}`)
+              <>
+                {t(`week.note.no_current_week.${noCurrentWeek}`)}
+                {/* Only when there is a week to pick: a site with no week-numbered material has none. */}
+                {data.available_weeks.length > 0 ? (
+                  <> {t("week.note.no_current_week.pick_week")}</>
+                ) : null}
+              </>
             ) : data.note_kind ? (
               t(`week.note.${data.note_kind}`)
             ) : (
               <span lang="en">{data.note}</span>
             )}
           </AlertDescription>
-          {noCurrentWeek === null && (week === null || data.note_kind === "outside_term") ? (
+          {noCurrentWeek !== "ended" && (week === null || data.note_kind === "outside_term") ? (
             <AlertAction>
               <Button size="xs" variant="outline" onClick={onSetTermDates}>
                 {t("week.setTermDates")}

@@ -39,8 +39,8 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
   const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
   const past = lifecycle.group === "past";
-  // "Set the first day of classes" helps a current course only: one that hasn't started or is
-  // over has no week to find.
+  // The "Set the first day of classes" hint is for the current group only. (Dates can still
+  // give an inactive or upcoming course a week; its Week tab offers that.)
   const weekUnknown =
     lifecycle.group === "current" && timeline.phase === "unknown" && timeline.current_week == null;
   const linkRef = useRef<HTMLAnchorElement>(null);

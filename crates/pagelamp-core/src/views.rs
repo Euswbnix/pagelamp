@@ -1035,7 +1035,6 @@ fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
     }
 }
 
-/// English text for `WeekMaterials.note` (UIs localise from `note_kind`).
 /// The note of a course whose lifecycle leaves it without a current week (`OutsideTerm`).
 fn no_current_week_note() -> String {
     format!(
@@ -1044,6 +1043,7 @@ fn no_current_week_note() -> String {
     )
 }
 
+/// English text for `WeekMaterials.note` (UIs localise from `note_kind`).
 fn week_note_text(kind: WeekNoteKind, week: Option<u32>) -> String {
     match kind {
         WeekNoteKind::CurrentWeekUnknown => format!(
