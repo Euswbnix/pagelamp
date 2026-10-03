@@ -127,6 +127,14 @@ fn line(summary: &CourseSummary) -> String {
     )
 }
 
+/// A break week by the student's own dates. An upcoming course keeps its place in the week
+/// views there, as in a teaching week of those dates (the facade's rule in
+/// `pagelamp_core::views`): it has no current week then, so the week alone doesn't tell.
+fn own_break(timeline: &CourseTimeline) -> bool {
+    timeline.phase == CoursePhase::Break
+        && timeline.term.anchor == TermAnchorSource::StudentConfirmed
+}
+
 /// "week 4 (medium)", "reading week", "exams (after week 12)", "ended", "starts 2027-01-11"…
 /// A course that is over, inactive or hasn't started has no week: its lifecycle says which.
 pub fn week_label(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> String {
@@ -137,8 +145,11 @@ pub fn week_label(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> Str
     match lifecycle.state {
         LifecycleState::Ended => return "ended".to_string(),
         LifecycleState::Inactive => return "inactive".to_string(),
-        // (With a week: the student's own dates put an upcoming course in one; it is shown.)
-        LifecycleState::Upcoming if timeline.current_week.is_none() => return starts(),
+        // (With a week, or in a break of its own dates: the student's dates put an upcoming
+        // course there, and it is shown like a running one.)
+        LifecycleState::Upcoming if timeline.current_week.is_none() && !own_break(timeline) => {
+            return starts();
+        }
         LifecycleState::Upcoming
         | LifecycleState::Current
         | LifecycleState::Finishing
