@@ -1019,3 +1019,52 @@ async fn mcp_course_info_uses_resolved_dates() {
     assert_eq!(week["phase"], "teaching");
     assert_eq!(week["course"]["term_dates_source"], "lms_term");
 }
+
+/// Text an earlier version stored can hold a link address with a parameter that gives access
+/// to a file. The server only reads the database, so it can't clean it there: nothing it
+/// gives out carries one.
+#[tokio::test]
+async fn no_tool_gives_out_an_access_parameter() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    set(&db, |s| {
+        s.conn()
+            .execute(
+                "UPDATE chunks SET text = text || ' — zebrafish handout (https://lms.example.edu/courses/101/files/7/download?verifier=SECRET-OLD&wrap=1), video https://media.example.edu/v?t=5&access_token=SECRET-OLD \"today\"'",
+                [],
+            )
+            .unwrap();
+    });
+    let client = connect(db.clone()).await;
+    let mut outputs = Vec::new();
+    for (tool, args) in [
+        ("read_material", json!({"material_id": mid("week3-slides")})),
+        ("search_materials", json!({"query": "zebrafish"})),
+        // A search for the parameter itself: the snippet marks cut the address.
+        ("search_materials", json!({"query": "verifier"})),
+        ("search_materials", json!({"query": "SECRET"})),
+        ("get_announcements", json!({"course": "DEMO101"})),
+        ("course_overview", json!({"course": "DEMO101"})),
+        ("week_materials", json!({"course": "DEMO101"})),
+    ] {
+        let result = call(&client, tool, args).await;
+        assert!(!is_error(&result), "{tool}: {}", text_of(&result));
+        outputs.push((tool, text_of(&result)));
+    }
+    for (tool, text) in &outputs {
+        assert!(!text.contains("SECRET-OLD"), "{tool}: {text}");
+        assert!(!text.contains("DEMOSECRET"), "{tool}: {text}");
+    }
+    // The address itself stays, with its other parameters.
+    let read = &outputs[0].1;
+    assert!(
+        read.contains("zebrafish handout (https://lms.example.edu/courses/101/files/7/download)"),
+        "{read}"
+    );
+    assert!(
+        read.contains("video https://media.example.edu/v?t=5"),
+        "{read}"
+    );
+    assert!(outputs[1].1.contains("zebrafish"), "{}", outputs[1].1);
+    client.cancel().await.unwrap();
+}
