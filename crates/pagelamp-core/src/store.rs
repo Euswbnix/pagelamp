@@ -923,6 +923,40 @@ impl Store {
     }
 
     /// `None` when the course has no syllabus text (or does not exist).
+    /// Remove access parameters from the link addresses in text an earlier version stored
+    /// (`pagelamp_extract::scrub`): the chunks, whose search index follows through its
+    /// triggers, and the courses' syllabus text. Only rows that can hold one are read.
+    /// Returns how many rows changed. Call it inside a transaction.
+    pub fn scrub_stored_text(&self) -> Result<usize> {
+        // (`LIKE` ignores ASCII case; `_` matches any character, which only widens the net.)
+        const MAY_HOLD_ONE: &str = "LIKE '%?%' AND (
+            {column} LIKE '%verifier%' OR {column} LIKE '%access_token%' OR {column} LIKE '%/files/%')";
+        let mut changed = 0;
+        for (table, key, column) in [
+            ("chunks", "id", "text"),
+            ("courses", "rowid", "syllabus_text"),
+        ] {
+            let filter = MAY_HOLD_ONE.replace("{column}", column);
+            let rows: Vec<(i64, String)> = {
+                let mut statement = self.conn.prepare(&format!(
+                    "SELECT {key}, {column} FROM {table} WHERE {column} {filter}"
+                ))?;
+                let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+                rows.collect::<rusqlite::Result<_>>()?
+            };
+            let mut update = self.conn.prepare(&format!(
+                "UPDATE {table} SET {column} = ?2 WHERE {key} = ?1"
+            ))?;
+            for (id, text) in rows {
+                if let std::borrow::Cow::Owned(clean) = pagelamp_extract::scrub::scrub_text(&text) {
+                    update.execute(params![id, clean])?;
+                    changed += 1;
+                }
+            }
+        }
+        Ok(changed)
+    }
+
     pub fn course_syllabus_text(&self, course_id: &str) -> Result<Option<String>> {
         let text: Option<Option<String>> = self.query_opt(
             "SELECT syllabus_text FROM courses WHERE id = ?1",

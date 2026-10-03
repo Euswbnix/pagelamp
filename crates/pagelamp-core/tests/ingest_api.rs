@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use pagelamp_core::Error;
 use pagelamp_core::ingest::{
-    IndexOutcome, NO_TEXT_NOTE, index_file, index_html, index_text, sha256_file, sha256_hex,
+    IndexOutcome, NO_TEXT_NOTE, html_hash, index_file, index_html, index_text, sha256_file,
+    sha256_hex,
 };
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
@@ -365,7 +366,10 @@ fn html_headings_become_locators() {
 
     let stored = material(&store, &id);
     assert_eq!(stored.text_status, TextStatus::Ok);
-    assert_eq!(stored.content_hash, Some(sha256_hex(html.as_bytes())));
+    // Over the HTML and the version of the link-address rules: stored text is extracted
+    // again when the rules change.
+    assert_eq!(stored.content_hash, Some(html_hash(html)));
+    assert_ne!(stored.content_hash, Some(sha256_hex(html.as_bytes())));
     assert_eq!(
         index_html(&store, &id, html).unwrap(),
         IndexOutcome::Unchanged
