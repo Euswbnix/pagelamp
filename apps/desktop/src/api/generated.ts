@@ -1126,6 +1126,14 @@ export interface AppStatus {
   data_dir: string;
   db_path: string;
   /**
+   * Per source id: when its deadlines and announcements were last read, for a source an
+   * automatic sync has read lightly since its last full sync (`sources[].last_synced_at`
+   * keeps meaning the full sync). A source without an entry has that one clock.
+   */
+  deadlines_synced_at: {
+    [k: string]: string;
+  };
+  /**
    * Most recent successful sync over all sources.
    */
   last_synced_at?: string | null;
@@ -1643,10 +1651,17 @@ export interface CourseOverview {
   course: Course;
   current_modules: Module[];
   /**
+   * When its deadlines and announcements were last read (`CourseSummary`).
+   */
+  deadlines_synced_at?: string | null;
+  /**
    * Files a "download this course's files" action would fetch: kind `file`, text status
    * `not_downloaded` and no `download_blocked` reason (all weeks).
    */
   downloadable_files: number;
+  /**
+   * When the course's source last synced in full (modules and materials).
+   */
   last_synced_at?: string | null;
   lifecycle: CourseLifecycle;
   /**
@@ -1658,6 +1673,10 @@ export interface CourseOverview {
    */
   recent_materials: MaterialView[];
   source_label: string;
+  /**
+   * Its modules and materials haven't been read yet (`CourseSummary`).
+   */
+  structure_pending: boolean;
   timeline: CourseTimeline;
   /**
    * Deadlines due in the next `UPCOMING_DAYS` days, soonest first.
@@ -1954,7 +1973,13 @@ export interface CourseSummary {
   counts: CourseCounts;
   course: Course;
   /**
-   * When that source last synced successfully (data freshness).
+   * When the source's deadlines and announcements were last read: `last_synced_at`, or a
+   * later automatic sync that read only those (`auto_sync::LightSync`).
+   */
+  deadlines_synced_at?: string | null;
+  /**
+   * When that source last synced in full (the freshness of the course's modules and
+   * materials).
    */
   last_synced_at?: string | null;
   lifecycle: CourseLifecycle1;
@@ -1963,6 +1988,12 @@ export interface CourseSummary {
    * Label of the source this course came from (e.g. "Quercus", "~/Courses").
    */
   source_label: string;
+  /**
+   * An automatic sync found this course, and no full sync has read it yet: it is listed
+   * with its deadlines and announcements, but its modules and materials are still missing
+   * (not empty). The next full sync reads them.
+   */
+  structure_pending: boolean;
   timeline: CourseTimeline;
 }
 /**
@@ -2644,8 +2675,9 @@ export interface StartupTasks {
 /**
  * Whether an automatic sync is due, for each reason the shell may have to ask: automatic sync
  * is on, no What's new is waiting, no sync is running, and a source that doesn't need the
- * student was last synced the setting's interval ago or never, with no retry wait running
- * (`auto_sync`). The shell passes the trigger that is true to `sync_all`, starts nothing else
+ * student was last read the setting's interval ago or never, with no retry wait running
+ * (`auto_sync`). Each trigger has its own clock, since they read different things: the two
+ * can differ. The shell passes the trigger that is true to `sync_all`, starts nothing else
  * on it, and shows nothing when the run is refused or fails.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -2654,11 +2686,13 @@ export interface StartupTasks {
 export interface SyncDue {
   /**
    * When the student is at the app: it was just opened or brought to the front, or What's
-   * new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then.
+   * new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then. The
+   * last full sync is the interval old, or a course waits for its first one.
    */
   attended: boolean;
   /**
-   * From the app's timer (`AutoSyncTrigger::Unattended`).
+   * From the app's timer (`AutoSyncTrigger::Unattended`): deadlines and announcements are
+   * the interval old.
    */
   unattended: boolean;
 }

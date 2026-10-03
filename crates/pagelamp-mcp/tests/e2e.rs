@@ -772,6 +772,23 @@ async fn sync_status_reports_automatic_sync_and_what_each_source_needs() {
     );
     let list = json_of(&call(&client, "list_courses", json!({})).await);
     assert_eq!(list["hint"], old["hint"], "the same hint on list_courses");
+    // With nobody at the app only deadlines and announcements are read: an hour ago here.
+    // Then the materials are old and the deadlines aren't, and the hint says so, never "it
+    // refreshes while the app is open" (the app was open all along).
+    use pagelamp_core::auto_sync::{LIGHT_SYNC_KEY, LightSync};
+    let mut light = LightSync::default();
+    light.light_run_ended(SOURCE, Utc::now() - TimeDelta::hours(1), &[]);
+    set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
+    let partly = status().await;
+    assert_eq!(
+        (&partly["stale"], &partly["sources"][0]["state"]),
+        (&json!(true), &json!("materials_old"))
+    );
+    let hint = text::freshness_hint(Freshness::MaterialsOld, true).unwrap();
+    assert_eq!(partly["hint"], hint);
+    assert!(hint.starts_with("Deadlines and announcements are current"));
+    assert!(!hint.contains("by itself"));
+    set(&db, |s| s.remove_setting(LIGHT_SYNC_KEY).unwrap());
     // Once a day, 30 hours isn't stale yet (the threshold follows the setting).
     set(&db, |s| {
         s.set_setting(
@@ -842,12 +859,24 @@ async fn sync_status_reports_automatic_sync_and_what_each_source_needs() {
         text::instructions(),
         text::sync_status_description(),
         text::not_initialised(),
+        text::structure_pending(),
     ];
+    for structure_pending in [true, false] {
+        let read_at = Some(Utc::now());
+        for (materials, deadlines) in [(None, None), (read_at, None), (None, read_at)] {
+            texts.push(text::data_as_of(text::DataAsOf {
+                materials,
+                deadlines,
+                structure_pending,
+            }));
+        }
+    }
     for worst in [
         Freshness::NeedsStudent,
         Freshness::NeverSynced,
         Freshness::Failed,
         Freshness::Old,
+        Freshness::MaterialsOld,
     ] {
         for on in [true, false] {
             let hint = text::freshness_hint(worst, on).unwrap();
@@ -874,8 +903,16 @@ async fn read_tools_carry_one_data_as_of_line() {
     let synced = "2026-09-28T14:03:00Z".parse().unwrap();
     set(&db, |s| s.record_sync(SOURCE, synced, None).unwrap());
     let line = "Data as of 2026-09-28 14:03 UTC (the last sync of this course's source).";
-    assert_eq!(text::data_as_of(Some(synced)), line);
-    let client = connect(db).await;
+    let as_of = |materials, deadlines| {
+        text::data_as_of(text::DataAsOf {
+            materials,
+            deadlines,
+            structure_pending: false,
+        })
+    };
+    assert_eq!(as_of(Some(synced), None), line);
+    assert_eq!(as_of(Some(synced), Some(synced)), line);
+    let client = connect(db.clone()).await;
     let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
     assert_eq!(overview["data_as_of"], line);
     let week = json_of(&call(&client, "week_materials", json!({"course": "DEMO101"})).await);
@@ -894,9 +931,120 @@ async fn read_tools_carry_one_data_as_of_line() {
     );
     assert!(read.contains(line), "{read}");
     assert_eq!(
-        text::data_as_of(None),
+        as_of(None, None),
         "This course's source has never finished a sync."
     );
+
+    // An automatic sync read the deadlines and announcements later: both clocks are named.
+    use pagelamp_core::auto_sync::{LIGHT_SYNC_KEY, LightSync};
+    let read_at: chrono::DateTime<Utc> = "2026-09-29T02:10:00Z".parse().unwrap();
+    let mut light = LightSync::default();
+    light.synced_at.insert(SOURCE.to_string(), read_at);
+    set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
+    let two = "Materials as of 2026-09-28 14:03 UTC (the last full sync of this course's \
+               source); deadlines and announcements as of 2026-09-29 02:10 UTC.";
+    assert_eq!(as_of(Some(synced), Some(read_at)), two);
+    assert_eq!(
+        as_of(None, Some(read_at)),
+        "This course's source has never finished a full sync; deadlines and announcements as \
+         of 2026-09-29 02:10 UTC."
+    );
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(overview["data_as_of"], two);
+    assert!(overview.get("structure_pending").is_none());
+    let week = json_of(&call(&client, "week_materials", json!({"course": "DEMO101"})).await);
+    assert_eq!(week["data_as_of"], two);
+    assert!(week.get("structure_pending").is_none());
+    let list = json_of(&call(&client, "list_courses", json!({})).await);
+    let row = |list: &Value, code: &str| -> Value {
+        let courses = list["courses"].as_array().unwrap();
+        courses.iter().find(|c| c["code"] == code).unwrap().clone()
+    };
+    assert_eq!(
+        row(&list, "DEMO101")["last_synced_at"],
+        "2026-09-28T14:03:00Z"
+    );
+    assert_eq!(
+        row(&list, "DEMO101")["deadlines_synced_at"],
+        "2026-09-29T02:10:00Z"
+    );
+    assert!(row(&list, "DEMO101").get("structure_pending").is_none());
+    let status = json_of(&call(&client, "sync_status", json!({})).await);
+    assert_eq!(
+        status["sources"][0]["last_synced_at"],
+        "2026-09-28T14:03:00Z"
+    );
+    assert_eq!(
+        status["sources"][0]["deadlines_synced_at"],
+        "2026-09-29T02:10:00Z"
+    );
+    assert!(text::sync_status_description().contains("deadlines_synced_at"));
+
+    // That sync also found a course no full sync has read. Every tool that would show its
+    // (missing) modules and materials says they haven't been read: nothing calls them
+    // complete, empty or "as of" the source's last full sync.
+    set(&db, |s| {
+        s.upsert_course(&CourseUpsert {
+            id: cid("404"),
+            source_id: SOURCE.into(),
+            external_id: "404".into(),
+            code: Some("DEMO404".into()),
+            name: "Demo Seminar".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+        light.structure_pending.insert(cid("404"));
+        s.set_setting(LIGHT_SYNC_KEY, &light).unwrap();
+    });
+    let unread = "This course's modules and materials haven't been read yet; deadlines and \
+                  announcements as of 2026-09-29 02:10 UTC.";
+    assert!(text::structure_pending().ends_with(text::NEVER_SYNC_FOR_THE_STUDENT));
+    assert!(text::structure_pending().contains("missing here, not empty"));
+    let list = json_of(&call(&client, "list_courses", json!({})).await);
+    assert_eq!(
+        row(&list, "DEMO404")["structure_pending"],
+        text::structure_pending()
+    );
+    assert!(row(&list, "DEMO101").get("structure_pending").is_none());
+    for tool in ["course_overview", "week_materials"] {
+        let answer = json_of(&call(&client, tool, json!({"course": "DEMO404"})).await);
+        assert_eq!(answer["data_as_of"], unread, "{tool}");
+        assert_eq!(
+            answer["structure_pending"],
+            text::structure_pending(),
+            "{tool}"
+        );
+    }
+    let found = text_of(
+        &call(
+            &client,
+            "search_materials",
+            json!({"query": "stomata", "course": "DEMO404"}),
+        )
+        .await,
+    );
+    assert!(found.contains(&text::structure_pending()), "{found}");
+    assert!(!found.contains(text::NO_HITS), "{found}");
+    light.structure_pending.clear();
+
+    // A full sync later: one clock again, and the fields that said otherwise are gone.
+    let later: chrono::DateTime<Utc> = "2026-09-29T09:00:00Z".parse().unwrap();
+    set(&db, |s| {
+        s.record_sync(SOURCE, later, None).unwrap();
+        s.set_setting(LIGHT_SYNC_KEY, &light).unwrap();
+    });
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(
+        overview["data_as_of"],
+        "Data as of 2026-09-29 09:00 UTC (the last sync of this course's source)."
+    );
+    assert!(overview.get("structure_pending").is_none());
+    let status = json_of(&call(&client, "sync_status", json!({})).await);
+    assert!(status["sources"][0].get("deadlines_synced_at").is_none());
     client.cancel().await.unwrap();
 }
 
@@ -905,11 +1053,21 @@ async fn read_tools_carry_one_data_as_of_line() {
 /// sync times are as they were. A new tool has to be added here.
 #[tokio::test]
 async fn no_tool_call_touches_what_the_automatic_sync_reads() {
-    use pagelamp_core::auto_sync::{AUTO_SYNC_ATTEMPTS_KEY, AutoSync, SYNC_PREFS_KEY, SyncPrefs};
+    use pagelamp_core::auto_sync::{
+        AUTO_SYNC_ATTEMPTS_KEY, AutoSync, LIGHT_SYNC_KEY, SYNC_PREFS_KEY, SyncPrefs,
+    };
 
     let temp = tempfile::tempdir().unwrap();
     let db = fixture(temp.path());
     set(&db, |s| {
+        s.set_setting(
+            LIGHT_SYNC_KEY,
+            &json!({
+                "synced_at": { SOURCE: "2026-10-03T09:00:00Z" },
+                "structure_pending": [cid("202")]
+            }),
+        )
+        .unwrap();
         s.set_setting(
             SYNC_PREFS_KEY,
             &SyncPrefs {
@@ -944,7 +1102,7 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
         rows
     };
     let before = snapshot(&db);
-    assert_eq!(before.len(), 3, "{before:?}");
+    assert_eq!(before.len(), 4, "{before:?}");
 
     let client = connect(db.clone()).await;
     let plan = json!({ "plan": {

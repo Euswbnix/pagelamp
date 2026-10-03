@@ -74,7 +74,7 @@ use pagelamp_core::brand;
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
-    CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, SourceErrorKind,
+    Course, CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, SourceErrorKind,
     SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
 };
 use pagelamp_core::store::Store;
@@ -446,7 +446,12 @@ impl PageLampServer {
                     cap_list(overview.recent_materials, MAX_LISTED_MATERIALS);
                 json_result(&Overview {
                     guidance: text::guidance(),
-                    data_as_of: text::data_as_of(overview.last_synced_at),
+                    data_as_of: text::data_as_of(text::DataAsOf {
+                        materials: overview.last_synced_at,
+                        deadlines: overview.deadlines_synced_at,
+                        structure_pending: overview.structure_pending,
+                    }),
+                    structure_pending: overview.structure_pending.then(text::structure_pending),
                     course: CourseInfo::new(&overview.course, &overview.timeline),
                     ai_materials: overview.ai_materials,
                     note: withheld_note(overview.ai_materials),
@@ -495,7 +500,7 @@ impl PageLampServer {
                     false,
                     AsOf::now_local(),
                 )?;
-                let synced = source_synced_at(store, &week.course.source_id)?;
+                let synced = data_as_of(store, &week.course)?;
                 Ok((week, synced))
             })
             .await;
@@ -505,6 +510,7 @@ impl PageLampServer {
                 json_result(&Week {
                     guidance: text::guidance(),
                     data_as_of: text::data_as_of(synced),
+                    structure_pending: synced.structure_pending.then(text::structure_pending),
                     course: CourseInfo::new(&week.course, &week.timeline),
                     ai_materials: week.ai_materials,
                     phase: week.timeline.phase,
@@ -540,7 +546,7 @@ impl PageLampServer {
             .read(move |store| {
                 let material = views::read_material(store, &args.material_id, from, max_chars)?;
                 let course = store.resolve_course_with(&material.material.course_id, true)?;
-                Ok((material, source_synced_at(store, &course.source_id)?))
+                Ok((material, data_as_of(store, &course)?))
             })
             .await;
         let (material, synced) = match result {
@@ -597,10 +603,19 @@ impl PageLampServer {
         let query = args.query.clone();
         let result = self
             .read(move |store| {
-                views::search_for_ai(store, &args.query, args.course.as_deref(), limit)
+                let results =
+                    views::search_for_ai(store, &args.query, args.course.as_deref(), limit)?;
+                // A course no full sync has read has nothing to find yet.
+                let unread = match args.course.as_deref() {
+                    Some(course) => auto_sync::light_sync(store)?
+                        .structure_pending
+                        .contains(&store.resolve_course(course)?.id),
+                    None => false,
+                };
+                Ok((results, unread))
             })
             .await;
-        let results = match result {
+        let (results, unread) = match result {
             Ok(results) => results,
             Err(error) => return error,
         };
@@ -631,7 +646,9 @@ impl PageLampServer {
             shown += 1;
             out.push(block);
         }
-        if results.hits.is_empty() {
+        if results.hits.is_empty() && unread {
+            out.push(text::structure_pending());
+        } else if results.hits.is_empty() {
             out.push(text::NO_HITS.to_string());
         } else if shown < results.hits.len() {
             out.push(text::output_capped(results.hits.len() - shown));
@@ -800,6 +817,7 @@ impl PageLampServer {
                         last_error_kind: s.source.last_error_kind,
                         stale: s.stale,
                         state: freshness(s),
+                        deadlines_synced_at: later(s.deadlines_synced_at, s.source.last_synced_at),
                     })
                     .collect(),
                 counts: status.counts,
@@ -1106,7 +1124,19 @@ struct CourseLine {
     readable_materials: u32,
     next_deadline: Option<DeadlineInfo>,
     source: String,
+    /// The last full sync of the course's source (modules, materials and their text).
     last_synced_at: Option<Timestamp>,
+    /// When its deadlines and announcements were last read, when that is later.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deadlines_synced_at: Option<Timestamp>,
+    /// Present for a course whose modules and materials haven't been read yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    structure_pending: Option<String>,
+}
+
+/// `deadlines` when it says more than `materials` (it is later).
+fn later(deadlines: Option<Timestamp>, materials: Option<Timestamp>) -> Option<Timestamp> {
+    deadlines.filter(|at| materials.is_none_or(|full| *at > full))
 }
 
 impl From<&views::CourseSummary> for CourseLine {
@@ -1128,6 +1158,8 @@ impl From<&views::CourseSummary> for CourseLine {
             next_deadline: summary.next_deadline.as_ref().map(DeadlineInfo::from),
             source: summary.source_label.clone(),
             last_synced_at: summary.last_synced_at,
+            deadlines_synced_at: later(summary.deadlines_synced_at, summary.last_synced_at),
+            structure_pending: summary.structure_pending.then(text::structure_pending),
         }
     }
 }
@@ -1342,6 +1374,9 @@ struct AnnouncementInfo {
 struct Overview {
     guidance: String,
     data_as_of: String,
+    /// Present for a course whose modules and materials haven't been read yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    structure_pending: Option<String>,
     course: CourseInfo,
     ai_materials: AiMaterialsState,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1360,6 +1395,10 @@ struct Overview {
 struct Week {
     guidance: String,
     data_as_of: String,
+    /// Present for a course whose modules and materials haven't been read yet: an empty week
+    /// then means "not read", not "nothing there".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    structure_pending: Option<String>,
     course: CourseInfo,
     ai_materials: AiMaterialsState,
     phase: CoursePhase,
@@ -1413,6 +1452,8 @@ fn freshness(status: &views::SourceStatus) -> text::Freshness {
         text::Freshness::NeverSynced
     } else if source.last_error.is_some() {
         text::Freshness::Failed
+    } else if status.stale && !status.deadlines_stale {
+        text::Freshness::MaterialsOld
     } else if status.stale {
         text::Freshness::Old
     } else {
@@ -1431,11 +1472,22 @@ fn sync_hint(status: &views::SyncStatus) -> Option<String> {
     text::freshness_hint(worst, status.auto_sync != AutoSync::Off)
 }
 
-/// When `source_id` last finished a sync (the "data as of" line of the read tools).
-fn source_synced_at(store: &Store, source_id: &str) -> pagelamp_core::Result<Option<Timestamp>> {
-    Ok(store
-        .get_source(source_id)?
-        .and_then(|source| source.last_synced_at))
+/// What the "data as of" line of the read tools says about `course`: the two clocks of its
+/// source, and whether the course still waits for its first full sync.
+fn data_as_of(store: &Store, course: &Course) -> pagelamp_core::Result<text::DataAsOf> {
+    let light = auto_sync::light_sync(store)?;
+    let structure_pending = light.structure_pending.contains(&course.id);
+    let Some(source) = store.get_source(&course.source_id)? else {
+        return Ok(text::DataAsOf {
+            structure_pending,
+            ..text::DataAsOf::default()
+        });
+    };
+    Ok(text::DataAsOf {
+        materials: source.last_synced_at,
+        deadlines: light.deadlines_synced_at(&source),
+        structure_pending,
+    })
 }
 
 #[derive(Serialize)]
@@ -1449,4 +1501,8 @@ struct SourceInfo {
     stale: bool,
     /// fresh / old / never_synced / failed / needs_student (only the student can fix it).
     state: text::Freshness,
+    /// When deadlines and announcements were last read, when that is later than the last
+    /// full sync (`last_synced_at`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deadlines_synced_at: Option<Timestamp>,
 }

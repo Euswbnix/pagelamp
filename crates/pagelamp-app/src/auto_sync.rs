@@ -13,8 +13,18 @@
 //! - An automatic `sync_all` checks the clock rule again, then counts the attempt before it
 //!   does anything else, the lock included: a run that is refused (another sync runs, What's
 //!   new is waiting) or fails waits like one that ran (1 h, 2 h, 4 h… up to the interval), and
-//!   no source gets more than 6 attempts in 24 hours. Two shells that both saw `sync_due`
+//!   no source gets more than 6 attempts in 24 hours. Each trigger waits after its own
+//!   attempts only; the cap is shared. Two shells that both saw `sync_due`
 //!   therefore start one run between them.
+//! - What a run reads depends on why it started (`scope_of`): from the timer, with nobody known
+//!   to be at the app, Canvas is asked only for the course list, planner items and
+//!   announcements, since Canvas may record a request for a course's modules, files, pages or
+//!   assignments as the student's activity there. Such a light run stamps `sync.light`, never
+//!   the source's `last_synced_at`, and a course it finds for the first time is listed with
+//!   `structure_pending` until a full sync reads it. When the student is at the app (it was
+//!   just opened or brought to the front), a run reads everything, like pressing Sync.
+//! - After the student stops a sync (any sync of this app), nothing starts by itself for an
+//!   hour.
 //! - It leaves out the sources only the student can fix, never downloads files, and keeps a
 //!   failure that may pass by itself (network, throttling) to its attempts record: the source
 //!   isn't marked failed, so nothing asks for the student's attention. A failure the student
@@ -22,7 +32,8 @@
 //!   and shows on Sources; that source is then left alone until it is fixed.
 
 use pagelamp_core::auto_sync::{
-    self as rule, AUTO_SYNC_ATTEMPTS_KEY, AutoSyncTrigger, SYNC_PREFS_KEY, SyncPrefs,
+    self as rule, AUTO_SYNC_ATTEMPTS_KEY, AutoSyncTrigger, Clocks, LIGHT_SYNC_KEY, SYNC_PREFS_KEY,
+    SyncPrefs, SyncScope,
 };
 use pagelamp_core::model::{SourceErrorKind, Timestamp};
 use pagelamp_core::paths;
@@ -30,19 +41,15 @@ use pagelamp_core::store::Store;
 
 use crate::{App, AppError, AppErrorKind, Result, SourceSyncResult, SyncDue, lock};
 
-/// What an automatic run syncs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AutoSyncScope {
-    /// Everything a sync the student starts does, except downloading files.
-    Everything,
-}
-
-/// The scope each trigger runs, with a clock of its own per scope. Both triggers run everything
-/// today; if an unattended run is to do less in Canvas than an attended one, this is where
-/// that is decided (the shells only ever name the trigger).
-pub(crate) const fn scope_of(trigger: AutoSyncTrigger) -> AutoSyncScope {
+/// What each trigger syncs (the shells only ever name the trigger). With nobody at the app,
+/// Canvas is asked for nothing with a course in its path (only the course list, deadlines and
+/// announcements); with the student at the app, a run reads everything, the same as pressing
+/// Sync. Folder and calendar-feed sources are read in full by both. Each scope has
+/// its own clock (`pagelamp_core::auto_sync`).
+pub(crate) const fn scope_of(trigger: AutoSyncTrigger) -> SyncScope {
     match trigger {
-        AutoSyncTrigger::Unattended | AutoSyncTrigger::Attended => AutoSyncScope::Everything,
+        AutoSyncTrigger::Unattended => SyncScope::UserLevel,
+        AutoSyncTrigger::Attended => SyncScope::Everything,
     }
 }
 
@@ -72,9 +79,13 @@ impl App {
         let setting = rule::auto_sync(store)?;
         let sources = store.list_sources()?;
         let attempts = rule::attempts(store)?;
-        let due = |trigger| match scope_of(trigger) {
-            AutoSyncScope::Everything => rule::due_by_the_clock(setting, &sources, &attempts, now),
+        let light = rule::light_sync(store)?;
+        let clocks = Clocks {
+            sources: &sources,
+            attempts: &attempts,
+            light: &light,
         };
+        let due = |trigger| rule::due_by_the_clock(setting, clocks, scope_of(trigger), now);
         Ok(SyncDue {
             unattended: due(AutoSyncTrigger::Unattended),
             attended: due(AutoSyncTrigger::Attended),
@@ -89,17 +100,22 @@ impl App {
         trigger: AutoSyncTrigger,
         now: Timestamp,
     ) -> Result<Option<Vec<String>>> {
-        let AutoSyncScope::Everything = scope_of(trigger);
         let store = self.write_store()?;
         let trying = store.in_transaction(|store| {
             let sources = store.list_sources()?;
             let mut attempts = rule::attempts(store)?;
-            if !rule::due_by_the_clock(rule::auto_sync(store)?, &sources, &attempts, now) {
+            let light = rule::light_sync(store)?;
+            let clocks = Clocks {
+                sources: &sources,
+                attempts: &attempts,
+                light: &light,
+            };
+            if !rule::due_by_the_clock(rule::auto_sync(store)?, clocks, scope_of(trigger), now) {
                 return Ok(None);
             }
             let eligible = rule::eligible(&sources, &attempts, now);
             let ids: Vec<String> = eligible.iter().map(|source| source.id.clone()).collect();
-            attempts.count(&eligible, now);
+            attempts.count(&eligible, now, scope_of(trigger));
             store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)?;
             Ok(Some(ids))
         })?;
@@ -113,16 +129,80 @@ impl App {
         Ok(trying)
     }
 
+    /// A light run of a Canvas source ended well: its deadlines and announcements are as of
+    /// `at`, and `new_courses` wait for a full sync. The source row isn't touched
+    /// (`last_synced_at` keeps meaning the last full sync).
+    pub(crate) fn record_light_sync(&self, source_id: &str, at: Timestamp, new_courses: &[String]) {
+        let recorded = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                let mut light = rule::light_sync(store)?;
+                light.light_run_ended(source_id, at, new_courses);
+                store.set_setting(LIGHT_SYNC_KEY, &light)
+            })?)
+        });
+        if let Err(err) = recorded {
+            tracing::warn!("could not record the light sync: {err}");
+        }
+    }
+
+    /// A full sync of a Canvas source ended well: its courses don't wait for their structure
+    /// any more (`only`: the ones whose structure it read, when it was limited to some
+    /// courses).
+    pub(crate) fn structure_was_read(&self, source_id: &str, only: Option<&[String]>) {
+        let recorded = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                let mut light = rule::light_sync(store)?;
+                if light.full_sync_read(source_id, only) {
+                    store.set_setting(LIGHT_SYNC_KEY, &light)?;
+                }
+                Ok(())
+            })?)
+        });
+        if let Err(err) = recorded {
+            tracing::warn!("could not record which courses were read: {err}");
+        }
+    }
+
+    /// A source was removed: what the light runs left of it goes too.
+    pub(crate) fn forget_light_sync(&self, store: &Store, source_id: &str) -> Result<()> {
+        Ok(store.in_transaction(|store| {
+            let mut light = rule::light_sync(store)?;
+            if light.forget_source(source_id) {
+                store.set_setting(LIGHT_SYNC_KEY, &light)?;
+            }
+            Ok(())
+        })?)
+    }
+
+    /// The student stopped a sync (any sync of this app): nothing starts by itself for an hour.
+    pub(crate) fn sync_was_stopped(&self, at: Timestamp) {
+        let recorded = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                let mut attempts = rule::attempts(store)?;
+                attempts.stopped_at = Some(at);
+                store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)
+            })?)
+        });
+        if let Err(err) = recorded {
+            tracing::warn!("could not record that the sync was stopped: {err}");
+        }
+    }
+
     /// The end of an automatic run: when every source it tried synced, the retry wait is over.
     /// (Otherwise the attempt stays counted as it was at the start.)
-    pub(crate) fn finish_automatic_sync(&self, results: &[SourceSyncResult], at: Timestamp) {
+    pub(crate) fn finish_automatic_sync(
+        &self,
+        trigger: AutoSyncTrigger,
+        results: &[SourceSyncResult],
+        at: Timestamp,
+    ) {
         if !results.iter().all(|result| result.ok) {
             return;
         }
         let recorded = self.write_store().and_then(|store| {
             Ok(store.in_transaction(|store| {
                 let mut attempts = rule::attempts(store)?;
-                attempts.succeeded(at);
+                attempts.succeeded(at, scope_of(trigger));
                 store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)
             })?)
         });

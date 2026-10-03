@@ -90,10 +90,31 @@ pub struct SyncOptions {
     pub extractor: pagelamp_core::ingest::Extractor,
     /// A sync PageLamp started by itself: one request at a time, and the User-Agent says so.
     pub automatic: bool,
+    /// Read only what Canvas serves without a course in the path: the token check, the course
+    /// list (with each syllabus), planner items and each course's announcements. No
+    /// `/courses/:id/…` request is made, so nothing of a course's modules, files, pages or
+    /// links is read, changed or removed. Assignment due dates come from the planner instead:
+    /// one inside its window is added or moved, none is removed. For a sync nobody is at the
+    /// app for (`SyncReport::new_courses` names the courses that still need a full sync).
+    pub user_level_only: bool,
 }
 
+/// What a sync did. `new_courses` and `read_courses` hold our course ids.
 #[derive(Clone, Debug, Default)]
 pub struct SyncReport {
+    /// Courses a `user_level_only` sync saw for the first time: listed now, with deadlines and
+    /// announcements, but their modules and materials are read by the next full sync. Each is
+    /// also recorded as waiting (`pagelamp_core::auto_sync::LightSync`) in the transaction that
+    /// stores the course, so a run that fails later still leaves that said.
+    pub new_courses: Vec<String>,
+    /// The course list, the planner and every course's announcements were read completely:
+    /// what a `user_level_only` sync is for. When false, deadlines or announcements may be as
+    /// old as before the run (the warnings say what was missed).
+    pub user_level_read: bool,
+    /// Courses whose structure this (full) sync read: it got the module listing, or was told
+    /// the student has none to see. Not one whose listing failed in a way that may pass (a
+    /// 5xx, a bad answer).
+    pub read_courses: Vec<String>,
     pub courses: usize,
     pub modules: usize,
     pub materials: usize,

@@ -108,6 +108,14 @@ uniffi::custom_type!(EnvMap, HashMap<String, String>, {
     try_lift: |map| Ok(map.into_iter().collect()),
 });
 
+/// Times by source id (`AppStatus.deadlines_synced_at`). Swift: `[String: Date]`.
+pub type SyncTimes = BTreeMap<String, Timestamp>;
+uniffi::custom_type!(SyncTimes, HashMap<String, Timestamp>, {
+    remote,
+    lower: |map| map.into_iter().collect(),
+    try_lift: |map| Ok(map.into_iter().collect()),
+});
+
 /// "YYYY-MM-DD".
 pub(crate) fn iso_date_to_string(date: IsoDate) -> String {
     date.format("%Y-%m-%d").to_string()
@@ -628,6 +636,10 @@ pub struct CourseSummary {
     pub next_deadline: Option<Deadline>,
     pub source_label: String,
     pub last_synced_at: Option<Timestamp>,
+    #[uniffi(default = None)]
+    pub deadlines_synced_at: Option<Timestamp>,
+    #[uniffi(default)]
+    pub structure_pending: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -679,6 +691,10 @@ pub struct CourseOverview {
     pub source_label: String,
     pub last_synced_at: Option<Timestamp>,
     pub downloadable_files: u32,
+    #[uniffi(default = None)]
+    pub deadlines_synced_at: Option<Timestamp>,
+    #[uniffi(default)]
+    pub structure_pending: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -728,6 +744,7 @@ pub struct AppStatus {
     pub last_synced_at: Option<Timestamp>,
     pub sync_in_progress: bool,
     pub auto_sync: AutoSync,
+    pub deadlines_synced_at: SyncTimes,
 }
 
 /// How often PageLamp syncs by itself while it runs.

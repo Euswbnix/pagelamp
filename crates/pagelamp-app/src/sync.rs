@@ -12,6 +12,7 @@
 
 use chrono::{NaiveDate, Utc};
 use pagelamp_canvas::{CanvasConfig, SyncOptions};
+use pagelamp_core::auto_sync::SyncScope;
 use pagelamp_core::ingest::Extractor;
 use pagelamp_core::model::{SourceKind, SourceRecord};
 use pagelamp_core::paths;
@@ -20,11 +21,18 @@ use pagelamp_core::store::Store;
 use tokio::sync::mpsc;
 
 use crate::activity::ActivityKind;
-use crate::auto_sync::automatic_run_records;
+use crate::auto_sync::{automatic_run_records, scope_of};
 use crate::lock::SyncLock;
 use crate::{
     App, AppError, AppErrorKind, Result, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
+
+/// Whether `req` is an automatic run that asks Canvas for nothing with a course in its path
+/// (`auto_sync::scope_of`).
+fn is_light(req: &SyncRequest) -> bool {
+    req.automatic
+        .is_some_and(|trigger| scope_of(trigger) == SyncScope::UserLevel)
+}
 
 /// What a source sync produced (the counters of `SourceSyncResult`).
 #[derive(Default)]
@@ -38,6 +46,10 @@ struct Counts {
     warnings: Vec<String>,
     course_summaries: Vec<CourseSyncSummary>,
     requests: Option<u32>,
+    /// Canvas, a light run: courses seen for the first time (their structure isn't read yet).
+    new_courses: Vec<String>,
+    /// Canvas, a full run: courses whose structure was read.
+    read_courses: Vec<String>,
 }
 
 impl App {
@@ -91,8 +103,8 @@ impl App {
             }
         }
         let finished_at = Utc::now();
-        if req.automatic.is_some() {
-            self.finish_automatic_sync(&results, finished_at);
+        if let Some(trigger) = req.automatic {
+            self.finish_automatic_sync(trigger, &results, finished_at);
         }
         Ok(SyncSummary {
             started_at,
@@ -269,13 +281,22 @@ impl App {
             && error
                 .as_ref()
                 .is_some_and(|(kind, _)| !automatic_run_records(*kind));
-        if !quiet {
+        // A light run of a Canvas source read only its deadlines and announcements: it has
+        // its own stamp, and the source's `last_synced_at` (the last full sync) stays.
+        let light = is_light(req) && source.kind == SourceKind::Canvas;
+        if let (true, Ok(counts)) = (light, &outcome) {
+            self.record_light_sync(&source.id, finished_at, &counts.new_courses);
+        } else if !quiet {
             let recorded = self.write_store().and_then(|store| {
                 let error = error.as_ref().map(|(kind, msg)| (*kind, msg.as_str()));
                 Ok(store.record_sync(&source.id, finished_at, error)?)
             });
             if let Err(err) = recorded {
                 tracing::warn!(source = %source.id, "could not record sync outcome: {err}");
+            }
+            if let (SourceKind::Canvas, Ok(counts)) = (source.kind, &outcome) {
+                let only = (!req.only_courses.is_empty()).then_some(counts.read_courses.as_slice());
+                self.structure_was_read(&source.id, only);
             }
         }
         on_event(SyncEvent::SourceFinished {
@@ -425,8 +446,17 @@ impl App {
             only_courses: req.only_courses.clone(),
             extractor: extractor.clone(),
             automatic: req.automatic.is_some(),
+            user_level_only: is_light(req),
         };
         let report = pagelamp_canvas::sync(&self.db_path(), &config, &options, progress).await?;
+        if options.user_level_only && !report.user_level_read {
+            // A light run is only for deadlines and announcements. One that couldn't read
+            // them all doesn't count as having read them: no stamp, and the attempt waits
+            // like any that failed. (What it did read is stored.)
+            return Err(SourceError::other(
+                "Canvas deadlines and announcements could not be read completely.",
+            ));
+        }
         Ok(Counts {
             courses: report.courses,
             modules: report.modules,
@@ -437,6 +467,8 @@ impl App {
             warnings: report.warnings,
             course_summaries: report.course_summaries,
             requests: Some(u32::try_from(report.requests).unwrap_or(u32::MAX)),
+            new_courses: report.new_courses,
+            read_courses: report.read_courses,
         })
     }
 
@@ -480,13 +512,19 @@ impl CancelGuard<'_> {
 
 impl Drop for CancelGuard<'_> {
     fn drop(&mut self) {
-        let mut current = self
-            .app
-            .state
-            .sync_cancel
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *current = None;
+        {
+            let mut current = self
+                .app
+                .state
+                .sync_cancel
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *current = None;
+        }
+        // The student pressed Stop: the automatic sync waits before it starts anything.
+        if self.flag.is_cancelled() {
+            self.app.sync_was_stopped(Utc::now());
+        }
     }
 }
 

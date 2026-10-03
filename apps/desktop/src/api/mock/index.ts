@@ -332,6 +332,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       next_deadline: upcoming[0] ?? null,
       source_label: sourceLabel(c.course.source_id),
       last_synced_at: sourceSyncedAt(c.course.source_id),
+      // The mock's syncs are all full ones: one clock, and no course waits to be read.
+      deadlines_synced_at: sourceSyncedAt(c.course.source_id),
+      structure_pending: false,
     };
   }
 
@@ -347,6 +350,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       version: MOCK_APP_VERSION,
       data_dir: db.dataDir,
       db_path: `${db.dataDir}/pagelamp.db`,
+      // The mock's syncs are all full ones.
+      deadlines_synced_at: {},
       sources: db.sources,
       counts: {
         courses: visible.length,
@@ -738,6 +743,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           recent_announcements: c.announcements.filter(recent),
           source_label: sourceLabel(c.course.source_id),
           last_synced_at: sourceSyncedAt(c.course.source_id),
+          deadlines_synced_at: sourceSyncedAt(c.course.source_id),
+          structure_pending: false,
           ai_materials: aiMaterialsState(c.course),
           // Like the backend: what a course-wide download would fetch (all weeks).
           downloadable_files: c.materials.filter(

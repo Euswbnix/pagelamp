@@ -232,6 +232,10 @@ pub struct AppStatus {
     pub sync_in_progress: bool,
     /// How often PageLamp syncs by itself while it runs.
     pub auto_sync: AutoSync,
+    /// Per source id: when its deadlines and announcements were last read, for a source an
+    /// automatic sync has read lightly since its last full sync (`sources[].last_synced_at`
+    /// keeps meaning the full sync). A source without an entry has that one clock.
+    pub deadlines_synced_at: BTreeMap<String, Timestamp>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -588,6 +592,8 @@ impl App {
             last_synced_at: sources.iter().filter_map(|s| s.last_synced_at).max(),
             counts: store.counts()?,
             auto_sync: pagelamp_core::auto_sync::auto_sync(&store)?,
+            deadlines_synced_at: pagelamp_core::auto_sync::light_sync(&store)?
+                .later_than_full(&sources),
             sources,
             sync_in_progress: lock::is_locked(&paths::sync_lock_path_in(&self.data_dir)),
         })
@@ -720,6 +726,8 @@ impl App {
             // Files first: if deleting fails, the source stays and removing can be retried.
             self.remove_downloaded_files(&store, source_id)?;
         }
+        // Before the row goes: if this fails the source stays and removing can be retried.
+        self.forget_light_sync(&store, source_id)?;
         store.remove_source(source_id)?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;

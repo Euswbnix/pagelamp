@@ -141,15 +141,18 @@ pub struct StartupTasks {
 
 /// Whether an automatic sync is due, for each reason the shell may have to ask: automatic sync
 /// is on, no What's new is waiting, no sync is running, and a source that doesn't need the
-/// student was last synced the setting's interval ago or never, with no retry wait running
-/// (`auto_sync`). The shell passes the trigger that is true to `sync_all`, starts nothing else
+/// student was last read the setting's interval ago or never, with no retry wait running
+/// (`auto_sync`). Each trigger has its own clock, since they read different things: the two
+/// can differ. The shell passes the trigger that is true to `sync_all`, starts nothing else
 /// on it, and shows nothing when the run is refused or fails.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SyncDue {
-    /// From the app's timer (`AutoSyncTrigger::Unattended`).
+    /// From the app's timer (`AutoSyncTrigger::Unattended`): deadlines and announcements are
+    /// the interval old.
     pub unattended: bool,
     /// When the student is at the app: it was just opened or brought to the front, or What's
-    /// new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then.
+    /// new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then. The
+    /// last full sync is the interval old, or a course waits for its first one.
     pub attended: bool,
 }
 

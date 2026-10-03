@@ -33,8 +33,10 @@ pub fn instructions() -> String {
          6. Answer in the student's language.\n\
          Start with list_courses or course_overview. The data is only as fresh as \
          {PRODUCT_NAME}'s last sync; sync_status says when that was and whether {PRODUCT_NAME} \
-         refreshes it by itself while its app is open. {NEVER_SYNC_FOR_THE_STUDENT} If the data \
-         is old, tell the student, who can open {PRODUCT_NAME} or press Sync there."
+         syncs by itself while its app is open (deadlines and announcements whenever it is \
+         due; modules and materials when the student is at the app). \
+         {NEVER_SYNC_FOR_THE_STUDENT} If the data is old, tell the student, who can open \
+         {PRODUCT_NAME} or press Sync there."
     )
 }
 
@@ -99,9 +101,14 @@ pub const SAVE_STUDY_PLAN: &str = "Save a study plan the student agreed to (repl
 pub fn sync_status_description() -> String {
     format!(
         "When each data source last synced, whether one needs the student (state), and whether \
-         {PRODUCT_NAME} refreshes the data by itself while its app is open (auto_sync, \
-         last_automatic_sync_at). Calling this starts, requests or schedules nothing. \
-         {NEVER_SYNC_FOR_THE_STUDENT} If data is old, tell the student what the hint says."
+         {PRODUCT_NAME} syncs by itself while its app is open (auto_sync, \
+         last_automatic_sync_at). last_synced_at is the last full sync (modules, materials and \
+         their text); deadlines_synced_at is when deadlines and announcements were last read, \
+         which can be later: with nobody at the app, {PRODUCT_NAME} reads only those (so \
+         last_automatic_sync_at may be such a run). State materials_old means exactly that: \
+         deadlines are current, materials are not. Calling \
+         this starts, requests or schedules nothing. {NEVER_SYNC_FOR_THE_STUDENT} If data is \
+         old, tell the student what the hint says."
     )
 }
 
@@ -168,6 +175,9 @@ pub enum Freshness {
     Failed,
     /// Its last successful sync is older than the stale threshold.
     Old,
+    /// Its last full sync is that old, but its deadlines and announcements were read since
+    /// (PageLamp reads only those while nobody is at the app).
+    MaterialsOld,
     Fresh,
 }
 
@@ -182,8 +192,8 @@ pub fn freshness_hint(worst: Freshness, auto_sync_on: bool) -> Option<String> {
              as old as its last sync. Ask the student to open {PRODUCT_NAME}."
         ),
         Freshness::NeverSynced => format!(
-            "A source has never finished a sync, so its courses may be missing. Ask the student \
-             to open {PRODUCT_NAME} and press Sync."
+            "A source has never finished a full sync, so its courses or their materials may be \
+             missing. Ask the student to open {PRODUCT_NAME} and press Sync."
         ),
         Freshness::Failed => format!(
             "The last sync of a source failed, so its data is as old as its last successful \
@@ -197,19 +207,70 @@ pub fn freshness_hint(worst: Freshness, auto_sync_on: bool) -> Option<String> {
             "Some data is old, and the student has turned automatic sync off. Ask the student \
              to press Sync in the {PRODUCT_NAME} app."
         ),
+        Freshness::MaterialsOld => format!(
+            "Deadlines and announcements are current, but modules and materials are as old as \
+             the last full sync. {PRODUCT_NAME} reads those when the student opens its window \
+             or presses Sync: ask the student to open {PRODUCT_NAME}."
+        ),
     };
     Some(format!("{what} {NEVER_SYNC_FOR_THE_STUDENT}"))
 }
 
-/// The one "data as of" line of a read tool: when the course's source last finished a sync.
-pub fn data_as_of(last_synced_at: Option<chrono::DateTime<chrono::Utc>>) -> String {
-    match last_synced_at {
-        Some(at) => format!(
-            "Data as of {} (the last sync of this course's source).",
-            at.format("%Y-%m-%d %H:%M UTC")
-        ),
-        None => "This course's source has never finished a sync.".to_string(),
+/// When a course's data was read: the two clocks of its source, and whether the course itself
+/// still waits for its first full sync.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DataAsOf {
+    /// The last full sync of the course's source (modules, materials and their text).
+    pub materials: Option<chrono::DateTime<chrono::Utc>>,
+    /// When its deadlines and announcements were last read, which an automatic sync can do
+    /// without a full sync; named only when it is later.
+    pub deadlines: Option<chrono::DateTime<chrono::Utc>>,
+    /// An automatic sync found the course and no full sync has read it: whenever the source
+    /// last synced in full, this course's modules and materials weren't part of it.
+    pub structure_pending: bool,
+}
+
+/// The one "data as of" line of a read tool.
+pub fn data_as_of(as_of: DataAsOf) -> String {
+    let when = |at: chrono::DateTime<chrono::Utc>| at.format("%Y-%m-%d %H:%M UTC").to_string();
+    if as_of.structure_pending {
+        return match as_of.deadlines.or(as_of.materials) {
+            Some(deadlines) => format!(
+                "This course's modules and materials haven't been read yet; deadlines and \
+                 announcements as of {}.",
+                when(deadlines)
+            ),
+            None => "This course's modules and materials haven't been read yet.".to_string(),
+        };
     }
+    match (as_of.materials, as_of.deadlines) {
+        (Some(materials), Some(deadlines)) if deadlines > materials => format!(
+            "Materials as of {} (the last full sync of this course's source); deadlines and \
+             announcements as of {}.",
+            when(materials),
+            when(deadlines)
+        ),
+        (Some(materials), _) => format!(
+            "Data as of {} (the last sync of this course's source).",
+            when(materials)
+        ),
+        (None, Some(deadlines)) => format!(
+            "This course's source has never finished a full sync; deadlines and announcements \
+             as of {}.",
+            when(deadlines)
+        ),
+        (None, None) => "This course's source has never finished a sync.".to_string(),
+    }
+}
+
+/// For a course an automatic sync found and no full sync has read yet.
+pub fn structure_pending() -> String {
+    format!(
+        "{PRODUCT_NAME} has found this course but hasn't read its modules and materials yet (they \
+         are missing here, not empty); its deadlines and announcements are listed. It reads \
+         them at the next full sync: when the student presses Sync in {PRODUCT_NAME} or, with \
+         automatic sync on, comes back to its window. {NEVER_SYNC_FOR_THE_STUDENT}"
+    )
 }
 
 pub fn read_more(next_chunk: u32) -> String {

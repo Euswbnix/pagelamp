@@ -169,7 +169,9 @@ public actor MockService: PageLampService {
             ),
             nextDeadline: upcoming.first,
             sourceLabel: sourceLabel(course.course.sourceId),
-            lastSyncedAt: sourceSyncedAt(course.course.sourceId)
+            lastSyncedAt: sourceSyncedAt(course.course.sourceId),
+            // The mock's syncs are all full ones: one clock.
+            deadlinesSyncedAt: sourceSyncedAt(course.course.sourceId)
         )
     }
 
@@ -194,7 +196,8 @@ public actor MockService: PageLampService {
             ),
             lastSyncedAt: db.sources.compactMap(\.lastSyncedAt).max(),
             syncInProgress: syncing || db.externalSyncRunning,
-            autoSync: .twiceDaily
+            autoSync: .twiceDaily,
+            deadlinesSyncedAt: [:]
         )
     }
 
@@ -254,7 +257,8 @@ public actor MockService: PageLampService {
             // Like the backend: what a course-wide download would fetch (all weeks).
             downloadableFiles: UInt32(course.materials.filter {
                 $0.kind == .file && $0.textStatus == .notDownloaded && $0.downloadBlocked == nil
-            }.count)
+            }.count),
+            deadlinesSyncedAt: sourceSyncedAt(course.course.sourceId)
         )
     }
 
