@@ -271,8 +271,8 @@ pub enum WeekNoteKind {
     /// No week requested and the current week could not be inferred — showing the materials
     /// of the last `RECENT_DAYS` days instead (`week` is None).
     CurrentWeekUnknown,
-    /// Today is before the term start or after the term end, or the course is over, inactive
-    /// or not started by its lifecycle.
+    /// Today is before the term start or after the term end; or the course is over, inactive
+    /// or not started by its lifecycle, whatever its dates (`note` then says so).
     OutsideTerm,
     /// The week is known but has no modules or materials.
     NoMaterialsThisWeek,
@@ -495,6 +495,7 @@ pub fn week_materials(
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
     let (resolved, timeline, lifecycle) = data.state(&course, at);
+    let no_current_week = has_no_current_week(&timeline, &lifecycle);
     let content: Vec<&Material> = data
         .materials
         .iter()
@@ -544,7 +545,7 @@ pub fn week_materials(
             });
             let materials = recent.into_iter().map(|m| data.view(m)).collect();
             let note_kind = match timeline.phase {
-                _ if !lifecycle.state.in_week_views() => WeekNoteKind::OutsideTerm,
+                _ if no_current_week => WeekNoteKind::OutsideTerm,
                 CoursePhase::ExamPeriod => WeekNoteKind::ExamPeriod,
                 CoursePhase::NotStarted | CoursePhase::Ended => WeekNoteKind::OutsideTerm,
                 _ => WeekNoteKind::CurrentWeekUnknown,
@@ -552,7 +553,11 @@ pub fn week_materials(
             (None, Vec::new(), materials, Some(note_kind))
         }
     };
-    let note = note_kind.map(|kind| week_note_text(kind, shown_week));
+    let note = note_kind.map(|kind| match kind {
+        // The real reason: such a course may be inside its term dates, or have none.
+        WeekNoteKind::OutsideTerm if no_current_week => no_current_week_note(),
+        _ => week_note_text(kind, shown_week),
+    });
     Ok(WeekMaterials {
         ai_materials: course.ai_materials(),
         week: shown_week,
@@ -565,6 +570,19 @@ pub fn week_materials(
         note_kind,
         course,
     })
+}
+
+/// Whether the course's lifecycle leaves it without a current week (`CourseData::state`): Ended,
+/// Inactive and Upcoming courses, with one exception. The student's own dates are the highest
+/// authority: when they put the course in a teaching or break week, it keeps that week even if
+/// its lifecycle is Upcoming, which only a session code naming a later term can make it (rule
+/// 5). Its lifecycle isn't changed here: that would regroup the course, which is a larger change
+/// than the week this rule is about.
+fn has_no_current_week(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> bool {
+    let own_dates_say_teaching = lifecycle.state == LifecycleState::Upcoming
+        && timeline.term.anchor == TermAnchorSource::StudentConfirmed
+        && matches!(timeline.phase, CoursePhase::Teaching | CoursePhase::Break);
+    !lifecycle.state.in_week_views() && !own_dates_say_teaching
 }
 
 /// Events with `when()` in [now - days_back, now + days_ahead], soonest first, optionally for
@@ -880,7 +898,7 @@ impl CourseData {
         let (resolved, mut timeline) = self.timeline(course, at);
         // The lifecycle reads the phase and the dates, never the week.
         let lifecycle = self.lifecycle(course, &resolved, &timeline, at);
-        if !lifecycle.state.in_week_views() {
+        if has_no_current_week(&timeline, &lifecycle) {
             timeline.current_week = None;
             timeline.default_week = None;
             timeline.current_module_ids.clear();
@@ -1018,6 +1036,14 @@ fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
 }
 
 /// English text for `WeekMaterials.note` (UIs localise from `note_kind`).
+/// The note of a course whose lifecycle leaves it without a current week (`OutsideTerm`).
+fn no_current_week_note() -> String {
+    format!(
+        "The course is over, inactive or hasn't started, so it has no current week; showing \
+         materials published in the last {RECENT_DAYS} days."
+    )
+}
+
 fn week_note_text(kind: WeekNoteKind, week: Option<u32>) -> String {
     match kind {
         WeekNoteKind::CurrentWeekUnknown => format!(

@@ -736,7 +736,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
                   note_kind: "current_week_unknown" as const,
                 }
               : {
-                  note: "Today is outside the course's term.",
+                  note: "The course is over, inactive or hasn't started, so it has no current week; showing materials published in the last 14 days.",
                   note_kind: "outside_term" as const,
                 }),
           };

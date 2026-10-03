@@ -64,7 +64,12 @@
       "outside_term": "Today is outside this course's term dates, so there's no current week.",
       "no_materials_this_week": "There are no modules or materials for this week.",
       "exam_period": "Classes are over, so there's no teaching week. These are the materials from the last 14 days.",
-      "break": "It's a break week. These are the materials of the week before it."
+      "break": "It's a break week. These are the materials of the week before it.",
+      "no_current_week": {
+        "ended": "This course is over, so it has no current week. Pick a week above to see its materials.",
+        "inactive": "Nothing has happened in this course for a long time, so it has no current week. Pick a week above to see its materials.",
+        "upcoming": "This course hasn't started yet, so it has no current week."
+      }
     }
   },
   "timeline": {

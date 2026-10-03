@@ -843,6 +843,9 @@
 "course.week.note.break" = "It's a break week. These are the materials of the week before it.";
 "course.week.note.current_week_unknown" = "We couldn't work out which week this course is in, so these are the materials from the last 14 days.";
 "course.week.note.exam_period" = "Classes are over, so there's no teaching week. These are the materials from the last 14 days.";
+"course.week.note.no_current_week.ended" = "This course is over, so it has no current week. Pick a week above to see its materials.";
+"course.week.note.no_current_week.inactive" = "Nothing has happened in this course for a long time, so it has no current week. Pick a week above to see its materials.";
+"course.week.note.no_current_week.upcoming" = "This course hasn't started yet, so it has no current week.";
 "course.week.note.no_materials_this_week" = "There are no modules or materials for this week.";
 "course.week.note.outside_term" = "Today is outside this course's term dates, so there's no current week.";
 "course.week.previous" = "Previous week";

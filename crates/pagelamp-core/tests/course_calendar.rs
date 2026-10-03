@@ -1050,6 +1050,15 @@ fn past_and_upcoming_courses_have_no_current_week() {
             (None, Some(WeekNoteKind::OutsideTerm), 0),
             "{code}"
         );
+        // The note gives the real reason: none of these is "outside its term dates".
+        assert_eq!(
+            default.note.as_deref(),
+            Some(
+                "The course is over, inactive or hasn't started, so it has no current week; \
+                 showing materials published in the last 14 days."
+            ),
+            "{code}"
+        );
         // A week asked for by number still reads.
         let asked = views::week_materials(&store, &code, week, false, at).unwrap();
         assert_eq!((asked.week, asked.materials.len()), (week, 1), "{code}");
@@ -1069,6 +1078,38 @@ fn past_and_upcoming_courses_have_no_current_week() {
     assert_eq!(
         (again.timeline.current_week, again.timeline.default_week),
         (Some(12), Some(12))
+    );
+
+    // The student's own dates are the highest authority. The Winter section stays Upcoming by
+    // its session code (rule 5), but the student says its classes began on September 14: it is
+    // in the week those dates give, with their confidence.
+    let winter = &listed[1].course;
+    store
+        .set_course_term(&winter.id, Some(date("2026-09-14")), None)
+        .unwrap();
+    store
+        .set_setting(
+            pagelamp_core::term::CONFIRMED_DATES_KEY,
+            &std::collections::BTreeSet::from([winter.id.clone()]),
+        )
+        .unwrap();
+    let code = winter.code.clone().unwrap();
+    let own = views::course_overview(&store, &code, false, at).unwrap();
+    assert_eq!(own.lifecycle.state, LifecycleState::Upcoming);
+    assert_eq!(own.timeline.term.anchor, TermAnchorSource::StudentConfirmed);
+    assert_eq!(
+        (
+            own.timeline.phase,
+            own.timeline.current_week,
+            own.timeline.default_week,
+            own.timeline.confidence
+        ),
+        (CoursePhase::Teaching, Some(3), Some(3), Confidence::High)
+    );
+    let shown = views::week_materials(&store, &code, None, false, at).unwrap();
+    assert_eq!(
+        (shown.week, shown.timeline.current_week),
+        (Some(3), Some(3))
     );
 }
 

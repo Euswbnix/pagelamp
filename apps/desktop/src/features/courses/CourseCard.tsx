@@ -39,7 +39,10 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
   const { course, timeline, lifecycle, counts, next_deadline: next } = summary;
   const nextWhen = next ? deadlineTime(next) : null;
   const past = lifecycle.group === "past";
-  const weekUnknown = !past && timeline.phase === "unknown" && timeline.current_week == null;
+  // "Set the first day of classes" helps a current course only: one that hasn't started or is
+  // over has no week to find.
+  const weekUnknown =
+    lifecycle.group === "current" && timeline.phase === "unknown" && timeline.current_week == null;
   const linkRef = useRef<HTMLAnchorElement>(null);
 
   return (
@@ -75,7 +78,7 @@ export function CourseCard({ summary, sourceError, headingLevel = "h3" }: Course
           {past ? (
             <span className="text-muted-foreground">{tcal(`status.state.${lifecycle.state}`)}</span>
           ) : (
-            <WeekLabel timeline={timeline} />
+            <WeekLabel timeline={timeline} lifecycle={lifecycle} />
           )}
         </span>
         <ChevronRight className="size-4 shrink-0 self-center text-muted-foreground" aria-hidden />

@@ -3,7 +3,7 @@ import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { useWeekMaterials } from "@/api/queries";
-import type { CourseOverview, WeekMaterials } from "@/api/types";
+import type { CourseLifecycle, CourseOverview, WeekMaterials } from "@/api/types";
 import { ErrorState } from "@/components/common/ErrorState";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
+import { outsideWeekViews } from "@/lib/phase";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { useSelectedWeek } from "../useCourseParams";
@@ -55,6 +56,7 @@ export function WeekTab({
     body = (
       <WeekView
         data={query.data}
+        lifecycle={overview.lifecycle}
         onSelectWeek={selectWeek}
         onSetTermDates={onSetTermDates}
         // Previous week's list stays visible (dimmed) while the next one loads.
@@ -75,11 +77,13 @@ export function WeekTab({
 
 function WeekView({
   data,
+  lifecycle,
   onSelectWeek,
   onSetTermDates,
   stale,
 }: {
   data: WeekMaterials;
+  lifecycle: CourseLifecycle;
   onSelectWeek: (week: number | null) => void;
   onSetTermDates: () => void;
   stale: boolean;
@@ -88,6 +92,12 @@ function WeekView({
   const week = data.week ?? null;
   // "No materials this week" is already what the empty state below says.
   const showNote = !!data.note && data.note_kind !== "no_materials_this_week";
+  // A course that is over, inactive or not started has no current week whatever its dates
+  // say: the note gives that reason, and setting term dates wouldn't bring a week back.
+  const noCurrentWeek =
+    data.note_kind === "outside_term" && outsideWeekViews(data.timeline, lifecycle)
+      ? lifecycle.state
+      : null;
   return (
     <div className={cn("space-y-6 transition-opacity", stale && "opacity-60")} aria-busy={stale}>
       <WeekSwitcher
@@ -101,9 +111,17 @@ function WeekView({
           <Info aria-hidden />
           <AlertDescription>
             {/* Localised by code; a note without a known code is the backend's English text. */}
-            {data.note_kind ? t(`week.note.${data.note_kind}`) : <span lang="en">{data.note}</span>}
+            {noCurrentWeek === "ended" ||
+            noCurrentWeek === "inactive" ||
+            noCurrentWeek === "upcoming" ? (
+              t(`week.note.no_current_week.${noCurrentWeek}`)
+            ) : data.note_kind ? (
+              t(`week.note.${data.note_kind}`)
+            ) : (
+              <span lang="en">{data.note}</span>
+            )}
           </AlertDescription>
-          {week === null || data.note_kind === "outside_term" ? (
+          {noCurrentWeek === null && (week === null || data.note_kind === "outside_term") ? (
             <AlertAction>
               <Button size="xs" variant="outline" onClick={onSetTermDates}>
                 {t("week.setTermDates")}

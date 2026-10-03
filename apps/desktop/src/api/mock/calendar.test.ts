@@ -59,25 +59,38 @@ describe("mock calendar scenarios", () => {
   });
 
   it("a past or upcoming course has no current week in any view, like the facade", async () => {
-    const api = createMockApi({ ...fast, scenario: "phases" });
-    const courses = await api.listCourses();
-    const outside = courses.filter((c) =>
-      ["ended", "inactive", "upcoming"].includes(c.lifecycle.state),
-    );
-    expect(outside.length).toBeGreaterThan(0);
-    for (const c of outside) {
-      const overview = await api.courseOverview(c.course.id);
-      const week = await api.weekMaterials(c.course.id, null);
-      for (const timeline of [c.timeline, overview.timeline, week.timeline]) {
-        expect(timeline.current_week ?? null, c.course.id).toBeNull();
-        expect(timeline.default_week ?? null, c.course.id).toBeNull();
-        expect(timeline.current_module_ids, c.course.id).toEqual([]);
-      }
-      expect(overview.current_modules, c.course.id).toEqual([]);
-      expect(week.week ?? null, c.course.id).toBeNull();
-      expect(week.note_kind, c.course.id).toBe("outside_term");
+    // DEMO099's fixture names week 5 (its Canvas term started 30 days ago), and it has ended
+    // (no longer listed): the week must not come through.
+    const api = createMockApi({ ...fast, scenario: "demo" });
+    const id = "canvas:canvas.demo.test/course/99";
+    const listed = (await api.listCourses()).find((c) => c.course.id === id);
+    expect(listed?.lifecycle.state).toBe("ended");
+    const overview = await api.courseOverview(id);
+    const week = await api.weekMaterials(id, null);
+    for (const timeline of [listed?.timeline, overview.timeline, week.timeline]) {
+      expect(timeline?.current_week).toBeNull();
+      expect(timeline?.default_week).toBeNull();
+      expect(timeline?.current_module_ids).toEqual([]);
+      expect(timeline?.confidence).toBe("low");
     }
-    // The others keep theirs.
+    expect(overview.current_modules).toEqual([]);
+    expect(week.week).toBeNull();
+    expect(week.note_kind).toBe("outside_term");
+    // Asked for by number, the week still reads; kept current, the week is back.
+    expect((await api.weekMaterials(id, 5)).week).toBe(5);
+    await api.keepCourseCurrent(id, null);
+    expect((await api.courseOverview(id)).timeline.current_week).toBe(5);
+
+    // Every past or upcoming course of the other scenario follows the rule; the others keep
+    // their week.
+    const phases = createMockApi({ ...fast, scenario: "phases" });
+    const courses = await phases.listCourses();
+    for (const c of courses) {
+      if (["ended", "inactive", "upcoming"].includes(c.lifecycle.state)) {
+        expect(c.timeline.current_week ?? null, c.course.id).toBeNull();
+        expect(c.timeline.default_week ?? null, c.course.id).toBeNull();
+      }
+    }
     const teaching = courses.find((c) => c.timeline.phase === "teaching");
     expect(teaching?.timeline.current_week ?? null).not.toBeNull();
   });

@@ -130,8 +130,12 @@ pub fn week_label(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> Str
     match lifecycle.state {
         LifecycleState::Ended => return "ended".to_string(),
         LifecycleState::Inactive => return "inactive".to_string(),
-        LifecycleState::Upcoming => return starts(),
-        LifecycleState::Current | LifecycleState::Finishing | LifecycleState::Unknown => {}
+        // (With a week: the student's own dates put an upcoming course in one; it is shown.)
+        LifecycleState::Upcoming if timeline.current_week.is_none() => return starts(),
+        LifecycleState::Upcoming
+        | LifecycleState::Current
+        | LifecycleState::Finishing
+        | LifecycleState::Unknown => {}
     }
     let week = |week: u32, c: Confidence| format!("week {week} ({})", confidence(c));
     match timeline.phase {
@@ -184,7 +188,9 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
     let phase = match timeline.phase {
         // The label names the other phases already ("exams (after week 12)", "ended"), and a
         // course outside the week views by its lifecycle ("inactive").
-        CoursePhase::Teaching | CoursePhase::Unknown if lifecycle.state.in_week_views() => {
+        CoursePhase::Teaching | CoursePhase::Unknown
+            if lifecycle.state.in_week_views() || timeline.current_week.is_some() =>
+        {
             format!(" · {}", timeline.phase.as_str())
         }
         _ => String::new(),
