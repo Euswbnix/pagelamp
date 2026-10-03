@@ -11,11 +11,14 @@
 //!   The ChatGPT and Claude plans never run in the background (plan D27, revised 2026-09-29).
 //!   `startup_tasks` says when to prepare it: the opt-in is on, the note's model allows it,
 //!   it is Monday in the reminder zone (wall-clock, so a DST change doesn't move it), no
-//!   automatic note was tried yet that Monday and there is no note of that day. Every surface
-//!   then calls `write_weekly_note` with `automatic`, which checks the same again and records
-//!   the try as it starts: one try a Monday whatever its outcome (a surface that asks again
-//!   every hour never repeats a failed, paid run). An automatic run never goes over the
-//!   budget.
+//!   automatic note was tried yet that Monday, there is no note of that day, and there is
+//!   something to write about. Every surface then calls `write_weekly_note` with `automatic`,
+//!   which checks the same again and records the try as it starts: one try a Monday whatever
+//!   its outcome (a surface that asks again every hour never repeats a failed, paid run). A
+//!   week with nothing to write about records no try, so a course synced later that Monday
+//!   still gets its note. An automatic run never goes over the budget.
+//! - Nothing to write about (no active course, no deadline in the next 7 days, no plan item)
+//!   is `Blocked(NothingToWrite)`, which `estimate_generation` already says before the click.
 //! - `weekly_notes`, `delete_weekly_note`; `delete_generated` covers notes too.
 
 use chrono::{Datelike, Duration, NaiveDate, SubsecRound, Utc, Weekday};
@@ -27,6 +30,7 @@ use pagelamp_core::ai_gate::{
 use pagelamp_core::model::Timestamp;
 use pagelamp_core::planner::text_produces_graded_work;
 use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
+use pagelamp_core::views::AsOf;
 use pagelamp_llm::OutputSpec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -116,10 +120,9 @@ struct Summary<'a> {
 }
 
 impl App {
-    /// Write a weekly note (see the module docs). `Invalid` when there is nothing to write
-    /// about (no active course, no deadline in the next 7 days, no plan item), or for an
-    /// `automatic` run that isn't due; `Blocked` for what stops a run (no model chosen, the
-    /// disclosure, the budget…); `Busy` while a run with `generation_id` goes on.
+    /// Write a weekly note (see the module docs). `Blocked` for what stops a run (no model
+    /// chosen, nothing to write about, the disclosure, the budget…); `Invalid` for an
+    /// `automatic` run that isn't due; `Busy` while a run with `generation_id` goes on.
     pub async fn write_weekly_note(
         &self,
         generation_id: &str,
@@ -214,13 +217,15 @@ impl App {
 
     /// Whether a surface should prepare the weekly note now, at `now` (see the module docs).
     pub(crate) fn weekly_note_due(&self, now: Timestamp) -> Result<bool> {
-        self.note_due_in(&self.read_store()?, self.local_as_of(now).today)
+        self.note_due_in(&self.read_store()?, self.local_as_of(now))
     }
 
-    fn note_due_in(&self, store: &Store, today: NaiveDate) -> Result<bool> {
-        Ok(today.weekday() == Weekday::Mon
+    fn note_due_in(&self, store: &Store, at: AsOf) -> Result<bool> {
+        Ok(at.today.weekday() == Weekday::Mon
             && allows_background_runs(feature_choice(store, AiFeature::WeeklyNote)?.as_ref())
-            && self.monday_open(store, today)?)
+            && self.monday_open(store, at.today)?
+            // Last, as the heaviest: only on an opted-in Monday before its try.
+            && has_something_to_write(store, at)?)
     }
 
     /// The opt-in is on, no automatic note was tried `today`, and none was written today (a
@@ -238,26 +243,44 @@ impl App {
             .is_some_and(|record| self.local_as_of(record.created_at).today == today))
     }
 
-    /// An automatic run starts: `Invalid` unless it is due, else its try is recorded. The check
-    /// and the record are one write transaction, so two runs (or two apps) never both start
-    /// one.
-    fn start_automatic_note(&self, today: NaiveDate) -> Result<()> {
-        let store = self.write_store()?;
-        let allowed = today.weekday() == Weekday::Mon
-            && allows_background_runs(feature_choice(&store, AiFeature::WeeklyNote)?.as_ref());
-        let started = allowed
-            && store.in_transaction(|store| {
-                let open = self.monday_open(store, today)?;
-                if open {
-                    store.set_setting(NOTE_TRIED_ON, &today)?;
-                }
-                Ok(open)
-            })?;
-        if !started {
-            return Err(AppError::new(
+    /// An automatic run starts: `Invalid` unless it is due, else its try is recorded. The
+    /// re-check and the record are one write transaction, so two runs (or two apps) never both
+    /// start one.
+    fn start_automatic_note(&self, at: AsOf) -> Result<()> {
+        let today = at.today;
+        let not_due = || {
+            AppError::new(
                 AppErrorKind::Invalid,
                 "The weekly note isn't due to be prepared now.",
-            ));
+            )
+        };
+        {
+            let store = self.read_store()?;
+            // The cheap checks first: a Monday, and a model that may run in the background.
+            if today.weekday() != Weekday::Mon
+                || !allows_background_runs(feature_choice(&store, AiFeature::WeeklyNote)?.as_ref())
+            {
+                return Err(not_due());
+            }
+            // Nothing to write about: not due, and no try is recorded, so a course synced later
+            // that Monday still gets its note. Outside the write transaction, since
+            // `note_context` reads in its own. Should the week empty between here and the run's
+            // own check, the run stops with `Blocked(NothingToWrite)`: nothing is sent, its try
+            // is recorded, and the shells say nothing.
+            if !has_something_to_write(&store, at)? {
+                return Err(not_due());
+            }
+        }
+        let store = self.write_store()?;
+        let started = store.in_transaction(|store| {
+            let open = self.monday_open(store, today)?;
+            if open {
+                store.set_setting(NOTE_TRIED_ON, &today)?;
+            }
+            Ok(open)
+        })?;
+        if !started {
+            return Err(not_due());
         }
         Ok(())
     }
@@ -272,7 +295,7 @@ impl App {
         // Registered until the note is stored.
         let (_run, cancel) = self.register_run(generation_id, None)?;
         if options.automatic {
-            self.start_automatic_note(self.local_as_of(now).today)?;
+            self.start_automatic_note(self.local_as_of(now))?;
         }
         on_event(GenEvent::Stage {
             stage: GenStage::BuildingContext,
@@ -288,18 +311,11 @@ impl App {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
             let (profile, _) = self.estimate_profile(&choice)?;
-            let context = match note_context(&store, at) {
+            let context = match writable_note_context(&store, at) {
                 Ok(context) => context,
                 Err(GateError::Blocked(reason)) => return Err(blocked(reason)),
                 Err(GateError::Store(err)) => return Err(err.into()),
             };
-            if context.is_empty() {
-                return Err(AppError::new(
-                    AppErrorKind::Invalid,
-                    "There is nothing to write about this week: no active course, deadline or \
-                     plan item.",
-                ));
-            }
             let language = note_language(options.ui_language.as_deref());
             let prompt = assemble_in(WEEKLY_NOTE, &context, None, Some(language));
             let output = note_output();
@@ -501,11 +517,38 @@ pub(crate) fn note_language(ui_language: Option<&str>) -> AnswerLanguage {
     }
 }
 
+/// The note's context, or `Blocked(NothingToWrite)` when there is nothing to write about (no
+/// active course, no deadline in the next 7 days, no plan item): the one rule the estimate, a
+/// run and `startup_tasks` share.
+pub(crate) fn writable_note_context(
+    store: &Store,
+    at: AsOf,
+) -> std::result::Result<GatedContext, GateError> {
+    let context = note_context(store, at)?;
+    if context.is_empty() {
+        return Err(GateError::Blocked(BlockReason::NothingToWrite));
+    }
+    Ok(context)
+}
+
+/// Whether the note has something to write about at `at` (`writable_note_context`).
+fn has_something_to_write(store: &Store, at: AsOf) -> Result<bool> {
+    match writable_note_context(store, at) {
+        Ok(_) => Ok(true),
+        Err(GateError::Blocked(_)) => Ok(false),
+        Err(GateError::Store(err)) => Err(err.into()),
+    }
+}
+
 fn blocked(reason: BlockReason) -> AppError {
     AppError::blocked(
         reason,
         match reason {
             BlockReason::NoModelChosen => "Choose a model for weekly notes first.",
+            BlockReason::NothingToWrite => {
+                "There is nothing to write about this week: no active course, no deadline in the \
+                 next 7 days and no study plan item."
+            }
             _ => "PageLamp can't start this weekly note.",
         },
     )

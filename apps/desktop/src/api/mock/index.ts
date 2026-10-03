@@ -38,6 +38,7 @@ import {
 import { createMockActivity } from "./activity";
 import { createMockAi } from "./ai";
 import {
+  addDays,
   defaultKeepUntil,
   isoOf,
   withCourseDates,
@@ -255,6 +256,32 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   // taking this" and snoozes, as the facade computes them per read.
   const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
   const lifecycleOf = courseLifecycle.lifecycleOf;
+
+  /**
+   * The weekly note has nothing to write about (the facade's writable_note_context): no visible
+   * active course, no deadline in the next 7 days, and no plan item of the last 7 days or today
+   * (a hidden or removed course's left out; one of a course the mock doesn't know counts).
+   */
+  function noteHasNothingToWrite(): boolean {
+    const visible = db.courses.filter((c) => !c.course.hidden);
+    const today = isoOf(now());
+    const weekAgo = addDays(today, -7);
+    const leftOut = new Set([
+      ...db.courses.filter((c) => c.course.hidden).map((c) => c.course.id),
+      ...courseLifecycle.removedIds(),
+    ]);
+    const planItems = (db.studyPlan?.plan.items ?? []).filter(
+      (item) =>
+        item.date >= weekAgo &&
+        item.date <= today &&
+        !(item.course_id != null && leftOut.has(item.course_id)),
+    );
+    return (
+      !visible.some((c) => lifecycleOf(c).is_active) &&
+      deadlinesWithin(visible, 7, 0).length === 0 &&
+      planItems.length === 0
+    );
+  }
   /**
    * The AI gate of one run, as in the facade: the AI mock's estimate (its blocks; the student may
    * override a reached budget), then who the feature's model runs on. `ai` is created below;
@@ -322,7 +349,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     courses: () => db.courses,
     lifecycleOf: (c) => lifecycleOf(c),
     deadlinesWithin,
-    planItems: () => db.studyPlan?.plan.items.length ?? 0,
+    nothingToWrite: noteHasNothingToWrite,
     gate: (overrideBudget) => aiGate({ feature: "weekly_note" }, overrideBudget),
     noteBackend: async () => {
       const status = await ai.aiStatus();
@@ -582,6 +609,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     stepMs: syncStep,
     courses: () => db.courses,
     findCourse,
+    noteHasNothingToWrite,
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */

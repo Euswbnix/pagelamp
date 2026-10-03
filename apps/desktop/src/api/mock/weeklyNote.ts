@@ -1,9 +1,10 @@
 // The AI weekly note in the mock (beta.2; design §5.3), with the facade's rules: structure and plan
-// progress only (no material text, so no course is blocked), nothing to write about without an
-// active course, a deadline in the next 7 days or a plan item; the run's events and Stop; the last
-// 5 notes kept, newest first. "Prepare it on Monday" is allowed only for an API key or a model on
-// this computer; an automatic run is refused unless it's due, records its try as it starts, and
-// never goes over the budget.
+// progress only (no material text, so no course is blocked); without an active course, a deadline
+// in the next 7 days or a plan item it is blocked with nothing_to_write (the estimate says so
+// first, after no model chosen); the run's events and Stop; the last 5 notes kept, newest first.
+// "Prepare it on Monday" is allowed only for an API key or a model on this computer; an automatic
+// run is refused unless it's due (a week with nothing to write about isn't), records its try as it
+// starts, and never goes over the budget.
 
 import type { BackendKind, GenEvent } from "../ai";
 import type { PageLampApi } from "../client";
@@ -48,7 +49,8 @@ export function createWeeklyNoteMock(deps: {
   courses: () => MockCourse[];
   lifecycleOf: (c: MockCourse) => CourseLifecycle;
   deadlinesWithin: (courses: MockCourse[], daysAhead: number, daysBack: number) => Deadline[];
-  planItems: () => number;
+  /** The week has nothing to write about (the facade's writable_note_context). */
+  nothingToWrite: () => boolean;
   /** The AI gate for the note (the student may go over a reached budget, never automatically). */
   gate: (overrideBudget: boolean) => Promise<MockAiRun>;
   /** Who runs the note's model now (null: no model chosen). */
@@ -80,7 +82,9 @@ export function createWeeklyNoteMock(deps: {
       isMonday() &&
       triedOn !== today &&
       !notes.some((n) => localDay(new Date(n.meta.created_at)) === today) &&
-      (await allowed())
+      (await allowed()) &&
+      // Last, like the facade: nothing to write about isn't due, so no try is recorded.
+      !deps.nothingToWrite()
     );
   }
 
@@ -99,13 +103,8 @@ export function createWeeklyNoteMock(deps: {
     const visible = deps.courses().filter((c) => !c.course.hidden);
     const active = visible.filter((c) => deps.lifecycleOf(c).is_active);
     const deadlines = deps.deadlinesWithin(visible, 7, 0);
-    if (active.length === 0 && deadlines.length === 0 && deps.planItems() === 0) {
-      throw new ApiError(
-        "invalid",
-        "There is nothing to write about this week: no active course, deadline or plan item.",
-      );
-    }
-    // Automatic runs never go over the budget.
+    // The gate refuses no model chosen, then nothing to write about (from the estimate, as the
+    // facade does), then the rest. Automatic runs never go over the budget.
     const run = await deps.gate(automatic ? false : overrideBudget);
     const stop = () => {
       if (cancelled.has(generationId)) {

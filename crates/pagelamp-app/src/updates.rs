@@ -161,7 +161,9 @@ pub struct StartupTasks {
     /// Prepare the weekly note now (`write_weekly_note` with `automatic`): the student opted
     /// in, the note's model is an API key or a model on this computer (never the ChatGPT or
     /// Claude plan, plan D27), it is Monday in the reminder zone, no automatic note was tried
-    /// yet that Monday (one try, whatever its outcome) and no note was written that day.
+    /// yet that Monday (one try, whatever its outcome), no note was written that day, and there
+    /// is something to write about (an active course, a deadline in the next 7 days or a plan
+    /// item).
     pub prepare_weekly_note: bool,
 }
 

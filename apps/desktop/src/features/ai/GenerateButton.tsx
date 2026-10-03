@@ -24,8 +24,9 @@ import { useAiErrorText } from "./useAiErrorText";
 
 /**
  * Whether the cost line applies. No model and the gate's blocks (the course's rules, question
- * (b)) carry no estimate; the others (disclosure, unpriced model, weekly cap, budget) leave it
- * complete, and over the budget the student decides on the override with it.
+ * (b), a weekly note with nothing to write about) carry no estimate; the others (disclosure,
+ * unpriced model, weekly cap, budget) leave it complete, and over the budget the student decides
+ * on the override with it.
  */
 function showsCost(block: BlockReason | null): boolean {
   return (

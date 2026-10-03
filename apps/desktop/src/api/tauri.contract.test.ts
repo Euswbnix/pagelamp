@@ -135,7 +135,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.planLimits();
   await api.acceptStudyPlan("contract-test-plan");
   await api.setStudyPlanItemDone(1, 0, true);
-  // No course in the replay's data dir: nothing to write about, before any model is asked.
+  // The replay's data dir has no model chosen: refused before anything is sent.
   await api.writeWeeklyNote(
     "contract-test-note",
     { automatic: false, override_budget: false, ui_language: "en" },

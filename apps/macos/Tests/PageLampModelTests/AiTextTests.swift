@@ -19,6 +19,7 @@ struct AiTextTests {
             .coursePolicyProhibited, .courseAiTurnedOff, .courseHidden, .noReadableMaterials,
             .materialSharingNotAllowed, .codingPlanKey, .disclosureNotAcknowledged, .noModelChosen,
             .budgetReached, .priceUnknownNotAcknowledged, .weeklyRunCapReached, .backendDisabledInThisBuild,
+            .nothingToWrite,
         ]
         let modelErrors: [ModelErrorKind] = [
             .notSignedIn, .authRejected, .billingOrQuota, .usageLimit, .rateLimited, .overloaded, .invalidRequest,
@@ -63,6 +64,9 @@ struct AiTextTests {
     func failureText() {
         let budget = PageLampFailure(kind: .blocked, message: "over budget", blocked: .budgetReached)
         #expect(en.aiError(budget) == "This would go over this month's budget.")
+        let nothing = PageLampFailure(kind: .blocked, message: "nothing", blocked: .nothingToWrite)
+        #expect(en.aiError(nothing).hasPrefix("There's nothing to write about this week yet"))
+        #expect(zh.aiError(nothing).hasPrefix("这周还没有可写的内容"))
         // A refusal without a reason, and a model failure without a kind: the failure's kind.
         let unnamed = PageLampFailure(kind: .blocked, message: "blocked")
         #expect(en.aiError(unnamed) == unnamed.localizedDescription(in: en))

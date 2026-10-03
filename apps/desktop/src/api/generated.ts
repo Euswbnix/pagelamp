@@ -158,7 +158,8 @@ export type BlockReason =
   | "coding_plan_key"
   | "budget_reached"
   | "price_unknown_not_acknowledged"
-  | "weekly_run_cap_reached";
+  | "weekly_run_cap_reached"
+  | "nothing_to_write";
 /**
  * What kind of failure happened; UIs branch on this, never on `message`.
  *
@@ -1845,7 +1846,7 @@ export interface CostEstimate {
   repair_possible: boolean;
   /**
    * What would stop the run if started now (over budget, price not acknowledged, a course
-   * answered "not allowed", …).
+   * answered "not allowed", a weekly note with nothing to write about, …).
    */
   would_block?: BlockReason | null;
 }
@@ -3244,7 +3245,9 @@ export interface StartupTasks {
    * Prepare the weekly note now (`write_weekly_note` with `automatic`): the student opted
    * in, the note's model is an API key or a model on this computer (never the ChatGPT or
    * Claude plan, plan D27), it is Monday in the reminder zone, no automatic note was tried
-   * yet that Monday (one try, whatever its outcome) and no note was written that day.
+   * yet that Monday (one try, whatever its outcome), no note was written that day, and there
+   * is something to write about (an active course, a deadline in the next 7 days or a plan
+   * item).
    */
   prepare_weekly_note: boolean;
   /**

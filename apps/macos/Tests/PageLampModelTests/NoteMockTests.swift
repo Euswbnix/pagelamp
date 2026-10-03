@@ -148,7 +148,7 @@ struct NoteMockTests {
             feature: .weeklyNote, choice: ModelChoice(backend: .provider(providerId: "ollama"), model: "qwen3.5:9b", effort: .lowest)
         )
         let nothing = await failure { () async throws(PageLampFailure) in try await write(empty, "n1") }
-        #expect(nothing?.kind == .invalid)
+        #expect(nothing?.kind == .blocked && nothing?.blocked == .nothingToWrite)
         #expect(try await empty.weeklyNotes().isEmpty)
         // The gate: a changed disclosure; the budget, which a click may go over.
         let changed = await failure { () async throws(PageLampFailure) in try await write(mock(.aiDisclosureChanged), "n1") }
@@ -168,7 +168,26 @@ struct NoteMockTests {
             options: RemoveOptions(reason: nil, keepDownloadedFiles: false, purgeNow: false, deletePreUpdateBackup: false)
         )
         let refused = await failure { () async throws(PageLampFailure) in try await write(service, "n1") }
+        #expect(refused?.kind == .blocked && refused?.blocked == .nothingToWrite)
+    }
+
+    @Test("a week with nothing to write about isn't due on Monday, and keeps that Monday's try")
+    func mondayNothingToWrite() async throws {
+        let time = TestTime(monday())
+        let service = mock(.aiKey, time: time)
+        _ = try await service.setPrepareWeeklyNoteOnMonday(on: true)
+        let report = try await service.removeCourses(
+            courses: ["DEMO101", "DEMO205", "DEMO310"],
+            options: RemoveOptions(reason: nil, keepDownloadedFiles: false, purgeNow: false, deletePreUpdateBackup: false)
+        )
+        #expect(try await !due(service, at: monday()))
+        let refused = await failure { () async throws(PageLampFailure) in try await write(service, "auto-1", automatic: true) }
         #expect(refused?.kind == .invalid)
+        // A course back later that Monday: due, with its try unused.
+        let removed = try #require(report.removed.first)
+        _ = try await service.restoreCourse(removedId: removed.removedId)
+        #expect(try await due(service, at: monday(12)))
+        #expect(try await write(service, "auto-2", automatic: true).automatic)
     }
 
     @Test("the opt-in: only a provider may prepare it; kept, and paused, when the model goes")
@@ -322,7 +341,7 @@ struct NoteMockTests {
         #expect(try await !due(service, at: TestClock.now))
     }
 
-    @Test("\"≈ $x\" for a note never refuses an empty week")
+    @Test("\"≈ $x\" for a note says when there's nothing to write about, with no amount")
     func estimate() async throws {
         #expect(try await mock(.aiKey).estimateGeneration(request: .weeklyNote).microUsdUpper == 900)
         let empty = mock(.empty)
@@ -330,6 +349,9 @@ struct NoteMockTests {
         try await empty.setFeatureModel(
             feature: .weeklyNote, choice: ModelChoice(backend: .provider(providerId: "ollama"), model: "qwen3.5:9b", effort: .lowest)
         )
-        #expect(try await empty.estimateGeneration(request: .weeklyNote).wouldBlock != .noReadableMaterials)
+        let blocked = try await empty.estimateGeneration(request: .weeklyNote)
+        #expect(blocked.wouldBlock == .nothingToWrite && blocked.microUsdUpper == nil && blocked.inputTokens == 0)
+        // No model chosen comes first.
+        #expect(try await mock(.empty).estimateGeneration(request: .weeklyNote).wouldBlock == .noModelChosen)
     }
 }

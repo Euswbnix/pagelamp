@@ -5,6 +5,19 @@ import { createMockApi } from ".";
 const MONDAY = new Date(2026, 8, 28, 10, 0); // Monday 2026-09-28
 const TUESDAY = new Date(2026, 8, 29, 10, 0);
 const fast = { latencyMs: 0, syncStepMs: 0 };
+const openai = { kind: "provider", provider_id: "openai" } as const;
+
+/** OpenAI with a key, its disclosure read, chosen for the weekly note. */
+async function withNoteModel(api: ReturnType<typeof createMockApi>) {
+  await api.addModelProvider("openai", null, "sk-demo-key-7731");
+  const version = (await api.aiStatus()).backends[0]?.disclosure.version ?? 0;
+  await api.acknowledgeAiDisclosure(openai, version);
+  await api.setFeatureModel("weekly_note", {
+    backend: openai,
+    model: "gpt-5.4-mini",
+    effort: "lowest",
+  });
+}
 
 describe("mock weekly note", () => {
   it("writes a note from structure with the run's events, keeps the last 5, deletes one", async () => {
@@ -26,11 +39,45 @@ describe("mock weekly note", () => {
     await expect(api.deleteWeeklyNote("n-4")).rejects.toMatchObject({ kind: "not_found" });
   });
 
-  it("has nothing to write about without an active course, a deadline or a plan item", async () => {
-    const api = createMockApi({ ...fast, scenario: "empty" });
-    const error = (await api.writeWeeklyNote("n-1", {}, () => {}).catch((e) => e)) as ApiError;
-    expect(error.kind).toBe("invalid");
-    expect(error.message).toMatch(/nothing to write about/);
+  it("blocks a week with nothing to write about before the click, after no model chosen", async () => {
+    // Only past courses: no active course, no deadline in the next 7 days, no plan item.
+    const api = createMockApi({ ...fast, scenario: "all-past" });
+    expect((await api.estimateGeneration({ feature: "weekly_note" })).would_block).toBe(
+      "no_model_chosen",
+    );
+    await expect(api.writeWeeklyNote("n-0", {}, () => {})).rejects.toMatchObject({
+      kind: "blocked",
+      blocked: "no_model_chosen",
+    } satisfies Partial<ApiError>);
+    await withNoteModel(api);
+    expect(await api.estimateGeneration({ feature: "weekly_note" })).toMatchObject({
+      would_block: "nothing_to_write",
+      micro_usd_upper: null,
+      input_tokens: 0,
+    });
+    await expect(api.writeWeeklyNote("n-1", {}, () => {})).rejects.toMatchObject({
+      kind: "blocked",
+      blocked: "nothing_to_write",
+    } satisfies Partial<ApiError>);
+    expect(await api.weeklyNotes()).toEqual([]);
+  });
+
+  it("doesn't ask for Monday's note with nothing to write about, and keeps that Monday's try", async () => {
+    const api = createMockApi({ ...fast, scenario: "all-past", now: () => MONDAY });
+    await withNoteModel(api);
+    await api.setPrepareWeeklyNoteOnMonday(true);
+    expect((await api.startupTasks()).prepare_weekly_note).toBe(false);
+    await expect(
+      api.writeWeeklyNote("auto-1", { automatic: true }, () => {}),
+    ).rejects.toMatchObject({ kind: "invalid" });
+    // Later that Monday a course counts as current again: the note is due, its try unused.
+    const [course] = await api.listCourses();
+    if (!course) throw new Error("all-past has courses");
+    await api.keepCourseCurrent(course.course.id, null);
+    expect((await api.startupTasks()).prepare_weekly_note).toBe(true);
+    const note = await api.writeWeeklyNote("auto-2", { automatic: true }, () => {});
+    expect(note.automatic).toBe(true);
+    expect((await api.startupTasks()).prepare_weekly_note).toBe(false);
   });
 
   it("lets Monday's note be prepared only with an API key or a model on this computer", async () => {

@@ -50,6 +50,7 @@
     "costKey": "With {{backend}} · {{model}}: {{cost}} each Monday, counted toward your monthly budget.",
     "costLocal": "With {{backend}} · {{model}}, on this computer.",
     "costUnpriced": "With {{backend}} · {{model}}, counted toward your monthly budget (no price for this model).",
+    "costWeekEmpty": "With {{backend}} · {{model}}, counted toward your monthly budget (what it costs depends on the week).",
     "paused": "Paused: the weekly note's model is no longer an API key or a model on this computer.",
     "saveFailed": "The setting couldn't be saved."
   }
