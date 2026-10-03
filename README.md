@@ -140,7 +140,7 @@ newer format that the released app can't open (a backup is kept next to it).
 | AI app | How it connects | Plans |
 |---|---|---|
 | Claude Desktop | local MCP server in `claude_desktop_config.json` | every Claude plan, including Free |
-| ChatGPT desktop (Work/Codex mode), Codex CLI | `[mcp_servers.pagelamp]` in `~/.codex/config.toml` | Codex CLI: documented for Plus, Pro, Business, Enterprise and Edu. Free and Go: OpenAI lists Codex only in the desktop app, where rolled out; using PageLamp there isn't documented |
+| ChatGPT desktop (Work/Codex mode), Codex CLI | `[mcp_servers.pagelamp]` in `~/.codex/config.toml` | Codex is included in every ChatGPT plan, including Free and Go (limits vary by plan) |
 | Claude Code | the `claude mcp add …` command printed by `pagelamp mcp-config claude-code` | a paid Claude plan (Pro or higher; not Free) |
 
 This table is about your own AI app reading PageLamp over MCP; PageLamp doesn't run any of these
@@ -254,9 +254,12 @@ Syncing is a separate step you start (with your own token for Canvas).
   computer. With a model, it can also read a course's syllabus
   and suggest dates for you to confirm. Connecting your own AI app over MCP stays available.
 
-Whether a ChatGPT or Claude plan could be used for these features is something we're asking OpenAI
-and Anthropic; it will be offered only if they confirm in writing that it's allowed. Plans can change before a
-release — the [CHANGELOG](CHANGELOG.md) lists what is already done.
+PageLamp's own features use your API key or a model on your computer; they don't run on a
+ChatGPT plan. To use a ChatGPT plan with PageLamp, connect Codex or ChatGPT desktop as your AI app
+over MCP (see the table above). Whether a Claude plan could be used for these features is
+something we're asking Anthropic; it will be offered only if they confirm in writing that it's
+allowed. Plans can change before a release — the [CHANGELOG](CHANGELOG.md) lists what is already
+done.
 
 ## Contributing
 
@@ -300,7 +303,7 @@ PageLamp 的 MCP 服务从不连接 Canvas 或互联网：它读取你电脑上�
 
 **隐私**：数据只存在你的电脑上；只有你向 AI 提问时，AI 读取的课程内容才会发到你自己的 AI 账号。v0.1 的 PageLamp 自己不调用任何 AI 模型；它从不转售或代付 AI 用量，也从不读取、保存或发送你登录 AI 账号所用的凭据（密码或令牌）。详见 [PRIVACY.md](PRIVACY.md)。
 
-**路线图**：v0.1（2026 年 9 月发布）：AI 应用通过 MCP 读取你的课程，macOS 和 Windows 安装包已签名。v0.3（开发中）计划加入：自动更新；按真实上课日期推算周次；已结束的课程归入「往期课程」，也可以删除（可撤销）；每周提醒；以及由 PageLamp 用你选择的模型（你自己的 API key 或本机模型）直接生成学习计划，以及标注出处的每周讲解；有了模型，它还能读取教学大纲，提出日期建议由你确认。通过 MCP 连接你自己的 AI 应用会继续可用。能否改用 ChatGPT 或 Claude 套餐来使用这些功能，我们正在询问 OpenAI 和 Anthropic，只有对方书面确认允许才会提供。发布前计划可能调整，已完成的内容见 [CHANGELOG](CHANGELOG.md)。
+**路线图**：v0.1（2026 年 9 月发布）：AI 应用通过 MCP 读取你的课程，macOS 和 Windows 安装包已签名。v0.3（开发中）计划加入：自动更新；按真实上课日期推算周次；已结束的课程归入「往期课程」，也可以删除（可撤销）；每周提醒；以及由 PageLamp 用你选择的模型（你自己的 API key 或本机模型）直接生成学习计划，以及标注出处的每周讲解；有了模型，它还能读取教学大纲，提出日期建议由你确认。通过 MCP 连接你自己的 AI 应用会继续可用。这些功能使用你自己的 API key 或本机模型，不使用 ChatGPT 套餐；想用 ChatGPT 套餐，可以把 Codex 或 ChatGPT 桌面版作为你的 AI 应用，通过 MCP 连接 PageLamp。能否改用 Claude 套餐，我们正在询问 Anthropic，只有对方书面确认允许才会提供。发布前计划可能调整，已完成的内容见 [CHANGELOG](CHANGELOG.md)。
 
 **声明**：PageLamp 是独立的开源项目，与 OpenAI、Anthropic、Instructure（Canvas）以及任何大学都没有关联，也没有得到它们的认可或赞助。文中提到 Claude、ChatGPT、Codex、Canvas，只是为了说明 PageLamp 能配合哪些应用和服务使用；Claude 是 Anthropic 的商标，ChatGPT 和 Codex 是 OpenAI 的商标，Canvas 是 Instructure, Inc. 的商标。
 
