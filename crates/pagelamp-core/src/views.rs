@@ -271,7 +271,8 @@ pub enum WeekNoteKind {
     /// No week requested and the current week could not be inferred — showing the materials
     /// of the last `RECENT_DAYS` days instead (`week` is None).
     CurrentWeekUnknown,
-    /// Today is before the term start or after the term end.
+    /// Today is before the term start or after the term end, or the course is over, inactive
+    /// or not started by its lifecycle.
     OutsideTerm,
     /// The week is known but has no modules or materials.
     NoMaterialsThisWeek,
@@ -367,8 +368,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
             term_data.remove(&course.id).unwrap_or_default(),
             &confirmed,
         )?;
-        let (resolved, timeline) = data.timeline(&course, at);
-        let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
+        let (_, timeline, lifecycle) = data.state(&course, at);
         let ai_materials = course.ai_materials();
         let course_deadlines: Vec<&Event> = upcoming
             .iter()
@@ -407,9 +407,10 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     Ok(summaries)
 }
 
-/// Timeline of one course: its resolved dates, phase and week (see `timeline`).
+/// Timeline of one course: its resolved dates, phase and week (see `timeline`), without a
+/// week when the course's lifecycle leaves the week-based views (`CourseData::state`).
 pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<CourseTimeline> {
-    Ok(CourseData::load(store, course)?.timeline(course, at).1)
+    Ok(CourseData::load(store, course)?.state(course, at).1)
 }
 
 /// "What's going on in this course right now". `course` is resolved with
@@ -423,8 +424,7 @@ pub fn course_overview(
 ) -> Result<CourseOverview> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (resolved, timeline) = data.timeline(&course, at);
-    let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
+    let (_, timeline, lifecycle) = data.state(&course, at);
     let current_modules = data
         .modules
         .iter()
@@ -483,7 +483,8 @@ pub fn course_overview(
 ///
 /// `course` is resolved with `include_hidden` like `course_overview`. When no week is given
 /// and the current week is unknown, the materials of the last `RECENT_DAYS` days are shown
-/// instead (`note_kind = CurrentWeekUnknown`).
+/// instead (`note_kind = CurrentWeekUnknown`; `OutsideTerm` for a course that is over, inactive
+/// or hasn't started, which has no current week).
 pub fn week_materials(
     store: &Store,
     course: &str,
@@ -493,7 +494,7 @@ pub fn week_materials(
 ) -> Result<WeekMaterials> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (resolved, timeline) = data.timeline(&course, at);
+    let (resolved, timeline, lifecycle) = data.state(&course, at);
     let content: Vec<&Material> = data
         .materials
         .iter()
@@ -543,6 +544,7 @@ pub fn week_materials(
             });
             let materials = recent.into_iter().map(|m| data.view(m)).collect();
             let note_kind = match timeline.phase {
+                _ if !lifecycle.state.in_week_views() => WeekNoteKind::OutsideTerm,
                 CoursePhase::ExamPeriod => WeekNoteKind::ExamPeriod,
                 CoursePhase::NotStarted | CoursePhase::Ended => WeekNoteKind::OutsideTerm,
                 _ => WeekNoteKind::CurrentWeekUnknown,
@@ -864,7 +866,31 @@ impl CourseData {
         }
     }
 
-    /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`).
+    /// The resolved dates, the timeline and the lifecycle, as every view shows them. A course
+    /// that is over, inactive or hasn't started (by its lifecycle) has no current week, no
+    /// default week and no current modules, whatever the week signals say (design §8.2, D43):
+    /// without usable dates, the week number of a material posted years ago would otherwise
+    /// stay "the current week". The signals stay in the evidence, and "I'm still taking this"
+    /// (a Current lifecycle) brings the week back.
+    pub(crate) fn state(
+        &self,
+        course: &Course,
+        at: AsOf,
+    ) -> (ResolvedTerm, CourseTimeline, CourseLifecycle) {
+        let (resolved, mut timeline) = self.timeline(course, at);
+        // The lifecycle reads the phase and the dates, never the week.
+        let lifecycle = self.lifecycle(course, &resolved, &timeline, at);
+        if !lifecycle.state.in_week_views() {
+            timeline.current_week = None;
+            timeline.default_week = None;
+            timeline.current_module_ids.clear();
+            timeline.confidence = Confidence::Low;
+        }
+        (resolved, timeline, lifecycle)
+    }
+
+    /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`),
+    /// before the lifecycle is applied: views use `state`.
     pub(crate) fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
         let input = self.input(course, at);
         let resolved = resolve_term(&input);

@@ -649,6 +649,81 @@ fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
 /// Course weeks and lifecycle groups (calendar design §7.13): `courses` shows Current and
 /// Upcoming with a count of the past courses, `--past` / `--all` the rest, `course timeline`
 /// the dates used and why, `course keep` "I'm still taking this".
+/// A course that is over or inactive shows its lifecycle, never a week: a site whose last file,
+/// two years ago, was "Week 12" isn't in week 12 now (`courses --past`, `course timeline`).
+#[test]
+fn a_finished_course_shows_its_lifecycle_not_a_week() {
+    use chrono::{TimeDelta, Utc};
+    use pagelamp_core::model::{
+        CourseUpsert, MaterialKind, MaterialUpsert, SourceKind, SourceRecord,
+    };
+    use pagelamp_core::store::Store;
+
+    const SOURCE: &str = "canvas:lms.example.edu";
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let store = Store::open(&pagelamp_core::paths::db_path_in(&home)).unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: SOURCE.into(),
+            kind: SourceKind::Canvas,
+            label: "lms.example.edu".into(),
+            config: json!({ "base_url": "https://lms.example.edu" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    let id = format!("{SOURCE}/course/909");
+    store
+        .upsert_course(&CourseUpsert {
+            id: id.clone(),
+            source_id: SOURCE.into(),
+            external_id: "909".into(),
+            code: Some("OLD909".into()),
+            name: "Old Demo Site".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store
+        .upsert_material(&MaterialUpsert {
+            id: format!("{SOURCE}/file/old-week-12"),
+            course_id: id,
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "Week 12 notes".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: Some(Utc::now() - TimeDelta::days(700)),
+            week_hint: Some(12),
+        })
+        .unwrap();
+    drop(store);
+
+    let past = ok(&pagelamp(&home, &["courses", "--past"]));
+    let line = past
+        .lines()
+        .find(|line| line.contains("OLD909"))
+        .unwrap_or_else(|| panic!("{past}"));
+    assert!(line.contains("inactive"), "{line}");
+    assert!(!line.contains("week"), "{line}");
+    let listed = json_out(&pagelamp(&home, &["--json", "courses", "--past"]));
+    assert_eq!(listed[0]["lifecycle"]["state"], "inactive");
+    assert_eq!(listed[0]["timeline"]["current_week"], Value::Null);
+    let timeline = json_out(&pagelamp(
+        &home,
+        &["--json", "course", "timeline", "OLD909"],
+    ));
+    assert_eq!(timeline["timeline"]["current_week"], Value::Null);
+    assert_eq!(timeline["timeline"]["default_week"], Value::Null);
+}
+
 #[test]
 fn courses_are_grouped_by_lifecycle_with_timeline_and_keep() {
     use chrono::{Datelike, Local, TimeDelta};

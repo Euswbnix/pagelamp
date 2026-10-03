@@ -57,6 +57,30 @@ describe("mock calendar scenarios", () => {
     const courses = await api.listCourses();
     expect(courses.every((c) => c.lifecycle.group === "past")).toBe(true);
   });
+
+  it("a past or upcoming course has no current week in any view, like the facade", async () => {
+    const api = createMockApi({ ...fast, scenario: "phases" });
+    const courses = await api.listCourses();
+    const outside = courses.filter((c) =>
+      ["ended", "inactive", "upcoming"].includes(c.lifecycle.state),
+    );
+    expect(outside.length).toBeGreaterThan(0);
+    for (const c of outside) {
+      const overview = await api.courseOverview(c.course.id);
+      const week = await api.weekMaterials(c.course.id, null);
+      for (const timeline of [c.timeline, overview.timeline, week.timeline]) {
+        expect(timeline.current_week ?? null, c.course.id).toBeNull();
+        expect(timeline.default_week ?? null, c.course.id).toBeNull();
+        expect(timeline.current_module_ids, c.course.id).toEqual([]);
+      }
+      expect(overview.current_modules, c.course.id).toEqual([]);
+      expect(week.week ?? null, c.course.id).toBeNull();
+      expect(week.note_kind, c.course.id).toBe("outside_term");
+    }
+    // The others keep theirs.
+    const teaching = courses.find((c) => c.timeline.phase === "teaching");
+    expect(teaching?.timeline.current_week ?? null).not.toBeNull();
+  });
 });
 
 describe("mock course dates and lifecycle", () => {

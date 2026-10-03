@@ -915,6 +915,163 @@ fn deadlines_are_not_filtered_by_lifecycle() {
     assert!(listed[0].lifecycle.suggest_removal);
 }
 
+/// A course that is over, inactive or hasn't started has no current week in any view (design
+/// §8.2, D43), whatever its week signals say: without usable dates the week number of an old
+/// material stayed "the current week" (a 2023 site reported week 12 in 2026). The signal stays
+/// in the evidence, an explicit week still reads, and "I'm still taking this" brings it back.
+#[test]
+fn past_and_upcoming_courses_have_no_current_week() {
+    use pagelamp_core::store::Store;
+    use pagelamp_core::views::{self, AsOf, WeekNoteKind};
+
+    let store = Store::open_in_memory().unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: UOFT.into(),
+            kind: SourceKind::Canvas,
+            label: "Quercus".into(),
+            config: serde_json::json!({ "base_url": "https://q.utoronto.ca" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    // (external id, code, the one week-numbered material, when it was posted)
+    for (external, code, title, posted) in [
+        // A summer section: its session window ended and nothing happened for months.
+        (
+            "111",
+            "DEM111H5 S LEC0101 20265",
+            "Week 1 slides",
+            "2026-07-06T14:00:00Z",
+        ),
+        // A group site of 2023 without any dates.
+        (
+            "904",
+            "UTM-DEM-ES04-S2023",
+            "Week 12 notes",
+            "2023-11-27T14:00:00Z",
+        ),
+        // A Winter section whose site still holds a file of an earlier year.
+        (
+            "210",
+            "DEM210H5 S LEC0101 20271",
+            "Week 12 review",
+            "2026-04-02T14:00:00Z",
+        ),
+    ] {
+        let id = format!("{UOFT}/course/{external}");
+        store
+            .upsert_course(&CourseUpsert {
+                id: id.clone(),
+                source_id: UOFT.into(),
+                external_id: external.into(),
+                code: Some(code.into()),
+                name: format!("{code} Demo"),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+                lms: LmsCourseInfo {
+                    time_zone: Some(TORONTO.into()),
+                    ..LmsCourseInfo::default()
+                },
+            })
+            .unwrap();
+        store
+            .upsert_material(&MaterialUpsert {
+                id: format!("{id}/file/1"),
+                course_id: id,
+                module_id: None,
+                kind: MaterialKind::File,
+                title: title.into(),
+                url: None,
+                local_path: None,
+                mime: None,
+                published_at: Some(at(posted)),
+                week_hint: timeline::parse_week_hint(title),
+            })
+            .unwrap();
+    }
+    let at = AsOf {
+        now: at("2026-10-03T16:00:00Z"),
+        today: date("2026-10-03"),
+        tz: None,
+    };
+
+    let listed = views::list_courses(&store, false, at).unwrap();
+    let states: Vec<(&str, LifecycleState)> = listed
+        .iter()
+        .map(|c| (c.course.external_id.as_str(), c.lifecycle.state))
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("111", LifecycleState::Ended),
+            ("210", LifecycleState::Upcoming),
+            ("904", LifecycleState::Inactive),
+        ]
+    );
+    for summary in &listed {
+        let code = summary.course.code.clone().unwrap();
+        let week = timeline::parse_week_hint(if code.contains("20265") {
+            "Week 1"
+        } else {
+            "Week 12"
+        });
+        let no_week = |timeline: &CourseTimeline, what: &str| {
+            assert_eq!(
+                (timeline.current_week, timeline.default_week),
+                (None, None),
+                "{code}: {what}"
+            );
+            assert!(timeline.current_module_ids.is_empty(), "{code}: {what}");
+            assert_eq!(timeline.phase, CoursePhase::Unknown, "{code}: {what}");
+            // The old material is still named as evidence.
+            assert!(
+                codes(timeline).contains(&"week_from_latest_material"),
+                "{code}: {:?}",
+                codes(timeline)
+            );
+        };
+        no_week(&summary.timeline, "list_courses");
+        let overview = views::course_overview(&store, &code, false, at).unwrap();
+        no_week(&overview.timeline, "course_overview");
+        assert!(overview.current_modules.is_empty(), "{code}");
+        no_week(
+            &views::course_timeline(&store, &summary.course, at).unwrap(),
+            "course_timeline",
+        );
+        // No week asked: none is shown as current, and the note says why.
+        let default = views::week_materials(&store, &code, None, false, at).unwrap();
+        no_week(&default.timeline, "week_materials");
+        assert_eq!(
+            (default.week, default.note_kind, default.materials.len()),
+            (None, Some(WeekNoteKind::OutsideTerm), 0),
+            "{code}"
+        );
+        // A week asked for by number still reads.
+        let asked = views::week_materials(&store, &code, week, false, at).unwrap();
+        assert_eq!((asked.week, asked.materials.len()), (week, 1), "{code}");
+        assert!(default.available_weeks.contains(&week.unwrap()), "{code}");
+    }
+    // The digest gives such a course no week either.
+    let digest = views::weekly_digest(&store, at).unwrap();
+    assert!(digest.courses.iter().all(|c| c.week.is_none()));
+
+    // "I'm still taking this" makes the course current again, with the week its signals name.
+    let kept = &listed[2].course;
+    store
+        .set_keep_current_until(&kept.id, Some(date("2026-12-31")))
+        .unwrap();
+    let again = views::course_overview(&store, "UTM-DEM-ES04-S2023", false, at).unwrap();
+    assert_eq!(again.lifecycle.state, LifecycleState::Current);
+    assert_eq!(
+        (again.timeline.current_week, again.timeline.default_week),
+        (Some(12), Some(12))
+    );
+}
+
 /// A folder course has no time zone of its own: its dates are taken in the machine's, so a
 /// file saved at 23:08 local time is today's activity, not tomorrow's (UTC).
 #[test]
