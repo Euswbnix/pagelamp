@@ -720,10 +720,6 @@
 "connect.noteCodes.restart_client_after_change" = "改完配置后，请彻底退出并重新打开该应用。";
 "connect.noteCodes.works_on_all_claude_plans" = "所有 Claude 套餐都能用，包括免费版。";
 "connect.notes.title" = "注意事项";
-"connect.quarantine.body" = "这个测试版还没有经过 Apple 公证。如果 macOS 不让你打开 PageLamp，或者在 AI 应用启动它时把它拦下：先打开一次 PageLamp，然后前往“系统设置 › 隐私与安全性”，点“仍要打开”。";
-"connect.quarantine.copy" = "复制终端命令";
-"connect.quarantine.fallback" = "还是被拦截？请在“终端”里运行一次下面这条命令：";
-"connect.quarantine.title" = "如果 macOS 拦截了 PageLamp";
 "connect.steps.claudeCodeAfter" = "运行一次之后，新的 Claude Code 会话里就能用 PageLamp 了。";
 "connect.steps.genericAdd" = "添加一个本地（stdio）服务器，使用下面的命令、参数和环境变量。具体格式取决于这个应用。";
 "connect.steps.genericOpen" = "打开你的 AI 应用里 MCP 服务器的设置（或它的配置文件）。";
@@ -846,6 +842,10 @@
 "course.week.note.break" = "现在是假期周。下面是假期前一周的资料。";
 "course.week.note.current_week_unknown" = "暂时无法确定这门课现在是第几周，下面列出的是最近 14 天的资料。";
 "course.week.note.exam_period" = "课已经上完了，所以没有教学周。下面是最近 14 天的资料。";
+"course.week.note.no_current_week.ended" = "这门课已经结束，所以没有“本周”。";
+"course.week.note.no_current_week.inactive" = "这门课已经很久没有动静，所以没有“本周”。";
+"course.week.note.no_current_week.pick_week" = "可以在上面选一周查看它的资料。";
+"course.week.note.no_current_week.upcoming" = "这门课还没开始，所以没有“本周”。";
 "course.week.note.no_materials_this_week" = "这一周没有模块或资料。";
 "course.week.note.outside_term" = "今天不在这门课的学期日期范围内，所以没有“本周”。";
 "course.week.previous" = "上一周";
@@ -983,6 +983,10 @@
 "mac.connect.existingFile.hasServers" = "文件里已经有 \"mcpServers\"";
 "mac.connect.existingFile.otherSettings" = "文件里有其他设置，但没有 \"mcpServers\"";
 "mac.connect.otherApp" = "其他应用";
+"mac.connect.quarantine.body" = "这个构建没有经过 Apple 公证。如果 macOS 不让你打开 PageLamp，或者在 AI 应用启动它时把它拦下：先打开一次 PageLamp，然后前往“系统设置 › 隐私与安全性”，点“仍要打开”。";
+"mac.connect.quarantine.copy" = "复制终端命令";
+"mac.connect.quarantine.fallback" = "还是被拦截？请在“终端”里运行一次下面这条命令：";
+"mac.connect.quarantine.title" = "如果 macOS 拦截了 PageLamp";
 "mac.connect.quitFirst" = "先完全退出 %1$@（⌘Q）。它退出时会覆盖这个文件，所以在它运行时做的修改会丢失。";
 "mac.connect.setUpLabel" = "设置";
 "mac.countdown.hoursMinutes" = "还有 %1$@ 小时 %2$@ 分钟";
@@ -1383,7 +1387,7 @@
 "settings.data.revealFailed" = "无法打开文件夹";
 "settings.data.title" = "你的数据";
 "settings.help.description" = "遇到问题了？下面这些可以帮忙找出原因。除非你自己分享，否则不会发送任何内容。";
-"settings.help.fileReader.blocked" = "PageLamp 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，较大的 PDF 会被跳过。";
+"settings.help.fileReader.blocked" = "PageLamp 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，PDF 和超过 5 MB 的其他文件不会被读取。";
 "settings.help.fileReader.kinds.bad_output" = "%1$@ 个的读取结果无法使用";
 "settings.help.fileReader.kinds.cpu_limit" = "%1$@ 个占用处理时间太多";
 "settings.help.fileReader.kinds.crashed" = "%1$@ 个导致读取程序崩溃";
@@ -1586,6 +1590,7 @@
 "updates.settings.install" = "安装并重启…";
 "updates.settings.lastChecked" = "上次检查：%1$@";
 "updates.settings.neverChecked" = "还没有检查过。";
+"updates.settings.noStableRelease" = "PageLamp 还没有找到带更新信息的正式版。供测试用的早期版本在“测试版”渠道。";
 "updates.settings.releaseNotes" = "更新说明";
 "updates.settings.title" = "更新";
 "updates.settings.upToDate" = "PageLamp 已是最新版本。";

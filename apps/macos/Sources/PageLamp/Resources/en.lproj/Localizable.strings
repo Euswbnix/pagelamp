@@ -720,10 +720,6 @@
 "connect.noteCodes.restart_client_after_change" = "Quit and reopen the app after changing its config.";
 "connect.noteCodes.works_on_all_claude_plans" = "Works on every Claude plan, including Free.";
 "connect.notes.title" = "Good to know";
-"connect.quarantine.body" = "This beta isn't notarized by Apple yet. If macOS won't open PageLamp, or stops it when your AI app starts it: open PageLamp once, then go to System Settings › Privacy & Security and click “Open Anyway”.";
-"connect.quarantine.copy" = "Copy the Terminal command";
-"connect.quarantine.fallback" = "Still blocked? Run this once in Terminal:";
-"connect.quarantine.title" = "If macOS blocks PageLamp";
 "connect.steps.claudeCodeAfter" = "New Claude Code sessions have PageLamp after you run this once.";
 "connect.steps.genericAdd" = "Add a local (stdio) server with this command, arguments and environment. The exact format depends on the app.";
 "connect.steps.genericOpen" = "Open your AI app's settings for MCP servers (or its configuration file).";
@@ -846,6 +842,10 @@
 "course.week.note.break" = "It's a break week. These are the materials of the week before it.";
 "course.week.note.current_week_unknown" = "We couldn't work out which week this course is in, so these are the materials from the last 14 days.";
 "course.week.note.exam_period" = "Classes are over, so there's no teaching week. These are the materials from the last 14 days.";
+"course.week.note.no_current_week.ended" = "This course is over, so it has no current week.";
+"course.week.note.no_current_week.inactive" = "Nothing has happened in this course for a long time, so it has no current week.";
+"course.week.note.no_current_week.pick_week" = "Pick a week above to see its materials.";
+"course.week.note.no_current_week.upcoming" = "This course hasn't started yet, so it has no current week.";
 "course.week.note.no_materials_this_week" = "There are no modules or materials for this week.";
 "course.week.note.outside_term" = "Today is outside this course's term dates, so there's no current week.";
 "course.week.previous" = "Previous week";
@@ -983,6 +983,10 @@
 "mac.connect.existingFile.hasServers" = "It already has an \"mcpServers\" section";
 "mac.connect.existingFile.otherSettings" = "It has other settings but no \"mcpServers\"";
 "mac.connect.otherApp" = "Other app";
+"mac.connect.quarantine.body" = "This build isn't notarized by Apple. If macOS won't open PageLamp, or stops it when your AI app starts it: open PageLamp once, then go to System Settings › Privacy & Security and click “Open Anyway”.";
+"mac.connect.quarantine.copy" = "Copy the Terminal command";
+"mac.connect.quarantine.fallback" = "Still blocked? Run this once in Terminal:";
+"mac.connect.quarantine.title" = "If macOS blocks PageLamp";
 "mac.connect.quitFirst" = "Quit %1$@ completely first (⌘Q). It saves over this file when it quits, so changes made while it's open are lost.";
 "mac.connect.setUpLabel" = "Set up";
 "mac.countdown.hoursMinutes" = "in %1$@ h %2$@ min";
@@ -1383,7 +1387,7 @@
 "settings.data.revealFailed" = "Couldn't open the folder";
 "settings.data.title" = "Your data";
 "settings.help.description" = "Something not working? These help find the cause. Nothing is sent anywhere unless you share it yourself.";
-"settings.help.fileReader.blocked" = "PageLamp's file reader couldn't start (often blocked by antivirus or Smart App Control). Large PDFs are skipped until it can run.";
+"settings.help.fileReader.blocked" = "PageLamp's file reader couldn't start (often blocked by antivirus or Smart App Control). Until it can run, PDFs of any size and other files over 5 MB aren't read.";
 "settings.help.fileReader.kinds.bad_output" = "%1$@ gave unreadable output";
 "settings.help.fileReader.kinds.cpu_limit" = "%1$@ used too much processing time";
 "settings.help.fileReader.kinds.crashed" = "%1$@ crashed the reader";
@@ -1586,6 +1590,7 @@
 "updates.settings.install" = "Install and restart…";
 "updates.settings.lastChecked" = "Last checked %1$@";
 "updates.settings.neverChecked" = "Not checked yet.";
+"updates.settings.noStableRelease" = "PageLamp didn't find a stable release with update information yet. Early versions for testing are on the Beta channel.";
 "updates.settings.releaseNotes" = "Release notes";
 "updates.settings.title" = "Updates";
 "updates.settings.upToDate" = "PageLamp is up to date.";

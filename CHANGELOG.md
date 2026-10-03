@@ -43,6 +43,14 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 ### Fixed
 - A file that became locked or was moved, and hasn't been read again, no longer shows its old
   text anywhere: not in search, not to your AI app, not in PageLamp's own AI features.
+- A course that PageLamp lists as ended, inactive or not started no longer reports a current
+  week. Without usable dates, the week number of the last material posted (even years ago)
+  was shown as the current week in the app, `pagelamp courses` and to your AI app
+  (`list_courses`, `course_overview`, `week_materials`); these now say "Ended", "Inactive" or
+  "Starts …" instead. Asking for a week by its number still works, and "I'm still taking this"
+  brings the week back. A course PageLamp can't place yet (no dates, but something happened
+  in it recently) can still show a week from its latest week-numbered material, marked low
+  confidence.
 
 ## [0.1.0] — 2026-09-28
 

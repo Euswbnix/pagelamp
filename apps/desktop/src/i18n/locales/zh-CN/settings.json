@@ -49,7 +49,7 @@
     "issueHint": "在浏览器中新建一个 issue，把诊断报告粘贴进去即可。",
     "helpLink": "帮助与常见问题",
     "fileReader": {
-      "blocked": "{{product}} 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，较大的 PDF 会被跳过。",
+      "blocked": "{{product}} 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，PDF 和超过 5 MB 的其他文件不会被读取。",
       "mismatch": "{{product}} 的文件读取程序和当前版本不一致。请重新安装 {{product}}。",
       "unreadable": "{{product}} 没能读取的文件：{{list}}",
       "separator": "、",
