@@ -1232,6 +1232,8 @@ struct CourseLine {
     id: String,
     code: Option<String>,
     name: String,
+    /// Null for a course whose lifecycle is ended, inactive or upcoming (an upcoming course
+    /// keeps the week the student's own term dates give).
     current_week: Option<u32>,
     week_confidence: Confidence,
     phase: CoursePhase,

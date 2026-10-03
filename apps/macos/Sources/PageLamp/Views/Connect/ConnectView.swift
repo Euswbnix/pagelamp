@@ -307,17 +307,17 @@ private struct QuarantineCallout: View {
         Callout(
             tone: .info,
             symbol: "exclamationmark.shield",
-            title: l10n("connect.quarantine.title"),
-            message: l10n("connect.quarantine.body")
+            title: l10n("mac.connect.quarantine.title"),
+            message: l10n("mac.connect.quarantine.body")
         ) {
             VStack(alignment: .leading, spacing: PLSpace.s2) {
-                Text(l10n("connect.quarantine.fallback"))
+                Text(l10n("mac.connect.quarantine.fallback"))
                     .fixedSize(horizontal: false, vertical: true)
                 CodeBlock(copyable: ConnectCopyable(
                     kind: .command,
                     text: command,
                     copyTitle: l10n("mac.actions.copyCommand"),
-                    copyAccessibilityLabel: l10n("connect.quarantine.copy")
+                    copyAccessibilityLabel: l10n("mac.connect.quarantine.copy")
                 ))
             }
         }

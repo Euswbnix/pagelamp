@@ -24,6 +24,7 @@ import {
   type AppStatus,
   aiMaterialsState,
   type CourseSummary,
+  type CourseTimeline,
   type Deadline,
   type MaterialView,
   type SourceKind,
@@ -246,8 +247,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   function availableWeeks(c: MockCourse): number[] {
     const weeks = new Set<number>();
     for (const m of [...c.modules, ...c.materials]) if (m.week_hint) weeks.add(m.week_hint);
-    if (c.timeline.current_week) weeks.add(c.timeline.current_week);
-    if (c.timeline.default_week) weeks.add(c.timeline.default_week);
+    const timeline = timelineOf(c);
+    if (timeline.current_week) weeks.add(timeline.current_week);
+    if (timeline.default_week) weeks.add(timeline.default_week);
     return [...weeks].sort((a, b) => a - b);
   }
 
@@ -257,6 +259,25 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const courseLifecycle = createLifecycleMock({ db, scenario, now, respond, findCourse });
   const lifecycleOf = courseLifecycle.lifecycleOf;
 
+  /** Ended, Inactive and Upcoming courses leave the week-based views (the facade's D43 rule). */
+  function inWeekViews(c: MockCourse): boolean {
+    const state = lifecycleOf(c).state;
+    return state !== "ended" && state !== "inactive" && state !== "upcoming";
+  }
+  /**
+   * The timeline every view shows, as the facade computes it: a course that is over, inactive
+   * or not started has no current week, default week or current modules.
+   */
+  function timelineOf(c: MockCourse): CourseTimeline {
+    if (inWeekViews(c)) return c.timeline;
+    return {
+      ...c.timeline,
+      current_week: null,
+      default_week: null,
+      current_module_ids: [],
+      confidence: "low",
+    };
+  }
   /**
    * The courses a study plan covers (the facade's plan scope): without a list, every visible,
    * active course; with one, the named courses that aren't hidden (a course that has ended is
@@ -401,7 +422,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     const aiMaterials = aiMaterialsState(c.course);
     return {
       course: c.course,
-      timeline: c.timeline,
+      timeline: timelineOf(c),
       lifecycle: lifecycleOf(c),
       ai_materials: aiMaterials,
       counts: {
@@ -834,11 +855,12 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         const t = now().getTime();
         const recent = (m: { published_at?: string | null }) =>
           !!m.published_at && Date.parse(m.published_at) >= t - 14 * DAY;
+        const timeline = timelineOf(c);
         return {
           course: c.course,
-          timeline: c.timeline,
+          timeline,
           lifecycle: lifecycleOf(c),
-          current_modules: c.modules.filter((m) => c.timeline.current_module_ids.includes(m.id)),
+          current_modules: c.modules.filter((m) => timeline.current_module_ids.includes(m.id)),
           recent_materials: c.materials
             .filter(recent)
             .sort((a, b) => Date.parse(b.published_at ?? "") - Date.parse(a.published_at ?? "")),
@@ -857,7 +879,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     weekMaterials: (courseId, week) =>
       respond(() => {
         const c = findCourse(courseId);
-        const shown = week ?? c.timeline.default_week ?? c.timeline.current_week ?? null;
+        const timeline = timelineOf(c);
+        const shown = week ?? timeline.default_week ?? timeline.current_week ?? null;
         if (shown === null) {
           const t = now().getTime();
           return {
@@ -866,13 +889,21 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             requested_week: week ?? null,
             ai_materials: aiMaterialsState(c.course),
             available_weeks: availableWeeks(c),
-            timeline: c.timeline,
+            timeline,
             modules: [],
             materials: c.materials.filter(
               (m) => !!m.published_at && Date.parse(m.published_at) >= t - 14 * DAY,
             ),
-            note: "Current week unknown — showing materials of the last 14 days.",
-            note_kind: "current_week_unknown",
+            // A course outside the week views has no current week to be unknown.
+            ...(inWeekViews(c)
+              ? {
+                  note: "Current week unknown — showing materials of the last 14 days.",
+                  note_kind: "current_week_unknown" as const,
+                }
+              : {
+                  note: "The course is over, inactive or hasn't started, so it has no current week; showing materials published in the last 14 days.",
+                  note_kind: "outside_term" as const,
+                }),
           };
         }
         return {
@@ -881,7 +912,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           requested_week: week ?? null,
           ai_materials: aiMaterialsState(c.course),
           available_weeks: availableWeeks(c),
-          timeline: c.timeline,
+          timeline,
           modules: c.modules.filter((m) => m.week_hint === shown),
           materials: c.materials.filter((m) => m.week_hint === shown),
           ...(c.materials.some((m) => m.week_hint === shown)
@@ -1148,6 +1179,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       await sleep(latency + 300);
       const at = now().toISOString();
       const channel = effectiveChannel();
+      // Stable has no release yet: every release so far is a test version, like this mock's.
+      if (channel === "stable") {
+        updates.lastCheck = { at, channel, outcome: { kind: "error", code: "manifest" } };
+        throw new ApiError("not_found", "Could not fetch a valid release JSON from the remote");
+      }
       if (offersUpdate) {
         updates.lastCheck = {
           at,

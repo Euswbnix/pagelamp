@@ -272,7 +272,8 @@ pub enum WeekNoteKind {
     /// No week requested and the current week could not be inferred — showing the materials
     /// of the last `RECENT_DAYS` days instead (`week` is None).
     CurrentWeekUnknown,
-    /// Today is before the term start or after the term end.
+    /// Today is before the term start or after the term end; or the course is over, inactive
+    /// or not started by its lifecycle, whatever its dates (`note` then says so).
     OutsideTerm,
     /// The week is known but has no modules or materials.
     NoMaterialsThisWeek,
@@ -368,8 +369,7 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
             term_data.remove(&course.id).unwrap_or_default(),
             &confirmed,
         )?;
-        let (resolved, timeline) = data.timeline(&course, at);
-        let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
+        let (_, timeline, lifecycle) = data.state(&course, at);
         let ai_materials = course.ai_materials();
         let course_deadlines: Vec<&Event> = upcoming
             .iter()
@@ -408,9 +408,10 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     Ok(summaries)
 }
 
-/// Timeline of one course: its resolved dates, phase and week (see `timeline`).
+/// Timeline of one course: its resolved dates, phase and week (see `timeline`), without a
+/// week when the course's lifecycle leaves the week-based views (`CourseData::state`).
 pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<CourseTimeline> {
-    Ok(CourseData::load(store, course)?.timeline(course, at).1)
+    Ok(CourseData::load(store, course)?.state(course, at).1)
 }
 
 /// "What's going on in this course right now". `course` is resolved with
@@ -424,8 +425,7 @@ pub fn course_overview(
 ) -> Result<CourseOverview> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (resolved, timeline) = data.timeline(&course, at);
-    let lifecycle = data.lifecycle(&course, &resolved, &timeline, at);
+    let (_, timeline, lifecycle) = data.state(&course, at);
     let current_modules = data
         .modules
         .iter()
@@ -484,7 +484,8 @@ pub fn course_overview(
 ///
 /// `course` is resolved with `include_hidden` like `course_overview`. When no week is given
 /// and the current week is unknown, the materials of the last `RECENT_DAYS` days are shown
-/// instead (`note_kind = CurrentWeekUnknown`).
+/// instead (`note_kind = CurrentWeekUnknown`; `OutsideTerm` for a course that is over, inactive
+/// or hasn't started, which has no current week).
 pub fn week_materials(
     store: &Store,
     course: &str,
@@ -494,7 +495,8 @@ pub fn week_materials(
 ) -> Result<WeekMaterials> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (resolved, timeline) = data.timeline(&course, at);
+    let (resolved, timeline, lifecycle) = data.state(&course, at);
+    let no_current_week = has_no_current_week(&timeline, &lifecycle);
     let content: Vec<&Material> = data
         .materials
         .iter()
@@ -544,6 +546,7 @@ pub fn week_materials(
             });
             let materials = recent.into_iter().map(|m| data.view(m)).collect();
             let note_kind = match timeline.phase {
+                _ if no_current_week => WeekNoteKind::OutsideTerm,
                 CoursePhase::ExamPeriod => WeekNoteKind::ExamPeriod,
                 CoursePhase::NotStarted | CoursePhase::Ended => WeekNoteKind::OutsideTerm,
                 _ => WeekNoteKind::CurrentWeekUnknown,
@@ -551,7 +554,11 @@ pub fn week_materials(
             (None, Vec::new(), materials, Some(note_kind))
         }
     };
-    let note = note_kind.map(|kind| week_note_text(kind, shown_week));
+    let note = note_kind.map(|kind| match kind {
+        // The real reason: such a course may be inside its term dates, or have none.
+        WeekNoteKind::OutsideTerm if no_current_week => no_current_week_note(),
+        _ => week_note_text(kind, shown_week),
+    });
     Ok(WeekMaterials {
         ai_materials: course.ai_materials(),
         week: shown_week,
@@ -564,6 +571,19 @@ pub fn week_materials(
         note_kind,
         course,
     })
+}
+
+/// Whether the course's lifecycle leaves it without a current week (`CourseData::state`): Ended,
+/// Inactive and Upcoming courses, with one exception. The student's own dates are the highest
+/// authority: when they put the course in a teaching or break week, it keeps that week even if
+/// its lifecycle is Upcoming, which only a session code naming a later term can make it (rule
+/// 5). Its lifecycle isn't changed here: that would regroup the course, which is a larger change
+/// than the week this rule is about.
+fn has_no_current_week(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> bool {
+    let own_dates_say_teaching = lifecycle.state == LifecycleState::Upcoming
+        && timeline.term.anchor == TermAnchorSource::StudentConfirmed
+        && matches!(timeline.phase, CoursePhase::Teaching | CoursePhase::Break);
+    !lifecycle.state.in_week_views() && !own_dates_say_teaching
 }
 
 /// Events with `when()` in [now - days_back, now + days_ahead], soonest first, optionally for
@@ -940,7 +960,31 @@ impl CourseData {
         }
     }
 
-    /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`).
+    /// The resolved dates, the timeline and the lifecycle, as every view shows them. A course
+    /// that is over, inactive or hasn't started (by its lifecycle) has no current week, no
+    /// default week and no current modules, whatever the week signals say (design §8.2, D43):
+    /// without usable dates, the week number of a material posted years ago would otherwise
+    /// stay "the current week". The signals stay in the evidence, and "I'm still taking this"
+    /// (a Current lifecycle) brings the week back.
+    pub(crate) fn state(
+        &self,
+        course: &Course,
+        at: AsOf,
+    ) -> (ResolvedTerm, CourseTimeline, CourseLifecycle) {
+        let (resolved, mut timeline) = self.timeline(course, at);
+        // The lifecycle reads the phase and the dates, never the week.
+        let lifecycle = self.lifecycle(course, &resolved, &timeline, at);
+        if has_no_current_week(&timeline, &lifecycle) {
+            timeline.current_week = None;
+            timeline.default_week = None;
+            timeline.current_module_ids.clear();
+            timeline.confidence = Confidence::Low;
+        }
+        (resolved, timeline, lifecycle)
+    }
+
+    /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`),
+    /// before the lifecycle is applied: views use `state`.
     pub(crate) fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
         let input = self.input(course, at);
         let resolved = resolve_term(&input);
@@ -1066,6 +1110,14 @@ fn truncate_chars(text: &str, max_chars: usize) -> (String, bool) {
         Some((byte, _)) => (text[..byte].to_string(), true),
         None => (text.to_string(), false),
     }
+}
+
+/// The note of a course whose lifecycle leaves it without a current week (`OutsideTerm`).
+fn no_current_week_note() -> String {
+    format!(
+        "The course is over, inactive or hasn't started, so it has no current week; showing \
+         materials published in the last {RECENT_DAYS} days."
+    )
 }
 
 /// English text for `WeekMaterials.note` (UIs localise from `note_kind`).

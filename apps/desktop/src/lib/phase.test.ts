@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type CalendarFields, calendarFields, resolution } from "@/api/mock/calendar";
+import { type CalendarFields, calendarFields, lifecycle, resolution } from "@/api/mock/calendar";
 import type { CourseTimeline } from "@/api/types";
-import { describePhase, formatShortDate } from "./phase";
+import { describePhase, formatShortDate, outsideWeekViews } from "./phase";
 
 function timeline(
   fields: Partial<CalendarFields> & Pick<CalendarFields, "phase">,
@@ -17,6 +17,69 @@ function timeline(
     ...calendarFields(fields),
   };
 }
+
+describe("describePhase with the lifecycle", () => {
+  // The facade clears the week of a course that is over, inactive or not started; without the
+  // lifecycle these would read "Week unknown" for a course PageLamp knows is over.
+  it("names an ended or inactive course by its lifecycle, whatever the phase", () => {
+    const concluded = timeline({ phase: "teaching" });
+    expect(describePhase(concluded)).toEqual({ kind: "unknown" });
+    expect(describePhase(concluded, lifecycle({ state: "ended" }))).toEqual({ kind: "ended" });
+    const oldSite = timeline({ phase: "unknown" });
+    expect(describePhase(oldSite, lifecycle({ state: "inactive" }))).toEqual({
+      kind: "inactive",
+    });
+    expect(
+      describePhase(timeline({ phase: "exam_period" }), lifecycle({ state: "ended" })),
+    ).toEqual({ kind: "ended" });
+  });
+
+  it("says when an upcoming course starts, from the lifecycle or the timeline", () => {
+    const unknown = timeline({ phase: "unknown" });
+    expect(
+      describePhase(unknown, lifecycle({ state: "upcoming", starts_on: "2027-01-01" })),
+    ).toEqual({ kind: "startsOn", date: "2027-01-01" });
+    expect(
+      describePhase(
+        timeline({ phase: "not_started", starts_on: "2027-01-11" }),
+        lifecycle({ state: "upcoming" }),
+      ),
+    ).toEqual({ kind: "startsOn", date: "2027-01-11" });
+    expect(describePhase(unknown, lifecycle({ state: "upcoming" }))).toEqual({
+      kind: "notStarted",
+    });
+  });
+
+  it("keeps a week for the lifecycles that have one", () => {
+    const week4 = timeline({ phase: "teaching", default_week: 4 }, 4);
+    const taught = { kind: "teaching", week: 4, confidence: "medium" };
+    for (const state of ["current", "finishing", "unknown"] as const) {
+      expect(describePhase(week4, lifecycle({ state }))).toEqual(taught);
+      expect(outsideWeekViews(week4, lifecycle({ state }))).toBe(false);
+    }
+    // The student's own dates put an upcoming course in a week: it keeps it.
+    expect(describePhase(week4, lifecycle({ state: "upcoming" }))).toEqual(taught);
+    expect(outsideWeekViews(week4, lifecycle({ state: "upcoming" }))).toBe(false);
+    expect(outsideWeekViews(timeline({ phase: "unknown" }), lifecycle({ state: "upcoming" }))).toBe(
+      true,
+    );
+    expect(outsideWeekViews(week4, lifecycle({ state: "ended" }))).toBe(true);
+    // A break by the student's own dates has no current week, and keeps the course's place
+    // too; a break by any other dates doesn't.
+    const upcoming = lifecycle({ state: "upcoming", starts_on: "2027-01-01" });
+    const ownBreak = timeline({
+      phase: "break",
+      default_week: 6,
+      current_break_kind: "reading_week",
+      term: resolution({ anchor: "student_confirmed" }),
+    });
+    expect(outsideWeekViews(ownBreak, upcoming)).toBe(false);
+    expect(describePhase(ownBreak, upcoming).kind).toBe("break");
+    const otherBreak = timeline({ phase: "break", term: resolution({ anchor: "lms_term" }) });
+    expect(outsideWeekViews(otherBreak, upcoming)).toBe(true);
+    expect(describePhase(otherBreak, upcoming)).toEqual({ kind: "startsOn", date: "2027-01-01" });
+  });
+});
 
 describe("describePhase", () => {
   it("names a teaching week with its confidence", () => {

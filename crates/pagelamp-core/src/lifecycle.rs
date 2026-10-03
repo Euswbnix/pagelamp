@@ -42,6 +42,15 @@ impl LifecycleState {
         }
     }
 
+    /// Whether the course takes part in the week-based views (design §8.2, D43): Ended,
+    /// Inactive and Upcoming courses don't, so they have no current week.
+    pub fn in_week_views(self) -> bool {
+        !matches!(
+            self,
+            LifecycleState::Ended | LifecycleState::Inactive | LifecycleState::Upcoming
+        )
+    }
+
     /// Ended and Inactive → Past; Upcoming → Upcoming; everything else → Current.
     pub fn group(self) -> CourseGroup {
         match self {

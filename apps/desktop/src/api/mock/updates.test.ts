@@ -15,6 +15,16 @@ describe("mock updates", () => {
     expect(await api.effectiveUpdateChannel()).toBe("stable");
   });
 
+  it("has no stable release yet: a check there finds none and is recorded", async () => {
+    const api = createMockApi({ ...fast, scenario: "update-available" });
+    await api.setUpdatePrefs({ auto_check: true, channel: "stable" });
+    await expect(api.checkForUpdate()).rejects.toMatchObject({ kind: "not_found" });
+    expect(await api.lastUpdateCheck()).toMatchObject({
+      channel: "stable",
+      outcome: { kind: "error", code: "manifest" },
+    });
+  });
+
   it("shows upgraders 'What's new' first and only then makes a check due", async () => {
     const api = createMockApi({ ...fast, scenario: "upgrader" });
     const first = await api.startupTasks();

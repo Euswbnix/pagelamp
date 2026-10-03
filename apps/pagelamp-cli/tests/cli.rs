@@ -646,6 +646,161 @@ fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
     }
 }
 
+/// A course that is over, inactive or not started shows its lifecycle, never a week
+/// (`courses`, `course timeline`): a site whose last file, two years ago, was "Week 12" isn't
+/// in week 12 now; a course Canvas marks concluded isn't in a week although its dates say so;
+/// a site named for a later term hasn't started.
+#[test]
+fn a_finished_course_shows_its_lifecycle_not_a_week() {
+    use chrono::{Datelike, Local, TimeDelta, Utc};
+    use pagelamp_core::model::{
+        CourseUpsert, LmsCourseInfo, MaterialKind, MaterialUpsert, SourceKind, SourceRecord,
+    };
+    use pagelamp_core::store::Store;
+
+    const SOURCE: &str = "canvas:lms.example.edu";
+    // Session codes ("… 20271") count only on this host.
+    const UOFT: &str = "canvas:q.utoronto.ca";
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let store = Store::open(&pagelamp_core::paths::db_path_in(&home)).unwrap();
+    for (id, host) in [(SOURCE, "lms.example.edu"), (UOFT, "q.utoronto.ca")] {
+        store
+            .upsert_source(&SourceRecord {
+                id: id.into(),
+                kind: SourceKind::Canvas,
+                label: host.into(),
+                config: json!({ "base_url": format!("https://{host}") }),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
+            })
+            .unwrap();
+    }
+    let today = Local::now().date_naive();
+    // Next year's winter session: its window (January to April) is always ahead.
+    let winter = format!("DEM210H5 S LEC0101 {}1", today.year() + 1);
+    // (source, external id, code, Canvas's facts, a week-numbered file and its age in days)
+    let courses = [
+        // No dates at all, nothing for two years.
+        (
+            SOURCE,
+            "909",
+            "OLD909",
+            LmsCourseInfo::default(),
+            "Week 12 notes",
+            700,
+        ),
+        // Its dates say teaching (week 3), but Canvas marks the course concluded.
+        (
+            SOURCE,
+            "777",
+            "DONE777",
+            LmsCourseInfo {
+                course_start: Some(today - TimeDelta::days(20)),
+                course_end: Some(today + TimeDelta::days(60)),
+                concluded: Some(true),
+                ..LmsCourseInfo::default()
+            },
+            "Week 3 notes",
+            3,
+        ),
+        // Named for a later session, with a file left from an earlier year.
+        (
+            UOFT,
+            "210",
+            winter.as_str(),
+            LmsCourseInfo::default(),
+            "Week 12 review",
+            200,
+        ),
+    ];
+    for (source, external, code, lms, title, days_ago) in courses {
+        let id = format!("{source}/course/{external}");
+        store
+            .upsert_course(&CourseUpsert {
+                id: id.clone(),
+                source_id: source.into(),
+                external_id: external.into(),
+                code: Some(code.into()),
+                name: format!("{code} Demo"),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+                lms,
+            })
+            .unwrap();
+        store
+            .upsert_material(&MaterialUpsert {
+                id: format!("{source}/file/{external}"),
+                course_id: id,
+                module_id: None,
+                kind: MaterialKind::File,
+                title: title.into(),
+                url: None,
+                local_path: None,
+                mime: None,
+                published_at: Some(Utc::now() - TimeDelta::days(days_ago)),
+                week_hint: pagelamp_core::timeline::parse_week_hint(title),
+            })
+            .unwrap();
+    }
+    drop(store);
+
+    let all = ok(&pagelamp(&home, &["courses", "--all"]));
+    let line = |code: &str| {
+        all.lines()
+            .find(|line| line.contains(code))
+            .unwrap_or_else(|| panic!("{code}: {all}"))
+    };
+    for (code, label) in [
+        ("OLD909", "inactive"),
+        ("DONE777", "ended"),
+        ("DEM210H5", "starts "),
+    ] {
+        assert!(line(code).contains(label), "{}", line(code));
+        assert!(!line(code).contains("week"), "{}", line(code));
+    }
+    let listed = json_out(&pagelamp(&home, &["--json", "courses", "--all"]));
+    let states: Vec<(&str, &str, &Value)> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["course"]["external_id"].as_str().unwrap(),
+                c["lifecycle"]["state"].as_str().unwrap(),
+                &c["timeline"]["current_week"],
+            )
+        })
+        .collect();
+    assert_eq!(
+        states,
+        [
+            ("210", "upcoming", &Value::Null),
+            ("777", "ended", &Value::Null),
+            ("909", "inactive", &Value::Null),
+        ]
+    );
+    let timeline = json_out(&pagelamp(
+        &home,
+        &["--json", "course", "timeline", "OLD909"],
+    ));
+    assert_eq!(timeline["timeline"]["current_week"], Value::Null);
+    assert_eq!(timeline["timeline"]["default_week"], Value::Null);
+    assert_eq!(timeline["lifecycle"]["suggest_removal"], true);
+    // The text names the lifecycle once, and says the course is suggested for removal.
+    let text = ok(&pagelamp(&home, &["course", "timeline", "OLD909"]));
+    assert!(text.contains("Now:       inactive (phase"), "{text}");
+    assert!(text.contains("Lifecycle: inactive ("), "{text}");
+    assert!(text.contains("— suggested for removal"), "{text}");
+    // Concluded while its dates still say teaching: "ended", not "ended · teaching".
+    let done = ok(&pagelamp(&home, &["course", "timeline", "DONE777"]));
+    assert!(done.contains("Now:       ended (phase"), "{done}");
+}
+
 /// Course weeks and lifecycle groups (calendar design §7.13): `courses` shows Current and
 /// Upcoming with a count of the past courses, `--past` / `--all` the rest, `course timeline`
 /// the dates used and why, `course keep` "I'm still taking this".

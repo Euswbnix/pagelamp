@@ -3681,7 +3681,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "pagelamp-app"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3708,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-canvas"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3729,7 +3729,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-cli"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3750,7 +3750,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-core"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3776,7 +3776,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-desktop"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "chrono",
  "libloading",
@@ -3801,7 +3801,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-extract"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "flate2",
  "html2text",
@@ -3819,7 +3819,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-ffi"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "chrono",
  "pagelamp-app",
@@ -3835,7 +3835,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-llm"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "jsonschema",
  "libc",
@@ -3860,7 +3860,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-local"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3884,7 +3884,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-mcp"
-version = "0.3.0-alpha.0.2"
+version = "0.3.0-alpha.0.3"
 dependencies = [
  "anyhow",
  "chrono",

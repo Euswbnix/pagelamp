@@ -44,7 +44,7 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
           <PolicyBadge policy={course.ai_policy} />
         </li>
         <li>
-          <WeekLabel timeline={timeline} />
+          <WeekLabel timeline={timeline} lifecycle={overview.lifecycle} />
         </li>
         {overview.lifecycle.group === "past" ? (
           <li>
