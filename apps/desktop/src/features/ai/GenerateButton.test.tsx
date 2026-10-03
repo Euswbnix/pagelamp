@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { EstimateRequest } from "@/api/ai";
 import { createMockApi } from "@/api/mock";
@@ -40,6 +41,53 @@ describe("≈ $x before Generate", () => {
     await user.click(screen.getByLabelText("Go over the budget this time"));
     await user.click(generate());
     expect(onGenerate).toHaveBeenCalledWith({ overrideBudget: true });
+  });
+
+  it("keeps the tick through a refetch of the same request with the same block", async () => {
+    const onGenerate = vi.fn();
+    const { user, api, queryClient } = renderWithProviders(
+      <GenerateButton request={explain(DEMO101)} onGenerate={onGenerate} />,
+      { scenario: "ai-budget" },
+    );
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    expect(await screen.findByText("This would go over this month's budget.")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Go over the budget this time"));
+    expect(generate()).not.toHaveAttribute("aria-disabled");
+    await act(async () => {
+      await queryClient.invalidateQueries();
+    });
+    expect(estimate).toHaveBeenCalled();
+    expect(screen.getByLabelText("Go over the budget this time")).toBeChecked();
+    expect(generate()).not.toHaveAttribute("aria-disabled");
+    await user.click(generate());
+    expect(onGenerate).toHaveBeenCalledWith({ overrideBudget: true });
+  });
+
+  it("waits for a changed request's own estimate before it runs", async () => {
+    const onGenerate = vi.fn();
+    function Switching() {
+      const [include, setInclude] = useState<string[]>([]);
+      return (
+        <>
+          <button type="button" onClick={() => setInclude(["no-such-material"])}>
+            Change
+          </button>
+          <GenerateButton
+            request={{ feature: "weekly_explanation", course: DEMO101, include }}
+            onGenerate={onGenerate}
+          />
+        </>
+      );
+    }
+    const { user } = renderWithProviders(<Switching />, { scenario: "ai-key" });
+    expect(await screen.findByText("≈ $0.07 at most")).toBeInTheDocument();
+    await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    // The previous request's "≈ $x" is still shown, but nothing runs from it.
+    expect(generate()).toHaveAttribute("aria-disabled", "true");
+    await user.click(generate());
+    expect(onGenerate).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
   });
 
   it("asks once before using a model with no price", async () => {

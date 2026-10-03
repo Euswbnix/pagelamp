@@ -2,30 +2,40 @@ import { FileText, TriangleAlert } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { EstimateRequest } from "@/api/ai";
 import { useApi } from "@/api/context";
 import type { Citation, WeeklyExplanation } from "@/api/explain";
 import { AiGeneratedLabel, aiGeneratedLabelText } from "@/components/common/AiGeneratedLabel";
 import { CopyButton } from "@/components/common/CopyButton";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { Button } from "@/components/ui/button";
+import { GenerateButton } from "@/features/ai/GenerateButton";
 import { inlineMarkdown } from "@/lib/inlineMarkdown";
 import { isHttpUrl } from "@/lib/url";
 
 /**
  * One explanation (design §5.2, §7): its sections, each paragraph with its citation chips (the
  * local file, else the LMS page), the check questions, what wasn't read and why, and the
- * AI-generated line, which Copy carries too.
+ * AI-generated line, which Copy carries too. Include writes again with the left-out materials the
+ * facade brings back, from "≈ $x" for exactly what it sends.
  */
 export function ExplanationView({
   explanation,
-  onIncludeLeftOut,
+  include,
   actions,
 }: {
   explanation: WeeklyExplanation;
   /** More controls beside Copy (Delete). */
   actions?: ReactNode;
-  /** Write again with the left-out materials included (only those the facade brings back). */
-  onIncludeLeftOut?: (materialIds: string[]) => void;
+  /**
+   * Write again with the left-out materials included: the request its "≈ $x" prices (what the
+   * run sends), and a key that changes with each run (its over-budget tick is per run).
+   */
+  include?: {
+    request: EstimateRequest;
+    resetKey: string;
+    onInclude: (options: { overrideBudget: boolean }) => void;
+  };
 }) {
   const { t, i18n } = useTranslation("explain");
   const { t: tai } = useTranslation("ai");
@@ -99,21 +109,22 @@ export function ExplanationView({
               </li>
             ))}
           </ul>
-          {onIncludeLeftOut && includable.length > 0 ? (
+          {include && includable.length > 0 ? (
             // Correcting a title that only looks like graded work; not a way to get answers.
             <div className="space-y-1.5">
-              <Button
-                type="button"
-                size="sm"
+              <GenerateButton
+                key={include.resetKey}
+                request={include.request}
                 variant="outline"
-                aria-describedby={includeNoteId}
-                onClick={() => onIncludeLeftOut(includable.map((m) => m.material_id))}
-              >
-                {/* Not a plural key: zh-CN has one form, and "it" needs no number. */}
-                {includable.length === 1
-                  ? t("result.includeOne")
-                  : t("result.includeSeveral", { count: includable.length })}
-              </Button>
+                describedBy={includeNoteId}
+                // Not a plural key: zh-CN has one form, and "it" needs no number.
+                label={
+                  includable.length === 1
+                    ? t("result.includeOne")
+                    : t("result.includeSeveral", { count: includable.length })
+                }
+                onGenerate={include.onInclude}
+              />
               <p id={includeNoteId} className="text-xs text-muted-foreground">
                 {t("result.includeNote")}
               </p>

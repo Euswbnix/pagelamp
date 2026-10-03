@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import {
@@ -73,8 +73,16 @@ export function GenerateButton({
 
   const data = estimate.data ?? null;
   const block = data?.would_block ?? null;
+  // The tick answers this block only: once an estimate arrives without it (the budget changed
+  // elsewhere), the tick goes, and a box that comes back isn't ticked already. A refetch keeps
+  // the estimate on screen, so the same block keeps the tick.
+  useEffect(() => {
+    if (block !== "budget_reached") setOverrideBudget(false);
+  }, [block]);
   const blocked = block !== null && !(block === "budget_reached" && overrideBudget);
-  const disabled = request === null || !data || blocked || estimate.isFetching;
+  // Not while the estimate on screen is still the previous request's; a refetch of the same
+  // request leaves the button as it is.
+  const disabled = request === null || !data || blocked || estimate.settling;
 
   return (
     <div className="space-y-2">

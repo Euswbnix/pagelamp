@@ -31,12 +31,15 @@ export type ExplainRunState =
 
 /**
  * One "Explain week N" run (design §5.2, §7): its GenEvents as state (no text arrives before
- * the end), Stop (cancel_generation), and the saved list refreshed after every run.
+ * the end), Stop (cancel_generation), and the saved list refreshed after every run. It also
+ * remembers what each of its runs included (`sentInclude`): Regenerate sends that again and
+ * Include adds to it. Explanations saved before don't say, so they count as none.
  */
 export function useExplanation(courseId: string) {
   const api = useApi();
   const client = useQueryClient();
   const [state, setState] = useState<ExplainRunState>({ phase: "idle" });
+  const [sent, setSent] = useState<ReadonlyMap<string, string[]>>(new Map());
   const runId = useRef<string | null>(null);
 
   // Leaving the page stops the run: nothing keeps writing (or costing) out of sight.
@@ -92,6 +95,7 @@ export function useExplanation(courseId: string) {
             }
           },
         );
+        setSent((before) => new Map(before).set(explanation.meta.generation_id, options.include));
         setState({ phase: "done", explanation });
       } catch (error) {
         setState(
@@ -115,7 +119,10 @@ export function useExplanation(courseId: string) {
     await api.cancelGeneration(id).catch(() => {});
   }, [api]);
 
-  return { state, start, stop };
+  /** What the run that wrote `generationId` included (none for one it didn't write). */
+  const sentInclude = useCallback((generationId: string) => sent.get(generationId) ?? [], [sent]);
+
+  return { state, start, stop, sentInclude };
 }
 
 /**
