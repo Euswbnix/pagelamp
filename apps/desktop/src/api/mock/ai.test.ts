@@ -139,6 +139,22 @@ describe("mock AI setup", () => {
     ).rejects.toMatchObject({ kind: "blocked", blocked: "budget_reached" });
   });
 
+  it("prices only what Include lifts: a material read anyway or not graded-looking adds nothing", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-key" });
+    const demo101 = await courseId(api, "DEMO101");
+    const { materials } = await api.weekMaterials(demo101.id);
+    const slides = materials.find((m) => m.title.startsWith("Week 4 slides"));
+    const practice = materials.find((m) => m.title.startsWith("Week 4 practice"));
+    if (!slides || !practice) throw new Error("week 4 has its slides and practice questions");
+    const plain = { feature: "weekly_explanation", course: demo101.id } as const;
+    const base = await api.estimateGeneration(plain);
+    for (const id of [slides.id, practice.id]) {
+      const priced = await api.estimateGeneration({ ...plain, include: [id] });
+      expect(priced.input_tokens).toBe(base.input_tokens);
+      expect(priced.micro_usd_upper).toBe(base.micro_usd_upper);
+    }
+  });
+
   it("blocks a run over the budget until the cap is raised or removed", async () => {
     const api = createMockApi({ ...fast, scenario: "ai-budget" });
     expect((await api.aiStatus()).budget.spent_micro_usd).toBe(4_960_000);
