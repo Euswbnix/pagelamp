@@ -1369,7 +1369,7 @@
 "settings.data.revealFailed" = "Couldn't open the folder";
 "settings.data.title" = "Your data";
 "settings.help.description" = "Something not working? These help find the cause. Nothing is sent anywhere unless you share it yourself.";
-"settings.help.fileReader.blocked" = "PageLamp's file reader couldn't start (often blocked by antivirus or Smart App Control). Until it can run, PDFs and other files over 5 MB aren't read.";
+"settings.help.fileReader.blocked" = "PageLamp's file reader couldn't start (often blocked by antivirus or Smart App Control). Until it can run, PDFs of any size and other files over 5 MB aren't read.";
 "settings.help.fileReader.kinds.bad_output" = "%1$@ gave unreadable output";
 "settings.help.fileReader.kinds.cpu_limit" = "%1$@ used too much processing time";
 "settings.help.fileReader.kinds.crashed" = "%1$@ crashed the reader";

@@ -49,7 +49,7 @@
     "issueHint": "Opens a new issue in your browser. Paste the diagnostic report there.",
     "helpLink": "Help and FAQ",
     "fileReader": {
-      "blocked": "{{product}}'s file reader couldn't start (often blocked by antivirus or Smart App Control). Until it can run, PDFs and other files over 5 MB aren't read.",
+      "blocked": "{{product}}'s file reader couldn't start (often blocked by antivirus or Smart App Control). Until it can run, PDFs of any size and other files over 5 MB aren't read.",
       "mismatch": "{{product}}'s file reader is from a different version. Reinstall {{product}} to fix it.",
       "unreadable": "Files {{product}} couldn't read: {{list}}",
       "separator": " · ",

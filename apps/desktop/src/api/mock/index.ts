@@ -973,7 +973,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       await sleep(latency + 300);
       const at = now().toISOString();
       const channel = effectiveChannel();
-      // Stable has no release yet: every release so far is a test version.
+      // Stable has no release yet: every release so far is a test version, like this mock's.
       if (channel === "stable") {
         updates.lastCheck = { at, channel, outcome: { kind: "error", code: "manifest" } };
         throw new ApiError("not_found", "Could not fetch a valid release JSON from the remote");

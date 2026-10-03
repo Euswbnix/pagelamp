@@ -281,7 +281,7 @@ describe("Settings → Updates", () => {
     const line = await within(section).findByText(
       "PageLamp didn't find a stable release with update information yet. Early versions for testing are on the Beta channel.",
     );
-    expect(line).not.toHaveClass("text-destructive");
+    expect(line.closest(".text-destructive")).toBeNull();
     expect(within(section).queryByText("Couldn't check for updates.")).toBeNull();
     expect(within(section).queryByText("We couldn't find that.")).toBeNull();
   });
