@@ -51,7 +51,10 @@ Rust workspace:
 
 ## 3. Hard rules (product/policy requirements)
 
-1. **Canvas access is GET-only**, from `pagelamp-canvas` only, triggered by sync only. The MCP server
+1. **Canvas access is GET-only**, from `pagelamp-canvas` only, triggered by sync only. A sync starts
+   only from the student's action in PageLamp or the CLI, or from the app's own timer under the
+   student's setting (automatic sync); no MCP tool call may cause, request or schedule a sync, and
+   nothing an MCP client can write is read by the timer's rule. The MCP server
    never touches the network (Canvas API Policy §3(i) restricts access to Canvas APIs through MCP
    servers that Instructure hasn't approved; our understanding is that this rules out Canvas access
    from the MCP server, so all Canvas access happens in sync).

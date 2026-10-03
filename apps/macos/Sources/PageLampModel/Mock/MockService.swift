@@ -193,7 +193,8 @@ public actor MockService: PageLampService {
                 studyPlans: db.studyPlan == nil ? 0 : 1
             ),
             lastSyncedAt: db.sources.compactMap(\.lastSyncedAt).max(),
-            syncInProgress: syncing || db.externalSyncRunning
+            syncInProgress: syncing || db.externalSyncRunning,
+            autoSync: .twiceDaily
         )
     }
 
@@ -369,7 +370,9 @@ public actor MockService: PageLampService {
         return StartupTasks(
             whatsNew: whatsNew,
             updateCheckDue: updates.prefs.autoCheck && updates.disclosureSeen && whatsNew == nil && checkIsOld,
-            updatedFrom: updates.upgraded ? updates.upgradedFrom : nil
+            updatedFrom: updates.upgraded ? updates.upgradedFrom : nil,
+            // The Mac app doesn't sync by itself yet: the mock never asks for it.
+            syncDue: SyncDue(unattended: false, attended: false)
         )
     }
 

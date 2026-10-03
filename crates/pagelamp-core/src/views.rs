@@ -16,6 +16,7 @@ use pagelamp_extract::FailureKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::auto_sync::{self, AutoSync};
 use crate::dates::{Tz, course_date, time_zone};
 use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
@@ -33,7 +34,8 @@ pub use digest::{DigestCourse, DigestPlan, WeeklyDigest, weekly_digest};
 pub const RECENT_DAYS: u32 = 14;
 /// Window for "upcoming" deadlines in overviews and course summaries.
 pub const UPCOMING_DAYS: u32 = 21;
-/// A source whose last successful sync is older than this is reported as stale.
+/// A source whose last successful sync is older than this is reported as stale, unless the
+/// automatic sync's interval asks for longer (`AutoSync::stale_after`).
 pub const STALE_AFTER_HOURS: i64 = 24;
 
 /// The moment a view is computed for.
@@ -328,8 +330,8 @@ pub struct AiSearchResults {
 pub struct SourceStatus {
     #[serde(flatten)]
     pub source: SourceRecord,
-    /// Never synced, last successful sync older than `STALE_AFTER_HOURS`, or the last sync
-    /// failed.
+    /// Never synced, last successful sync older than the stale threshold (24 hours, or more
+    /// when the automatic sync's interval asks for it), or the last sync failed.
     pub stale: bool,
 }
 
@@ -342,6 +344,11 @@ pub struct SyncStatus {
     pub last_synced_at: Option<Timestamp>,
     /// True when there are no sources or any source is stale / failing.
     pub stale: bool,
+    /// How often PageLamp syncs by itself while it runs (`Off`: only when the student starts
+    /// a sync).
+    pub auto_sync: AutoSync,
+    /// When an automatic sync last ended with every source it could sync synced.
+    pub last_automatic_sync_at: Option<Timestamp>,
 }
 
 /// Bounds for `read_material`'s `max_chars` (smaller/larger requests are clamped).
@@ -763,7 +770,8 @@ pub fn search_for_ai(
 
 /// Sources with freshness verdicts, store counts and the latest successful sync.
 pub fn sync_status(store: &Store, at: AsOf) -> Result<SyncStatus> {
-    let stale_before = at.now - TimeDelta::hours(STALE_AFTER_HOURS);
+    let auto_sync = auto_sync::auto_sync(store)?;
+    let stale_before = at.now - auto_sync.stale_after();
     let sources: Vec<SourceStatus> = store
         .list_sources()?
         .into_iter()
@@ -780,6 +788,8 @@ pub fn sync_status(store: &Store, at: AsOf) -> Result<SyncStatus> {
         sources,
         last_synced_at,
         stale,
+        auto_sync,
+        last_automatic_sync_at: auto_sync::attempts(store)?.last_ok_at,
     })
 }
 

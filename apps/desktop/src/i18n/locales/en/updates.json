@@ -63,6 +63,10 @@
       "course_weeks": {
         "title": "Weeks and phases for every course",
         "body": "Each course shows its current week and phase, and finished courses move to “Past courses”."
+      },
+      "auto_sync": {
+        "title": "{{product}} now syncs by itself",
+        "body": "While {{product}} is open, it refreshes your courses up to twice a day, so your AI app works from current data. You can change how often, or turn it off, in Settings."
       }
     }
   },

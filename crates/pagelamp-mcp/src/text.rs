@@ -31,11 +31,18 @@ pub fn instructions() -> String {
             course's material text: work from titles, structure and deadlines, and don't ask \
             them to paste the materials.\n\
          6. Answer in the student's language.\n\
-         Start with list_courses or course_overview. The data is only as fresh as the last \
-         sync: if sync_status says it is stale, tell the student to press Sync in the \
-         {PRODUCT_NAME} app (or run `{CLI_NAME} sync`)."
+         Start with list_courses or course_overview. The data is only as fresh as \
+         {PRODUCT_NAME}'s last sync; sync_status says when that was and whether {PRODUCT_NAME} \
+         refreshes it by itself while its app is open. {NEVER_SYNC_FOR_THE_STUDENT} If the data \
+         is old, tell the student, who can open {PRODUCT_NAME} or press Sync there."
     )
 }
+
+/// In every text about old data: an AI app that can run commands or open apps must not take
+/// "sync" as something to do. A sync starts only from the student's own action in PageLamp or
+/// the CLI, or from the app's timer under the student's setting (docs/ARCHITECTURE.md rule 1).
+pub const NEVER_SYNC_FOR_THE_STUDENT: &str = "You cannot sync and must not try: this server \
+    never syncs, and you must not run sync commands or open the app for the student.";
 
 /// Short reminder attached to course_overview, week_materials and read_material results
 /// (Claude Desktop ignores the server instructions).
@@ -91,9 +98,10 @@ pub const SAVE_STUDY_PLAN: &str = "Save a study plan the student agreed to (repl
 
 pub fn sync_status_description() -> String {
     format!(
-        "When each data source last synced and whether it failed. {PRODUCT_NAME} cannot sync \
-         by itself from here: if data is stale, ask the student to press Sync in the \
-         {PRODUCT_NAME} app (or run `{CLI_NAME} sync`)."
+        "When each data source last synced, whether one needs the student (state), and whether \
+         {PRODUCT_NAME} refreshes the data by itself while its app is open (auto_sync, \
+         last_automatic_sync_at). Calling this starts, requests or schedules nothing. \
+         {NEVER_SYNC_FOR_THE_STUDENT} If data is old, tell the student what the hint says."
     )
 }
 
@@ -134,8 +142,8 @@ pub fn withheld(turned_off: bool) -> String {
 pub fn not_initialised() -> String {
     format!(
         "{PRODUCT_NAME} has no course data yet. Ask the student to add a course folder or \
-         their Canvas account in the {PRODUCT_NAME} app and press Sync (or run \
-         `{CLI_NAME} sync` after adding one), then try again."
+         their Canvas account in the {PRODUCT_NAME} app and press Sync there, then try again. \
+         Don't add sources or run sync commands for them."
     )
 }
 
@@ -146,11 +154,62 @@ pub fn needs_database_update() -> String {
     )
 }
 
-pub fn stale_hint() -> String {
-    format!(
-        "Some data may be out of date. Ask the student to press Sync in the {PRODUCT_NAME} \
-         app (or run `{CLI_NAME} sync`); this server cannot sync by itself."
-    )
+/// How fresh a source's data is, worst first (`sync_status` gives one per source; the hint
+/// speaks for the worst).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Freshness {
+    /// Its last sync failed for a reason only the student can fix (an expired or revoked
+    /// token or link, a missing folder); PageLamp doesn't retry it by itself.
+    NeedsStudent,
+    /// It has never finished a sync.
+    NeverSynced,
+    /// Its last sync failed for another reason.
+    Failed,
+    /// Its last successful sync is older than the stale threshold.
+    Old,
+    Fresh,
+}
+
+/// What to tell the student about data that isn't fresh (`None` when it is). `auto_sync_on`:
+/// PageLamp refreshes by itself while its app is open.
+pub fn freshness_hint(worst: Freshness, auto_sync_on: bool) -> Option<String> {
+    let what = match worst {
+        Freshness::Fresh => return None,
+        Freshness::NeedsStudent => format!(
+            "A source needs the student's attention in {PRODUCT_NAME} (for example an expired \
+             Canvas token or a moved folder); until they fix it under Sources, its data stays \
+             as old as its last sync. Ask the student to open {PRODUCT_NAME}."
+        ),
+        Freshness::NeverSynced => format!(
+            "A source has never finished a sync, so its courses may be missing. Ask the student \
+             to open {PRODUCT_NAME} and press Sync."
+        ),
+        Freshness::Failed => format!(
+            "The last sync of a source failed, so its data is as old as its last successful \
+             sync. Ask the student to press Sync in the {PRODUCT_NAME} app."
+        ),
+        Freshness::Old if auto_sync_on => format!(
+            "Some data is old. {PRODUCT_NAME} refreshes by itself while it's open: ask the \
+             student to open {PRODUCT_NAME}."
+        ),
+        Freshness::Old => format!(
+            "Some data is old, and the student has turned automatic sync off. Ask the student \
+             to press Sync in the {PRODUCT_NAME} app."
+        ),
+    };
+    Some(format!("{what} {NEVER_SYNC_FOR_THE_STUDENT}"))
+}
+
+/// The one "data as of" line of a read tool: when the course's source last finished a sync.
+pub fn data_as_of(last_synced_at: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    match last_synced_at {
+        Some(at) => format!(
+            "Data as of {} (the last sync of this course's source).",
+            at.format("%Y-%m-%d %H:%M UTC")
+        ),
+        None => "This course's source has never finished a sync.".to_string(),
+    }
 }
 
 pub fn read_more(next_chunk: u32) -> String {

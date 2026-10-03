@@ -140,7 +140,8 @@ public struct FixtureService: ForwardingService {
         guard let syncInProgress else { return status }
         return AppStatus(
             version: status.version, dataDir: status.dataDir, dbPath: status.dbPath, sources: status.sources,
-            counts: status.counts, lastSyncedAt: status.lastSyncedAt, syncInProgress: syncInProgress
+            counts: status.counts, lastSyncedAt: status.lastSyncedAt, syncInProgress: syncInProgress,
+            autoSync: status.autoSync
         )
     }
 

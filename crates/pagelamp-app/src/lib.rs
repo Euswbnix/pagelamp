@@ -26,6 +26,7 @@
 
 mod activity;
 pub mod ai;
+mod auto_sync;
 mod course;
 pub mod diagnostics;
 mod lock;
@@ -47,8 +48,8 @@ pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
 pub use updates::{
-    Shell, StartupTasks, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs,
-    WhatsNew, WhatsNewTopic,
+    Shell, StartupTasks, SyncDue, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+    UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 
 use std::collections::BTreeMap;
@@ -57,6 +58,7 @@ use std::sync::Arc;
 
 use chrono::NaiveDate;
 use pagelamp_canvas::CanvasConfig;
+pub use pagelamp_core::auto_sync::{AutoSync, AutoSyncTrigger, SyncPrefs};
 use pagelamp_core::model::{
     AiMaterialsState, AiPolicy, Course, SearchHit, SourceErrorKind, SourceKind, SourceRecord,
     StoreCounts, StoredStudyPlan, TermSource, Timestamp,
@@ -228,6 +230,8 @@ pub struct AppStatus {
     pub last_synced_at: Option<Timestamp>,
     /// True while any process holds `sync.lock`.
     pub sync_in_progress: bool,
+    /// How often PageLamp syncs by itself while it runs.
+    pub auto_sync: AutoSync,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -248,6 +252,12 @@ pub struct SyncRequest {
     pub max_file_mb: u32,
     /// Only sync these courses (ids or codes); empty = all.
     pub only_courses: Vec<String>,
+    /// PageLamp started this sync by itself (`StartupTasks.sync_due`), not the student, and
+    /// why. Only `sync_all` takes it: the run happens only if it is still due, is counted as an
+    /// attempt first, leaves out the sources that need the student, never downloads files (the
+    /// fields above are ignored) and keeps a failure that may pass by itself quiet
+    /// (`auto_sync`). `None`: the student started it.
+    pub automatic: Option<AutoSyncTrigger>,
 }
 
 impl Default for SyncRequest {
@@ -256,6 +266,7 @@ impl Default for SyncRequest {
             download_files: false,
             max_file_mb: 50,
             only_courses: Vec::new(),
+            automatic: None,
         }
     }
 }
@@ -576,6 +587,7 @@ impl App {
             db_path: self.db_path().display().to_string(),
             last_synced_at: sources.iter().filter_map(|s| s.last_synced_at).max(),
             counts: store.counts()?,
+            auto_sync: pagelamp_core::auto_sync::auto_sync(&store)?,
             sources,
             sync_in_progress: lock::is_locked(&paths::sync_lock_path_in(&self.data_dir)),
         })
@@ -1205,6 +1217,10 @@ struct AppTypes {
     whats_new_topic: WhatsNewTopic,
     update_check_record: UpdateCheckRecord,
     update_check_outcome: UpdateCheckOutcome,
+    sync_prefs: SyncPrefs,
+    auto_sync: AutoSync,
+    auto_sync_trigger: AutoSyncTrigger,
+    sync_due: SyncDue,
     activity: Activity,
     activity_item: ActivityItem,
     activity_kind: ActivityKind,

@@ -29,9 +29,12 @@
 //! - `list_deadlines(course?, days_ahead? = 21, days_back? = 0)` → events for planning.
 //! - `get_announcements(course, days? = 14)` → wrapped announcement text.
 //! - `get_study_plan()` / `save_study_plan(plan)` — plan per `model::StudyPlan`.
-//! - `sync_status()` → sources with last_synced_at / last_error; warns if > 24h stale and
-//!   tells the model the student can press Sync in the app or run `pagelamp sync` (the
-//!   server itself cannot sync).
+//! - `sync_status()` → sources with last_synced_at / last_error and a state (fresh, old,
+//!   never synced, failed, needs the student), whether PageLamp refreshes by itself while its
+//!   app is open (`auto_sync`) and when it last did. The hint says what to tell the student.
+//!   The server never syncs, and no tool starts, requests or schedules a sync: the texts tell
+//!   an AI app that can run commands not to sync or open the app for the student. Nothing an
+//!   MCP client can write is read by the automatic sync's rule.
 //!
 //! AI ACCESS (docs/ARCHITECTURE.md §3 rule 8): material TEXT (read_material, snippets,
 //! announcement bodies, anything a prompt would inline) is only returned for courses whose
@@ -66,6 +69,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use chrono::{Local, NaiveDate, TimeDelta};
+use pagelamp_core::auto_sync::{self, AutoSync};
 use pagelamp_core::brand;
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
@@ -415,15 +419,15 @@ impl PageLampServer {
             .read(|store| {
                 let courses = views::list_courses(store, false, AsOf::now_local())?;
                 let status = views::sync_status(store, AsOf::now_local())?;
-                Ok((courses, status.stale, status.sources.is_empty()))
+                Ok((courses, sync_hint(&status), status.sources.is_empty()))
             })
             .await;
         match result {
             // Nothing to sync yet: "press Sync" would not help.
             Ok((_, _, true)) => error_result(text::not_initialised()),
-            Ok((courses, stale, false)) => json_result(&CourseList {
+            Ok((courses, hint, false)) => json_result(&CourseList {
                 courses: courses.iter().map(CourseLine::from).collect(),
-                hint: stale.then(text::stale_hint),
+                hint,
             }),
             Err(error) => error,
         }
@@ -442,6 +446,7 @@ impl PageLampServer {
                     cap_list(overview.recent_materials, MAX_LISTED_MATERIALS);
                 json_result(&Overview {
                     guidance: text::guidance(),
+                    data_as_of: text::data_as_of(overview.last_synced_at),
                     course: CourseInfo::new(&overview.course, &overview.timeline),
                     ai_materials: overview.ai_materials,
                     note: withheld_note(overview.ai_materials),
@@ -483,14 +488,23 @@ impl PageLampServer {
     async fn week_materials(&self, Parameters(args): Parameters<WeekArgs>) -> CallToolResult {
         let result = self
             .read(move |store| {
-                views::week_materials(store, &args.course, args.week, false, AsOf::now_local())
+                let week = views::week_materials(
+                    store,
+                    &args.course,
+                    args.week,
+                    false,
+                    AsOf::now_local(),
+                )?;
+                let synced = source_synced_at(store, &week.course.source_id)?;
+                Ok((week, synced))
             })
             .await;
         match result {
-            Ok(week) => {
+            Ok((week, synced)) => {
                 let (materials, omitted) = cap_list(week.materials, MAX_LISTED_MATERIALS);
                 json_result(&Week {
                     guidance: text::guidance(),
+                    data_as_of: text::data_as_of(synced),
                     course: CourseInfo::new(&week.course, &week.timeline),
                     ai_materials: week.ai_materials,
                     phase: week.timeline.phase,
@@ -523,14 +537,18 @@ impl PageLampServer {
             .clamp(MIN_READ_CHARS, OUTPUT_CAP as u32) as usize;
         let from = args.from_chunk.unwrap_or(0);
         let result = self
-            .read(move |store| views::read_material(store, &args.material_id, from, max_chars))
+            .read(move |store| {
+                let material = views::read_material(store, &args.material_id, from, max_chars)?;
+                let course = store.resolve_course_with(&material.material.course_id, true)?;
+                Ok((material, source_synced_at(store, &course.source_id)?))
+            })
             .await;
-        let material = match result {
-            Ok(material) => material,
+        let (material, synced) = match result {
+            Ok(read) => read,
             Err(error) => return error,
         };
         let view = &material.material;
-        let mut out = vec![text::guidance()];
+        let mut out = vec![text::guidance(), text::data_as_of(synced)];
         out.push(format!(
             "Material: \"{}\" ({}), course {}, {} part(s){}",
             format::escape_attr(&view.title),
@@ -767,6 +785,7 @@ impl PageLampServer {
         {
             Ok(status) if status.sources.is_empty() => error_result(text::not_initialised()),
             Ok(status) => json_result(&SyncInfo {
+                hint: sync_hint(&status),
                 sources: status
                     .sources
                     .iter()
@@ -780,12 +799,14 @@ impl PageLampServer {
                         last_error: s.source.last_error.as_deref().map(redact),
                         last_error_kind: s.source.last_error_kind,
                         stale: s.stale,
+                        state: freshness(s),
                     })
                     .collect(),
                 counts: status.counts,
                 last_synced_at: status.last_synced_at,
                 stale: status.stale,
-                hint: status.stale.then(text::stale_hint),
+                auto_sync: status.auto_sync,
+                last_automatic_sync_at: status.last_automatic_sync_at,
             }),
             Err(error) => error,
         }
@@ -1320,6 +1341,7 @@ struct AnnouncementInfo {
 #[derive(Serialize)]
 struct Overview {
     guidance: String,
+    data_as_of: String,
     course: CourseInfo,
     ai_materials: AiMaterialsState,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1337,6 +1359,7 @@ struct Overview {
 #[derive(Serialize)]
 struct Week {
     guidance: String,
+    data_as_of: String,
     course: CourseInfo,
     ai_materials: AiMaterialsState,
     phase: CoursePhase,
@@ -1372,8 +1395,47 @@ struct SyncInfo {
     counts: StoreCounts,
     last_synced_at: Option<Timestamp>,
     stale: bool,
+    /// How often PageLamp syncs by itself while its app is open ("off": only when the student
+    /// starts a sync). Read-only here: nothing an MCP client does changes it or starts a sync.
+    auto_sync: AutoSync,
+    /// When an automatic sync last ended with every source it could sync synced.
+    last_automatic_sync_at: Option<Timestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     hint: Option<String>,
+}
+
+/// How fresh one source's data is: what only the student can fix first.
+fn freshness(status: &views::SourceStatus) -> text::Freshness {
+    let source = &status.source;
+    if auto_sync::needs_the_student(source) {
+        text::Freshness::NeedsStudent
+    } else if source.last_synced_at.is_none() {
+        text::Freshness::NeverSynced
+    } else if source.last_error.is_some() {
+        text::Freshness::Failed
+    } else if status.stale {
+        text::Freshness::Old
+    } else {
+        text::Freshness::Fresh
+    }
+}
+
+/// What to tell the student when some data isn't fresh (the worst source decides).
+fn sync_hint(status: &views::SyncStatus) -> Option<String> {
+    let worst = status
+        .sources
+        .iter()
+        .map(freshness)
+        .min()
+        .unwrap_or(text::Freshness::Fresh);
+    text::freshness_hint(worst, status.auto_sync != AutoSync::Off)
+}
+
+/// When `source_id` last finished a sync (the "data as of" line of the read tools).
+fn source_synced_at(store: &Store, source_id: &str) -> pagelamp_core::Result<Option<Timestamp>> {
+    Ok(store
+        .get_source(source_id)?
+        .and_then(|source| source.last_synced_at))
 }
 
 #[derive(Serialize)]
@@ -1385,4 +1447,6 @@ struct SourceInfo {
     last_error: Option<String>,
     last_error_kind: Option<SourceErrorKind>,
     stale: bool,
+    /// fresh / old / never_synced / failed / needs_student (only the student can fix it).
+    state: text::Freshness,
 }

@@ -67,13 +67,19 @@ impl Fixture {
     }
 
     fn api(&self) -> Api<TokenTransport> {
+        self.api_for(false)
+    }
+
+    /// The API as an automatic sync (`true`) or a sync the student started uses it.
+    fn api_for(&self, automatic: bool) -> Api<TokenTransport> {
         let base = url::Url::parse(&self.canvas.uri()).unwrap();
         let retry = RetryPolicy {
             base_delay: Duration::from_millis(1),
             max_tries: 3,
+            max_retry_after: Duration::from_millis(20),
         };
         Api::new(
-            TokenTransport::new(base.clone(), TOKEN, retry).unwrap(),
+            TokenTransport::new(base.clone(), TOKEN, retry, automatic).unwrap(),
             base,
         )
     }
@@ -85,6 +91,7 @@ impl Fixture {
             files_dir: self.files.clone(),
             only_courses: Vec::new(),
             extractor: Default::default(),
+            automatic: false,
         }
     }
 
@@ -516,6 +523,61 @@ async fn throttling_backs_off_then_succeeds_or_gives_up() {
     );
 }
 
+/// A throttled answer's `Retry-After` is waited for, up to the policy's limit, and a sync
+/// PageLamp started by itself says so in its User-Agent.
+#[tokio::test]
+async fn retry_after_is_honoured_and_an_automatic_sync_names_itself() {
+    let f = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "3600"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
+    let started = std::time::Instant::now();
+    let user: crate::json::User = f
+        .api_for(true)
+        .get_one(crate::endpoint::Endpoint::UsersSelf)
+        .await
+        .unwrap();
+    assert_eq!(user.name.as_deref(), Some("Demo Student"));
+    // An hour was asked for: the policy's limit (20 ms here) is waited, not the 1 ms backoff.
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_millis(20) && waited < Duration::from_secs(10),
+        "{waited:?}"
+    );
+    let agents = |requests: Vec<Request>| -> Vec<String> {
+        requests
+            .iter()
+            .map(|r| r.headers["user-agent"].to_str().unwrap().to_string())
+            .collect()
+    };
+    let automatic = agents(f.canvas.received_requests().await.unwrap());
+    assert_eq!(automatic.len(), 2);
+    assert!(
+        automatic
+            .iter()
+            .all(|agent| agent.ends_with("(read-only; automatic sync)")),
+        "{automatic:?}"
+    );
+
+    // A sync the student started keeps the plain one.
+    let g = Fixture::new().await;
+    g.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
+    let _: crate::json::User = g
+        .api()
+        .get_one(crate::endpoint::Endpoint::UsersSelf)
+        .await
+        .unwrap();
+    let manual = agents(g.canvas.received_requests().await.unwrap());
+    assert!(manual[0].ends_with("(read-only)"), "{manual:?}");
+}
+
 #[tokio::test]
 async fn forbidden_areas_warn_and_prevent_pruning() {
     let f = Fixture::new().await;
@@ -682,6 +744,7 @@ fn sync_future_is_send() {
         files_dir: PathBuf::from("/demo"),
         only_courses: Vec::new(),
         extractor: Default::default(),
+        automatic: false,
     };
     assert_send(&crate::sync(
         Path::new("/demo/db"),

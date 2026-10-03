@@ -88,6 +88,8 @@ pub struct SyncOptions {
     pub only_courses: Vec<String>,
     /// How downloaded files are read (`ingest::Extractor`; one per sync).
     pub extractor: pagelamp_core::ingest::Extractor,
+    /// A sync PageLamp started by itself: one request at a time, and the User-Agent says so.
+    pub automatic: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -196,7 +198,7 @@ pub fn source_id(base_url: &str) -> String {
 
 /// Validate a token by calling `GET /api/v1/users/self`; returns the user's display name.
 pub async fn check_token(config: &CanvasConfig) -> Result<String, SourceError> {
-    let api = token_api(config, RetryPolicy::default())?;
+    let api = token_api(config, RetryPolicy::default(), false)?;
     let user: json::User = api
         .get_one(endpoint::Endpoint::UsersSelf)
         .await
@@ -243,7 +245,7 @@ pub async fn sync(
     options: &SyncOptions,
     progress: ProgressFn<'_>,
 ) -> Result<SyncReport, SourceError> {
-    let api = token_api(config, RetryPolicy::default())?;
+    let api = token_api(config, RetryPolicy::default(), options.automatic)?;
     // Same id the App stored when the source was added (from the normalised URL).
     let source_id = source_id(&normalize_base_url(&config.base_url)?);
     sync_with(&api, db_path, &source_id, options, progress).await
@@ -272,13 +274,14 @@ pub(crate) async fn sync_with<T: CanvasTransport>(
 fn token_api(
     config: &CanvasConfig,
     retry: RetryPolicy,
+    automatic: bool,
 ) -> Result<Api<TokenTransport>, SourceError> {
     let base = normalize_base_url(&config.base_url)?;
     let base = url::Url::parse(&base).map_err(|_| SourceError::other("invalid Canvas URL"))?;
     if config.token.trim().is_empty() {
         return Err(SourceError::auth("No Canvas access token was given."));
     }
-    let transport = TokenTransport::new(base.clone(), &config.token, retry)
+    let transport = TokenTransport::new(base.clone(), &config.token, retry, automatic)
         .map_err(|e| SourceError::auth(format!("The Canvas access token looks wrong ({e}).")))?;
     Ok(Api::new(transport, base))
 }

@@ -1582,6 +1582,8 @@
 "updates.whatsNew.done" = "知道了";
 "updates.whatsNew.since" = "自 %1$@ 版本以来";
 "updates.whatsNew.title" = "PageLamp 有哪些新变化";
+"updates.whatsNew.topics.auto_sync.body" = "PageLamp 打开期间，每天最多自动刷新两次课程数据，这样你的 AI 应用用到的是最新内容。可以在「设置」里调整频率，或者关掉。";
+"updates.whatsNew.topics.auto_sync.title" = "PageLamp 现在会自己同步了";
 "updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.update_check.body" = "它每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 PageLamp 的版本号；不会发送任何课程内容。安装任何更新之前一定会先问你。";

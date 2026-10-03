@@ -310,6 +310,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       version: MOCK_APP_VERSION,
       data_dir: db.dataDir,
       db_path: `${db.dataDir}/pagelamp.db`,
+      auto_sync: "twice_daily" as const,
       sources: db.sources,
       counts: {
         courses: visible.length,
@@ -885,6 +886,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             (last === null || last <= now().getTime() - DAY),
           updated_from:
             scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
+          // The mock never asks for an automatic sync.
+          sync_due: { unattended: false, attended: false },
         };
       }),
     acknowledgeWhatsNew: () =>

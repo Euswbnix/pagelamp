@@ -649,6 +649,52 @@ fn canvas_urls_with_a_path_are_rejected_before_any_network_use() {
 /// Course weeks and lifecycle groups (calendar design §7.13): `courses` shows Current and
 /// Upcoming with a count of the past courses, `--past` / `--all` the rest, `course timeline`
 /// the dates used and why, `course keep` "I'm still taking this".
+/// `status` says how often the app syncs by itself; `sync --auto` only changes that setting
+/// (it syncs nothing, and can't be combined with a sync's own options).
+#[test]
+fn sync_auto_sets_the_setting_and_status_shows_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let status = ok(&pagelamp(&home, &["status"]));
+    assert!(
+        status.contains("Automatic sync: twice a day, while the PageLamp app is open."),
+        "{status}"
+    );
+    assert_eq!(
+        json_out(&pagelamp(&home, &["--json", "status"]))["auto_sync"],
+        "twice_daily"
+    );
+
+    let off = ok(&pagelamp(&home, &["sync", "--auto", "off"]));
+    assert_eq!(
+        off.trim(),
+        "Automatic sync: off (PageLamp syncs only when you start a sync)."
+    );
+    assert!(
+        ok(&pagelamp(&home, &["status"])).contains("Automatic sync: off"),
+        "stored"
+    );
+    assert_eq!(
+        json_out(&pagelamp(&home, &["--json", "sync", "--auto", "daily"])),
+        json!("daily")
+    );
+    let daily = ok(&pagelamp(&home, &["status"]));
+    assert!(daily.contains("Automatic sync: once a day"), "{daily}");
+    assert_eq!(
+        json_out(&pagelamp(&home, &["--json", "status"]))["auto_sync"],
+        "daily"
+    );
+    // It is a setting, not a sync: no sync option goes with it, and other words are refused.
+    for args in [
+        &["sync", "--auto", "daily", "--download-files"][..],
+        &["sync", "--auto", "daily", "--source", "folder:x"],
+        &["sync", "--auto", "hourly"],
+        &["sync", "--if-due"],
+    ] {
+        assert!(!pagelamp(&home, args).status.success(), "{args:?}");
+    }
+}
+
 #[test]
 fn courses_are_grouped_by_lifecycle_with_timeline_and_keep() {
     use chrono::{Datelike, Local, TimeDelta};
