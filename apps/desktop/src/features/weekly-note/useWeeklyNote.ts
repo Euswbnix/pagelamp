@@ -109,13 +109,15 @@ export function useWeeklyNoteRun() {
         );
         end({ phase: "done", note, automatic }, null);
       } catch (error) {
-        const kind = toApiError(error).kind;
+        const { kind, blocked } = toApiError(error);
         if (kind === "cancelled") {
           end({ phase: "stopped", automatic });
         } else if (automatic) {
-          // Monday's note: no alert, no dialog. Not due any more is nothing to say; anything
-          // else leaves one line on the card.
-          end({ phase: "idle" }, kind === "invalid" ? undefined : error);
+          // Monday's note: no alert, no dialog. Not due any more, or nothing to write about (the
+          // week emptied as the run started; the card's Write already says so), is nothing to
+          // say; anything else leaves one line on the card.
+          const quiet = kind === "invalid" || blocked === "nothing_to_write";
+          end({ phase: "idle" }, quiet ? undefined : error);
         } else {
           end({ phase: "failed", error });
         }

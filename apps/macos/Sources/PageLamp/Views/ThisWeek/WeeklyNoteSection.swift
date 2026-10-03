@@ -16,6 +16,8 @@ import PageLampModel
 
 struct WeeklyNoteSection: View {
     let note: WeeklyNoteModel
+    /// This Week's minute (its `TimelineView`): what's due within 7 days, and the day, move with it.
+    let now: Date
 
     @Environment(AppModel.self) private var model
     @Environment(\.l10n) private var l10n
@@ -69,6 +71,12 @@ struct WeeklyNoteSection: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Task { await note.refresh() }
         }
+        // The week changed (a sync brought courses, a course was hidden, the plan changed): "≈ $x"
+        // and "nothing to write about" are read again. Only the estimate: it never changes these.
+        .onChange(of: noteWeekKey) {
+            guard !standIns else { return }
+            Task { await note.estimate.refresh() }
+        }
         .onChange(of: announcement) { _, text in
             if let text { AccessibilityNotification.Announcement(text).post() }
         }
@@ -85,6 +93,14 @@ struct WeeklyNoteSection: View {
         .onChange(of: note.estimate.failure) { _, failure in
             if let failure { AccessibilityNotification.Announcement(l10n.aiError(failure)).post() }
         }
+    }
+
+    /// What the note writes about at `now` (`WeeklyNoteModel.weekKey`).
+    private var noteWeekKey: [String] {
+        WeeklyNoteModel.weekKey(
+            courses: model.courses, deadlines: model.upcomingDeadlines, plan: model.studyPlan, now: now,
+            calendar: model.calendar
+        )
     }
 
     // MARK: - Write, or the run

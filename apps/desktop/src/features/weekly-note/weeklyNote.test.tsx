@@ -25,7 +25,54 @@ async function writeButton(name = "Write my weekly note") {
   return button;
 }
 
+/** OpenAI with a key, its disclosure read, chosen for the weekly note. */
+async function withNoteModel(api: ReturnType<typeof createMockApi>) {
+  const openai = { kind: "provider", provider_id: "openai" } as const;
+  await api.addModelProvider("openai", null, "sk-demo-key-7731");
+  const version = (await api.aiStatus()).backends[0]?.disclosure.version ?? 0;
+  await api.acknowledgeAiDisclosure(openai, version);
+  await api.setFeatureModel("weekly_note", {
+    backend: openai,
+    model: "gpt-5.4-mini",
+    effort: "lowest",
+  });
+}
+
 describe("Courses → Weekly note", () => {
+  it("says before the click when there's nothing to write about this week", async () => {
+    const api = mockApi({ scenario: "all-past", now: () => TUESDAY });
+    await withNoteModel(api);
+    const write = vi.spyOn(api, "writeWeeklyNote");
+    renderRoute("/courses", { api });
+    const region = await card();
+    expect(
+      await within(region).findByText(/nothing to write about this week yet/),
+    ).toBeInTheDocument();
+    expect(within(region).getByRole("button", { name: "Write my weekly note" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(within(region).queryByText(/Please check what you entered/)).toBeNull();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("reads its estimate again when the window comes back (a sync elsewhere filled the week)", async () => {
+    const api = mockApi({ scenario: "all-past", now: () => TUESDAY });
+    await withNoteModel(api);
+    renderRoute("/courses", { api });
+    const region = await card();
+    await within(region).findByText(/nothing to write about this week yet/);
+    // Elsewhere, a course counts as current again.
+    const [course] = await api.listCourses();
+    if (!course) throw new Error("all-past has courses");
+    await api.keepCourseCurrent(course.course.id, null);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(await writeButton()).toBeInTheDocument();
+    expect(within(region).queryByText(/nothing to write about this week yet/)).toBeNull();
+  });
+
   it("sits between the week's deadlines and the study plan", async () => {
     renderRoute("/courses", { api: mockApi({ now: () => TUESDAY }) });
     await card();
@@ -246,6 +293,20 @@ describe("Monday's note (the opt-in)", () => {
     expect(await writeButton()).toBeInTheDocument();
   });
 
+  it("stays silent when the week had nothing to write about as it started", async () => {
+    const api = mockApi({ scenario: "weekly-note-monday", now: () => MONDAY });
+    const write = vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("blocked", "There is nothing to write about this week.", {
+        blocked: "nothing_to_write",
+      }),
+    );
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(write).toHaveBeenCalled());
+    await writeButton();
+    expect(screen.queryByText(/^Monday's note wasn't prepared/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("stays silent when it isn't due any more", async () => {
     const api = mockApi({ scenario: "weekly-note-monday", now: () => MONDAY });
     vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
@@ -276,6 +337,18 @@ describe("Settings → Weekly note", () => {
     await user.click(toggle);
     expect(set).toHaveBeenCalledWith(true);
     await waitFor(() => expect(toggle).toBeChecked());
+  });
+
+  it('says the cost depends on the week, with no amount and no "no price", when there\'s nothing to write about', async () => {
+    const api = mockApi({ scenario: "all-past" });
+    await withNoteModel(api);
+    renderRoute("/settings", { api });
+    const toggle = await prepareSwitch();
+    await waitFor(() =>
+      expect(toggle).toHaveAccessibleDescription(
+        "With OpenAI · gpt-5.4-mini, counted toward your monthly budget (what it costs depends on the week).",
+      ),
+    );
   });
 
   it("isn't offered with the ChatGPT plan", async () => {

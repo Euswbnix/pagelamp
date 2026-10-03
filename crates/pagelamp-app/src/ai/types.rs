@@ -348,7 +348,7 @@ pub struct CostEstimate {
     pub repair_possible: bool,
     pub price_known: bool,
     /// What would stop the run if started now (over budget, price not acknowledged, a course
-    /// answered "not allowed", …).
+    /// answered "not allowed", a weekly note with nothing to write about, …).
     pub would_block: Option<BlockReason>,
 }
 

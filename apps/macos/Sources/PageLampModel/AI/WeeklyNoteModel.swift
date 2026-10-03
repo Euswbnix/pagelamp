@@ -10,8 +10,9 @@
 // the app runs, 60 s after a wake (the hour stops when the Mac goes to sleep and restarts at the
 // wake, so an hour that passed asleep never fires then), and on activation at most every 15
 // minutes or on a new day. Monday's run never
-// goes over the budget, never moves focus, and ends quietly: "not due any more" says nothing,
-// anything else leaves one line on the card.
+// goes over the budget, never moves focus, and ends quietly: "not due any more" and "nothing to
+// write about" (the week emptied as the run started; Write already says so) say nothing, anything
+// else leaves one line on the card.
 
 import AppKit
 import Foundation
@@ -205,8 +206,8 @@ public final class WeeklyNoteModel {
     }
 
     /// Monday's note, when the facade said it's due and nothing runs. It never goes over the
-    /// budget; "not due any more" (another app, or an earlier read, got there first) ends
-    /// silently, anything else leaves `automaticProblem`.
+    /// budget; "not due any more" (another app, or an earlier read, got there first) and
+    /// "nothing to write about" end silently, anything else leaves `automaticProblem`.
     private func writeMonday() async {
         guard !run.isRunning else { return }
         let options = WeeklyNoteOptions(uiLanguage: uiLanguage(), overrideBudget: false, automatic: true)
@@ -220,7 +221,8 @@ public final class WeeklyNoteModel {
             },
             onFailure: { [weak self] failure in
                 // A run of the data source before says nothing about this one.
-                if let self, self.generation == generation, failure.kind != .invalid { self.automaticProblem = failure }
+                let quiet = failure.kind == .invalid || failure.blocked == .nothingToWrite
+                if let self, self.generation == generation, !quiet { self.automaticProblem = failure }
                 return .idle
             }
         )
@@ -409,5 +411,27 @@ public final class WeeklyNoteModel {
         observers.forEach { $0.cancel() }
         observers = []
         mondayRun?.cancel()
+    }
+}
+
+extension WeeklyNoteModel {
+    /// What the note writes about, as This Week knows it at `now`: the day, the courses that show
+    /// and whether each is active, the deadlines due within the next 7 days and the plan. It
+    /// changes when one of those does (a sync, a hidden course, a deadline coming within 7 days,
+    /// midnight), not every minute, and the card reads "≈ $x" again then. `load()` and the estimate
+    /// never change it, so that can't loop.
+    nonisolated public static func weekKey(
+        courses: [CourseSummary], deadlines: [Deadline], plan: StoredStudyPlan?, now: Date, calendar: Calendar
+    ) -> [String] {
+        let day = calendar.startOfDay(for: now)
+        let horizon = now.addingTimeInterval(7 * 86_400)
+        let due = deadlines.filter { deadline in
+            guard let when = deadline.event.dueAt ?? deadline.event.startsAt else { return false }
+            return when >= now && when <= horizon
+        }
+        return ["day:\(day.timeIntervalSinceReferenceDate)"]
+            + courses.map { "\($0.course.id):\($0.course.hidden):\($0.lifecycle.isActive)" }
+            + due.map(\.event.id)
+            + [plan.map { "plan:\($0.id):\($0.plan.items.count)" } ?? "plan:none"]
     }
 }

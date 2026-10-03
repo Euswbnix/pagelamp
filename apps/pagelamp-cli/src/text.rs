@@ -194,6 +194,11 @@ pub fn block_reason(reason: BlockReason) -> String {
         BlockReason::BackendDisabledInThisBuild => {
             "this way of using a model isn't available in this build.".to_string()
         }
+        BlockReason::NothingToWrite => {
+            "there is nothing to write about this week: no active course, no deadline in the next \
+             7 days and no study plan item."
+                .to_string()
+        }
     }
 }
 

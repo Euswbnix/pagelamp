@@ -591,3 +591,50 @@ fn codex_status_starts_nothing_when_the_plan_is_not_offered() {
     assert!(text.contains("isn't available"), "{text}");
     assert_eq!(started(), "managed logout\n");
 }
+
+/// A week with nothing to write about: `ai estimate --feature weekly-note` and `note` both say
+/// so with the facade's code (exit 1), before anything is sent. The model is on this computer
+/// and is never asked.
+#[test]
+fn nothing_to_write_about_is_said_before_the_note_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    ok(&pagelamp(&home, &["ai"]));
+    Store::open(&home.join("pagelamp.db"))
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "local-llm".into(),
+            preset: "lm_studio".into(),
+            label: "Local LLM".into(),
+            wire: "openai_chat".into(),
+            base_url: "http://127.0.0.1:9/v1".into(),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    ok(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-note",
+            "local-llm",
+            "local-model",
+            "--yes",
+            "--no-check",
+        ],
+    ));
+    for args in [
+        &["ai", "estimate", "--feature", "weekly-note"][..],
+        &["note"],
+    ] {
+        let output = pagelamp(&home, args);
+        let err = failed(&output);
+        assert!(
+            err.contains("blocked: nothing_to_write — there is nothing to write about this week"),
+            "{args:?}: {err}"
+        );
+        assert!(stdout(&output).is_empty(), "{args:?}: no estimate line");
+    }
+}

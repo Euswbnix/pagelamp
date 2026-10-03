@@ -62,6 +62,10 @@ function CostLine() {
   if (!choice || !backend) return null;
   const names = { backend: backend.label, model: choice.model };
   if (backend.kind === "local") return t("settings.costLocal", names);
+  // A week with nothing to write about has no estimate: no amount, and no "no price" either.
+  if (estimate.data?.would_block === "nothing_to_write") {
+    return t("settings.costWeekEmpty", names);
+  }
   const upper = estimate.data?.micro_usd_upper ?? null;
   if (upper === null) {
     return estimate.data ? t("settings.costUnpriced", names) : null;

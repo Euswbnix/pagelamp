@@ -32,10 +32,13 @@ pub enum BlockReason {
     /// The weekly run cap of the ChatGPT-plan mode.
     WeeklyRunCapReached,
     BackendDisabledInThisBuild,
+    /// The weekly note has nothing to write about this week: no active course, no deadline in
+    /// the next 7 days and no study plan item.
+    NothingToWrite,
 }
 
 impl BlockReason {
-    pub const ALL: [BlockReason; 12] = [
+    pub const ALL: [BlockReason; 13] = [
         BlockReason::CoursePolicyProhibited,
         BlockReason::CourseAiTurnedOff,
         BlockReason::CourseHidden,
@@ -48,6 +51,7 @@ impl BlockReason {
         BlockReason::PriceUnknownNotAcknowledged,
         BlockReason::WeeklyRunCapReached,
         BlockReason::BackendDisabledInThisBuild,
+        BlockReason::NothingToWrite,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -64,6 +68,7 @@ impl BlockReason {
             BlockReason::PriceUnknownNotAcknowledged => "price_unknown_not_acknowledged",
             BlockReason::WeeklyRunCapReached => "weekly_run_cap_reached",
             BlockReason::BackendDisabledInThisBuild => "backend_disabled_in_this_build",
+            BlockReason::NothingToWrite => "nothing_to_write",
         }
     }
 }

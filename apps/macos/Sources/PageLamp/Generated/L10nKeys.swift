@@ -59,6 +59,7 @@ nonisolated enum L10nKeys {
         "ai.blocked.material_sharing_not_allowed",
         "ai.blocked.no_model_chosen",
         "ai.blocked.no_readable_materials",
+        "ai.blocked.nothing_to_write",
         "ai.blocked.price_unknown_not_acknowledged",
         "ai.blocked.weekly_run_cap_reached",
         "ai.budget.amount",
@@ -1954,6 +1955,7 @@ nonisolated enum L10nKeys {
         "weeklyNote.settings.costKey",
         "weeklyNote.settings.costLocal",
         "weeklyNote.settings.costUnpriced",
+        "weeklyNote.settings.costWeekEmpty",
         "weeklyNote.settings.paused",
         "weeklyNote.settings.prepare",
         "weeklyNote.settings.saveFailed",
@@ -2430,6 +2432,7 @@ nonisolated enum L10nKeys {
         "weeklyNote.settings.costKey": ["backend", "model", "cost"],
         "weeklyNote.settings.costLocal": ["backend", "model"],
         "weeklyNote.settings.costUnpriced": ["backend", "model"],
+        "weeklyNote.settings.costWeekEmpty": ["backend", "model"],
         "weeklyNote.weekOf": ["date"],
     ]
 }

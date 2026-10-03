@@ -163,9 +163,9 @@ extension MockService {
         return try estimate(request)
     }
 
-    /// The facade's estimate: nothing chosen, the course's own rules and a week with nothing to
-    /// read block with no amount; the other blocks keep it (only an acknowledgement or the budget
-    /// stops the run). An explanation's `include` is priced as its run sends it: only the
+    /// The facade's estimate: nothing chosen, the course's own rules, a week with nothing to read
+    /// and a weekly note with nothing to write about block with no amount; the other blocks keep
+    /// it (only an acknowledgement or the budget stops the run). An explanation's `include` is priced as its run sends it: only the
     /// graded-looking materials of that week it lifts and reads (an id naming nothing there, or a
     /// material read anyway, adds nothing).
     func estimate(_ request: EstimateRequest) throws(PageLampFailure) -> CostEstimate {
@@ -177,6 +177,8 @@ extension MockService {
         }
         guard let choice = db.features.ai.routing[request.aiFeature] else { return gateBlocked(.noModelChosen) }
         let record = try provider(of: choice.backend)
+        // The note's context comes next in the facade, before its other blocks.
+        if case .weeklyNote = request, noteWeek(at: now()).isEmpty { return gateBlocked(.nothingToWrite) }
         let info = (MockAiFixtures.models[record.preset] ?? []).first { $0.id == choice.model }
         let onDevice = info?.onDevice ?? false
         let courses: [String] = switch request {

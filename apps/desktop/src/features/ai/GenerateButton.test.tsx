@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EstimateRequest } from "@/api/ai";
+import { createMockApi } from "@/api/mock";
 import { DEMO101, DEMO205 } from "@/features/course/testing";
 import { renderWithProviders } from "@/test/render";
 import { GenerateButton } from "./GenerateButton";
@@ -71,6 +72,32 @@ describe("≈ $x before Generate", () => {
     expect(await screen.findByText(/Choose a model for this/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "AI models" })).toHaveAttribute("href", "/settings");
     expect(generate()).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("says there's nothing to write about, with no cost, no tokens and no Settings link", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-key" });
+    vi.spyOn(api, "estimateGeneration").mockResolvedValue({
+      micro_usd_upper: null,
+      input_tokens: 0,
+      max_output_tokens: 0,
+      reasoning_allowance: 0,
+      repair_possible: false,
+      price_known: false,
+      would_block: "nothing_to_write",
+    });
+    const onGenerate = vi.fn();
+    const { user } = renderWithProviders(
+      <GenerateButton request={{ feature: "weekly_note" }} onGenerate={onGenerate} />,
+      { api },
+    );
+    expect(await screen.findByText(/nothing to write about this week yet/)).toBeInTheDocument();
+    expect(generate()).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("link", { name: "AI models" })).toBeNull();
+    // No cost line at all: not even "No price for this model", which the blocked estimate's empty
+    // price would read as if the cost line showed for it.
+    expect(screen.queryByText(/No price for this model/)).toBeNull();
+    await user.click(generate());
+    expect(onGenerate).not.toHaveBeenCalled();
   });
 
   it("never sends a course whose materials may not be shared to a cloud model", async () => {

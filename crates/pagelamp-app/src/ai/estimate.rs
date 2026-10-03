@@ -1,11 +1,12 @@
 //! "≈ $x" before Generate, and everything that would stop the run (design §3.5, §4.1): the
-//! gate's own blocks (question (b) on a cloud backend among them), the disclosure, an unpriced
-//! model, and the monthly budget. Local and cheap: DB reads only, no network call.
+//! gate's own blocks (question (b) on a cloud backend among them, and a weekly note with
+//! nothing to write about), the disclosure, an unpriced model, and the monthly budget. Local
+//! and cheap: DB reads only, no network call.
 
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
     AnswerLanguage, ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote,
-    assemble_in, calendar_context, note_context, plan_context, week_context_including,
+    assemble_in, calendar_context, plan_context, week_context_including,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -50,7 +51,12 @@ impl App {
         };
         let (profile, destination) = self.estimate_profile(&choice)?;
         let codex = choice.backend == BackendRef::Codex;
-        let at = AsOf::now_local();
+        // The note's day is the reminder zone's, as in its run and `startup_tasks`.
+        let at = if feature == AiFeature::WeeklyNote {
+            self.local_as_of(chrono::Utc::now())
+        } else {
+            AsOf::now_local()
+        };
 
         // The gate decides what may be sent at all, question (b) included.
         let context = match request {
@@ -78,8 +84,9 @@ impl App {
                 explanation_budget(destination),
                 include,
             ),
+            // Nothing to write about blocks before the click, as the run refuses it.
             EstimateRequest::WeeklyNote | EstimateRequest::CourseCalendar { .. } => {
-                note_context(&store, at)
+                super::note::writable_note_context(&store, at)
             }
         };
         let context = match context {
