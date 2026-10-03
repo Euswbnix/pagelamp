@@ -35,10 +35,13 @@ pub enum BlockReason {
     /// The weekly note has nothing to write about this week: no active course, no deadline in
     /// the next 7 days and no study plan item.
     NothingToWrite,
+    /// A study plan has no course to plan for: no visible, active course, or every course the
+    /// request names is hidden.
+    NoCourseToPlan,
 }
 
 impl BlockReason {
-    pub const ALL: [BlockReason; 13] = [
+    pub const ALL: [BlockReason; 14] = [
         BlockReason::CoursePolicyProhibited,
         BlockReason::CourseAiTurnedOff,
         BlockReason::CourseHidden,
@@ -52,6 +55,7 @@ impl BlockReason {
         BlockReason::WeeklyRunCapReached,
         BlockReason::BackendDisabledInThisBuild,
         BlockReason::NothingToWrite,
+        BlockReason::NoCourseToPlan,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -69,6 +73,7 @@ impl BlockReason {
             BlockReason::WeeklyRunCapReached => "weekly_run_cap_reached",
             BlockReason::BackendDisabledInThisBuild => "backend_disabled_in_this_build",
             BlockReason::NothingToWrite => "nothing_to_write",
+            BlockReason::NoCourseToPlan => "no_course_to_plan",
         }
     }
 }

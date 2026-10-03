@@ -159,7 +159,8 @@ export type BlockReason =
   | "budget_reached"
   | "price_unknown_not_acknowledged"
   | "weekly_run_cap_reached"
-  | "nothing_to_write";
+  | "nothing_to_write"
+  | "no_course_to_plan";
 /**
  * What kind of failure happened; UIs branch on this, never on `message`.
  *
@@ -1846,7 +1847,8 @@ export interface CostEstimate {
   repair_possible: boolean;
   /**
    * What would stop the run if started now (over budget, price not acknowledged, a course
-   * answered "not allowed", a weekly note with nothing to write about, …).
+   * answered "not allowed", a weekly note with nothing to write about, a study plan with no
+   * course to plan for, …).
    */
   would_block?: BlockReason | null;
 }

@@ -85,6 +85,8 @@ export interface MockAiContext {
   findCourse: (courseId: string) => MockCourse;
   /** The weekly note has nothing to write about: its estimate blocks, as the facade's does. */
   noteHasNothingToWrite: () => boolean;
+  /** The courses a study plan covers; none: its estimate blocks, as the facade's does. */
+  planCourses: (wanted: readonly string[]) => MockCourse[];
 }
 
 /** D18: US$5 soft cap, warn at 80%. */
@@ -578,9 +580,12 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         would_block: reason,
       });
       if (!choice) return gateBlocked("no_model_chosen");
-      // The note's context comes next in the facade, before its other blocks.
+      // The note's and the plan's context come next in the facade, before their other blocks.
       if (req.feature === "weekly_note" && ctx.noteHasNothingToWrite()) {
         return gateBlocked("nothing_to_write");
+      }
+      if (req.feature === "study_plan" && ctx.planCourses(req.courses).length === 0) {
+        return gateBlocked("no_course_to_plan");
       }
       // A Codex routing stored while the plan was offered blocks instead of running.
       if (choice.backend.kind === "codex" && !codex.offered) {

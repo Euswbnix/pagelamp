@@ -19,7 +19,7 @@ struct AiTextTests {
             .coursePolicyProhibited, .courseAiTurnedOff, .courseHidden, .noReadableMaterials,
             .materialSharingNotAllowed, .codingPlanKey, .disclosureNotAcknowledged, .noModelChosen,
             .budgetReached, .priceUnknownNotAcknowledged, .weeklyRunCapReached, .backendDisabledInThisBuild,
-            .nothingToWrite,
+            .nothingToWrite, .noCourseToPlan,
         ]
         let modelErrors: [ModelErrorKind] = [
             .notSignedIn, .authRejected, .billingOrQuota, .usageLimit, .rateLimited, .overloaded, .invalidRequest,
@@ -67,6 +67,9 @@ struct AiTextTests {
         let nothing = PageLampFailure(kind: .blocked, message: "nothing", blocked: .nothingToWrite)
         #expect(en.aiError(nothing).hasPrefix("There's nothing to write about this week yet"))
         #expect(zh.aiError(nothing).hasPrefix("这周还没有可写的内容"))
+        let noCourse = PageLampFailure(kind: .blocked, message: "no course", blocked: .noCourseToPlan)
+        #expect(en.aiError(noCourse) == "There's no active course to plan for.")
+        #expect(zh.aiError(noCourse) == "没有可以规划的进行中课程。")
         // A refusal without a reason, and a model failure without a kind: the failure's kind.
         let unnamed = PageLampFailure(kind: .blocked, message: "blocked")
         #expect(en.aiError(unnamed) == unnamed.localizedDescription(in: en))

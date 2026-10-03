@@ -258,6 +258,19 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   const lifecycleOf = courseLifecycle.lifecycleOf;
 
   /**
+   * The courses a study plan covers (the facade's plan scope): without a list, every visible,
+   * active course; with one, the named courses that aren't hidden (a course that has ended is
+   * still planned; an unknown one isn't found). None: blocked with no_course_to_plan.
+   */
+  function planCourses(wanted: readonly string[]): MockCourse[] {
+    if (wanted.length === 0) {
+      return db.courses.filter((c) => !c.course.hidden && lifecycleOf(c).is_active);
+    }
+    const named = wanted.map(findCourse).filter((c) => !c.course.hidden);
+    return named.filter((c, i) => named.findIndex((o) => o.course.id === c.course.id) === i);
+  }
+
+  /**
    * The weekly note has nothing to write about (the facade's writable_note_context): no visible
    * active course, no deadline in the next 7 days, and no plan item of the last 7 days or today
    * (a hidden or removed course's left out; one of a course the mock doesn't know counts).
@@ -325,7 +338,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     activity,
     gate: (courses, horizonDays, overrideBudget) =>
       aiGate({ feature: "study_plan", courses, horizon_days: horizonDays }, overrideBudget),
-    findCourse,
+    planCourses,
   });
 
   // Weekly explanations (explain.ts).
@@ -610,6 +623,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     courses: () => db.courses,
     findCourse,
     noteHasNothingToWrite,
+    planCourses,
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */

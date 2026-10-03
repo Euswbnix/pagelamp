@@ -6,13 +6,16 @@
 
 use std::sync::Arc;
 
+use chrono::{Local, TimeDelta};
 use pagelamp_app::ai::{
     BackendRef, CHATGPT_PLAN_OFFERED, CodexLoginMethod, CodexSource, EstimateRequest, ModelChoice,
 };
 use pagelamp_app::{App, AppError, AppErrorKind};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort};
+use pagelamp_core::model::{CourseUpsert, SourceKind, SourceRecord};
 use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_core::store::Store;
+use serde_json::json;
 use std::collections::BTreeMap;
 
 /// With the switch off, whatever `CHATGPT_PLAN_OFFERED` says (debug builds; the release build
@@ -21,6 +24,36 @@ fn app_in(dir: &std::path::Path) -> App {
     let app = App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap();
     app.set_chatgpt_plan_offered_for_tests(false);
     app
+}
+
+/// One course teaching now: something for a study plan to cover.
+fn add_active_course(store: &Store) {
+    let today = Local::now().date_naive();
+    store
+        .upsert_source(&SourceRecord {
+            id: "canvas:lms.example.edu".into(),
+            kind: SourceKind::Canvas,
+            label: "lms.example.edu".into(),
+            config: json!({ "base_url": "https://lms.example.edu" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: "canvas:lms.example.edu/course/101".into(),
+            source_id: "canvas:lms.example.edu".into(),
+            external_id: "101".into(),
+            code: Some("DEMO101".into()),
+            name: "Demo course 101".into(),
+            term_start: Some(today - TimeDelta::days(14)),
+            term_end: Some(today + TimeDelta::days(90)),
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
 }
 
 fn codex_choice() -> ModelChoice {
@@ -111,10 +144,8 @@ async fn a_stored_codex_routing_blocks_and_clean_up_still_works() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_in(temp.path());
     let routing = BTreeMap::from([(AiFeature::StudyPlan, codex_choice())]);
-    Store::open(&app.db_path())
-        .unwrap()
-        .set_setting("ai.routing", &routing)
-        .unwrap();
+    let store = Store::open(&app.db_path()).unwrap();
+    store.set_setting("ai.routing", &routing).unwrap();
 
     let status = app.ai_status().unwrap();
     assert!(!status.chatgpt_plan_offered);
@@ -125,16 +156,21 @@ async fn a_stored_codex_routing_blocks_and_clean_up_still_works() {
             .all(|b| b.backend != BackendRef::Codex),
         "no ChatGPT card"
     );
-    let estimate = app
-        .estimate_generation(&EstimateRequest::StudyPlan {
-            horizon_days: None,
-            courses: Vec::new(),
-        })
-        .unwrap();
+    let plan = EstimateRequest::StudyPlan {
+        horizon_days: None,
+        courses: Vec::new(),
+    };
+    // What the plan covers is checked first, as for every feature: with no course, that's it.
     assert_eq!(
-        estimate.would_block,
+        app.estimate_generation(&plan).unwrap().would_block,
+        Some(BlockReason::NoCourseToPlan)
+    );
+    add_active_course(&store);
+    assert_eq!(
+        app.estimate_generation(&plan).unwrap().would_block,
         Some(BlockReason::BackendDisabledInThisBuild)
     );
+    drop(store);
 
     // Clean-up: the Codex this app may have installed, and everything AI.
     app.remove_codex().unwrap();
