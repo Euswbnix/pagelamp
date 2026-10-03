@@ -5,6 +5,8 @@
 //!   `activity()` lists it), gated like every run (the plan context is structure only, for every
 //!   visible course whatever its AI state), then scheduled. Tasks that would produce graded work
 //!   are left out whatever the model said. The result is a draft (a `draft` generation row).
+//!   No course to plan for (no visible, active course, or only hidden ones named) is
+//!   `Blocked(NoCourseToPlan)`, which `estimate_generation` already says before the click.
 //! - `accept_study_plan`: the student keeps the draft; it is saved as the latest plan with
 //!   `origin = pagelamp`.
 //! - `set_study_plan_item_done` ticks an item (the weekly progress reminder counts it).
@@ -13,13 +15,15 @@ use std::collections::HashSet;
 
 use chrono::{SubsecRound, Utc};
 use pagelamp_core::ai::{AiFeature, BlockReason};
-use pagelamp_core::ai_gate::{ContextSummary, GateError, PlanScope, StudentNote, plan_context};
+use pagelamp_core::ai_gate::{
+    ContextSummary, GateError, GatedContext, PlanScope, StudentNote, plan_context,
+};
 use pagelamp_core::model::{PlanOrigin, StoredStudyPlan, StudyPlan};
 use pagelamp_core::planner::{
     self, MAX_HORIZON_DAYS, PlanTasks, PlannerInput, UnscheduledTask, without_graded_work,
 };
 use pagelamp_core::reminders::DayOfWeek;
-use pagelamp_core::store::{GenerationRecord, GenerationStatus};
+use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
 use pagelamp_core::term::AiLabel;
 use pagelamp_core::views::AsOf;
 use schemars::JsonSchema;
@@ -119,9 +123,9 @@ pub enum PlanWarningCode {
 }
 
 impl App {
-    /// Write a study plan draft (see the module docs). `Invalid` for a request out of range or
-    /// with no active course to plan; `Blocked` for what stops a run (no model chosen, the
-    /// disclosure, the budget…); `Busy` while a run with `generation_id` goes on.
+    /// Write a study plan draft (see the module docs). `Invalid` for a request out of range;
+    /// `Blocked` for what stops a run (no model chosen, no course to plan for, the disclosure,
+    /// the budget…); `Busy` while a run with `generation_id` goes on.
     pub async fn generate_study_plan(
         &self,
         request: StudyPlanRequest,
@@ -221,17 +225,11 @@ impl App {
                 courses: request.courses.clone(),
                 horizon_days: horizon,
             };
-            let context = match plan_context(&store, &scope, at) {
+            let context = match writable_plan_context(&store, &scope, at) {
                 Ok(context) => context,
                 Err(GateError::Blocked(reason)) => return Err(blocked(reason)),
                 Err(GateError::Store(err)) => return Err(err.into()),
             };
-            if context.summary().courses.is_empty() {
-                return Err(AppError::new(
-                    AppErrorKind::Invalid,
-                    "There is no active course to plan for.",
-                ));
-            }
             let note = request.note.as_deref().and_then(StudentNote::new);
             let (prompt, output, max_output) =
                 request_shape_with_note(AiFeature::StudyPlan, &context, note.as_ref());
@@ -427,11 +425,26 @@ fn checked(request: &StudyPlanRequest) -> Result<(u32, u32)> {
     Ok((horizon, hours))
 }
 
+/// The plan's context, or `Blocked(NoCourseToPlan)` when it has no course to plan for: the one
+/// rule the estimate and a run share.
+pub(crate) fn writable_plan_context(
+    store: &Store,
+    scope: &PlanScope,
+    at: AsOf,
+) -> std::result::Result<GatedContext, GateError> {
+    let context = plan_context(store, scope, at)?;
+    if context.summary().courses.is_empty() {
+        return Err(GateError::Blocked(BlockReason::NoCourseToPlan));
+    }
+    Ok(context)
+}
+
 fn blocked(reason: BlockReason) -> AppError {
     AppError::blocked(
         reason,
         match reason {
             BlockReason::NoModelChosen => "Choose a model for study plans first.",
+            BlockReason::NoCourseToPlan => "There is no active course to plan for.",
             _ => "PageLamp can't start this study plan run.",
         },
     )

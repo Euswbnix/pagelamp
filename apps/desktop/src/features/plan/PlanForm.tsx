@@ -54,7 +54,7 @@ function PlanFields({
 }) {
   const { t, i18n } = useTranslation("plan");
   const courses = useCourses();
-  // Only active courses: the facade plans nothing else (Invalid "no active course").
+  // Only active courses, the facade's own scope (none to plan for: blocked no_course_to_plan).
   const listed = activeCourses(courses.data ?? []);
   const [horizon, setHorizon] = useState(
     String(initial?.horizon_days ?? limits.default_horizon_days),

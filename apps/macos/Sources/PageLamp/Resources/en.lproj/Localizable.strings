@@ -45,6 +45,7 @@
 "ai.blocked.course_policy_prohibited" = "This course's rules say no AI, so PageLamp won't send anything from it.";
 "ai.blocked.disclosure_not_acknowledged" = "Read what this service receives, then turn it on.";
 "ai.blocked.material_sharing_not_allowed" = "You said this course's materials may not be shared with AI services, so nothing was sent.";
+"ai.blocked.no_course_to_plan" = "There's no active course to plan for.";
 "ai.blocked.no_model_chosen" = "Choose a model for this in Settings → AI models.";
 "ai.blocked.no_readable_materials" = "No materials PageLamp can read.";
 "ai.blocked.nothing_to_write" = "There's nothing to write about this week yet: no active course, no deadline in the next 7 days and no study plan item.";

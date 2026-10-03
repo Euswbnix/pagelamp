@@ -5,6 +5,7 @@ import { createMockApi } from ".";
 const NOW = new Date(2026, 8, 28, 10, 0); // Monday 2026-09-28
 // "proposals" routes AI to an API key, so a plan can be written.
 const fast = { latencyMs: 0, syncStepMs: 0, now: () => NOW, scenario: "proposals" as const };
+const openai = { kind: "provider", provider_id: "openai" } as const;
 const events = () => {
   const list: string[] = [];
   return { list, onEvent: (e: { type: string }) => list.push(e.type) };
@@ -111,5 +112,44 @@ describe("mock study plans", () => {
     await expect(api.generateStudyPlan({}, "g", () => {})).rejects.toMatchObject({
       kind: "blocked",
     });
+  });
+
+  it("blocks no course to plan for before the click, after no model chosen, like the facade", async () => {
+    // Only past courses: none is active.
+    const api = createMockApi({ ...fast, scenario: "all-past" });
+    const estimate = (courses: string[]) =>
+      api.estimateGeneration({ feature: "study_plan", courses, horizon_days: 14 });
+    expect((await estimate([])).would_block).toBe("no_model_chosen");
+    await api.addModelProvider("openai", null, "sk-demo-key-7731");
+    const version = (await api.aiStatus()).backends[0]?.disclosure.version ?? 0;
+    await api.acknowledgeAiDisclosure(openai, version);
+    await api.setFeatureModel("study_plan", {
+      backend: openai,
+      model: "gpt-5.4-mini",
+      effort: "lowest",
+    });
+    expect(await estimate([])).toMatchObject({
+      would_block: "no_course_to_plan",
+      micro_usd_upper: null,
+      input_tokens: 0,
+    });
+    await expect(api.generateStudyPlan({}, "g-1", () => {})).rejects.toMatchObject({
+      kind: "blocked",
+      blocked: "no_course_to_plan",
+    } satisfies Partial<ApiError>);
+    // A course named on purpose is planned although it has ended; hidden, it's left out.
+    const [ended] = await api.listCourses();
+    const id = ended?.course.id ?? "";
+    expect((await estimate([id])).would_block).toBeNull();
+    const draft = await api.generateStudyPlan({ courses: [id] }, "g-2", () => {});
+    expect(draft.meta.context?.courses.map((c) => c.course_id)).toEqual([id]);
+    await api.setCourseHidden(id, true);
+    expect((await estimate([id])).would_block).toBe("no_course_to_plan");
+    await expect(api.generateStudyPlan({ courses: [id] }, "g-3", () => {})).rejects.toMatchObject({
+      kind: "blocked",
+      blocked: "no_course_to_plan",
+    } satisfies Partial<ApiError>);
+    await expect(estimate(["no-such-course"])).rejects.toMatchObject({ kind: "not_found" });
+    expect((await api.activity()).items).toEqual([]);
   });
 });

@@ -43,6 +43,25 @@ extension MockService {
         return stored
     }
 
+    /// The courses a study plan covers (the facade's plan scope): without a list, every visible,
+    /// active course; with one, the named courses that aren't hidden (a course that has ended is
+    /// still planned; an unknown one isn't found). None: blocked with `noCourseToPlan`.
+    func planCourses(_ wanted: [String]) throws(PageLampFailure) -> [MockCourse] {
+        guard !wanted.isEmpty else {
+            return db.courses.filter {
+                !$0.course.hidden && MockCalendar.lifecycle($0.timeline, keptCurrentUntil: $0.keptCurrentUntil).isActive
+            }
+        }
+        var chosen: [MockCourse] = []
+        for reference in wanted {
+            let course = db.courses[try courseIndex(reference)]
+            if !course.course.hidden, !chosen.contains(where: { $0.course.id == course.course.id }) {
+                chosen.append(course)
+            }
+        }
+        return chosen
+    }
+
     private func writePlan(
         _ request: StudyPlanRequest, generationId: String, observer: any GenObserver
     ) async throws(PageLampFailure) -> GeneratedStudyPlan {
@@ -59,22 +78,11 @@ extension MockService {
         guard daysOff.count < 7 else {
             throw PageLampFailure(kind: .invalid, message: "Leave at least one study day.")
         }
-        var chosen: [MockCourse] = []
-        if request.courses.isEmpty {
-            chosen = db.courses.filter { !$0.course.hidden }
-        } else {
-            for reference in request.courses {
-                chosen.append(db.courses[try courseIndex(reference)])
-            }
-        }
-        let courses = chosen.filter { !$0.materials.isEmpty || !$0.deadlines.isEmpty }
-        guard !courses.isEmpty else {
-            throw PageLampFailure(kind: .invalid, message: "There is no active course to plan.")
-        }
-
+        // The gate says `noCourseToPlan` (after `noModelChosen`) for an empty scope, as the facade does.
         let run = try aiRun(
-            .studyPlan(horizonDays: horizon, courses: courses.map(\.course.id)), overrideBudget: request.overrideBudget
+            .studyPlan(horizonDays: horizon, courses: request.courses), overrideBudget: request.overrideBudget
         )
+        let courses = try planCourses(request.courses)
         observer.onEvent(event: .started(
             generationId: generationId, backendLabel: run.backendLabel, model: run.model, onDevice: run.onDevice
         ))

@@ -52,9 +52,13 @@ export function createPlanMock(deps: {
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   step: () => Promise<void>;
   activity: MockActivity;
-  /** The AI gate for a study plan: who the run goes to, or ApiError `blocked`. */
+  /**
+   * The AI gate for a study plan with the request's courses: who the run goes to, or ApiError
+   * `blocked` (`no_course_to_plan` after `no_model_chosen`, as the facade).
+   */
   gate: (courses: string[], horizonDays: number, overrideBudget: boolean) => Promise<MockAiRun>;
-  findCourse: (courseId: string) => MockCourse;
+  /** The courses the plan covers (`planCourses` in the mock's index). */
+  planCourses: (wanted: readonly string[]) => MockCourse[];
 }): PlanApi & { cancel: (generationId: string) => void } {
   const { db, now, respond } = deps;
   const drafts = new Map<string, GeneratedStudyPlan>();
@@ -78,18 +82,8 @@ export function createPlanMock(deps: {
     }
     if (daysOff.size >= 7) throw new ApiError("invalid", "Leave at least one study day.");
     const wanted = request.courses ?? [];
-    const courses = (
-      wanted.length > 0
-        ? wanted.map((id) => deps.findCourse(id))
-        : db.courses.filter((c) => !c.course.hidden)
-    ).filter((c) => c.materials.length > 0 || c.deadlines.length > 0);
-    if (courses.length === 0) throw new ApiError("invalid", "There is no active course to plan.");
-
-    const run = await deps.gate(
-      courses.map((c) => c.course.id),
-      horizon,
-      request.override_budget ?? false,
-    );
+    const run = await deps.gate(wanted, horizon, request.override_budget ?? false);
+    const courses = deps.planCourses(wanted);
     const stop = () => {
       if (cancelled.has(generationId)) {
         onEvent({ type: "finished", ok: false });

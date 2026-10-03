@@ -23,6 +23,7 @@ public enum AiCodes {
         case .weeklyRunCapReached: "weekly_run_cap_reached"
         case .backendDisabledInThisBuild: "backend_disabled_in_this_build"
         case .nothingToWrite: "nothing_to_write"
+        case .noCourseToPlan: "no_course_to_plan"
         }
     }
 
