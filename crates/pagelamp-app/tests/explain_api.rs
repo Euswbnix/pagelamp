@@ -7,7 +7,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
+use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
     BackendRef, ExplainOptions, GenEvent, GenStage, ModelChoice, OutputLanguage,
 };
@@ -19,6 +19,7 @@ use pagelamp_core::ai_gate::LeftOutReason;
 use pagelamp_core::model::*;
 use pagelamp_core::secrets::{MemorySecrets, SecretBackend};
 use pagelamp_core::store::{GenerationStatus, Store};
+use pagelamp_core::views::{self, AsOf};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -31,6 +32,68 @@ fn course_id(external: &str) -> String {
 
 fn day(offset: i64) -> NaiveDate {
     Local::now().date_naive() + TimeDelta::days(offset)
+}
+
+/// The Monday two weeks before this week's: a term that starts then is in week 3 today, whatever
+/// the weekday. (`day(-14)` falls on a weekend on Saturdays and Sundays, and a weekend start
+/// moves week one to the next Monday, so today would be week 2.)
+fn week_three_start() -> NaiveDate {
+    week_three_start_on(Local::now().date_naive())
+}
+
+fn week_three_start_on(today: NaiveDate) -> NaiveDate {
+    today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14)
+}
+
+/// `week_three_start` holds on every day of the week, by the default week `explain_week(…,
+/// None, …)` resolves (`views::week_materials`); 14 days back gives week 2 on a Saturday and a
+/// Sunday, which is what failed on a weekend.
+#[test]
+fn the_fixture_term_is_in_week_three_every_day_of_the_week() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("pagelamp.db")).unwrap();
+    store
+        .upsert_source(&SourceRecord {
+            id: SOURCE.into(),
+            kind: SourceKind::Canvas,
+            label: "lms.example.edu".into(),
+            config: json!({ "base_url": "https://lms.example.edu" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    let monday = NaiveDate::from_ymd_opt(2026, 9, 28).unwrap();
+    for offset in 0..7 {
+        let today = monday + TimeDelta::days(offset);
+        let at = AsOf::at(today.and_hms_opt(12, 0, 0).unwrap().and_utc(), today);
+        let week = |start: NaiveDate| {
+            store
+                .upsert_course(&CourseUpsert {
+                    id: course_id("101"),
+                    source_id: SOURCE.into(),
+                    external_id: "101".into(),
+                    code: Some("DEMO101".into()),
+                    name: "Demo course 101".into(),
+                    term_start: Some(start),
+                    term_end: Some(today + TimeDelta::days(90)),
+                    url: None,
+                    syllabus_text: None,
+                    lms: Default::default(),
+                })
+                .unwrap();
+            views::week_materials(&store, "DEMO101", None, true, at)
+                .unwrap()
+                .week
+        };
+        assert_eq!(week(week_three_start_on(today)), Some(3), "{today}");
+        let weekend = today.weekday().num_days_from_monday() >= 5;
+        assert_eq!(
+            week(today - TimeDelta::days(14)),
+            Some(if weekend { 2 } else { 3 }),
+            "{today}"
+        );
+    }
 }
 
 fn material(store: &Store, external: &str, name: &str, title: &str, text: &str) -> String {
@@ -94,7 +157,7 @@ fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
                 external_id: external.into(),
                 code: Some(format!("DEMO{external}")),
                 name: format!("Demo course {external}"),
-                term_start: Some(day(-14)),
+                term_start: Some(week_three_start()),
                 term_end: Some(day(90)),
                 url: None,
                 syllabus_text: None,
@@ -353,6 +416,8 @@ async fn an_explanation_is_grounded_in_the_week_s_materials() {
         )
         .await
         .unwrap();
+    // No week given: this week, which is week 3 every day of the week.
+    assert_eq!(second.week, Some(3));
     assert!(second.left_out.is_empty());
     let body = sent(&server, 1).await;
     assert!(body.contains("guard cells"));
@@ -686,8 +751,12 @@ async fn a_moved_week_makes_explanations_stale_and_one_can_be_deleted() {
     );
     assert!(!app.saved_explanations("DEMO101", Some(3)).unwrap()[0].stale);
     // The student's dates start the term a week earlier: week 3 is another week now.
-    app.set_course_term("DEMO101", Some(day(-21)), Some(day(90)))
-        .unwrap();
+    app.set_course_term(
+        "DEMO101",
+        Some(week_three_start() - TimeDelta::days(7)),
+        Some(day(90)),
+    )
+    .unwrap();
     assert!(app.saved_explanations("DEMO101", Some(3)).unwrap()[0].stale);
 
     app.delete_explanation("e-1").unwrap();

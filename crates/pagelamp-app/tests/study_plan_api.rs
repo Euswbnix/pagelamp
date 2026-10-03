@@ -6,7 +6,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
+use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{BackendRef, GenEvent, ModelChoice, PlanWarningCode, StudyPlanRequest};
 use pagelamp_app::{ActivityKind, App, AppErrorKind, DayOfWeek};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
@@ -27,6 +27,14 @@ fn day(offset: i64) -> NaiveDate {
     Local::now().date_naive() + TimeDelta::days(offset)
 }
 
+/// The Monday two weeks before this week's: a term that starts then is in week 3 today, whatever
+/// the weekday. (`day(-14)` falls on a weekend on Saturdays and Sundays, and a weekend start
+/// moves week one to the next Monday, so today would be week 2.)
+fn week_three_start() -> NaiveDate {
+    let today = Local::now().date_naive();
+    today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14)
+}
+
 /// DEMO101 readable, DEMO202 prohibited, DEMO303 turned off, DEMO404 hidden (all teaching
 /// now), DEMO505 ended long ago. Each has a week-3 material whose text holds a secret word.
 fn app_with_courses(dir: &std::path::Path) -> App {
@@ -44,11 +52,11 @@ fn app_with_courses(dir: &std::path::Path) -> App {
         })
         .unwrap();
     for (external, start, end) in [
-        ("101", -14, 90),
-        ("202", -14, 90),
-        ("303", -14, 90),
-        ("404", -14, 90),
-        ("505", -400, -300),
+        ("101", week_three_start(), day(90)),
+        ("202", week_three_start(), day(90)),
+        ("303", week_three_start(), day(90)),
+        ("404", week_three_start(), day(90)),
+        ("505", day(-400), day(-300)),
     ] {
         let id = course_id(external);
         store
@@ -58,8 +66,8 @@ fn app_with_courses(dir: &std::path::Path) -> App {
                 external_id: external.into(),
                 code: Some(format!("DEMO{external}")),
                 name: format!("Demo course {external}"),
-                term_start: Some(day(start)),
-                term_end: Some(day(end)),
+                term_start: Some(start),
+                term_end: Some(end),
                 url: None,
                 syllabus_text: None,
                 lms: Default::default(),
