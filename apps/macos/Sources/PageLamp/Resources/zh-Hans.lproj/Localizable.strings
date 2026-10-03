@@ -976,7 +976,7 @@
 "mac.connect.existingFile.hasServers" = "文件里已经有 \"mcpServers\"";
 "mac.connect.existingFile.otherSettings" = "文件里有其他设置，但没有 \"mcpServers\"";
 "mac.connect.otherApp" = "其他应用";
-"mac.connect.quarantine.body" = "这个测试版还没有经过 Apple 公证。如果 macOS 不让你打开 PageLamp，或者在 AI 应用启动它时把它拦下：先打开一次 PageLamp，然后前往“系统设置 › 隐私与安全性”，点“仍要打开”。";
+"mac.connect.quarantine.body" = "这个构建没有经过 Apple 公证。如果 macOS 不让你打开 PageLamp，或者在 AI 应用启动它时把它拦下：先打开一次 PageLamp，然后前往“系统设置 › 隐私与安全性”，点“仍要打开”。";
 "mac.connect.quarantine.copy" = "复制终端命令";
 "mac.connect.quarantine.fallback" = "还是被拦截？请在“终端”里运行一次下面这条命令：";
 "mac.connect.quarantine.title" = "如果 macOS 拦截了 PageLamp";

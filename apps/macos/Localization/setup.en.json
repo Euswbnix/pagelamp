@@ -17,7 +17,7 @@
     },
     "quarantine": {
       "title": "If macOS blocks {{product}}",
-      "body": "This beta isn't notarized by Apple yet. If macOS won't open {{product}}, or stops it when your AI app starts it: open {{product}} once, then go to System Settings › Privacy & Security and click “Open Anyway”.",
+      "body": "This build isn't notarized by Apple. If macOS won't open {{product}}, or stops it when your AI app starts it: open {{product}} once, then go to System Settings › Privacy & Security and click “Open Anyway”.",
       "fallback": "Still blocked? Run this once in Terminal:",
       "copy": "Copy the Terminal command"
     }
