@@ -1,6 +1,52 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
-import { useSyncStore } from "./sync";
+import type { SourceErrorKind, SyncSummary } from "@/api/types";
+import { afterCurrentRun, useSyncStore } from "./sync";
+
+/** A run of one source, "a", that ended with `kind` (null: it synced). */
+function summaryOfA(kind: SourceErrorKind | null): SyncSummary {
+  return {
+    started_at: "2026-10-05T13:00:00Z",
+    finished_at: "2026-10-05T13:00:01Z",
+    ok: kind === null,
+    results: [
+      {
+        source_id: "a",
+        label: "Demo Canvas",
+        kind: "canvas",
+        ok: kind === null,
+        error: kind === null ? null : "Synthetic failure",
+        error_kind: kind,
+        started_at: "2026-10-05T13:00:00Z",
+        finished_at: "2026-10-05T13:00:01Z",
+        courses: 1,
+        modules: 0,
+        materials: 0,
+        files_downloaded: 0,
+        files_indexed: 0,
+        events: 0,
+        warnings: [],
+        course_summaries: [],
+      },
+    ],
+  };
+}
+
+/** An automatic run of source "a" up to its end. */
+function automaticRun(kind: SourceErrorKind | null) {
+  const store = useSyncStore.getState();
+  store.begin(1, null, "unattended");
+  store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+  store.apply({
+    type: "source_finished",
+    source_id: "a",
+    ok: kind === null,
+    error: kind === null ? null : "Synthetic failure",
+    error_kind: kind,
+  });
+}
+
+const NO_RUN = { running: false, runError: null, lastSummary: null, order: [], automatic: null };
 
 describe("sync store", () => {
   it("folds SyncEvents into per-source progress", () => {
@@ -59,5 +105,132 @@ describe("sync store", () => {
     store.begin(1);
     store.finish(null, new ApiError("busy", "locked"));
     expect(useSyncStore.getState().runError?.kind).toBe("busy");
+  });
+});
+
+describe("a sync PageLamp started by itself", () => {
+  it("ends like any other when every source synced", () => {
+    automaticRun(null);
+    useSyncStore.getState().finish(summaryOfA(null), null);
+    const s = useSyncStore.getState();
+    expect(s.lastSummary?.ok).toBe(true);
+    expect(s.automatic).toBe("unattended");
+    expect(s.order).toEqual(["a"]);
+    expect(s.noAutomaticBefore).toBeGreaterThan(Date.now());
+  });
+
+  it("leaves nothing behind when it is refused, or wasn't due any more", () => {
+    const store = useSyncStore.getState();
+    store.begin(3, null, "attended");
+    store.finish(null, new ApiError("busy", "locked"));
+    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
+    // The start still counts for "not again so soon".
+    expect(useSyncStore.getState().noAutomaticBefore).toBeGreaterThan(Date.now());
+
+    store.begin(3, null, "unattended");
+    store.finish(
+      {
+        started_at: "2026-10-05T13:00:00Z",
+        finished_at: "2026-10-05T13:00:00Z",
+        ok: true,
+        results: [],
+      },
+      null,
+    );
+    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
+  });
+
+  it("leaves nothing behind when a source failed, and notes what only the student can fix", () => {
+    automaticRun("network");
+    useSyncStore.getState().finish(summaryOfA("network"), null);
+    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
+
+    automaticRun("auth_expired_or_revoked");
+    useSyncStore.getState().finish(summaryOfA("auth_expired_or_revoked"), null);
+    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: true });
+
+    // The next run starts clean.
+    useSyncStore.getState().begin(1);
+    expect(useSyncStore.getState().automaticProblem).toBe(false);
+  });
+
+  it("ends like any other when the student watches it, or stops it", () => {
+    useSyncStore.setState({ watched: true });
+    automaticRun("network");
+    useSyncStore.getState().finish(summaryOfA("network"), null);
+    expect(useSyncStore.getState().lastSummary?.ok).toBe(false);
+    expect(useSyncStore.getState().order).toEqual(["a"]);
+
+    useSyncStore.setState({ watched: false });
+    const store = useSyncStore.getState();
+    store.begin(1, null, "unattended");
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    store.finish(null, new ApiError("cancelled", "Cancelled"));
+    expect(useSyncStore.getState().stoppedByUser).toBe(true);
+    expect(useSyncStore.getState().order).toEqual(["a"]);
+  });
+
+  it("keeps a manual run's failure, as before", () => {
+    const store = useSyncStore.getState();
+    store.begin(1);
+    store.finish(null, new ApiError("busy", "locked"));
+    expect(useSyncStore.getState().runError?.kind).toBe("busy");
+    expect(useSyncStore.getState().noAutomaticBefore).toBe(0);
+  });
+
+  it("is quiet when refused even while the student is on an older run's capsule", () => {
+    // Watching what is on screen isn't watching a run that never showed anything.
+    useSyncStore.setState({ watched: true });
+    const store = useSyncStore.getState();
+    store.begin(3, null, "unattended");
+    store.finish(null, new ApiError("busy", "locked"));
+    expect(useSyncStore.getState()).toMatchObject(NO_RUN);
+  });
+
+  it("holds automatic starts for a while after the student stopped a sync", () => {
+    const store = useSyncStore.getState();
+    store.begin(1);
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    store.finish(null, new ApiError("cancelled", "Cancelled"));
+    expect(useSyncStore.getState().noAutomaticBefore).toBeGreaterThan(Date.now());
+  });
+
+  it("'Hide' clears the run but not what an automatic sync needs to remember", () => {
+    automaticRun(null);
+    useSyncStore.getState().finish(summaryOfA(null), null);
+    useSyncStore.getState().noteStudentAction();
+    useSyncStore.getState().hideRun();
+    const s = useSyncStore.getState();
+    expect(s).toMatchObject(NO_RUN);
+    expect(s.noAutomaticBefore).toBeGreaterThan(Date.now());
+    expect(s.attendedUntil).toBeGreaterThan(Date.now());
+  });
+});
+
+describe("afterCurrentRun", () => {
+  it("runs at once when nothing is running, else once after the run has ended", async () => {
+    const now = vi.fn();
+    afterCurrentRun(now);
+    expect(now).toHaveBeenCalledTimes(1);
+
+    const store = useSyncStore.getState();
+    store.begin(1);
+    // Whoever shows the run sees it end first: the action isn't run inside that notification.
+    const running: boolean[] = [];
+    const seenByOthers: boolean[] = [];
+    afterCurrentRun(() => running.push(useSyncStore.getState().running));
+    const unsubscribe = useSyncStore.subscribe((s) => seenByOthers.push(s.running));
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    store.finish(null, null);
+    expect(running).toEqual([]);
+    expect(seenByOthers.at(-1)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(running).toEqual([false]);
+
+    store.begin(1);
+    store.finish(null, null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(running).toEqual([false]);
+    unsubscribe();
   });
 });

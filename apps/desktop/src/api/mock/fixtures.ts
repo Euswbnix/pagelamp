@@ -41,6 +41,8 @@ export type MockScenario =
   | "error"
   | "busy"
   | "crashed"
+  // The sources were last synced 13 hours ago: an automatic sync is due.
+  | "auto-sync-due"
   // Updates (M0.4): an update is offered / an upgrader from 0.1 sees "What's new" / the first
   // launch after an update / a deb or rpm install (download link only).
   | "update-available"
@@ -88,6 +90,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "error",
   "busy",
   "crashed",
+  "auto-sync-due",
   "update-available",
   "upgrader",
   "upgrader-from-01",
@@ -184,7 +187,8 @@ export const SOURCE_ICAL = "ical:demo-calendar";
 export const SOURCE_CANVAS = "canvas:canvas.demo.test";
 
 function sources(now: Date, scenario: MockScenario): SourceRecord[] {
-  const ok = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+  const hours = scenario === "auto-sync-due" ? 13 : 2;
+  const ok = new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
   const failed = (kind: SourceErrorKind, message: string) => ({
     last_error: message,
     last_error_kind: kind,

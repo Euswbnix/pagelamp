@@ -4,7 +4,7 @@
 // the same AppError kinds, sync streams SyncEvents over time, and settings persist for the
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
-// Scenarios: demo (default) · empty · expired · error · busy · crashed; updates (M0.4):
+// Scenarios: demo (default) · empty · expired · error · busy · crashed · auto-sync-due; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
@@ -19,6 +19,7 @@ import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
   type AppStatus,
+  type AutoSync,
   aiMaterialsState,
   type CourseSummary,
   type Deadline,
@@ -26,7 +27,9 @@ import {
   type SourceKind,
   type SourceRecord,
   type SourceSyncResult,
+  type SyncDue,
   type SyncEvent,
+  type SyncPrefs,
   type SyncRequest,
   type SyncSummary,
   type UpdateChannel,
@@ -166,6 +169,40 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           outcome: { kind: "up_to_date" },
         }) as UpdateCheckRecord | null,
   };
+  // Automatic sync: the facade's rule, as far as the UI can tell the difference. Due when the
+  // setting is on, What's new is dismissed, no sync runs, and a source that can be tried was last
+  // synced an interval or more ago, and no wait after an attempt that didn't end well (here: one
+  // the student stopped; the sources that fail in this mock are left out of automatic runs).
+  const autoSync = {
+    mode: "twice_daily" as AutoSync,
+    /** No automatic sync before this time (ms). */
+    retryAt: 0,
+  };
+  /** Sources an automatic run tries: not the ones only the student can fix. */
+  function triedAutomatically(): SourceRecord[] {
+    return db.sources.filter(
+      (s) => s.last_error_kind !== "auth_expired_or_revoked" && s.last_error_kind !== "not_found",
+    );
+  }
+  function syncDue(): SyncDue {
+    const mode = autoSync.mode;
+    const tried = triedAutomatically();
+    const due =
+      mode !== "off" &&
+      updates.whatsNewSeen &&
+      !syncing &&
+      !db.externalSyncRunning &&
+      tried.length > 0 &&
+      now().getTime() >= autoSync.retryAt &&
+      tried.some(
+        (s) =>
+          !s.last_synced_at ||
+          Date.parse(s.last_synced_at) <= now().getTime() - (mode === "daily" ? DAY : DAY / 2),
+      );
+    // Both triggers run the same full sync, so they are due together.
+    return { unattended: due, attended: due };
+  }
+
   function effectiveChannel(): UpdateChannel {
     return updates.prefs.channel ?? (MOCK_APP_VERSION.includes("-") ? "beta" : "stable");
   }
@@ -310,7 +347,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       version: MOCK_APP_VERSION,
       data_dir: db.dataDir,
       db_path: `${db.dataDir}/pagelamp.db`,
-      auto_sync: "twice_daily" as const,
       sources: db.sources,
       counts: {
         courses: visible.length,
@@ -325,6 +361,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       },
       last_synced_at: synced.at(-1) ?? null,
       sync_in_progress: syncing || db.externalSyncRunning,
+      auto_sync: autoSync.mode,
     };
   }
 
@@ -600,8 +637,28 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (syncing) cancelRequested = true;
     },
 
-    syncAll: async (_req: SyncRequest, onEvent) => {
+    syncAll: async (req: SyncRequest, onEvent) => {
       const startedAt = now().toISOString();
+      if (req.automatic) {
+        // Not due any more (the student or another window got there first): nothing happens.
+        if (!syncDue()[req.automatic]) {
+          return { started_at: startedAt, finished_at: startedAt, ok: true, results: [] };
+        }
+        // The attempt counts before it runs: one that is stopped or refused waits an hour.
+        autoSync.retryAt = now().getTime() + 60 * 60 * 1000;
+        const tried = await runSync(
+          triedAutomatically().map((s) => s.id),
+          onEvent,
+        );
+        if (tried.every((r) => r.ok)) autoSync.retryAt = 0;
+        const summary: SyncSummary = {
+          started_at: startedAt,
+          finished_at: now().toISOString(),
+          ok: tried.every((r) => r.ok),
+          results: tried,
+        };
+        return clone(summary);
+      }
       const results = await runSync(
         db.sources.map((s) => s.id),
         onEvent,
@@ -868,6 +925,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         updates.prefs = { auto_check: prefs.auto_check, channel: prefs.channel ?? null };
       }),
+    syncPrefs: (): Promise<SyncPrefs> => respond(() => ({ auto_sync: autoSync.mode })),
+    setSyncPrefs: (prefs) =>
+      respond(() => {
+        autoSync.mode = prefs.auto_sync ?? "twice_daily";
+      }),
     startupTasks: () =>
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
@@ -877,7 +939,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             : {
                 // 0.1 never recorded its version, so upgraders from it have none.
                 since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-                topics: ["update_check" as const, "course_weeks" as const],
+                topics: ["update_check" as const, "course_weeks" as const, "auto_sync" as const],
               },
           update_check_due:
             updates.prefs.auto_check &&
@@ -886,8 +948,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             (last === null || last <= now().getTime() - DAY),
           updated_from:
             scenario === "updated" || scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-          // The mock never asks for an automatic sync.
-          sync_due: { unattended: false, attended: false },
+          sync_due: syncDue(),
         };
       }),
     acknowledgeWhatsNew: () =>

@@ -1425,8 +1425,14 @@
 "sources.addErrors.token.invalid" = "这看起来不是 Canvas 访问令牌。请从 Canvas 重新复制，再粘贴到这里。";
 "sources.addErrors.token.network" = "连不上 Canvas。请检查网络连接后重试。";
 "sources.addErrors.token.not_found" = "这个来源的地址上已经找不到 Canvas 了。请移除这个来源，再用现在的地址重新添加。";
+"sources.autoSync.hint" = "只有 PageLamp 开着的时候才会自动同步。你打开或切回 PageLamp 时，它会完整同步一次，和你点“同步”一样；Canvas 可能会把这记为你在各门课里的活动。其余时间它只刷新课程列表、截止日期和公告，不会打开任何一门课。";
+"sources.autoSync.label" = "自动同步";
+"sources.autoSync.option.daily" = "每天一次";
+"sources.autoSync.option.off" = "关闭";
+"sources.autoSync.option.twice_daily" = "每天两次";
 "sources.busy.checkAgain" = "重新检查";
 "sources.busy.title" = "已有其他同步在进行";
+"sources.canvasForm.autoSync" = "只要 PageLamp 开着，它会自己同步。可以在“数据来源与同步”里关掉。";
 "sources.canvasForm.httpWarning" = "Canvas 地址都是 https 开头的，请确认一下是不是 https://。";
 "sources.canvasForm.missingToken" = "请粘贴访问令牌。";
 "sources.canvasForm.missingUrl" = "请输入 Canvas 地址。";
@@ -1579,10 +1585,11 @@
 "updates.updated.body" = "请退出并重新打开你的 AI 应用（Claude Desktop、Claude Code 或 Codex），让它使用新的 PageLamp。";
 "updates.updated.dismiss" = "关闭";
 "updates.updated.title" = "PageLamp 已更新到 %1$@";
+"updates.whatsNew.autoSync" = "自动同步";
 "updates.whatsNew.done" = "知道了";
 "updates.whatsNew.since" = "自 %1$@ 版本以来";
 "updates.whatsNew.title" = "PageLamp 有哪些新变化";
-"updates.whatsNew.topics.auto_sync.body" = "PageLamp 打开期间，每天最多自动刷新两次课程数据，这样你的 AI 应用用到的是最新内容。可以在「设置」里调整频率，或者关掉。";
+"updates.whatsNew.topics.auto_sync.body" = "只要 PageLamp 开着，它会自己更新截止日期和公告。你打开或切回 PageLamp 时，它还会刷新课程材料，每天最多两次，和你点“同步”一样。它不会自己下载 Canvas 文件。Canvas 可能会把完整同步记为你在各门课里的活动。想改成每天一次或者关掉，可以到“数据来源与同步”里设置。";
 "updates.whatsNew.topics.auto_sync.title" = "PageLamp 现在会自己同步了";
 "updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
