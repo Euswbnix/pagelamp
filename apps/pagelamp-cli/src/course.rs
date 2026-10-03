@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 use pagelamp_app::App;
 use pagelamp_core::model::{
     CalendarOrigin, Confidence, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline,
-    EvidenceItem, TermAnchorSource,
+    EvidenceItem, LifecycleState, TermAnchorSource,
 };
 use pagelamp_core::views::CourseSummary;
 
@@ -121,7 +121,22 @@ fn line(summary: &CourseSummary) -> String {
 }
 
 /// "week 4 (medium)", "reading week", "exams (after week 12)", "ended", "starts 2027-01-11"…
+/// A course that is over, inactive or hasn't started has no week: its lifecycle says which.
 pub fn week_label(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> String {
+    let starts = || match lifecycle.starts_on {
+        Some(start) => format!("starts {start}"),
+        None => "not started".to_string(),
+    };
+    match lifecycle.state {
+        LifecycleState::Ended => return "ended".to_string(),
+        LifecycleState::Inactive => return "inactive".to_string(),
+        // (With a week: the student's own dates put an upcoming course in one; it is shown.)
+        LifecycleState::Upcoming if timeline.current_week.is_none() => return starts(),
+        LifecycleState::Upcoming
+        | LifecycleState::Current
+        | LifecycleState::Finishing
+        | LifecycleState::Unknown => {}
+    }
     let week = |week: u32, c: Confidence| format!("week {week} ({})", confidence(c));
     match timeline.phase {
         CoursePhase::Teaching | CoursePhase::Unknown => match timeline.current_week {
@@ -148,10 +163,7 @@ pub fn week_label(timeline: &CourseTimeline, lifecycle: &CourseLifecycle) -> Str
             None => "exams".to_string(),
         },
         CoursePhase::Ended => "ended".to_string(),
-        CoursePhase::NotStarted => match lifecycle.starts_on {
-            Some(start) => format!("starts {start}"),
-            None => "not started".to_string(),
-        },
+        CoursePhase::NotStarted => starts(),
     }
 }
 
@@ -174,8 +186,11 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
     let lifecycle = &overview.lifecycle;
     println!("{}", overview.course.display_name());
     let phase = match timeline.phase {
-        // The label names the other phases already ("exams (after week 12)", "ended").
-        CoursePhase::Teaching | CoursePhase::Unknown => {
+        // The label names the other phases already ("exams (after week 12)", "ended"), and a
+        // course outside the week views by its lifecycle ("inactive").
+        CoursePhase::Teaching | CoursePhase::Unknown
+            if lifecycle.state.in_week_views() || timeline.current_week.is_some() =>
+        {
             format!(" · {}", timeline.phase.as_str())
         }
         _ => String::new(),
@@ -185,15 +200,11 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
         week_label(timeline, lifecycle),
         confidence(timeline.phase_confidence)
     );
+    // No removal hint: this version can't remove a course (`--json` keeps `suggest_removal`).
     println!(
-        "  Lifecycle: {} ({}){}",
+        "  Lifecycle: {} ({})",
         lifecycle.state.as_str(),
-        confidence(lifecycle.confidence),
-        if lifecycle.suggest_removal {
-            " — suggested for removal"
-        } else {
-            ""
-        }
+        confidence(lifecycle.confidence)
     );
     println!("  Dates:     {}", dates_used(timeline));
     if let Some(label) = &timeline.term.ai_label {
