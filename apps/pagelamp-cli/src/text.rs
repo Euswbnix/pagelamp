@@ -199,10 +199,11 @@ pub fn block_reason(reason: BlockReason) -> String {
              7 days and no study plan item."
                 .to_string()
         }
-        BlockReason::NoCourseToPlan => {
-            "there is no active course to plan for (`--course <course>` plans a course you name)."
-                .to_string()
-        }
+        BlockReason::NoCourseToPlan => format!(
+            "there is no active course to plan for, and hidden courses are skipped \
+             (`--course <course>` plans a course you name; `{CLI_NAME} course show <course>` \
+             shows a hidden one)."
+        ),
     }
 }
 

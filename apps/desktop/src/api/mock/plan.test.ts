@@ -114,6 +114,26 @@ describe("mock study plans", () => {
     });
   });
 
+  it("leaves a hidden course out of the default plan, and plans a course named twice once", async () => {
+    const api = createMockApi(fast);
+    const active = (await api.listCourses())
+      .filter((c) => !c.course.hidden && c.lifecycle.is_active)
+      .map((c) => c.course.id);
+    const [hidden, kept] = active;
+    expect(hidden && kept).toBeTruthy();
+    await api.setCourseHidden(hidden ?? "", true);
+    const draft = await api.generateStudyPlan({}, "p-1", () => {});
+    const planned = draft.meta.context?.courses.map((c) => c.course_id) ?? [];
+    expect(planned).toContain(kept);
+    expect(planned).not.toContain(hidden);
+    const twice = await api.generateStudyPlan(
+      { courses: [kept ?? "", kept ?? ""] },
+      "p-2",
+      () => {},
+    );
+    expect(twice.meta.context?.courses.map((c) => c.course_id)).toEqual([kept]);
+  });
+
   it("blocks no course to plan for before the click, after no model chosen, like the facade", async () => {
     // Only past courses: none is active.
     const api = createMockApi({ ...fast, scenario: "all-past" });

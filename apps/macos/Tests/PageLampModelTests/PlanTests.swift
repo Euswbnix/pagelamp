@@ -189,6 +189,24 @@ struct MockPlanTests {
         }
     }
 
+    @Test("the default plan leaves a hidden course out; a course named twice is planned once")
+    func planScope() async throws {
+        let service = mock(.aiKey)
+        let all = try await service.listCourses()
+        let hidden = try #require(all.first { $0.course.hidden }).course.id
+        let draft = try await service.generateStudyPlan(request: request(), generationId: "g1", observer: GenEventStream())
+        let planned = draft.meta.context.courses.map(\.courseId)
+        #expect(!planned.isEmpty && !planned.contains(hidden))
+        #expect(Set(planned) == Set(all.filter { !$0.course.hidden }.map(\.course.id)))
+        // By id and by code: one course.
+        let named = try #require(all.first { !$0.course.hidden && $0.course.code != nil })
+        let twice = try await service.generateStudyPlan(
+            request: request(courses: [named.course.id, named.course.code ?? ""]), generationId: "g2",
+            observer: GenEventStream()
+        )
+        #expect(twice.meta.context.courses.map(\.courseId) == [named.course.id])
+    }
+
     @Test("a draft: the events in order, tasks on study days only, at most the day's share")
     func draft() async throws {
         let service = mock(.aiKey)

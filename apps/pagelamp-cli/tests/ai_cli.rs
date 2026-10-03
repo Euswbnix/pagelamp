@@ -661,6 +661,10 @@ fn no_course_to_plan_for_is_said_before_the_plan_runs() {
             err.contains("blocked: no_course_to_plan — there is no active course to plan for"),
             "{args:?}: {err}"
         );
+        assert!(
+            err.contains("hidden courses are skipped") && err.contains("course show <course>"),
+            "{args:?}: {err}"
+        );
         assert!(stdout(&output).is_empty(), "{args:?}: no estimate line");
     }
 }
