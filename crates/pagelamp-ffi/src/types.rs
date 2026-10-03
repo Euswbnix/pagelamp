@@ -1345,6 +1345,7 @@ pub enum BlockReason {
     WeeklyRunCapReached,
     BackendDisabledInThisBuild,
     NothingToWrite,
+    NoCourseToPlan,
 }
 
 /// Why a model call failed.

@@ -6,7 +6,7 @@
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
 use pagelamp_core::ai_gate::{
     AnswerLanguage, ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote,
-    assemble_in, calendar_context, plan_context, week_context_including,
+    assemble_in, calendar_context, week_context_including,
 };
 use pagelamp_core::calendar::extraction::CalendarExtraction;
 use pagelamp_core::planner::PlanTasks;
@@ -68,7 +68,8 @@ impl App {
                     courses: courses.clone(),
                     horizon_days: horizon_days.unwrap_or(DEFAULT_PLAN_DAYS),
                 };
-                plan_context(&store, &scope, at)
+                // No course to plan for blocks before the click, as the run refuses it.
+                super::plan::writable_plan_context(&store, &scope, at)
             }
             // The run's own builder, so an include is priced as the run sends it.
             EstimateRequest::WeeklyExplanation {

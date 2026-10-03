@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
-use pagelamp_app::ai::{BackendRef, GenEvent, ModelChoice, PlanWarningCode, StudyPlanRequest};
+use pagelamp_app::ai::{
+    BackendRef, EstimateRequest, GenEvent, ModelChoice, PlanWarningCode, StudyPlanRequest,
+};
 use pagelamp_app::{ActivityKind, App, AppErrorKind, DayOfWeek};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
 use pagelamp_core::model::*;
@@ -460,6 +462,76 @@ async fn requests_are_checked_and_a_run_needs_a_model() {
         events.lock().unwrap().last(),
         Some(&GenEvent::Finished { ok: false })
     );
+}
+
+/// No course to plan for is `Blocked(NoCourseToPlan)`: the estimate says it before the click,
+/// the run refuses it after the model check, and nothing is sent or kept. A list keeps today's
+/// rules: a hidden course is skipped, a named course that has ended is still planned, an
+/// unknown one is not found.
+#[tokio::test]
+async fn no_course_to_plan_for_is_known_before_the_click_and_sends_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let only_hidden = StudyPlanRequest {
+        courses: vec!["DEMO404".into()],
+        ..StudyPlanRequest::default()
+    };
+    let estimate = |courses: &[&str]| {
+        app.estimate_generation(&EstimateRequest::StudyPlan {
+            horizon_days: None,
+            courses: courses.iter().map(|c| c.to_string()).collect(),
+        })
+    };
+    // No model chosen comes first.
+    let err = app
+        .generate_study_plan(only_hidden.clone(), "plan-none", |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::NoModelChosen));
+
+    let server = with_local_model(&app).await;
+    assert_eq!(
+        estimate(&["DEMO404"]).unwrap().would_block,
+        Some(BlockReason::NoCourseToPlan)
+    );
+    let (events, on_event) = collect();
+    let err = app
+        .generate_study_plan(only_hidden, "plan-hidden", on_event)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (err.kind, err.blocked),
+        (AppErrorKind::Blocked, Some(BlockReason::NoCourseToPlan))
+    );
+    assert_eq!(
+        events.lock().unwrap().last(),
+        Some(&GenEvent::Finished { ok: false })
+    );
+    // A named course that has ended is planned; an unknown one is not found.
+    assert_eq!(estimate(&["DEMO505"]).unwrap().would_block, None);
+    assert_eq!(
+        estimate(&["DEMO999"]).unwrap_err().kind,
+        AppErrorKind::NotFound
+    );
+
+    // Only hidden and ended courses left: the default plan has nothing active to plan for.
+    for code in ["DEMO101", "DEMO202", "DEMO303"] {
+        app.set_course_hidden(code, true).unwrap();
+    }
+    let blocked = estimate(&[]).unwrap();
+    assert_eq!(blocked.would_block, Some(BlockReason::NoCourseToPlan));
+    assert_eq!((blocked.micro_usd_upper, blocked.input_tokens), (None, 0));
+    let err = app
+        .generate_study_plan(StudyPlanRequest::default(), "plan-empty", |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::NoCourseToPlan));
+    assert!(server.received_requests().await.unwrap().is_empty());
+    let store = Store::open(&app.db_path()).unwrap();
+    for id in ["plan-none", "plan-hidden", "plan-empty"] {
+        assert!(store.generation(id).unwrap().is_none(), "{id}");
+    }
+    assert!(app.activity().items.is_empty());
 }
 
 #[tokio::test]

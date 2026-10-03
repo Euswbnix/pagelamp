@@ -592,11 +592,9 @@ fn codex_status_starts_nothing_when_the_plan_is_not_offered() {
     assert_eq!(started(), "managed logout\n");
 }
 
-/// A week with nothing to write about: `ai estimate --feature weekly-note` and `note` both say
-/// so with the facade's code (exit 1), before anything is sent. The model is on this computer
-/// and is never asked.
-#[test]
-fn nothing_to_write_about_is_said_before_the_note_runs() {
+/// A home with no course and a model on this computer (never asked: nothing listens there)
+/// chosen for `feature`.
+fn home_with_local_model(feature: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
@@ -618,13 +616,22 @@ fn nothing_to_write_about_is_said_before_the_note_runs() {
         &[
             "ai",
             "use",
-            "weekly-note",
+            feature,
             "local-llm",
             "local-model",
             "--yes",
             "--no-check",
         ],
     ));
+    (temp, home)
+}
+
+/// A week with nothing to write about: `ai estimate --feature weekly-note` and `note` both say
+/// so with the facade's code (exit 1), before anything is sent. The model is on this computer
+/// and is never asked.
+#[test]
+fn nothing_to_write_about_is_said_before_the_note_runs() {
+    let (_temp, home) = home_with_local_model("weekly-note");
     for args in [
         &["ai", "estimate", "--feature", "weekly-note"][..],
         &["note"],
@@ -633,6 +640,29 @@ fn nothing_to_write_about_is_said_before_the_note_runs() {
         let err = failed(&output);
         assert!(
             err.contains("blocked: nothing_to_write — there is nothing to write about this week"),
+            "{args:?}: {err}"
+        );
+        assert!(stdout(&output).is_empty(), "{args:?}: no estimate line");
+    }
+}
+
+/// No course to plan for: `ai estimate --feature study-plan` and `plan` both say so with the
+/// facade's code (exit 1), before anything is sent.
+#[test]
+fn no_course_to_plan_for_is_said_before_the_plan_runs() {
+    let (_temp, home) = home_with_local_model("study-plan");
+    for args in [
+        &["ai", "estimate", "--feature", "study-plan"][..],
+        &["plan"],
+    ] {
+        let output = pagelamp(&home, args);
+        let err = failed(&output);
+        assert!(
+            err.contains("blocked: no_course_to_plan — there is no active course to plan for"),
+            "{args:?}: {err}"
+        );
+        assert!(
+            err.contains("hidden courses are skipped") && err.contains("course show <course>"),
             "{args:?}: {err}"
         );
         assert!(stdout(&output).is_empty(), "{args:?}: no estimate line");

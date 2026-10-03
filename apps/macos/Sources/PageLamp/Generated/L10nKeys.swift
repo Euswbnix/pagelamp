@@ -57,6 +57,7 @@ nonisolated enum L10nKeys {
         "ai.blocked.course_policy_prohibited",
         "ai.blocked.disclosure_not_acknowledged",
         "ai.blocked.material_sharing_not_allowed",
+        "ai.blocked.no_course_to_plan",
         "ai.blocked.no_model_chosen",
         "ai.blocked.no_readable_materials",
         "ai.blocked.nothing_to_write",

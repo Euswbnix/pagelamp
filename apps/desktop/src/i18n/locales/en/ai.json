@@ -271,7 +271,8 @@
     "price_unknown_not_acknowledged": "{{product}} has no price for this model. Confirm to use it without a budget.",
     "weekly_run_cap_reached": "You've reached this week's run limit.",
     "backend_disabled_in_this_build": "This service isn't available in this version of {{product}}.",
-    "nothing_to_write": "There's nothing to write about this week yet: no active course, no deadline in the next 7 days and no study plan item."
+    "nothing_to_write": "There's nothing to write about this week yet: no active course, no deadline in the next 7 days and no study plan item.",
+    "no_course_to_plan": "There's no active course to plan for."
   },
   "modelError": {
     "not_signed_in": "You're not signed in to this service.",
