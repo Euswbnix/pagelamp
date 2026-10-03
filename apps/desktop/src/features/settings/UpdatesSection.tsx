@@ -155,7 +155,10 @@ function CheckNow({ status }: { status: UpdaterStatus | null }) {
         </span>
       </div>
       <div role="status" className="text-sm">
-        {checking ? null : checkError ? (
+        {checking ? null : checkError?.kind === "not_found" ? (
+          // Stable has no release with update information yet: an answer, not a failed check.
+          <p>{t("settings.noStableRelease")}</p>
+        ) : checkError ? (
           <div className="space-y-0.5 text-destructive">
             <p className="font-medium">{t("settings.checkFailed")}</p>
             <p>{tc(`errors.${checkError.kind}`)}</p>

@@ -67,7 +67,10 @@ function CheckForUpdates() {
         {checking ? tu("settings.checking") : t("schema.checkForUpdates")}
       </Button>
       <div role="status" className="space-y-2 text-sm">
-        {checking ? null : checkError ? (
+        {checking ? null : checkError?.kind === "not_found" ? (
+          // The channel has no release with update information yet.
+          <p>{t("schema.noUpdate")}</p>
+        ) : checkError ? (
           <p className="text-destructive">{tu("settings.checkFailed")}</p>
         ) : available ? (
           <>
