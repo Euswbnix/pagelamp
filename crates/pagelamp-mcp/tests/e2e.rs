@@ -953,7 +953,7 @@ async fn read_tools_carry_one_data_as_of_line() {
     assert!(read.contains(line), "{read}");
     assert_eq!(
         as_of(None, None),
-        "This course's source has never finished a sync."
+        "This course's source has never finished a full sync."
     );
 
     // An automatic sync read the deadlines and announcements later: both clocks are named.

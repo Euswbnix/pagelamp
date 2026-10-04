@@ -13,8 +13,8 @@
 //! - An automatic `sync_all` checks the clock rule again, then counts the attempt before it
 //!   does anything else, the lock included: a run that is refused (another sync runs, What's
 //!   new is waiting) or fails waits like one that ran (1 h, 2 h, 4 h… up to the interval), and
-//!   no source gets more than 6 attempts in 24 hours. Each trigger waits after its own
-//!   attempts only; the cap is shared. Two shells that both saw `sync_due`
+//!   no source gets more than 6 attempts in 24 hours. Each source waits after its own
+//!   attempts only, and each trigger too; the cap is shared. Two shells that both saw `sync_due`
 //!   therefore start one run between them.
 //! - What a run reads depends on why it started (`scope_of`): from the timer, with nobody known
 //!   to be at the app, Canvas is asked only for the course list, planner items and
@@ -141,18 +141,67 @@ impl App {
     }
 
     /// A light run of a Canvas source ended well: its deadlines and announcements are as of
-    /// `at`, and `new_courses` wait for a full sync. The source row isn't touched
-    /// (`last_synced_at` keeps meaning the last full sync).
+    /// `at`, and `new_courses` wait for a full sync. The source's `last_synced_at` isn't
+    /// touched (it keeps meaning the last full sync). An error an earlier light run left on
+    /// the source is cleared; one a full sync left stays until a full sync succeeds.
     pub(crate) fn record_light_sync(&self, source_id: &str, at: Timestamp, new_courses: &[String]) {
         let recorded = self.write_store().and_then(|store| {
             Ok(store.in_transaction(|store| {
                 let mut light = rule::light_sync(store)?;
                 light.light_run_ended(source_id, at, new_courses);
+                if light.errors.remove(source_id) {
+                    store.clear_source_error(source_id)?;
+                }
                 store.set_setting(LIGHT_SYNC_KEY, &light)
             })?)
         });
         if let Err(err) = recorded {
             tracing::warn!("could not record the light sync: {err}");
+        }
+    }
+
+    /// A light run of a Canvas source failed in a way that is shown (`automatic_run_records`).
+    /// It is recorded on the source unless a full sync's failure is already there: that one
+    /// says more, and only a full sync that succeeds may clear it.
+    pub(crate) fn record_light_failure(
+        &self,
+        source_id: &str,
+        at: Timestamp,
+        error: (SourceErrorKind, &str),
+    ) {
+        let recorded = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                let mut light = rule::light_sync(store)?;
+                let has_error = store
+                    .get_source(source_id)?
+                    .is_some_and(|source| source.last_error.is_some());
+                if has_error && !light.errors.contains(source_id) {
+                    return Ok(());
+                }
+                store.record_sync(source_id, at, Some(error))?;
+                light.errors.insert(source_id.to_string());
+                store.set_setting(LIGHT_SYNC_KEY, &light)
+            })?)
+        });
+        if let Err(err) = recorded {
+            tracing::warn!("could not record the light sync's failure: {err}");
+        }
+    }
+
+    /// A sync that isn't a light run wrote the source's outcome: what is on the source now is
+    /// that sync's, not a light run's.
+    pub(crate) fn light_error_superseded(&self, source_id: &str) {
+        let recorded = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                let mut light = rule::light_sync(store)?;
+                if light.errors.remove(source_id) {
+                    store.set_setting(LIGHT_SYNC_KEY, &light)?;
+                }
+                Ok(())
+            })?)
+        });
+        if let Err(err) = recorded {
+            tracing::warn!("could not update the light sync record: {err}");
         }
     }
 
@@ -180,12 +229,17 @@ impl App {
         }
     }
 
-    /// A source was removed: what the light runs left of it goes too.
+    /// A source was removed: what the automatic sync remembers of it goes too (the light runs'
+    /// record, its retry wait and its attempts).
     pub(crate) fn forget_light_sync(&self, store: &Store, source_id: &str) -> Result<()> {
         Ok(store.in_transaction(|store| {
             let mut light = rule::light_sync(store)?;
             if light.forget_source(source_id) {
                 store.set_setting(LIGHT_SYNC_KEY, &light)?;
+            }
+            let mut attempts = rule::attempts(store)?;
+            if attempts.forget_source(source_id) {
+                store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)?;
             }
             Ok(())
         })?)
@@ -205,21 +259,23 @@ impl App {
         }
     }
 
-    /// The end of an automatic run: when every source it tried synced, the retry wait is over.
-    /// (Otherwise the attempt stays counted as it was at the start.)
+    /// The end of an automatic run: the retry wait of every source that synced is over. (A
+    /// source that didn't keeps its attempt counted as it was at the start.)
     pub(crate) fn finish_automatic_sync(
         &self,
         trigger: AutoSyncTrigger,
         results: &[SourceSyncResult],
         at: Timestamp,
     ) {
-        if !results.iter().all(|result| result.ok) {
-            return;
-        }
         let recorded = self.write_store().and_then(|store| {
             Ok(store.in_transaction(|store| {
                 let mut attempts = rule::attempts(store)?;
-                attempts.succeeded(at, scope_of(trigger));
+                for result in results.iter().filter(|result| result.ok) {
+                    attempts.succeeded(&result.source_id, scope_of(trigger));
+                }
+                if results.iter().all(|result| result.ok) {
+                    attempts.last_ok_at = Some(at);
+                }
                 store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)
             })?)
         });

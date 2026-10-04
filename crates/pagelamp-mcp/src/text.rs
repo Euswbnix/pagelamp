@@ -177,7 +177,7 @@ pub enum Freshness {
     /// Its last sync failed for a reason only the student can fix (an expired or revoked
     /// token or link, a missing folder); PageLamp doesn't retry it by itself.
     NeedsStudent,
-    /// It has never finished a sync.
+    /// It has never finished a full sync.
     NeverSynced,
     /// Its last sync failed for another reason.
     Failed,
@@ -272,7 +272,7 @@ pub fn data_as_of(as_of: DataAsOf) -> String {
              as of {}.",
             when(deadlines)
         ),
-        (None, None) => "This course's source has never finished a sync.".to_string(),
+        (None, None) => "This course's source has never finished a full sync.".to_string(),
     }
 }
 
@@ -281,8 +281,8 @@ pub fn structure_pending() -> String {
     format!(
         "{PRODUCT_NAME} has found this course but hasn't read its modules and materials yet (they \
          are missing here, not empty); its deadlines and announcements are listed. It reads \
-         them at the next full sync: when the student presses Sync in {PRODUCT_NAME} or, with \
-         automatic sync on, comes back to its window. {NEVER_SYNC_FOR_THE_STUDENT}"
+         them at the next full sync, and the student pressing Sync in {PRODUCT_NAME} starts \
+         one now. {NEVER_SYNC_FOR_THE_STUDENT}"
     )
 }
 

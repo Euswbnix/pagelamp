@@ -176,7 +176,7 @@ once a day or off. With nobody at the app it checks your token and asks Canvas o
 course list (with each course's syllabus), your deadlines and your courses' announcements; it
 makes no request for a course's modules, pages, file list or assignments. The full sync described
 above runs when you start a sync, or when you open PageLamp or bring it to the front and the last
-full sync is old enough (or a newly found course hasn't been read yet). An automatic sync never
+full sync is old enough (or a newly found course is waiting for its first full sync). An automatic sync never
 downloads files.
 
 ### Course AI policies

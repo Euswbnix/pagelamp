@@ -437,20 +437,19 @@ impl PageLampServer {
     async fn course_overview(&self, Parameters(args): Parameters<CourseArgs>) -> CallToolResult {
         let result = self
             .read(move |store| {
-                views::course_overview(store, &args.course, false, AsOf::now_local())
+                let overview =
+                    views::course_overview(store, &args.course, false, AsOf::now_local())?;
+                let synced = data_as_of(store, &overview.course)?;
+                Ok((overview, synced))
             })
             .await;
         match result {
-            Ok(overview) => {
+            Ok((overview, synced)) => {
                 let (recent_materials, _) =
                     cap_list(overview.recent_materials, MAX_LISTED_MATERIALS);
                 json_result(&Overview {
                     guidance: text::guidance(),
-                    data_as_of: text::data_as_of(text::DataAsOf {
-                        materials: overview.last_synced_at,
-                        deadlines: overview.deadlines_synced_at,
-                        structure_pending: overview.structure_pending,
-                    }),
+                    data_as_of: text::data_as_of(synced),
                     structure_pending: overview.structure_pending.then(text::structure_pending),
                     course: CourseInfo::new(&overview.course, &overview.timeline),
                     ai_materials: overview.ai_materials,
@@ -1487,9 +1486,12 @@ fn data_as_of(store: &Store, course: &Course) -> pagelamp_core::Result<text::Dat
             ..text::DataAsOf::default()
         });
     };
+    // (A time after now tells nothing: the clock was set forward when it was recorded. Each of
+    // the two clocks is checked before the newer is taken.)
+    let now = chrono::Utc::now();
     Ok(text::DataAsOf {
-        materials: source.last_synced_at,
-        deadlines: light.deadlines_synced_at(&source),
+        materials: auto_sync::known(source.last_synced_at, now),
+        deadlines: light.deadlines_synced_at_by(&source, now),
         structure_pending,
     })
 }

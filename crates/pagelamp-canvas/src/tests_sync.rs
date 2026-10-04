@@ -773,6 +773,17 @@ async fn a_user_level_sync_asks_for_no_course_and_removes_only_what_it_read() {
         .with_priority(1)
         .mount(&f.canvas)
         .await;
+    // Announcements are kept or removed by a window that ends today: this test's own are
+    // dated from today, so it doesn't start failing when the fixture's fixed date leaves it.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/announcements"))
+        .and(query_param("context_codes[]", "course_101"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 701, "title": "Room change", "message": "<p>The lab moves to room 2.</p>", "posted_at": day(-11)}
+        ])))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
     let full = f.sync(&f.options(false)).await.unwrap();
     let demo = course101(&f);
     assert_eq!(full.read_courses.len(), 2);
@@ -805,14 +816,14 @@ async fn a_user_level_sync_asks_for_no_course_and_removes_only_what_it_read() {
         (
             "101",
             json!([
-                {"id": 701, "title": "Room change", "message": "<p>The lab moves to room 2.</p>", "posted_at": "2026-09-22T12:00:00Z"},
-                {"id": 702, "title": "Midterm date", "message": "<p>The midterm is on a Thursday.</p>", "posted_at": "2026-09-29T12:00:00Z"}
+                {"id": 701, "title": "Room change", "message": "<p>The lab moves to room 2.</p>", "posted_at": day(-11)},
+                {"id": 702, "title": "Midterm date", "message": "<p>The midterm is on a Thursday.</p>", "posted_at": day(-4)}
             ]),
         ),
         ("202", json!([])),
         (
             "404",
-            json!([{"id": 711, "title": "Welcome", "message": "<p>Welcome to the seminar.</p>", "posted_at": "2026-09-30T12:00:00Z"}]),
+            json!([{"id": 711, "title": "Welcome", "message": "<p>Welcome to the seminar.</p>", "posted_at": day(-3)}]),
         ),
     ] {
         Mock::given(method("GET"))
@@ -1018,7 +1029,7 @@ async fn a_user_level_sync_asks_for_no_course_and_removes_only_what_it_read() {
         .and(path("/api/v1/announcements"))
         .and(query_param("context_codes[]", "course_101"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-            {"id": 702, "title": "Midterm date", "message": "<p>The midterm is on a Thursday.</p>", "posted_at": "2026-09-29T12:00:00Z"}
+            {"id": 702, "title": "Midterm date", "message": "<p>The midterm is on a Thursday.</p>", "posted_at": day(-4)}
         ])))
         .with_priority(1)
         .mount(&f.canvas)
@@ -1187,6 +1198,53 @@ async fn a_user_level_sync_that_misses_deadlines_or_fails_still_records_new_cour
             .iter()
             .all(|r| !r.url.path().starts_with("/api/v1/courses/"))
     );
+
+    // A course whose announcements aren't for this student (403, 404) has been answered:
+    // the run counts, with a warning, and removes nothing of that course.
+    for status in [403, 404] {
+        f.canvas.reset().await;
+        f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+            .await;
+        f.get("/courses", json!([course(101), course(202)])).await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/announcements"))
+            .and(query_param("context_codes[]", "course_101"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"id": 721, "title": "Office hours", "message": "<p>Moved to Tuesday.</p>",
+                 "posted_at": (Utc::now() - TimeDelta::days(2)).to_rfc3339()}
+            ])))
+            .with_priority(2)
+            .mount(&f.canvas)
+            .await;
+        f.get("/announcements", json!([])).await;
+        f.get("/planner/items", json!([])).await;
+        let listed = sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
+            .await
+            .unwrap();
+        assert!(listed.user_level_read && has_material(&f, "/announcement/721"));
+        Mock::given(method("GET"))
+            .and(path("/api/v1/announcements"))
+            .and(query_param("context_codes[]", "course_101"))
+            .respond_with(
+                ResponseTemplate::new(status).set_body_json(json!({"status": "unauthorized"})),
+            )
+            .with_priority(1)
+            .mount(&f.canvas)
+            .await;
+        let report = sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
+            .await
+            .unwrap();
+        assert!(report.user_level_read, "{status}");
+        assert!(!report.warnings.is_empty(), "{status}");
+        assert!(
+            f.store()
+                .list_materials(&format!("{}/course/101", f.source))
+                .unwrap()
+                .iter()
+                .any(|m| m.id.ends_with("/announcement/721")),
+            "{status}: nothing of the course is removed"
+        );
+    }
 
     // Every other way of not reading it all says so too: one course's announcements fail,
     // or the course list or the planner ends in a next link that isn't followed.

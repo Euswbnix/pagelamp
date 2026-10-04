@@ -294,6 +294,8 @@ impl App {
         let limited = canvas && !req.only_courses.is_empty();
         if let (true, Ok(counts)) = (light, &outcome) {
             self.record_light_sync(&source.id, finished_at, &counts.new_courses);
+        } else if let (true, false, Some((kind, message))) = (light, quiet, &error) {
+            self.record_light_failure(&source.id, finished_at, (*kind, message.as_str()));
         } else if !quiet {
             let recorded = self.write_store().and_then(|store| {
                 let error = error.as_ref().map(|(kind, msg)| (*kind, msg.as_str()));
@@ -305,6 +307,9 @@ impl App {
             });
             if let Err(err) = recorded {
                 tracing::warn!(source = %source.id, "could not record sync outcome: {err}");
+            }
+            if canvas {
+                self.light_error_superseded(&source.id);
             }
             if let (true, Ok(counts)) = (canvas, &outcome) {
                 let only = limited.then_some(counts.read_courses.as_slice());

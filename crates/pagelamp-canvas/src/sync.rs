@@ -759,6 +759,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         let today = self.now.date_naive();
         let window_start = today - TimeDelta::days(ANNOUNCEMENT_DAYS);
         let mut announcements_ok = true;
+        let announcements_read;
         let announcements = match api
             .get_all::<json::Announcement>(Endpoint::Announcements {
                 course: cid,
@@ -769,10 +770,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         {
             Ok(listing) => {
                 announcements_ok &= self.check_listing(report, label, "announcements", &listing);
+                announcements_read = announcements_ok;
                 listing.items
             }
             Err(err) => {
+                // Nothing is pruned after a failure. But "not for this student" (403, 404) is
+                // an answer, like a closed Modules tab: the course's announcements count as
+                // read, or a light run could never finish for a student in such a course.
                 announcements_ok = false;
+                announcements_read = matches!(err, CanvasError::Forbidden | CanvasError::NotFound);
                 self.soft(report, label, "announcements", err)?;
                 Vec::new()
             }
@@ -1289,7 +1295,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             files_downloaded,
             files_indexed: files_indexed + indexed_html,
             events,
-            announcements_read: announcements_ok,
+            announcements_read,
             structure_read,
         })
     }

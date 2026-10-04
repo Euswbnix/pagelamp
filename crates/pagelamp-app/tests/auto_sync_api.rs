@@ -52,6 +52,30 @@ fn attempts(data: &Path) -> AutoSyncAttempts {
         .unwrap_or_default()
 }
 
+/// How many of the timer's attempts in a row didn't end with the source synced (the most over
+/// the sources).
+fn failed_in_a_row(data: &Path) -> u32 {
+    attempts(data)
+        .waits
+        .values()
+        .map(|wait| wait.failed)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Every attempt counted so far was asked for `ago` earlier than it really was (so a retry
+/// wait can be over without waiting for it).
+fn attempts_were(data: &Path, ago: TimeDelta) {
+    let mut record = attempts(data);
+    for wait in record.waits.values_mut() {
+        wait.last_at = wait.last_at.map(|at| at - ago);
+        wait.full_last_at = wait.full_last_at.map(|at| at - ago);
+    }
+    store(data)
+        .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
+        .unwrap();
+}
+
 fn set(app: &App, auto_sync: AutoSync) {
     app.set_sync_prefs(SyncPrefs { auto_sync }).unwrap();
 }
@@ -171,7 +195,7 @@ async fn nothing_runs_while_whats_new_waits() {
         .unwrap_err();
     assert_eq!(refused.kind, AppErrorKind::Invalid);
     assert_eq!(*started.lock().unwrap(), 0, "nothing started");
-    assert_eq!(attempts(&data).failed, 1, "a refusal is counted");
+    assert_eq!(failed_in_a_row(&data), 1, "a refusal is counted");
 
     // The row's control works before the sheet is closed.
     set(&app, AutoSync::Off);
@@ -272,13 +296,18 @@ async fn an_automatic_run_is_counted_first_stays_quiet_and_leaves_what_needs_the
 
     // Counted, so nothing retries back to back: not due now, due again an hour later.
     let counted = attempts(&data);
-    assert_eq!((counted.failed, counted.last_ok_at), (1, None));
+    assert_eq!((failed_in_a_row(&data), counted.last_ok_at), (1, None));
+    assert_eq!(
+        counted.waits.keys().collect::<Vec<_>>(),
+        [&feed.id],
+        "only the source that failed waits"
+    );
     assert_eq!(counted.by_source.len(), 2, "the two it tried");
     let now = Utc::now();
     assert!(!due(&app, now));
     let again = app.sync_all(automatic(), |_| {}).await.unwrap();
     assert!(again.results.is_empty(), "not due: nothing ran");
-    assert_eq!(attempts(&data).failed, 1, "and nothing was counted");
+    assert_eq!(failed_in_a_row(&data), 1, "and nothing was counted");
     assert!(!due(&app, now + TimeDelta::minutes(55)));
     assert!(due(&app, now + TimeDelta::minutes(61)));
 
@@ -306,13 +335,7 @@ async fn an_automatic_run_is_counted_first_stays_quiet_and_leaves_what_needs_the
         .respond_with(ResponseTemplate::new(403))
         .mount(&server)
         .await;
-    let wait_is_over = |data: &Path| {
-        let mut record = attempts(data);
-        record.last_at = Some(Utc::now() - TimeDelta::hours(13));
-        store(data)
-            .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
-            .unwrap();
-    };
+    let wait_is_over = |data: &Path| attempts_were(data, TimeDelta::hours(13));
     wait_is_over(&data);
     let revoked = app.sync_all(automatic(), |_| {}).await.unwrap();
     assert_eq!(revoked.results.len(), 1, "only the source that is due");
@@ -353,22 +376,18 @@ async fn a_run_that_ends_well_clears_the_wait_and_one_refused_by_a_running_sync_
     lock.try_lock().unwrap();
     let busy = app.sync_all(automatic(), |_| {}).await.unwrap_err();
     assert_eq!(busy.kind, AppErrorKind::Busy);
-    assert_eq!(attempts(&data).failed, 1);
+    assert_eq!(failed_in_a_row(&data), 1);
     drop(lock);
     let now = Utc::now();
     assert!(!due(&app, now), "the refusal's wait");
 
     // An hour later the run happens and ends well: no wait is left.
-    let mut record = attempts(&data);
-    record.last_at = Some(now - TimeDelta::minutes(61));
-    store(&data)
-        .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
-        .unwrap();
+    attempts_were(&data, TimeDelta::minutes(61));
     let summary = app.sync_all(automatic(), |_| {}).await.unwrap();
     assert!(summary.ok);
     assert_eq!(summary.results.len(), 1);
     let record = attempts(&data);
-    assert_eq!(record.failed, 0);
+    assert!(record.waits.is_empty(), "{record:?}");
     assert!(record.last_ok_at.is_some());
     assert_eq!(record.by_source[&folder.id].len(), 2);
     assert!(!due(&app, Utc::now()), "fresh");
@@ -500,7 +519,7 @@ async fn an_unattended_run_reads_canvas_lightly_and_each_scope_has_its_clock() {
     assert!(app.status().unwrap().deadlines_synced_at.is_empty());
     let row = app.list_sources().unwrap().remove(0);
     assert_eq!((row.last_error, row.last_error_kind), (None, None), "quiet");
-    assert_eq!(attempts(&data).failed, 1);
+    assert_eq!(failed_in_a_row(&data), 1);
     // The timer waits after its own attempt; the student's return doesn't.
     let attended_first = SyncDue {
         unattended: false,
@@ -513,11 +532,7 @@ async fn an_unattended_run_reads_canvas_lightly_and_each_scope_has_its_clock() {
     let found = app.course_overview("DEMO404").unwrap();
     assert!(found.structure_pending, "said from the moment it is listed");
     assert_eq!(found.deadlines_synced_at, found.last_synced_at);
-    let mut record = attempts(&data);
-    record.last_at = Some(Utc::now() - TimeDelta::hours(2));
-    store(&data)
-        .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
-        .unwrap();
+    attempts_were(&data, TimeDelta::hours(2));
     canvas(&server, true, planner.clone()).await;
 
     let light = app.sync_all(automatic(), |_| {}).await.unwrap();
@@ -689,11 +704,7 @@ async fn nothing_starts_by_itself_for_an_hour_after_the_student_stops_a_sync() {
         "an automatic run asked for anyway does nothing"
     );
     let record = attempts(&data);
-    assert_eq!(
-        (record.failed, record.last_at),
-        (0, None),
-        "and counts nothing"
-    );
+    assert!(record.waits.is_empty(), "and counts nothing: {record:?}");
     assert!(record.stopped_at.is_some_and(|at| at >= before));
     assert!(!due(&app, now + TimeDelta::minutes(55)));
     assert!(
@@ -758,7 +769,9 @@ async fn a_light_run_with_an_expired_token_is_recorded_and_stamps_nothing() {
         .setting_or_absent(LIGHT_SYNC_KEY)
         .unwrap()
         .unwrap_or_default();
-    assert_eq!(light, LightSync::default());
+    // No stamp; the record only remembers that the error on the source is a light run's.
+    assert!(light.synced_at.is_empty() && light.structure_pending.is_empty());
+    assert_eq!(light.errors.iter().collect::<Vec<_>>(), [&source.id]);
     // It needs the student now: nothing is due by itself, from either trigger.
     assert_eq!(
         app.startup_tasks(Utc::now() + TimeDelta::days(2))
@@ -1024,14 +1037,24 @@ async fn a_retry_reads_only_the_sources_that_are_due() {
         assert_eq!(run.results.len(), 1, "{run:?}");
         assert_eq!(run.results[0].source_id, feed.id);
         assert_eq!(requests(&server).await, Vec::new(), "no Canvas request");
-        // The retry wait is over.
-        let mut record = attempts(&data);
-        record.last_at = Some(Utc::now() - TimeDelta::hours(13));
-        store(&data)
-            .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
-            .unwrap();
+        // The feed's retry wait is over.
+        attempts_were(&data, TimeDelta::hours(13));
     }
     assert!(!attempts(&data).by_source.contains_key(&source.id));
+
+    // The feed fails again and waits. Canvas becomes due inside that wait and is read on
+    // time: only the source that failed waits.
+    assert!(!app.sync_all(automatic(), |_| {}).await.unwrap().ok);
+    assert!(!due(&app, Utc::now()), "the feed waits, Canvas is fresh");
+    synced_hours_ago(&data, &source.id, 13);
+    let on_time = app.sync_all(automatic(), |_| {}).await.unwrap();
+    assert_eq!(on_time.results.len(), 1, "{on_time:?}");
+    assert_eq!(on_time.results[0].source_id, source.id);
+    assert!(on_time.ok);
+    let record = attempts(&data);
+    assert_eq!(record.waits.keys().collect::<Vec<_>>(), [&feed.id]);
+    canvas(&server, false, json!([])).await;
+    with_a_file(&server).await;
 
     // An automatic request can't ask for downloads or name courses: both are dropped, so the
     // run reads the whole source and downloads nothing. It says "automatic sync".
@@ -1096,4 +1119,175 @@ async fn a_retry_reads_only_the_sources_that_are_due() {
         .unwrap();
     assert_eq!(failed.error_kind, Some(SourceErrorKind::Network));
     assert_eq!(row(&app).last_error_kind, Some(SourceErrorKind::Network));
+}
+
+/// What a light run leaves on a source. A failure that is shown (here: the course list comes
+/// back as something that isn't the Canvas API) is recorded, and the next light run that ends
+/// well clears it. A failure a full sync left is never cleared, or replaced, by a light run: it stays
+/// until a full sync succeeds.
+#[tokio::test]
+async fn a_light_run_clears_only_the_error_a_light_run_left() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    canvas(&server, false, json!([])).await;
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    let source = app
+        .add_canvas_source(&server.uri(), "demo-not-a-real-token")
+        .await
+        .unwrap();
+    assert!(
+        app.sync_all(SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    let row = |app: &App| app.list_sources().unwrap().remove(0);
+    let light_errors = |data: &Path| -> Vec<String> {
+        let light: LightSync = store(data)
+            .setting_or_absent(LIGHT_SYNC_KEY)
+            .unwrap()
+            .unwrap_or_default();
+        light.errors.into_iter().collect()
+    };
+
+    // The course list answers with a page that isn't the API.
+    let maintenance = || {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/courses"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>Maintenance</html>"))
+            .with_priority(1)
+    };
+
+    // A light run gets it: shown, and remembered as a light run's.
+    synced_hours_ago(&data, &source.id, 13);
+    maintenance().mount(&server).await;
+    let failed_run = app.sync_all(automatic(), |_| {}).await.unwrap();
+    assert!(!failed_run.ok);
+    assert_eq!(
+        failed_run.results[0].error_kind,
+        Some(SourceErrorKind::Other)
+    );
+    assert_eq!(row(&app).last_error_kind, Some(SourceErrorKind::Other));
+    assert_eq!(light_errors(&data), std::slice::from_ref(&source.id));
+
+    // Canvas is back; the next light run ends well and clears what the light run left. The
+    // last full sync's time is untouched.
+    canvas(&server, false, json!([])).await;
+    attempts_were(&data, TimeDelta::hours(13));
+    let recovered = app.sync_all(automatic(), |_| {}).await.unwrap();
+    assert!(recovered.ok, "{recovered:?}");
+    let after = row(&app);
+    assert_eq!((after.last_error, after.last_error_kind), (None, None));
+    assert!(Utc::now() - after.last_synced_at.unwrap() >= TimeDelta::hours(13));
+    assert!(light_errors(&data).is_empty());
+
+    // A full sync the student started fails. Light runs after it change nothing about that:
+    // neither one that fails itself nor a good one.
+    maintenance().mount(&server).await;
+    let manual = app
+        .sync_source(&source.id, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(!manual.ok);
+    let from_full = row(&app);
+    assert!(from_full.last_error.is_some() && light_errors(&data).is_empty());
+    // (Not one only the student can fix, so the timer still tries the source.)
+    assert_eq!(from_full.last_error_kind, Some(SourceErrorKind::Other));
+    let store_light_clock = |data: &Path| {
+        let mut light: LightSync = store(data)
+            .setting_or_absent(LIGHT_SYNC_KEY)
+            .unwrap()
+            .unwrap_or_default();
+        light.synced_at.clear();
+        store(data).set_setting(LIGHT_SYNC_KEY, &light).unwrap();
+    };
+    store_light_clock(&data);
+    attempts_were(&data, TimeDelta::hours(13));
+    assert!(!app.sync_all(automatic(), |_| {}).await.unwrap().ok);
+    assert_eq!(row(&app).last_error, from_full.last_error);
+    assert!(
+        light_errors(&data).is_empty(),
+        "the full sync's failure stays its own"
+    );
+    canvas(&server, false, json!([])).await;
+    attempts_were(&data, TimeDelta::hours(13));
+    assert!(app.sync_all(automatic(), |_| {}).await.unwrap().ok);
+    assert_eq!(
+        row(&app).last_error,
+        from_full.last_error,
+        "a light run doesn't clear it"
+    );
+    // A full sync that succeeds does.
+    assert!(
+        app.sync_source(&source.id, SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    assert_eq!(row(&app).last_error, None);
+}
+
+/// Which failures of an automatic run stay quiet: only the ones that may pass by themselves.
+/// A feed that answers with something that isn't a calendar is shown; one that throttles is
+/// quiet.
+#[tokio::test]
+async fn an_automatic_run_shows_a_failure_that_will_not_pass_by_itself() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/feed.ics"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(FEED))
+        .mount(&server)
+        .await;
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    let feed = app
+        .add_ical_source(&format!("{}/feed.ics", server.uri()), Some("Feed"))
+        .await
+        .unwrap();
+    assert!(
+        app.sync_all(SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    let row = |app: &App| app.list_sources().unwrap().remove(0);
+
+    // Throttled: quiet, and it waits.
+    synced_hours_ago(&data, &feed.id, 13);
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/feed.ics"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+    let throttled = app.sync_all(automatic(), |_| {}).await.unwrap();
+    assert_eq!(
+        throttled.results[0].error_kind,
+        Some(SourceErrorKind::RateLimited)
+    );
+    assert_eq!(row(&app).last_error, None, "quiet");
+    assert_eq!(failed_in_a_row(&data), 1);
+
+    // The address now answers with a login page: nothing fixes that but the student, so it
+    // is recorded and shown.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/feed.ics"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("<html><body>Please sign in</body></html>"),
+        )
+        .mount(&server)
+        .await;
+    attempts_were(&data, TimeDelta::hours(13));
+    let not_a_calendar = app.sync_all(automatic(), |_| {}).await.unwrap();
+    assert_eq!(
+        not_a_calendar.results[0].error_kind,
+        Some(SourceErrorKind::Other)
+    );
+    let shown = row(&app);
+    assert_eq!(shown.last_error_kind, Some(SourceErrorKind::Other));
+    assert!(shown.last_error.is_some());
 }

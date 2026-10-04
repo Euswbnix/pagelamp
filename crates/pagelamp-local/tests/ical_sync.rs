@@ -102,6 +102,7 @@ async fn failures_keep_existing_events_and_never_leak_the_url() {
         // A server having trouble may recover by itself: like a network failure.
         (500, SourceErrorKind::Network),
         (503, SourceErrorKind::Network),
+        (429, SourceErrorKind::RateLimited),
         (302, SourceErrorKind::Other),
     ] {
         let (_server, url) = serve(status, String::new()).await;

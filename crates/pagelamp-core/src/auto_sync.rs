@@ -124,6 +124,10 @@ pub struct LightSync {
     /// in a way that may pass). They keep waiting, which is the truth for every view, but they
     /// no longer make a full sync due by themselves: the next regular one tries again.
     pub structure_tried: BTreeSet<String>,
+    /// Sources whose recorded error (`last_error`) a light run left. The next light run that
+    /// ends well clears such an error. An error a full sync left isn't in here: it stays
+    /// until a full sync succeeds.
+    pub errors: BTreeSet<String>,
 }
 
 impl LightSync {
@@ -150,13 +154,30 @@ impl LightSync {
             .collect()
     }
 
-    /// When `source` was last read as far as `scope` reads it.
-    pub fn synced_at(&self, source: &SourceRecord, scope: SyncScope) -> Option<Timestamp> {
+    /// The same, counting only times that aren't after `now` (`known`): each of the two is
+    /// checked before the newer is taken, so a full sync "in the future" doesn't hide a light
+    /// run that really happened.
+    pub fn deadlines_synced_at_by(
+        &self,
+        source: &SourceRecord,
+        now: Timestamp,
+    ) -> Option<Timestamp> {
+        known(source.last_synced_at, now).max(known(self.synced_at.get(&source.id).copied(), now))
+    }
+
+    /// When `source` was last read as far as `scope` reads it, as far as that is known at
+    /// `now`.
+    pub fn synced_at(
+        &self,
+        source: &SourceRecord,
+        scope: SyncScope,
+        now: Timestamp,
+    ) -> Option<Timestamp> {
         match scope {
             SyncScope::UserLevel if source.kind == SourceKind::Canvas => {
-                self.deadlines_synced_at(source)
+                self.deadlines_synced_at_by(source, now)
             }
-            SyncScope::UserLevel | SyncScope::Everything => source.last_synced_at,
+            SyncScope::UserLevel | SyncScope::Everything => known(source.last_synced_at, now),
         }
     }
 
@@ -206,6 +227,7 @@ impl LightSync {
                 self.structure_pending
                     .retain(|course| !course.starts_with(&prefix) || unread.contains(course));
                 self.synced_at.remove(source_id);
+                self.errors.remove(source_id);
             }
         }
         for course in unread {
@@ -233,23 +255,32 @@ pub struct SyncPrefs {
     pub auto_sync: AutoSync,
 }
 
-/// What PageLamp remembers about its automatic sync attempts. An attempt is counted when it
-/// is asked for, before anything else: one that is refused (another sync runs, What's new is
-/// waiting) or fails counts as much as one that ran, so nothing retries back to back.
+/// One source's retry wait, for each scope. An attempt is counted when it is asked for, before
+/// anything else: one that is refused (another sync runs, What's new is waiting) or fails counts
+/// as much as one that ran, so nothing retries back to back.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RetryWait {
+    /// When the last automatic attempt from the timer (`SyncScope::UserLevel`) on this source
+    /// was asked for.
+    pub last_at: Option<Timestamp>,
+    /// Such attempts in a row that didn't end with the source synced.
+    pub failed: u32,
+    /// The same two for the attempts made while the student is at the app
+    /// (`SyncScope::Everything`). Each scope waits after its own attempts only.
+    pub full_last_at: Option<Timestamp>,
+    pub full_failed: u32,
+}
+
+/// What PageLamp remembers about its automatic sync attempts.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AutoSyncAttempts {
-    /// When the last automatic attempt from the timer (`SyncScope::UserLevel`) was asked for.
-    pub last_at: Option<Timestamp>,
-    /// Such attempts in a row that didn't end with every source it could sync synced.
-    pub failed: u32,
-    /// The same two for the attempts made while the student is at the app
-    /// (`SyncScope::Everything`). Each scope waits after its own attempts only: a source that
-    /// keeps failing for the timer's runs must not keep the full sync from ever being due.
-    pub full_last_at: Option<Timestamp>,
-    pub full_failed: u32,
-    /// When an automatic run last ended with every source it could sync synced (a run from
-    /// the timer reads only deadlines and announcements from Canvas).
+    /// Per source id: its retry wait. Only the source whose attempt didn't finish waits: a
+    /// source that keeps failing never delays the others.
+    pub waits: BTreeMap<String, RetryWait>,
+    /// When an automatic run last ended with every source it read synced (a run from the
+    /// timer reads only deadlines and announcements from Canvas).
     pub last_ok_at: Option<Timestamp>,
     /// Per source id: when its automatic attempts of the last 24 hours started.
     pub by_source: BTreeMap<String, Vec<Timestamp>>,
@@ -260,19 +291,29 @@ pub struct AutoSyncAttempts {
 }
 
 impl AutoSyncAttempts {
-    /// The earliest moment the next automatic attempt of `scope` may start: after a failed or
-    /// refused one of that scope, 1 h, 2 h, 4 h… later, at most the setting's interval;
+    /// How many attempts of `scope` on `source_id` in a row didn't end with it synced.
+    pub fn failed(&self, source_id: &str, scope: SyncScope) -> u32 {
+        self.waits.get(source_id).map_or(0, |wait| match scope {
+            SyncScope::UserLevel => wait.failed,
+            SyncScope::Everything => wait.full_failed,
+        })
+    }
+
+    /// The earliest moment the next automatic attempt of `scope` on `source_id` may start:
+    /// after a failed or refused one, 1 h, 2 h, 4 h… later, at most the setting's interval;
     /// `None`: no wait. (An attempt recorded after `now` is one the clock was set forward for:
     /// it tells nothing, see `known`.)
     pub fn retry_not_before(
         &self,
+        source_id: &str,
         interval: TimeDelta,
         scope: SyncScope,
         now: Timestamp,
     ) -> Option<Timestamp> {
+        let wait = self.waits.get(source_id)?;
         let (last, failed) = match scope {
-            SyncScope::UserLevel => (known(self.last_at, now)?, self.failed),
-            SyncScope::Everything => (known(self.full_last_at, now)?, self.full_failed),
+            SyncScope::UserLevel => (known(wait.last_at, now)?, wait.failed),
+            SyncScope::Everything => (known(wait.full_last_at, now)?, wait.full_failed),
         };
         if failed == 0 {
             return None;
@@ -312,27 +353,38 @@ impl AutoSyncAttempts {
                 .entry(source.id.clone())
                 .or_default()
                 .push(now);
-        }
-        match scope {
-            SyncScope::UserLevel => {
-                self.last_at = Some(now);
-                self.failed = self.failed.saturating_add(1);
-            }
-            SyncScope::Everything => {
-                self.full_last_at = Some(now);
-                self.full_failed = self.full_failed.saturating_add(1);
+            let wait = self.waits.entry(source.id.clone()).or_default();
+            match scope {
+                SyncScope::UserLevel => {
+                    wait.last_at = Some(now);
+                    wait.failed = wait.failed.saturating_add(1);
+                }
+                SyncScope::Everything => {
+                    wait.full_last_at = Some(now);
+                    wait.full_failed = wait.full_failed.saturating_add(1);
+                }
             }
         }
     }
 
-    /// The attempt of `scope` counted last ended with every source it could sync synced. A
-    /// full run that ends well read everything the timer's run reads: both waits are over.
-    pub fn succeeded(&mut self, at: Timestamp, scope: SyncScope) {
-        self.failed = 0;
-        if scope == SyncScope::Everything {
-            self.full_failed = 0;
+    /// The attempt of `scope` on `source_id` counted last ended with the source synced: its
+    /// wait is over. A full sync read everything the timer's run reads, so it ends both.
+    pub fn succeeded(&mut self, source_id: &str, scope: SyncScope) {
+        if let Some(wait) = self.waits.get_mut(source_id) {
+            wait.failed = 0;
+            if scope == SyncScope::Everything {
+                wait.full_failed = 0;
+            }
+            if wait.failed == 0 && wait.full_failed == 0 {
+                self.waits.remove(source_id);
+            }
         }
-        self.last_ok_at = Some(at);
+    }
+
+    /// The source was removed: nothing of it is remembered.
+    pub fn forget_source(&mut self, source_id: &str) -> bool {
+        let waited = self.waits.remove(source_id).is_some();
+        self.by_source.remove(source_id).is_some() || waited
     }
 }
 
@@ -404,12 +456,13 @@ pub fn known(at: Option<Timestamp>, now: Timestamp) -> Option<Timestamp> {
 
 /// The sources an automatic sync of `scope` reads at `now` by the clock alone (the facade adds
 /// what only it knows: a sync running, What's new waiting). Empty when nothing is due: the
-/// setting is off, a retry wait of this scope is running, or the student stopped a sync in the
-/// last hour. Otherwise every source that can be tried and that was last read (as far as
+/// setting is off, or the student stopped a sync in the last hour. Otherwise every source
+/// that can be tried, has no retry wait of this scope running, and was last read (as far as
 /// `scope` reads) the interval ago or never. For a full sync also a source with a course that
 /// waits for its first one and that no full sync has tried, whatever the interval.
 ///
-/// Only these are read: a source that keeps failing brings the others no extra sync.
+/// Only these are read, and each source waits after its own failures only: one that keeps
+/// failing brings the others no extra sync and no delay.
 pub fn due_now<'a>(
     setting: AutoSync,
     clocks: Clocks<'a>,
@@ -419,19 +472,22 @@ pub fn due_now<'a>(
     let Some(interval) = setting.interval() else {
         return Vec::new();
     };
-    let waiting = clocks.attempts.stopped_recently(now)
-        || clocks
-            .attempts
-            .retry_not_before(interval, scope, now)
-            .is_some_and(|not_before| now < not_before);
-    if waiting {
+    if clocks.attempts.stopped_recently(now) {
         return Vec::new();
     }
     eligible(clocks.sources, clocks.attempts, now)
         .into_iter()
         .filter(|source| {
-            known(clocks.light.synced_at(source, scope), now).is_none_or(|at| now - at >= interval)
-                || (scope == SyncScope::Everything && clocks.light.has_untried(source))
+            let waiting = clocks
+                .attempts
+                .retry_not_before(&source.id, interval, scope, now)
+                .is_some_and(|not_before| now < not_before);
+            !waiting
+                && (clocks
+                    .light
+                    .synced_at(source, scope, now)
+                    .is_none_or(|at| now - at >= interval)
+                    || (scope == SyncScope::Everything && clocks.light.has_untried(source)))
         })
         .collect()
 }
@@ -570,7 +626,7 @@ mod tests {
             Some(at("2026-10-03T11:00:00Z"))
         );
         assert_eq!(
-            light.synced_at(&canvas, SyncScope::Everything),
+            light.synced_at(&canvas, SyncScope::Everything, now),
             canvas.last_synced_at
         );
         assert_eq!(
@@ -683,7 +739,7 @@ mod tests {
         assert!(due(&attempts, 0));
         // Counted when asked for: nothing retries back to back.
         attempts.count(&refs, start, full);
-        assert_eq!(attempts.full_failed, 1);
+        assert_eq!(attempts.failed("a", full), 1);
         assert!(!due(&attempts, 0));
         assert!(
             !due(&attempts, 0) && due(&attempts, 1),
@@ -711,13 +767,19 @@ mod tests {
         // Each scope waits after its own attempts only. All of these were full ones, so the
         // timer's run was due all along; and a source that keeps failing for the timer's runs
         // doesn't keep the full sync from being due when the student comes back.
-        assert_eq!((attempts.failed, attempts.last_at), (0, None));
+        assert_eq!(attempts.failed("a", SyncScope::UserLevel), 0);
         assert!(due_for(&attempts, 16, SyncScope::UserLevel));
         let mut timer = AutoSyncAttempts::default();
         for hour in [0, 1, 3] {
             timer.count(&refs, start + TimeDelta::hours(hour), SyncScope::UserLevel);
         }
-        assert_eq!((timer.failed, timer.full_failed), (3, 0));
+        assert_eq!(
+            (
+                timer.failed("a", SyncScope::UserLevel),
+                timer.failed("a", full)
+            ),
+            (3, 0)
+        );
         assert!(
             !due_for(&timer, 4, SyncScope::UserLevel),
             "4 h after the third"
@@ -727,23 +789,28 @@ mod tests {
             "the full sync has no wait of its own"
         );
         // A light run that ends well ends the timer's wait only; a full one ends both.
+        let later = start + TimeDelta::hours(28);
         attempts.count(&refs, start + TimeDelta::hours(27), SyncScope::UserLevel);
-        attempts.succeeded(start + TimeDelta::hours(27), SyncScope::UserLevel);
-        assert_eq!((attempts.failed, attempts.full_failed), (0, 5));
-        attempts.count(&refs, start + TimeDelta::hours(28), SyncScope::UserLevel);
-        attempts.succeeded(start + TimeDelta::hours(28), full);
+        attempts.succeeded("a", SyncScope::UserLevel);
         assert_eq!(
             (
-                attempts.failed,
-                attempts.full_failed,
-                attempts.retry_not_before(TimeDelta::hours(12), full, start + TimeDelta::hours(28)),
-                attempts.retry_not_before(
-                    TimeDelta::hours(12),
-                    SyncScope::UserLevel,
-                    start + TimeDelta::hours(28)
-                )
+                attempts.failed("a", SyncScope::UserLevel),
+                attempts.failed("a", full)
             ),
-            (0, 0, None, None)
+            (0, 5)
+        );
+        attempts.count(&refs, later, SyncScope::UserLevel);
+        attempts.succeeded("a", full);
+        assert_eq!(
+            (
+                attempts.retry_not_before("a", TimeDelta::hours(12), full, later),
+                attempts.retry_not_before("a", TimeDelta::hours(12), SyncScope::UserLevel, later),
+            ),
+            (None, None)
+        );
+        assert!(
+            attempts.waits.is_empty(),
+            "nothing is kept for a source that is well"
         );
         // The student stopped a sync: nothing starts by itself for an hour, with no attempt
         // counted and whatever the retry wait says.
@@ -789,7 +856,7 @@ mod tests {
             capped.count(&refs, start + TimeDelta::hours(hour), SyncScope::UserLevel);
             capped.count(&refs, start + TimeDelta::hours(hour), full);
         }
-        capped.succeeded(start + TimeDelta::hours(3), full);
+        capped.succeeded("canvas:lms", full);
         assert_eq!(
             capped.attempts_in_last_day("canvas:lms", start + TimeDelta::hours(4)),
             6
@@ -911,7 +978,7 @@ mod tests {
         }
         assert!(!attempts.stopped_recently(now));
         assert_eq!(
-            attempts.retry_not_before(TimeDelta::hours(12), SyncScope::Everything, now),
+            attempts.retry_not_before("a", TimeDelta::hours(12), SyncScope::Everything, now),
             None
         );
         assert_eq!(attempts.attempts_in_last_day("a", now), 0);
@@ -921,6 +988,88 @@ mod tests {
         assert_eq!(attempts.by_source["a"], [now]);
         assert_eq!(known(Some(now), now), Some(now));
         assert_eq!(known(Some(at(later)), now), None);
+
+        // The light clock: each time is checked before the newer of the two is taken. A full
+        // sync "next year" would otherwise hide the light run that really happened, and the
+        // timer's run would be due at every read.
+        let none = AutoSyncAttempts::default();
+        let light_due = |light: &LightSync| {
+            let clocks = Clocks {
+                sources: &ahead,
+                attempts: &none,
+                light,
+            };
+            due_by_the_clock(AutoSync::TwiceDaily, clocks, SyncScope::UserLevel, now)
+        };
+        let mut read = LightSync::default();
+        assert!(light_due(&read), "never read, as far as is known");
+        read.light_run_ended("a", now - TimeDelta::hours(1), &[]);
+        assert!(!light_due(&read), "the light run an hour ago counts");
+        assert_eq!(
+            read.deadlines_synced_at_by(&ahead[0], now),
+            Some(now - TimeDelta::hours(1))
+        );
+        assert_eq!(read.synced_at(&ahead[0], SyncScope::Everything, now), None);
+        // A light stamp in the future tells nothing either.
+        read.light_run_ended("a", at(later), &[]);
+        assert!(light_due(&read));
+    }
+
+    /// Each source waits after its own failures only. Before, the wait was one for the whole
+    /// scope: a feed whose host was down for a day held Canvas back with it.
+    #[test]
+    fn a_source_that_keeps_failing_never_delays_the_others() {
+        let start = at("2026-10-03T00:00:00Z");
+        let mut failing = source("ical:feed", Some("2026-10-02T00:00:00Z"), None);
+        failing.kind = SourceKind::Ical;
+        // The healthy source was read an hour before the start: due 11 hours in.
+        let healthy = source("canvas:lms", Some("2026-10-02T23:00:00Z"), None);
+        let light = LightSync::default();
+        let mut attempts = AutoSyncAttempts::default();
+        let due = |sources: &[SourceRecord], attempts: &AutoSyncAttempts, hours: i64| {
+            let clocks = Clocks {
+                sources,
+                attempts,
+                light: &light,
+            };
+            let now = start + TimeDelta::hours(hours);
+            due_now(AutoSync::TwiceDaily, clocks, SyncScope::Everything, now)
+                .iter()
+                .map(|source| source.id.clone())
+                .collect::<Vec<String>>()
+        };
+        let sources = [failing.clone(), healthy.clone()];
+        // The feed fails at 0 h, 1 h, 3 h and 7 h: its wait has grown to 8 hours, until 15 h.
+        for hour in [0, 1, 3, 7] {
+            assert_eq!(due(&sources, &attempts, hour), ["ical:feed"], "{hour} h");
+            attempts.count(
+                &[&failing],
+                start + TimeDelta::hours(hour),
+                SyncScope::Everything,
+            );
+        }
+        assert!(
+            due(&sources, &attempts, 10).is_empty(),
+            "the feed waits; Canvas isn't due yet"
+        );
+        // Canvas becomes due inside the feed's wait, and is read then: on time, not when the
+        // feed's wait ends.
+        assert_eq!(due(&sources, &attempts, 11), ["canvas:lms"]);
+        attempts.count(
+            &[&healthy],
+            start + TimeDelta::hours(11),
+            SyncScope::Everything,
+        );
+        attempts.succeeded("canvas:lms", SyncScope::Everything);
+        let read = source("canvas:lms", Some("2026-10-03T11:00:00Z"), None);
+        let sources = [failing.clone(), read];
+        assert!(due(&sources, &attempts, 14).is_empty());
+        assert_eq!(due(&sources, &attempts, 15), ["ical:feed"]);
+        assert_eq!(attempts.failed("ical:feed", SyncScope::Everything), 4);
+        assert_eq!(attempts.failed("canvas:lms", SyncScope::Everything), 0);
+        // Removing a source forgets its wait and its attempts.
+        assert!(attempts.forget_source("ical:feed"));
+        assert!(attempts.waits.is_empty() && !attempts.by_source.contains_key("ical:feed"));
     }
 
     #[test]

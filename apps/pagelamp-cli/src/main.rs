@@ -552,11 +552,13 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                 c.courses, c.hidden_courses, c.materials, c.indexed_materials, c.events
             );
             match status.last_synced_at {
+                // (A sync limited to some courses, or one PageLamp ran by itself for deadlines
+                // and announcements only, isn't one.)
                 Some(at) => println!(
-                    "Last sync: {}",
+                    "Last full sync: {}",
                     at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M")
                 ),
-                None => println!("Last sync: never"),
+                None => println!("Last full sync: never"),
             }
             if status.sync_in_progress {
                 println!("A sync is running right now.");
@@ -891,7 +893,7 @@ fn source_line(source: &SourceRecord) -> String {
                 .format("%Y-%m-%d %H:%M")
                 .to_string()
         })
-        .unwrap_or_else(|| "never synced".into());
+        .unwrap_or_else(|| "no full sync yet".into());
     let error = source
         .last_error
         .as_deref()
