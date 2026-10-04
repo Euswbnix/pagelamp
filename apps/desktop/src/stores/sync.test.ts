@@ -246,6 +246,32 @@ describe("a sync PageLamp started by itself", () => {
     expect(useSyncStore.getState().noAutomaticBefore).toBeGreaterThan(Date.now());
   });
 
+  it("'Hide' while an automatic run hasn't shown anything clears the last result only", () => {
+    const store = useSyncStore.getState();
+    store.begin(1);
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    store.finish(null, new ApiError("cancelled", "Cancelled"));
+    expect(useSyncStore.getState().bySource.a).toMatchObject({ result: null, stopped: true });
+
+    store.begin(null, null, "unattended");
+    useSyncStore.getState().hideRun();
+    // The call in flight goes on; only what the last run left is gone.
+    expect(useSyncStore.getState()).toMatchObject({
+      running: true,
+      automatic: "unattended",
+      started: false,
+      order: [],
+      bySource: {},
+      lastSummary: null,
+      stoppedByUser: false,
+    });
+
+    // Once it shows its own rows, "Hide" has nothing of an older run to take away.
+    store.apply({ type: "source_started", source_id: "b", label: "Course folder" });
+    useSyncStore.getState().hideRun();
+    expect(useSyncStore.getState()).toMatchObject({ running: true, order: ["b"] });
+  });
+
   it("'Hide' clears the run but not what an automatic sync needs to remember", () => {
     automaticRun(null);
     useSyncStore.getState().finish(summaryOfA(null), null);

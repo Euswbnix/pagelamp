@@ -89,7 +89,10 @@ interface SyncState {
   requestStop: () => void;
   /** Hide the "sync failed" message (it stays hidden until the next run). */
   dismissRunError: () => void;
-  /** "Hide" on the last run's result: nothing of it stays on screen. */
+  /**
+   * "Hide" on the last run's result: nothing of it stays on screen. A run on its way that has
+   * shown nothing yet (an automatic one) goes on untouched.
+   */
   hideRun: () => void;
   /** The student opened, fronted or changed something in the app just now. */
   noteStudentAction: () => void;
@@ -266,7 +269,14 @@ export const useSyncStore = create<SyncState>()((set) => ({
     }),
   requestStop: () => set({ stopping: true }),
   dismissRunError: () => set({ runError: null }),
-  hideRun: () => set(noRun),
+  hideRun: () =>
+    set((state) =>
+      !state.running
+        ? noRun
+        : state.started
+          ? {}
+          : { order: [], bySource: {}, lastSummary: null, runError: null, stoppedByUser: false },
+    ),
   noteStudentAction: () => set({ attendedUntil: Date.now() + ATTENDED_WINDOW_MS }),
   reset: () => set(idle),
 }));

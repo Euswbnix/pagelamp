@@ -1,9 +1,10 @@
-import { configure, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { SyncEvent } from "@/api/types";
 import i18n from "@/i18n";
+import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
@@ -13,6 +14,7 @@ configure({ asyncUtilTimeout: 3000 });
 
 // Synthetic values only. The mock accepts tokens of 8+ characters without "expired".
 const NEW_TOKEN = "demo-replacement-token-7f3a91";
+const CANVAS = "canvas:canvas.demo.test";
 
 function storageDump(): string {
   const entries: string[] = [];
@@ -180,6 +182,29 @@ describe("SourcesPage", () => {
       await screen.findByText("A sync is already running. Try again when it finishes."),
     ).toBeInTheDocument();
     release();
+  });
+
+  it("doesn't show a stopped source as syncing while an automatic sync is only on its way", async () => {
+    const { user } = renderRoute("/sources");
+    const canvas = (await screen.findByRole("heading", { level: 2, name: "Demo Canvas" })).closest(
+      "li",
+    ) as HTMLElement;
+    // The student's sync was stopped in Canvas: its row stays, unfinished.
+    act(() => {
+      const store = useSyncStore.getState();
+      store.begin(1);
+      store.apply({ type: "source_started", source_id: CANVAS, label: "Demo Canvas" });
+      store.finish(null, new ApiError("cancelled", "Cancelled"));
+    });
+    // PageLamp starts one by itself; nothing has come back from it yet.
+    act(() => useSyncStore.getState().begin(null, null, "unattended"));
+    expect(within(canvas).queryByText("Syncing")).toBeNull();
+    expect(within(canvas).queryByText("Syncing…")).toBeNull();
+
+    // "Hide" takes away the stopped run's result, not the run in flight.
+    await user.click(screen.getByRole("button", { name: "Hide sync results" }));
+    expect(useSyncStore.getState()).toMatchObject({ running: true, automatic: "unattended" });
+    act(() => useSyncStore.getState().finish(null, new ApiError("busy", "Synthetic refusal")));
   });
 
   it("keeps the replace dialog open and explains a rejected token", async () => {
