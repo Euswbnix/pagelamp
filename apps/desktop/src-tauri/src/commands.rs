@@ -811,6 +811,13 @@ pub async fn log_ui_error(message: String, stack: Option<String>) {
     diagnostics::log_ui_error(&message, stack.as_deref());
 }
 
+/// Whether the page asking is the first one this process has loaded: the launch, not a reload
+/// (window.rs `PageLoads`). True once per process at most; the page asks once and keeps it.
+#[tauri::command]
+pub fn first_page_load(loads: State<'_, crate::window::PageLoads>) -> bool {
+    loads.first()
+}
+
 // ----- updates: preferences and what's due (the updater itself is in updates.rs) ----------------
 
 #[tauri::command]

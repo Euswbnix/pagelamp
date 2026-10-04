@@ -440,6 +440,10 @@
     }
   },
   {
+    "cmd": "first_page_load",
+    "args": {}
+  },
+  {
     "cmd": "update_prefs",
     "args": {}
   },
