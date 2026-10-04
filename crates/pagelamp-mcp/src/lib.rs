@@ -22,14 +22,16 @@
 //! - `course_overview(course)` → timeline (week, confidence, evidence), current modules,
 //!   materials published in the last 14 days, deadlines in the next 21 days, announcements
 //!   of the last 14 days (titles + ids), ai_policy + note; for a Canvas course also its Home
-//!   page and syllabus as materials and what PageLamp did not read, with reasons
-//!   (`pagelamp_core::coverage`; structure only, so also given when the text is withheld).
+//!   page and syllabus as materials and what PageLamp did not read in its last sync, with
+//!   reasons (`pagelamp_core::coverage`; structure only, so also given when the text is
+//!   withheld). The description explains each reason code.
 //! - `week_materials(course, week?)` → materials of that week (default current week):
 //!   id, title, kind, locator count, text_status, url.
 //! - `list_materials(course, kind?, offset?)` → every material of the course, 50 at a time:
-//!   id, title, kind, week, date, text state. Never assignments.
+//!   id, title, kind, week, date, text state, and for one without text why a download won't
+//!   help (`download_blocked`) or why it wasn't read (`not_read`). Never assignments.
 //! - `read_material(material_id, from_chunk?, max_chars?)` → wrapped text with locators,
-//!   `next_chunk` for pagination.
+//!   `next_chunk` for pagination; for a material without text, why there is none.
 //! - `search_materials(query, course?, limit?)` → hits with snippet, material title,
 //!   locator, url (for citations).
 //! - `list_deadlines(course?, days_ahead? = 21, days_back? = 0)` → events for planning.
@@ -84,8 +86,8 @@ use pagelamp_core::coverage::{
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
-    Course, CoursePhase, CourseTimeline, EventKind, LifecycleState, MaterialKind, SourceErrorKind,
-    SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
+    Course, CoursePhase, CourseTimeline, DownloadBlock, EventKind, LifecycleState, MaterialKind,
+    SourceErrorKind, SourceKind, StoreCounts, StudyPlan, TermAnchorSource, TextStatus, Timestamp,
 };
 use pagelamp_core::store::Store;
 use pagelamp_core::views::{self, AsOf, Deadline, MaterialView};
@@ -522,7 +524,7 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::COURSE_OVERVIEW, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
+    #[tool(description = text::course_overview_description(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn course_overview(&self, Parameters(args): Parameters<CourseArgs>) -> CallToolResult {
         let result = self
             .read(move |store| {
@@ -578,12 +580,13 @@ impl PageLampServer {
         }
     }
 
-    #[tool(description = text::LIST_MATERIALS, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
+    #[tool(description = text::list_materials_description(), annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn list_materials(
         &self,
         Parameters(args): Parameters<ListMaterialsArgs>,
     ) -> CallToolResult {
         let offset = args.offset.unwrap_or(0);
+        let of_a_kind = args.kind.is_some();
         let result = self
             .read(move |store| {
                 let list = views::list_materials(store, &args.course, args.kind, offset)?;
@@ -595,23 +598,41 @@ impl PageLampServer {
             Ok((list, synced)) => {
                 let first = list.offset as usize + 1;
                 let last = list.offset as usize + list.materials.len();
+                // Files the student can download in the app: not the ones that are locked,
+                // over the limit or gone. Only said when the AI app may read the text at all.
                 let waiting = list
                     .materials
                     .iter()
                     .filter(|m| {
-                        m.kind == MaterialKind::File && m.text_status == TextStatus::NotDownloaded
+                        m.kind == MaterialKind::File
+                            && m.text_status == TextStatus::NotDownloaded
+                            && m.download_blocked.is_none()
+                            && !list.not_read.contains_key(&m.id)
                     })
                     .count();
+                let may_read = list.ai_materials.is_readable();
+                // A course whose materials haven't been read yet has none to count: its
+                // `structure_pending` text says they are missing, not that there are none.
+                let unread_yet = synced.structure_pending && list.total == 0;
                 json_result(&MaterialPage {
                     data_as_of: text::data_as_of(synced),
                     structure_pending: synced.structure_pending.then(text::structure_pending),
                     course: list.course.code.unwrap_or(list.course.name),
                     ai_materials: list.ai_materials,
                     note: withheld_note(list.ai_materials),
-                    shown: text::materials_page(first, last, list.total as usize),
-                    total: list.total,
-                    not_downloaded: (waiting > 0).then(|| text::some_not_downloaded(waiting)),
-                    materials: list.materials.iter().map(MaterialInfo::from).collect(),
+                    shown: (!unread_yet)
+                        .then(|| text::materials_page(first, last, list.total as usize, of_a_kind)),
+                    total: (!unread_yet).then_some(list.total),
+                    not_downloaded: (may_read && waiting > 0)
+                        .then(|| text::some_not_downloaded(waiting)),
+                    materials: list
+                        .materials
+                        .iter()
+                        .map(|view| MaterialInfo {
+                            not_read: list.not_read.get(&view.id).copied(),
+                            ..MaterialInfo::from(view)
+                        })
+                        .collect(),
                 })
             }
             Err(error) => error,
@@ -703,10 +724,14 @@ impl PageLampServer {
             return text_result(out.join("\n"));
         }
         if material.total_chunks == 0 {
-            out.push(if view.text_status == TextStatus::NotDownloaded {
-                text::not_downloaded(view.download_blocked)
-            } else {
-                text::NO_TEXT.to_string()
+            // Why there is no text: what the last sync noted about it first (a page it didn't
+            // read, a file that is gone), then a file's own state.
+            out.push(match material.not_read {
+                Some(reason) => text::not_read(reason),
+                None if view.text_status == TextStatus::NotDownloaded => {
+                    text::not_downloaded(view.download_blocked)
+                }
+                None => text::NO_TEXT.to_string(),
             });
             return text_result(out.join("\n"));
         }
@@ -1514,6 +1539,12 @@ struct MaterialInfo {
     /// Parts of text available to read_material (0 = no text).
     parts: u32,
     text: TextStatus,
+    /// Why a file that isn't downloaded can't be downloaded on request (too_large, locked).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download_blocked: Option<DownloadBlock>,
+    /// Why there is no text, when the last sync noted it (`list_materials` gives it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    not_read: Option<CoverageReason>,
 }
 
 impl From<&MaterialView> for MaterialInfo {
@@ -1528,6 +1559,8 @@ impl From<&MaterialView> for MaterialInfo {
             url: public_url(view.url.as_deref()).map(str::to_string),
             parts: view.chunk_count,
             text: view.text_status,
+            download_blocked: view.download_blocked,
+            not_read: None,
         }
     }
 }
@@ -1669,10 +1702,13 @@ struct MaterialPage {
     ai_materials: AiMaterialsState,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
-    /// Which materials these are, and how to get the next ones.
-    shown: String,
-    total: u32,
-    /// Present when some files here aren't downloaded.
+    /// Which materials these are, and how to get the next ones. (Absent, like `total`, for a
+    /// course whose materials haven't been read yet.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shown: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<u32>,
+    /// Present when the student could download some files here in the app.
     #[serde(skip_serializing_if = "Option::is_none")]
     not_downloaded: Option<String>,
     materials: Vec<MaterialInfo>,

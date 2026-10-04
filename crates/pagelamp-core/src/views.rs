@@ -17,7 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auto_sync::{self, AutoSync, LightSync};
-use crate::coverage::{self, CoverageView};
+use crate::coverage::{self, CoverageReason, CoverageView};
 use crate::dates::{Tz, course_date, time_zone};
 use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
@@ -317,6 +317,11 @@ pub struct MaterialText {
     pub total_chunks: u32,
     /// True when the single chunk returned was longer than the limit and was cut.
     pub truncated: bool,
+    /// Why there is no text, when the course's coverage record says
+    /// (`CourseCoverage::why_no_text`): a page PageLamp didn't read by a rule or after a
+    /// failed request, or a file Canvas no longer has. `None` for a material that has text.
+    #[serde(default)]
+    pub not_read: Option<CoverageReason>,
 }
 
 /// An announcement with its text.
@@ -748,6 +753,9 @@ pub struct MaterialList {
     /// How many come before `materials`.
     pub offset: u32,
     pub materials: Vec<MaterialView>,
+    /// By material id, for those of `materials` that have no text: why, when the course's
+    /// coverage record says (`CourseCoverage::why_no_text`).
+    pub not_read: HashMap<String, CoverageReason>,
 }
 
 /// Every material of a course, `MATERIALS_PER_PAGE` at a time from the `offset`-th on: files,
@@ -777,15 +785,23 @@ pub fn list_materials(
             .then_with(|| a.id.cmp(&b.id))
     });
     let total = u32::try_from(views.len()).unwrap_or(u32::MAX);
+    let materials: Vec<MaterialView> = views
+        .into_iter()
+        .skip(offset as usize)
+        .take(MATERIALS_PER_PAGE)
+        .collect();
+    let record = coverage::read(store, &course.id)?;
+    let not_read = materials
+        .iter()
+        .filter(|view| view.chunk_count == 0)
+        .filter_map(|view| Some((view.id.clone(), record.as_ref()?.why_no_text(&view.id)?)))
+        .collect();
     Ok(MaterialList {
         ai_materials: course.ai_materials(),
         total,
         offset: offset.min(total),
-        materials: views
-            .into_iter()
-            .skip(offset as usize)
-            .take(MATERIALS_PER_PAGE)
-            .collect(),
+        materials,
+        not_read,
         course,
     })
 }
@@ -810,6 +826,11 @@ pub fn read_material(
     let data = CourseData::load(store, &course)?;
     let ai_materials = course.ai_materials();
     let total_chunks = data.chunks_of(&material.id);
+    let not_read = if total_chunks == 0 {
+        coverage::read(store, &course.id)?.and_then(|record| record.why_no_text(&material.id))
+    } else {
+        None
+    };
     let mut text = MaterialText {
         material: data.view(&material),
         course_code: course.code.clone(),
@@ -819,6 +840,7 @@ pub fn read_material(
         next_chunk: None,
         total_chunks,
         truncated: false,
+        not_read,
     };
     if !ai_materials.is_readable() {
         return Ok(text);
