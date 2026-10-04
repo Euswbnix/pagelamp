@@ -121,16 +121,46 @@ describe("a sync PageLamp started by itself", () => {
 
     store.noteStudentAction();
     expect(useSyncStore.getState().attendedUntil).toBe(now + 30_000);
+    // The launch is noted afterwards, for the moment it happened. It never takes the place of
+    // an action after it...
+    store.noteStudentAction(now - 3_600_000);
+    expect(useSyncStore.getState().attendedUntil).toBe(now + 30_000);
+    // ...and by itself it counts from then: ten seconds ago leaves twenty, long ago nothing.
+    useSyncStore.setState({ attendedUntil: 0 });
+    store.noteStudentAction(now - 10_000);
+    expect(useSyncStore.getState().attendedUntil).toBe(now + 20_000);
+    useSyncStore.setState({ attendedUntil: 0 });
+    store.noteStudentAction(now - 3_600_000);
+    expect(useSyncStore.getState().attendedUntil).toBe(now - 3_570_000);
+    store.noteStudentAction();
+    expect(useSyncStore.getState().attendedUntil).toBe(now + 30_000);
 
+    // The timer's run holds only the next one of its kind: the student coming back ten
+    // minutes later still gets a full sync.
     store.begin(1, null, "unattended");
-    expect(useSyncStore.getState().noAutomaticBefore).toBe(now + 1_800_000);
+    expect(useSyncStore.getState().noAutomaticBefore).toEqual({
+      unattended: now + 1_800_000,
+      attended: 0,
+    });
     store.finish(null, new ApiError("busy", "locked"));
 
-    // The student's Stop holds it the same.
+    // A full sync after the student came back holds both kinds.
+    vi.setSystemTime(now + 600_000);
+    store.begin(1, null, "attended");
+    expect(useSyncStore.getState().noAutomaticBefore).toEqual({
+      unattended: now + 600_000 + 1_800_000,
+      attended: now + 600_000 + 1_800_000,
+    });
+    store.finish(null, new ApiError("busy", "locked"));
+
+    // So does the student's Stop, of any sync.
     vi.setSystemTime(now + 3_600_000);
     store.begin(1);
     store.finish(null, new ApiError("cancelled", "Cancelled"));
-    expect(useSyncStore.getState().noAutomaticBefore).toBe(now + 3_600_000 + 1_800_000);
+    expect(useSyncStore.getState().noAutomaticBefore).toEqual({
+      unattended: now + 3_600_000 + 1_800_000,
+      attended: now + 3_600_000 + 1_800_000,
+    });
   });
 
   it("leaves the last run's result alone until it has something to show", () => {
@@ -165,7 +195,7 @@ describe("a sync PageLamp started by itself", () => {
     expect(s.lastSummary?.ok).toBe(true);
     expect(s.automatic).toBe("unattended");
     expect(s.order).toEqual(["a"]);
-    expect(s.noAutomaticBefore).toBeGreaterThan(Date.now());
+    expect(s.noAutomaticBefore.unattended).toBeGreaterThan(Date.now());
   });
 
   it("leaves nothing behind when it is refused, or wasn't due any more", () => {
@@ -174,7 +204,7 @@ describe("a sync PageLamp started by itself", () => {
     store.finish(null, new ApiError("busy", "locked"));
     expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
     // The start still counts for "not again so soon".
-    expect(useSyncStore.getState().noAutomaticBefore).toBeGreaterThan(Date.now());
+    expect(useSyncStore.getState().noAutomaticBefore.attended).toBeGreaterThan(Date.now());
 
     store.begin(3, null, "unattended");
     store.finish(
@@ -226,7 +256,7 @@ describe("a sync PageLamp started by itself", () => {
     store.begin(1);
     store.finish(null, new ApiError("busy", "locked"));
     expect(useSyncStore.getState().runError?.kind).toBe("busy");
-    expect(useSyncStore.getState().noAutomaticBefore).toBe(0);
+    expect(useSyncStore.getState().noAutomaticBefore).toEqual({ unattended: 0, attended: 0 });
   });
 
   it("is quiet when refused even while the student is on an older run's capsule", () => {
@@ -243,7 +273,9 @@ describe("a sync PageLamp started by itself", () => {
     store.begin(1);
     store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
     store.finish(null, new ApiError("cancelled", "Cancelled"));
-    expect(useSyncStore.getState().noAutomaticBefore).toBeGreaterThan(Date.now());
+    const held = useSyncStore.getState().noAutomaticBefore;
+    expect(held.unattended).toBeGreaterThan(Date.now());
+    expect(held.attended).toBeGreaterThan(Date.now());
   });
 
   it("'Hide' while an automatic run hasn't shown anything clears the last result only", () => {
@@ -279,7 +311,7 @@ describe("a sync PageLamp started by itself", () => {
     useSyncStore.getState().hideRun();
     const s = useSyncStore.getState();
     expect(s).toMatchObject(NO_RUN);
-    expect(s.noAutomaticBefore).toBeGreaterThan(Date.now());
+    expect(s.noAutomaticBefore.unattended).toBeGreaterThan(Date.now());
     expect(s.attendedUntil).toBeGreaterThan(Date.now());
   });
 });

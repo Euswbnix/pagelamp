@@ -357,6 +357,19 @@ export interface PageLampApi {
    * then isn't the student opening PageLamp; the first time the window gains focus is.
    */
   startedHidden(): boolean;
+  /**
+   * Whether this page load is the launch: the first page this process has loaded. A later one
+   * is a reload, which can happen with nobody at the app (the system restarts the page after
+   * ending its content process). Asked once per page and kept. Resolves false when it can't be
+   * answered: unsure is never "the student just opened PageLamp".
+   */
+  firstPageLoad(): Promise<boolean>;
+  /**
+   * When this page was loaded (ms, wall clock), taken once as the page starts. The launch is the student's action at that
+   * moment, not whenever the app's shell first appears: a start page that only gets through
+   * hours later, by itself, is not the student opening PageLamp.
+   */
+  pageLoadedAt(): number;
   /** Show the folder with PageLamp's log files in Finder / Explorer. */
   revealLogsDir(): Promise<void>;
   /**
