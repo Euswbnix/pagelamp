@@ -351,8 +351,14 @@ export interface PageLampApi {
    */
   onWindowFocus(onFocus: () => void): () => void;
   /**
+   * Calls `onInput` whenever the student does something in the window: a press, a key, the
+   * wheel (lib/studentInput). A window gaining focus is not that: it can happen with nobody at
+   * the computer. Returns a function that stops listening.
+   */
+  onStudentInput(onInput: () => void): () => void;
+  /**
    * The window was started without being shown to the student (a start at login). Its launch
-   * then isn't the student opening PageLamp; the first time the window gains focus is.
+   * then isn't the student opening PageLamp; their first input after the window gains focus is.
    */
   startedHidden(): boolean;
   /**

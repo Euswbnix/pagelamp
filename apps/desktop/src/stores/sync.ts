@@ -98,9 +98,10 @@ interface SyncState {
    */
   hideRun: () => void;
   /**
-   * The student opened, fronted or changed something in the app: just now, or at `at` (ms) for
-   * the launch, which happened when the page loaded. The launch is noted afterwards, so it
-   * never takes the place of an action after it.
+   * The student opened the app or did something in its window: just now, or at `at` (ms) when
+   * it is noted afterwards (the launch, which happened when the page loaded; the press that
+   * brought the window to the front). What is noted afterwards never takes the place of an
+   * action after it.
    */
   noteStudentAction: (at?: number) => void;
   reset: () => void;
