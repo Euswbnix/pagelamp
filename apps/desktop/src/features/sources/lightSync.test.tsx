@@ -3,12 +3,14 @@
 // deadlines and announcements. No line may call the materials fresher, or the deadlines older,
 // than they are; and a course only such a light sync has found says its materials are unread.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { SyncPill } from "@/components/layout/SyncPill";
 import i18n from "@/i18n";
 import { paths } from "@/lib/routes";
+import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute, renderWithProviders } from "@/test/render";
 
@@ -96,6 +98,27 @@ describe("after a light automatic sync", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("No recent materials")).toBeNull();
     expect(screen.queryByText(/^No materials found/)).toBeNull();
+    // Nor a note about a list nobody looked for.
+    expect(document.body).not.toHaveTextContent("the materials from the last 14 days");
+  });
+
+  it("the course header doesn't say 'Syncing now' for a row the last run left stopped", async () => {
+    renderRoute(paths.course(DEMO205), light);
+    await pageSays("Data from Demo Canvas · synced 13 hours ago");
+    act(() => {
+      const store = useSyncStore.getState();
+      store.begin(1);
+      store.apply({
+        type: "source_started",
+        source_id: "canvas:canvas.demo.test",
+        label: "Demo Canvas",
+      });
+    });
+    expect(screen.getByText("Syncing now…")).toBeInTheDocument();
+    act(() => useSyncStore.getState().finish(null, new ApiError("cancelled", "Cancelled")));
+    act(() => useSyncStore.getState().begin(null, null, "unattended"));
+    expect(screen.queryByText("Syncing now…")).toBeNull();
+    act(() => useSyncStore.getState().finish(null, new ApiError("busy", "Synthetic refusal")));
   });
 
   it("a read course's page keeps its full sync's time and adds the deadlines' time", async () => {

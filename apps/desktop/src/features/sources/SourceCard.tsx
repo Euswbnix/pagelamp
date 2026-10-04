@@ -38,7 +38,9 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
   const startSync = useStartSync();
   const { running, busy } = useSyncActivity();
   const live = useSyncStore((s) => s.bySource[source.id]);
-  const syncing = running && live !== undefined && live.result === null;
+  // Not a row the last run left unfinished (stopped): an automatic sync that has shown nothing
+  // yet leaves the last run's rows in place.
+  const syncing = running && live !== undefined && live.result === null && !live.stopped;
   const Icon = SOURCE_ICON[source.kind];
   const expired = source.last_error_kind === "auth_expired_or_revoked";
   const canvas = source.kind === "canvas";

@@ -94,8 +94,14 @@ function WeekView({
 }) {
   const { t } = useTranslation("course");
   const week = data.week ?? null;
-  // "No materials this week" is already what the empty state below says.
-  const showNote = !!data.note && data.note_kind !== "no_materials_this_week";
+  // "No materials this week" is already what the empty state below says. And for a course
+  // whose materials haven't been read yet, "these are the materials from the last 14 days"
+  // would announce a list that was never looked for: the empty state says what is the case.
+  const unread = pending && data.materials.length === 0;
+  const showNote =
+    !!data.note &&
+    data.note_kind !== "no_materials_this_week" &&
+    !(unread && (data.note_kind === "current_week_unknown" || data.note_kind === "exam_period"));
   // A course that is over, inactive or not started has no current week: the note gives that
   // reason. Term dates can't bring a week back for a course that has ended. They can for an
   // inactive one (with dates it is current again) and for one that hasn't started (its own

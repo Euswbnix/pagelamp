@@ -74,7 +74,8 @@ function Freshness({ overview }: { overview: CourseOverview }) {
   const sourceId = overview.course.source_id;
   const syncing = useSyncStore((s) => {
     const progress = s.bySource[sourceId];
-    return s.running && !!progress && !progress.result;
+    // A row the last run left stopped isn't this run's (see SourceCard).
+    return s.running && !!progress && !progress.result && !progress.stopped;
   });
   const source = overview.source_label;
   const deadlinesAt = deadlinesReadSince(overview.last_synced_at, overview.deadlines_synced_at);

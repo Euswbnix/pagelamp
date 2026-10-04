@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
@@ -8,6 +8,10 @@ import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
+
+// Headroom for slow CI machines: a whole route renders before anything here can happen.
+// (Per-file setting: Vitest isolates each test file.)
+configure({ asyncUtilTimeout: 3000 });
 
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
@@ -25,6 +29,37 @@ const settle = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
 function alwaysDue(api: PageLampApi) {
   const tasks = api.startupTasks.bind(api);
   api.startupTasks = async () => ({ ...(await tasks()), sync_due: DUE });
+}
+
+/**
+ * The student's sync of one source, held until `release()`. While it is held the lock is taken,
+ * so `startup_tasks` answers "not due" whatever is stale, as the facade does. (Held by hand, not
+ * by a slow mock: how long a run takes must not decide a test.)
+ */
+function holdSourceSync(api: PageLampApi) {
+  let held = false;
+  let open: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const sync = api.syncSource.bind(api);
+  api.syncSource = async (id, req, onEvent) => {
+    held = true;
+    const result = await sync(id, req, onEvent);
+    await gate;
+    return result;
+  };
+  const tasks = api.startupTasks.bind(api);
+  api.startupTasks = async () => {
+    const answer = await tasks();
+    return held ? { ...answer, sync_due: { unattended: false, attended: false } } : answer;
+  };
+  return {
+    release: () => {
+      held = false;
+      open();
+    },
+  };
 }
 
 /** Only the date is faked: timers, and so `waitFor`, keep working. */
@@ -259,10 +294,9 @@ describe("automatic sync", () => {
 
   it("never starts while the student's own sync runs, and asks again when it has ended", async () => {
     const start = startClock();
-    // Slow enough to be caught in flight: while it runs the mock, like the facade, says "not due".
-    const api = mockApi({ syncStepMs: 30 });
+    const api = mockApi();
+    const held = holdSourceSync(api);
     const all = vi.spyOn(api, "syncAll");
-    const tasks = vi.spyOn(api, "startupTasks");
     const { user, queryClient } = renderRoute("/sources", { api });
     await screen.findByRole("heading", { level: 2, name: "Course calendar" });
 
@@ -270,15 +304,14 @@ describe("automatic sync", () => {
     later(start, 13 * HOUR);
     await user.click(screen.getByRole("button", { name: "Sync Course calendar" }));
     await waitFor(() => expect(useSyncStore.getState().running).toBe(true));
+    // Asked while that sync holds the lock, the facade says "not due", whatever is stale.
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
-    expect((await tasks.mock.results.at(-1)?.value)?.sync_due).toEqual({
-      unattended: false,
-      attended: false,
-    });
+    await settle();
     expect(all).not.toHaveBeenCalled();
 
     // It ends: PageLamp asks again, and now syncs the rest by itself.
-    await waitFor(() => expect(all).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    held.release();
+    await waitFor(() => expect(all).toHaveBeenCalledTimes(1));
     expect(all.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
   });
 
@@ -399,7 +432,7 @@ describe("automatic sync", () => {
     const sync = vi.spyOn(api, "syncAll");
     const tasks = vi.spyOn(api, "startupTasks");
     renderRoute("/courses", { api });
-    await vi.waitFor(() => expect(tasks).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(tasks).toHaveBeenCalledTimes(1), { timeout: 3000 });
     await settle();
     expect(sync).not.toHaveBeenCalled();
 
@@ -409,8 +442,10 @@ describe("automatic sync", () => {
       vi.setSystemTime(new Date(start.getTime() + 10 * HOUR));
       await act(() => vi.advanceTimersByTimeAsync(HOUR));
       // Asked again by the timer (and once more after the run it started).
-      await vi.waitFor(() => expect(tasks.mock.calls.length).toBeGreaterThanOrEqual(2));
-      await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(tasks.mock.calls.length).toBeGreaterThanOrEqual(2), {
+        timeout: 3000,
+      });
+      await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
       expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
     } finally {
       Reflect.deleteProperty(document, "visibilityState");
@@ -643,7 +678,8 @@ describe("automatic sync", () => {
 
   it("still asks again when a dialog was opened while it waited for a sync to end", async () => {
     const start = startClock();
-    const api = mockApi({ syncStepMs: 30 });
+    const api = mockApi();
+    const held = holdSourceSync(api);
     const all = vi.spyOn(api, "syncAll");
     const { user, queryClient } = renderRoute("/sources", { api });
     await screen.findByRole("heading", { level: 2, name: "Course calendar" });
@@ -655,7 +691,8 @@ describe("automatic sync", () => {
     // The student opens a dialog before that sync ends.
     await user.click(screen.getByRole("button", { name: "Add source" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a source" });
-    await waitFor(() => expect(useSyncStore.getState().running).toBe(false), { timeout: 3000 });
+    held.release();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
     await settle();
     expect(all).not.toHaveBeenCalled();
 
