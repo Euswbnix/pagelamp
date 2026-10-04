@@ -171,14 +171,23 @@ instructors can see) may list each area PageLamp reads — modules, pages, assig
 announcements — plus each page it reads, and a sync may refresh the "Last Activity" time shown for
 you in the course.
 
-What PageLamp reads of a course: its modules, the pages and files its lists show, the page its Home
-shows, and the pages of the same course that those texts, the syllabus and announcements link to.
-Files that are linked are listed, not downloaded. A page with a change date is read only when it is
-new or has changed; the others (the Home page, linked pages) are read again when you press Sync,
-and by an automatic sync at most once a day. PageLamp never asks for a list the course hides, and
-it doesn't read a page that a module asks you to view until you have viewed it in Canvas: reading
-it for you could mark it as viewed. Assignments and quizzes stay title, due date and link. What
-PageLamp didn't read is listed for each course with the reason, and your AI app is told so.
+(v0.3) What PageLamp reads of a course: its modules, the pages and files its lists show, the page
+its Home shows, and the pages of the same course that those texts, the syllabus and announcements
+link to (one step, within limits). Files that are linked are listed, not downloaded. A page that
+Canvas lists with a change date is read only when it is new or has changed. A page PageLamp has no
+change date for (the Home page and linked pages of a course that doesn't show its Pages list) is
+read again when you press Sync, and by an automatic sync at most once a day. PageLamp doesn't ask
+for a list the course hides. Assignments and quizzes stay title, due date and link.
+
+(v0.3) PageLamp doesn't read a page that a module asks you to view until you have viewed it in
+Canvas: as far as we can tell, reading it for you could mark it as viewed. In two cases it can't
+know beforehand: the first time it reads a course's Home page, and when a link uses an old address
+of such a page. If it opened one, the sync says so, and it doesn't read that page again until you
+have viewed it. v0.1.0 has no such rule: it reads every page of a module.
+
+(v0.3) What PageLamp didn't read of a course is recorded with a reason. `pagelamp sync` shows what
+it found through links and how many things it couldn't read; your AI app gets the list with the
+reasons and is told not to guess at it.
 
 (v0.3) While the PageLamp app is running it also syncs by itself, twice a day unless you choose
 once a day or off. With nobody at the app it checks your token and asks Canvas only for your
@@ -319,7 +328,11 @@ Linux 请用 `.deb`/`.rpm`（会同时安装 `/usr/bin/pagelamp`）；`.AppImage
 
 同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面；同步也可能刷新课程里显示的你的“上次活动”时间。下载文件可能会让模块要求算作“已查看”，所以默认不下载。
 
-PageLamp 读一门课的这些部分：模块、列表里的页面和文件、课程首页显示的页面，以及这些文字、教学大纲和公告里链接到的同一门课的页面。链接到的文件只登记，不下载。有修改时间的页面只在新增或有变化时读取；其余的（首页、链接到的页面）在你点“同步”时重新读取，自动同步最多一天读一次。课程隐藏了的列表，PageLamp 不会去请求；模块要求你“查看”而你还没看过的页面，PageLamp 也不读，因为替你读可能会让它算作已查看。作业和测验仍然只保留标题、截止日期和链接。每门课里 PageLamp 没读到的部分会连同原因列出来，你的 AI 应用也会被告知。
+（v0.3）PageLamp 读一门课的这些部分：模块、列表里的页面和文件、课程首页显示的页面，以及这些文字、教学大纲和公告里链接到的同一门课的页面（只跟一层，有数量上限）。链接到的文件只登记，不下载。Canvas 列表里带修改时间的页面，只在新增或有变化时读取；没有修改时间可查的页面（课程没有开放“页面”列表时的首页和链接到的页面），在你点“同步”时重新读取，自动同步最多一天读一次。课程隐藏了的列表，PageLamp 不会去请求。作业和测验仍然只保留标题、截止日期和链接。
+
+（v0.3）模块要求你“查看”而你还没看过的页面，PageLamp 不读：就我们所知，替你读可能会让它算作已查看。有两种情况它事先无法知道：第一次读一门课的首页时，以及链接用的是这种页面的旧地址时。如果它因此打开了这样的页面，同步结果里会说明，之后在你看过之前不会再读。v0.1.0 没有这条规则，会读取模块里的所有页面。
+
+（v0.3）每门课里 PageLamp 没读到的部分会连同原因记录下来。`pagelamp sync` 会显示通过链接找到了什么、有多少项没能读取；带原因的清单会交给你的 AI 应用，并告诉它不要猜测这些内容。
 
 （v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行，或者在你打开 PageLamp、把它切到前台，而上次完整同步已经够久（或有新发现的课程还没读过）时进行。自动同步从不下载文件。
 
