@@ -939,37 +939,122 @@ impl Store {
     /// (`pagelamp_extract::scrub`): the chunks' text and locators (the search index follows
     /// through its triggers), the courses' syllabus text, and the saved study plans (an AI app
     /// can have copied an address from an earlier answer into one). Only rows that can hold
-    /// one are read. Returns how many values changed. Call it inside a transaction.
+    /// one are read. Returns how many materials, syllabuses and plans changed. Call it inside
+    /// a transaction.
+    ///
+    /// Chunks are cleaned a material at a time. An earlier version cut a text into chunks
+    /// without cleaning it, and a chunk can begin in the middle of an address (in text
+    /// without spaces the overlap starts inside a word): the name of the parameter is then in
+    /// the chunk before, and what this chunk begins with can't be told from a word. So the
+    /// material's text is put together again without the overlaps, cleaned, and cut again,
+    /// which is what this version stores for new text.
+    ///
+    /// Afterwards the search index is merged, so that the tokens of what was removed don't
+    /// stay in its older segments (and in a backup made from the file).
     ///
     /// Not touched: a material's own `url`. For a link the instructor put in a module it is
-    /// the address they chose, kept as it is; every other material's link is built from ids.
+    /// the address they chose, and for a page or an announcement it is the address Canvas
+    /// gives for it; both are kept as they are (what is given out is cleaned on its way out).
     pub fn scrub_stored_text(&self) -> Result<usize> {
+        use pagelamp_extract::scrub::{scrub_json, scrub_text};
         // (`LIKE` ignores ASCII case; `_` matches any character, which only widens the net.)
         const MAY_HOLD_ONE: &str = "({column} LIKE '%verifier%' OR {column} LIKE '%access_token%'
             OR ({column} LIKE '%?%' AND {column} LIKE '%/files/%'))";
+        let may_hold_one = |column: &str| MAY_HOLD_ONE.replace("{column}", column);
+        let dirty = |text: &str| matches!(scrub_text(text), Cow::Owned(_));
+        let clean = |text: String| match scrub_text(&text) {
+            Cow::Owned(clean) => clean,
+            Cow::Borrowed(_) => text,
+        };
         let mut changed = 0;
-        for (table, key, column) in [
-            ("chunks", "id", "text"),
-            ("chunks", "id", "locator"),
-            ("courses", "rowid", "syllabus_text"),
-            ("study_plans", "id", "plan_json"),
-        ] {
-            let filter = MAY_HOLD_ONE.replace("{column}", column);
-            let rows: Vec<(i64, String)> = {
-                let mut statement = self.conn.prepare(&format!(
-                    "SELECT {key}, {column} FROM {table} WHERE {filter}"
-                ))?;
-                let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
-                rows.collect::<rusqlite::Result<_>>()?
-            };
-            let mut update = self.conn.prepare(&format!(
-                "UPDATE {table} SET {column} = ?2 WHERE {key} = ?1"
+
+        // Chunks, by material.
+        let materials: Vec<String> = {
+            let mut statement = self.conn.prepare(&format!(
+                "SELECT DISTINCT material_id FROM chunks WHERE {} OR {} ORDER BY material_id",
+                may_hold_one("text"),
+                may_hold_one("locator")
             ))?;
-            for (id, text) in rows {
-                if let Cow::Owned(clean) = pagelamp_extract::scrub::scrub_text(&text) {
-                    update.execute(params![id, clean])?;
-                    changed += 1;
+            let rows = statement.query_map([], |row| row.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        let mut chunks_changed = false;
+        for material_id in materials {
+            let chunks = self.get_chunks(&material_id, 0, None)?;
+            if !chunks
+                .iter()
+                .any(|chunk| dirty(&chunk.text) || chunk.locator.as_deref().is_some_and(dirty))
+            {
+                continue;
+            }
+            let segments: Vec<pagelamp_extract::Segment> =
+                crate::calendar::text::rebuild_parts(&chunks)
+                    .into_iter()
+                    .map(|part| pagelamp_extract::Segment {
+                        locator: part.locator.map(clean),
+                        text: clean(part.text),
+                    })
+                    .collect();
+            self.write_chunks(
+                &material_id,
+                &crate::ingest::to_chunks(&material_id, &segments),
+            )?;
+            chunks_changed = true;
+            changed += 1;
+        }
+        if chunks_changed {
+            self.conn
+                .execute("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize')", [])?;
+        }
+
+        // Syllabus text.
+        let rows: Vec<(i64, String)> = {
+            let mut statement = self.conn.prepare(&format!(
+                "SELECT rowid, syllabus_text FROM courses WHERE {}",
+                may_hold_one("syllabus_text")
+            ))?;
+            let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for (rowid, text) in rows {
+            if let Cow::Owned(clean) = scrub_text(&text) {
+                self.conn.execute(
+                    "UPDATE courses SET syllabus_text = ?2 WHERE rowid = ?1",
+                    params![rowid, clean],
+                )?;
+                changed += 1;
+            }
+        }
+
+        // Saved study plans: JSON, cleaned by its string values (`scrub_json` says why).
+        let rows: Vec<(i64, String)> = {
+            let mut statement = self.conn.prepare(&format!(
+                "SELECT id, plan_json FROM study_plans WHERE {}",
+                may_hold_one("plan_json")
+            ))?;
+            let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for (id, json) in rows {
+            let cleaned = match serde_json::from_str::<serde_json::Value>(&json) {
+                Ok(mut value) => scrub_json(&mut value)
+                    .then(|| serde_json::to_string(&value))
+                    .transpose()?,
+                Err(_) => {
+                    // Not a plan anyone can read back; as text it can't be made less valid.
+                    tracing::warn!("a stored study plan isn't JSON; cleaned as plain text");
+                    match scrub_text(&json) {
+                        Cow::Owned(clean) => Some(clean),
+                        Cow::Borrowed(_) => None,
+                    }
                 }
+            };
+            if let Some(cleaned) = cleaned {
+                self.conn.execute(
+                    "UPDATE study_plans SET plan_json = ?2 WHERE id = ?1",
+                    params![id, cleaned],
+                )?;
+                changed += 1;
             }
         }
         Ok(changed)
@@ -1001,7 +1086,9 @@ impl Store {
             }
             let changed = store.scrub_stored_text()?;
             if changed > 0 {
-                tracing::info!("removed access parameters from {changed} stored texts");
+                tracing::info!(
+                    "removed access parameters from {changed} stored materials, syllabuses or plans"
+                );
             }
             store.set_setting(SCRUBBED_TEXT_KEY, &pagelamp_extract::scrub::VERSION)?;
             Ok(true)
@@ -1294,6 +1381,12 @@ impl Store {
                 None => return Err(Error::NotFound(format!("material '{material_id}'"))),
             }
         }
+        self.write_chunks(material_id, chunks)
+    }
+
+    /// The chunks of `material_id` become `chunks`, whatever its text state is (the caller
+    /// has checked it, or rewrites chunks the material already had).
+    fn write_chunks(&self, material_id: &str, chunks: &[Chunk]) -> Result<()> {
         self.atomic(|| {
             self.conn
                 .execute("DELETE FROM chunks WHERE material_id = ?1", [material_id])?;
@@ -1543,14 +1636,14 @@ impl Store {
         // An AI app can copy a link from an earlier answer into a plan: no address in a stored
         // plan keeps a parameter that gives access to a file. What is returned is what is
         // stored.
-        let plan_json = serde_json::to_string(plan)?;
-        let (plan_json, plan) = match pagelamp_extract::scrub::scrub_text(&plan_json) {
-            Cow::Owned(clean) => {
-                let plan: StudyPlan = serde_json::from_str(&clean)?;
-                (clean, plan)
-            }
-            Cow::Borrowed(_) => (plan_json, plan.clone()),
+        // (Cleaned by its string values, not as JSON text: `scrub_json` says why.)
+        let mut value = serde_json::to_value(plan)?;
+        let plan: StudyPlan = if pagelamp_extract::scrub::scrub_json(&mut value) {
+            serde_json::from_value(value)?
+        } else {
+            plan.clone()
         };
+        let plan_json = serde_json::to_string(&plan)?;
         // The per-field limits count characters, but JSON can make text up to 6× longer
         // (a control character becomes "\u0001"), so the total size is checked as well.
         if plan_json.len() > MAX_PLAN_JSON_BYTES {

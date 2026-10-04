@@ -531,7 +531,7 @@ fn save_extraction(
 }
 
 /// Chunk the segments for search. `ord` counts from 0; each chunk keeps its locator.
-fn to_chunks(material_id: &str, segments: &[Segment]) -> Vec<Chunk> {
+pub(crate) fn to_chunks(material_id: &str, segments: &[Segment]) -> Vec<Chunk> {
     // `(0..)` numbers the chunks as u32 directly, so no integer casts are needed.
     (0..)
         .zip(chunk_segments(segments, DEFAULT_CHUNK_CHARS))
