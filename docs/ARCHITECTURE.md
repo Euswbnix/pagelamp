@@ -60,10 +60,13 @@ Rust workspace:
    a sync or comes back to the app. A full sync also reads the page a course's Home shows and,
    one level deep and within limits, the pages and files of the same course that a text it read
    links to; the request is built from the course id and the page slug or file id, never from an
-   address written in a text. It never asks for a list the course hides, and never reads a
-   module's page the student is asked to view and hasn't (reading it would mark it as viewed).
-   What a sync didn't read is recorded per course with a reason (`core::coverage`) and shown to
-   the student and the AI app. An automatic run never downloads files. The MCP server
+   address written in a text. It never asks for a list the course hides, and doesn't read a
+   module's page the student is asked to view and hasn't (as we read Canvas's code, reading it
+   could mark it as viewed; nobody has tested that on a real account). Two cases can't be ruled
+   out beforehand, and the sync reports them when they happen: the first read of a course's Home
+   page, and a link that uses an old address of such a page. What a sync didn't read is recorded
+   per course with a reason (`core::coverage`) and given to the student and the AI app. An
+   automatic run never downloads files. The MCP server
    never touches the network (Canvas API Policy §3(i) restricts access to Canvas APIs through MCP
    servers that Instructure hasn't approved; our understanding is that this rules out Canvas access
    from the MCP server, so all Canvas access happens in sync).
