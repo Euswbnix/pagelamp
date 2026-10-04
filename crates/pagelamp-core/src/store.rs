@@ -947,10 +947,13 @@ impl Store {
     /// without spaces the overlap starts inside a word): the name of the parameter is then in
     /// the chunk before, and what this chunk begins with can't be told from a word. So the
     /// material's text is put together again without the overlaps, cleaned, and cut again,
-    /// which is what this version stores for new text.
+    /// which is what this version stores for new text. That is done only when cutting the
+    /// uncleaned text again gives exactly the stored chunks; otherwise the material's chunks
+    /// are cleaned one by one, and nothing is cut again.
     ///
-    /// Afterwards the search index is merged, so that the tokens of what was removed don't
-    /// stay in its older segments (and in a backup made from the file).
+    /// Afterwards the search index is merged, so that the tokens of what was removed (now or
+    /// by an earlier delete) don't stay in its older segments and in a backup made from the
+    /// file.
     ///
     /// Not touched: a material's own `url`. For a link the instructor put in a module it is
     /// the address they chose, and for a page or an announcement it is the address Canvas
@@ -978,34 +981,77 @@ impl Store {
             let rows = statement.query_map([], |row| row.get(0))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
-        let mut chunks_changed = false;
+        let segments =
+            |parts: &[crate::calendar::text::TextPart]| -> Vec<pagelamp_extract::Segment> {
+                parts
+                    .iter()
+                    .map(|part| pagelamp_extract::Segment {
+                        locator: part.locator.clone(),
+                        text: part.text.clone(),
+                    })
+                    .collect()
+            };
         for material_id in materials {
             let chunks = self.get_chunks(&material_id, 0, None)?;
-            if !chunks
+            let parts = crate::calendar::text::rebuild_parts(&chunks);
+            // A parameter can also be cut by a chunk's end so that neither chunk shows it (an
+            // encoded address): the parts decide as well.
+            let chunk_dirty = chunks
                 .iter()
-                .any(|chunk| dirty(&chunk.text) || chunk.locator.as_deref().is_some_and(dirty))
-            {
+                .any(|chunk| dirty(&chunk.text) || chunk.locator.as_deref().is_some_and(dirty));
+            let part_dirty = parts
+                .iter()
+                .any(|part| dirty(&part.text) || part.locator.as_deref().is_some_and(dirty));
+            if !chunk_dirty && !part_dirty {
                 continue;
             }
-            let segments: Vec<pagelamp_extract::Segment> =
-                crate::calendar::text::rebuild_parts(&chunks)
+            // The parts are this material's text only if cutting them again gives the chunks
+            // that are stored. Putting chunks together is a guess at where they overlap (in
+            // text that repeats, a longer overlap can match than the real one), and a wrong
+            // guess would drop text for good: the material's content hash doesn't change, so
+            // no sync would bring it back.
+            let recut = crate::ingest::to_chunks(&material_id, &segments(&parts));
+            let exact = recut.len() == chunks.len()
+                && recut
+                    .iter()
+                    .zip(&chunks)
+                    .all(|(new, old)| new.locator == old.locator && new.text == old.text);
+            if exact {
+                let cleaned: Vec<pagelamp_extract::Segment> = parts
                     .into_iter()
                     .map(|part| pagelamp_extract::Segment {
                         locator: part.locator.map(clean),
                         text: clean(part.text),
                     })
                     .collect();
-            self.write_chunks(
-                &material_id,
-                &crate::ingest::to_chunks(&material_id, &segments),
-            )?;
-            chunks_changed = true;
-            changed += 1;
+                self.write_chunks(
+                    &material_id,
+                    &crate::ingest::to_chunks(&material_id, &cleaned),
+                )?;
+                changed += 1;
+            } else if chunk_dirty {
+                // Not put together with certainty: each chunk is cleaned where it is.
+                let mut update = self.conn.prepare_cached(
+                    "UPDATE chunks SET text = ?3, locator = ?4 WHERE material_id = ?1 AND ord = ?2",
+                )?;
+                for chunk in chunks {
+                    if dirty(&chunk.text) || chunk.locator.as_deref().is_some_and(dirty) {
+                        update.execute(params![
+                            material_id,
+                            chunk.ord,
+                            clean(chunk.text),
+                            chunk.locator.map(clean)
+                        ])?;
+                    }
+                }
+                changed += 1;
+            }
         }
-        if chunks_changed {
-            self.conn
-                .execute("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize')", [])?;
-        }
+        // Merge the search index whether or not a chunk changed here: a chunk deleted earlier
+        // (a page that lost its link, a removed course) leaves its tokens in an older segment
+        // as well. On an index of one segment this returns at once.
+        self.conn
+            .execute("INSERT INTO chunks_fts(chunks_fts) VALUES('optimize')", [])?;
 
         // Syllabus text.
         let rows: Vec<(i64, String)> = {
@@ -1632,10 +1678,10 @@ impl Store {
     /// Plans are written by AI clients over MCP, so storage is bounded: only the newest
     /// `MAX_STORED_STUDY_PLANS` plans are kept (older ones are deleted in the same step).
     pub fn save_study_plan(&self, plan: &StudyPlan) -> Result<StoredStudyPlan> {
-        validate_study_plan(plan)?;
         // An AI app can copy a link from an earlier answer into a plan: no address in a stored
         // plan keeps a parameter that gives access to a file. What is returned is what is
-        // stored.
+        // stored, and what is stored is what is validated (a title that is nothing but such
+        // a parameter is an empty title).
         // (Cleaned by its string values, not as JSON text: `scrub_json` says why.)
         let mut value = serde_json::to_value(plan)?;
         let plan: StudyPlan = if pagelamp_extract::scrub::scrub_json(&mut value) {
@@ -1643,6 +1689,7 @@ impl Store {
         } else {
             plan.clone()
         };
+        validate_study_plan(&plan)?;
         let plan_json = serde_json::to_string(&plan)?;
         // The per-field limits count characters, but JSON can make text up to 6× longer
         // (a control character becomes "\u0001"), so the total size is checked as well.

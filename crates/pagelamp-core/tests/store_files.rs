@@ -1160,6 +1160,297 @@ fn a_chunk_that_begins_inside_an_address_is_cleaned_with_its_material() {
     }
 }
 
+/// A store with one course, and a way to put a material's segments into it cut as an earlier
+/// version cut them (without cleaning). Returns the stored chunks as (locator, text).
+fn store_with_course(path: &Path) -> Store {
+    let store = Store::open(path).unwrap();
+    store.upsert_source(&demo_source("canvas:demo")).unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO courses (id, source_id, external_id, code, name, updated_at)
+             VALUES ('canvas:demo/course/101', 'canvas:demo', '101', 'DEMO101', 'Intro',
+                     '2026-09-20T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    store
+}
+
+fn old_material(
+    store: &Store,
+    material: &str,
+    segments: &[(&str, String)],
+) -> Vec<(Option<String>, String)> {
+    let segments: Vec<pagelamp_extract::Segment> = segments
+        .iter()
+        .map(|(locator, text)| pagelamp_extract::Segment {
+            locator: Some((*locator).to_string()),
+            text: text.clone(),
+        })
+        .collect();
+    let chunks = pagelamp_extract::chunk_segments(&segments, pagelamp_extract::DEFAULT_CHUNK_CHARS);
+    store
+        .conn()
+        .execute(
+            "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+             VALUES (?1, 'canvas:demo/course/101', 'page', 'Notes', 'ok', '2026-09-20T00:00:00Z')",
+            [material],
+        )
+        .unwrap();
+    for (ord, chunk) in chunks.iter().enumerate() {
+        store
+            .conn()
+            .execute(
+                "INSERT INTO chunks (material_id, ord, locator, text) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![material, ord as i64, chunk.locator, chunk.text],
+            )
+            .unwrap();
+    }
+    chunks
+        .into_iter()
+        .map(|chunk| (chunk.locator, chunk.text))
+        .collect()
+}
+
+fn stored_chunks(store: &Store, material: &str) -> Vec<(Option<String>, String)> {
+    store
+        .get_chunks(material, 0, None)
+        .unwrap()
+        .into_iter()
+        .map(|chunk| (chunk.locator, chunk.text))
+        .collect()
+}
+
+/// Sentences that don't repeat, about `chars` characters of them.
+fn prose(seed: usize, chars: usize) -> String {
+    let mut text = String::new();
+    let mut n = seed;
+    while text.len() < chars {
+        n += 1;
+        text.push_str(&format!(
+            "Sentence {n} of part {seed} explains idea {} with example {}. ",
+            n * 7 % 13,
+            n * 11 % 17
+        ));
+        if n.is_multiple_of(6) {
+            // (No space before a blank line: the chunker trims what it cuts there.)
+            text.truncate(text.trim_end().len());
+            text.push_str("\n\n");
+        }
+    }
+    text.trim().to_string()
+}
+
+/// An ordinary material: several pages, two sections with the same heading, one address with
+/// a parameter. After the clean-up its text is what it was without the parameter, its
+/// locators are the same, and every chunk the address isn't in is the same character for
+/// character.
+#[test]
+fn an_ordinary_material_is_rewritten_without_losing_a_character() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/english";
+    let with_address = format!(
+        "{} The handout is at {ADDRESS} for everyone. {}",
+        prose(1, 2500),
+        prose(2, 2200)
+    );
+    let segments = [
+        ("p. 1", with_address.clone()),
+        ("p. 2", prose(3, 4100)),
+        ("§ Notes", prose(4, 900)),
+        ("§ Notes", prose(5, 1300)),
+    ];
+    let before = old_material(&store, material, &segments);
+    assert!(before.len() >= 7, "{}", before.len());
+    let holding: Vec<usize> = (0..before.len())
+        .filter(|i| before[*i].1.contains("Ab12Cd34Zz"))
+        .collect();
+    assert!(!holding.is_empty());
+
+    assert!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap()
+            >= 1
+    );
+
+    let after = stored_chunks(&store, material);
+    let chunks = store.get_chunks(material, 0, None).unwrap();
+    assert_eq!(
+        chunks.iter().map(|c| c.ord).collect::<Vec<_>>(),
+        (0..after.len() as u32).collect::<Vec<_>>()
+    );
+    for (_, text) in &after {
+        assert!(!text.to_lowercase().contains("ab12cd34zz"), "{text}");
+        assert!(!text.contains("verifier"), "{text}");
+    }
+    // The text, part by part: the first page lost the query and nothing else, the others
+    // are as they were, and the two sections with one heading are still two.
+    let parts = pagelamp_core::calendar::text::rebuild_parts(&chunks);
+    let expected: Vec<(Option<String>, String)> = segments
+        .iter()
+        .map(|(locator, text)| {
+            (
+                Some((*locator).to_string()),
+                text.replace("?verifier=Ab12Cd34Zz&wrap=1", ""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        parts
+            .into_iter()
+            .map(|part| (part.locator, part.text))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    // Chunk by chunk: everything before the address, and every other part, is untouched.
+    let first = holding[0];
+    assert_eq!(after[..first], before[..first]);
+    let other_parts = |chunks: &[(Option<String>, String)]| -> Vec<(Option<String>, String)> {
+        chunks
+            .iter()
+            .filter(|(locator, _)| locator.as_deref() != Some("p. 1"))
+            .cloned()
+            .collect()
+    };
+    assert_eq!(other_parts(&after), other_parts(&before));
+}
+
+/// Putting chunks together again is a guess at where they overlap. In text that repeats (a
+/// column of numbers set apart by spaces) a longer overlap matches than the real one, and
+/// cutting that guess again would drop text. Such a material is cleaned chunk by chunk
+/// instead, and loses nothing.
+#[test]
+fn a_material_that_cannot_be_put_together_exactly_is_cleaned_chunk_by_chunk() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/table";
+    let column = "0.00   ".repeat(400);
+    let before = old_material(
+        &store,
+        material,
+        &[
+            ("p. 1", column.clone()),
+            (
+                "p. 2",
+                format!("The table above is from the handout ({ADDRESS})."),
+            ),
+        ],
+    );
+    // The guess is wrong here: this is the case the check is for.
+    let guess =
+        pagelamp_core::calendar::text::rebuild_parts(&store.get_chunks(material, 0, None).unwrap());
+    assert_ne!(
+        guess[0].text,
+        column.trim(),
+        "the overlap is guessed too long"
+    );
+
+    assert_eq!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap(),
+        1
+    );
+
+    let after = stored_chunks(&store, material);
+    assert_eq!(after.len(), before.len());
+    let last = before.len() - 1;
+    assert_eq!(after[..last], before[..last], "the column is untouched");
+    assert_eq!(
+        after[last],
+        (
+            Some("p. 2".to_string()),
+            "The table above is from the handout \
+             (https://lms.example.edu/courses/101/files/7/download)."
+                .to_string()
+        )
+    );
+    assert!(store.search("Ab12Cd34Zz", None, 5).unwrap().is_empty());
+}
+
+/// An address wrapped by a gateway carries the parameter percent-encoded, inside the value of
+/// a pair. Cut by a chunk's end in the middle of the name, neither chunk shows it: the first
+/// ends before the name is complete, the second begins inside the value, where nothing says
+/// what follows. Only the text put together again does.
+#[test]
+fn a_parameter_cut_by_a_chunks_end_is_found_in_the_text_put_together() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/wrapped";
+    let before_name = format!(
+        "https://gw.example.org/?url=https%3A%2F%2Flms.example.edu%2F{}files%2F7%3F",
+        "a%2F".repeat(60)
+    );
+    let chunk_chars = pagelamp_extract::DEFAULT_CHUNK_CHARS;
+    // The first chunk ends five characters into "verifier".
+    let text = format!(
+        "{}{before_name}verifier%3DAb12Cd34Zz%26wrap%3D1，并在课前阅读{}",
+        "字".repeat(chunk_chars - before_name.len() - 5),
+        "文".repeat(600)
+    );
+    let before = old_material(&store, material, &[("p. 1", text.clone())]);
+    assert!(
+        before[0].1.ends_with("%3Fverif"),
+        "{}",
+        &before[0].1[before[0].1.len() - 30..]
+    );
+    assert!(before[1].1.contains("verifier%3DAb12Cd34Zz"));
+    for (_, chunk) in &before {
+        assert!(
+            matches!(
+                pagelamp_core::scrub::scrub_text(chunk),
+                std::borrow::Cow::Borrowed(_)
+            ),
+            "no chunk shows it by itself"
+        );
+    }
+
+    assert_eq!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap(),
+        1
+    );
+
+    let chunks = store.get_chunks(material, 0, None).unwrap();
+    for chunk in &chunks {
+        assert!(!chunk.text.contains("Ab12Cd34Zz"), "chunk {}", chunk.ord);
+        assert!(!chunk.text.contains("verif"), "chunk {}", chunk.ord);
+    }
+    let parts = pagelamp_core::calendar::text::rebuild_parts(&chunks);
+    assert_eq!(parts.len(), 1);
+    assert!(
+        parts[0]
+            .text
+            .contains("字https://gw.example.org/，并在课前阅读文"),
+        "the pair that carried it is gone, the rest stays"
+    );
+}
+
+/// A title that is nothing but an access parameter is an empty title once it is cleaned: the
+/// plan is refused, not stored with an empty title.
+#[test]
+fn a_plan_is_validated_as_it_will_be_stored() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let mut plan = demo_plan();
+    plan.items.push(StudyPlanItem {
+        date: plan.horizon_start,
+        course_id: None,
+        title: "sf_verifier=abc".into(),
+        description: None,
+        material_ids: Vec::new(),
+        minutes: Some(30),
+        done: false,
+    });
+    let refused = store.save_study_plan(&plan).unwrap_err();
+    assert!(matches!(refused, Error::Invalid(_)), "{refused}");
+    assert!(store.latest_study_plan().unwrap().is_none());
+}
+
 /// While another connection holds the write lock the clean-up is refused and nothing is
 /// recorded; afterwards it runs.
 #[test]
