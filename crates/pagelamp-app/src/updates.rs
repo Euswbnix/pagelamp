@@ -9,6 +9,7 @@
 //! | `updates.prefs`              | `UpdatePrefs`                                            |
 //! | `updates.disclosure_acknowledged` | `true` once the student saw what the update check sends |
 //! | `updates.last_check`         | `UpdateCheckRecord`                                      |
+//! | `sync.prefs`, `sync.auto_attempts` | automatic sync: the setting and its attempts (`auto_sync`) |
 //! | `app.last_run_version`       | the version that last ran `startup_tasks`                |
 //! | `app.whats_new_acknowledged` | the version whose What's new the student closed          |
 //! | `app.mac.last_run_version`, `app.mac.whats_new_acknowledged` | the same for the Mac app |
@@ -74,6 +75,7 @@ const CHECK_INTERVAL: TimeDelta = TimeDelta::hours(24);
 const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[
     (WhatsNewTopic::UpdateCheck, "0.3.0-alpha.1"),
     (WhatsNewTopic::CourseWeeks, "0.3.0-alpha.1"),
+    (WhatsNewTopic::AutoSync, "0.3.0-alpha.1"),
     (WhatsNewTopic::CourseRemoval, "0.3.0-alpha.2"),
     (WhatsNewTopic::SyllabusReading, "0.3.0-alpha.3"),
     (WhatsNewTopic::AiWriting, "0.3.0-beta.1"),
@@ -114,6 +116,9 @@ pub enum WhatsNewTopic {
     UpdateCheck,
     /// Course weeks, phases and the Past group.
     CourseWeeks,
+    /// PageLamp now syncs by itself while it runs (how often, what it does, how to turn it
+    /// off; the row carries the setting).
+    AutoSync,
     /// Removing finished courses: 7 days to undo, the student's own folders untouched.
     CourseRemoval,
     /// AI reads a syllabus into cited date proposals; setting up a model (including the
@@ -165,6 +170,25 @@ pub struct StartupTasks {
     /// is something to write about (an active course, a deadline in the next 7 days or a plan
     /// item).
     pub prepare_weekly_note: bool,
+    // (No doc line: one would give the generated TypeScript a second copy of `SyncDue`.)
+    pub sync_due: SyncDue,
+}
+
+/// Whether an automatic sync is due, for each reason the shell may have to ask: automatic sync
+/// is on, no What's new is waiting, no sync is running, and a source that doesn't need the
+/// student was last read the setting's interval ago or never, with no retry wait running
+/// (`auto_sync`). Each trigger has its own clock, since they read different things: the two
+/// can differ. The shell passes the trigger that is true to `sync_all`, starts nothing else
+/// on it, and shows nothing when the run is refused or fails.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SyncDue {
+    /// From the app's timer (`AutoSyncTrigger::Unattended`): deadlines and announcements are
+    /// the interval old.
+    pub unattended: bool,
+    /// When the student is at the app: it was just opened or brought to the front, or What's
+    /// new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then. The
+    /// last full sync is the interval old, or a course waits for its first one.
+    pub attended: bool,
 }
 
 /// The most items of each list in `StartupTasks` (the totals say how many there are).
@@ -256,6 +280,7 @@ impl App {
         let tombstones = store.tombstones()?;
         let removed_files_waiting = tombstones.iter().filter(|t| t.files_pending).count();
         let purge_due = removed_files_waiting > 0 || !store.due_purges(now)?.is_empty();
+        let sync_due = self.sync_due(&store, now, whats_new.is_some())?;
         drop(store);
         // Reminders, offers and suggestions never keep the rest from the shell.
         let due_reminders = self.due_reminders(now).unwrap_or_else(|err| {
@@ -285,6 +310,7 @@ impl App {
         removal_suggestions.truncate(STARTUP_LIST_MAX);
         Ok(StartupTasks {
             update_check_due: prefs.auto_check && disclosed && whats_new.is_none() && check_is_old,
+            sync_due,
             whats_new,
             updated_from: launch.updated_from.clone(),
             due_reminders,
@@ -296,6 +322,15 @@ impl App {
             removal_suggestions_total,
             prepare_weekly_note,
         })
+    }
+
+    /// Whether this shell's What's new is waiting to be read (an automatic sync waits for it).
+    pub(crate) fn whats_new_waiting(&self) -> Result<bool> {
+        let launch = self.launch_class()?;
+        let shell = self.shell();
+        Ok(launch.upgrade
+            && !whats_new_acknowledged(&self.read_store()?, shell)?
+            && !topics_for(shell, launch.updated_from.as_deref()).is_empty())
     }
 
     /// The student closed this shell's What's new. The desktop app's update-check topic counts
@@ -391,11 +426,14 @@ fn topics_since(since: Option<&str>) -> Vec<WhatsNewTopic> {
         .collect()
 }
 
-/// `topics_since` as `shell` shows them: the Mac app never gets the update-check topic.
+/// `topics_since` as `shell` shows them. A row shows only in a shell that does the thing: the
+/// Mac app never gets the update-check topic (Sparkle updates it), nor the automatic sync one
+/// for as long as it doesn't run the timer.
 fn topics_for(shell: Shell, since: Option<&str>) -> Vec<WhatsNewTopic> {
     let mut topics = topics_since(since);
     if shell != Shell::Desktop {
-        topics.retain(|topic| *topic != WhatsNewTopic::UpdateCheck);
+        topics
+            .retain(|topic| !matches!(topic, WhatsNewTopic::UpdateCheck | WhatsNewTopic::AutoSync));
     }
     topics
 }
@@ -445,6 +483,7 @@ mod tests {
         let all = [
             UpdateCheck,
             CourseWeeks,
+            AutoSync,
             CourseRemoval,
             SyllabusReading,
             AiWriting,
@@ -453,8 +492,8 @@ mod tests {
         assert_eq!(topics_since(None), all);
         assert_eq!(topics_since(Some("0.1.0")), all);
         // Pre-releases order as semver does: alpha.1 < alpha.2 < alpha.3 < beta.1 < 0.3.0.
-        assert_eq!(topics_since(Some("0.3.0-alpha.1")), all[2..]);
-        assert_eq!(topics_since(Some("0.3.0-alpha.2")), all[3..]);
+        assert_eq!(topics_since(Some("0.3.0-alpha.1")), all[3..]);
+        assert_eq!(topics_since(Some("0.3.0-alpha.2")), all[4..]);
         assert_eq!(topics_since(Some("0.3.0-alpha.3")), [AiWriting, Reminders]);
         assert!(topics_since(Some("0.3.0-beta.1")).is_empty());
         assert!(topics_since(Some("0.3.0")).is_empty());

@@ -40,7 +40,7 @@ private struct CountingReads: ForwardingService {
         await reads.record()
         let tasks = try await base.startupTasks(now: now)
         guard await reads.forceDue else { return tasks }
-        return StartupTasks(whatsNew: tasks.whatsNew, updateCheckDue: tasks.updateCheckDue, updatedFrom: tasks.updatedFrom, prepareWeeklyNote: true)
+        return StartupTasks(whatsNew: tasks.whatsNew, updateCheckDue: tasks.updateCheckDue, updatedFrom: tasks.updatedFrom, syncDue: tasks.syncDue, prepareWeeklyNote: true)
     }
 }
 

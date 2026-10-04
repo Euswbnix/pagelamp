@@ -23,6 +23,7 @@ describe("mock What's new", () => {
     expect(topicsSince(null)).toEqual([
       "update_check",
       "course_weeks",
+      "auto_sync",
       "course_removal",
       "syllabus_reading",
       "ai_writing",

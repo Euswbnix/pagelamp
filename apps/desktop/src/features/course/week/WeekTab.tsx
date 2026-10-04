@@ -57,6 +57,7 @@ export function WeekTab({
       <WeekView
         data={query.data}
         lifecycle={overview.lifecycle}
+        pending={overview.structure_pending}
         onSelectWeek={selectWeek}
         onSetTermDates={onSetTermDates}
         // Previous week's list stays visible (dimmed) while the next one loads.
@@ -78,20 +79,29 @@ export function WeekTab({
 function WeekView({
   data,
   lifecycle,
+  pending,
   onSelectWeek,
   onSetTermDates,
   stale,
 }: {
   data: WeekMaterials;
   lifecycle: CourseLifecycle;
+  /** No full sync has read this course's modules and materials yet: they are missing, not none. */
+  pending: boolean;
   onSelectWeek: (week: number | null) => void;
   onSetTermDates: () => void;
   stale: boolean;
 }) {
   const { t } = useTranslation("course");
   const week = data.week ?? null;
-  // "No materials this week" is already what the empty state below says.
-  const showNote = !!data.note && data.note_kind !== "no_materials_this_week";
+  // "No materials this week" is already what the empty state below says. And for a course
+  // whose materials haven't been read yet, "these are the materials from the last 14 days"
+  // would announce a list that was never looked for: the empty state says what is the case.
+  const unread = pending && data.materials.length === 0;
+  const showNote =
+    !!data.note &&
+    data.note_kind !== "no_materials_this_week" &&
+    !(unread && (data.note_kind === "current_week_unknown" || data.note_kind === "exam_period"));
   // A course that is over, inactive or not started has no current week: the note gives that
   // reason. Term dates can't bring a week back for a course that has ended. They can for an
   // inactive one (with dates it is current again) and for one that hasn't started (its own
@@ -143,7 +153,7 @@ function WeekView({
       {data.materials.length > 0 ? (
         <MaterialList materials={data.materials} aiMaterials={data.ai_materials} />
       ) : (
-        <EmptyWeek week={week} />
+        <EmptyWeek week={week} pending={pending} />
       )}
     </div>
   );
@@ -172,7 +182,7 @@ function ModuleList({ modules }: { modules: WeekMaterials["modules"] }) {
   );
 }
 
-function EmptyWeek({ week }: { week: number | null }) {
+function EmptyWeek({ week, pending }: { week: number | null; pending: boolean }) {
   const { t } = useTranslation("course");
   return (
     <Empty className="border">
@@ -180,10 +190,18 @@ function EmptyWeek({ week }: { week: number | null }) {
         <EmptyMedia variant="icon">
           <FolderOpen aria-hidden />
         </EmptyMedia>
+        {/* A course a light automatic sync found: nothing was looked for yet, so "none found"
+            would be wrong. */}
         <EmptyTitle>
-          {week !== null ? t("week.empty.title", { week }) : t("week.empty.titleRecent")}
+          {pending
+            ? t("week.pending.title")
+            : week !== null
+              ? t("week.empty.title", { week })
+              : t("week.empty.titleRecent")}
         </EmptyTitle>
-        <EmptyDescription>{t("week.empty.description")}</EmptyDescription>
+        <EmptyDescription>
+          {pending ? t("week.pending.description") : t("week.empty.description")}
+        </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
         <Button asChild variant="outline">

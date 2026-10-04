@@ -43,15 +43,15 @@ use pagelamp_app::diagnostics::{
     McpClientPresence, ProcessKind, UnreadableFiles,
 };
 use pagelamp_app::{
-    Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, BackupInfo, BreakInput,
-    CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput,
-    CourseLifecycleEntry, DayOfWeek, InstallKind, LifecycleSummary, LocalFileUse, LostAfterPurge,
-    McpClient, McpClientConfig, McpLaunch, McpNoteCode, PurgeReport, ReadCalendarOptions, Reminder,
-    ReminderKind, ReminderSettings, RemovalPreview, RemovalPreviewItem, RemovalReason,
-    RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, SegmentInput,
-    SourceSyncResult, StartupTasks, SyllabusOffer, SyncEvent, SyncRequest, SyncSummary,
-    TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
-    UpdatePrefs, WhatsNew, WhatsNewTopic,
+    Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, AutoSync, AutoSyncTrigger,
+    BackupInfo, BreakInput, CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView,
+    CourseDatesInput, CourseLifecycleEntry, DayOfWeek, InstallKind, LifecycleSummary, LocalFileUse,
+    LostAfterPurge, McpClient, McpClientConfig, McpLaunch, McpNoteCode, PurgeReport,
+    ReadCalendarOptions, Reminder, ReminderKind, ReminderSettings, RemovalPreview,
+    RemovalPreviewItem, RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure,
+    RestoreOutcome, SegmentInput, SourceSyncResult, StartupTasks, SyllabusOffer, SyncDue,
+    SyncEvent, SyncPrefs, SyncRequest, SyncSummary, TemporaryLocation, TombstoneState,
+    UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind};
 use pagelamp_core::ai_gate::{ContextCourse, ContextSummary, LeftOutMaterial, LeftOutReason};
@@ -113,6 +113,14 @@ uniffi::custom_type!(JsonString, String, {
 /// map; the order of environment variables carries no meaning.
 pub type EnvMap = BTreeMap<String, String>;
 uniffi::custom_type!(EnvMap, HashMap<String, String>, {
+    remote,
+    lower: |map| map.into_iter().collect(),
+    try_lift: |map| Ok(map.into_iter().collect()),
+});
+
+/// Times by source id (`AppStatus.deadlines_synced_at`). Swift: `[String: Date]`.
+pub type SyncTimes = BTreeMap<String, Timestamp>;
+uniffi::custom_type!(SyncTimes, HashMap<String, Timestamp>, {
     remote,
     lower: |map| map.into_iter().collect(),
     try_lift: |map| Ok(map.into_iter().collect()),
@@ -657,6 +665,10 @@ pub struct CourseSummary {
     pub next_deadline: Option<Deadline>,
     pub source_label: String,
     pub last_synced_at: Option<Timestamp>,
+    #[uniffi(default = None)]
+    pub deadlines_synced_at: Option<Timestamp>,
+    #[uniffi(default)]
+    pub structure_pending: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -708,6 +720,10 @@ pub struct CourseOverview {
     pub source_label: String,
     pub last_synced_at: Option<Timestamp>,
     pub downloadable_files: u32,
+    #[uniffi(default = None)]
+    pub deadlines_synced_at: Option<Timestamp>,
+    #[uniffi(default)]
+    pub structure_pending: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -756,6 +772,36 @@ pub struct AppStatus {
     pub counts: StoreCounts,
     pub last_synced_at: Option<Timestamp>,
     pub sync_in_progress: bool,
+    pub auto_sync: AutoSync,
+    pub deadlines_synced_at: SyncTimes,
+}
+
+/// How often PageLamp syncs by itself while it runs.
+#[uniffi::remote(Enum)]
+pub enum AutoSync {
+    Off,
+    Daily,
+    TwiceDaily,
+}
+
+/// The student's sync settings.
+#[uniffi::remote(Record)]
+pub struct SyncPrefs {
+    pub auto_sync: AutoSync,
+}
+
+/// Why PageLamp starts a sync by itself.
+#[uniffi::remote(Enum)]
+pub enum AutoSyncTrigger {
+    Unattended,
+    Attended,
+}
+
+/// Whether an automatic sync is due, by trigger.
+#[uniffi::remote(Record)]
+pub struct SyncDue {
+    pub unattended: bool,
+    pub attended: bool,
 }
 
 /// Options for a sync run; `SyncRequest()` in Swift equals the facade's `SyncRequest::default()`
@@ -769,6 +815,8 @@ pub struct SyncRequest {
     pub max_file_mb: u32,
     #[uniffi(default)]
     pub only_courses: Vec<String>,
+    #[uniffi(default = None)]
+    pub automatic: Option<AutoSyncTrigger>,
 }
 
 /// What a sync step is doing (translate it; `SyncEvent.progress`'s message is English).
@@ -1017,6 +1065,7 @@ pub struct UpdatePrefs {
 pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
+    AutoSync,
     CourseRemoval,
     SyllabusReading,
     AiWriting,
@@ -1034,6 +1083,7 @@ pub struct StartupTasks {
     pub whats_new: Option<WhatsNew>,
     pub update_check_due: bool,
     pub updated_from: Option<String>,
+    pub sync_due: SyncDue,
     #[uniffi(default)]
     pub due_reminders: Vec<Reminder>,
     #[uniffi(default)]

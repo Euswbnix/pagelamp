@@ -199,7 +199,9 @@ public actor MockService: PageLampService {
             ),
             nextDeadline: upcoming.first,
             sourceLabel: sourceLabel(course.course.sourceId),
-            lastSyncedAt: sourceSyncedAt(course.course.sourceId)
+            lastSyncedAt: sourceSyncedAt(course.course.sourceId),
+            // The mock's syncs are all full ones: one clock.
+            deadlinesSyncedAt: sourceSyncedAt(course.course.sourceId)
         )
     }
 
@@ -223,7 +225,9 @@ public actor MockService: PageLampService {
                 studyPlans: db.studyPlan == nil ? 0 : 1
             ),
             lastSyncedAt: db.sources.compactMap(\.lastSyncedAt).max(),
-            syncInProgress: syncing || db.externalSyncRunning
+            syncInProgress: syncing || db.externalSyncRunning,
+            autoSync: .twiceDaily,
+            deadlinesSyncedAt: [:]
         )
     }
 
@@ -283,7 +287,8 @@ public actor MockService: PageLampService {
             // Like the backend: what a course-wide download would fetch (all weeks).
             downloadableFiles: UInt32(course.materials.filter {
                 $0.kind == .file && $0.textStatus == .notDownloaded && $0.downloadBlocked == nil
-            }.count)
+            }.count),
+            deadlinesSyncedAt: sourceSyncedAt(course.course.sourceId)
         )
     }
 
@@ -400,6 +405,8 @@ public actor MockService: PageLampService {
             whatsNew: whatsNew,
             updateCheckDue: updates.prefs.autoCheck && updates.disclosureSeen && whatsNew == nil && checkIsOld,
             updatedFrom: updates.upgraded ? updates.upgradedFrom : nil,
+            // The Mac app doesn't sync by itself yet: the mock never asks for it.
+            syncDue: SyncDue(unattended: false, attended: false),
             // Monday's note, at the caller's moment (MockService+Note).
             prepareWeeklyNote: noteDue(at: date)
         )

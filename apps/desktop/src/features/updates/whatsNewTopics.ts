@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarRange,
   FileSearch,
+  FolderSync,
   type LucideIcon,
   RefreshCw,
   Sparkles,
@@ -13,6 +14,7 @@ import type { WhatsNewTopic } from "@/api/types";
 export const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   update_check: RefreshCw,
   course_weeks: CalendarRange,
+  auto_sync: FolderSync,
   course_removal: Archive,
   syllabus_reading: FileSearch,
   ai_writing: Sparkles,

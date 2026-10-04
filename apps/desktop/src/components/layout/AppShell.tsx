@@ -7,6 +7,7 @@ import { useStartupPurge } from "@/features/course/removal/useStartupPurge";
 import { CrashNotice } from "@/features/diagnostics/CrashNotice";
 import { RemindersCatchUp } from "@/features/reminders/RemindersCatchUp";
 import { useReminderDelivery } from "@/features/reminders/useReminderDelivery";
+import { useAutoSync } from "@/features/sources/useAutoSync";
 import { PostUpdateBanner } from "@/features/updates/PostUpdateBanner";
 import { UpdateNotice } from "@/features/updates/UpdateNotice";
 import { useUpdateLifecycle } from "@/features/updates/useUpdateLifecycle";
@@ -46,6 +47,7 @@ export function AppShell() {
   useReminderDelivery();
   useStartupPurge();
   useWeeklyNotePreparation();
+  useAutoSync();
   return (
     <div className="flex h-dvh overflow-hidden">
       <Sidebar />

@@ -31,12 +31,21 @@ impl Backdrop {
     }
 }
 
-/// Runs in the page before any of its scripts.
-pub fn init_script(backdrop: Backdrop) -> String {
+/// Runs in the page before any of its scripts. `hidden`: the window was started without being
+/// shown to the student (a login start), so the page must not take its launch for the student
+/// opening PageLamp (an automatic sync at such a start is never "attended").
+pub fn init_script(backdrop: Backdrop, hidden: bool) -> String {
     format!(
-        "window.__PAGELAMP_WINDOW__ = Object.freeze({{ backdrop: \"{}\" }});",
+        "window.__PAGELAMP_WINDOW__ = Object.freeze({{ backdrop: \"{}\", hidden: {hidden} }});",
         backdrop.name()
     )
+}
+
+/// Whether the main window starts without being shown: a login launch (`--hidden`) waiting in
+/// the tray.
+fn starts_hidden<R: Runtime>(app: &App<R>) -> bool {
+    app.try_state::<Background>()
+        .is_some_and(|state| !state.may_show())
 }
 
 /// Builds the "main" window from its `tauri.conf.json` entry.
@@ -51,8 +60,10 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         .expect("tauri.conf.json describes the main window");
     let builder = WebviewWindowBuilder::from_config(app.handle(), &config)?;
     let (builder, backdrop, os_build) = with_backdrop(builder);
+    // Read before the window exists: the page's script carries it.
+    let hidden = starts_hidden(app);
     builder
-        .initialization_script(init_script(backdrop))
+        .initialization_script(init_script(backdrop, hidden))
         // Also after a failed load (Finished comes anyway), so the window never stays hidden;
         // except after a login launch (`--hidden`), until the student opens it from the tray.
         .on_page_load(|window, payload| {
@@ -69,10 +80,6 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     }
     // The Windows build tells a tester's "no Mica" apart: gated (Windows 10, 21H2) or DWM's own
     // solid fallback (Battery Saver, transparency off, an inactive window).
-    // `hidden`: a login launch (`--hidden`) waiting in the tray.
-    let hidden = app
-        .try_state::<Background>()
-        .is_some_and(|state| !state.may_show());
     tracing::info!(
         target: "pagelamp::window",
         backdrop = backdrop.name(),
@@ -119,10 +126,24 @@ mod tests {
     #[test]
     fn the_page_is_told_the_backdrop() {
         assert_eq!(
-            init_script(Backdrop::Mica),
-            r#"window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "mica" });"#
+            init_script(Backdrop::Mica, false),
+            r#"window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "mica", hidden: false });"#
         );
-        assert!(init_script(Backdrop::None).contains(r#"backdrop: "none""#));
+        assert!(init_script(Backdrop::None, false).contains(r#"backdrop: "none""#));
+        assert!(init_script(Backdrop::None, true).contains("hidden: true"));
+    }
+
+    /// A login start (`--hidden`) is told to the page: such a launch must never count as the
+    /// student opening PageLamp. A start the student made is told as one.
+    #[test]
+    fn the_page_is_told_a_login_start() {
+        for hidden in [true, false] {
+            let app = tauri::test::mock_builder()
+                .manage(Background::new(hidden))
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .expect("mock app");
+            assert_eq!(starts_hidden(&app), hidden);
+        }
     }
 
     fn shipped_config() -> serde_json::Value {

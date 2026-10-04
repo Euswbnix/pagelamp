@@ -1,9 +1,10 @@
-import { configure, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { SyncEvent } from "@/api/types";
 import i18n from "@/i18n";
+import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
@@ -13,6 +14,7 @@ configure({ asyncUtilTimeout: 3000 });
 
 // Synthetic values only. The mock accepts tokens of 8+ characters without "expired".
 const NEW_TOKEN = "demo-replacement-token-7f3a91";
+const CANVAS = "canvas:canvas.demo.test";
 
 function storageDump(): string {
   const entries: string[] = [];
@@ -154,6 +156,57 @@ describe("SourcesPage", () => {
     );
   });
 
+  it("says plainly that a sync is already running when 'Sync now' can't start one", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "expired" });
+    const realSyncAll = api.syncAll;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    api.syncAll = async (req, onEvent: (event: SyncEvent) => void) => {
+      await gate;
+      return realSyncAll(req, onEvent);
+    };
+    const { user } = renderRoute("/sources", { api });
+    // This window's own sync is in the way (the student's here; it could be an automatic one).
+    await user.click(await screen.findByRole("button", { name: "Sync all" }));
+
+    await user.click(screen.getByRole("button", { name: "Replace token for Demo Canvas" }));
+    const dialog = await screen.findByRole("dialog", { name: "Replace token" });
+    await user.type(within(dialog).getByLabelText("New access token"), NEW_TOKEN);
+    await user.click(within(dialog).getByRole("button", { name: "Replace" }));
+    await user.click(await screen.findByRole("button", { name: "Sync now" }));
+
+    // Not "(maybe from the command line)": it is this window's.
+    expect(
+      await screen.findByText("A sync is already running. Try again when it finishes."),
+    ).toBeInTheDocument();
+    release();
+  });
+
+  it("doesn't show a stopped source as syncing while an automatic sync is only on its way", async () => {
+    const { user } = renderRoute("/sources");
+    const canvas = (await screen.findByRole("heading", { level: 2, name: "Demo Canvas" })).closest(
+      "li",
+    ) as HTMLElement;
+    // The student's sync was stopped in Canvas: its row stays, unfinished.
+    act(() => {
+      const store = useSyncStore.getState();
+      store.begin(1);
+      store.apply({ type: "source_started", source_id: CANVAS, label: "Demo Canvas" });
+      store.finish(null, new ApiError("cancelled", "Cancelled"));
+    });
+    // PageLamp starts one by itself; nothing has come back from it yet.
+    act(() => useSyncStore.getState().begin(null, null, "unattended"));
+    expect(within(canvas).queryByText("Syncing")).toBeNull();
+    expect(within(canvas).queryByText("Syncing…")).toBeNull();
+
+    // "Hide" takes away the stopped run's result, not the run in flight.
+    await user.click(screen.getByRole("button", { name: "Hide sync results" }));
+    expect(useSyncStore.getState()).toMatchObject({ running: true, automatic: "unattended" });
+    act(() => useSyncStore.getState().finish(null, new ApiError("busy", "Synthetic refusal")));
+  });
+
   it("keeps the replace dialog open and explains a rejected token", async () => {
     const { user } = renderRoute("/sources", { scenario: "expired" });
     await user.click(await screen.findByRole("button", { name: "Replace token for Demo Canvas" }));
@@ -206,6 +259,8 @@ describe("SourcesPage", () => {
       "University of Example — Canvas (Faculty of Arts & Science, St. George campus, all sections)";
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
     await api.addFolderSource("/Users/demo/Documents/Long", null, label);
+    // A source that has never synced makes an automatic sync due; this is about its "New" badge.
+    await api.setSyncPrefs({ auto_sync: "off" });
     renderRoute("/sources", { api });
 
     const heading = await screen.findByRole("heading", { level: 2, name: label });
