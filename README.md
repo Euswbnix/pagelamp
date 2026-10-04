@@ -168,8 +168,17 @@ the token on the same Canvas page.
 Canvas sync never downloads files unless you ask, because downloads can count as "viewed" in
 module requirements. Canvas records a sync like any other access: your course access report (which
 instructors can see) may list each area PageLamp reads — modules, pages, assignments, files and
-announcements — plus each page it reads (only new or changed ones). Reading doesn't complete module
-requirements; downloading files can.
+announcements — plus each page it reads, and a sync may refresh the "Last Activity" time shown for
+you in the course.
+
+What PageLamp reads of a course: its modules, the pages and files its lists show, the page its Home
+shows, and the pages of the same course that those texts, the syllabus and announcements link to.
+Files that are linked are listed, not downloaded. A page with a change date is read only when it is
+new or has changed; the others (the Home page, linked pages) are read again when you press Sync,
+and by an automatic sync at most once a day. PageLamp never asks for a list the course hides, and
+it doesn't read a page that a module asks you to view until you have viewed it in Canvas: reading
+it for you could mark it as viewed. Assignments and quizzes stay title, due date and link. What
+PageLamp didn't read is listed for each course with the reason, and your AI app is told so.
 
 (v0.3) While the PageLamp app is running it also syncs by itself, twice a day unless you choose
 once a day or off. With nobody at the app it checks your token and asks Canvas only for your
@@ -308,7 +317,9 @@ Linux 请用 `.deb`/`.rpm`（会同时安装 `/usr/bin/pagelamp`）；`.AppImage
 如果看不到 **+ New Access Token**，说明你的学校关闭了学生访问令牌，请改用「课程文件夹 + 日历订阅」。令牌代表你本人访问 Canvas，不要交给别人；过期后生成一个新的，在这个来源上点「更换访问令牌」；想停止 PageLamp 的访问，在同一个 Canvas 页面删除这个令牌即可。
 
 
-同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面（只读新增或有变化的页面）。读取页面不会完成模块要求；下载文件可能会，所以默认不下载。
+同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面；同步也可能刷新课程里显示的你的“上次活动”时间。下载文件可能会让模块要求算作“已查看”，所以默认不下载。
+
+PageLamp 读一门课的这些部分：模块、列表里的页面和文件、课程首页显示的页面，以及这些文字、教学大纲和公告里链接到的同一门课的页面。链接到的文件只登记，不下载。有修改时间的页面只在新增或有变化时读取；其余的（首页、链接到的页面）在你点“同步”时重新读取，自动同步最多一天读一次。课程隐藏了的列表，PageLamp 不会去请求；模块要求你“查看”而你还没看过的页面，PageLamp 也不读，因为替你读可能会让它算作已查看。作业和测验仍然只保留标题、截止日期和链接。每门课里 PageLamp 没读到的部分会连同原因列出来，你的 AI 应用也会被告知。
 
 （v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行，或者在你打开 PageLamp、把它切到前台，而上次完整同步已经够久（或有新发现的课程还没读过）时进行。自动同步从不下载文件。
 
