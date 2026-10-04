@@ -21,15 +21,20 @@
 //!   data freshness (source last_synced_at).
 //! - `course_overview(course)` → timeline (week, confidence, evidence), current modules,
 //!   materials published in the last 14 days, deadlines in the next 21 days, announcements
-//!   of the last 14 days (titles + ids), ai_policy + note.
+//!   of the last 14 days (titles + ids), ai_policy + note; for a Canvas course also its Home
+//!   page and syllabus as materials and what PageLamp did not read, with reasons
+//!   (`pagelamp_core::coverage`; structure only, so also given when the text is withheld).
 //! - `week_materials(course, week?)` → materials of that week (default current week):
 //!   id, title, kind, locator count, text_status, url.
+//! - `list_materials(course, kind?, offset?)` → every material of the course, 50 at a time:
+//!   id, title, kind, week, date, text state. Never assignments.
 //! - `read_material(material_id, from_chunk?, max_chars?)` → wrapped text with locators,
 //!   `next_chunk` for pagination.
 //! - `search_materials(query, course?, limit?)` → hits with snippet, material title,
 //!   locator, url (for citations).
 //! - `list_deadlines(course?, days_ahead? = 21, days_back? = 0)` → events for planning.
-//! - `get_announcements(course, days? = 14)` → wrapped announcement text.
+//! - `get_announcements(course, days? = 14, offset?)` → wrapped announcement text, after a
+//!   line that says which ones are shown of how many.
 //! - `get_study_plan()` / `save_study_plan(plan)` — plan per `model::StudyPlan`.
 //! - `sync_status()` → sources with last_synced_at / last_error and a state (fresh, old,
 //!   never synced, failed, needs the student), whether PageLamp refreshes by itself while its
@@ -73,6 +78,9 @@ use std::time::Instant;
 use chrono::{Local, NaiveDate, TimeDelta};
 use pagelamp_core::auto_sync::{self, AutoSync};
 use pagelamp_core::brand;
+use pagelamp_core::coverage::{
+    CourseHomeKind, CoverageArea, CoverageReason, CoverageView, MaterialRef,
+};
 use pagelamp_core::diagnostics::redact;
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarOrigin, CalendarStatus, Confidence,
@@ -386,6 +394,8 @@ const MAX_SEARCH_LIMIT: u32 = 25;
 const MIN_READ_CHARS: u32 = 500;
 const MAX_DAYS: u32 = 365;
 const MAX_ANNOUNCEMENT_CHARS: usize = 4_000;
+/// The most announcements one call reads (fewer are given when their text is long).
+const MAX_ANNOUNCEMENTS_PER_CALL: usize = 20;
 const MAX_LISTED_MATERIALS: usize = 60;
 const MAX_LISTED_DEADLINES: usize = 60;
 const MAX_PLAN_DAYS: u32 = 120;
@@ -442,6 +452,18 @@ pub struct AnnouncementArgs {
     pub course: String,
     #[schemars(description = text::PARAM_DAYS)]
     pub days: Option<u32>,
+    #[schemars(description = text::PARAM_OFFSET)]
+    pub offset: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListMaterialsArgs {
+    #[schemars(description = text::PARAM_COURSE)]
+    pub course: String,
+    #[schemars(description = text::PARAM_KIND)]
+    pub kind: Option<MaterialKind>,
+    #[schemars(description = text::PARAM_OFFSET)]
+    pub offset: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -549,6 +571,47 @@ impl PageLampServer {
                         .collect(),
                     source: overview.source_label,
                     last_synced_at: overview.last_synced_at,
+                    coverage: overview.coverage.map(CoverageInfo::from),
+                })
+            }
+            Err(error) => error,
+        }
+    }
+
+    #[tool(description = text::LIST_MATERIALS, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
+    async fn list_materials(
+        &self,
+        Parameters(args): Parameters<ListMaterialsArgs>,
+    ) -> CallToolResult {
+        let offset = args.offset.unwrap_or(0);
+        let result = self
+            .read(move |store| {
+                let list = views::list_materials(store, &args.course, args.kind, offset)?;
+                let synced = data_as_of(store, &list.course)?;
+                Ok((list, synced))
+            })
+            .await;
+        match result {
+            Ok((list, synced)) => {
+                let first = list.offset as usize + 1;
+                let last = list.offset as usize + list.materials.len();
+                let waiting = list
+                    .materials
+                    .iter()
+                    .filter(|m| {
+                        m.kind == MaterialKind::File && m.text_status == TextStatus::NotDownloaded
+                    })
+                    .count();
+                json_result(&MaterialPage {
+                    data_as_of: text::data_as_of(synced),
+                    structure_pending: synced.structure_pending.then(text::structure_pending),
+                    course: list.course.code.unwrap_or(list.course.name),
+                    ai_materials: list.ai_materials,
+                    note: withheld_note(list.ai_materials),
+                    shown: text::materials_page(first, last, list.total as usize),
+                    total: list.total,
+                    not_downloaded: (waiting > 0).then(|| text::some_not_downloaded(waiting)),
+                    materials: list.materials.iter().map(MaterialInfo::from).collect(),
                 })
             }
             Err(error) => error,
@@ -640,7 +703,11 @@ impl PageLampServer {
             return text_result(out.join("\n"));
         }
         if material.total_chunks == 0 {
-            out.push(text::NO_TEXT.to_string());
+            out.push(if view.text_status == TextStatus::NotDownloaded {
+                text::not_downloaded(view.download_blocked)
+            } else {
+                text::NO_TEXT.to_string()
+            });
             return text_result(out.join("\n"));
         }
         for chunk in &material.chunks {
@@ -769,25 +836,35 @@ impl PageLampServer {
         Parameters(args): Parameters<AnnouncementArgs>,
     ) -> CallToolResult {
         let days = args.days.unwrap_or(views::RECENT_DAYS).clamp(1, MAX_DAYS);
+        let offset = args.offset.unwrap_or(0);
         let result = self
             .read(move |store| {
-                views::announcements(
+                views::announcements_page(
                     store,
                     &args.course,
                     days,
+                    offset,
+                    MAX_ANNOUNCEMENTS_PER_CALL,
                     MAX_ANNOUNCEMENT_CHARS,
                     AsOf::now_local(),
                 )
             })
             .await;
-        let items = match result {
-            Ok(items) => items,
+        let page = match result {
+            Ok(page) => page,
             Err(error) => return error,
         };
-        if items.is_empty() {
+        let total = page.total as usize;
+        let start = page.offset as usize + 1;
+        let items = page.items;
+        if total == 0 {
             return text_result(text::NO_ANNOUNCEMENTS);
         }
-        let mut out = Vec::new();
+        if items.is_empty() {
+            return text_result(text::announcements_page(start, start - 1, total, days));
+        }
+        // The first line is put in once it is known how many fit.
+        let mut out = vec![String::new()];
         if let Some(first) = items.first()
             && !first.ai_materials.is_readable()
         {
@@ -805,9 +882,11 @@ impl PageLampServer {
                         .unwrap_or_default()
                 ));
             }
+            out[0] = text::announcements_page(start, start + items.len() - 1, total, days);
             return text_result(out.join("\n"));
         }
         let mut used = 0;
+        let mut given = 0;
         for (shown, item) in items.iter().enumerate() {
             let posted = item.material.published_at.map(|p| p.to_rfc3339());
             let block = wrap(
@@ -821,12 +900,13 @@ impl PageLampServer {
                 &item.text,
             );
             if used + block.len() > OUTPUT_CAP && shown > 0 {
-                out.push(text::output_capped(items.len() - shown));
                 break;
             }
             used += block.len();
+            given += 1;
             out.push(block);
         }
+        out[0] = text::announcements_page(start, start + given - 1, total, days);
         text_result(out.join("\n"))
     }
 
@@ -1512,6 +1592,90 @@ struct Overview {
     recent_announcements: Vec<AnnouncementInfo>,
     source: String,
     last_synced_at: Option<Timestamp>,
+    /// For a Canvas course a full sync has read: its Home page, its syllabus and what PageLamp
+    /// did not read. Structure only (given when the text is withheld too).
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    coverage: Option<CoverageInfo>,
+}
+
+/// What `course_overview` says about what PageLamp read of a course (`CoverageView`).
+#[derive(Serialize)]
+struct CoverageInfo {
+    /// What the course's Home shows in Canvas.
+    home_shows: CourseHomeKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    home: Option<MaterialRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    syllabus: Option<MaterialRef>,
+    /// Announcements PageLamp has of the course (get_announcements reads them).
+    announcements_synced: u32,
+    not_readable: Vec<NotReadableInfo>,
+    /// How many more there are than `not_readable` lists.
+    #[serde(skip_serializing_if = "is_zero")]
+    not_readable_more: u32,
+}
+
+#[derive(Serialize)]
+struct NotReadableInfo {
+    area: CoverageArea,
+    reason: CoverageReason,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    /// How many items the entry stands for, when more than one.
+    #[serde(skip_serializing_if = "is_one")]
+    count: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+fn is_one(n: &u32) -> bool {
+    *n == 1
+}
+
+impl From<CoverageView> for CoverageInfo {
+    fn from(view: CoverageView) -> Self {
+        CoverageInfo {
+            home_shows: view.home_kind,
+            home: view.home,
+            syllabus: view.syllabus,
+            announcements_synced: view.announcements_synced,
+            not_readable: view
+                .not_readable
+                .into_iter()
+                .map(|entry| NotReadableInfo {
+                    area: entry.area,
+                    reason: entry.reason,
+                    title: entry.title,
+                    url: public_url(entry.url.as_deref()).map(str::to_string),
+                    count: entry.count,
+                })
+                .collect(),
+            not_readable_more: view.not_readable_more,
+        }
+    }
+}
+
+/// `list_materials`: one page of a course's materials.
+#[derive(Serialize)]
+struct MaterialPage {
+    data_as_of: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    structure_pending: Option<String>,
+    course: String,
+    ai_materials: AiMaterialsState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+    /// Which materials these are, and how to get the next ones.
+    shown: String,
+    total: u32,
+    /// Present when some files here aren't downloaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    not_downloaded: Option<String>,
+    materials: Vec<MaterialInfo>,
 }
 
 #[derive(Serialize)]

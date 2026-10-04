@@ -225,6 +225,7 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
             "get_study_plan",
             "list_courses",
             "list_deadlines",
+            "list_materials",
             "read_material",
             "save_study_plan",
             "search_materials",
@@ -244,6 +245,7 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
     assert_eq!(description("course_overview"), text::COURSE_OVERVIEW);
     assert_eq!(description("week_materials"), text::WEEK_MATERIALS);
     assert_eq!(description("read_material"), text::READ_MATERIAL);
+    assert_eq!(description("list_materials"), text::LIST_MATERIALS);
     assert_eq!(description("search_materials"), text::SEARCH_MATERIALS);
     assert_eq!(description("list_deadlines"), text::LIST_DEADLINES);
     assert_eq!(description("get_announcements"), text::GET_ANNOUNCEMENTS);
@@ -1196,7 +1198,7 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
     for tool in client.list_all_tools().await.unwrap() {
         let args = match tool.name.as_ref() {
             "list_courses" | "sync_status" | "get_study_plan" | "list_deadlines" => json!({}),
-            "course_overview" | "week_materials" | "get_announcements" => {
+            "course_overview" | "week_materials" | "get_announcements" | "list_materials" => {
                 json!({"course": "DEMO101"})
             }
             "read_material" => json!({"material_id": mid("week3-slides")}),
@@ -1593,6 +1595,7 @@ async fn no_tool_gives_out_an_access_parameter() {
         ("course_overview", json!({"course": "DEMO101"})),
         ("week_materials", json!({"course": "DEMO101"})),
         ("get_study_plan", json!({})),
+        ("list_materials", json!({"course": "DEMO101"})),
     ] {
         let result = call(&client, tool, args.clone()).await;
         assert!(!is_error(&result), "{tool}: {}", text_of(&result));
@@ -1658,5 +1661,257 @@ async fn no_tool_gives_out_an_access_parameter() {
         assert!(text.contains("week3-slides"), "{call}: {text}");
         assert!(text.contains(&cleaned_start), "{call}: {text}");
     }
+    client.cancel().await.unwrap();
+}
+
+/// What PageLamp read of a course and what it didn't reaches the AI app with reasons, as
+/// structure: also for a course whose text the student doesn't share. A file that isn't
+/// downloaded says so wherever it is named, and long lists come in pages.
+#[tokio::test]
+async fn what_was_not_read_is_said_and_lists_come_in_pages() {
+    use pagelamp_core::coverage::{
+        self, CourseCoverage, CourseHomeKind, CourseHomeState, CoverageArea, CoverageListState,
+        CoverageReason, Home, NotRead,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    let home = mid("welcome");
+    let handout = mid("handout");
+    let big = mid("recording");
+    set(&db, |s| {
+        let add = |id: &str, kind: MaterialKind, title: &str, days_ago: i64| {
+            s.upsert_material(&MaterialUpsert {
+                id: id.into(),
+                course_id: cid("101"),
+                module_id: None,
+                kind,
+                title: title.into(),
+                url: Some("https://lms.example.edu/courses/101/x?verifier=SECRET-LIST".into()),
+                local_path: None,
+                mime: None,
+                published_at: Some(Utc::now() - TimeDelta::days(days_ago)),
+                week_hint: None,
+            })
+            .unwrap();
+        };
+        add(&home, MaterialKind::Page, "Welcome", 30);
+        s.set_text_state(&home, TextStatus::Ok, None, Some("h"))
+            .unwrap();
+        add(&handout, MaterialKind::File, "Mock exam", 20);
+        s.set_text_state(&handout, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        add(&big, MaterialKind::File, "Lecture recording", 20);
+        s.set_text_state(&big, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        s.set_download_blocked(&big, Some(DownloadBlock::TooLarge))
+            .unwrap();
+        // Enough materials and announcements for a second page.
+        for n in 0..60 {
+            add(
+                &mid(&format!("extra-{n:02}")),
+                MaterialKind::ExternalLink,
+                &format!("Extra link {n:02}"),
+                40,
+            );
+        }
+        for n in 0..25 {
+            let id = mid(&format!("news-{n:02}"));
+            add(
+                &id,
+                MaterialKind::Announcement,
+                &format!("News {n:02}"),
+                n + 1,
+            );
+            s.set_text_state(&id, TextStatus::Ok, None, Some("h"))
+                .unwrap();
+            s.replace_chunks(
+                &id,
+                &[Chunk {
+                    material_id: id.clone(),
+                    ord: 0,
+                    locator: None,
+                    text: format!("Announcement text number {n}."),
+                }],
+            )
+            .unwrap();
+        }
+        let mut record = CourseCoverage::new(Utc::now());
+        record.home = Home {
+            kind: CourseHomeKind::Page,
+            state: CourseHomeState::Read,
+            material_id: Some(home.clone()),
+        };
+        record.pages_list = CoverageListState::Hidden;
+        record.note(NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::IndexHidden,
+            None,
+            None,
+        ));
+        record.note(NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::WouldMarkViewed,
+            Some("Read me first"),
+            Some("https://lms.example.edu/courses/101/modules/items/3?verifier=SECRET-ENTRY"),
+        ));
+        for n in 0..30 {
+            record.note(NotRead::new(
+                CoverageArea::Assignments,
+                CoverageReason::ByRule,
+                Some(&format!("Problem set {n}")),
+                Some(&format!(
+                    "https://lms.example.edu/courses/101/assignments/{n}"
+                )),
+            ));
+        }
+        coverage::write(s, &cid("101"), &record).unwrap();
+    });
+    let client = connect(db.clone()).await;
+
+    // course_overview: the Home page as a material, the files that aren't downloaded as one
+    // entry per reason, then what the sync noted; the rest is counted.
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(overview["home_shows"], "page");
+    assert_eq!(overview["home"], json!({ "id": home, "title": "Welcome" }));
+    // (The fixture has one of its own.)
+    assert_eq!(overview["announcements_synced"], 26);
+    let entries = overview["not_readable"].as_array().unwrap();
+    assert_eq!(entries.len(), 20);
+    assert_eq!(
+        entries[0],
+        json!({ "area": "files", "reason": "needs_download" })
+    );
+    assert_eq!(
+        entries[1],
+        json!({ "area": "files", "reason": "too_large" })
+    );
+    assert_eq!(
+        entries[2],
+        json!({ "area": "pages", "reason": "index_hidden" })
+    );
+    assert_eq!(
+        entries[3],
+        json!({ "area": "pages", "reason": "would_mark_viewed", "title": "Read me first",
+                "url": "https://lms.example.edu/courses/101/modules/items/3" })
+    );
+    assert_eq!(overview["not_readable_more"], 14);
+    // A course without a record says nothing about it.
+    let other = json_of(&call(&client, "course_overview", json!({"course": "DEMO202"})).await);
+    assert!(other.get("not_readable").is_none() && other.get("home_shows").is_none());
+
+    // list_materials: 50 at a time, in a fixed order, with a line about the next ones and
+    // one about the files that aren't downloaded. Never an assignment.
+    let first = json_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await);
+    let total = first["total"].as_u64().unwrap();
+    assert!(total > 88, "{total}");
+    assert_eq!(first["materials"].as_array().unwrap().len(), 50);
+    assert_eq!(
+        first["shown"],
+        format!("Materials 1–50 of {total}. For the next ones pass offset=50.")
+    );
+    let second = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "offset": 50}),
+        )
+        .await,
+    );
+    let ids = |page: &Value| -> Vec<String> {
+        page["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(ids(&first).iter().all(|id| !ids(&second).contains(id)));
+    let files = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "kind": "file"}),
+        )
+        .await,
+    );
+    let listed = files["materials"].as_array().unwrap();
+    assert!(listed.iter().all(|m| m["kind"] == "file"), "{files}");
+    let exam = listed.iter().find(|m| m["id"] == handout.as_str()).unwrap();
+    assert_eq!(exam["text"], "not_downloaded");
+    assert_eq!(files["not_downloaded"], text::some_not_downloaded(2));
+    assert!(
+        text_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await)
+            .contains("Extra link 00")
+    );
+    let past = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "offset": 5000}),
+        )
+        .await,
+    );
+    assert_eq!(past["materials"], json!([]));
+    assert_eq!(
+        past["shown"],
+        format!("No more materials: there are {total}.")
+    );
+    for page in [&first, &second, &files] {
+        let text = page.to_string();
+        assert!(!text.contains("Problem Set"), "assignments are deadlines");
+        assert!(!text.contains("SECRET-"), "{text}");
+    }
+
+    // read_material says why there is no text, per reason.
+    let read = |id: &str| {
+        let client = &client;
+        let id = id.to_string();
+        async move { text_of(&call(client, "read_material", json!({"material_id": id})).await) }
+    };
+    assert!(read(&handout).await.contains(&text::not_downloaded(None)));
+    assert!(
+        read(&big)
+            .await
+            .contains(&text::not_downloaded(Some(DownloadBlock::TooLarge)))
+    );
+
+    // get_announcements: which ones are shown of how many, and the next ones by offset.
+    let news = |args: Value| {
+        let client = &client;
+        async move { text_of(&call(client, "get_announcements", args).await) }
+    };
+    let recent = news(json!({"course": "DEMO101", "days": 365})).await;
+    let first_line = recent.lines().next().unwrap();
+    assert!(
+        first_line.starts_with("Announcements 1–20 of ")
+            && first_line.ends_with("from the last 365 days. For the next ones pass offset=20."),
+        "{first_line}"
+    );
+    assert!(recent.contains("Announcement text number 0."));
+    assert!(!recent.contains("Announcement text number 24."));
+    let later = news(json!({"course": "DEMO101", "days": 365, "offset": 20})).await;
+    assert!(later.starts_with("Announcements 21–"), "{later}");
+    assert!(later.contains("Announcement text number 24."));
+    assert!(
+        news(json!({"course": "DEMO101", "days": 365, "offset": 900}))
+            .await
+            .starts_with("No more announcements: there are ")
+    );
+
+    // The student turns AI access off: the text goes, the structure and the reasons stay.
+    set(&db, |s| {
+        s.set_course_ai_access(&cid("101"), false).unwrap();
+    });
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(overview["ai_materials"], "turned_off");
+    assert_eq!(overview["not_readable"].as_array().unwrap().len(), 20);
+    assert_eq!(overview["home"]["title"], "Welcome");
+    let list = json_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await);
+    assert_eq!(list["materials"].as_array().unwrap().len(), 50);
+    assert_eq!(list["note"], text::withheld(true));
+    let withheld = news(json!({"course": "DEMO101", "days": 365})).await;
+    assert!(withheld.starts_with("Announcements 1–20 of "), "{withheld}");
+    assert!(!withheld.contains("Announcement text number"));
     client.cancel().await.unwrap();
 }

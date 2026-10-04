@@ -668,6 +668,30 @@ pub fn announcements(
     max_chars: usize,
     at: AsOf,
 ) -> Result<Vec<Announcement>> {
+    Ok(announcements_page(store, course, days, 0, usize::MAX, max_chars, at)?.items)
+}
+
+/// Some of a course's announcements (`announcements_page`).
+#[derive(Clone, Debug)]
+pub struct AnnouncementPage {
+    /// How many announcements the period holds.
+    pub total: u32,
+    /// How many newer ones come before `items`.
+    pub offset: u32,
+    pub items: Vec<Announcement>,
+}
+
+/// Like `announcements`, from the `offset`-th newest on and at most `limit` of them: only
+/// their texts are read.
+pub fn announcements_page(
+    store: &Store,
+    course: &str,
+    days: u32,
+    offset: u32,
+    limit: usize,
+    max_chars: usize,
+    at: AsOf,
+) -> Result<AnnouncementPage> {
     let course = store.resolve_course(course)?;
     let ai_materials = course.ai_materials();
     let data = CourseData::load(store, &course)?;
@@ -683,8 +707,9 @@ pub fn announcements(
             .cmp(&a.published_at)
             .then(a.title.cmp(&b.title))
     });
+    let total = u32::try_from(items.len()).unwrap_or(u32::MAX);
     let mut result = Vec::new();
-    for item in items {
+    for item in items.into_iter().skip(offset as usize).take(limit) {
         let (text, truncated) = if ai_materials.is_readable() {
             let full: Vec<String> = store
                 .get_chunks(&item.id, 0, None)?
@@ -702,7 +727,67 @@ pub fn announcements(
             truncated,
         });
     }
-    Ok(result)
+    Ok(AnnouncementPage {
+        total,
+        offset: offset.min(total),
+        items: result,
+    })
+}
+
+/// How many materials `list_materials` gives at a time.
+pub const MATERIALS_PER_PAGE: usize = 50;
+
+/// Some of a course's materials (`list_materials`).
+#[derive(Clone, Debug)]
+pub struct MaterialList {
+    pub course: Course,
+    /// Effective AI access to this course's material text (`Course::ai_materials`).
+    pub ai_materials: AiMaterialsState,
+    /// How many materials the course has (of `kind`, when one was asked for).
+    pub total: u32,
+    /// How many come before `materials`.
+    pub offset: u32,
+    pub materials: Vec<MaterialView>,
+}
+
+/// Every material of a course, `MATERIALS_PER_PAGE` at a time from the `offset`-th on: files,
+/// pages, the syllabus, links and announcements, each with its kind, week, date and whether
+/// its text can be read. Never assignments (they are deadlines). In a fixed order: by week
+/// (materials without one last), then title, then id. `course` is resolved with
+/// `Store::resolve_course` (hidden excluded — this view serves the MCP server). It holds
+/// structure only, so it is given for a course whose text is withheld too (rule 8).
+pub fn list_materials(
+    store: &Store,
+    course: &str,
+    kind: Option<MaterialKind>,
+    offset: u32,
+) -> Result<MaterialList> {
+    let course = store.resolve_course(course)?;
+    let data = CourseData::load(store, &course)?;
+    let mut views: Vec<MaterialView> = data
+        .materials
+        .iter()
+        .filter(|material| kind.is_none_or(|kind| material.kind == kind))
+        .map(|material| data.view(material))
+        .collect();
+    views.sort_by(|a, b| {
+        (a.week_hint.is_none(), a.week_hint)
+            .cmp(&(b.week_hint.is_none(), b.week_hint))
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    let total = u32::try_from(views.len()).unwrap_or(u32::MAX);
+    Ok(MaterialList {
+        ai_materials: course.ai_materials(),
+        total,
+        offset: offset.min(total),
+        materials: views
+            .into_iter()
+            .skip(offset as usize)
+            .take(MATERIALS_PER_PAGE)
+            .collect(),
+        course,
+    })
 }
 
 /// Chunks starting at `from_chunk` until adding the next chunk would exceed `max_chars`
