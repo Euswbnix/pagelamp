@@ -386,6 +386,28 @@ fn downloadable_files_counts_what_a_download_would_fetch() {
         overview.downloadable_files, 2,
         "any week, files only, not blocked"
     );
+
+    // A file Canvas no longer has (the course's coverage record says so) isn't one a download
+    // would fetch.
+    use pagelamp_core::coverage::{self, CourseCoverage, FileSeen};
+    let course = store.resolve_course("DEMO101").unwrap();
+    let gone = store
+        .list_materials(&course.id)
+        .unwrap()
+        .into_iter()
+        .find(|material| material.id.ends_with("old-notes"))
+        .unwrap();
+    let mut record = CourseCoverage::new(at().now);
+    record.followed.files.insert(
+        gone.id.clone(),
+        FileSeen {
+            checked_at: Some(at().now),
+            gone: true,
+        },
+    );
+    coverage::write(&store, &course.id, &record).unwrap();
+    let overview = views::course_overview(&store, "DEMO101", false, at()).unwrap();
+    assert_eq!(overview.downloadable_files, 1, "not the one that is gone");
 }
 
 #[test]

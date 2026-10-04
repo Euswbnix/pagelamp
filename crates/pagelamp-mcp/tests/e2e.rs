@@ -891,7 +891,16 @@ async fn sync_status_reports_automatic_sync_and_what_each_source_needs() {
         text::sync_status_description(),
         text::not_initialised(),
         text::structure_pending(),
+        // What the tools say about a material without text, and where they are described.
+        text::course_overview_description(),
+        text::list_materials_description(),
+        text::READ_MATERIAL.to_string(),
+        text::some_not_downloaded(2),
+        text::not_downloaded(None),
+        text::not_downloaded(Some(DownloadBlock::TooLarge)),
+        text::not_downloaded(Some(DownloadBlock::Locked)),
     ];
+    texts.extend(pagelamp_core::coverage::CoverageReason::ALL.map(text::not_read));
     for structure_pending in [true, false] {
         let read_at = Some(Utc::now());
         for (materials, deadlines) in [(None, None), (read_at, None), (None, read_at)] {
@@ -2002,38 +2011,17 @@ async fn what_was_not_read_is_said_and_lists_come_in_pages() {
     }
     // The description explains every reason code, by the product's name.
     let description = text::course_overview_description();
-    {
-        use CoverageReason::*;
-        let all = [
-            IndexHidden,
-            NeedsDownload,
-            TooLarge,
-            Locked,
-            WouldMarkViewed,
-            ByRule,
-            OutsideCanvas,
-            NotRead,
-            OtherCourse,
-            Capped,
-            FailedThisSync,
-            NoLongerInCanvas,
-            Other,
-        ];
-        for reason in all {
-            // (A new reason doesn't compile here until it is added above.)
-            match reason {
-                IndexHidden | NeedsDownload | TooLarge | Locked | WouldMarkViewed | ByRule
-                | OutsideCanvas | NotRead | OtherCourse | Capped | FailedThisSync
-                | NoLongerInCanvas | Other => {}
-            }
-            assert!(
-                description.contains(&format!("\n- {}: ", reason.as_str())),
-                "{}",
-                reason.as_str()
-            );
-        }
-        assert_eq!(text::explained_reasons(), all.map(CoverageReason::as_str));
+    for reason in CoverageReason::ALL {
+        assert!(
+            description.contains(&format!("\n- {}: ", reason.as_str())),
+            "{}",
+            reason.as_str()
+        );
     }
+    assert_eq!(
+        text::explained_reasons(),
+        CoverageReason::ALL.map(CoverageReason::as_str)
+    );
     assert!(!description.contains("{name}"), "{description}");
     assert!(!description.contains("isn't in"), "{description}");
 
