@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { ProblemActions } from "@/features/diagnostics/ProblemActions";
 import { SchemaErrorScreen } from "@/features/updates/SchemaErrorScreen";
 import { paths } from "@/lib/routes";
+import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 
 /** First screen: onboarding when there are no sources yet, otherwise the course list. */
@@ -33,7 +34,14 @@ export function StartGate() {
     return (
       <div className="mx-auto max-w-lg p-8">
         <h1 className="sr-only">{t("states.backendUnavailableTitle")}</h1>
-        <ErrorState error={status.error} onRetry={() => status.refetch()} />
+        <ErrorState
+          error={status.error}
+          onRetry={() => {
+            // The student is here: a sync that is due once the app opens is attended.
+            useSyncStore.getState().noteStudentAction();
+            void status.refetch();
+          }}
+        />
         {/* Diagnostics work even when the database can't be opened. */}
         <div className="mt-4">
           <ProblemActions />

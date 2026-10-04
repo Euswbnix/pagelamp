@@ -109,3 +109,56 @@ fn every_ui_call_reaches_its_command() {
         }
     }
 }
+
+/// `first_page_load` answers from the page loads the window counted: "first" for the launch,
+/// once, and never for a page loaded after it.
+#[test]
+fn first_page_load_is_true_for_the_launch_only() {
+    use pagelamp_desktop_lib::window::PageLoads;
+    use tauri::Manager;
+    use tauri::webview::PageLoadEvent;
+
+    let ask = |reloaded: bool| -> bool {
+        let data_dir = tempfile::tempdir().expect("temp dir");
+        let facade = App::open_at_with_secrets(
+            data_dir.path().to_path_buf(),
+            Arc::new(MemorySecrets::new()),
+        )
+        .expect("open App in a temp dir");
+        let app = with_commands(mock_builder())
+            .manage(Backend::from_app(facade))
+            .build(mock_context(noop_assets()))
+            .expect("build mock app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview");
+        let url: tauri::Url = APP_ORIGIN.parse().expect("url");
+        let loads = app.state::<PageLoads>();
+        loads.event(PageLoadEvent::Started, &url);
+        if reloaded {
+            loads.event(PageLoadEvent::Started, &url);
+        }
+        let mut answers = Vec::new();
+        for _ in 0..2 {
+            let body = get_ipc_response(
+                &webview,
+                InvokeRequest {
+                    cmd: "first_page_load".into(),
+                    callback: CallbackFn(0),
+                    error: CallbackFn(1),
+                    url: url.clone(),
+                    body: InvokeBody::Json(serde_json::json!({})),
+                    headers: Default::default(),
+                    invoke_key: INVOKE_KEY.to_string(),
+                },
+            )
+            .expect("first_page_load");
+            answers.push(body.deserialize::<bool>().expect("a boolean"));
+        }
+        // Whatever the first answer, a second ask is never "first".
+        assert!(!answers[1]);
+        answers[0]
+    };
+    assert!(ask(false));
+    assert!(!ask(true));
+}

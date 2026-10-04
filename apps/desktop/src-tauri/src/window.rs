@@ -10,10 +10,55 @@
 //! main.tsx has applied the student's theme, transparency and contrast, so the first frame is
 //! never the system theme or a see-through Mica the student turned off.
 
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
 use tauri::webview::PageLoadEvent;
-use tauri::{App, Manager, Runtime, WebviewWindowBuilder};
+use tauri::{App, Manager, Runtime, Url, WebviewWindowBuilder};
 
 use crate::background::{self, Background};
+
+/// How often this process has loaded the page. The first load is the launch. A later one is a
+/// reload, and a reload needs nobody at the app: when the system ends the webview's content
+/// process (memory pressure, a long sleep, a crash), Tauri loads the page again by itself. The
+/// page asks (`first_page_load`) so that it never takes a reload for the student opening
+/// PageLamp, which would let an automatic sync count as attended.
+///
+/// The loads are counted where they happen (`on_page_load`), not when the page asks: a first
+/// page that never got to ask (it stopped at an error screen) must not leave the answer "first"
+/// to a later reload. And "first" is said once per process at most, to the first ask: the page
+/// asks once and keeps the answer (src/api/tauri.ts), so whoever asks next is another page.
+#[derive(Debug, Default)]
+pub struct PageLoads {
+    started: AtomicU32,
+    asked: AtomicBool,
+    shown: AtomicBool,
+}
+
+impl PageLoads {
+    /// Takes one page-load event: counts a load that starts, and says (true) when the window
+    /// is to be shown. That is once, when its first page has loaded. Showing it again after a
+    /// reload would bring it forward by itself (on macOS it takes the focus, out of the Dock if
+    /// it was minimised), and the page takes a window gaining focus for the student coming back.
+    pub fn event(&self, event: PageLoadEvent, url: &Url) -> bool {
+        match event {
+            // Not the empty document a webview may start from.
+            PageLoadEvent::Started if url.scheme() == "about" => false,
+            PageLoadEvent::Started => {
+                self.started.fetch_add(1, Ordering::SeqCst);
+                false
+            }
+            PageLoadEvent::Finished => !self.shown.swap(true, Ordering::SeqCst),
+        }
+    }
+
+    /// Whether the page asking is the launch. True once per process at most: to the first ask,
+    /// and only while no load after the first has started.
+    pub fn first(&self) -> bool {
+        // The ask is spent whatever the answer.
+        let asked_before = self.asked.swap(true, Ordering::SeqCst);
+        !asked_before && self.started.load(Ordering::SeqCst) <= 1
+    }
+}
 
 /// What the page is told the window was built with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +93,16 @@ fn starts_hidden<R: Runtime>(app: &App<R>) -> bool {
         .is_some_and(|state| !state.may_show())
 }
 
+/// Takes one page-load event and says whether to show the window now. Every event is counted
+/// (`PageLoads::event`), and the one show is spent at the first page also when the window may
+/// not be shown (a login launch waiting in the tray): a later reload must not bring the window
+/// up by itself once the student has opened it. A window that started hidden is shown by the
+/// student only.
+fn shows_now(loads: &PageLoads, background: &Background, event: PageLoadEvent, url: &Url) -> bool {
+    let show = loads.event(event, url);
+    show && background.may_show()
+}
+
 /// Builds the "main" window from its `tauri.conf.json` entry.
 pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     let config = app
@@ -58,18 +113,26 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
         .find(|w| w.label == "main")
         .cloned()
         .expect("tauri.conf.json describes the main window");
+    // Normally there already, with the commands (lib.rs `with_commands`); a window built without
+    // them counts its loads all the same.
+    app.manage(PageLoads::default());
     let builder = WebviewWindowBuilder::from_config(app.handle(), &config)?;
     let (builder, backdrop, os_build) = with_backdrop(builder);
     // Read before the window exists: the page's script carries it.
     let hidden = starts_hidden(app);
     builder
         .initialization_script(init_script(backdrop, hidden))
-        // Also after a failed load (Finished comes anyway), so the window never stays hidden;
-        // except after a login launch (`--hidden`), until the student opens it from the tray.
+        // Shown once the first page has loaded. Windows and Linux report a failed load as
+        // finished too, so the window doesn't stay hidden there (macOS reports no failed load).
+        // A reload finds the window as the student left it. After a login launch (`--hidden`)
+        // no page load shows it: the student opens it from the tray (`shows_now`).
         .on_page_load(|window, payload| {
-            if payload.event() == PageLoadEvent::Finished
-                && window.state::<Background>().may_show()
-                && let Err(error) = window.show()
+            if shows_now(
+                &window.state::<PageLoads>(),
+                &window.state::<Background>(),
+                payload.event(),
+                payload.url(),
+            ) && let Err(error) = window.show()
             {
                 tracing::warn!(target: "pagelamp::window", %error, "show main window");
             }
@@ -123,6 +186,51 @@ fn with_backdrop<'a, R: Runtime, M: Manager<R>>(
 mod tests {
     use super::*;
 
+    fn page() -> Url {
+        "tauri://localhost".parse().expect("url")
+    }
+
+    #[test]
+    fn only_the_first_page_load_is_the_launch() {
+        let loads = PageLoads::default();
+        loads.event(PageLoadEvent::Started, &page());
+        assert!(loads.first());
+        // Said once: the page keeps the answer, and whoever asks next is another page.
+        assert!(!loads.first());
+
+        // After a reload, also when the first page never asked.
+        let never_asked = PageLoads::default();
+        never_asked.event(PageLoadEvent::Started, &page());
+        never_asked.event(PageLoadEvent::Finished, &page());
+        never_asked.event(PageLoadEvent::Started, &page());
+        assert!(!never_asked.first());
+
+        // Should a load go uncounted, the second page to ask is a reload all the same.
+        let uncounted = PageLoads::default();
+        assert!(uncounted.first());
+        assert!(!uncounted.first());
+    }
+
+    #[test]
+    fn the_empty_start_document_is_no_page_load() {
+        let loads = PageLoads::default();
+        let blank: Url = "about:blank".parse().expect("url");
+        loads.event(PageLoadEvent::Started, &blank);
+        loads.event(PageLoadEvent::Started, &page());
+        assert!(loads.first());
+    }
+
+    #[test]
+    fn the_window_is_shown_for_its_first_page_only() {
+        let loads = PageLoads::default();
+        assert!(!loads.event(PageLoadEvent::Started, &page()));
+        assert!(loads.event(PageLoadEvent::Finished, &page()));
+        // A reload must not bring the window forward by itself.
+        assert!(!loads.event(PageLoadEvent::Started, &page()));
+        assert!(!loads.event(PageLoadEvent::Finished, &page()));
+        assert!(!loads.event(PageLoadEvent::Finished, &page()));
+    }
+
     #[test]
     fn the_page_is_told_the_backdrop() {
         assert_eq!(
@@ -131,6 +239,49 @@ mod tests {
         );
         assert!(init_script(Backdrop::None, false).contains(r#"backdrop: "none""#));
         assert!(init_script(Backdrop::None, true).contains("hidden: true"));
+    }
+
+    /// After a login launch no page load shows the window: not the first one (it waits in the
+    /// tray), and not a reload later, when the student has opened it and it may be shown. The
+    /// one show was spent at the first page.
+    #[test]
+    fn a_window_that_started_hidden_is_never_shown_by_a_page_load() {
+        let loads = PageLoads::default();
+        let in_tray = Background::new(true);
+        assert!(!shows_now(
+            &loads,
+            &in_tray,
+            PageLoadEvent::Started,
+            &page()
+        ));
+        assert!(!shows_now(
+            &loads,
+            &in_tray,
+            PageLoadEvent::Finished,
+            &page()
+        ));
+        // The student opened it from the tray; then the page loads again.
+        let opened = Background::new(false);
+        assert!(!shows_now(&loads, &opened, PageLoadEvent::Started, &page()));
+        assert!(!shows_now(
+            &loads,
+            &opened,
+            PageLoadEvent::Finished,
+            &page()
+        ));
+        // The load was counted all the same: this page is not the launch.
+        assert!(!loads.first());
+
+        // A start the student made: shown once, at the first page.
+        let loads = PageLoads::default();
+        assert!(!shows_now(&loads, &opened, PageLoadEvent::Started, &page()));
+        assert!(shows_now(&loads, &opened, PageLoadEvent::Finished, &page()));
+        assert!(!shows_now(
+            &loads,
+            &opened,
+            PageLoadEvent::Finished,
+            &page()
+        ));
     }
 
     /// A login start (`--hidden`) is told to the page: such a launch must never count as the

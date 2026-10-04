@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useSyncStore } from "@/stores/sync";
 import { shownTopics, TOPIC_ICON } from "./whatsNewTopics";
 
 /**
@@ -76,6 +77,8 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
 
   async function done() {
     setOpen(false);
+    // Closing the sheet is the student's action: a sync that becomes due with it is attended.
+    useSyncStore.getState().noteStudentAction();
     if (autoCheck !== null && prefs.data && autoCheck !== prefs.data.auto_check) {
       await setPrefs.mutateAsync({ auto_check: autoCheck, channel: prefs.data.channel ?? null });
     }
