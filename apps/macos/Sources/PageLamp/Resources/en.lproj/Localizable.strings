@@ -529,6 +529,7 @@
 "chrome.accessory.dismiss" = "Dismiss";
 "chrome.accessory.open" = "Open Sources & sync";
 "chrome.accessory.syncingOf" = "Syncing %1$@ of %2$@ · %3$@";
+"chrome.accessory.syncingSource" = "Syncing · %1$@";
 "chrome.appearance.contrast" = "Increase contrast";
 "chrome.appearance.contrastHint" = "Darker text and borders, and no see-through glass.";
 "chrome.appearance.transparency" = "Reduce transparency";
@@ -1435,7 +1436,7 @@
 "sources.addErrors.token.invalid" = "That doesn't look like a Canvas access token. Copy it again from Canvas and paste it here.";
 "sources.addErrors.token.network" = "Couldn't reach Canvas. Check your internet connection and try again.";
 "sources.addErrors.token.not_found" = "Canvas can no longer be found at this source's address. Remove the source and add it again with the current address.";
-"sources.autoSync.hint" = "Runs only while PageLamp is open. When you open PageLamp or come back to it, it syncs everything, the same as pressing Sync; Canvas may record that as your activity in each course. In between, it only refreshes your course list, deadlines and announcements, without opening any course.";
+"sources.autoSync.hint" = "Runs only while PageLamp is open. When you open PageLamp or come back to it and the last full sync is as old as your choice above, it syncs everything, the same as pressing Sync; Canvas may record that as your activity in each course. In between, it only refreshes your course list, deadlines and announcements, without opening any course.";
 "sources.autoSync.label" = "Automatic sync";
 "sources.autoSync.option.daily" = "Once a day";
 "sources.autoSync.option.off" = "Off";

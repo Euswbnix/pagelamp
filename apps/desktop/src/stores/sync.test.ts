@@ -189,13 +189,15 @@ describe("a sync PageLamp started by itself", () => {
     expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
   });
 
-  it("leaves nothing behind when a source failed, and notes what only the student can fix", () => {
-    automaticRun("network");
-    useSyncStore.getState().finish(summaryOfA("network"), null);
-    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
-
+  it("leaves nothing behind when a source failed, and notes what the facade recorded", () => {
+    // Which failures are worth telling the student is the facade's call (it records them on
+    // the source); the store doesn't judge by the kind of failure.
     automaticRun("auth_expired_or_revoked");
     useSyncStore.getState().finish(summaryOfA("auth_expired_or_revoked"), null);
+    expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: false });
+
+    automaticRun("other");
+    useSyncStore.getState().finish(summaryOfA("other"), null, true);
     expect(useSyncStore.getState()).toMatchObject({ ...NO_RUN, automaticProblem: true });
 
     // The next run starts clean.

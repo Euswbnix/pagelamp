@@ -21,7 +21,7 @@
       "daily": "Once a day",
       "twice_daily": "Twice a day"
     },
-    "hint": "Runs only while {{product}} is open. When you open {{product}} or come back to it, it syncs everything, the same as pressing Sync; Canvas may record that as your activity in each course. In between, it only refreshes your course list, deadlines and announcements, without opening any course."
+    "hint": "Runs only while {{product}} is open. When you open {{product}} or come back to it and the last full sync is as old as your choice above, it syncs everything, the same as pressing Sync; Canvas may record that as your activity in each course. In between, it only refreshes your course list, deadlines and announcements, without opening any course."
   },
   "list": {
     "loading": "Loading your sources…"

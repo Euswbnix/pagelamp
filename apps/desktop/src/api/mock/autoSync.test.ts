@@ -132,4 +132,22 @@ describe("mock automatic sync", () => {
     expect(pending.map((c) => c.course.code)).toEqual(["DEMO404"]);
     expect(pending[0]?.counts.materials).toBe(0);
   });
+
+  it("syncs only the sources that are due", async () => {
+    // The folder and the feed 2 hours ago, Canvas 5 days ago.
+    const api = createMockApi({ ...fast, scenario: "canvas-old" });
+    await api.setSyncPrefs({ auto_sync: "twice_daily" });
+    const summary = await api.syncAll({ automatic: "attended" }, () => {});
+    expect(summary.results.map((r) => r.kind)).toEqual(["canvas"]);
+  });
+
+  it("leaves the source's last sync alone when one course's files are downloaded", async () => {
+    const api = createMockApi({ ...fast, scenario: "auto-sync-due" });
+    const canvas = () => api.status().then((s) => s.sources.find((x) => x.kind === "canvas"));
+    const before = (await canvas())?.last_synced_at;
+    await api.downloadCourseFiles("canvas:canvas.demo.test/course/205", () => {});
+    expect((await canvas())?.last_synced_at).toBe(before);
+    // So a full sync is as due as it was.
+    expect((await api.startupTasks()).sync_due).toEqual(DUE);
+  });
 });

@@ -33,6 +33,10 @@ describe("Sources & sync → Automatic sync", () => {
       /Canvas may record that as your activity in each course\./,
     );
     expect(setting).toHaveAccessibleDescription(/without opening any course\.$/);
+    // A full sync on coming back only when the last one is as old as the choice.
+    expect(setting).toHaveAccessibleDescription(
+      /come back to it and the last full sync is as old as your choice above, it syncs everything/,
+    );
   });
 
   it("saves a choice at once, and clicking it again changes nothing", async () => {
@@ -115,6 +119,7 @@ describe("Sources & sync → Automatic sync", () => {
     ).toEqual(["关闭", "每天一次", "每天两次"]);
     expect(setting).toHaveAccessibleDescription(/^只有 PageLamp 开着的时候才会自动同步。/);
     expect(setting).toHaveAccessibleDescription(/Canvas 可能会把这记为你在各门课里的活动。/);
+    expect(setting).toHaveAccessibleDescription(/如果上次完整同步已经超过上面选的间隔/);
   });
 });
 

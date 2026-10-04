@@ -134,7 +134,7 @@ describe("automatic sync", () => {
     expect((await api.startupTasks()).sync_due).toEqual({ unattended: false, attended: false });
   });
 
-  it("looks like any sync while it runs: the capsule counts the sources", async () => {
+  it("looks like any sync while it runs: the capsule names the source it is on", async () => {
     const api = mockApi({ scenario: "auto-sync-due" });
     const real = api.syncAll;
     let release: () => void = () => {};
@@ -148,9 +148,8 @@ describe("automatic sync", () => {
     };
     renderRoute("/courses", { api });
 
-    expect(
-      await screen.findByRole("button", { name: "Syncing 0 of 3 · Course folder" }),
-    ).toBeVisible();
+    // No count: only the facade knows which sources this run syncs.
+    expect(await screen.findByRole("button", { name: "Syncing · Course folder" })).toBeVisible();
     expect(announced()).toContain("Syncing…");
     release();
     expect(await screen.findByRole("button", { name: "Sync finished" })).toBeInTheDocument();
@@ -489,29 +488,6 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
   });
 
-  it("counts only the sources it will try", async () => {
-    const start = startClock();
-    const api = mockApi({ scenario: "expired" });
-    const real = api.syncAll;
-    let release: () => void = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    api.syncAll = async (req, onEvent: (event: SyncEvent) => void) => {
-      onEvent({ type: "source_started", source_id: "folder:demo-courses", label: "Course folder" });
-      await gate;
-      return real(req, onEvent);
-    };
-    // Canvas needs a new token, so an automatic run leaves it out: two of the three sources.
-    later(start, 13 * HOUR);
-    renderRoute("/courses", { api });
-    expect(
-      await screen.findByRole("button", { name: "Syncing 0 of 2 · Course folder" }),
-    ).toBeVisible();
-    release();
-    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
-  });
-
   it("leaves no trace when the start is refused", async () => {
     const api = mockApi({ scenario: "auto-sync-due" });
     let refuse: () => void = () => {};
@@ -568,15 +544,45 @@ describe("automatic sync", () => {
     expect(document.body).toHaveFocus();
   });
 
-  it("says once to screen readers when it found a problem only the student can fix", async () => {
+  it("says once to screen readers when the run left a problem on a source", async () => {
     const api = mockApi({ scenario: "auto-sync-due" });
     const sync = failingWith(api, "auth_expired_or_revoked");
+    // What counts is what the facade recorded on the source: here, Canvas's expired token.
+    const status = api.status.bind(api);
+    api.status = async () => {
+      const now = await status();
+      if (sync.mock.calls.length === 0) return now;
+      return {
+        ...now,
+        sources: now.sources.map((source) =>
+          source.id === CANVAS
+            ? {
+                ...source,
+                last_error: "Synthetic failure",
+                last_error_kind: "auth_expired_or_revoked" as const,
+              }
+            : source,
+        ),
+      };
+    };
     renderRoute("/courses", { api });
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(announced()).toContain("Sync finished with problems"));
     // Heard, not shown: no capsule to dismiss, nothing opened, focus unmoved.
     expectNoTrace();
     expect(document.body).toHaveFocus();
+  });
+
+  it("says nothing when the facade recorded nothing, whatever the run reported", async () => {
+    // The same failed result, but the source's row is as it was: the facade kept it quiet.
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = failingWith(api, "auth_expired_or_revoked");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    expectNoTrace();
+    expect(announced()).not.toContain("problems");
   });
 
   it("waits for 'Got it' on What's new, then syncs as attended", async () => {
@@ -693,7 +699,7 @@ describe("automatic sync", () => {
     };
     const one = vi.spyOn(api, "syncSource");
     const { user } = renderRoute("/sources", { api });
-    await screen.findByRole("button", { name: "Syncing 0 of 3 · Course folder" });
+    await screen.findByRole("button", { name: "Syncing · Course folder" });
 
     await user.click(screen.getByRole("button", { name: "Add source" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a source" });
