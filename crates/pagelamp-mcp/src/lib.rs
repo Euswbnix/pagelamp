@@ -6,7 +6,9 @@
 //!
 //! HARD RULES
 //! - Never calls Canvas or any network API (Canvas API Policy §3(i)); serves the local DB only.
-//! - Read-only except `save_study_plan`.
+//! - The tools only read, except `save_study_plan`. Starting the server can write twice,
+//!   each once per database: it migrates an older database, and it removes access parameters
+//!   from text an earlier version stored (`clean_stored_text`).
 //! - No tool returns assignment instructions/solutions; deadlines are title + date + link.
 //! - All course text is returned inside
 //!   `<course_material id="…" title="…" locator="…">…</course_material>` wrappers, and the
@@ -102,8 +104,9 @@ use crate::format::{
 /// Run the MCP server over stdio until the client disconnects (or the process is told to
 /// stop). `db_path` is normally `pagelamp_core::paths::db_path()`. The server starts even
 /// when the database does not exist yet (tools then tell the student to sync); it never
-/// creates one, but migrates an older existing database once (`upgrade_database`). It never
-/// touches the network and never writes to stdout except protocol messages.
+/// creates one, but migrates an older existing database once (`upgrade_database`) and cleans
+/// the text an earlier version stored once (`clean_stored_text`). It never touches the
+/// network and never writes to stdout except protocol messages.
 ///
 /// Log file (`logs/mcp-*.log`): start, the client's name/version and protocol version, and
 /// exit (reason, tool calls, uptime) at info; one line per tool call (name, time, ok/error,
@@ -293,12 +296,17 @@ async fn clean_stored_text(db_path: &std::path::Path) {
 /// nothing in the snippet shows that a value in it gives access to a file. So when the chunk
 /// a snippet comes from still holds an access parameter (the clean-up at start couldn't run),
 /// the snippet isn't used: the start of the cleaned text is given in its place.
+///
+/// Call it in the read transaction of the search itself: with a snapshot of its own, another
+/// process's clean-up between the two reads would make the chunk look clean while the snippet
+/// is still from the old text. A hit whose chunk can't be read gets no snippet.
 fn safe_snippets(
     store: &Store,
     hits: &mut [pagelamp_core::model::SearchHit],
 ) -> pagelamp_core::Result<()> {
     for hit in hits {
         let Some(text) = store.chunk_text(&hit.material_id, hit.chunk_ord)? else {
+            hit.snippet.clear();
             continue;
         };
         if let std::borrow::Cow::Owned(clean) = pagelamp_core::scrub::scrub_text(&text) {
@@ -663,9 +671,13 @@ impl PageLampServer {
         let query = args.query.clone();
         let result = self
             .read(move |store| {
-                let mut results =
-                    views::search_for_ai(store, &args.query, args.course.as_deref(), limit)?;
-                safe_snippets(store, &mut results.hits)?;
+                // One snapshot for the hits and the chunks their snippets were cut from.
+                let results = store.in_read_transaction(|store| {
+                    let mut results =
+                        views::search_for_ai(store, &args.query, args.course.as_deref(), limit)?;
+                    safe_snippets(store, &mut results.hits)?;
+                    Ok(results)
+                })?;
                 // A course no full sync has read has nothing to find yet.
                 let unread = match args.course.as_deref() {
                     Some(course) => auto_sync::light_sync(store)?

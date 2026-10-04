@@ -1523,8 +1523,12 @@ async fn mcp_course_info_uses_resolved_dates() {
 /// in the snippet shows what the value is.
 #[tokio::test]
 async fn no_tool_gives_out_an_access_parameter() {
-    // Values without a word break, each followed by words a search can hit: the sixth and
-    // seventh word after the value make the snippet start past the address.
+    // Values without a word break. The search index cuts a snippet of 16 words that starts 7
+    // words before a single hit, and "wrap", "1" and "x" are words to it. So after each value
+    // the sixth word (kiwi, mango, olive) makes a snippet start at the parameter's name, and
+    // the seventh (lemon, nectar, papaya) makes one start at the value itself, where nothing
+    // shows what it is. Eight more words follow the last hit, so its snippet isn't pulled
+    // back from the end of the text.
     const VALUES: [&str; 3] = ["Ab12Cd34Zz", "Ef56Gh78Yy", "Ij90Kl12Xx"];
     let temp = tempfile::tempdir().unwrap();
     let db = fixture(temp.path());
@@ -1533,22 +1537,32 @@ async fn no_tool_gives_out_an_access_parameter() {
             .execute(
                 "UPDATE chunks SET text = text || ' — zebrafish handout \
                  (https://lms.example.edu/courses/101/files/7/download?verifier=Ab12Cd34Zz&wrap=1) \
-                 one two three four five kiwi lemon. Page \
+                 one two three kiwi lemon six seven eight nine ten. Page \
                  https://lms.example.edu/courses/101/pages/9?sf_verifier=Ef56Gh78Yy&x=1 one two \
-                 three four five mango nectar. Video \
+                 three mango nectar six seven eight nine ten. Video \
                  https://media.example.edu/v?t=5&access_token=Ij90Kl12Xx one two three four five \
-                 olive papaya \"today\"'",
+                 olive papaya eight more words follow the last hit here \"today\"'",
                 [],
             )
             .unwrap();
     });
+    // What a replaced snippet is: the start of the chunk's cleaned text.
+    let cleaned_start: String = {
+        let store = Store::open_read_only(&db).unwrap();
+        let text = store.chunk_text(&mid("week3-slides"), 0).unwrap().unwrap();
+        let clean = pagelamp_core::scrub::scrub_text(&text).into_owned();
+        assert_ne!(clean, text);
+        let mut start: String = clean.chars().take(240).collect();
+        start.push('…');
+        start
+    };
     let client = connect(db.clone()).await;
     let search = |query: &'static str| ("search_materials", json!({"query": query}));
     let mut outputs = Vec::new();
     for (tool, args) in [
         ("read_material", json!({"material_id": mid("week3-slides")})),
         search("zebrafish"),
-        // After each address.
+        // After each address: at the name, then at the bare value.
         search("kiwi"),
         search("lemon"),
         search("mango"),
@@ -1590,8 +1604,11 @@ async fn no_tool_gives_out_an_access_parameter() {
     ] {
         assert!(read.contains(kept), "{kept}: {read}");
     }
-    // A search still finds the chunk, and says where; its snippet is the start of the
-    // cleaned text.
-    assert!(outputs[2].1.contains("week3-slides"), "{}", outputs[2].1);
+    // A search still finds the chunk, and says where. Its snippet was cut from text that
+    // holds a parameter, so the start of the cleaned text is given in its place.
+    for (call, text) in &outputs[1..12] {
+        assert!(text.contains("week3-slides"), "{call}: {text}");
+        assert!(text.contains(&cleaned_start), "{call}: {text}");
+    }
     client.cancel().await.unwrap();
 }
