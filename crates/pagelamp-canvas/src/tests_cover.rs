@@ -48,16 +48,25 @@ async fn pages_asked(f: &Fixture) -> Vec<String> {
 
 /// A full sync at `now`: one the student starts, or the app's own (`automatic`).
 async fn sync_at(f: &Fixture, automatic: bool, now: chrono::DateTime<Utc>) -> crate::SyncReport {
-    let api = f.api_for(automatic);
     let options = SyncOptions {
         automatic,
         ..f.options(false)
     };
+    run_at(f, &options, now).await
+}
+
+/// A sync with these options at `now`.
+async fn run_at(
+    f: &Fixture,
+    options: &SyncOptions,
+    now: chrono::DateTime<Utc>,
+) -> crate::SyncReport {
+    let api = f.api_for(options.automatic);
     crate::sync::Syncer {
         api: &api,
         db: &f.db,
         source_id: &f.source,
-        options: &options,
+        options,
         progress: &no_progress,
         now,
         follow_requests: Default::default(),
@@ -633,6 +642,8 @@ async fn no_page_is_read_when_the_modules_could_not_be_read() {
         failed,
         [
             (CoverageArea::Home, format!("{base}/courses/101")),
+            // The list that failed, and what couldn't be read because of it.
+            (CoverageArea::Modules, String::new()),
             (
                 CoverageArea::Pages,
                 format!("{base}/courses/101/pages/notes-2")
@@ -1159,22 +1170,33 @@ async fn a_link_that_could_be_another_address_of_a_must_view_page_is_not_asked_f
         "page_id:602",
         "Must-View",
         "read-me-first",
+        // Written with spaces or underscores: the same slug form.
+        "Read%20me%20first",
+        "must_view",
+        // One slug goes on from the other with a hyphen.
         "must-view-2",
         "must",
     ];
+    // Free: these go on without a hyphen, so they are other pages.
+    let free = ["notes-1", "must-viewing", "mus"];
     let body: String = suspects
         .iter()
-        .chain(&["notes-1"])
+        .chain(&free)
         .map(|slug| format!(r#"<a href="/courses/101/pages/{slug}">a page</a> "#))
         .collect();
     home_page(&f, &body).await;
-    f.get(
-        "/courses/101/pages/notes-1",
-        page(611, "notes-1", "Lecture notes 1", "<p>Stomata.</p>"),
-    )
-    .await;
+    for (id, slug) in [(611, "notes-1"), (621, "must-viewing"), (622, "mus")] {
+        f.get(
+            &format!("/courses/101/pages/{slug}"),
+            page(id, slug, "A page", "<p>Stomata.</p>"),
+        )
+        .await;
+    }
     f.sync(&f.options(false)).await.unwrap();
-    assert_eq!(pages_asked(&f).await, ["intro", "notes-1", "notes-2"]);
+    assert_eq!(
+        pages_asked(&f).await,
+        ["intro", "mus", "must-viewing", "notes-1", "notes-2"]
+    );
     let base = f.canvas.uri();
     let record_now = record(&f);
     let would_mark: Vec<_> = record_now
@@ -1661,6 +1683,12 @@ async fn a_failed_module_list_stops_every_page_read_with_a_visible_pages_list_to
     assert_eq!(record_now.modules_list, CoverageListState::Failed);
     assert_eq!(record_now.pages_list, CoverageListState::Read);
     assert!(entries(&record_now).contains(&(
+        CoverageArea::Modules,
+        CoverageReason::FailedThisSync,
+        None
+    )));
+    // The Pages list itself was read: it has no entry of its own.
+    assert!(!entries(&record_now).contains(&(
         CoverageArea::Pages,
         CoverageReason::FailedThisSync,
         None
@@ -1879,5 +1907,382 @@ async fn when_the_navigation_cannot_be_read_no_list_is_asked_for_and_nothing_is_
     );
     for area in [CoverageArea::Pages, CoverageArea::Files] {
         assert!(entries(&record_now).contains(&(area, CoverageReason::FailedThisSync, None)));
+    }
+}
+
+/// The Home page is named by the Pages list, a module asks the student to view it, and it
+/// was never read. A later sync that can't read the list still knows which page it is.
+#[tokio::test]
+async fn a_listed_home_page_the_student_must_view_is_not_asked_for_when_the_list_is_gone() {
+    let f = Fixture::new().await;
+    let mount = async |f: &Fixture, tabs: Option<Value>| {
+        if tabs.is_none() {
+            Mock::given(method("GET"))
+                .and(path("/api/v1/courses/101/tabs"))
+                .respond_with(ResponseTemplate::new(500))
+                .with_priority(1)
+                .mount(&f.canvas)
+                .await;
+        }
+        course(
+            f,
+            Some("wiki"),
+            tabs.unwrap_or(json!([])),
+            json!([{"id": 1, "name": "Week 1", "position": 1, "items": [
+                {"id": 12, "type": "Page", "page_url": "welcome", "title": "Welcome",
+                 "html_url": "https://lms.example.edu/courses/101/modules/items/12",
+                 "completion_requirement": {"type": "must_view", "completed": false}}
+            ]}]),
+        )
+        .await;
+        f.get(
+            "/courses/101/pages",
+            json!([{"page_id": 600, "url": "welcome", "title": "Welcome",
+                    "updated_at": "2026-09-08T10:00:00Z", "front_page": true}]),
+        )
+        .await;
+        // (What Canvas would answer if it were asked.)
+        for path in ["/courses/101/front_page", "/courses/101/pages/welcome"] {
+            f.get(path, page(600, "welcome", "Welcome", "<p>Ribosomes.</p>"))
+                .await;
+        }
+    };
+    let id = format!("{}/page/600", f.source);
+    let must_view = (
+        CoverageArea::Pages,
+        CoverageReason::WouldMarkViewed,
+        Some("Welcome"),
+    );
+    let shown = || Some(json!([{"id": "home"}, {"id": "modules"}, {"id": "pages"}]));
+    let hidden = || Some(json!([{"id": "home"}, {"id": "modules"}]));
+    // The list is read; then the navigation can't be read; then it hides the Pages list.
+    for (case, tabs) in [
+        ("listed", shown()),
+        ("tabs failed", None),
+        ("hidden", hidden()),
+    ] {
+        f.canvas.reset().await;
+        mount(&f, tabs).await;
+        f.sync(&f.options(false)).await.unwrap();
+        assert_eq!(asked(&f, "/courses/101/front_page").await, 0, "{case}");
+        assert_eq!(pages_asked(&f).await, Vec::<String>::new(), "{case}");
+        let record_now = record(&f);
+        assert_eq!(
+            record_now.home.material_id.as_deref(),
+            Some(id.as_str()),
+            "{case}"
+        );
+        assert_ne!(record_now.home.state, CourseHomeState::Failed, "{case}");
+        let known = &record_now.followed.pages[&id];
+        assert_eq!(
+            (known.slug.as_str(), known.read_at),
+            ("welcome", None),
+            "{case}"
+        );
+        assert!(entries(&record_now).contains(&must_view), "{case}");
+        assert_eq!(
+            record_now.unread.get(&id),
+            Some(&CoverageReason::WouldMarkViewed),
+            "{case}"
+        );
+        assert!(f.store().search("ribosomes", None, 5).unwrap().is_empty());
+    }
+}
+
+#[tokio::test]
+async fn a_home_page_that_shares_its_title_with_a_must_view_page_is_read_as_usual() {
+    let f = Fixture::new().await;
+    course(
+        &f,
+        Some("wiki"),
+        json!([{"id": "home"}, {"id": "modules"}]),
+        json!([{"id": 1, "name": "Week 1", "position": 1, "items": [
+            {"id": 12, "type": "Page", "page_url": "welcome-2", "title": "Welcome",
+             "completion_requirement": {"type": "must_view", "completed": false}}
+        ]}]),
+    )
+    .await;
+    f.get(
+        "/courses/101/front_page",
+        page(600, "welcome", "Welcome", "<p>Ribosomes.</p>"),
+    )
+    .await;
+    for sync in 1..=2 {
+        let report = f.sync(&f.options(false)).await.unwrap();
+        assert!(report.warnings.is_empty(), "{:?}", report.warnings);
+        // Read at every sync the student starts: it isn't the page the module names.
+        assert_eq!(asked(&f, "/courses/101/front_page").await, sync);
+        assert_eq!(record(&f).home.state, CourseHomeState::Read);
+        assert_eq!(pages_asked(&f).await, Vec::<String>::new());
+    }
+}
+
+#[tokio::test]
+async fn a_linked_file_no_text_links_to_any_more_is_still_asked_about_and_downloaded() {
+    let f = Fixture::new().await;
+    let linking = r#"<p>Xylem. The <a href="/courses/101/files/701/download">handout</a>.</p>"#;
+    both_lists(&f, "2026-09-08T10:00:00Z", linking, &[501]).await;
+    let start = Utc::now();
+    sync_at(&f, false, start).await;
+    assert_eq!(asked(&f, "/courses/101/files/701").await, 1);
+
+    // The page changes and links to it no more. Asked about today: left alone.
+    f.canvas.reset().await;
+    both_lists(
+        &f,
+        "2026-09-15T10:00:00Z",
+        "<p>Xylem and phloem.</p>",
+        &[501],
+    )
+    .await;
+    for id in [501, 701] {
+        Mock::given(method("GET"))
+            .and(path(format!("/files/{id}/download")))
+            .respond_with(ResponseTemplate::new(302).insert_header(
+                "Location",
+                format!("{}/blob/{id}?sig=demo", f.storage.uri()).as_str(),
+            ))
+            .mount(&f.canvas)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/blob/{id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!("cambium text {id}")))
+            .mount(&f.storage)
+            .await;
+    }
+    sync_at(&f, false, start + TimeDelta::hours(1)).await;
+    assert_eq!(asked(&f, "/courses/101/files/701").await, 0);
+    assert!(has_material(&f, "/file/701"));
+
+    // A download takes it too: the record still names it, though no text does.
+    let report = run_at(&f, &f.options(true), start + TimeDelta::hours(2)).await;
+    assert_eq!(asked(&f, "/courses/101/files/701").await, 1);
+    assert_eq!(report.files_downloaded, 2, "{:?}", report.warnings);
+    assert_eq!(f.store().search("cambium", None, 5).unwrap().len(), 2);
+
+    // And it is asked about again once a week.
+    sync_at(&f, false, start + TimeDelta::days(3)).await;
+    assert_eq!(asked(&f, "/courses/101/files/701").await, 1);
+    sync_at(&f, false, start + TimeDelta::days(10)).await;
+    assert_eq!(asked(&f, "/courses/101/files/701").await, 2);
+    assert_eq!(record(&f).counts.linked_files, 1);
+}
+
+#[tokio::test]
+async fn a_list_that_could_not_be_read_leaves_an_entry() {
+    use CoverageArea as A;
+    use CoverageReason as R;
+    // The module list, in a course whose Home shows the modules and that has no page to
+    // read: nothing else would say that anything went wrong.
+    let f = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/modules"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    course(
+        &f,
+        Some("modules"),
+        json!([{"id": "home"}, {"id": "modules"}]),
+        json!([]),
+    )
+    .await;
+    let report = f.sync(&f.options(false)).await.unwrap();
+    let record_now = record(&f);
+    assert_eq!(record_now.modules_list, CoverageListState::Failed);
+    assert_eq!(
+        entries(&record_now),
+        [
+            (A::Pages, R::IndexHidden, None),
+            (A::Files, R::IndexHidden, None),
+            (A::Modules, R::FailedThisSync, None),
+        ]
+    );
+    assert_eq!(report.course_summaries[0].not_read, 1);
+
+    // The Files list and the Pages list.
+    for (list, area) in [("files", A::Files), ("pages", A::Pages)] {
+        let f = Fixture::new().await;
+        Mock::given(method("GET"))
+            .and(path(format!("/api/v1/courses/101/{list}")))
+            .respond_with(ResponseTemplate::new(500))
+            .with_priority(1)
+            .mount(&f.canvas)
+            .await;
+        f.standard().await;
+        f.sync(&f.options(false)).await.unwrap();
+        let record_now = record(&f);
+        let state = match area {
+            A::Files => record_now.files_list,
+            _ => record_now.pages_list,
+        };
+        assert_eq!(state, CoverageListState::Failed, "{list}");
+        let failed: Vec<_> = entries(&record_now)
+            .into_iter()
+            .filter(|(_, reason, _)| *reason == R::FailedThisSync)
+            .collect();
+        assert_eq!(failed, [(area, R::FailedThisSync, None)], "{list}");
+    }
+}
+
+#[tokio::test]
+async fn a_slug_that_another_page_has_taken_is_asked_for_once_more() {
+    let f = Fixture::new().await;
+    hidden_lists(&f, Some("wiki")).await;
+    home_page(&f, r#"<a href="/courses/101/pages/week-1">week 1</a>"#).await;
+    f.get(
+        "/courses/101/pages/week-1",
+        page(611, "week-1", "Week 1", "<p>Xylem.</p>"),
+    )
+    .await;
+    f.sync(&f.options(false)).await.unwrap();
+    assert!(has_material(&f, "/page/611"));
+
+    // The page is renamed, and a new page takes its slug. The Home page links to both.
+    f.canvas.reset().await;
+    hidden_lists(&f, Some("wiki")).await;
+    home_page(
+        &f,
+        r#"<a href="/courses/101/pages/week-1-2025">last year</a>
+           <a href="/courses/101/pages/week-1">week 1</a>"#,
+    )
+    .await;
+    f.get(
+        "/courses/101/pages/week-1-2025",
+        page(611, "week-1-2025", "Week 1 (2025)", "<p>Xylem.</p>"),
+    )
+    .await;
+    f.get(
+        "/courses/101/pages/week-1",
+        page(613, "week-1", "Week 1", "<p>Phloem.</p>"),
+    )
+    .await;
+    for sync in 1..=2 {
+        f.sync(&f.options(false)).await.unwrap();
+        assert_eq!(asked(&f, "/courses/101/pages/week-1").await, sync);
+        // The new page is read and filed by its own id; the old one keeps its own.
+        assert_eq!(f.store().search("phloem", None, 5).unwrap().len(), 1);
+        let record_now = record(&f);
+        let slug_of = |n: u32| {
+            record_now.followed.pages[&format!("{}/page/{n}", f.source)]
+                .slug
+                .clone()
+        };
+        assert_eq!(
+            (slug_of(611), slug_of(613)),
+            ("week-1-2025".to_string(), "week-1".to_string()),
+            "sync {sync}"
+        );
+        let also: Vec<&String> = record_now
+            .followed
+            .pages
+            .values()
+            .flat_map(|read| &read.also)
+            .collect();
+        assert!(also.is_empty(), "{also:?}");
+    }
+}
+
+#[tokio::test]
+async fn listed_pages_are_not_read_again_after_a_sync_that_could_not_read_the_navigation() {
+    let f = Fixture::new().await;
+    // Pages are listed; Files are hidden, so only a page's text says which files it links to.
+    one_listed_page(&f, "2026-09-08T10:00:00Z", "<p>Xylem.</p>").await;
+    f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(asked(&f, "/courses/101/pages/week-1").await, 1);
+    let id = format!("{}/page/601", f.source);
+
+    // The tabs fail: no list is asked for, and what the record knows of the listed page stays.
+    f.canvas.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/tabs"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    one_listed_page(&f, "2026-09-08T10:00:00Z", "<p>Xylem.</p>").await;
+    f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(asked(&f, "/courses/101/pages").await, 0);
+    assert!(record(&f).followed.pages.contains_key(&id));
+
+    // The next sync reads the list again: the unchanged page isn't read once more.
+    f.canvas.reset().await;
+    one_listed_page(&f, "2026-09-08T10:00:00Z", "<p>Xylem.</p>").await;
+    f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(asked(&f, "/courses/101/pages").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/week-1").await, 0);
+}
+
+#[tokio::test]
+async fn a_sync_that_does_not_ask_for_the_home_page_does_not_call_it_failed() {
+    let f = Fixture::new().await;
+    hidden_lists(&f, Some("wiki")).await;
+    home_with_links(&f).await;
+    let start = Utc::now();
+    sync_at(&f, false, start).await;
+
+    // The request fails once.
+    f.canvas.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/front_page"))
+        .respond_with(ResponseTemplate::new(500))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    hidden_lists(&f, Some("wiki")).await;
+    home_with_links(&f).await;
+    sync_at(&f, false, start + TimeDelta::hours(1)).await;
+    assert_eq!(record(&f).home.state, CourseHomeState::Failed);
+
+    // The app's own sync an hour later doesn't ask (the page was read today): nothing failed
+    // in it, and PageLamp has the page's text.
+    f.canvas.reset().await;
+    hidden_lists(&f, Some("wiki")).await;
+    home_with_links(&f).await;
+    sync_at(&f, true, start + TimeDelta::hours(2)).await;
+    assert_eq!(asked(&f, "/courses/101/front_page").await, 0);
+    let record_now = record(&f);
+    assert_eq!(record_now.home.state, CourseHomeState::Read);
+    assert!(
+        !entries(&record_now)
+            .iter()
+            .any(|(area, _, _)| *area == CoverageArea::Home)
+    );
+}
+
+#[tokio::test]
+async fn an_address_only_another_slug_leads_to_is_not_asked_for_again_within_a_day() {
+    let f = Fixture::new().await;
+    hidden_lists(&f, Some("wiki")).await;
+    // The one link to the page uses a slug it had before.
+    home_page(
+        &f,
+        r#"<a href="/courses/101/pages/lecture-notes-1">notes</a>"#,
+    )
+    .await;
+    f.get(
+        "/courses/101/pages/lecture-notes-1",
+        page(611, "notes-1", "Lecture notes 1", "<p>Stomata.</p>"),
+    )
+    .await;
+    let start = Utc::now();
+    sync_at(&f, false, start).await;
+    let id = format!("{}/page/611", f.source);
+    for (hours, times) in [(1, 1), (25, 2), (26, 2)] {
+        sync_at(&f, true, start + TimeDelta::hours(hours)).await;
+        assert_eq!(
+            asked(&f, "/courses/101/pages/lecture-notes-1").await,
+            times,
+            "after {hours} h"
+        );
+        // Never by its own slug: no text links to that.
+        assert_eq!(asked(&f, "/courses/101/pages/notes-1").await, 0);
+        let known = &record(&f).followed.pages[&id];
+        assert_eq!(
+            (known.slug.as_str(), known.also.as_slice()),
+            ("notes-1", &["lecture-notes-1".to_string()][..]),
+            "after {hours} h"
+        );
     }
 }
