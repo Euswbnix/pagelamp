@@ -59,6 +59,26 @@ describe("SyncPill", () => {
     expect(pill.querySelector('[data-sync="fresh"]')).not.toBeNull();
   });
 
+  it("shows the oldest source: one synced a minute ago doesn't make the others fresh", async () => {
+    // The folder and the feed 2 hours ago, Canvas 5 days ago, nothing wrong with any of them.
+    renderWithProviders(<SyncPill />, {
+      api: createMockApi({ latencyMs: 0, scenario: "canvas-old" }),
+    });
+    const pill = await screen.findByRole("link", { name: /^Sync status: Synced 5 days ago\./ });
+    expect(pill.querySelector('[data-sync="old"]')).not.toBeNull();
+    expect(pill.querySelector('[data-sync="fresh"]')).toBeNull();
+    expect(pill).not.toHaveTextContent("Needs attention");
+  });
+
+  it("is old while a source has never synced", async () => {
+    const api = createMockApi({ latencyMs: 0 });
+    await api.addFolderSource("/Users/demo/Documents/New", null, "New folder");
+    renderWithProviders(<SyncPill />, { api });
+    const pill = await screen.findByRole("link", { name: /^Sync status: Synced 2 hours ago\./ });
+    expect(pill.querySelector('[data-sync="old"]')).not.toBeNull();
+  });
+
+  // Canvas there is 9 days old and its token expired: the problem is said, not the age.
   it("keeps 'Needs attention' for problems, however old the data", async () => {
     renderWithProviders(<SyncPill />, {
       api: createMockApi({ latencyMs: 0, scenario: "expired" }),

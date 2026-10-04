@@ -41,7 +41,8 @@
     "termStart": "学期开始日期",
     "feed": "日历订阅地址",
     "feedPrivate": "私密的日历订阅地址（保存在系统钥匙串中）",
-    "lastSynced": "上次同步"
+    "lastSynced": "上次同步",
+    "deadlinesChecked": "{{when}}检查过截止日期和公告"
   },
   "status": {
     "label": "状态",

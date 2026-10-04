@@ -41,7 +41,8 @@
     "termStart": "Term starts",
     "feed": "Feed address",
     "feedPrivate": "Private feed address (stored in your keychain)",
-    "lastSynced": "Last synced"
+    "lastSynced": "Last synced",
+    "deadlinesChecked": "Deadlines and announcements checked {{when}}"
   },
   "status": {
     "label": "Status",

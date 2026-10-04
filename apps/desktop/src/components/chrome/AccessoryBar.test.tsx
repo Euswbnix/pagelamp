@@ -282,6 +282,21 @@ describe("AccessoryBar", () => {
       expect(document.getElementById("main")).toHaveFocus();
     });
 
+    it("leaves the student's failed sync on screen when its own start is refused", async () => {
+      await renderIdle();
+      startRun();
+      act(() => useSyncStore.getState().finish(null, new ApiError("network", "Synthetic failure")));
+      expect(screen.getByRole("button", { name: "Sync failed" })).toBeInTheDocument();
+
+      // PageLamp tries one by itself and is refused: the failure and its details are untouched.
+      act(() => useSyncStore.getState().begin(2, null, "unattended"));
+      expect(screen.getByRole("button", { name: "Sync failed" })).toBeInTheDocument();
+      act(() => useSyncStore.getState().finish(null, new ApiError("busy", "Synthetic refusal")));
+      expect(screen.getByRole("button", { name: "Sync failed" })).toBeInTheDocument();
+      expect(useSyncStore.getState().runError?.kind).toBe("network");
+      expect(useSyncStore.getState().order).toEqual(["canvas"]);
+    });
+
     it("keeps saying what it said while it fades out after a run that went wrong", async () => {
       const { container } = await renderIdle();
       automaticRun("network");

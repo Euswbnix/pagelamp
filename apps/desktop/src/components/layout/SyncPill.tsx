@@ -26,9 +26,15 @@ const FRESH_FOR: Record<AutoSync, number> = {
  * process, e.g. the CLI) or "Needs attention". Links to Sources & sync. This window's own runs
  * show their progress in the accessory bar; meanwhile the pill keeps the last state.
  *
- * Old data doesn't get the check mark: once the last sync is older than the chosen interval the
- * same "Synced 5 days ago" shows with a plain history icon. Not a warning (nothing is wrong, and
- * "Needs attention" is for problems), just no longer a sign that everything is current.
+ * The pill speaks for every source, so it shows the OLDEST one: its last full sync. One source
+ * synced a minute ago doesn't make the others fresh (a source that quietly fails to sync for
+ * days, or the student syncing a single one by hand). Old data doesn't get the check mark: when
+ * any source has never synced, or its last full sync is older than the chosen interval, the
+ * same "Synced 5 days ago" shows with a plain history icon. Not a warning (nothing is wrong,
+ * and "Needs attention" is for problems), just no longer a sign that everything is current.
+ *
+ * A lighter automatic sync (deadlines and announcements only) doesn't move this clock; when it
+ * last read a source is on that source's card.
  */
 export function SyncPill() {
   const { t, i18n } = useTranslation();
@@ -52,15 +58,21 @@ export function SyncPill() {
     icon = <CircleAlert className="size-4" aria-hidden />;
     text = t("sync.needsAttention");
     tone = "text-destructive";
-  } else if (status.data?.last_synced_at) {
-    const last = status.data.last_synced_at;
-    const old = Date.now() - Date.parse(last) > FRESH_FOR[status.data.auto_sync];
+  } else if (status.data && sources.some((s) => s.last_synced_at)) {
+    const synced = sources
+      .map((s) => s.last_synced_at)
+      .filter((at): at is string => !!at)
+      .sort();
+    const oldest = synced[0] ?? "";
+    const old =
+      synced.length < sources.length ||
+      Date.now() - Date.parse(oldest) > FRESH_FOR[status.data.auto_sync];
     icon = old ? (
       <History className="size-4" aria-hidden data-sync="old" />
     ) : (
       <CircleCheck className="size-4" aria-hidden data-sync="fresh" />
     );
-    text = t("sync.syncedAgo", { when: formatRelative(last, i18n.language) });
+    text = t("sync.syncedAgo", { when: formatRelative(oldest, i18n.language) });
   }
 
   return (

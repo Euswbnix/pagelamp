@@ -99,7 +99,8 @@ describe("What's new (upgraders)", () => {
     const row = within(sheet).getByText("PageLamp now syncs by itself").closest("li");
     expect(row).toHaveTextContent("It never downloads Canvas files by itself.");
     expect(row).toHaveTextContent("Canvas may record a full sync as your activity in each course.");
-    expect(row).toHaveTextContent("go to Sources & sync.");
+    expect(row).toHaveTextContent("about twice a day");
+    expect(row).toHaveTextContent("go to Sources & sync → Automatic sync.");
   });
 
   it("turns automatic sync off from there, before What's new counts as read", async () => {
@@ -112,11 +113,46 @@ describe("What's new (upgraders)", () => {
     await user.click(within(sheet).getByRole("button", { name: "Got it" }));
     await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
     expect(setSync).toHaveBeenCalledWith({ auto_sync: "off" });
-    // Saved first: by the time the facade is asked what's due, sync is already off.
-    expect(setSync.mock.invocationCallOrder[0]).toBeLessThan(
-      acknowledge.mock.invocationCallOrder[0] ?? 0,
-    );
     expect(await api.syncPrefs()).toEqual({ auto_sync: "off" });
+  });
+
+  it("waits for 'off' to be saved before What's new counts as read", async () => {
+    const api = mockApi({ scenario: "upgrader" });
+    let saved: () => void = () => {};
+    const setSync = vi.spyOn(api, "setSyncPrefs").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          saved = resolve;
+        }),
+    );
+    const acknowledge = vi.spyOn(api, "acknowledgeWhatsNew");
+    const { user } = renderRoute("/courses", { api });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    await user.click(within(sheet).getByRole("switch", { name: "Sync automatically" }));
+    await user.click(within(sheet).getByRole("button", { name: "Got it" }));
+    await waitFor(() => expect(setSync).toHaveBeenCalledTimes(1));
+    // While the save is still out, the facade isn't told yet: no sync can become due.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(acknowledge).not.toHaveBeenCalled();
+
+    saved();
+    await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
+  });
+
+  it("writes nothing when the setting couldn't be read and the switch ends where it began", async () => {
+    const api = mockApi({ scenario: "upgrader" });
+    vi.spyOn(api, "syncPrefs").mockRejectedValue(new ApiError("internal", "Synthetic failure"));
+    const setSync = vi.spyOn(api, "setSyncPrefs");
+    const acknowledge = vi.spyOn(api, "acknowledgeWhatsNew");
+    const { user } = renderRoute("/courses", { api });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    const toggle = within(sheet).getByRole("switch", { name: "Sync automatically" });
+    await user.click(toggle);
+    await user.click(toggle);
+    await user.click(within(sheet).getByRole("button", { name: "Got it" }));
+    await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
+    // Off and on again isn't a choice: a stored "once a day" or "off" isn't overwritten.
+    expect(setSync).not.toHaveBeenCalled();
   });
 
   it("saves 'off' even when the setting couldn't be read", async () => {

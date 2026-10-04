@@ -65,8 +65,9 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
       await setPrefs.mutateAsync({ auto_check: autoCheck, channel: prefs.data.channel ?? null });
     }
     // Saved before the acknowledgement: once that is in, a sync may be due.
-    // Also when the setting couldn't be read: the student's "off" must not be lost.
-    if (autoSync !== null && (!syncPrefs.data || autoSync !== syncWasOn)) {
+    // Only a real change is saved. When the setting couldn't be read it counts as on (the
+    // default), so "off" is still saved, and off-then-on writes nothing over a stored choice.
+    if (autoSync !== null && autoSync !== syncWasOn) {
       await setSyncPrefs.mutateAsync({
         ...syncPrefs.data,
         auto_sync: autoSync ? "twice_daily" : "off",

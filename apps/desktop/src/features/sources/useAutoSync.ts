@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
 import type { AutoSyncTrigger, StartupTasks } from "@/api/types";
-import { useStartSync, useSyncStore } from "@/stores/sync";
+import {
+  ATTENDED_WINDOW_MS,
+  AUTO_SYNC_MIN_GAP_MS,
+  useStartSync,
+  useSyncStore,
+} from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 
 /** Coming back to the window asks again once the last answer is this old. */
@@ -20,7 +25,8 @@ function dialogOpen(): boolean {
  *
  * - attended: the student just did something here (opened PageLamp, came back to its window,
  *   closed "What's new", changed the setting);
- * - unattended: the hourly re-read, always, also with the window in front.
+ * - unattended: the hourly re-read, always, also with the window in front; and a launch the
+ *   student didn't see (the window started hidden), until the window first gains focus.
  *
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
  * "What's new"); it asks again when that is over and lets the new answer decide. It never opens
@@ -85,9 +91,10 @@ export function useAutoSync() {
   );
 
   useEffect(() => {
-    if (atMount === 0) useSyncStore.getState().noteStudentAction();
+    // A window started hidden (at login) wasn't opened by the student.
+    if (atMount === 0 && !api.startedHidden()) useSyncStore.getState().noteStudentAction();
     return () => dialogs.current?.disconnect();
-  }, [atMount]);
+  }, [atMount, api]);
 
   // The student comes back to the window: ask again if the answer is old, or if it said a sync
   // was due (the student's own sync may have changed that since).
@@ -117,12 +124,27 @@ export function useAutoSync() {
     // The total in the capsule and "no sources" come from the status: wait for it.
     if (!data || !loaded) return;
     const blocked = running || otherProcess || installing || dialogOpen();
+    // Dialogs are portalled into <body>; nothing else says when the last one closes.
+    const watchDialogs = () => {
+      if (!dialogOpen() || dialogs.current) return;
+      const observer = new MutationObserver(() => {
+        if (dialogOpen()) return;
+        observer.disconnect();
+        dialogs.current = null;
+        setClosed((n) => n + 1);
+      });
+      observer.observe(document.body, { childList: true });
+      dialogs.current = observer;
+    };
     const seen = handled.current;
     if (seen.count === answer) {
-      // Nothing new was answered; at most, what was in the way is gone.
+      // Nothing new was answered; at most, what was in the way is gone, or something else is
+      // in the way now (a dialog opened while a sync was running).
       if (waiting.current && !blocked) {
         waiting.current = false;
         void reread();
+      } else if (waiting.current) {
+        watchDialogs();
       }
       return;
     }
@@ -133,7 +155,9 @@ export function useAutoSync() {
     if (seen.whatsNew && !data.whats_new) store.noteStudentAction();
     if (data.whats_new || noSources) return;
 
-    const attended = Date.now() < useSyncStore.getState().attendedUntil;
+    // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
+    const left = useSyncStore.getState().attendedUntil - Date.now();
+    const attended = left > 0 && left <= ATTENDED_WINDOW_MS;
     const trigger: AutoSyncTrigger | null =
       attended && data.sync_due.attended
         ? "attended"
@@ -148,22 +172,13 @@ export function useAutoSync() {
     }
     if (blocked) {
       waiting.current = true;
-      if (dialogOpen() && !dialogs.current) {
-        // Dialogs are portalled into <body>; nothing else says when the last one closes.
-        const observer = new MutationObserver(() => {
-          if (dialogOpen()) return;
-          observer.disconnect();
-          dialogs.current = null;
-          setClosed((n) => n + 1);
-        });
-        observer.observe(document.body, { childList: true });
-        dialogs.current = observer;
-      }
+      watchDialogs();
       return;
     }
     // A backstop next to the facade's own clock: not so soon after the last automatic start,
-    // nor right after the student stopped a sync.
-    if (Date.now() < store.noAutomaticBefore) return;
+    // nor right after the student stopped a sync. (Bounded like the window above.)
+    const hold = store.noAutomaticBefore - Date.now();
+    if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) return;
     // Afterwards the cached answer must stop saying "due".
     void startSync(undefined, { automatic: trigger }).then(reread);
   }, [

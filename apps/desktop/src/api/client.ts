@@ -352,6 +352,11 @@ export interface PageLampApi {
    * plan in their AI app. Returns a function that stops listening.
    */
   onWindowFocus(onFocus: () => void): () => void;
+  /**
+   * The window was started without being shown to the student (a start at login). Its launch
+   * then isn't the student opening PageLamp; the first time the window gains focus is.
+   */
+  startedHidden(): boolean;
   /** Show the folder with PageLamp's log files in Finder / Explorer. */
   revealLogsDir(): Promise<void>;
   /**

@@ -4,7 +4,8 @@
 // the same AppError kinds, sync streams SyncEvents over time, and settings persist for the
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
-// Scenarios: demo (default) · empty · expired · error · busy · crashed · auto-sync-due; updates (M0.4):
+// Scenarios: demo (default) · empty · expired · error · busy · crashed · auto-sync-due ·
+// light-synced · canvas-old; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2): codex-signed-out · codex-plus · codex-edu · codex-api-key ·
@@ -68,6 +69,8 @@ export interface MockOptions {
   latencyMs?: number;
   /** Delay between streamed sync events in ms. */
   syncStepMs?: number;
+  /** The window was started without being shown (a start at login). */
+  startedHidden?: boolean;
   /** Fixed clock for deterministic tests. */
   now?: () => Date;
 }
@@ -174,8 +177,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   // setting is on, What's new is dismissed, no sync runs, and a source that can be tried was last
   // synced an interval or more ago, and no wait after an attempt that didn't end well (here: one
   // the student stopped; the sources that fail in this mock are left out of automatic runs).
+  //
+  // Two clocks. With the student at the app (`attended`) the run is a full sync, due by the last
+  // full sync. From the timer (`unattended`) Canvas is read lightly (deadlines and announcements
+  // only; folders and feeds in full), due by the later of the full sync and the last light read.
   const autoSync = {
-    mode: "twice_daily" as AutoSync,
+    mode: (scenario === "light-synced" || scenario === "canvas-old"
+      ? "off"
+      : "twice_daily") as AutoSync,
     /** No automatic sync before this time (ms). */
     retryAt: 0,
   };
@@ -188,20 +197,46 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   function syncDue(): SyncDue {
     const mode = autoSync.mode;
     const tried = triedAutomatically();
-    const due =
+    const may =
       mode !== "off" &&
       updates.whatsNewSeen &&
       !syncing &&
       !db.externalSyncRunning &&
       tried.length > 0 &&
-      now().getTime() >= autoSync.retryAt &&
-      tried.some(
-        (s) =>
-          !s.last_synced_at ||
-          Date.parse(s.last_synced_at) <= now().getTime() - (mode === "daily" ? DAY : DAY / 2),
-      );
-    // Both triggers run the same full sync, so they are due together.
-    return { unattended: due, attended: due };
+      now().getTime() >= autoSync.retryAt;
+    const cutoff = now().getTime() - (mode === "daily" ? DAY : DAY / 2);
+    const old = (at: string | null | undefined) => !at || Date.parse(at) <= cutoff;
+    return {
+      attended: may && tried.some((s) => old(s.last_synced_at)),
+      unattended: may && tried.some((s) => old(db.deadlinesSyncedAt[s.id] ?? s.last_synced_at)),
+    };
+  }
+
+  /** What the timer's run does to Canvas: its deadlines and announcements, nothing per course. */
+  function lightSync(source: SourceRecord, onEvent: (event: SyncEvent) => void): SourceSyncResult {
+    const startedAt = now().toISOString();
+    onEvent({ type: "source_started", source_id: source.id, label: source.label });
+    db.deadlinesSyncedAt[source.id] = now().toISOString();
+    onEvent({ type: "source_finished", source_id: source.id, ok: true });
+    const courses = db.courses.filter((c) => c.course.source_id === source.id);
+    return {
+      source_id: source.id,
+      label: source.label,
+      kind: source.kind,
+      ok: true,
+      error: null,
+      error_kind: null,
+      started_at: startedAt,
+      finished_at: now().toISOString(),
+      courses: courses.length,
+      modules: 0,
+      materials: 0,
+      files_downloaded: 0,
+      files_indexed: 0,
+      events: courses.reduce((n, c) => n + c.deadlines.length, 0),
+      warnings: [],
+      course_summaries: [],
+    };
   }
 
   function effectiveChannel(): UpdateChannel {
@@ -244,6 +279,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
   function sourceSyncedAt(sourceId: string) {
     return db.sources.find((s) => s.id === sourceId)?.last_synced_at ?? null;
+  }
+
+  /** When the source's deadlines were last read: a light read since, else its full sync. */
+  function deadlinesSyncedAt(sourceId: string) {
+    return db.deadlinesSyncedAt[sourceId] ?? sourceSyncedAt(sourceId);
   }
 
   function deadlinesWithin(courses: MockCourse[], daysAhead: number, daysBack: number) {
@@ -354,9 +394,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       next_deadline: upcoming[0] ?? null,
       source_label: sourceLabel(c.course.source_id),
       last_synced_at: sourceSyncedAt(c.course.source_id),
-      // The mock's syncs are all full ones: one clock, and no course waits to be read.
-      deadlines_synced_at: sourceSyncedAt(c.course.source_id),
-      structure_pending: false,
+      deadlines_synced_at: deadlinesSyncedAt(c.course.source_id),
+      structure_pending: c.structurePending ?? false,
     };
   }
 
@@ -373,7 +412,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       data_dir: db.dataDir,
       db_path: `${db.dataDir}/pagelamp.db`,
       // The mock's syncs are all full ones.
-      deadlines_synced_at: {},
+      deadlines_synced_at: { ...db.deadlinesSyncedAt },
       sources: db.sources,
       counts: {
         courses: visible.length,
@@ -509,6 +548,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           source.last_synced_at = now().toISOString();
           source.last_error = null;
           source.last_error_kind = null;
+          // A full sync reads everything: one clock again, and no course is left unread.
+          delete db.deadlinesSyncedAt[source.id];
+          for (const c of courses) c.structurePending = false;
           onEvent({ type: "source_finished", source_id: source.id, ok: true });
         }
         results.push({
@@ -673,10 +715,20 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         }
         // The attempt counts before it runs: one that is stopped or refused waits an hour.
         autoSync.retryAt = now().getTime() + 60 * 60 * 1000;
-        const tried = await runSync(
-          triedAutomatically().map((s) => s.id),
-          onEvent,
-        );
+        // From the timer, Canvas is only read lightly; everything else syncs in full.
+        const light =
+          req.automatic === "unattended"
+            ? triedAutomatically().filter((s) => s.kind === "canvas")
+            : [];
+        const tried = [
+          ...(await runSync(
+            triedAutomatically()
+              .filter((s) => !light.includes(s))
+              .map((s) => s.id),
+            onEvent,
+          )),
+          ...light.map((s) => lightSync(s, onEvent)),
+        ];
         if (tried.every((r) => r.ok)) autoSync.retryAt = 0;
         const summary: SyncSummary = {
           started_at: startedAt,
@@ -766,8 +818,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           recent_announcements: c.announcements.filter(recent),
           source_label: sourceLabel(c.course.source_id),
           last_synced_at: sourceSyncedAt(c.course.source_id),
-          deadlines_synced_at: sourceSyncedAt(c.course.source_id),
-          structure_pending: false,
+          deadlines_synced_at: deadlinesSyncedAt(c.course.source_id),
+          structure_pending: c.structurePending ?? false,
           ai_materials: aiMaterialsState(c.course),
           // Like the backend: what a course-wide download would fetch (all weeks).
           downloadable_files: c.materials.filter(
@@ -1065,6 +1117,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       window.addEventListener("focus", handler);
       return () => window.removeEventListener("focus", handler);
     },
+    startedHidden: () => options.startedHidden ?? false,
     revealLogsDir: async () => {},
     updaterStatus: () =>
       respond(() => ({

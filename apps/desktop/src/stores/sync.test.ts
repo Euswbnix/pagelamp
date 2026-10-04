@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import type { SourceErrorKind, SyncSummary } from "@/api/types";
 import { afterCurrentRun, useSyncStore } from "./sync";
@@ -108,7 +108,56 @@ describe("sync store", () => {
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("a sync PageLamp started by itself", () => {
+  it("counts the student as here for 30 seconds, and holds the next start for 30 minutes", () => {
+    const now = new Date(2026, 9, 5, 9, 0).getTime();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    const store = useSyncStore.getState();
+
+    store.noteStudentAction();
+    expect(useSyncStore.getState().attendedUntil).toBe(now + 30_000);
+
+    store.begin(1, null, "unattended");
+    expect(useSyncStore.getState().noAutomaticBefore).toBe(now + 1_800_000);
+    store.finish(null, new ApiError("busy", "locked"));
+
+    // The student's Stop holds it the same.
+    vi.setSystemTime(now + 3_600_000);
+    store.begin(1);
+    store.finish(null, new ApiError("cancelled", "Cancelled"));
+    expect(useSyncStore.getState().noAutomaticBefore).toBe(now + 3_600_000 + 1_800_000);
+  });
+
+  it("leaves the last run's result alone until it has something to show", () => {
+    const store = useSyncStore.getState();
+    // The student's sync failed: a row, and the reason for the whole run.
+    store.begin(2);
+    store.apply({ type: "source_started", source_id: "b", label: "Course folder" });
+    store.finish(null, new ApiError("network", "offline"));
+    const before = useSyncStore.getState();
+    expect(before.runError?.kind).toBe("network");
+
+    // An automatic run begins and is refused: nothing of the old result is touched.
+    store.begin(3, null, "unattended");
+    expect(useSyncStore.getState()).toMatchObject({ running: true, started: false });
+    expect(useSyncStore.getState().runError).toBe(before.runError);
+    expect(useSyncStore.getState().bySource).toBe(before.bySource);
+    store.finish(null, new ApiError("busy", "locked"));
+    expect(useSyncStore.getState()).toMatchObject({ running: false, automatic: null });
+    expect(useSyncStore.getState().runError).toBe(before.runError);
+    expect(useSyncStore.getState().order).toEqual(["b"]);
+
+    // The next one gets going: from its first event it is the run on screen.
+    store.begin(3, null, "unattended");
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    expect(useSyncStore.getState()).toMatchObject({ started: true, runError: null, order: ["a"] });
+  });
+
   it("ends like any other when every source synced", () => {
     automaticRun(null);
     useSyncStore.getState().finish(summaryOfA(null), null);

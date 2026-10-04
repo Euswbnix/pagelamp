@@ -212,6 +212,7 @@ export function createTauriApi(): PageLampApi {
         unlisten?.();
       };
     },
+    startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
     revealLogsDir: () => call("reveal_logs_dir"),
     updaterStatus: () => call("updates_status"),
     checkForUpdate: () => call("updates_check"),

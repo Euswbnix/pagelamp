@@ -68,7 +68,7 @@
       },
       "auto_sync": {
         "title": "{{product}} now syncs by itself",
-        "body": "While {{product}} is open, it keeps your deadlines and announcements current by itself. When you open {{product}} or come back to it, it also refreshes your course materials, at most twice a day, the same as pressing Sync. It never downloads Canvas files by itself. Canvas may record a full sync as your activity in each course. To change how often it syncs, or to turn it off, go to Sources & sync."
+        "body": "While {{product}} is open, it keeps your deadlines and announcements current by itself. When you open {{product}} or come back to it, it also refreshes your course materials, about twice a day, the same as pressing Sync. It never downloads Canvas files by itself. Canvas may record a full sync as your activity in each course. To change how often it syncs, or to turn it off, go to Sources & sync → Automatic sync."
       }
     }
   },

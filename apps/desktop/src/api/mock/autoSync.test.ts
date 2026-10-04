@@ -102,4 +102,34 @@ describe("mock automatic sync", () => {
     clock = new Date(clock.getTime() + HOUR);
     expect((await api.startupTasks()).sync_due).toEqual(DUE);
   });
+
+  it("reads Canvas lightly from the timer: the full sync stays due for the student's return", async () => {
+    const api = createMockApi({ ...fast, scenario: "auto-sync-due" });
+    const before = (await api.status()).sources.find((s) => s.kind === "canvas");
+    const summary = await api.syncAll({ automatic: "unattended" }, () => {});
+    expect(summary.ok).toBe(true);
+    expect(summary.results).toHaveLength(3);
+
+    const status = await api.status();
+    const canvas = status.sources.find((s) => s.kind === "canvas");
+    // The full sync's time didn't move; the deadlines have their own.
+    expect(canvas?.last_synced_at).toBe(before?.last_synced_at);
+    expect(Object.keys(status.deadlines_synced_at)).toEqual([canvas?.id]);
+    expect((await api.startupTasks()).sync_due).toEqual({ unattended: false, attended: true });
+
+    await api.syncAll({ automatic: "attended" }, () => {});
+    expect((await api.status()).deadlines_synced_at).toEqual({});
+    expect((await api.startupTasks()).sync_due).toEqual(NOT_DUE);
+  });
+
+  it("shows a light sync's leftovers in the light-synced scenario, with automatic sync off", async () => {
+    const api = createMockApi({ ...fast, scenario: "light-synced" });
+    expect(await api.syncPrefs()).toEqual({ auto_sync: "off" });
+    expect((await api.startupTasks()).sync_due).toEqual(NOT_DUE);
+    const status = await api.status();
+    expect(Object.keys(status.deadlines_synced_at)).toEqual(["canvas:canvas.demo.test"]);
+    const pending = (await api.listCourses()).filter((c) => c.structure_pending);
+    expect(pending.map((c) => c.course.code)).toEqual(["DEMO404"]);
+    expect(pending[0]?.counts.materials).toBe(0);
+  });
 });

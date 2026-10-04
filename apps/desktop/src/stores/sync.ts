@@ -51,6 +51,12 @@ interface SyncState {
    */
   automatic: AutoSyncTrigger | null;
   /**
+   * The current run has something to show. The student's own run has from the moment it begins;
+   * an automatic one only from its first event, and until then the last run's result (its
+   * progress rows, a failure and its reason) stays exactly as it was.
+   */
+  started: boolean;
+  /**
    * No automatic sync starts before this time (ms): half an hour after the last one started,
    * and after the student stopped any sync ("not now"). A backstop next to the facade's clock.
    */
@@ -103,6 +109,7 @@ const noRun = {
   stopping: false,
   stoppedByUser: false,
   automatic: null,
+  started: false,
 } satisfies Partial<SyncState>;
 
 const idle = {
@@ -121,22 +128,40 @@ function needsTheStudent(kind: SourceErrorKind | null | undefined): boolean {
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
   begin: (total, downloadCourseId = null, automatic = null) =>
-    set((state) => ({
-      running: true,
-      total,
-      order: [],
-      bySource: {},
-      runError: null,
-      downloadCourseId,
-      stopping: false,
-      stoppedByUser: false,
-      automatic,
-      automaticProblem: false,
-      noAutomaticBefore: automatic ? Date.now() + AUTO_SYNC_MIN_GAP_MS : state.noAutomaticBefore,
-    })),
+    set(
+      automatic
+        ? {
+            // The last run's result stays until this one has something to show (`apply`).
+            running: true,
+            total,
+            downloadCourseId,
+            stopping: false,
+            automatic,
+            started: false,
+            automaticProblem: false,
+            noAutomaticBefore: Date.now() + AUTO_SYNC_MIN_GAP_MS,
+          }
+        : {
+            running: true,
+            total,
+            order: [],
+            bySource: {},
+            runError: null,
+            downloadCourseId,
+            stopping: false,
+            stoppedByUser: false,
+            automatic: null,
+            started: true,
+            automaticProblem: false,
+          },
+    ),
   apply: (event) =>
     set((state) => {
-      const prev = state.bySource[event.source_id];
+      // An automatic run's first event: from here on it is the run on screen.
+      const first = !state.started;
+      const order = first ? [] : state.order;
+      const bySource = first ? {} : state.bySource;
+      const prev = bySource[event.source_id];
       const base: SourceProgress = prev ?? {
         sourceId: event.source_id,
         label: event.source_id,
@@ -179,8 +204,9 @@ export const useSyncStore = create<SyncState>()((set) => ({
           break;
       }
       return {
-        order: prev ? state.order : [...state.order, event.source_id],
-        bySource: { ...state.bySource, [event.source_id]: next },
+        ...(first ? { started: true, runError: null, stoppedByUser: false } : null),
+        order: prev ? order : [...order, event.source_id],
+        bySource: { ...bySource, [event.source_id]: next },
       };
     }),
   finish: (summary, error) =>
@@ -188,12 +214,29 @@ export const useSyncStore = create<SyncState>()((set) => ({
       // Stopped by the student (cancel_sync): not a failure. The source it stopped in reports
       // `ok: false` without an error kind; show it as stopped, like the ones never reached.
       const stoppedByUser = error?.kind === "cancelled";
-      // An automatic sync the student didn't ask for stays quiet when it goes wrong: refused
-      // (another sync, an update installing), not due any more (an empty answer), or a source
-      // failed. Nothing of the run stays on screen; what the student must fix is on the source
-      // itself. Stopping it, or watching it in the capsule, makes it end like any other run
-      // (a run with no event yet has no capsule to watch: what the student is in is an older one).
-      if (state.automatic && !stoppedByUser && (!state.watched || state.order.length === 0)) {
+      // The student said "not now": PageLamp doesn't start one by itself right afterwards.
+      const noAutomaticBefore = stoppedByUser
+        ? Date.now() + AUTO_SYNC_MIN_GAP_MS
+        : state.noAutomaticBefore;
+      const needsStudent =
+        summary?.results.some((r) => !r.ok && needsTheStudent(r.error_kind)) ?? false;
+      // An automatic sync that never had anything to show (refused: another sync, an update
+      // installing; not due any more: an empty answer): the last run's result stays as it was.
+      if (state.automatic && !state.started) {
+        return {
+          running: false,
+          total: null,
+          downloadCourseId: null,
+          stopping: false,
+          automatic: null,
+          automaticProblem: needsStudent,
+          noAutomaticBefore,
+        };
+      }
+      // An automatic sync the student didn't ask for stays quiet when a source failed too.
+      // Nothing of the run stays on screen; what the student must fix is on the source itself.
+      // Stopping it, or watching it in the capsule, makes it end like any other run.
+      if (state.automatic && !stoppedByUser && !state.watched) {
         const sources = Object.values(state.bySource);
         const clean =
           !error &&
@@ -205,8 +248,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
           return {
             ...noRun,
             automaticProblem:
-              (summary?.results.some((r) => !r.ok && needsTheStudent(r.error_kind)) ?? false) ||
-              sources.some((p) => needsTheStudent(p.result?.errorKind)),
+              needsStudent || sources.some((p) => needsTheStudent(p.result?.errorKind)),
           };
         }
       }
@@ -217,10 +259,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
         runError: stoppedByUser ? null : error,
         stopping: false,
         stoppedByUser,
-        // The student said "not now": PageLamp doesn't start one by itself right afterwards.
-        noAutomaticBefore: stoppedByUser
-          ? Date.now() + AUTO_SYNC_MIN_GAP_MS
-          : state.noAutomaticBefore,
+        noAutomaticBefore,
         // Sources that never reported back didn't run to the end: mark them stopped so no
         // spinner keeps going after the run is over.
         bySource: Object.fromEntries(
