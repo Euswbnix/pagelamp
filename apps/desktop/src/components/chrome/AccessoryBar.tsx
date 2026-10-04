@@ -160,7 +160,9 @@ export function AccessoryBar() {
             ? t("accessory.syncingOf", { done, total, source: current.label })
             : total
               ? tc("sync.syncingProgress", { done, total })
-              : tc("sync.syncing")
+              : current
+                ? t("accessory.syncingSource", { source: current.label })
+                : tc("sync.syncing")
           : tc(HEADLINE[capsule.kind]),
       done,
       total,

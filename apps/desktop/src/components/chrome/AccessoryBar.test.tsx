@@ -254,12 +254,24 @@ describe("AccessoryBar", () => {
       expect(announced()).not.toContain("Sync failed");
     });
 
-    it("says it once to screen readers when only the student can fix the problem", async () => {
+    it("says it once to screen readers when the run left a problem on a source", async () => {
       await renderIdle();
       automaticRun("auth_expired_or_revoked");
-      act(() => useSyncStore.getState().finish(canvasSummary("auth_expired_or_revoked"), null));
+      act(() =>
+        useSyncStore.getState().finish(canvasSummary("auth_expired_or_revoked"), null, true),
+      );
       expect(screen.queryByRole("button", { name: /sync/i })).toBeNull();
       expect(announced()).toContain("Sync finished with problems");
+    });
+
+    it("names the source without a count: only the facade knows how many are due", async () => {
+      await renderIdle();
+      act(() => {
+        const store = useSyncStore.getState();
+        store.begin(null, null, "unattended");
+        store.apply({ type: "source_started", source_id: "canvas", label: "Demo Canvas" });
+      });
+      expect(screen.getByRole("button", { name: "Syncing · Demo Canvas" })).toBeVisible();
     });
 
     it("keeps the problem on screen when the student is in the capsule", async () => {

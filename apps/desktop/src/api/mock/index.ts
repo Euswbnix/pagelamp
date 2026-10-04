@@ -204,12 +204,22 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       !db.externalSyncRunning &&
       tried.length > 0 &&
       now().getTime() >= autoSync.retryAt;
-    const cutoff = now().getTime() - (mode === "daily" ? DAY : DAY / 2);
-    const old = (at: string | null | undefined) => !at || Date.parse(at) <= cutoff;
     return {
-      attended: may && tried.some((s) => old(s.last_synced_at)),
-      unattended: may && tried.some((s) => old(db.deadlinesSyncedAt[s.id] ?? s.last_synced_at)),
+      attended: may && dueSources("attended").length > 0,
+      unattended: may && dueSources("unattended").length > 0,
     };
+  }
+  /** The sources a run with this trigger would sync: the ones its own clock calls old. */
+  function dueSources(trigger: "attended" | "unattended"): SourceRecord[] {
+    const cutoff = now().getTime() - (autoSync.mode === "daily" ? DAY : DAY / 2);
+    const old = (at: string | null | undefined) => !at || Date.parse(at) <= cutoff;
+    return triedAutomatically().filter((s) =>
+      old(
+        trigger === "attended"
+          ? s.last_synced_at
+          : (db.deadlinesSyncedAt[s.id] ?? s.last_synced_at),
+      ),
+    );
   }
 
   /** What the timer's run does to Canvas: its deadlines and announcements, nothing per course. */
@@ -485,6 +495,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   async function runSync(
     sourceIds: string[],
     onEvent: (event: SyncEvent) => void,
+    // A run of one course ("Download this course's files") reads only that course: the source's
+    // own "last synced" stays where it was.
+    wholeSource = true,
   ): Promise<SourceSyncResult[]> {
     if (syncing || db.externalSyncRunning) {
       await sleep(latency);
@@ -545,12 +558,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             error_kind: failure.kind,
           });
         } else {
-          source.last_synced_at = now().toISOString();
-          source.last_error = null;
-          source.last_error_kind = null;
-          // A full sync reads everything: one clock again, and no course is left unread.
-          delete db.deadlinesSyncedAt[source.id];
-          for (const c of courses) c.structurePending = false;
+          if (wholeSource) {
+            source.last_synced_at = now().toISOString();
+            source.last_error = null;
+            source.last_error_kind = null;
+            // A full sync reads everything: one clock again, and no course is left unread.
+            delete db.deadlinesSyncedAt[source.id];
+            for (const c of courses) c.structurePending = false;
+          }
           onEvent({ type: "source_finished", source_id: source.id, ok: true });
         }
         results.push({
@@ -715,16 +730,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         }
         // The attempt counts before it runs: one that is stopped or refused waits an hour.
         autoSync.retryAt = now().getTime() + 60 * 60 * 1000;
-        // From the timer, Canvas is only read lightly; everything else syncs in full.
-        const light =
-          req.automatic === "unattended"
-            ? triedAutomatically().filter((s) => s.kind === "canvas")
-            : [];
+        // Only the sources that are due. From the timer, Canvas is only read lightly;
+        // everything else syncs in full.
+        const due = dueSources(req.automatic);
+        const light = req.automatic === "unattended" ? due.filter((s) => s.kind === "canvas") : [];
         const tried = [
           ...(await runSync(
-            triedAutomatically()
-              .filter((s) => !light.includes(s))
-              .map((s) => s.id),
+            due.filter((s) => !light.includes(s)).map((s) => s.id),
             onEvent,
           )),
           ...light.map((s) => lightSync(s, onEvent)),
@@ -768,7 +780,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           "Only Canvas courses have files to download; folder courses are always indexed.",
         );
       }
-      const [result] = await runSync([source.id], onEvent);
+      const [result] = await runSync([source.id], onEvent, false);
       if (!result) throw new ApiError("internal", "Sync produced no result");
       let downloaded = 0;
       const warnings = [...result.warnings];

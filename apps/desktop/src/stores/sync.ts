@@ -62,8 +62,9 @@ interface SyncState {
    */
   noAutomaticBefore: number;
   /**
-   * The last automatic run found a problem only the student can fix (an expired token, a missing
-   * folder). The source's card and the pill show it; screen readers hear it once.
+   * The last automatic run left a problem on a source (the facade decides which failures it
+   * records; one that may pass by itself, like no network, it doesn't). The source's card and
+   * the pill show it; screen readers hear it once.
    */
   automaticProblem: boolean;
   /** The student is in the capsule or its details: an automatic run's problem stays on screen. */
@@ -76,7 +77,11 @@ interface SyncState {
     automatic?: AutoSyncTrigger | null,
   ) => void;
   apply: (event: SyncEvent) => void;
-  finish: (summary: SyncSummary | null, error: ApiError | null) => void;
+  /**
+   * `recorded`: the facade wrote a problem on a source during this run (its `last_error_kind`
+   * is new). Only used for an automatic run, which says it once and shows nothing else.
+   */
+  finish: (summary: SyncSummary | null, error: ApiError | null, recorded?: boolean) => void;
   /** The student pressed Stop; the run ends at its next file, course or download. */
   stopping: boolean;
   /** The last run ended because the student stopped it (not a failure). */
@@ -119,11 +124,6 @@ const idle = {
   watched: false,
   attendedUntil: 0,
 } satisfies Partial<SyncState>;
-
-/** Problems a later automatic sync can't fix: the student has to replace or re-add something. */
-function needsTheStudent(kind: SourceErrorKind | null | undefined): boolean {
-  return kind === "auth_expired_or_revoked" || kind === "not_found";
-}
 
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
@@ -209,7 +209,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
         bySource: { ...bySource, [event.source_id]: next },
       };
     }),
-  finish: (summary, error) =>
+  finish: (summary, error, recorded = false) =>
     set((state) => {
       // Stopped by the student (cancel_sync): not a failure. The source it stopped in reports
       // `ok: false` without an error kind; show it as stopped, like the ones never reached.
@@ -218,8 +218,6 @@ export const useSyncStore = create<SyncState>()((set) => ({
       const noAutomaticBefore = stoppedByUser
         ? Date.now() + AUTO_SYNC_MIN_GAP_MS
         : state.noAutomaticBefore;
-      const needsStudent =
-        summary?.results.some((r) => !r.ok && needsTheStudent(r.error_kind)) ?? false;
       // An automatic sync that never had anything to show (refused: another sync, an update
       // installing; not due any more: an empty answer): the last run's result stays as it was.
       if (state.automatic && !state.started) {
@@ -229,7 +227,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
           downloadCourseId: null,
           stopping: false,
           automatic: null,
-          automaticProblem: needsStudent,
+          automaticProblem: recorded,
           noAutomaticBefore,
         };
       }
@@ -244,13 +242,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
           summary.ok &&
           summary.results.length > 0 &&
           sources.every((p) => p.result === null || p.result.ok);
-        if (!clean) {
-          return {
-            ...noRun,
-            automaticProblem:
-              needsStudent || sources.some((p) => needsTheStudent(p.result?.errorKind)),
-          };
-        }
+        if (!clean) return { ...noRun, automaticProblem: recorded };
       }
       return {
         running: false,
@@ -339,11 +331,23 @@ export function useStartSync() {
       const store = useSyncStore.getState();
       if (store.running) return false;
       const automatic = sourceId ? null : (options?.automatic ?? null);
-      // An automatic run leaves out the sources only the student can fix.
-      const known = queryClient
-        .getQueryData<AppStatus>(queryKeys.status())
-        ?.sources.filter((s) => !automatic || !needsTheStudent(s.last_error_kind)).length;
-      store.begin(sourceId ? 1 : (known ?? null), null, automatic);
+      const before = queryClient.getQueryData<AppStatus>(queryKeys.status());
+      // An automatic run syncs only the sources that are due, which only the facade knows: the
+      // capsule then names the source without a count.
+      const total = sourceId ? 1 : automatic ? null : (before?.sources.length ?? null);
+      store.begin(total, null, automatic);
+      // What an automatic run leaves on a source is the facade's decision, read from the status
+      // afterwards (refreshed below), not guessed from the kinds of failure.
+      const recorded = () => {
+        if (!automatic) return false;
+        const was = new Map(before?.sources.map((s) => [s.id, s.last_error_kind ?? null]));
+        const after = queryClient.getQueryData<AppStatus>(queryKeys.status());
+        return (
+          after?.sources.some(
+            (s) => !!s.last_error_kind && s.last_error_kind !== (was.get(s.id) ?? null),
+          ) ?? false
+        );
+      };
       const onEvent = (event: SyncEvent) => useSyncStore.getState().apply(event);
       try {
         let summary: SyncSummary;
@@ -361,10 +365,10 @@ export function useStartSync() {
         // Refresh data BEFORE marking the run finished, so no screen briefly mistakes a
         // status fetched during our own run (sync_in_progress: true) for another process.
         await queryClient.invalidateQueries({ queryKey: queryKeys.all });
-        useSyncStore.getState().finish(summary, null);
+        useSyncStore.getState().finish(summary, null, recorded());
       } catch (error) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.all });
-        useSyncStore.getState().finish(null, toApiError(error));
+        useSyncStore.getState().finish(null, toApiError(error), recorded());
       }
       return true;
     },

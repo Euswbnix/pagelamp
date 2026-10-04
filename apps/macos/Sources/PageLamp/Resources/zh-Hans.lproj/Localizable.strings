@@ -529,6 +529,7 @@
 "chrome.accessory.dismiss" = "关闭";
 "chrome.accessory.open" = "打开“数据来源与同步”";
 "chrome.accessory.syncingOf" = "正在同步 %1$@/%2$@ · %3$@";
+"chrome.accessory.syncingSource" = "正在同步 · %1$@";
 "chrome.appearance.contrast" = "增强对比度";
 "chrome.appearance.contrastHint" = "文字和边框更深，并且不使用半透明的玻璃效果。";
 "chrome.appearance.transparency" = "减少透明效果";
@@ -1435,7 +1436,7 @@
 "sources.addErrors.token.invalid" = "这看起来不是 Canvas 访问令牌。请从 Canvas 重新复制，再粘贴到这里。";
 "sources.addErrors.token.network" = "连不上 Canvas。请检查网络连接后重试。";
 "sources.addErrors.token.not_found" = "这个来源的地址上已经找不到 Canvas 了。请移除这个来源，再用现在的地址重新添加。";
-"sources.autoSync.hint" = "只有 PageLamp 开着的时候才会自动同步。你打开或切回 PageLamp 时，它会完整同步一次，和你点“同步”一样；Canvas 可能会把这记为你在各门课里的活动。其余时间它只刷新课程列表、截止日期和公告，不会打开任何一门课。";
+"sources.autoSync.hint" = "只有 PageLamp 开着的时候才会自动同步。你打开或切回 PageLamp 时，如果上次完整同步已经超过上面选的间隔，它会完整同步一次，和你点“同步”一样；Canvas 可能会把这记为你在各门课里的活动。其余时间它只刷新课程列表、截止日期和公告，不会打开任何一门课。";
 "sources.autoSync.label" = "自动同步";
 "sources.autoSync.option.daily" = "每天一次";
 "sources.autoSync.option.off" = "关闭";
