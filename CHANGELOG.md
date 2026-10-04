@@ -28,9 +28,9 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   the Home page, the syllabus, other pages and announcements link to (one step, within limits).
   Files they link to are listed, not downloaded. This is how notes and files are found in a
   course that hides its Pages or Files list; PageLamp still never asks for a hidden list.
-- What PageLamp didn't read of a Canvas course is listed with a reason: in the sync summary
-  (`pagelamp sync` prints a line per course), and for your AI app, which is told not to guess
-  at it.
+- What PageLamp didn't read of a Canvas course is recorded with a reason. `pagelamp sync` prints
+  a line per course with what it found through links and how many things it couldn't read; your
+  AI app gets the list with the reasons and is told not to guess at it.
 - MCP: a new read-only tool, `list_materials`, lists every material of a course, 50 at a time.
 - A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
   turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this
@@ -59,8 +59,12 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   search in that one course finds nothing. The hints no longer
   suggest running `pagelamp sync`: an AI app must not sync for the student.
 - Canvas: a page that a module asks you to view is no longer read until you have viewed it in
-  Canvas; reading it for you could mark it as viewed. Such pages are listed as not read.
-- Canvas: announcements are kept for a year (was 120 days).
+  Canvas; as far as we can tell, reading it for you could mark it as viewed. Such pages are
+  listed as not read. In two cases PageLamp can't know beforehand: the first time it reads a
+  course's Home page, and when a link uses an old address of such a page. If it opened one, the
+  sync says so.
+- Canvas: a sync asks for a course's announcements of the last 365 days (was 120). Older ones
+  PageLamp already has are kept, as before.
 - Canvas: after this update, a page that hasn't changed is read once more in a course that hides
   its Files list, to find the files it links to. Canvas may record that as one more view.
 - MCP: `course_overview` names the course's Home page and syllabus (`home`, `syllabus`), counts
