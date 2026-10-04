@@ -12,6 +12,9 @@
 //! - a `name=value` of one of those parameters is removed also when the address is cut before
 //!   it: text extracted from a PDF can break a line after the "?", and a search snippet can
 //!   start at the name;
+//! - an address written inside another one's query without encoding (a redirect such as
+//!   `https://go.example/?https://lms.example/…?verifier=…`) is one pair of the outer query:
+//!   the pair goes when its name, read from its last "?", is one of those parameters;
 //! - the same holds for a word that starts with "?" (a line broken before the "?", a query
 //!   after a `#` or after a ")" in the path): the "?" stays, and the pairs that name one of
 //!   those parameters with a value go. A name with nothing after its `=` stays there, so code
@@ -181,11 +184,18 @@ fn scrub_before_fragment(main: &str) -> Option<String> {
         // Only a parameter that carries a value goes: `"?access_token=" + t` is code.
         return without_access_pairs(query, Names::WithValue).map(|kept| format!("?{kept}"));
     }
-    let query = if is_file_address(before) {
-        (!query.is_empty()).then(String::new)?
-    } else {
-        without_access_pairs(query, Names::Bare)?
-    };
+    if is_file_address(before) {
+        return (!query.is_empty()).then(|| before.to_string());
+    }
+    // What stands before the "?" can hold a pair too (`verifier=A?verifier=B`): cleaned here,
+    // or a second pass would find it.
+    let clean_before = without_access_pairs(before, Names::WithEquals);
+    let clean_query = without_access_pairs(query, Names::Bare);
+    if clean_before.is_none() && clean_query.is_none() {
+        return None;
+    }
+    let before = clean_before.as_deref().unwrap_or(before);
+    let query = clean_query.as_deref().unwrap_or(query);
     Some(if query.is_empty() {
         before.to_string()
     } else {
@@ -247,6 +257,9 @@ fn is_access_pair(pair: &str, names: Names) -> bool {
         None => return false,
     };
     let name: String = name.chars().filter(|c| !is_search_mark(*c)).collect();
+    // A second "?" in the word (an address inside an address, `…/?https://…/week-3?verifier=…`):
+    // the name is what follows the last one.
+    let name = name.rsplit('?').next().unwrap_or(&name);
     if ACCESS_PARAMETERS
         .iter()
         .any(|access| name.eq_ignore_ascii_case(access))
@@ -505,6 +518,45 @@ mod tests {
             back["text"],
             "Open \"https://lms.example.edu/files/1/download\" now\nor https://media.example.edu/v\nlater"
         );
+    }
+
+    #[test]
+    fn a_second_question_mark_in_a_word_is_cleaned_in_one_pass() {
+        for (text, clean) in [
+            // An address inside another one's query, not encoded: the pair that carries the
+            // parameter goes with the address it belongs to.
+            (
+                "https://href.li/?https://lms.example.edu/courses/101/files/7/download?verifier=SECRET&wrap=1",
+                "https://href.li/?wrap=1",
+            ),
+            (
+                "https://go.example.org/?https://lms.example.edu/courses/101/pages/9?sf_verifier=SECRET&x=1",
+                "https://go.example.org/?x=1",
+            ),
+            (
+                "https://go.example.org/out?to=1&https://media.example.edu/v?access_token=SECRET",
+                "https://go.example.org/out?to=1",
+            ),
+            // A pair before the "?" and one after it.
+            ("verifier=FIRST?verifier=SECOND", ""),
+            ("verifier=FIRST?x=1", "?x=1"),
+            ("a=1&verifier=FIRST?verifier=SECOND&y=2", "a=1?y=2"),
+            (
+                "https://lms.example.edu/courses/1/pages/week-3?c=1?verifier=SECRET",
+                "https://lms.example.edu/courses/1/pages/week-3",
+            ),
+        ] {
+            assert_eq!(scrub_text(text), clean, "{text}");
+            assert_eq!(scrub_text(clean), clean, "twice: {text}");
+        }
+        // Untouched: a second "?" without a parameter, and a name that only ends like one.
+        for text in [
+            "https://go.example.org/?https://lms.example.edu/courses/1/pages/week-3?module_item_id=9",
+            "https://lms.example.edu/search?q=what?&page=2",
+            "https://example.org/a?my_verifier=1",
+        ] {
+            assert!(matches!(scrub_text(text), Cow::Borrowed(_)), "{text}");
+        }
     }
 
     #[test]
