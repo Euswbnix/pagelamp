@@ -73,6 +73,8 @@ export interface MockOptions {
   syncStepMs?: number;
   /** The window was started without being shown (a start at login). */
   startedHidden?: boolean;
+  /** This page load is a reload: the process had loaded the page before. */
+  reloaded?: boolean;
   /** Fixed clock for deterministic tests. */
   now?: () => Date;
 }
@@ -150,6 +152,8 @@ function canvasAddress(input: string): URL {
 }
 
 export function createMockApi(options: MockOptions = {}): PageLampApi {
+  // The mock stands for one page load: it "loaded" when it was made.
+  const loadedAt = Date.now();
   const scenario = options.scenario ?? "demo";
   const latency = options.latencyMs ?? 250;
   const syncStep = options.syncStepMs ?? 350;
@@ -1131,6 +1135,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       return () => window.removeEventListener("focus", handler);
     },
     startedHidden: () => options.startedHidden ?? false,
+    firstPageLoad: async () => !(options.reloaded ?? false),
+    pageLoadedAt: () => loadedAt,
     revealLogsDir: async () => {},
     updaterStatus: () =>
       respond(() => ({
