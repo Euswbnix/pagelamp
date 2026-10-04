@@ -1,6 +1,6 @@
 # Privacy
 
-*Last updated: 2026-09-30 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
+*Last updated: 2026-10-03 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
 pre-releases and later; v0.1.0 doesn't have them.*
 
 PageLamp is a local app. There is no PageLamp server, account, analytics or telemetry. The people
@@ -14,6 +14,7 @@ who build PageLamp never receive your data.
 | Files you ask PageLamp to download from Canvas | the `files/` folder next to the database | so their text can be indexed |
 | Canvas access token, calendar-feed link | your operating system's keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) — never in the database, logs or AI output | to sync on your behalf |
 | **(v0.3)** Your update settings, the result of the last update check, and the version you last ran | the same database | to know when the next check is due and to show "What's new" once |
+| **(v0.3)** Your automatic sync setting, and when PageLamp last synced or tried to | the same database | to know when the next sync is due |
 | **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database, readable only by you; only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
 | **(v0.3)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set, and its calendar's dates without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you choose *Forget*, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
 | **(v0.3)** The model providers you add (name and address), which model each AI feature uses, your monthly AI budget, and which AI disclosures you have read | the same database | to run PageLamp's AI features the way you chose |
@@ -26,8 +27,22 @@ dates and links. It never reads your university password.
 
 ## What leaves your computer
 
-- **Sync (only when you start it):** PageLamp connects to your LMS (read-only requests with your
-  own token) and/or downloads your calendar feed. Course folders are read locally.
+- **Sync:** PageLamp connects to your LMS (read-only requests with your own token) and/or
+  downloads your calendar feed. Course folders are read locally. A sync runs when you press Sync
+  (or run `pagelamp sync`).
+- **(v0.3) Automatic sync:** while the PageLamp app is running, it also syncs by itself, twice a
+  day unless you choose once a day or off (see below). A sync that fails is tried again later. It
+  never downloads files.
+  - When nobody is at the app, PageLamp checks your token and asks Canvas only for your course
+    list (with each course's syllabus), your deadlines and your courses' announcements. It makes
+    no request for a course's modules, pages, file list or assignments. Canvas keeps its own
+    records, and we can't promise that these requests leave none.
+  - When you open PageLamp, bring it to the front or change this setting, and the last full sync
+    is old enough or a newly found course hasn't been read yet, it runs the same sync as the Sync
+    button. Canvas may record a full sync as your activity in each course, as it would if you
+    pressed Sync yourself.
+  - PageLamp's MCP server gives your AI app no way to start a sync and tells it not to run one
+    for you. PageLamp doesn't sync by itself while its app is closed.
 - **When you ask your AI app a question:** your AI app (Claude, ChatGPT, Codex, …) reads the course
   information it needs from PageLamp on your computer and sends it to that AI provider **under your
   own account and that provider's terms**. What the provider stores or uses for training depends on
@@ -62,6 +77,8 @@ dates and links. It never reads your university password.
   policy as "No AI" — PageLamp then shares no material text for that course (deadlines, structure
   and your study plan remain available for planning). CLI: `pagelamp course ai-access <course> off`.
 - **Hide a course** to keep it out of your AI app entirely: `pagelamp course hide <course>`.
+- **(v0.3) Automatic sync:** *Sources & sync → Automatic sync* (Off, Once a day, Twice a day).
+  With it off, PageLamp syncs only when you press Sync. CLI: `pagelamp sync --auto off`.
 - **(v0.3) Update checks:** *Settings → Updates → Check for updates automatically*. With it off,
   PageLamp never checks on its own; *Check now* still works.
 - **(v0.3) AI:** in *Settings → AI models*, remove a provider (its key is deleted from the

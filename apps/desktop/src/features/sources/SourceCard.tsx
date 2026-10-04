@@ -1,9 +1,11 @@
 import { CircleAlert, KeyRound, LockKeyhole, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useStatus } from "@/api/queries";
 import type { SourceRecord } from "@/api/types";
 import { ExternalLink } from "@/components/common/ExternalLink";
 import { RelativeTime } from "@/components/common/RelativeTime";
+import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/format";
+import { deadlinesReadSince } from "@/lib/freshness";
 import { useStartSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { RemoveSourceButton } from "./RemoveSourceButton";
 import { SourceStatusBadge } from "./SourceStatusBadge";
@@ -35,7 +38,9 @@ export function SourceCard({ source, onReplaceSecret }: SourceCardProps) {
   const startSync = useStartSync();
   const { running, busy } = useSyncActivity();
   const live = useSyncStore((s) => s.bySource[source.id]);
-  const syncing = running && live !== undefined && live.result === null;
+  // Not a row the last run left unfinished (stopped): an automatic sync that has shown nothing
+  // yet leaves the last run's rows in place.
+  const syncing = running && live !== undefined && live.result === null && !live.stopped;
   const Icon = SOURCE_ICON[source.kind];
   const expired = source.last_error_kind === "auth_expired_or_revoked";
   const canvas = source.kind === "canvas";
@@ -136,6 +141,13 @@ function SourceDetails({ source }: { source: SourceRecord }) {
   const baseUrl = configString(source, "base_url");
   const path = configString(source, "path");
   const termStart = configString(source, "term_start");
+  // "Last synced" is the last full sync. An automatic sync that only read the deadlines and
+  // announcements since then gets its own line, so neither time is taken for the other.
+  const status = useStatus();
+  const deadlinesAt = deadlinesReadSince(
+    source.last_synced_at,
+    status.data?.deadlines_synced_at[source.id],
+  );
 
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 text-sm">
@@ -162,6 +174,11 @@ function SourceDetails({ source }: { source: SourceRecord }) {
       ) : null}
       <Row term={t("card.lastSynced")}>
         {source.last_synced_at ? <RelativeTime iso={source.last_synced_at} /> : tc("sync.never")}
+        {deadlinesAt ? (
+          <span className="block text-xs text-muted-foreground">
+            <SentenceWithTime text={t("card.deadlinesChecked", { when: WHEN })} iso={deadlinesAt} />
+          </span>
+        ) : null}
       </Row>
     </dl>
   );
