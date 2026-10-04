@@ -346,24 +346,16 @@ fn index_file_with(
 
 /// Index LMS page / announcement / syllabus HTML.
 ///
-/// The hash is taken over the HTML text itself and the version of the rules that clean link
-/// addresses (`pagelamp_extract::scrub`), so text stored under older rules is extracted
-/// again; locators come from its h1–h3 headings ("§ Heading", see
-/// `pagelamp_extract::extract_html`).
+/// The hash is taken over the HTML text itself; locators come from its h1–h3 headings
+/// ("§ Heading", see `pagelamp_extract::extract_html`).
 pub fn index_html(store: &Store, material_id: &str, html: &str) -> Result<IndexOutcome> {
     let material = require_material(store, material_id)?;
-    let hash = html_hash(html);
+    let hash = sha256_hex(html.as_bytes());
     if is_indexed(&material, &hash) {
         return Ok(IndexOutcome::Unchanged);
     }
     let segments = pagelamp_extract::extract_html(html);
     save_extraction(store, material_id, &hash, Extracted::Done(Ok(segments)))
-}
-
-/// The content hash of indexed HTML: over the HTML and the version of the rules that clean
-/// link addresses.
-pub fn html_hash(html: &str) -> String {
-    sha256_hex(format!("scrub {}\n{html}", pagelamp_extract::scrub::VERSION).as_bytes())
 }
 
 /// Index plain text (e.g. already-converted content).
@@ -488,11 +480,17 @@ fn save_extraction(
     };
     match extracted {
         Ok(mut segments) => {
-            // Whatever produced the text (a file, the worker, plain text): no address in it
-            // keeps a parameter that gives access to a file.
+            // Whatever produced the text (a file, the worker, plain text): no address in it,
+            // or in a heading that became a locator, keeps a parameter that gives access to
+            // a file.
             for segment in &mut segments {
                 if let Cow::Owned(clean) = pagelamp_extract::scrub::scrub_text(&segment.text) {
                     segment.text = clean;
+                }
+                if let Some(locator) = &mut segment.locator
+                    && let Cow::Owned(clean) = pagelamp_extract::scrub::scrub_text(locator)
+                {
+                    *locator = clean;
                 }
             }
             let chunks = to_chunks(material_id, &segments);

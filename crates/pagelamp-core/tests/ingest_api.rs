@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 
 use pagelamp_core::Error;
 use pagelamp_core::ingest::{
-    IndexOutcome, NO_TEXT_NOTE, html_hash, index_file, index_html, index_text, sha256_file,
-    sha256_hex,
+    IndexOutcome, NO_TEXT_NOTE, index_file, index_html, index_text, sha256_file, sha256_hex,
 };
 use pagelamp_core::model::*;
 use pagelamp_core::store::Store;
@@ -366,10 +365,7 @@ fn html_headings_become_locators() {
 
     let stored = material(&store, &id);
     assert_eq!(stored.text_status, TextStatus::Ok);
-    // Over the HTML and the version of the link-address rules: stored text is extracted
-    // again when the rules change.
-    assert_eq!(stored.content_hash, Some(html_hash(html)));
-    assert_ne!(stored.content_hash, Some(sha256_hex(html.as_bytes())));
+    assert_eq!(stored.content_hash, Some(sha256_hex(html.as_bytes())));
     assert_eq!(
         index_html(&store, &id, html).unwrap(),
         IndexOutcome::Unchanged
@@ -513,4 +509,32 @@ fn sha256_file_reports_missing_files() {
     let dir = tempfile::tempdir().unwrap();
     let error = sha256_file(&dir.path().join("missing.pdf")).unwrap_err();
     assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+}
+
+/// Plain text doesn't pass through the extractor: it is cleaned where it is saved, like every
+/// other text (`pagelamp_core::scrub`), and so is a heading that became a locator.
+#[test]
+fn indexed_text_and_locators_keep_no_access_parameter() {
+    let store = demo_store();
+    let id = add_material(&store, "notes");
+    index_text(
+        &store,
+        &id,
+        "Slides: https://lms.example.edu/courses/1/files/5/download?verifier=Ab12Cd34Zz&wrap=1 (week 1)",
+    )
+    .unwrap();
+    let chunks = store.get_chunks(&id, 0, None).unwrap();
+    assert_eq!(
+        chunks[0].text,
+        "Slides: https://lms.example.edu/courses/1/files/5/download (week 1)"
+    );
+
+    let html = "<h2>Notes at https://lms.example.edu/files/8/preview?verifier=Ab12Cd34Zz</h2><p>thetaword</p>";
+    index_html(&store, &id, html).unwrap();
+    let hits = store.search("thetaword", None, 5).unwrap();
+    assert_eq!(
+        hits[0].locator.as_deref(),
+        Some("§ Notes at https://lms.example.edu/files/8/preview")
+    );
+    assert!(store.search("Ab12Cd34Zz", None, 5).unwrap().is_empty());
 }
