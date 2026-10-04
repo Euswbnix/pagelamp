@@ -11,7 +11,11 @@
 //!   parameter whose own value carries one (a link wrapped by a mail gateway);
 //! - a `name=value` of one of those parameters is removed also when the address is cut before
 //!   it: text extracted from a PDF can break a line after the "?", and a search snippet can
-//!   start at the name.
+//!   start at the name;
+//! - the same holds for a word that starts with "?" (a line broken before the "?", a query
+//!   after a `#` or after a ")" in the path): the "?" stays, and the pairs that name one of
+//!   those parameters with a value go. A name with nothing after its `=` stays there, so code
+//!   such as `"?access_token=" + token` reads as it was written.
 //!
 //! It is applied to all text before it is stored, and again where text leaves PageLamp, which
 //! covers text stored by an earlier version. Applying it to its own result changes nothing
@@ -73,6 +77,33 @@ pub fn scrub_text(text: &str) -> Cow<'_, str> {
     }
     out.push_str(&text[copied..]);
     Cow::Owned(out)
+}
+
+/// Clean every string in a JSON value with [`scrub_text`]; whether any changed. For JSON,
+/// clean the value and not its text: in serialized JSON a line break is written `\n`, and
+/// reading that as text takes the "n" for the first letter of the next word, which hides a
+/// parameter's name or, when a pair is dropped, leaves a lone backslash and invalid JSON.
+/// Object keys stay as they are.
+pub fn scrub_json(value: &mut serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(text) => match scrub_text(text) {
+            Cow::Owned(clean) => {
+                *text = clean;
+                true
+            }
+            Cow::Borrowed(_) => false,
+        },
+        serde_json::Value::Array(items) => {
+            // (No short-circuit: every item is cleaned.)
+            items
+                .iter_mut()
+                .fold(false, |changed, item| scrub_json(item) | changed)
+        }
+        serde_json::Value::Object(fields) => fields
+            .values_mut()
+            .fold(false, |changed, field| scrub_json(field) | changed),
+        _ => false,
+    }
 }
 
 /// A cheap test that lets almost every text through untouched. It looks through the search
@@ -143,16 +174,17 @@ fn scrub_before_fragment(main: &str) -> Option<String> {
     let Some((before, query)) = main.split_once('?') else {
         // No "?": the address was cut before this word, or there never was one. A `name=value`
         // of an access parameter goes all the same (a bare name is an ordinary word).
-        return without_access_pairs(main, false);
+        return without_access_pairs(main, Names::WithEquals);
     };
     if before.is_empty() {
-        // A word that starts with "?" isn't an address (code such as `"?access_token=" + t`).
-        return None;
+        // The address was cut right before its "?" (a line break, a `#`, a ")" in the path).
+        // Only a parameter that carries a value goes: `"?access_token=" + t` is code.
+        return without_access_pairs(query, Names::WithValue).map(|kept| format!("?{kept}"));
     }
     let query = if is_file_address(before) {
         (!query.is_empty()).then(String::new)?
     } else {
-        without_access_pairs(query, true)?
+        without_access_pairs(query, Names::Bare)?
     };
     Some(if query.is_empty() {
         before.to_string()
@@ -161,11 +193,21 @@ fn scrub_before_fragment(main: &str) -> Option<String> {
     })
 }
 
+/// How much of a pair must be there for its name to count as an access parameter.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Names {
+    /// The name alone (inside a query that follows an address).
+    Bare,
+    /// The name and its `=` (a word an address was cut before: a bare name is a word).
+    WithEquals,
+    /// The name, its `=` and a value (a word that starts with "?").
+    WithValue,
+}
+
 /// `pairs` (a query, a fragment, or a word an address was cut before) without the pairs that
 /// name an access parameter or carry one in their value. Pairs are separated by `&`, `;` or
-/// an undecoded `&amp;`; the first pair that stays loses its separator. `bare_names`: a name
-/// without a value counts too (inside a query). `None`: none removed.
-fn without_access_pairs(pairs: &str, bare_names: bool) -> Option<String> {
+/// an undecoded `&amp;`; the first pair that stays loses its separator. `None`: none removed.
+fn without_access_pairs(pairs: &str, names: Names) -> Option<String> {
     let mut kept = String::new();
     let mut removed = false;
     let mut rest = pairs;
@@ -173,7 +215,7 @@ fn without_access_pairs(pairs: &str, bare_names: bool) -> Option<String> {
     loop {
         let end = rest.find(['&', ';']).unwrap_or(rest.len());
         let pair = &rest[..end];
-        if is_access_pair(pair, bare_names) {
+        if is_access_pair(pair, names) {
             removed = true;
         } else {
             if !kept.is_empty() {
@@ -196,12 +238,12 @@ fn without_access_pairs(pairs: &str, bare_names: bool) -> Option<String> {
 }
 
 /// `name=value` naming an access parameter, in any letter case and with or without search
-/// marks (with `bare_names`, also the name alone); or any pair whose value carries one, plainly
-/// or with its `=` encoded.
-fn is_access_pair(pair: &str, bare_names: bool) -> bool {
+/// marks (how much of the pair must be there: `names`); or any pair whose value carries one,
+/// plainly or with its `=` encoded.
+fn is_access_pair(pair: &str, names: Names) -> bool {
     let (name, value) = match pair.split_once('=') {
         Some(split) => split,
-        None if bare_names => (pair, ""),
+        None if names == Names::Bare => (pair, ""),
         None => return false,
     };
     let name: String = name.chars().filter(|c| !is_search_mark(*c)).collect();
@@ -209,7 +251,8 @@ fn is_access_pair(pair: &str, bare_names: bool) -> bool {
         .iter()
         .any(|access| name.eq_ignore_ascii_case(access))
     {
-        return true;
+        // (A value of search marks alone is no value.)
+        return names != Names::WithValue || value.chars().any(|c| !is_search_mark(c));
     }
     [
         "verifier=",
@@ -405,6 +448,50 @@ mod tests {
     }
 
     #[test]
+    fn a_word_that_starts_with_the_question_mark_loses_the_parameters_that_have_a_value() {
+        for (text, clean) in [
+            // A line broken before the "?".
+            (
+                "see https://lms.example.edu/courses/101/pages/week-3\n?verifier=SECRET&wrap=1 for it",
+                "see https://lms.example.edu/courses/101/pages/week-3\n?wrap=1 for it",
+            ),
+            // A query after a "#".
+            (
+                "https://app.example.edu/#?access_token=SECRET",
+                "https://app.example.edu/#?",
+            ),
+            (
+                "https://app.example.edu/view#?tab=2&access_token=SECRET&x=1",
+                "https://app.example.edu/view#?tab=2&x=1",
+            ),
+            // After a ")" in the path, which ends the word before it.
+            (
+                "https://wiki.example.edu/Topic_(intro)?access_token=SECRET, then",
+                "https://wiki.example.edu/Topic_(intro)?, then",
+            ),
+            (
+                "https://wiki.example.edu/Topic_(intro)?sf_verifier=SECRET&page=2",
+                "https://wiki.example.edu/Topic_(intro)?page=2",
+            ),
+            // A pair whose value carries one, and the search marks.
+            ("?next=https%3A%2F%2Fx%2Ff%3Fverifier%3DSECRET&a=1", "?a=1"),
+            ("?«verifier»=SECRET&wrap=1", "?wrap=1"),
+        ] {
+            assert_eq!(scrub_text(text), clean, "{text}");
+            assert_eq!(scrub_text(clean), clean, "twice: {text}");
+        }
+        // A name with nothing after its "=" is code, not an address that was cut.
+        for text in [
+            "url = base + \"?access_token=\" + token",
+            "append ?verifier= and the value",
+            "?verifier",
+            "?access_token=«»",
+        ] {
+            assert!(matches!(scrub_text(text), Cow::Borrowed(_)), "{text}");
+        }
+    }
+
+    #[test]
     fn json_stays_json() {
         // An address right before an escaped quote or line break of a JSON string.
         let value = serde_json::json!({
@@ -417,6 +504,62 @@ mod tests {
         assert_eq!(
             back["text"],
             "Open \"https://lms.example.edu/files/1/download\" now\nor https://media.example.edu/v\nlater"
+        );
+    }
+
+    #[test]
+    fn json_is_cleaned_by_its_string_values() {
+        use serde_json::json;
+        // As text, the escaped line break would hide the name ("nverifier") or leave a lone
+        // backslash where a pair was dropped.
+        let mut plan = json!({
+            "items": [
+                {
+                    "title": "Read week 3",
+                    "description": "https://lms.example.edu/courses/1/pages/week-3?\nverifier=SECRET&id=9",
+                    "minutes": 30
+                },
+                {
+                    "title": "Slides",
+                    "description": "see\nverifier=SECRET\nand https://lms.example.edu/files/7/download?verifier=SECRET",
+                    "material_ids": ["a?verifier=SECRET", "b"]
+                }
+            ],
+            "verifier=SECRET-IN-A-KEY": true,
+            "note": null
+        });
+        assert!(scrub_json(&mut plan));
+        assert_eq!(
+            plan,
+            json!({
+                "items": [
+                    {
+                        "title": "Read week 3",
+                        "description": "https://lms.example.edu/courses/1/pages/week-3?\nid=9",
+                        "minutes": 30
+                    },
+                    {
+                        "title": "Slides",
+                        "description": "see\n\nand https://lms.example.edu/files/7/download",
+                        "material_ids": ["a", "b"]
+                    }
+                ],
+                "verifier=SECRET-IN-A-KEY": true,
+                "note": null
+            })
+        );
+        // The result is valid JSON as text too, and a second pass changes nothing.
+        let text = serde_json::to_string(&plan).unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
+        assert!(!scrub_json(&mut plan));
+        // What cleaning the text would have done to the first description.
+        let as_text = serde_json::to_string(&json!(
+            "https://lms.example.edu/courses/1/pages/week-3?\nverifier=SECRET&id=9"
+        ))
+        .unwrap();
+        assert!(
+            scrub_text(&as_text).contains("SECRET"),
+            "the reason for this function"
         );
     }
 
