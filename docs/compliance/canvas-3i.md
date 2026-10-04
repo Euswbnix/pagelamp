@@ -6,7 +6,10 @@ it is not legal advice and makes no statement on Instructure's behalf.
 
 ## The clause, as we read it
 
-Canvas API Policy §3(i) restricts access to Canvas APIs through MCP servers that Instructure hasn't
+The policy's own text is what counts: <https://www.instructure.com/policies/api-policy> (we read
+the version effective 2025-08-12).
+
+As we read it, §3(i) restricts access to Canvas APIs through MCP servers that Instructure hasn't
 approved. Our understanding is that this rules out Canvas access from PageLamp's MCP server, and
 anything that would let an MCP client reach Canvas through it. So all Canvas access happens in
 sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
@@ -20,7 +23,8 @@ sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
 - A sync starts in two ways only:
   - the student starts it, in the PageLamp app or with `pagelamp sync`;
   - the running PageLamp app starts it, under the student's setting (automatic sync: twice a
-    day, once a day or off): from its own timer, or when the student comes back to the app.
+    day, once a day or off): from its own timer, or when the student opens the app, comes back
+    to it or changes that setting.
 - No MCP tool call can cause, request or schedule a sync:
   - no tool starts a sync, or starts or raises the PageLamp app;
   - no `pagelamp://` link and no local port triggers one;

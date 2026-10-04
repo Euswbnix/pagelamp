@@ -26,14 +26,16 @@ dates and links. It never reads your university password.
   downloads your calendar feed. Course folders are read locally. A sync runs when you press Sync
   (or run `pagelamp sync`).
 - **(v0.3) Automatic sync:** while the PageLamp app is running, it also syncs by itself, twice a
-  day unless you choose once a day or off (see below). It never downloads files.
+  day unless you choose once a day or off (see below). A sync that fails is tried again later. It
+  never downloads files.
   - When nobody is at the app, PageLamp checks your token and asks Canvas only for your course
     list (with each course's syllabus), your deadlines and your courses' announcements. It makes
-    no request for a course's modules, pages, file list or assignments.
-  - When you open PageLamp or bring it to the front, and the last full sync is old enough or a
-    newly found course hasn't been read yet, it runs the same sync as the Sync button. Canvas
-    may record a full sync as your activity in each course, as it would if you pressed Sync
-    yourself.
+    no request for a course's modules, pages, file list or assignments. Canvas keeps its own
+    records, and we can't promise that these requests leave none.
+  - When you open PageLamp, bring it to the front or change this setting, and the last full sync
+    is old enough or a newly found course hasn't been read yet, it runs the same sync as the Sync
+    button. Canvas may record a full sync as your activity in each course, as it would if you
+    pressed Sync yourself.
   - PageLamp's MCP server gives your AI app no way to start a sync and tells it not to run one
     for you. PageLamp doesn't sync by itself while its app is closed.
 - **When you ask your AI app a question:** your AI app (Claude, ChatGPT, Codex, …) reads the course
