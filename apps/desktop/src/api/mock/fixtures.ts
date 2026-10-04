@@ -658,7 +658,8 @@ function demo099(now: Date): MockCourse {
   const c = course(spec, now);
   return mockCourse({
     course: c,
-    timeline: timeline(spec, now, []),
+    // Its materials had reached week 5 when it ended (a past course shows no such line).
+    timeline: { ...timeline(spec, now, []), notes_week: 5 },
     lifecycle: lifecycle({
       state: "ended",
       confidence: "high",

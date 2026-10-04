@@ -1132,6 +1132,75 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
     client.cancel().await.unwrap();
 }
 
+/// A course that is over or inactive has no current week for the AI app (calendar design
+/// D43): a site whose last material, two years ago, was "Week 12" isn't in week 12 now. Asked
+/// for by number, the week still reads.
+#[tokio::test]
+async fn a_finished_course_has_no_current_week() {
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    set(&db, |s| {
+        s.upsert_course(&CourseUpsert {
+            id: cid("909"),
+            source_id: SOURCE.into(),
+            external_id: "909".into(),
+            code: Some("OLD909".into()),
+            name: "Old Demo Site".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+        s.upsert_material(&MaterialUpsert {
+            id: mid("old-week-12"),
+            course_id: cid("909"),
+            module_id: None,
+            kind: MaterialKind::File,
+            title: "Week 12 notes".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: Some(Utc::now() - TimeDelta::days(700)),
+            week_hint: Some(12),
+        })
+        .unwrap();
+    });
+    let client = connect(db).await;
+
+    let list = json_of(&call(&client, "list_courses", json!({})).await);
+    let old = list["courses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|course| course["code"] == "OLD909")
+        .expect("ended courses stay listed");
+    assert_eq!(old["lifecycle"], "inactive");
+    assert_eq!(old["current_week"], Value::Null);
+
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "OLD909"})).await);
+    assert_eq!(overview["lifecycle"], "inactive");
+    assert_eq!(overview["timeline"]["current_week"], Value::Null);
+    assert!(overview["timeline"].get("default_week").is_none());
+
+    let week = json_of(&call(&client, "week_materials", json!({"course": "OLD909"})).await);
+    assert_eq!(week["week"], Value::Null);
+    assert_eq!(week["materials"], json!([]));
+    assert_eq!(week["available_weeks"], json!([12]));
+    let asked = json_of(
+        &call(
+            &client,
+            "week_materials",
+            json!({"course": "OLD909", "week": 12}),
+        )
+        .await,
+    );
+    assert_eq!(asked["week"], 12);
+    assert_eq!(asked["materials"][0]["title"], "Week 12 notes");
+    client.cancel().await.unwrap();
+}
+
 #[tokio::test]
 async fn an_old_database_that_could_not_be_updated_asks_to_open_the_app() {
     let temp = tempfile::tempdir().unwrap();

@@ -15,6 +15,7 @@
     "upToDate": "{{product}} 已是最新版本。",
     "available": "{{product}} {{version}} 已可更新。",
     "checkFailed": "无法检查更新。",
+    "noStableRelease": "{{product}} 还没有找到带更新信息的正式版。供测试用的早期版本在“测试版”渠道。",
     "lastChecked": "上次检查：{{when}}",
     "neverChecked": "还没有检查过。",
     "releaseNotes": "更新说明",
