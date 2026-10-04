@@ -8,6 +8,7 @@ import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
+import { LAUNCH_REPLY_MS } from "./useAutoSync";
 
 // Headroom for slow CI machines: a whole route renders before anything here can happen.
 // (Per-file setting: Vitest isolates each test file.)
@@ -61,6 +62,9 @@ function holdSourceSync(api: PageLampApi) {
     },
   };
 }
+
+/** Both kinds of automatic start held until `time`, as after an attended start or a Stop. */
+const heldUntil = (time: number) => ({ unattended: time, attended: time });
 
 /** Only the date is faked: timers, and so `waitFor`, keep working. */
 function startClock(): Date {
@@ -258,8 +262,8 @@ describe("automatic sync", () => {
     expect((await api.startupTasks()).sync_due).toEqual({ unattended: false, attended: true });
     expect(sync).toHaveBeenCalledTimes(1);
 
-    // The student comes back, more than half an hour after that run.
-    later(start, 11 * HOUR + 40 * MINUTE);
+    // The student comes back ten minutes after that run: the light one doesn't hold the full.
+    later(start, 11 * HOUR + 10 * MINUTE);
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });
@@ -337,7 +341,7 @@ describe("automatic sync", () => {
     expect(sync).toHaveBeenCalledTimes(1);
 
     // Without the half-hour hold, so only "this answer was dealt with" can stop a second one.
-    act(() => useSyncStore.setState({ noAutomaticBefore: 0 }));
+    act(() => useSyncStore.setState({ noAutomaticBefore: { unattended: 0, attended: 0 } }));
     await act(() => router.navigate("/welcome"));
     await screen.findByRole("heading", { level: 1, name: "Welcome to PageLamp" });
     await act(() => router.navigate("/courses"));
@@ -347,21 +351,30 @@ describe("automatic sync", () => {
     expect(sync).toHaveBeenCalledTimes(1);
 
     // And with the hold back, a new "due" answer finds the last start too recent.
-    act(() => useSyncStore.setState({ noAutomaticBefore: Date.now() + 60_000 }));
+    act(() => useSyncStore.setState({ noAutomaticBefore: heldUntil(Date.now() + 60_000) }));
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await settle();
     expect(sync).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps half an hour between two automatic starts: not at 29 minutes, again at 31", async () => {
+  it("keeps half an hour after an attended start: nothing at 10 or 29 minutes, again at 31", async () => {
     const start = startClock();
     const api = mockApi({ scenario: "auto-sync-due" });
     alwaysDue(api);
     const sync = vi.spyOn(api, "syncAll");
     const { queryClient } = renderRoute("/courses", { api });
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
     await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
     await settle();
+
+    // The student comes back ten minutes later: no second full sync so soon.
+    later(start, 10 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
 
     later(start, 29 * MINUTE);
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
@@ -414,7 +427,7 @@ describe("automatic sync", () => {
     act(() =>
       useSyncStore.setState({
         attendedUntil: Date.now() + 10 * MINUTE,
-        noAutomaticBefore: Date.now() + 2 * HOUR,
+        noAutomaticBefore: heldUntil(Date.now() + 2 * HOUR),
       }),
     );
     alwaysDue(api);
@@ -463,8 +476,8 @@ describe("automatic sync", () => {
     await settle();
     expect(sync).toHaveBeenCalledTimes(1);
 
-    // The first time the window gains focus is the student arriving.
-    later(start, 40 * MINUTE);
+    // The first time the window gains focus is the student arriving, minutes later or days.
+    later(start, 5 * MINUTE);
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });
@@ -472,13 +485,150 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
 
-  it("doesn't start one right after the student stopped a sync", async () => {
-    // What Stop leaves in the store (stores/sync.test.ts): no automatic start for a while.
-    useSyncStore.setState({ noAutomaticBefore: Date.now() + 60_000 });
-    const api = mockApi({ scenario: "auto-sync-due" });
+  it("never takes a page that was loaded again for the student opening PageLamp", async () => {
+    // The system restarts the page by itself after ending its content process: nobody is here.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", reloaded: true });
     const sync = vi.spyOn(api, "syncAll");
     renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // The student comes back to the window: now it is attended.
+    later(start, 5 * MINUTE);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes the launch for the moment the page loaded, not for when the shell appears", async () => {
+    // A start page that only got through by itself, hours after the launch: nobody is here.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 3 * HOUR);
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("takes 'Try again' on a failed start for the student being here, however old the launch", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const status = api.status.bind(api);
+    let failing = true;
+    api.status = async () => {
+      if (failing) throw new ApiError("internal", "Synthetic failure");
+      return status();
+    };
+    const sync = vi.spyOn(api, "syncAll");
+    const { user } = renderRoute("/", { api });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+
+    // A minute later it would open, and the student says so.
+    later(start, MINUTE);
+    failing = false;
+    await user.click(retry);
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("still takes a shell that appears a few seconds after the page loaded for the launch", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 10_000);
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("acts on no answer before it knows whether this load is the launch", async () => {
+    const api = mockApi({ scenario: "auto-sync-due" });
+    let reply: (first: boolean) => void = () => {};
+    api.firstPageLoad = () =>
+      new Promise<boolean>((resolve) => {
+        reply = resolve;
+      });
+    const sync = vi.spyOn(api, "syncAll");
+    const tasks = vi.spyOn(api, "startupTasks");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(tasks).toHaveBeenCalledTimes(1));
+    await settle();
+    // The answer says "due", and nothing starts: it could still be a reload.
+    expect(sync).not.toHaveBeenCalled();
+
+    reply(true);
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes the load for a reload when it can't find out", async () => {
+    const api = mockApi({ scenario: "auto-sync-due" });
+    api.firstPageLoad = () => Promise.reject(new ApiError("internal", "Synthetic failure"));
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("takes the load for a reload when no reply comes in time", async () => {
+    // The hook's own wait is faked. Nothing here may wait with a timer of its own (vi.waitFor
+    // would move the faked clock): promises are flushed by hand.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const flush = async () => {
+      for (let i = 0; i < 20; i++) await act(async () => Promise.resolve());
+    };
+    const api = mockApi({ scenario: "auto-sync-due" });
+    let reply: (first: boolean) => void = () => {};
+    api.firstPageLoad = () =>
+      new Promise<boolean>((resolve) => {
+        reply = resolve;
+      });
+    alwaysDue(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const tasks = vi.spyOn(api, "startupTasks");
+    const { queryClient } = renderRoute("/courses", { api });
+    await flush();
+    expect(tasks).toHaveBeenCalledTimes(1);
+
+    await act(() => vi.advanceTimersByTimeAsync(LAUNCH_REPLY_MS - 1));
+    await flush();
+    expect(sync).not.toHaveBeenCalled();
+
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    await flush();
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+
+    // "First" after all, too late: the decision stands, and nothing becomes attended by it.
+    reply(true);
+    await flush();
+    expect(useSyncStore.getState().attendedUntil).toBe(0);
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await flush();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts none of either kind right after the student stopped a sync", async () => {
+    const start = startClock();
+    // What Stop leaves in the store (stores/sync.test.ts): both kinds held for half an hour.
+    useSyncStore.setState({ noAutomaticBefore: heldUntil(start.getTime() + 30 * MINUTE) });
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    // The launch would be attended...
     await screen.findByRole("heading", { level: 1 });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+    // ...and a re-read ten minutes on unattended.
+    later(start, 10 * MINUTE);
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await settle();
     expect(sync).not.toHaveBeenCalled();
   });
@@ -637,6 +787,25 @@ describe("automatic sync", () => {
     await user.click(within(sheet).getByRole("button", { name: "Got it" }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("doesn't take What's new going away by itself for the student closing it", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "upgrader" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 11 * HOUR);
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    // Acknowledged somewhere else, minutes later: the sheet goes without a click here.
+    later(start, 11 * HOUR + 5 * MINUTE);
+    await api.acknowledgeWhatsNew();
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("doesn't ask for a sync while an update is being installed, and asks again afterwards", async () => {
