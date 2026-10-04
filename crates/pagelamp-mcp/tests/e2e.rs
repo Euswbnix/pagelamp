@@ -1994,3 +1994,148 @@ async fn mcp_course_info_uses_resolved_dates() {
     assert_eq!(week["phase"], "teaching");
     assert_eq!(week["course"]["term_dates_source"], "lms_term");
 }
+
+/// Text an earlier version stored can hold a link address with a parameter that gives access
+/// to a file. This is the worst case: the clean-up at the server's start didn't happen (the
+/// test serves without it), so the stored text still holds the parameters. Nothing the server
+/// gives out carries one, also not a search snippet that starts after the "?", where nothing
+/// in the snippet shows what the value is.
+#[tokio::test]
+async fn no_tool_gives_out_an_access_parameter() {
+    // Values without a word break. The search index cuts a snippet of 16 words that starts 7
+    // words before a single hit, and "wrap", "1" and "x" are words to it. So after each value
+    // the sixth word (kiwi, mango, olive) makes a snippet start at the last piece of the
+    // parameter's name: `verifier=`, `verifier=` (of sf_verifier) and `token=` (of
+    // access_token). The first two are names the cleaning of the output knows by itself;
+    // `token=` isn't one, so only the check of the whole chunk catches it. The seventh word
+    // (lemon, nectar, papaya) makes a snippet start at the value itself, where nothing shows
+    // what it is. Eight more words follow the last hit, so its snippet isn't pulled back
+    // from the end of the text.
+    const VALUES: [&str; 3] = ["Ab12Cd34Zz", "Ef56Gh78Yy", "Ij90Kl12Xx"];
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    set(&db, |s| {
+        s.conn()
+            .execute(
+                "UPDATE chunks SET text = text || ' — zebrafish handout \
+                 (https://lms.example.edu/courses/101/files/7/download?verifier=Ab12Cd34Zz&wrap=1) \
+                 one two three kiwi lemon six seven eight nine ten. Page \
+                 https://lms.example.edu/courses/101/pages/9?sf_verifier=Ef56Gh78Yy&x=1 one two \
+                 three mango nectar six seven eight nine ten. Video \
+                 https://media.example.edu/v?t=5&access_token=Ij90Kl12Xx one two three four five \
+                 olive papaya eight more words follow the last hit here \"today\"'",
+                [],
+            )
+            .unwrap();
+        // Something for the tools that answer in JSON: a material's own link with a
+        // parameter, and a plan saved by an earlier version whose JSON escapes a line break
+        // right before one.
+        s.conn()
+            .execute_batch(
+                r#"UPDATE materials SET url = url || '?verifier=Ab12Cd34Zz&wrap=1'
+                       WHERE url IS NOT NULL;
+                   INSERT INTO study_plans (created_at, plan_json) VALUES
+                   ('2026-09-20T00:00:00Z',
+                    '{"horizon_start":"2026-09-21","horizon_end":"2026-09-27","items":[],"notes":"read https://lms.example.edu/pages/4?\nverifier=Ef56Gh78Yy&x=1 first"}');"#,
+            )
+            .unwrap();
+    });
+    // What a replaced snippet is: the start of the chunk's cleaned text.
+    let cleaned_start: String = {
+        let store = Store::open_read_only(&db).unwrap();
+        let text = store.chunk_text(&mid("week3-slides"), 0).unwrap().unwrap();
+        let clean = pagelamp_core::scrub::scrub_text(&text).into_owned();
+        assert_ne!(clean, text);
+        let mut start: String = clean.chars().take(240).collect();
+        start.push('…');
+        start
+    };
+    let client = connect(db.clone()).await;
+    let search = |query: &'static str| ("search_materials", json!({"query": query}));
+    let mut outputs = Vec::new();
+    for (tool, args) in [
+        ("read_material", json!({"material_id": mid("week3-slides")})),
+        search("zebrafish"),
+        // After each address: at the name, then at the bare value.
+        search("kiwi"),
+        search("lemon"),
+        search("mango"),
+        search("nectar"),
+        search("olive"),
+        search("papaya"),
+        // For the parameter itself, and for a value: the match marks cut the address.
+        search("verifier"),
+        search("access_token"),
+        search("Ab12Cd34Zz"),
+        search("Ij90Kl12Xx"),
+        ("get_announcements", json!({"course": "DEMO101"})),
+        ("course_overview", json!({"course": "DEMO101"})),
+        ("week_materials", json!({"course": "DEMO101"})),
+        ("get_study_plan", json!({})),
+    ] {
+        let result = call(&client, tool, args.clone()).await;
+        assert!(!is_error(&result), "{tool}: {}", text_of(&result));
+        // Without the match marks, which would hide a value they cut, and without the first
+        // line of a search, which repeats the query the client sent.
+        let text = text_of(&result);
+        let text = match tool {
+            "search_materials" => text.split_once('\n').map_or("", |(_, rest)| rest),
+            _ => text.as_str(),
+        };
+        let text: String = text.chars().filter(|c| !matches!(c, '«' | '»')).collect();
+        outputs.push((format!("{tool} {args}"), text));
+    }
+    for (call, text) in &outputs {
+        for gone in VALUES.iter().chain(&["verifier=", "access_token="]) {
+            assert!(!text.contains(gone), "{gone} in {call}: {text}");
+        }
+    }
+    // The addresses themselves stay, with their other parameters.
+    let read = &outputs[0].1;
+    for kept in [
+        "zebrafish handout (https://lms.example.edu/courses/101/files/7/download) one two",
+        "https://lms.example.edu/courses/101/pages/9?x=1 one two",
+        "https://media.example.edu/v?t=5 one two",
+    ] {
+        assert!(read.contains(kept), "{kept}: {read}");
+    }
+    // What is given as JSON is still JSON after the cleaning, with the links kept.
+    let json_of_call = |tool: &str| -> Value {
+        let (_, text) = outputs
+            .iter()
+            .find(|(call, _)| call.starts_with(tool))
+            .unwrap();
+        let json = match text.split_once("<study_plan>\n") {
+            Some((_, rest)) => rest.split_once("\n</study_plan>").unwrap().0,
+            None => text.as_str(),
+        };
+        serde_json::from_str(json).unwrap_or_else(|err| panic!("{tool}: {err}: {json}"))
+    };
+    let week = json_of_call("week_materials");
+    let links: Vec<&str> = week["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|material| material["url"].as_str())
+        .collect();
+    assert!(!links.is_empty(), "{week}");
+    // (The fixture's links aren't file addresses with an id: only the parameter goes.)
+    assert!(
+        links.iter().all(|link| {
+            link.starts_with("https://lms.example.edu/files/") && link.ends_with("?wrap=1")
+        }),
+        "{links:?}"
+    );
+    json_of_call("course_overview");
+    assert_eq!(
+        json_of_call("get_study_plan")["plan"]["notes"],
+        "read https://lms.example.edu/pages/4?\nx=1 first"
+    );
+    // A search still finds the chunk, and says where. Its snippet was cut from text that
+    // holds a parameter, so the start of the cleaned text is given in its place.
+    for (call, text) in &outputs[1..12] {
+        assert!(text.contains("week3-slides"), "{call}: {text}");
+        assert!(text.contains(&cleaned_start), "{call}: {text}");
+    }
+    client.cancel().await.unwrap();
+}

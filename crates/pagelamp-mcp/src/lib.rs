@@ -6,8 +6,11 @@
 //!
 //! HARD RULES
 //! - Never calls Canvas or any network API (Canvas API Policy §3(i)); serves the local DB only.
-//! - Read-only except `save_study_plan` and `propose_course_calendar` (a proposal only: the
-//!   student accepts it in the app; the calendar in force is never touched).
+//! - The tools only read, except `save_study_plan` and `propose_course_calendar` (a proposal
+//!   only: the student accepts it in the app; the calendar in force is never touched).
+//!   Starting the server can write twice, each once per database: it migrates an older
+//!   database, and it removes access parameters from text an earlier version stored
+//!   (`clean_stored_text`).
 //! - No tool returns assignment instructions/solutions; deadlines are title + date + link.
 //! - All course text is returned inside
 //!   `<course_material id="…" title="…" locator="…">…</course_material>` wrappers, and the
@@ -105,14 +108,15 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::format::{
-    OUTPUT_CAP, cap_list, error_result, json_result, text_result, wrap, wrap_plan,
+    OUTPUT_CAP, cap_list, error_result, json_result, plan_result, text_result, wrap,
 };
 
 /// Run the MCP server over stdio until the client disconnects (or the process is told to
 /// stop). `db_path` is normally `pagelamp_core::paths::db_path()`. The server starts even
 /// when the database does not exist yet (tools then tell the student to sync); it never
-/// creates one, but migrates an older existing database once (`upgrade_database`). It never
-/// touches the network and never writes to stdout except protocol messages.
+/// creates one, but migrates an older existing database once (`upgrade_database`) and cleans
+/// the text an earlier version stored once (`clean_stored_text`). It never touches the
+/// network and never writes to stdout except protocol messages.
 ///
 /// Log file (`logs/mcp-*.log`): start, the client's name/version and protocol version, and
 /// exit (reason, tool calls, uptime) at info; one line per tool call (name, time, ok/error,
@@ -130,6 +134,7 @@ pub async fn serve_stdio(db_path: PathBuf) -> anyhow::Result<()> {
     // Registered first, so a stop request during startup is not lost.
     let mut stop = StopSignals::install();
     upgrade_database(&db_path).await;
+    clean_stored_text(&db_path).await;
     let server = PageLampServer::new(db_path);
     let tool_calls = Arc::clone(&server.tool_calls);
     let exit = |reason: &str| {
@@ -264,6 +269,69 @@ async fn upgrade_database(db_path: &std::path::Path) {
         Err(_) => tracing::warn!(target: LOG_TARGET, "could not migrate the database"),
     }
 }
+
+/// Text an earlier version stored may hold link addresses with a parameter that gives access to
+/// a file (`pagelamp_core::scrub`). The app and the CLI clean it when they open the data; so
+/// does this server when it starts, in case it is the first to run after an update. The record
+/// is read with a read-only connection, and only when the clean-up is still to do is the
+/// database opened for writing (one transaction). A failure is logged and the server starts:
+/// what it gives out is cleaned on its way out either way (`format::text_result`, and
+/// `safe_snippets` for search results).
+async fn clean_stored_text(db_path: &std::path::Path) {
+    let db = db_path.to_path_buf();
+    let cleaned = tokio::task::spawn_blocking(move || -> pagelamp_core::Result<bool> {
+        if !db.is_file() {
+            return Ok(false);
+        }
+        if Store::open_read_only(&db)?.scrubbed_text_version()? >= pagelamp_core::scrub::VERSION {
+            return Ok(false);
+        }
+        Store::open(&db)?.scrub_stored_text_once()
+    })
+    .await;
+    match cleaned {
+        Ok(Ok(true)) => tracing::info!(target: LOG_TARGET, "cleaned the stored text"),
+        // Nothing to do, or no data yet.
+        Ok(Ok(false) | Err(pagelamp_core::Error::NotInitialised(_))) => {}
+        Ok(Err(err)) => tracing::warn!(
+            target: LOG_TARGET,
+            "could not clean the stored text; results are cleaned as they are given out: {err}"
+        ),
+        Err(_) => tracing::warn!(target: LOG_TARGET, "could not clean the stored text"),
+    }
+}
+
+/// A search snippet is cut out of a chunk by the search index, at a word: it can start in the
+/// middle of an address, after the part that says what follows is a parameter, and then
+/// nothing in the snippet shows that a value in it gives access to a file. So when the chunk
+/// a snippet comes from still holds an access parameter (the clean-up at start couldn't run),
+/// the snippet isn't used: the start of the cleaned text is given in its place.
+///
+/// Call it in the read transaction of the search itself: with a snapshot of its own, another
+/// process's clean-up between the two reads would make the chunk look clean while the snippet
+/// is still from the old text. A hit whose chunk can't be read gets no snippet.
+fn safe_snippets(
+    store: &Store,
+    hits: &mut [pagelamp_core::model::SearchHit],
+) -> pagelamp_core::Result<()> {
+    for hit in hits {
+        let Some(text) = store.chunk_text(&hit.material_id, hit.chunk_ord)? else {
+            hit.snippet.clear();
+            continue;
+        };
+        if let std::borrow::Cow::Owned(clean) = pagelamp_core::scrub::scrub_text(&text) {
+            let mut start: String = clean.chars().take(SAFE_SNIPPET_CHARS).collect();
+            if start.len() < clean.len() {
+                start.push('…');
+            }
+            hit.snippet = start;
+        }
+    }
+    Ok(())
+}
+
+/// How much of a chunk's cleaned text stands in for a snippet that can't be used.
+const SAFE_SNIPPET_CHARS: usize = 240;
 
 /// A fixed description of a failed handshake: at most the method name of the unexpected
 /// first message, never its parameters.
@@ -627,8 +695,13 @@ impl PageLampServer {
         let query = args.query.clone();
         let result = self
             .read(move |store| {
-                let results =
-                    views::search_for_ai(store, &args.query, args.course.as_deref(), limit)?;
+                // One snapshot for the hits and the chunks their snippets were cut from.
+                let results = store.in_read_transaction(|store| {
+                    let mut results =
+                        views::search_for_ai(store, &args.query, args.course.as_deref(), limit)?;
+                    safe_snippets(store, &mut results.hits)?;
+                    Ok(results)
+                })?;
                 // A course no full sync has read has nothing to find yet.
                 let unread = match args.course.as_deref() {
                     Some(course) => auto_sync::light_sync(store)?
@@ -785,17 +858,14 @@ impl PageLampServer {
     async fn get_study_plan(&self) -> CallToolResult {
         // Hidden courses' items left out, like everything else about a hidden course.
         match self.read(|store| store.latest_visible_study_plan()).await {
-            Ok(Some(plan)) => match serde_json::to_string(&plan) {
-                // The origin says who made it (design §6): the student's AI app, or PageLamp.
-                Ok(json) => text_result(wrap_plan(
-                    match plan.origin {
-                        PlanOrigin::AiApp => text::PLAN_PREFACE,
-                        PlanOrigin::PageLamp => text::PLAN_PREFACE_PAGELAMP,
-                    },
-                    &json,
-                )),
-                Err(err) => error_result(format!("internal error: {err}")),
-            },
+            // The origin says who made it (design §6): the student's AI app, or PageLamp.
+            Ok(Some(plan)) => plan_result(
+                match plan.origin {
+                    PlanOrigin::AiApp => text::PLAN_PREFACE,
+                    PlanOrigin::PageLamp => text::PLAN_PREFACE_PAGELAMP,
+                },
+                &plan,
+            ),
             Ok(None) => text_result(text::NO_PLAN),
             Err(error) => error,
         }
@@ -1177,6 +1247,57 @@ impl PageLampServer {
 #[cfg(test)]
 mod tests {
     use super::clip;
+    use pagelamp_core::store::Store;
+
+    /// The server cleans the text an earlier version stored when it starts: once, and never
+    /// creating a database.
+    #[tokio::test]
+    async fn the_stored_text_is_cleaned_when_the_server_starts() {
+        let temp = tempfile::tempdir().unwrap();
+        let db = temp.path().join("pagelamp.db");
+        super::clean_stored_text(&db).await;
+        assert!(!db.exists(), "no database is created");
+
+        let syllabus = |db: &std::path::Path| -> String {
+            Store::open_read_only(db)
+                .unwrap()
+                .conn()
+                .query_row("SELECT syllabus_text FROM courses", [], |row| row.get(0))
+                .unwrap()
+        };
+        Store::open(&db)
+            .unwrap()
+            .conn()
+            .execute_batch(
+                "INSERT INTO sources (id, kind, label) VALUES ('canvas:demo', 'canvas', 'Demo');
+                 INSERT INTO courses (id, source_id, external_id, code, name, syllabus_text, updated_at)
+                 VALUES ('canvas:demo/course/1', 'canvas:demo', '1', 'DEMO101', 'Intro',
+                         'Outline: https://lms.example.edu/files/9/download?verifier=Ab12Cd34Zz',
+                         '2026-09-20T00:00:00Z');",
+            )
+            .unwrap();
+        super::clean_stored_text(&db).await;
+        assert_eq!(
+            syllabus(&db),
+            "Outline: https://lms.example.edu/files/9/download"
+        );
+        let store = Store::open(&db).unwrap();
+        assert_eq!(
+            store.scrubbed_text_version().unwrap(),
+            pagelamp_core::scrub::VERSION
+        );
+        // Recorded: a later start reads the record and writes nothing.
+        store
+            .conn()
+            .execute(
+                "UPDATE courses SET syllabus_text = 'https://lms.example.edu/files/9/download?verifier=Later'",
+                [],
+            )
+            .unwrap();
+        drop(store);
+        super::clean_stored_text(&db).await;
+        assert!(syllabus(&db).contains("verifier=Later"));
+    }
 
     #[test]
     fn client_text_is_redacted_flattened_and_clipped() {
