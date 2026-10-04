@@ -17,6 +17,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auto_sync::{self, AutoSync, LightSync};
+use crate::coverage::{self, CoverageView};
 use crate::dates::{Tz, course_date, time_zone};
 use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
@@ -254,6 +255,9 @@ pub struct CourseOverview {
     pub deadlines_synced_at: Option<Timestamp>,
     /// Its modules and materials haven't been read yet (`CourseSummary`).
     pub structure_pending: bool,
+    /// What PageLamp read of a Canvas course and what it didn't (`coverage`). `None`: no full
+    /// sync has recorded it yet, or the course isn't from Canvas.
+    pub coverage: Option<CoverageView>,
 }
 
 /// Materials of one teaching week.
@@ -504,6 +508,7 @@ pub fn course_overview(
         deadlines_synced_at: synced.deadlines_synced_at,
         structure_pending: synced.structure_pending,
         downloadable_files: u32::try_from(downloadable_files).unwrap_or(u32::MAX),
+        coverage: coverage::view(store, &course, &data.materials)?,
         course,
     })
 }

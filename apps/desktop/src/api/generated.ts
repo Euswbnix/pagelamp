@@ -420,6 +420,60 @@ export type CostBasis = "priced" | "free_on_device" | "unpriced" | "plan";
  */
 export type CalendarStatus = ("proposed" | "accepted" | "accepted_stale") | "none";
 /**
+ * What a sync did with one list of the course.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoverageListState".
+ */
+export type CoverageListState = "unknown" | "read" | "hidden" | "failed";
+/**
+ * What a sync did with the Home page.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseHomeState".
+ */
+export type CourseHomeState = "read" | "locked" | "not_a_page" | "missing" | "failed" | "unknown";
+/**
+ * The part of a course an entry is about. One this version doesn't know reads as `Other`.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoverageArea".
+ */
+export type CoverageArea =
+  | "home"
+  | "syllabus"
+  | "modules"
+  | "pages"
+  | "files"
+  | "announcements"
+  | "assignments"
+  | "quizzes"
+  | "discussions"
+  | "grades"
+  | "people"
+  | "external_tool"
+  | "other";
+/**
+ * Why PageLamp didn't read something. A code this version doesn't know reads as `Other`.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoverageReason".
+ */
+export type CoverageReason =
+  | "other"
+  | "index_hidden"
+  | "needs_download"
+  | "too_large"
+  | "locked"
+  | "would_mark_viewed"
+  | "by_rule"
+  | "outside_canvas"
+  | "not_read"
+  | "other_course"
+  | "capped"
+  | "failed_this_sync"
+  | "no_longer_in_canvas";
+/**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "Confidence".
  */
@@ -830,6 +884,14 @@ export type UpdateCheckOutcome =
  */
 export type WeekNoteKind =
   "current_week_unknown" | "outside_term" | "no_materials_this_week" | "exam_period" | "break";
+/**
+ * What a course's Home shows in Canvas (its `default_view`).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CourseHomeKind".
+ */
+export type CourseHomeKind =
+  "page" | "modules" | "syllabus" | "assignments" | "activity" | "unknown";
 
 /**
  * Container whose only purpose is to pull every facade type into one schema document
@@ -1649,6 +1711,11 @@ export interface CourseOverview {
    */
   ai_materials: "readable" | "turned_off" | "withheld_by_policy";
   course: Course;
+  /**
+   * What PageLamp read of a Canvas course and what it didn't (`coverage`). `None`: no full
+   * sync has recorded it yet, or the course isn't from Canvas.
+   */
+  coverage?: CoverageView | null;
   current_modules: Module[];
   /**
    * When its deadlines and announcements were last read (`CourseSummary`).
@@ -1722,6 +1789,104 @@ export interface Course {
    */
   term_start?: string | null;
   updated_at: string;
+  url?: string | null;
+}
+/**
+ * What PageLamp read of a Canvas course and what it didn't (`CourseOverview::coverage`).
+ * Structure only, so it is given for a course whose text is withheld too.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoverageView".
+ */
+export interface CoverageView {
+  /**
+   * Announcements PageLamp has of this course.
+   */
+  announcements_synced: number;
+  counts: CoverageCounts;
+  files_list: CoverageListState;
+  /**
+   * The Home page, when it is a page PageLamp stored.
+   */
+  home?: MaterialRef | null;
+  /**
+   * What the course's Home shows in Canvas.
+   */
+  home_kind: "page" | "modules" | "syllabus" | "assignments" | "activity" | "unknown";
+  home_state: CourseHomeState;
+  /**
+   * What PageLamp didn't read: files that aren't downloaded first (one entry per reason),
+   * then what the last full sync noted, in its order. At most `MAX_SHOWN`.
+   */
+  not_readable: NotReadable[];
+  /**
+   * How many more entries there are than `not_readable` gives.
+   */
+  not_readable_more: number;
+  pages_list: CoverageListState;
+  /**
+   * The syllabus, when the course has one.
+   */
+  syllabus?: MaterialRef | null;
+  /**
+   * When the last full sync wrote this.
+   */
+  written_at?: string | null;
+}
+/**
+ * How much a sync read, in numbers (the sync row's line and the CLI's summary).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "CoverageCounts".
+ */
+export interface CoverageCounts {
+  /**
+   * Links PageLamp left alone because of a limit of the sync.
+   */
+  capped?: number;
+  /**
+   * File materials of the course after the sync.
+   */
+  files?: number;
+  /**
+   * Of them, files found through a link in a text only.
+   */
+  linked_files?: number;
+  /**
+   * Of them, pages no list or module gave: found through a link in a text.
+   */
+  linked_pages?: number;
+  /**
+   * Addresses outside Canvas in the texts that were read (counted, never listed or opened).
+   */
+  off_site_links?: number;
+  /**
+   * Page materials of the course after the sync (the Home page and linked pages included).
+   */
+  pages?: number;
+}
+/**
+ * A material named by a view.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "MaterialRef".
+ */
+export interface MaterialRef {
+  id: string;
+  title: string;
+}
+/**
+ * Something PageLamp didn't read, as the views give it. `count` items share the area and
+ * the reason when it is more than 1 (files that aren't downloaded come as one entry).
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "NotReadable".
+ */
+export interface NotReadable {
+  area: CoverageArea;
+  count: number;
+  reason: CoverageReason;
+  title?: string | null;
   url?: string | null;
 }
 /**

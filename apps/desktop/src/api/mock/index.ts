@@ -832,6 +832,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           last_synced_at: sourceSyncedAt(c.course.source_id),
           deadlines_synced_at: deadlinesSyncedAt(c.course.source_id),
           structure_pending: c.structurePending ?? false,
+          // No full sync has recorded what it read (the facade's `coverage` contract).
+          coverage: null,
           ai_materials: aiMaterialsState(c.course),
           // Like the backend: what a course-wide download would fetch (all weeks).
           downloadable_files: c.materials.filter(
