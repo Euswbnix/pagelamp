@@ -69,6 +69,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use pagelamp_core::auto_sync;
+use pagelamp_core::brand::PRODUCT_NAME;
 use pagelamp_core::coverage::{
     self, CourseHomeKind, CourseHomeState, CoverageArea, CoverageListState, CoverageReason,
     FileSeen, FoundLink, NotRead, PageRead,
@@ -711,7 +712,6 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         };
         // A list is asked for only when the navigation is known to show it: when the tabs
         // couldn't be read, neither the Pages nor the Files list is asked for this time.
-        let tabs_known = tabs.is_some();
         let visible = |tab: &str| {
             tabs.as_ref()
                 .is_some_and(|tabs| tabs.iter().any(|t| t.id == tab && t.hidden != Some(true)))
@@ -829,13 +829,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
             }
         } else {
+            // Hidden, or not known this time. No warning: the record says which, and the
+            // course's summary line names a hidden list (`files_hidden`).
             files_ok = false;
-            if tabs_known {
-                self.warn(
-                    report,
-                    format!("{label}: Files tab hidden, used module items only"),
-                );
-            }
         }
 
         // ---- pages ------------------------------------------------------------------------------
@@ -1110,8 +1106,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                                 self.warn(
                                     report,
                                     format!(
-                                        "{label}: PageLamp read the Home page \"{}\", which a \
-                                         module asks you to view. Canvas may show it as viewed.",
+                                        "{label}: {PRODUCT_NAME} read the Home page \"{}\", \
+                                         which a module asks you to view. Canvas may show it \
+                                         as viewed.",
                                         page.title.as_deref().unwrap_or(&slug)
                                     ),
                                 );
@@ -1584,9 +1581,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                                 self.warn(
                                     report,
                                     format!(
-                                        "{label}: PageLamp opened \"{}\", a page a module asks \
-                                         you to view, through a link with another address. \
-                                         Canvas may show it as viewed.",
+                                        "{label}: {PRODUCT_NAME} opened \"{}\", a page a module \
+                                         asks you to view, through a link with another \
+                                         address. Canvas may show it as viewed.",
                                         page.title.as_deref().unwrap_or(&own_slug)
                                     ),
                                 );

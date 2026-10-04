@@ -192,7 +192,8 @@ pub enum SyncProgress {
         /// The course the step is about (its code, else its name), as in `message`.
         course: Option<String>,
     },
-    /// A non-fatal problem, e.g. "DEMO101: Files tab hidden, used module items only".
+    /// A non-fatal problem, e.g. "DEMO101: Lecture 3.mp4 skipped (larger than the download
+    /// limit)".
     Warning(String),
 }
 

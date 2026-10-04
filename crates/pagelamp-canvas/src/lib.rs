@@ -132,7 +132,8 @@ pub struct SyncReport {
     pub files_downloaded: usize,
     pub files_indexed: usize,
     pub events: usize,
-    /// Non-fatal problems (e.g. "DEMO101: Files tab hidden, used module items only").
+    /// Non-fatal problems (e.g. "DEMO101: Lecture 3.mp4 skipped (larger than the download
+    /// limit)").
     pub warnings: Vec<String>,
     /// One line per course synced (for the summary).
     pub course_summaries: Vec<pagelamp_core::source::CourseSyncSummary>,

@@ -227,11 +227,8 @@ async fn a_home_page_and_what_it_links_to_are_read_without_asking_for_a_hidden_l
     home_with_links(&f).await;
 
     let report = f.sync(&f.options(false)).await.unwrap();
-    // Hidden lists are in the record now; the Files warning stays as it was.
-    assert_eq!(
-        report.warnings,
-        ["DEMO101: Files tab hidden, used module items only"]
-    );
+    // A hidden list is no warning: the record and the course's summary line say it.
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     // The course's line in the sync summary.
     let line = &report.course_summaries[0];
     assert_eq!(
@@ -479,7 +476,7 @@ async fn the_home_page_is_asked_for_only_when_the_home_is_a_page() {
     let f = Fixture::new().await;
     hidden_lists(&f, Some("modules")).await;
     let report = f.sync(&f.options(false)).await.unwrap();
-    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(asked(&f, "/courses/101/front_page").await, 0);
     let home = record(&f).home;
     assert_eq!(
@@ -491,7 +488,7 @@ async fn the_home_page_is_asked_for_only_when_the_home_is_a_page() {
     let f = Fixture::new().await;
     hidden_lists(&f, None).await;
     let report = f.sync(&f.options(false)).await.unwrap();
-    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(asked(&f, "/courses/101/front_page").await, 1);
     let record_now = record(&f);
     assert_eq!(record_now.home.state, CourseHomeState::Missing);
@@ -512,7 +509,11 @@ async fn the_home_page_is_asked_for_only_when_the_home_is_a_page() {
             .mount(&f.canvas)
             .await;
         let report = f.sync(&f.options(false)).await.unwrap();
-        assert_eq!(report.warnings.len(), 1, "{status}: {:?}", report.warnings);
+        assert!(
+            report.warnings.is_empty(),
+            "{status}: {:?}",
+            report.warnings
+        );
         let record_now = record(&f);
         assert_eq!(record_now.home.state, CourseHomeState::Failed, "{status}");
         assert_eq!(
@@ -538,10 +539,7 @@ async fn a_listed_front_page_needs_no_request_of_its_own() {
         .mount(&f.canvas)
         .await;
     let report = f.sync(&f.options(false)).await.unwrap();
-    assert_eq!(
-        report.warnings,
-        ["DEMO202: Files tab hidden, used module items only"]
-    );
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert_eq!(asked(&f, "/courses/101/front_page").await, 0);
     let home = record(&f).home;
     assert_eq!(home.state, CourseHomeState::Read);
@@ -571,7 +569,7 @@ async fn a_failed_linked_page_or_file_is_noted_and_the_sync_goes_on() {
     home_with_links(&f).await;
 
     let report = f.sync(&f.options(false)).await.unwrap();
-    assert_eq!(report.warnings.len(), 1, "{:?}", report.warnings);
+    assert!(report.warnings.is_empty(), "{:?}", report.warnings);
     assert!(has_material(&f, "/page/612"));
     assert!(has_material(&f, "/file/702"));
     assert!(!has_material(&f, "/page/611"));
@@ -1856,11 +1854,15 @@ async fn when_the_navigation_cannot_be_read_no_list_is_asked_for_and_nothing_is_
     // Which lists the course hides isn't known: neither is asked for.
     assert_eq!(asked(&f, "/courses/101/files").await, 0);
     assert_eq!(asked(&f, "/courses/101/pages").await, 0);
+    // The one warning says what couldn't be read.
+    let about_101: Vec<&String> = report
+        .warnings
+        .iter()
+        .filter(|warning| warning.starts_with("DEMO101:"))
+        .collect();
+    assert_eq!(about_101.len(), 1, "{:?}", report.warnings);
     assert!(
-        !report
-            .warnings
-            .iter()
-            .any(|warning| warning.starts_with("DEMO101: Files tab hidden")),
+        about_101[0].starts_with("DEMO101: tabs not available"),
         "{:?}",
         report.warnings
     );

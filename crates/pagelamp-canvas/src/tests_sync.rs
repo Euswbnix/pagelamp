@@ -2437,12 +2437,13 @@ async fn every_module_item_type_locked_items_and_embeds() {
             .iter()
             .any(|m| m.name == "Week 5" && m.unlock_at.is_some())
     );
+    // A hidden list is no warning: the course's summary line names it.
     assert!(
-        report
-            .warnings
-            .iter()
-            .any(|w| w.contains("Files tab hidden"))
+        !report.warnings.iter().any(|w| w.contains("hidden")),
+        "{:?}",
+        report.warnings
     );
+    assert!(report.course_summaries[0].files_hidden);
 }
 
 #[tokio::test]
