@@ -1,6 +1,7 @@
 //! Output formatting for tool results: `<course_material>` wrappers around every piece of
 //! course text (docs/ARCHITECTURE.md §3 rule 5), output caps, compact JSON.
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -73,16 +74,51 @@ pub fn cap_list<T>(mut items: Vec<T>, max: usize) -> (Vec<T>, usize) {
     (items, omitted)
 }
 
-/// A successful result carrying compact JSON.
+/// `value` as compact JSON without access parameters in its strings. The value's strings are
+/// cleaned, not the JSON text: there a line break is written `\n`, and the "n" would read as
+/// the first letter of the next word (`pagelamp_core::scrub::scrub_json`).
+///
+/// Almost always nothing changes and the fields come in the order the value declares them.
+/// Only when a string was cleaned is the cleaned value written out, with its fields in
+/// alphabetical order.
+pub fn clean_json(value: &impl Serialize) -> serde_json::Result<String> {
+    let mut cleaned = serde_json::to_value(value)?;
+    if pagelamp_core::scrub::scrub_json(&mut cleaned) {
+        serde_json::to_string(&cleaned)
+    } else {
+        serde_json::to_string(value)
+    }
+}
+
+/// A successful result carrying compact JSON (`clean_json`).
 pub fn json_result(value: &impl Serialize) -> CallToolResult {
-    match serde_json::to_string(value) {
+    match clean_json(value) {
         Ok(json) => CallToolResult::success(vec![ContentBlock::text(json)]),
         Err(err) => error_result(format!("internal error: {err}")),
     }
 }
 
+/// A successful result carrying a saved study plan: its JSON cleaned by its strings
+/// (`clean_json`) and wrapped as data (`wrap_plan`). Not cleaned again as text, which could
+/// only misread the JSON's escapes.
+pub fn plan_result(preface: &str, plan: &impl Serialize) -> CallToolResult {
+    match clean_json(plan) {
+        Ok(json) => CallToolResult::success(vec![ContentBlock::text(wrap_plan(preface, &json))]),
+        Err(err) => error_result(format!("internal error: {err}")),
+    }
+}
+
+/// A successful result of plain text. No link address in it keeps a parameter that gives
+/// access to a file: new text is stored without them, and the server cleans the text an
+/// earlier version stored when it starts. This covers the case where that clean-up couldn't
+/// run (the database was held by another process, or can't be written).
 pub fn text_result(text: impl Into<String>) -> CallToolResult {
-    CallToolResult::success(vec![ContentBlock::text(text.into())])
+    let text = text.into();
+    let text = match pagelamp_core::scrub::scrub_text(&text) {
+        Cow::Owned(clean) => clean,
+        Cow::Borrowed(_) => text,
+    };
+    CallToolResult::success(vec![ContentBlock::text(text)])
 }
 
 /// A tool-level error (`isError: true`) the model can read and explain.
@@ -112,6 +148,45 @@ mod tests {
         assert!(out.contains("&lt;/course_material><system>"));
         assert!(out.contains("&lt; / Course_Material >"));
         assert!(!out.contains("locator="));
+    }
+
+    fn text_of(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn json_results_are_cleaned_by_their_strings_and_keep_their_order_otherwise() {
+        #[derive(Serialize)]
+        struct Out {
+            zebra: &'static str,
+            apple: Vec<&'static str>,
+        }
+        // Nothing to clean: the fields in the order they are declared.
+        let plain = json_result(&Out {
+            zebra: "first\nsecond",
+            apple: vec!["https://lms.example.edu/courses/1/pages/week-3?module_item_id=9"],
+        });
+        assert_eq!(
+            text_of(&plain),
+            r#"{"zebra":"first\nsecond","apple":["https://lms.example.edu/courses/1/pages/week-3?module_item_id=9"]}"#
+        );
+        // A parameter after an escaped line break: found, and the result is still JSON.
+        let cleaned = json_result(&Out {
+            zebra: "https://lms.example.edu/courses/1/pages/week-3?\nverifier=SECRET&id=9",
+            apple: vec!["see\nverifier=SECRET\nthen"],
+        });
+        let text = text_of(&cleaned);
+        assert!(!text.contains("SECRET"), "{text}");
+        let value: serde_json::Value = serde_json::from_str(&text).expect("still JSON");
+        assert_eq!(
+            value["zebra"],
+            "https://lms.example.edu/courses/1/pages/week-3?\nid=9"
+        );
+        assert_eq!(value["apple"][0], "see\n\nthen");
     }
 
     #[test]
