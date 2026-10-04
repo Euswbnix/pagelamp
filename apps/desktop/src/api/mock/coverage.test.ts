@@ -53,7 +53,7 @@ describe("the mock's Canvas coverage (as the facade gives it)", () => {
     expect((await api.courseOverview("folder:demo-courses/course/DEMO101")).coverage).toBeNull();
   });
 
-  it("says in a full sync's summary what the record says, and sends the facade's warning", async () => {
+  it("says in a full sync's summary what the record says, without a warning for it", async () => {
     const api = mock("canvas-hidden-lists");
     const warnings: string[] = [];
     const result = await api.syncSource(CANVAS, {}, (event) => {
@@ -65,7 +65,7 @@ describe("the mock's Canvas coverage (as the facade gives it)", () => {
       linked_files: 3,
       pages_hidden: true,
       files_hidden: true,
-      warnings: 1,
+      warnings: 0,
     });
     // A course that shows its lists, with nothing found through links.
     expect(byCourse.DEMO205).toMatchObject({
@@ -74,8 +74,9 @@ describe("the mock's Canvas coverage (as the facade gives it)", () => {
       pages_hidden: false,
       files_hidden: false,
     });
-    expect(warnings).toEqual(["DEMO312: Files tab hidden, used module items only"]);
-    expect(result.warnings).toEqual(warnings);
+    // A list that isn't shown is said by the two flags, not by a warning.
+    expect(warnings).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("names every course in a light sync's summary and counts nothing of them", async () => {

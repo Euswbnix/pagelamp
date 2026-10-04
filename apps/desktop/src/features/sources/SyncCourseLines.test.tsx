@@ -83,10 +83,10 @@ describe("a sync's line for each course", () => {
     const lists = within(panel).getAllByRole("list", { name: /^Courses in/ });
     expect(lists).toHaveLength(1);
     expect(lists[0]).toHaveAccessibleName("Courses in Demo Canvas");
-    // The facade still sends its own warning about the Files list; it is shown as warnings are.
+    // A list that isn't shown is no warning.
     const canvas = lists[0]?.closest("li");
     if (!(canvas instanceof HTMLElement)) throw new Error("no row for Demo Canvas");
-    expect(within(canvas).getByText("1 warning")).toBeInTheDocument();
+    expect(within(canvas).queryByText(/warning/)).toBeNull();
   });
 
   it("takes the lines away when the source they belong to is removed", async () => {

@@ -298,7 +298,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     c.coverage.writtenAt = now().toISOString();
     return {
       ...counts,
-      warnings: c.coverage.filesList === "hidden" ? 1 : 0,
       linked_pages: c.coverage.linkedPages,
       linked_files: c.coverage.linkedFiles,
       not_read: c.coverage.notRead.filter((n) => GAPS.has(n.reason)).length,
@@ -650,13 +649,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             warnings.push(w);
             onEvent({ type: "warning", source_id: source.id, message: w });
           }
-        }
-        // Like the facade: a course whose Files list isn't shown also sends this warning.
-        for (const c of source.kind === "canvas" ? courses : []) {
-          if (c.coverage?.filesList !== "hidden") continue;
-          const w = `${c.course.code ?? c.course.name}: Files tab hidden, used module items only`;
-          warnings.push(w);
-          onEvent({ type: "warning", source_id: source.id, message: w });
         }
 
         // Failure scenarios stay failed until fixed (token replaced, folder re-added).
