@@ -469,26 +469,30 @@ impl std::fmt::Debug for App {
     }
 }
 
-/// The `settings` key that records which version of the link-address rules the stored text
-/// was last cleaned under.
-const SCRUBBED_TEXT_KEY: &str = "text.scrubbed";
-
 /// Link addresses in text an earlier version stored may carry a parameter that gives access to
-/// a file. They are removed once per version of the rules (`pagelamp_core::scrub`), when an app
-/// or the CLI opens the data; new text is cleaned as it is stored. (The MCP server, which only
-/// reads, cleans what it gives out.)
+/// a file. The stored text is cleaned once per version of the rules, here and when the MCP
+/// server starts (`Store::scrub_stored_text_once`, which says what that guarantees); new text
+/// is cleaned as it is stored.
+///
+/// When the clean-up can't be done, the data isn't opened: this process would otherwise show
+/// or print what must not be shown. The usual cause is another PageLamp process that holds
+/// the database; the error says so in words a student can act on.
 fn scrub_text_stored_earlier(store: &Store) -> Result<()> {
-    let done: u32 = store.setting_or_absent(SCRUBBED_TEXT_KEY)?.unwrap_or(0);
-    if done >= pagelamp_core::scrub::VERSION {
-        return Ok(());
-    }
-    Ok(store.in_transaction(|store| {
-        let changed = store.scrub_stored_text()?;
-        if changed > 0 {
-            tracing::info!("removed access parameters from {changed} stored texts");
+    match store.scrub_stored_text_once() {
+        Ok(_) => Ok(()),
+        Err(err) if err.is_database_busy() => {
+            let product = pagelamp_core::brand::PRODUCT_NAME;
+            Err(AppError::new(
+                AppErrorKind::Busy,
+                format!(
+                    "{product} couldn't finish updating its stored text because another \
+                     {product} window or command is using the data. Wait for it to finish, or \
+                     close it, and try again."
+                ),
+            ))
         }
-        store.set_setting(SCRUBBED_TEXT_KEY, &pagelamp_core::scrub::VERSION)
-    })?)
+        Err(err) => Err(err.into()),
+    }
 }
 
 impl App {

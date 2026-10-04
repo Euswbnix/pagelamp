@@ -83,8 +83,9 @@ pub fn json_result(value: &impl Serialize) -> CallToolResult {
 }
 
 /// A successful result. No link address in it keeps a parameter that gives access to a file:
-/// new text is stored without them, and text stored by an earlier version is cleaned here
-/// (this server only reads the database, so it can't clean it there).
+/// new text is stored without them, and the server cleans the text an earlier version stored
+/// when it starts. This covers the case where that clean-up couldn't run (the database was
+/// held by another process, or can't be written).
 pub fn text_result(text: impl Into<String>) -> CallToolResult {
     let text = text.into();
     let text = match pagelamp_core::scrub::scrub_text(&text) {

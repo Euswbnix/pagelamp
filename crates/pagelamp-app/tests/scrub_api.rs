@@ -132,3 +132,64 @@ async fn opening_the_data_cleans_text_stored_by_an_earlier_version() {
     let _again = open(&data);
     assert!(stored_text(&data).contains("SECRET-LATER"));
 }
+
+/// The clean-up can't be skipped: while another process holds the database, the data isn't
+/// opened (this process would show what must not be shown), the error says why, and nothing
+/// is recorded. Afterwards it opens and cleans.
+#[tokio::test]
+async fn a_held_database_refuses_the_open_with_a_reason() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = temp.path().join("data");
+    drop(open(&data));
+    {
+        let store = store(&data);
+        store
+            .upsert_source(&pagelamp_core::model::SourceRecord {
+                id: "folder:demo".into(),
+                kind: pagelamp_core::model::SourceKind::Folder,
+                label: "Demo".into(),
+                config: serde_json::json!({ "path": "/demo" }),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
+            })
+            .unwrap();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO courses (id, source_id, external_id, code, name, syllabus_text, updated_at)
+                 VALUES ('folder:demo/course/1', 'folder:demo', '1', 'DEMO101', 'Intro',
+                         'Outline: https://lms.example.edu/files/9/download?verifier=Ab12Cd34Zz',
+                         '2026-09-20T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        store.remove_setting("text.scrubbed").unwrap();
+    }
+    let other = rusqlite::Connection::open(data.join("pagelamp.db")).unwrap();
+    other.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let Err(refused) = App::open_at_with_secrets(data.clone(), Arc::new(MemorySecrets::new()))
+    else {
+        panic!("opened while the database was held");
+    };
+    assert_eq!(refused.kind, pagelamp_app::AppErrorKind::Busy);
+    assert!(
+        refused
+            .message
+            .contains("another PageLamp window or command")
+            && !refused.message.contains("database is locked"),
+        "{}",
+        refused.message
+    );
+    other.execute_batch("ROLLBACK").unwrap();
+    drop(other);
+    assert_eq!(store(&data).scrubbed_text_version().unwrap(), 0);
+    assert!(stored_text(&data).contains("Ab12Cd34Zz"));
+
+    let _app = open(&data);
+    assert!(!stored_text(&data).contains("Ab12Cd34Zz"));
+    assert_eq!(
+        store(&data).scrubbed_text_version().unwrap(),
+        pagelamp_core::scrub::VERSION
+    );
+}
