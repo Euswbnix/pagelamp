@@ -130,7 +130,9 @@ public struct FixtureService: ForwardingService {
             ),
             nextDeadline: summary.nextDeadline,
             sourceLabel: summary.sourceLabel,
-            lastSyncedAt: summary.lastSyncedAt
+            lastSyncedAt: summary.lastSyncedAt,
+            deadlinesSyncedAt: summary.deadlinesSyncedAt,
+            structurePending: summary.structurePending
         )
     }
 
@@ -141,7 +143,8 @@ public struct FixtureService: ForwardingService {
         guard let syncInProgress else { return status }
         return AppStatus(
             version: status.version, dataDir: status.dataDir, dbPath: status.dbPath, sources: status.sources,
-            counts: status.counts, lastSyncedAt: status.lastSyncedAt, syncInProgress: syncInProgress
+            counts: status.counts, lastSyncedAt: status.lastSyncedAt, syncInProgress: syncInProgress,
+            autoSync: status.autoSync, deadlinesSyncedAt: status.deadlinesSyncedAt
         )
     }
 
@@ -182,7 +185,8 @@ public struct FixtureService: ForwardingService {
             currentModules: overview.currentModules,
             recentMaterials: overview.recentMaterials, upcomingDeadlines: overview.upcomingDeadlines,
             recentAnnouncements: overview.recentAnnouncements, sourceLabel: overview.sourceLabel,
-            lastSyncedAt: overview.lastSyncedAt, downloadableFiles: overview.downloadableFiles
+            lastSyncedAt: overview.lastSyncedAt, downloadableFiles: overview.downloadableFiles,
+            deadlinesSyncedAt: overview.deadlinesSyncedAt, structurePending: overview.structurePending
         )
     }
 
