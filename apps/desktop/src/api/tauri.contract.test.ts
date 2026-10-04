@@ -106,6 +106,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.revealLogsDir();
   await api.logUiError("contract-test error", "Error: contract-test error\n    at render");
   await api.logUiError("contract-test error without a stack", null);
+  await api.firstPageLoad();
   await api.updatePrefs();
   await api.setUpdatePrefs({ auto_check: true, channel: "beta" });
   await api.syncPrefs();

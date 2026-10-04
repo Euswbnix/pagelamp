@@ -31,6 +31,11 @@ function eventChannel<E = SyncEvent>(onEvent: (event: E) => void): Channel<E> {
 }
 
 export function createTauriApi(): PageLampApi {
+  // Taken once, as the page starts. (Not read later from performance.timeOrigin: WebKit works
+  // that out anew on each read, and it moves by however long the computer has slept since.)
+  const loadedAt = Date.now();
+  // Rust says "first" once per process, to the first ask: one ask per page, the answer kept.
+  let firstPageLoad: Promise<boolean> | null = null;
   return {
     status: () => call("status"),
     listSources: () => call("list_sources"),
@@ -213,6 +218,15 @@ export function createTauriApi(): PageLampApi {
       };
     },
     startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
+    pageLoadedAt: () => loadedAt,
+    firstPageLoad: () => {
+      // A failed call counts as a reload: never the student opening PageLamp.
+      firstPageLoad ??= call<boolean>("first_page_load").then(
+        (first) => first === true,
+        () => false,
+      );
+      return firstPageLoad;
+    },
     revealLogsDir: () => call("reveal_logs_dir"),
     updaterStatus: () => call("updates_status"),
     checkForUpdate: () => call("updates_check"),

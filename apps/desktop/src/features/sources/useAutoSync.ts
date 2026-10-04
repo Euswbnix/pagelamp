@@ -14,6 +14,9 @@ import { useUpdateStore } from "@/stores/updates";
 /** Coming back to the window asks again once the last answer is this old. */
 export const FOCUS_REREAD_MS = 10 * 60 * 1000;
 
+/** How long to wait to hear whether this page load is the launch, before taking it for none. */
+export const LAUNCH_REPLY_MS = 5000;
+
 function dialogOpen(): boolean {
   return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
 }
@@ -24,9 +27,14 @@ function dialogOpen(): boolean {
  * starts the same sync as the Sync button, marked with what triggered it:
  *
  * - attended: the student just did something here (opened PageLamp, came back to its window,
- *   closed "What's new", changed the setting);
- * - unattended: the hourly re-read, always, also with the window in front; and a launch the
- *   student didn't see (the window started hidden), until the window first gains focus.
+ *   closed "What's new", changed the setting). Each is noted where it happens, never inferred
+ *   from what an answer says;
+ * - unattended: the hourly re-read, always, also with the window in front; a launch the
+ *   student didn't see (the window started hidden); and a page that was loaded again, which the
+ *   system does by itself. Those wait for the window to gain focus.
+ *
+ * Whether the window is visible or in front is never asked: it can be both for a night with
+ * nobody there.
  *
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
  * "What's new"); it asks again when that is over and lets the new answer decide. It never opens
@@ -73,12 +81,10 @@ export function useAutoSync() {
   }, [client, answers]);
 
   // An answer already in the cache when the shell mounts (back from /welcome) was dealt with by
-  // the shell that read it. With none, this is the launch: the student has just opened PageLamp.
+  // the shell that read it. With none, this page has just loaded: the launch, when the student
+  // opened PageLamp, or a reload, which needs nobody (see `launch` below).
   const [atMount] = useState(answer);
-  const handled = useRef<{ count: number; whatsNew: boolean }>({
-    count: atMount,
-    whatsNew: false,
-  });
+  const handled = useRef(atMount);
   // A due answer found something in the way; ask again when it is gone.
   const waiting = useRef(false);
   const dialogs = useRef<MutationObserver | null>(null);
@@ -90,11 +96,34 @@ export function useAutoSync() {
     [client],
   );
 
+  // Whether this page load is the launch: null until Rust has said (it knows whether the process
+  // loaded the page before). No answer is acted on before that, so a reload can't slip through
+  // as "the student just opened PageLamp" and run an attended sync with nobody there.
+  const [launch, setLaunch] = useState<boolean | null>(atMount === 0 ? null : false);
   useEffect(() => {
-    // A window started hidden (at login) wasn't opened by the student.
-    if (atMount === 0 && !api.startedHidden()) useSyncStore.getState().noteStudentAction();
-    return () => dialogs.current?.disconnect();
+    if (atMount !== 0) return;
+    let settled = false;
+    const settle = (first: boolean) => {
+      if (settled) return;
+      settled = true;
+      // The launch of a window the student sees. Not one started hidden (at login), and never
+      // a reload; no reply, a failed one or a late one counts as a reload too. The student's
+      // action is the launch itself, when the page loaded: a shell that only appears long after
+      // (a start page that got through by itself hours later) finds that moment long past.
+      if (first && !api.startedHidden()) {
+        useSyncStore.getState().noteStudentAction(api.pageLoadedAt());
+      }
+      setLaunch(first);
+    };
+    const timer = setTimeout(() => settle(false), LAUNCH_REPLY_MS);
+    api.firstPageLoad().then(settle, () => settle(false));
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+    };
   }, [atMount, api]);
+
+  useEffect(() => () => dialogs.current?.disconnect(), []);
 
   // The student comes back to the window: ask again if the answer is old, or if it said a sync
   // was due (the student's own sync may have changed that since).
@@ -121,8 +150,9 @@ export function useAutoSync() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `closed` only re-runs the check.
   useEffect(() => {
     const data = client.getQueryData<StartupTasks>(queryKeys.startupTasks());
-    // The total in the capsule and "no sources" come from the status: wait for it.
-    if (!data || !loaded) return;
+    // "No sources" comes from the status, and whether this load is the launch from Rust: wait
+    // for both.
+    if (!data || !loaded || launch === null) return;
     const blocked = running || otherProcess || installing || dialogOpen();
     // Dialogs are portalled into <body>; nothing else says when the last one closes.
     const watchDialogs = () => {
@@ -136,8 +166,7 @@ export function useAutoSync() {
       observer.observe(document.body, { childList: true });
       dialogs.current = observer;
     };
-    const seen = handled.current;
-    if (seen.count === answer) {
+    if (handled.current === answer) {
       // Nothing new was answered; at most, what was in the way is gone, or something else is
       // in the way now (a dialog opened while a sync was running).
       if (waiting.current && !blocked) {
@@ -148,11 +177,9 @@ export function useAutoSync() {
       }
       return;
     }
-    handled.current = { count: answer, whatsNew: !!data.whats_new };
+    handled.current = answer;
     waiting.current = false;
     const store = useSyncStore.getState();
-    // "Got it" closed What's new: the student is here.
-    if (seen.whatsNew && !data.whats_new) store.noteStudentAction();
     if (data.whats_new || noSources) return;
 
     // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
@@ -175,15 +202,17 @@ export function useAutoSync() {
       watchDialogs();
       return;
     }
-    // A backstop next to the facade's own clock: not so soon after the last automatic start,
-    // nor right after the student stopped a sync. (Bounded like the window above.)
-    const hold = store.noAutomaticBefore - Date.now();
+    // A backstop next to the facade's own clock: not so soon after the last automatic start
+    // of this kind or the last attended one, nor right after the student stopped a sync.
+    // (Bounded like the window above.)
+    const hold = store.noAutomaticBefore[trigger] - Date.now();
     if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) return;
     // Afterwards the cached answer must stop saying "due".
     void startSync(undefined, { automatic: trigger }).then(reread);
   }, [
     answer,
     loaded,
+    launch,
     noSources,
     running,
     otherProcess,

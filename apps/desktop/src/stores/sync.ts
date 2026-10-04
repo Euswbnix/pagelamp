@@ -57,10 +57,13 @@ interface SyncState {
    */
   started: boolean;
   /**
-   * No automatic sync starts before this time (ms): half an hour after the last one started,
-   * and after the student stopped any sync ("not now"). A backstop next to the facade's clock.
+   * No automatic sync with this trigger starts before this time (ms). A backstop next to the
+   * facade's own clocks, kept per trigger: an unattended start holds only the next unattended
+   * one for half an hour, so the timer's light sync doesn't cost the student their full sync
+   * when they come back ten minutes later. An attended start holds both, and so does the
+   * student stopping any sync ("not now").
    */
-  noAutomaticBefore: number;
+  noAutomaticBefore: Record<AutoSyncTrigger, number>;
   /**
    * The last automatic run left a problem on a source (the facade decides which failures it
    * records; one that may pass by itself, like no network, it doesn't). The source's card and
@@ -94,16 +97,38 @@ interface SyncState {
    * shown nothing yet (an automatic one) goes on untouched.
    */
   hideRun: () => void;
-  /** The student opened, fronted or changed something in the app just now. */
-  noteStudentAction: () => void;
+  /**
+   * The student opened, fronted or changed something in the app: just now, or at `at` (ms) for
+   * the launch, which happened when the page loaded. The launch is noted afterwards, so it
+   * never takes the place of an action after it.
+   */
+  noteStudentAction: (at?: number) => void;
   reset: () => void;
 }
 
 /** How long after the student's action an answer to "what's due?" counts as attended. */
 export const ATTENDED_WINDOW_MS = 30_000;
 
-/** The least time between two automatic starts, and after a Stop, whatever the answers say. */
+/**
+ * The least time between two automatic starts of one kind, whatever the answers say. An attended
+ * start and the student's Stop hold both kinds for as long (`noAutomaticBefore`).
+ */
 export const AUTO_SYNC_MIN_GAP_MS = 30 * 60 * 1000;
+
+/**
+ * The holds after a start (or a Stop) at `now`: an attended one holds both triggers, an
+ * unattended one only its own.
+ */
+function holdFrom(
+  now: number,
+  trigger: AutoSyncTrigger,
+  held: Record<AutoSyncTrigger, number>,
+): Record<AutoSyncTrigger, number> {
+  const until = now + AUTO_SYNC_MIN_GAP_MS;
+  return trigger === "attended"
+    ? { unattended: until, attended: until }
+    : { ...held, unattended: until };
+}
 
 /** No run to show: before the first one, after "Hide", after an automatic run that went wrong. */
 const noRun = {
@@ -122,7 +147,7 @@ const noRun = {
 
 const idle = {
   ...noRun,
-  noAutomaticBefore: 0,
+  noAutomaticBefore: { unattended: 0, attended: 0 },
   automaticProblem: false,
   watched: false,
   attendedUntil: 0,
@@ -131,7 +156,7 @@ const idle = {
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
   begin: (total, downloadCourseId = null, automatic = null) =>
-    set(
+    set((state) =>
       automatic
         ? {
             // The last run's result stays until this one has something to show (`apply`).
@@ -142,7 +167,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
             automatic,
             started: false,
             automaticProblem: false,
-            noAutomaticBefore: Date.now() + AUTO_SYNC_MIN_GAP_MS,
+            noAutomaticBefore: holdFrom(Date.now(), automatic, state.noAutomaticBefore),
           }
         : {
             running: true,
@@ -219,7 +244,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
       const stoppedByUser = error?.kind === "cancelled";
       // The student said "not now": PageLamp doesn't start one by itself right afterwards.
       const noAutomaticBefore = stoppedByUser
-        ? Date.now() + AUTO_SYNC_MIN_GAP_MS
+        ? holdFrom(Date.now(), "attended", state.noAutomaticBefore)
         : state.noAutomaticBefore;
       // An automatic sync that never had anything to show (refused: another sync, an update
       // installing; not due any more: an empty answer): the last run's result stays as it was.
@@ -277,7 +302,13 @@ export const useSyncStore = create<SyncState>()((set) => ({
           ? {}
           : { order: [], bySource: {}, lastSummary: null, runError: null, stoppedByUser: false },
     ),
-  noteStudentAction: () => set({ attendedUntil: Date.now() + ATTENDED_WINDOW_MS }),
+  noteStudentAction: (at) =>
+    set((state) => ({
+      attendedUntil:
+        at === undefined
+          ? Date.now() + ATTENDED_WINDOW_MS
+          : Math.max(state.attendedUntil, at + ATTENDED_WINDOW_MS),
+    })),
   reset: () => set(idle),
 }));
 

@@ -21,6 +21,8 @@ pub use backend::Backend;
 /// Every command the UI can call (see `src/api/tauri.ts`). Kept apart from `run` so the IPC
 /// contract test (`tests/ipc_contract.rs`) builds the app with exactly the same handlers.
 pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    // What `first_page_load` answers from: with the handlers, so the contract test has it too.
+    let builder = builder.manage(window::PageLoads::default());
     builder.invoke_handler(tauri::generate_handler![
         commands::status,
         commands::list_sources,
@@ -71,6 +73,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::reveal_data_dir,
         commands::reveal_logs_dir,
         commands::log_ui_error,
+        commands::first_page_load,
         commands::update_prefs,
         commands::set_update_prefs,
         commands::sync_prefs,
