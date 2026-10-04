@@ -138,7 +138,11 @@ fn sync_due_follows_the_setting_the_clock_and_a_running_sync() {
         .add_folder_source(&course_folder(temp.path(), "Courses"), None, None)
         .unwrap();
     assert!(due(&app, now), "never synced");
-    synced_hours_ago(&data, &source.id, 11);
+    // Counted from this test's `now`: the stored time keeps whole seconds, so one taken a
+    // moment later can fall in the next second and leave "12 h old" a little short.
+    store(&data)
+        .record_sync(&source.id, now - TimeDelta::hours(11), None)
+        .unwrap();
     assert!(!due(&app, now), "11 h old, twice a day");
     assert!(due(&app, now + TimeDelta::hours(1)), "12 h old");
     set(&app, AutoSync::Daily);
