@@ -11,6 +11,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { listenForStudentInput } from "@/lib/studentInput";
 import { isHttpUrl } from "@/lib/url";
 import type { PageLampApi } from "./client";
 import { ApiError, toApiError } from "./errors";
@@ -218,6 +219,8 @@ export function createTauriApi(): PageLampApi {
         unlisten?.();
       };
     },
+    // Only the browser's own events: nothing a script dispatches is the student.
+    onStudentInput: (onInput) => listenForStudentInput(onInput, true),
     startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
     pageLoadedAt: () => loadedAt,
     firstPageLoad: () => {
