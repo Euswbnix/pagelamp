@@ -800,6 +800,7 @@
 "course.notRead.asOf" = "PageLamp last read this course in full %1$@.";
 "course.notRead.cutShort" = "PageLamp read these, but they hold more links than it looks at in one text; it left the rest of them:";
 "course.notRead.failed.filesList" = "The Files list";
+"course.notRead.failed.modulesList" = "The module list";
 "course.notRead.failed.pagesAll" = "This course's pages: PageLamp couldn't check which ones a module asks you to view, so it read none of them this time.";
 "course.notRead.failed.pagesList" = "The Pages list";
 "course.notRead.failedNote" = "They're tried again on the next full sync.";
@@ -818,6 +819,7 @@
 "course.notRead.lists.pages" = "This course doesn't show its Pages list in Canvas. PageLamp found the pages that its modules and links point to; it can't see any others.";
 "course.notRead.lockedPages" = "Locked in Canvas. PageLamp has only their titles.";
 "course.notRead.mustView" = "A module asks you to view these pages. PageLamp reads each one at the next full sync after you've viewed it in Canvas; reading it for you could mark it as viewed.";
+"course.notRead.mustViewLink" = "A link that could open such a page";
 "course.notRead.never.assignments" = "Assignments and quizzes: PageLamp keeps only their title, due date and link.";
 "course.notRead.never.menu" = "Other items in the course menu: PageLamp doesn't read them.";
 "course.notRead.never.otherCourse" = "Links to other courses (PageLamp reads each course on its own):";
@@ -825,7 +827,7 @@
 "course.notRead.never.tools" = "Tools from other services open outside Canvas, and PageLamp doesn't read them:";
 "course.notRead.onlyNever" = "Only the parts PageLamp never reads, such as assignments, quizzes and grades.";
 "course.notRead.other" = "Other things PageLamp didn't read";
-"course.notRead.pastLimit" = "PageLamp opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that; syncing again won't read them.";
+"course.notRead.pastLimit" = "PageLamp opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that. Some are reached by a later sync; most are not.";
 "course.notRead.title" = "What PageLamp didn't read";
 "course.notRead.untitled.file" = "A file";
 "course.notRead.untitled.item" = "An item";

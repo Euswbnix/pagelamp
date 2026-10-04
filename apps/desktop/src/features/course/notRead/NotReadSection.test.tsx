@@ -60,6 +60,11 @@ describe("What PageLamp didn't read, on the course page", () => {
     expect(within(cant).getByText("1 file is too large to download.")).toBeVisible();
     // A link past the limits has no title: its address is what there is.
     expect(
+      within(cant).getByText(
+        "PageLamp opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that. Some are reached by a later sync; most are not.",
+      ),
+    ).toBeVisible();
+    expect(
       within(cant).getByRole("link", {
         name: "https://canvas.demo.test/courses/312/pages/older-notes",
       }),
@@ -167,6 +172,14 @@ describe("What PageLamp didn't read, on the course page", () => {
           url: "javascript:alert(1)",
           count: 1,
         },
+        // A link in a text that could open a page a module asks to be viewed: no title.
+        {
+          area: "pages",
+          reason: "would_mark_viewed",
+          title: null,
+          url: "https://canvas.demo.test/courses/312/pages/week-3-notes",
+          count: 1,
+        },
         // Canvas no longer has it: its address is gone too.
         {
           area: "files",
@@ -181,6 +194,11 @@ describe("What PageLamp didn't read, on the course page", () => {
     const { user } = await openCourse(DEMO312, { api });
     const section = card();
     expect(within(section).getByText("Odd address").closest("a")).toBeNull();
+    const waiting = within(section).getByRole("region", { name: "Waiting for you" });
+    expect(
+      within(waiting).getByRole("link", { name: "A link that could open such a page" }),
+    ).toBeVisible();
+    expect(within(waiting).queryByText(/week-3-notes/)).toBeNull();
     const gone = within(section).getByRole("region", { name: "No longer in Canvas" });
     // Shown as written, and not a link.
     expect(within(gone).getByText("Old reading list {{product}}").closest("a")).toBeNull();
@@ -202,7 +220,7 @@ describe("What PageLamp didn't read, on the course page", () => {
       not_readable: [
         { area: "home", reason: "failed_this_sync", title: null, url: null, count: 1 },
         // The module list couldn't be read, so no page was.
-        { area: "pages", reason: "failed_this_sync", title: null, url: null, count: 1 },
+        { area: "modules", reason: "failed_this_sync", title: null, url: null, count: 1 },
       ],
       not_readable_more: 1,
     }));
@@ -212,6 +230,7 @@ describe("What PageLamp didn't read, on the course page", () => {
       .getAllByRole("listitem")
       .map((item) => item.textContent);
     expect(items).toEqual([
+      "The module list",
       "This course's pages: PageLamp couldn't check which ones a module asks you to view, so it read none of them this time.",
       "The course's Home page",
     ]);
@@ -321,7 +340,7 @@ describe("What PageLamp didn't read, on the course page", () => {
       ),
     ).toBeVisible();
     expect(within(cant).getByRole("link", { name: "Course schedule" })).toBeVisible();
-    expect(within(cant).queryByText(/syncing again won't read them/)).toBeNull();
+    expect(within(cant).queryByText(/These are beyond that/)).toBeNull();
     const never = within(section).getByRole("region", { name: "PageLamp never reads these" });
     expect(
       within(never).getByText("Other items in the course menu: PageLamp doesn't read them."),

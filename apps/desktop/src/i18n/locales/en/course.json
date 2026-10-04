@@ -180,10 +180,12 @@
       "never": "{{product}} never reads these"
     },
     "mustView": "A module asks you to view these pages. {{product}} reads each one at the next full sync after you've viewed it in Canvas; reading it for you could mark it as viewed.",
+    "mustViewLink": "A link that could open such a page",
     "failedNote": "They're tried again on the next full sync.",
     "failed": {
       "pagesList": "The Pages list",
       "filesList": "The Files list",
+      "modulesList": "The module list",
       "pagesAll": "This course's pages: {{product}} couldn't check which ones a module asks you to view, so it read none of them this time."
     },
     "lockedPages": "Locked in Canvas. {{product}} has only their titles.",
@@ -191,7 +193,7 @@
     "lockedFiles_other": "{{count}} files are locked in Canvas.",
     "tooLarge_one": "{{count}} file is too large to download.",
     "tooLarge_other": "{{count}} files are too large to download.",
-    "pastLimit": "{{product}} opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that; syncing again won't read them.",
+    "pastLimit": "{{product}} opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that. Some are reached by a later sync; most are not.",
     "cutShort": "{{product}} read these, but they hold more links than it looks at in one text; it left the rest of them:",
     "goneNote": "{{product}} keeps what it already has of them.",
     "never": {

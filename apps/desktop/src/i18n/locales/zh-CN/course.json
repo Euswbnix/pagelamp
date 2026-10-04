@@ -180,10 +180,12 @@
       "never": "{{product}} 从不读取的"
     },
     "mustView": "模块要求你“查看”下面这些页面。你在 Canvas 中看过之后，{{product}} 会在下一次完整同步时读取；替你读取可能会让它被算作“已查看”。",
+    "mustViewLink": "一个可能打开这类页面的链接",
     "failedNote": "下一次完整同步时会再试。",
     "failed": {
       "pagesList": "“页面”列表",
       "filesList": "“文件”列表",
+      "modulesList": "模块列表",
       "pagesAll": "这门课的页面：{{product}} 没能确认哪些是模块要求你“查看”的，所以这次一个也没有读取。"
     },
     "lockedPages": "在 Canvas 中被锁定，{{product}} 只有它们的标题。",
@@ -191,7 +193,7 @@
     "lockedFiles_other": "有 {{count}} 个文件在 Canvas 中被锁定。",
     "tooLarge_one": "有 {{count}} 个文件太大，无法下载。",
     "tooLarge_other": "有 {{count}} 个文件太大，无法下载。",
-    "pastLimit": "{{product}} 在每门课里只打开有限数量的链接，也不会从链接到的页面继续往下打开。下面这些超出了这个范围，再同步也不会读取。",
+    "pastLimit": "{{product}} 在每门课里只打开有限数量的链接，也不会从链接到的页面继续往下打开。下面这些超出了这个范围。其中一些以后的同步能读到，大部分不会。",
     "cutShort": "{{product}} 读取了下面这些内容，但里面的链接太多，后面的链接它没有打开：",
     "goneNote": "{{product}} 里已有的内容会保留。",
     "never": {

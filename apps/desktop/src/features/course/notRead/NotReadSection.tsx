@@ -126,7 +126,8 @@ export function NotReadSection({ overview }: { overview: CourseOverview }) {
             {model.mustView.length > 0 ? (
               <Group title={t("notRead.group.yours")}>
                 <p className="text-muted-foreground">{t("notRead.mustView")}</p>
-                <Items items={model.mustView} />
+                {/* Without a title it is a link in a text that could open such a page. */}
+                <Items items={model.mustView} untitled={t("notRead.mustViewLink")} />
               </Group>
             ) : null}
             {model.failed.lists.length > 0 ||
@@ -228,15 +229,22 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Items({ items, linked = true }: { items: NotReadItem[]; linked?: boolean }) {
+interface ItemsProps {
+  items: NotReadItem[];
+  linked?: boolean;
+  /** What an entry without a title is called here, instead of its address. */
+  untitled?: string;
+}
+
+function Items({ items, linked = true, untitled }: ItemsProps) {
   return (
     <ul className="list-disc space-y-0.5 pl-5">
-      <ItemRows items={items} linked={linked} />
+      <ItemRows items={items} linked={linked} untitled={untitled} />
     </ul>
   );
 }
 
-function ItemRows({ items, linked = true }: { items: NotReadItem[]; linked?: boolean }) {
+function ItemRows({ items, linked = true, untitled }: ItemsProps) {
   const { t } = useTranslation("course");
   return (
     <>
@@ -244,7 +252,7 @@ function ItemRows({ items, linked = true }: { items: NotReadItem[]; linked?: boo
         // Canvas's own title, else the address, else a name for the kind of thing.
         const label = item.home
           ? t("notRead.homeTitle")
-          : (item.title ?? item.url ?? t(`notRead.untitled.${item.kind}`));
+          : (item.title ?? untitled ?? item.url ?? t(`notRead.untitled.${item.kind}`));
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: the entries come in the facade's order and never reorder.
           <li key={index} className="[overflow-wrap:anywhere]">

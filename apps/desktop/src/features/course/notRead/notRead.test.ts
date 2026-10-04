@@ -223,6 +223,25 @@ describe("what the card says, from the coverage view", () => {
     ]);
   });
 
+  it("names the module list that wasn't read, and what that meant for the pages", () => {
+    const model = notReadModel(view({ not_readable: [entry("modules", "failed_this_sync")] }));
+    expect(model.failed).toEqual({ lists: ["modulesList"], pagesAll: true, items: [] });
+    expect(model.other).toEqual([]);
+    expect(needsAttention(model)).toBe(true);
+    // The Pages list failed too: each is named once.
+    const both = notReadModel(
+      view({
+        pages_list: "failed",
+        not_readable: [entry("pages", "failed_this_sync"), entry("modules", "failed_this_sync")],
+      }),
+    );
+    expect(both.failed).toEqual({
+      lists: ["pagesList", "modulesList"],
+      pagesAll: true,
+      items: [],
+    });
+  });
+
   it("has no time when the record has none", () => {
     expect(notReadModel(view({ written_at: null })).writtenAt).toBeNull();
   });

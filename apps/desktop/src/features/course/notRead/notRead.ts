@@ -30,7 +30,7 @@ export interface NotReadModel {
   mustView: NotReadItem[];
   failed: {
     /** A list that was asked for and not read completely. */
-    lists: ("pagesList" | "filesList")[];
+    lists: ("pagesList" | "filesList" | "modulesList")[];
     /** No page was read: which ones a module asks to be viewed couldn't be checked. */
     pagesAll: boolean;
     items: NotReadItem[];
@@ -113,12 +113,6 @@ export function notReadModel(coverage: CoverageView): NotReadModel {
     (entry.area === "pages" && homeTitle !== null && entry.title === homeTitle);
   // The locked Home page comes as a state and as an entry: it is said once, by the state.
   let lockedHomeSaid = model.home !== "locked";
-  // The course's menu couldn't be read: then no list was asked for. The facade says that with
-  // both lists "failed" and a bare entry for each; the one for the files comes from nothing
-  // else, so it tells this case from "no page was read" (a bare entry for the pages alone).
-  const menuFailed = coverage.not_readable.some(
-    (e) => e.area === "files" && e.reason === "failed_this_sync" && bare(e),
-  );
 
   for (const entry of coverage.not_readable) {
     const { area, reason } = entry;
@@ -133,6 +127,13 @@ export function notReadModel(coverage: CoverageView): NotReadModel {
       }
       continue;
     }
+    if (area === "modules" && reason === "failed_this_sync") {
+      // The module list wasn't read, so PageLamp couldn't tell which pages a module asks the
+      // student to view, and read none.
+      if (!model.failed.lists.includes("modulesList")) model.failed.lists.push("modulesList");
+      model.failed.pagesAll = true;
+      continue;
+    }
     switch (reason) {
       case "index_hidden":
         // Said by `lists`.
@@ -142,7 +143,10 @@ export function notReadModel(coverage: CoverageView): NotReadModel {
         break;
       case "failed_this_sync":
         if (area === "pages" && bare(entry)) {
-          if (!menuFailed) model.failed.pagesAll = true;
+          // The Pages list that wasn't read is said by its state. Without that state the entry
+          // is an earlier record's way of saying that no page was read (the module list
+          // failed; a record of this version says that with an entry of the area "modules").
+          if (coverage.pages_list !== "failed") model.failed.pagesAll = true;
         } else {
           model.failed.items.push({ ...item(entry), home: isHome(entry) });
         }

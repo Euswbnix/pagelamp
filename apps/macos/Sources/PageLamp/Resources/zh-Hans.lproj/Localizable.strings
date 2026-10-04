@@ -800,6 +800,7 @@
 "course.notRead.asOf" = "PageLamp 上一次完整读取这门课是在%1$@。";
 "course.notRead.cutShort" = "PageLamp 读取了下面这些内容，但里面的链接太多，后面的链接它没有打开：";
 "course.notRead.failed.filesList" = "“文件”列表";
+"course.notRead.failed.modulesList" = "模块列表";
 "course.notRead.failed.pagesAll" = "这门课的页面：PageLamp 没能确认哪些是模块要求你“查看”的，所以这次一个也没有读取。";
 "course.notRead.failed.pagesList" = "“页面”列表";
 "course.notRead.failedNote" = "下一次完整同步时会再试。";
@@ -818,6 +819,7 @@
 "course.notRead.lists.pages" = "这门课在 Canvas 中没有开放“页面”列表。PageLamp 找到了模块和链接指向的页面，其余的它看不到。";
 "course.notRead.lockedPages" = "在 Canvas 中被锁定，PageLamp 只有它们的标题。";
 "course.notRead.mustView" = "模块要求你“查看”下面这些页面。你在 Canvas 中看过之后，PageLamp 会在下一次完整同步时读取；替你读取可能会让它被算作“已查看”。";
+"course.notRead.mustViewLink" = "一个可能打开这类页面的链接";
 "course.notRead.never.assignments" = "作业和测验：PageLamp 只保留标题、截止日期和链接。";
 "course.notRead.never.menu" = "课程菜单里的其他栏目：PageLamp 不读取。";
 "course.notRead.never.otherCourse" = "指向其他课程的链接（PageLamp 每门课分开读取）：";
@@ -825,7 +827,7 @@
 "course.notRead.never.tools" = "来自其他服务的工具在 Canvas 之外打开，PageLamp 不读取：";
 "course.notRead.onlyNever" = "这里只有 PageLamp 从不读取的部分，比如作业、测验和成绩。";
 "course.notRead.other" = "PageLamp 没有读取的其他内容";
-"course.notRead.pastLimit" = "PageLamp 在每门课里只打开有限数量的链接，也不会从链接到的页面继续往下打开。下面这些超出了这个范围，再同步也不会读取。";
+"course.notRead.pastLimit" = "PageLamp 在每门课里只打开有限数量的链接，也不会从链接到的页面继续往下打开。下面这些超出了这个范围。其中一些以后的同步能读到，大部分不会。";
 "course.notRead.title" = "PageLamp 没有读取的部分";
 "course.notRead.untitled.file" = "一个文件";
 "course.notRead.untitled.item" = "一项内容";
