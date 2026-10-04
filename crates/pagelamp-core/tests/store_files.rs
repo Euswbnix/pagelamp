@@ -815,3 +815,672 @@ fn an_unparseable_setting_is_absent_but_a_failed_read_is_an_error() {
         Err(Error::Db(_))
     ));
 }
+
+// ----- access parameters in stored text (`pagelamp_extract::scrub`) ----------------------------
+
+const WITH_VERIFIER: &str =
+    "handout (https://lms.example.edu/courses/101/files/7/download?verifier=Ab12Cd34Zz&wrap=1)";
+
+/// One material with one chunk, a syllabus and a saved plan, each holding an address with an
+/// access parameter, written as an earlier version could have stored them.
+fn store_text_with_access_parameters(conn: &rusqlite::Connection) {
+    conn.execute_batch(&format!(
+        "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+         VALUES ('canvas:demo/page/1', 'canvas:demo/course/101', 'page', 'Week 1', 'ok',
+                 '2026-09-20T00:00:00Z');
+         INSERT INTO chunks (material_id, ord, locator, text)
+         VALUES ('canvas:demo/page/1', 0,
+                 '§ Notes https://lms.example.edu/files/8/preview?verifier=Ab12Cd34Zz',
+                 'zebrafish {WITH_VERIFIER} and more');
+         UPDATE courses SET syllabus_text =
+             'Outline: https://media.example.edu/v?t=5&access_token=Ab12Cd34Zz';
+         INSERT INTO study_plans (created_at, plan_json)
+         VALUES ('2026-09-20T00:00:00Z',
+                 '{{\"horizon_start\":\"2026-09-21\",\"horizon_end\":\"2026-09-27\",\"items\":[],\"notes\":\"read https://lms.example.edu/pages/3?sf_verifier=Ab12Cd34Zz&x=1\"}}');"
+    ))
+    .unwrap();
+}
+
+/// Whether the file holds `what`, as written or in lowercase (the search index stores its
+/// tokens in lowercase).
+fn file_holds(path: &Path, what: &str) -> bool {
+    let bytes = std::fs::read(path).unwrap();
+    let text = String::from_utf8_lossy(&bytes);
+    text.contains(what) || text.contains(&what.to_lowercase())
+}
+
+const ADDRESS: &str =
+    "https://lms.example.edu/courses/101/files/7/download?verifier=Ab12Cd34Zz&wrap=1";
+
+/// Where in `ADDRESS` an old chunk can begin: on the "?", inside the parameter's name, on its
+/// "=", and inside its value.
+fn cuts_inside_the_address() -> [(&'static str, usize); 4] {
+    let name = ADDRESS.find("verifier").unwrap();
+    [
+        ("question", ADDRESS.find('?').unwrap()),
+        ("name", name + 3),
+        ("equals", name + "verifier".len()),
+        ("value", ADDRESS.find("Ab12").unwrap() + 4),
+    ]
+}
+
+/// A material whose text has no spaces, cut into chunks as an earlier version did: without
+/// cleaning it first, so the second chunk begins `into_address` characters into the address
+/// (in text without spaces the chunker starts the overlap in the middle of a word). Returns
+/// the whole text.
+fn old_chunks_cut_inside_the_address(
+    conn: &rusqlite::Connection,
+    material: &str,
+    into_address: usize,
+) -> String {
+    let chunk_chars = pagelamp_extract::DEFAULT_CHUNK_CHARS;
+    let second_chunk_starts = chunk_chars - chunk_chars / 10;
+    let text = format!(
+        "{}{ADDRESS}，并在课前阅读{}",
+        "字".repeat(second_chunk_starts - into_address),
+        "文".repeat(600)
+    );
+    let chunks = pagelamp_extract::chunk_segments(
+        &[pagelamp_extract::Segment {
+            locator: Some("p. 1".into()),
+            text: text.clone(),
+        }],
+        chunk_chars,
+    );
+    assert!(chunks.len() >= 2);
+    assert!(chunks[0].text.contains(ADDRESS), "the first chunk holds it");
+    assert!(
+        chunks[1].text.starts_with(&ADDRESS[into_address..]),
+        "the second begins inside it: {}",
+        &chunks[1].text[..40]
+    );
+    conn.execute(
+        "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+         VALUES (?1, 'canvas:demo/course/101', 'page', 'Notes', 'ok', '2026-09-20T00:00:00Z')",
+        [material],
+    )
+    .unwrap();
+    for (ord, chunk) in chunks.iter().enumerate() {
+        conn.execute(
+            "INSERT INTO chunks (material_id, ord, locator, text) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![material, ord as i64, chunk.locator, chunk.text],
+        )
+        .unwrap();
+    }
+    text
+}
+
+#[test]
+fn the_backup_made_before_a_migration_holds_no_access_parameter() {
+    let (_dir, path) = temp_db();
+    version_2_db(&path, ("2026-05-01", "2026-12-31"));
+    {
+        let plain = rusqlite::Connection::open(&path).unwrap();
+        store_text_with_access_parameters(&plain);
+        for (name, into_address) in cuts_inside_the_address() {
+            old_chunks_cut_inside_the_address(
+                &plain,
+                &format!("canvas:demo/page/cut-{name}"),
+                into_address,
+            );
+        }
+    }
+    assert!(file_holds(&path, "Ab12Cd34Zz"));
+
+    // The first open of the new version cleans the text, then copies the database, then
+    // migrates it.
+    let store = Store::open(&path).unwrap();
+    let backup = pagelamp_core::store::database_backup(&path).expect("a backup");
+    // Not the value, not a piece of it at the start of a chunk, and not its token in the
+    // search index (lowercase).
+    for gone in ["Ab12Cd34Zz", "Cd34Zz", "verifier=", "access_token="] {
+        assert!(!file_holds(&backup.path, gone), "{gone}");
+    }
+    // The copy is still the old database, with its text otherwise as it was.
+    let copy = rusqlite::Connection::open(&backup.path).unwrap();
+    let version: i64 = copy
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+    let text: String = copy
+        .query_row(
+            "SELECT text FROM chunks WHERE material_id = 'canvas:demo/page/1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        text,
+        "zebrafish handout (https://lms.example.edu/courses/101/files/7/download) and more"
+    );
+    // The recorded clean-up still runs afterwards (nothing left to change here).
+    assert_eq!(store.scrubbed_text_version().unwrap(), 0);
+    assert!(store.scrub_stored_text_once().unwrap());
+    assert_eq!(
+        store.scrubbed_text_version().unwrap(),
+        pagelamp_core::scrub::VERSION
+    );
+}
+
+#[test]
+fn stored_text_is_cleaned_once_per_version_of_the_rules() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    store.upsert_source(&demo_source("canvas:demo")).unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO courses (id, source_id, external_id, code, name, updated_at)
+             VALUES ('canvas:demo/course/101', 'canvas:demo', '101', 'DEMO101', 'Intro',
+                     '2026-09-20T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    // Two plans saved before the last one: one whose JSON escapes a line break before the parameter (cleaning
+    // the JSON text would miss it, or break the JSON), and one that isn't JSON.
+    store
+        .conn()
+        .execute_batch(
+            r#"INSERT INTO study_plans (created_at, plan_json) VALUES
+               ('2026-09-18T00:00:00Z',
+                '{"horizon_start":"2026-09-14","horizon_end":"2026-09-20","items":[],"notes":"read https://lms.example.edu/pages/4?\nverifier=Ab12Cd34Zz&x=1\nthen rest"}'),
+               ('2026-09-17T00:00:00Z', 'not a plan: verifier=Ab12Cd34Zz');"#,
+        )
+        .unwrap();
+
+    store_text_with_access_parameters(store.conn());
+    assert_eq!(store.search("Ab12Cd34Zz", None, 5).unwrap().len(), 1);
+
+    assert!(store.scrub_stored_text_once().unwrap());
+    let plans: Vec<String> = {
+        let mut statement = store
+            .conn()
+            .prepare("SELECT plan_json FROM study_plans ORDER BY id")
+            .unwrap();
+        let rows = statement.query_map([], |row| row.get(0)).unwrap();
+        rows.map(Result::unwrap).collect()
+    };
+    assert_eq!(plans[1], "not a plan: ");
+    let escaped: serde_json::Value = serde_json::from_str(&plans[0]).expect("still JSON");
+    assert_eq!(
+        escaped["notes"],
+        "read https://lms.example.edu/pages/4?\nx=1\nthen rest"
+    );
+    assert!(!plans.join(" ").contains("Ab12Cd34Zz"));
+    let all: String = store
+        .conn()
+        .query_row(
+            "SELECT (SELECT text || ' | ' || locator FROM chunks) || ' | '
+                 || (SELECT syllabus_text FROM courses) || ' | '
+                 || (SELECT plan_json FROM study_plans ORDER BY id DESC LIMIT 1)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    for gone in ["Ab12Cd34Zz", "verifier", "access_token"] {
+        assert!(!all.contains(gone), "{gone}: {all}");
+    }
+    assert!(
+        all.contains("§ Notes https://lms.example.edu/files/8/preview |"),
+        "{all}"
+    );
+    assert!(all.contains("https://media.example.edu/v?t=5 |"), "{all}");
+    assert!(
+        all.contains("read https://lms.example.edu/pages/3?x=1"),
+        "{all}"
+    );
+    // The search index followed, and the plan is still a plan.
+    assert!(store.search("Ab12Cd34Zz", None, 5).unwrap().is_empty());
+    assert_eq!(store.search("zebrafish", None, 5).unwrap().len(), 1);
+    let plan = store.latest_study_plan().unwrap().unwrap().plan;
+    assert_eq!(
+        plan.notes.as_deref(),
+        Some("read https://lms.example.edu/pages/3?x=1")
+    );
+
+    // Done once: text written past the rules afterwards isn't looked for again.
+    store
+        .conn()
+        .execute(
+            "UPDATE courses SET syllabus_text = 'https://lms.example.edu/files/9/download?verifier=Later'",
+            [],
+        )
+        .unwrap();
+    assert!(!store.scrub_stored_text_once().unwrap());
+    assert!(
+        store
+            .course_syllabus_text("canvas:demo/course/101")
+            .unwrap()
+            .unwrap()
+            .contains("verifier=Later")
+    );
+}
+
+/// An earlier version cut a text into chunks without cleaning it. In text without spaces a
+/// chunk then begins in the middle of an address: on the "?", inside the parameter's name, on
+/// its "=" or inside its value, where nothing shows that what follows gives access to a file.
+/// The clean-up puts each material's text together again, cleans it and cuts it again.
+#[test]
+fn a_chunk_that_begins_inside_an_address_is_cleaned_with_its_material() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    store.upsert_source(&demo_source("canvas:demo")).unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO courses (id, source_id, external_id, code, name, updated_at)
+             VALUES ('canvas:demo/course/101', 'canvas:demo', '101', 'DEMO101', 'Intro',
+                     '2026-09-20T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    let mut texts = Vec::new();
+    for (name, into_address) in cuts_inside_the_address() {
+        let material = format!("canvas:demo/page/cut-{name}");
+        let text = old_chunks_cut_inside_the_address(store.conn(), &material, into_address);
+        texts.push((material, text));
+    }
+    // A material without an address is left exactly as it is.
+    let untouched = "canvas:demo/page/plain";
+    store
+        .conn()
+        .execute_batch(&format!(
+            "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+             VALUES ('{untouched}', 'canvas:demo/course/101', 'page', 'Plain', 'ok',
+                     '2026-09-20T00:00:00Z');
+             INSERT INTO chunks (material_id, ord, locator, text)
+             VALUES ('{untouched}', 0, NULL, 'no address here'),
+                    ('{untouched}', 5, NULL, 'and an odd ord that stays');"
+        ))
+        .unwrap();
+    // The first chunk of each material holds the value, and so does the second of the three
+    // that begin before it.
+    assert_eq!(store.search("Ab12Cd34Zz", None, 10).unwrap().len(), 7);
+
+    assert!(store.scrub_stored_text_once().unwrap());
+
+    for (material, text) in &texts {
+        let chunks = store.get_chunks(material, 0, None).unwrap();
+        assert!(chunks.len() >= 2, "{material}");
+        for chunk in &chunks {
+            let lower = chunk.text.to_lowercase();
+            // Not the value, not its second half, not the name, not what followed it.
+            for gone in ["ab12cd34zz", "cd34zz", "verifier", "wrap=1"] {
+                assert!(
+                    !lower.contains(gone),
+                    "{material} chunk {}: {gone}",
+                    chunk.ord
+                );
+            }
+            assert_eq!(chunk.locator.as_deref(), Some("p. 1"));
+        }
+        // The text is otherwise what it was: the address without its query, and every
+        // character around it.
+        let parts = pagelamp_core::calendar::text::rebuild_parts(&chunks);
+        assert_eq!(parts.len(), 1, "{material}");
+        assert_eq!(
+            parts[0].text,
+            text.replace("?verifier=Ab12Cd34Zz&wrap=1", ""),
+            "{material}"
+        );
+        // Cut as this version cuts new text: the same chunks as indexing the clean text.
+        let fresh = pagelamp_extract::chunk_segments(
+            &[pagelamp_extract::Segment {
+                locator: Some("p. 1".into()),
+                text: parts[0].text.clone(),
+            }],
+            pagelamp_extract::DEFAULT_CHUNK_CHARS,
+        );
+        assert_eq!(
+            chunks.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+            fresh.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
+            "{material}"
+        );
+    }
+    let plain = store.get_chunks(untouched, 0, None).unwrap();
+    assert_eq!(
+        plain
+            .iter()
+            .map(|c| (c.ord, c.text.as_str()))
+            .collect::<Vec<_>>(),
+        [(0, "no address here"), (5, "and an odd ord that stays")]
+    );
+    // The search index followed: the value finds nothing, the text is still found.
+    assert!(store.search("Ab12Cd34Zz", None, 10).unwrap().is_empty());
+    assert!(store.search("Cd34Zz", None, 10).unwrap().is_empty());
+    assert!(!store.search("download", None, 10).unwrap().is_empty());
+    // And its older segments were merged away: a copy of the file holds no token of it.
+    let copy = path.with_extension("copy");
+    store
+        .conn()
+        .execute("VACUUM INTO ?1", [copy.to_str().unwrap()])
+        .unwrap();
+    for gone in ["Ab12Cd34Zz", "Cd34Zz"] {
+        assert!(!file_holds(&copy, gone), "{gone}");
+    }
+}
+
+/// A store with one course, and a way to put a material's segments into it cut as an earlier
+/// version cut them (without cleaning). Returns the stored chunks as (locator, text).
+fn store_with_course(path: &Path) -> Store {
+    let store = Store::open(path).unwrap();
+    store.upsert_source(&demo_source("canvas:demo")).unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO courses (id, source_id, external_id, code, name, updated_at)
+             VALUES ('canvas:demo/course/101', 'canvas:demo', '101', 'DEMO101', 'Intro',
+                     '2026-09-20T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    store
+}
+
+fn old_material(
+    store: &Store,
+    material: &str,
+    segments: &[(&str, String)],
+) -> Vec<(Option<String>, String)> {
+    let segments: Vec<pagelamp_extract::Segment> = segments
+        .iter()
+        .map(|(locator, text)| pagelamp_extract::Segment {
+            locator: Some((*locator).to_string()),
+            text: text.clone(),
+        })
+        .collect();
+    let chunks = pagelamp_extract::chunk_segments(&segments, pagelamp_extract::DEFAULT_CHUNK_CHARS);
+    store
+        .conn()
+        .execute(
+            "INSERT INTO materials (id, course_id, kind, title, text_status, updated_at)
+             VALUES (?1, 'canvas:demo/course/101', 'page', 'Notes', 'ok', '2026-09-20T00:00:00Z')",
+            [material],
+        )
+        .unwrap();
+    for (ord, chunk) in chunks.iter().enumerate() {
+        store
+            .conn()
+            .execute(
+                "INSERT INTO chunks (material_id, ord, locator, text) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![material, ord as i64, chunk.locator, chunk.text],
+            )
+            .unwrap();
+    }
+    chunks
+        .into_iter()
+        .map(|chunk| (chunk.locator, chunk.text))
+        .collect()
+}
+
+fn stored_chunks(store: &Store, material: &str) -> Vec<(Option<String>, String)> {
+    store
+        .get_chunks(material, 0, None)
+        .unwrap()
+        .into_iter()
+        .map(|chunk| (chunk.locator, chunk.text))
+        .collect()
+}
+
+/// Sentences that don't repeat, about `chars` characters of them.
+fn prose(seed: usize, chars: usize) -> String {
+    let mut text = String::new();
+    let mut n = seed;
+    while text.len() < chars {
+        n += 1;
+        text.push_str(&format!(
+            "Sentence {n} of part {seed} explains idea {} with example {}. ",
+            n * 7 % 13,
+            n * 11 % 17
+        ));
+        if n.is_multiple_of(6) {
+            // (No space before a blank line: the chunker trims what it cuts there.)
+            text.truncate(text.trim_end().len());
+            text.push_str("\n\n");
+        }
+    }
+    text.trim().to_string()
+}
+
+/// An ordinary material: several pages, two sections with the same heading, one address with
+/// a parameter. After the clean-up its text is what it was without the parameter, its
+/// locators are the same, and every chunk the address isn't in is the same character for
+/// character.
+#[test]
+fn an_ordinary_material_is_rewritten_without_losing_a_character() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/english";
+    let with_address = format!(
+        "{} The handout is at {ADDRESS} for everyone. {}",
+        prose(1, 2500),
+        prose(2, 2200)
+    );
+    let segments = [
+        ("p. 1", with_address.clone()),
+        ("p. 2", prose(3, 4100)),
+        ("§ Notes", prose(4, 900)),
+        ("§ Notes", prose(5, 1300)),
+    ];
+    let before = old_material(&store, material, &segments);
+    assert!(before.len() >= 7, "{}", before.len());
+    let holding: Vec<usize> = (0..before.len())
+        .filter(|i| before[*i].1.contains("Ab12Cd34Zz"))
+        .collect();
+    assert!(!holding.is_empty());
+
+    assert!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap()
+            >= 1
+    );
+
+    let after = stored_chunks(&store, material);
+    let chunks = store.get_chunks(material, 0, None).unwrap();
+    assert_eq!(
+        chunks.iter().map(|c| c.ord).collect::<Vec<_>>(),
+        (0..after.len() as u32).collect::<Vec<_>>()
+    );
+    for (_, text) in &after {
+        assert!(!text.to_lowercase().contains("ab12cd34zz"), "{text}");
+        assert!(!text.contains("verifier"), "{text}");
+    }
+    // The text, part by part: the first page lost the query and nothing else, the others
+    // are as they were, and the two sections with one heading are still two.
+    let parts = pagelamp_core::calendar::text::rebuild_parts(&chunks);
+    let expected: Vec<(Option<String>, String)> = segments
+        .iter()
+        .map(|(locator, text)| {
+            (
+                Some((*locator).to_string()),
+                text.replace("?verifier=Ab12Cd34Zz&wrap=1", ""),
+            )
+        })
+        .collect();
+    assert_eq!(
+        parts
+            .into_iter()
+            .map(|part| (part.locator, part.text))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    // Chunk by chunk: everything before the address, and every other part, is untouched.
+    let first = holding[0];
+    assert_eq!(after[..first], before[..first]);
+    let other_parts = |chunks: &[(Option<String>, String)]| -> Vec<(Option<String>, String)> {
+        chunks
+            .iter()
+            .filter(|(locator, _)| locator.as_deref() != Some("p. 1"))
+            .cloned()
+            .collect()
+    };
+    assert_eq!(other_parts(&after), other_parts(&before));
+}
+
+/// Putting chunks together again is a guess at where they overlap. In text that repeats (a
+/// column of numbers set apart by spaces) a longer overlap matches than the real one, and
+/// cutting that guess again would drop text. Such a material is cleaned chunk by chunk
+/// instead, and loses nothing.
+#[test]
+fn a_material_that_cannot_be_put_together_exactly_is_cleaned_chunk_by_chunk() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/table";
+    let column = "0.00   ".repeat(400);
+    let before = old_material(
+        &store,
+        material,
+        &[
+            ("p. 1", column.clone()),
+            (
+                "p. 2",
+                format!("The table above is from the handout ({ADDRESS})."),
+            ),
+        ],
+    );
+    // The guess is wrong here: this is the case the check is for.
+    let guess =
+        pagelamp_core::calendar::text::rebuild_parts(&store.get_chunks(material, 0, None).unwrap());
+    assert_ne!(
+        guess[0].text,
+        column.trim(),
+        "the overlap is guessed too long"
+    );
+
+    assert_eq!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap(),
+        1
+    );
+
+    let after = stored_chunks(&store, material);
+    assert_eq!(after.len(), before.len());
+    let last = before.len() - 1;
+    assert_eq!(after[..last], before[..last], "the column is untouched");
+    assert_eq!(
+        after[last],
+        (
+            Some("p. 2".to_string()),
+            "The table above is from the handout \
+             (https://lms.example.edu/courses/101/files/7/download)."
+                .to_string()
+        )
+    );
+    assert!(store.search("Ab12Cd34Zz", None, 5).unwrap().is_empty());
+}
+
+/// An address wrapped by a gateway carries the parameter percent-encoded, inside the value of
+/// a pair. Cut by a chunk's end in the middle of the name, neither chunk shows it: the first
+/// ends before the name is complete, the second begins inside the value, where nothing says
+/// what follows. Only the text put together again does.
+#[test]
+fn a_parameter_cut_by_a_chunks_end_is_found_in_the_text_put_together() {
+    let (_dir, path) = temp_db();
+    let store = store_with_course(&path);
+    let material = "canvas:demo/page/wrapped";
+    let before_name = format!(
+        "https://gw.example.org/?url=https%3A%2F%2Flms.example.edu%2F{}files%2F7%3F",
+        "a%2F".repeat(60)
+    );
+    let chunk_chars = pagelamp_extract::DEFAULT_CHUNK_CHARS;
+    // The first chunk ends five characters into "verifier".
+    let text = format!(
+        "{}{before_name}verifier%3DAb12Cd34Zz%26wrap%3D1，并在课前阅读{}",
+        "字".repeat(chunk_chars - before_name.len() - 5),
+        "文".repeat(600)
+    );
+    let before = old_material(&store, material, &[("p. 1", text.clone())]);
+    assert!(
+        before[0].1.ends_with("%3Fverif"),
+        "{}",
+        &before[0].1[before[0].1.len() - 30..]
+    );
+    assert!(before[1].1.contains("verifier%3DAb12Cd34Zz"));
+    for (_, chunk) in &before {
+        assert!(
+            matches!(
+                pagelamp_core::scrub::scrub_text(chunk),
+                std::borrow::Cow::Borrowed(_)
+            ),
+            "no chunk shows it by itself"
+        );
+    }
+
+    assert_eq!(
+        store
+            .in_transaction(|store| store.scrub_stored_text())
+            .unwrap(),
+        1
+    );
+
+    let chunks = store.get_chunks(material, 0, None).unwrap();
+    for chunk in &chunks {
+        assert!(!chunk.text.contains("Ab12Cd34Zz"), "chunk {}", chunk.ord);
+        assert!(!chunk.text.contains("verif"), "chunk {}", chunk.ord);
+    }
+    let parts = pagelamp_core::calendar::text::rebuild_parts(&chunks);
+    assert_eq!(parts.len(), 1);
+    assert!(
+        parts[0]
+            .text
+            .contains("字https://gw.example.org/，并在课前阅读文"),
+        "the pair that carried it is gone, the rest stays"
+    );
+}
+
+/// A title that is nothing but an access parameter is an empty title once it is cleaned: the
+/// plan is refused, not stored with an empty title.
+#[test]
+fn a_plan_is_validated_as_it_will_be_stored() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let mut plan = demo_plan();
+    plan.items.push(StudyPlanItem {
+        date: plan.horizon_start,
+        course_id: None,
+        title: "sf_verifier=abc".into(),
+        description: None,
+        material_ids: Vec::new(),
+        minutes: Some(30),
+        done: false,
+    });
+    let refused = store.save_study_plan(&plan).unwrap_err();
+    assert!(matches!(refused, Error::Invalid(_)), "{refused}");
+    assert!(store.latest_study_plan().unwrap().is_none());
+}
+
+/// While another connection holds the write lock the clean-up is refused and nothing is
+/// recorded; afterwards it runs.
+#[test]
+fn a_cleanup_that_cannot_get_the_database_is_refused_and_not_recorded() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let other = rusqlite::Connection::open(&path).unwrap();
+    other.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let refused = store.scrub_stored_text_once().unwrap_err();
+    assert!(refused.is_database_busy(), "{refused}");
+    other.execute_batch("ROLLBACK").unwrap();
+    assert_eq!(store.scrubbed_text_version().unwrap(), 0);
+    assert!(store.scrub_stored_text_once().unwrap());
+    assert!(!store.scrub_stored_text_once().unwrap());
+}
+
+/// A plan an AI app saves with a copied address is stored, and returned, without the
+/// parameter.
+#[test]
+fn a_saved_plan_keeps_no_access_parameter() {
+    let (_dir, path) = temp_db();
+    let store = Store::open(&path).unwrap();
+    let mut plan = demo_plan();
+    plan.notes = Some(format!("Start with the {WITH_VERIFIER}."));
+    let saved = store.save_study_plan(&plan).unwrap();
+    let clean = "Start with the handout (https://lms.example.edu/courses/101/files/7/download).";
+    assert_eq!(saved.plan.notes.as_deref(), Some(clean));
+    let stored = store.latest_study_plan().unwrap().unwrap();
+    assert_eq!(stored.plan.notes.as_deref(), Some(clean));
+    assert_eq!(stored.plan.items.len(), plan.items.len());
+    drop(store);
+    assert!(!file_holds(&path, "Ab12Cd34Zz"));
+}
