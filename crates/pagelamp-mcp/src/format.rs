@@ -74,23 +74,36 @@ pub fn cap_list<T>(mut items: Vec<T>, max: usize) -> (Vec<T>, usize) {
     (items, omitted)
 }
 
-/// A successful result carrying compact JSON, cleaned like `text_result` cleans text. The
-/// value's strings are cleaned, not the JSON text: there a line break is written `\n`, and
-/// the "n" would read as the first letter of the next word (`pagelamp_core::scrub::scrub_json`).
+/// `value` as compact JSON without access parameters in its strings. The value's strings are
+/// cleaned, not the JSON text: there a line break is written `\n`, and the "n" would read as
+/// the first letter of the next word (`pagelamp_core::scrub::scrub_json`).
 ///
-/// Almost always nothing changes and the fields come in the order the result declares them.
+/// Almost always nothing changes and the fields come in the order the value declares them.
 /// Only when a string was cleaned is the cleaned value written out, with its fields in
 /// alphabetical order.
+pub fn clean_json(value: &impl Serialize) -> serde_json::Result<String> {
+    let mut cleaned = serde_json::to_value(value)?;
+    if pagelamp_core::scrub::scrub_json(&mut cleaned) {
+        serde_json::to_string(&cleaned)
+    } else {
+        serde_json::to_string(value)
+    }
+}
+
+/// A successful result carrying compact JSON (`clean_json`).
 pub fn json_result(value: &impl Serialize) -> CallToolResult {
-    let json = serde_json::to_value(value).and_then(|mut cleaned| {
-        if pagelamp_core::scrub::scrub_json(&mut cleaned) {
-            serde_json::to_string(&cleaned)
-        } else {
-            serde_json::to_string(value)
-        }
-    });
-    match json {
+    match clean_json(value) {
         Ok(json) => CallToolResult::success(vec![ContentBlock::text(json)]),
+        Err(err) => error_result(format!("internal error: {err}")),
+    }
+}
+
+/// A successful result carrying a saved study plan: its JSON cleaned by its strings
+/// (`clean_json`) and wrapped as data (`wrap_plan`). Not cleaned again as text, which could
+/// only misread the JSON's escapes.
+pub fn plan_result(preface: &str, plan: &impl Serialize) -> CallToolResult {
+    match clean_json(plan) {
+        Ok(json) => CallToolResult::success(vec![ContentBlock::text(wrap_plan(preface, &json))]),
         Err(err) => error_result(format!("internal error: {err}")),
     }
 }

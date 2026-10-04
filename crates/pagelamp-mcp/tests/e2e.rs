@@ -1525,10 +1525,13 @@ async fn mcp_course_info_uses_resolved_dates() {
 async fn no_tool_gives_out_an_access_parameter() {
     // Values without a word break. The search index cuts a snippet of 16 words that starts 7
     // words before a single hit, and "wrap", "1" and "x" are words to it. So after each value
-    // the sixth word (kiwi, mango, olive) makes a snippet start at the parameter's name, and
-    // the seventh (lemon, nectar, papaya) makes one start at the value itself, where nothing
-    // shows what it is. Eight more words follow the last hit, so its snippet isn't pulled
-    // back from the end of the text.
+    // the sixth word (kiwi, mango, olive) makes a snippet start at the last piece of the
+    // parameter's name: `verifier=`, `verifier=` (of sf_verifier) and `token=` (of
+    // access_token). The first two are names the cleaning of the output knows by itself;
+    // `token=` isn't one, so only the check of the whole chunk catches it. The seventh word
+    // (lemon, nectar, papaya) makes a snippet start at the value itself, where nothing shows
+    // what it is. Eight more words follow the last hit, so its snippet isn't pulled back
+    // from the end of the text.
     const VALUES: [&str; 3] = ["Ab12Cd34Zz", "Ef56Gh78Yy", "Ij90Kl12Xx"];
     let temp = tempfile::tempdir().unwrap();
     let db = fixture(temp.path());
@@ -1543,6 +1546,18 @@ async fn no_tool_gives_out_an_access_parameter() {
                  https://media.example.edu/v?t=5&access_token=Ij90Kl12Xx one two three four five \
                  olive papaya eight more words follow the last hit here \"today\"'",
                 [],
+            )
+            .unwrap();
+        // Something for the tools that answer in JSON: a material's own link with a
+        // parameter, and a plan saved by an earlier version whose JSON escapes a line break
+        // right before one.
+        s.conn()
+            .execute_batch(
+                r#"UPDATE materials SET url = url || '?verifier=Ab12Cd34Zz&wrap=1'
+                       WHERE url IS NOT NULL;
+                   INSERT INTO study_plans (created_at, plan_json) VALUES
+                   ('2026-09-20T00:00:00Z',
+                    '{"horizon_start":"2026-09-21","horizon_end":"2026-09-27","items":[],"notes":"read https://lms.example.edu/pages/4?\nverifier=Ef56Gh78Yy&x=1 first"}');"#,
             )
             .unwrap();
     });
@@ -1577,6 +1592,7 @@ async fn no_tool_gives_out_an_access_parameter() {
         ("get_announcements", json!({"course": "DEMO101"})),
         ("course_overview", json!({"course": "DEMO101"})),
         ("week_materials", json!({"course": "DEMO101"})),
+        ("get_study_plan", json!({})),
     ] {
         let result = call(&client, tool, args.clone()).await;
         assert!(!is_error(&result), "{tool}: {}", text_of(&result));
@@ -1604,6 +1620,38 @@ async fn no_tool_gives_out_an_access_parameter() {
     ] {
         assert!(read.contains(kept), "{kept}: {read}");
     }
+    // What is given as JSON is still JSON after the cleaning, with the links kept.
+    let json_of_call = |tool: &str| -> Value {
+        let (_, text) = outputs
+            .iter()
+            .find(|(call, _)| call.starts_with(tool))
+            .unwrap();
+        let json = match text.split_once("<study_plan>\n") {
+            Some((_, rest)) => rest.split_once("\n</study_plan>").unwrap().0,
+            None => text.as_str(),
+        };
+        serde_json::from_str(json).unwrap_or_else(|err| panic!("{tool}: {err}: {json}"))
+    };
+    let week = json_of_call("week_materials");
+    let links: Vec<&str> = week["materials"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|material| material["url"].as_str())
+        .collect();
+    assert!(!links.is_empty(), "{week}");
+    // (The fixture's links aren't file addresses with an id: only the parameter goes.)
+    assert!(
+        links.iter().all(|link| {
+            link.starts_with("https://lms.example.edu/files/") && link.ends_with("?wrap=1")
+        }),
+        "{links:?}"
+    );
+    json_of_call("course_overview");
+    assert_eq!(
+        json_of_call("get_study_plan")["plan"]["notes"],
+        "read https://lms.example.edu/pages/4?\nx=1 first"
+    );
     // A search still finds the chunk, and says where. Its snippet was cut from text that
     // holds a parameter, so the start of the cleaned text is given in its place.
     for (call, text) in &outputs[1..12] {

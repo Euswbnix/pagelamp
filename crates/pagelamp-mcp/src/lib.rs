@@ -98,7 +98,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::format::{
-    OUTPUT_CAP, cap_list, error_result, json_result, text_result, wrap, wrap_plan,
+    OUTPUT_CAP, cap_list, error_result, json_result, plan_result, text_result, wrap,
 };
 
 /// Run the MCP server over stdio until the client disconnects (or the process is told to
@@ -833,10 +833,7 @@ impl PageLampServer {
     #[tool(description = text::GET_STUDY_PLAN, annotations(read_only_hint = true, destructive_hint = false, idempotent_hint = true, open_world_hint = false))]
     async fn get_study_plan(&self) -> CallToolResult {
         match self.read(|store| store.latest_study_plan()).await {
-            Ok(Some(plan)) => match serde_json::to_string(&plan) {
-                Ok(json) => text_result(wrap_plan(text::PLAN_PREFACE, &json)),
-                Err(err) => error_result(format!("internal error: {err}")),
-            },
+            Ok(Some(plan)) => plan_result(text::PLAN_PREFACE, &plan),
             Ok(None) => text_result(text::NO_PLAN),
             Err(error) => error,
         }
