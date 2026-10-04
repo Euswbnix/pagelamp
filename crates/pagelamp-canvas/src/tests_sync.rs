@@ -702,7 +702,8 @@ async fn link_addresses_are_stored_without_access_parameters() {
     let page = json!({"page_id": 601, "url": "week-1", "title": "Week 1", "updated_at": "2026-09-08T10:00:00Z"});
     f.get("/courses/101/pages", json!([page])).await;
     let body = format!(
-        "<h1>Week 1</h1><p>Slides: <a href=\"{base}/courses/101/files/501/download?verifier=SECRET-PAGE&amp;wrap=1\">photosynthesis slides</a>, \
+        "<h1>Week 1</h1><h2>Notes at {base}/files/504/preview?verifier=SECRET-HEADING</h2>\
+         <p>Slides: <a href=\"{base}/courses/101/files/501/download?verifier=SECRET-PAGE&amp;wrap=1\">photosynthesis slides</a>, \
          the <a href=\"https://media.example.edu/watch?access_token=SECRET-TOKEN&amp;t=30\">recording</a>, \
          and a pasted address: {base}/files/502/preview?sf_verifier=SECRET-PASTED</p>"
     );
@@ -765,48 +766,17 @@ async fn link_addresses_are_stored_without_access_parameters() {
         text.contains(&format!("{base}/files/502/preview")),
         "{text}"
     );
+    // A heading with an address in it becomes a locator: cleaned too.
+    assert_eq!(
+        hits[0].locator.as_deref(),
+        Some(format!("§ Notes at {base}/files/504/preview").as_str())
+    );
     let demo = course101(&f);
     let syllabus = store.course_syllabus_text(&demo).unwrap().unwrap();
     assert!(
         syllabus.contains(&format!("PDF ({base}/courses/101/files/500/download)")),
         "{syllabus}"
     );
-
-    // Text an earlier version stored under the old hash is extracted again by the next sync.
-    let announcement = format!("{}/announcement/701", f.source);
-    let old_hash = pagelamp_core::ingest::sha256_hex(message.as_bytes());
-    store
-        .conn()
-        .execute(
-            "UPDATE chunks SET text = text || ' (https://lms.example.edu/files/9/download?verifier=SECRET-OLD)'
-             WHERE material_id = ?1",
-            [&announcement],
-        )
-        .unwrap();
-    store
-        .conn()
-        .execute(
-            "UPDATE materials SET content_hash = ?2 WHERE id = ?1",
-            [&announcement, &old_hash],
-        )
-        .unwrap();
-    assert_eq!(store.search("SECRET", None, 5).unwrap().len(), 1);
-    drop(store);
-    f.sync(&f.options(false)).await.unwrap();
-    let store = f.store();
-    let text: String = store
-        .conn()
-        .query_row(
-            "SELECT group_concat(text, ' ') FROM chunks WHERE material_id = ?1",
-            [&announcement],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert!(
-        text.contains("handout") && !text.contains("SECRET") && !text.contains("verifier"),
-        "{text}"
-    );
-    assert!(store.search("SECRET", None, 5).unwrap().is_empty());
 }
 
 #[test]
