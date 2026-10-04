@@ -15,7 +15,7 @@ use wiremock::matchers::{header, method, path, query_param};
 use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
 use crate::api::Api;
-use crate::transport::{RetryPolicy, TokenTransport};
+use crate::transport::{CanvasError, RetryPolicy, TokenTransport};
 use crate::{SyncOptions, source_id, sync_with};
 
 const TOKEN: &str = "demo-not-a-real-token";
@@ -527,56 +527,76 @@ async fn throttling_backs_off_then_succeeds_or_gives_up() {
 /// A throttled answer's `Retry-After` is waited for, up to the policy's limit, and a sync
 /// PageLamp started by itself says so in its User-Agent.
 #[tokio::test]
-async fn retry_after_is_honoured_and_an_automatic_sync_names_itself() {
-    let f = Fixture::new().await;
-    Mock::given(method("GET"))
-        .and(path("/api/v1/users/self"))
-        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "3600"))
-        .up_to_n_times(1)
-        .with_priority(1)
-        .mount(&f.canvas)
-        .await;
-    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
-        .await;
-    let started = std::time::Instant::now();
-    let user: crate::json::User = f
-        .api_for(true)
-        .get_one(crate::endpoint::Endpoint::UsersSelf)
-        .await
-        .unwrap();
-    assert_eq!(user.name.as_deref(), Some("Demo Student"));
-    // An hour was asked for: the policy's limit (20 ms here) is waited, not the 1 ms backoff.
-    let waited = started.elapsed();
-    assert!(
-        waited >= Duration::from_millis(20) && waited < Duration::from_secs(10),
-        "{waited:?}"
-    );
+async fn retry_after_is_honoured_up_to_a_limit_and_an_automatic_sync_names_itself() {
     let agents = |requests: Vec<Request>| -> Vec<String> {
         requests
             .iter()
             .map(|r| r.headers["user-agent"].to_str().unwrap().to_string())
             .collect()
     };
+
+    // Canvas asks for an hour: more than a sync waits inside itself (the wait couldn't be
+    // stopped). The call ends as throttled at once, after that one request.
+    let f = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "3600"))
+        .mount(&f.canvas)
+        .await;
+    let started = std::time::Instant::now();
+    let throttled = f
+        .api_for(true)
+        .get_one::<crate::json::User>(crate::endpoint::Endpoint::UsersSelf)
+        .await
+        .unwrap_err();
+    assert!(matches!(throttled, CanvasError::RateLimited));
+    assert!(started.elapsed() < Duration::from_secs(5));
     let automatic = agents(f.canvas.received_requests().await.unwrap());
-    assert_eq!(automatic.len(), 2);
+    assert_eq!(automatic.len(), 1, "no second try");
     assert!(
-        automatic
-            .iter()
-            .all(|agent| agent.ends_with("(read-only; automatic sync)")),
+        automatic[0].ends_with("(read-only; automatic sync)"),
         "{automatic:?}"
     );
 
-    // A sync the student started keeps the plain one.
+    // One second is inside the limit: it is waited (not the 1 ms backoff), then the call
+    // succeeds. A sync the student started keeps the plain User-Agent.
     let g = Fixture::new().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/users/self"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "1"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&g.canvas)
+        .await;
     g.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
         .await;
-    let _: crate::json::User = g
-        .api()
+    let base = url::Url::parse(&g.canvas.uri()).unwrap();
+    let retry = RetryPolicy {
+        base_delay: Duration::from_millis(1),
+        max_tries: 3,
+        max_retry_after: Duration::from_secs(5),
+    };
+    let api = Api::new(
+        TokenTransport::new(base.clone(), TOKEN, retry, false).unwrap(),
+        base,
+    );
+    let started = std::time::Instant::now();
+    let user: crate::json::User = api
         .get_one(crate::endpoint::Endpoint::UsersSelf)
         .await
         .unwrap();
+    assert_eq!(user.name.as_deref(), Some("Demo Student"));
+    let waited = started.elapsed();
+    assert!(
+        waited >= Duration::from_millis(900) && waited < Duration::from_secs(10),
+        "{waited:?}"
+    );
     let manual = agents(g.canvas.received_requests().await.unwrap());
-    assert!(manual[0].ends_with("(read-only)"), "{manual:?}");
+    assert_eq!(manual.len(), 2);
+    assert!(
+        manual.iter().all(|agent| agent.ends_with("(read-only)")),
+        "{manual:?}"
+    );
 }
 
 #[tokio::test]
@@ -735,7 +755,7 @@ async fn every_request_is_an_allow_listed_get() {
 /// A sync nobody is at the app for: Canvas may record a request for a course's modules, files,
 /// pages or assignments as the student's activity in that course, so none is made.
 #[tokio::test]
-async fn a_user_level_sync_asks_for_no_course_and_removes_nothing() {
+async fn a_user_level_sync_asks_for_no_course_and_removes_only_what_it_read() {
     let f = Fixture::new().await;
     f.standard().await;
     // Beside Problem Set 1: a graded quiz, and a report the planner won't list.
@@ -977,6 +997,76 @@ async fn a_user_level_sync_asks_for_no_course_and_removes_nothing() {
         }
     }
 
+    // Like any sync, a light run removes what it read completely and no longer finds: an
+    // announcement that left the listing, a syllabus that became empty, a planner note that is
+    // gone. What it didn't read stays: files, pages, links, modules and assignment dates.
+    let events_before = all_events(&store).len();
+    drop(store);
+    f.canvas.reset().await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
+    f.get(
+        "/courses",
+        json!([
+            {"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101"},
+            {"id": 202, "name": "Advanced Demo Studies", "course_code": "DEMO202"},
+            {"id": 404, "name": "Demo Seminar", "course_code": "DEMO404"}
+        ]),
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/announcements"))
+        .and(query_param("context_codes[]", "course_101"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 702, "title": "Midterm date", "message": "<p>The midterm is on a Thursday.</p>", "posted_at": "2026-09-29T12:00:00Z"}
+        ])))
+        .with_priority(1)
+        .mount(&f.canvas)
+        .await;
+    f.get("/announcements", json!([])).await;
+    f.get("/planner/items", json!([])).await;
+    let report = sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
+        .await
+        .unwrap();
+    assert!(report.user_level_read && report.warnings.is_empty());
+    let store = f.store();
+    assert!(
+        !has_material(&f, "/announcement/701"),
+        "it left the listing"
+    );
+    assert!(has_material(&f, "/announcement/702"));
+    assert!(
+        !has_material(&f, "/syllabus/101"),
+        "the syllabus is empty now"
+    );
+    assert_eq!(store.course_syllabus_text(&demo).unwrap(), None);
+    let events = all_events(&store);
+    // The planner's own items went (the note, and the discussion it listed as a to-do).
+    for gone in ["Buy a lab coat", "Week 3 discussion"] {
+        assert!(events.iter().all(|e| e.title != gone), "{gone}");
+    }
+    assert_eq!(events.len(), events_before - 2, "and nothing else");
+    for kept in [
+        "/file/501",
+        "/file/502",
+        "/file/503",
+        "/page/601",
+        "/link/13",
+    ] {
+        assert!(has_material(&f, kept), "{kept}");
+    }
+    assert_eq!(store.list_modules(&demo).unwrap().len(), modules_before);
+    for title in [
+        "Problem Set 1",
+        "Quiz A",
+        "Lab report",
+        "Problem Set 2",
+        "Quiz 1",
+    ] {
+        assert!(events.iter().any(|e| e.title == title), "{title}");
+    }
+    drop(store);
+
     // The next full sync reads the new course, and takes the dates from the assignments again.
     f.canvas.reset().await;
     f.standard().await;
@@ -1097,6 +1187,74 @@ async fn a_user_level_sync_that_misses_deadlines_or_fails_still_records_new_cour
             .iter()
             .all(|r| !r.url.path().starts_with("/api/v1/courses/"))
     );
+
+    // Every other way of not reading it all says so too: one course's announcements fail,
+    // or the course list or the planner ends in a next link that isn't followed.
+    let elsewhere = "<https://elsewhere.example.org/api/v1/more?page=2>; rel=\"next\"";
+    let list = json!([course(101), course(202)]);
+    for missing in ["announcements", "courses", "planner"] {
+        f.canvas.reset().await;
+        f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+            .await;
+        let mut courses = ResponseTemplate::new(200).set_body_json(list.clone());
+        let mut planner = ResponseTemplate::new(200).set_body_json(json!([]));
+        match missing {
+            "announcements" => {
+                Mock::given(method("GET"))
+                    .and(path("/api/v1/announcements"))
+                    .and(query_param("context_codes[]", "course_202"))
+                    .respond_with(ResponseTemplate::new(500))
+                    .with_priority(1)
+                    .mount(&f.canvas)
+                    .await;
+            }
+            "courses" => courses = courses.insert_header("Link", elsewhere),
+            _ => planner = planner.insert_header("Link", elsewhere),
+        }
+        for (at, response) in [
+            ("/api/v1/courses", courses),
+            ("/api/v1/planner/items", planner),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(at))
+                .respond_with(response)
+                .mount(&f.canvas)
+                .await;
+        }
+        f.get("/announcements", json!([])).await;
+        let report = sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
+            .await
+            .unwrap();
+        assert!(!report.user_level_read, "{missing}");
+        assert!(!report.warnings.is_empty(), "{missing}");
+    }
+}
+
+/// Which courses a full sync read the structure of: a module listing that fails in a way
+/// that may pass leaves the course unread; one the student may not see counts as read.
+#[tokio::test]
+async fn a_full_sync_says_which_courses_it_could_not_read() {
+    let f = Fixture::new().await;
+    one_course(&f, json!([{"id": "home"}, {"id": "modules"}])).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/modules"))
+        .respond_with(ResponseTemplate::new(502))
+        .mount(&f.canvas)
+        .await;
+    let report = f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(report.unread_courses, [course101(&f)]);
+    assert!(report.read_courses.is_empty());
+
+    f.canvas.reset().await;
+    one_course(&f, json!([{"id": "home"}])).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/modules"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({"status": "unauthorized"})))
+        .mount(&f.canvas)
+        .await;
+    let report = f.sync(&f.options(false)).await.unwrap();
+    assert_eq!(report.read_courses, [course101(&f)]);
+    assert!(report.unread_courses.is_empty());
 }
 
 #[test]

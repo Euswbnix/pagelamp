@@ -823,10 +823,12 @@ pub fn sync_status(store: &Store, at: AsOf) -> Result<SyncStatus> {
         .into_iter()
         .map(|source| {
             let deadlines_synced_at = light.deadlines_synced_at(&source);
+            // (A time after now tells nothing: the clock was set forward when it was recorded.)
+            let stale_at =
+                |synced| auto_sync::known(synced, at.now).is_none_or(|at| at < stale_before);
             SourceStatus {
-                stale: source.last_error.is_some()
-                    || source.last_synced_at.is_none_or(|at| at < stale_before),
-                deadlines_stale: deadlines_synced_at.is_none_or(|at| at < stale_before),
+                stale: source.last_error.is_some() || stale_at(source.last_synced_at),
+                deadlines_stale: stale_at(deadlines_synced_at),
                 deadlines_synced_at,
                 source,
             }

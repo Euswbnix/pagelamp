@@ -120,6 +120,10 @@ pub struct LightSync {
     /// Courses a light run saw for the first time: listed, with deadlines and announcements,
     /// but their modules and materials wait for a full sync.
     pub structure_pending: BTreeSet<String>,
+    /// The waiting courses a full sync has tried and couldn't read (its module listing failed
+    /// in a way that may pass). They keep waiting, which is the truth for every view, but they
+    /// no longer make a full sync due by themselves: the next regular one tries again.
+    pub structure_tried: BTreeSet<String>,
 }
 
 impl LightSync {
@@ -156,12 +160,13 @@ impl LightSync {
         }
     }
 
-    /// Whether a course of `source` waits for its first full sync.
-    pub fn has_pending(&self, source: &SourceRecord) -> bool {
+    /// Whether a course of `source` waits for a full sync that no full sync has tried yet
+    /// (the one case that makes a full sync due whatever the interval).
+    pub fn has_untried(&self, source: &SourceRecord) -> bool {
         let prefix = format!("{}/", source.id);
         self.structure_pending
             .iter()
-            .any(|course| course.starts_with(&prefix))
+            .any(|course| course.starts_with(&prefix) && !self.structure_tried.contains(course))
     }
 
     /// A light run of the source ended well at `at` and found `new_courses`. The time is kept
@@ -172,14 +177,24 @@ impl LightSync {
         self.structure_pending.extend(new_courses.iter().cloned());
     }
 
-    /// A full sync of the source ended well: no course of it waits any more. `only`: the
-    /// courses whose structure it read, when it was limited to some. Otherwise every course
-    /// of the source is released, also one that has left Canvas's list since it was found (no
-    /// sync will read it, and it must not keep a full sync due for ever), and the light run's
-    /// stamp goes: the source has one clock again. Returns whether anything changed.
-    pub fn full_sync_read(&mut self, source_id: &str, only: Option<&[String]>) -> bool {
-        let before = self.structure_pending.len();
-        let mut changed = false;
+    /// A full sync of the source ended well.
+    ///
+    /// - `only`: the courses whose structure it read, when it was limited to some. Those wait
+    ///   no more.
+    /// - Otherwise (`None`) every course of the source is released, also one that has left
+    ///   Canvas's list since it was found (no sync will read it, and it must not keep a full
+    ///   sync due for ever), and the light run's stamp goes: the source has one clock again.
+    /// - `unread`: courses it selected and couldn't read the structure of. One that was
+    ///   waiting keeps waiting, and is marked as tried.
+    ///
+    /// Returns whether anything changed.
+    pub fn full_sync_read(
+        &mut self,
+        source_id: &str,
+        only: Option<&[String]>,
+        unread: &[String],
+    ) -> bool {
+        let before = self.clone();
         match only {
             Some(courses) => {
                 for course in courses {
@@ -189,16 +204,24 @@ impl LightSync {
             None => {
                 let prefix = format!("{source_id}/");
                 self.structure_pending
-                    .retain(|course| !course.starts_with(&prefix));
-                changed = self.synced_at.remove(source_id).is_some();
+                    .retain(|course| !course.starts_with(&prefix) || unread.contains(course));
+                self.synced_at.remove(source_id);
             }
         }
-        changed || self.structure_pending.len() != before
+        for course in unread {
+            if self.structure_pending.contains(course) {
+                self.structure_tried.insert(course.clone());
+            }
+        }
+        let waiting = &self.structure_pending;
+        self.structure_tried
+            .retain(|course| waiting.contains(course));
+        *self != before
     }
 
     /// The source was removed: nothing of it is remembered. Returns whether anything changed.
     pub fn forget_source(&mut self, source_id: &str) -> bool {
-        self.full_sync_read(source_id, None)
+        self.full_sync_read(source_id, None, &[])
     }
 }
 
@@ -239,11 +262,17 @@ pub struct AutoSyncAttempts {
 impl AutoSyncAttempts {
     /// The earliest moment the next automatic attempt of `scope` may start: after a failed or
     /// refused one of that scope, 1 h, 2 h, 4 h… later, at most the setting's interval;
-    /// `None`: no wait.
-    pub fn retry_not_before(&self, interval: TimeDelta, scope: SyncScope) -> Option<Timestamp> {
+    /// `None`: no wait. (An attempt recorded after `now` is one the clock was set forward for:
+    /// it tells nothing, see `known`.)
+    pub fn retry_not_before(
+        &self,
+        interval: TimeDelta,
+        scope: SyncScope,
+        now: Timestamp,
+    ) -> Option<Timestamp> {
         let (last, failed) = match scope {
-            SyncScope::UserLevel => (self.last_at?, self.failed),
-            SyncScope::Everything => (self.full_last_at?, self.full_failed),
+            SyncScope::UserLevel => (known(self.last_at, now)?, self.failed),
+            SyncScope::Everything => (known(self.full_last_at, now)?, self.full_failed),
         };
         if failed == 0 {
             return None;
@@ -256,16 +285,18 @@ impl AutoSyncAttempts {
 
     /// Whether the student stopped a sync less than `FIRST_RETRY` before `now`.
     pub fn stopped_recently(&self, now: Timestamp) -> bool {
-        self.stopped_at
-            .is_some_and(|stopped| now < stopped + FIRST_RETRY)
+        known(self.stopped_at, now).is_some_and(|stopped| now < stopped + FIRST_RETRY)
     }
 
     /// How many automatic attempts `source_id` had in the 24 hours before `now`.
     pub fn attempts_in_last_day(&self, source_id: &str, now: Timestamp) -> usize {
         let since = now - TimeDelta::hours(24);
-        self.by_source
-            .get(source_id)
-            .map_or(0, |starts| starts.iter().filter(|at| **at > since).count())
+        self.by_source.get(source_id).map_or(0, |starts| {
+            starts
+                .iter()
+                .filter(|at| **at > since && **at <= now)
+                .count()
+        })
     }
 
     /// Count an attempt of `scope` on `sources` at `now` (and forget starts older than 24
@@ -273,7 +304,7 @@ impl AutoSyncAttempts {
     pub fn count(&mut self, sources: &[&SourceRecord], now: Timestamp, scope: SyncScope) {
         let since = now - TimeDelta::hours(24);
         self.by_source.retain(|_, starts| {
-            starts.retain(|at| *at > since);
+            starts.retain(|at| *at > since && *at <= now);
             !starts.is_empty()
         });
         for source in sources {
@@ -362,38 +393,57 @@ pub struct Clocks<'a> {
     pub light: &'a LightSync,
 }
 
-/// Whether an automatic sync of `scope` is due at `now` by the clock alone (the facade adds
-/// what only it knows: a sync running, What's new waiting): the setting is on, a source can be
-/// tried, the stalest of those was last read (as far as `scope` reads) the interval ago or
-/// never, no retry wait is running and the student didn't stop a sync in the last hour. A
-/// full sync is also due, whatever the interval, while a course waits for its first one (a
-/// light run found it).
+/// A stored time, unless it is after `now`. That happens when the computer's clock was set
+/// forward, something was recorded and the clock was corrected: such a time tells nothing, and
+/// reading it as it is would hold everything back until the clock catches up. A source "last
+/// read" in the future counts as never read (one extra sync, which records the right time); a
+/// wait that "started" in the future isn't one.
+pub fn known(at: Option<Timestamp>, now: Timestamp) -> Option<Timestamp> {
+    at.filter(|at| *at <= now)
+}
+
+/// The sources an automatic sync of `scope` reads at `now` by the clock alone (the facade adds
+/// what only it knows: a sync running, What's new waiting). Empty when nothing is due: the
+/// setting is off, a retry wait of this scope is running, or the student stopped a sync in the
+/// last hour. Otherwise every source that can be tried and that was last read (as far as
+/// `scope` reads) the interval ago or never. For a full sync also a source with a course that
+/// waits for its first one and that no full sync has tried, whatever the interval.
+///
+/// Only these are read: a source that keeps failing brings the others no extra sync.
+pub fn due_now<'a>(
+    setting: AutoSync,
+    clocks: Clocks<'a>,
+    scope: SyncScope,
+    now: Timestamp,
+) -> Vec<&'a SourceRecord> {
+    let Some(interval) = setting.interval() else {
+        return Vec::new();
+    };
+    let waiting = clocks.attempts.stopped_recently(now)
+        || clocks
+            .attempts
+            .retry_not_before(interval, scope, now)
+            .is_some_and(|not_before| now < not_before);
+    if waiting {
+        return Vec::new();
+    }
+    eligible(clocks.sources, clocks.attempts, now)
+        .into_iter()
+        .filter(|source| {
+            known(clocks.light.synced_at(source, scope), now).is_none_or(|at| now - at >= interval)
+                || (scope == SyncScope::Everything && clocks.light.has_untried(source))
+        })
+        .collect()
+}
+
+/// Whether an automatic sync of `scope` is due at `now` by the clock alone (`due_now`).
 pub fn due_by_the_clock(
     setting: AutoSync,
     clocks: Clocks<'_>,
     scope: SyncScope,
     now: Timestamp,
 ) -> bool {
-    let Some(interval) = setting.interval() else {
-        return false;
-    };
-    let eligible = eligible(clocks.sources, clocks.attempts, now);
-    if eligible.is_empty() {
-        return false;
-    }
-    let old = eligible.iter().any(|source| {
-        clocks
-            .light
-            .synced_at(source, scope)
-            .is_none_or(|at| now - at >= interval)
-            || (scope == SyncScope::Everything && clocks.light.has_pending(source))
-    });
-    let waiting = clocks.attempts.stopped_recently(now)
-        || clocks
-            .attempts
-            .retry_not_before(interval, scope)
-            .is_some_and(|not_before| now < not_before);
-    old && !waiting
+    !due_now(setting, clocks, scope, now).is_empty()
 }
 
 #[cfg(test)]
@@ -553,7 +603,7 @@ mod tests {
         found
             .structure_pending
             .insert("canvas:lms/course/7".to_string());
-        assert!(found.has_pending(&fresh));
+        assert!(found.has_untried(&fresh));
         assert!(due(
             &found,
             std::slice::from_ref(&fresh),
@@ -566,7 +616,7 @@ mod tests {
         ));
         // (Another source's course doesn't count.)
         let other = source("canvas:lms2", Some("2026-10-03T10:00:00Z"), None);
-        assert!(!found.has_pending(&other));
+        assert!(!found.has_untried(&other));
         assert!(!due(
             &found,
             std::slice::from_ref(&other),
@@ -578,12 +628,16 @@ mod tests {
         found
             .structure_pending
             .insert("canvas:lms2/course/1".to_string());
-        assert!(!found.full_sync_read("canvas:lms", Some(&["canvas:lms/course/8".to_string()])));
-        assert!(found.has_pending(&fresh));
-        assert!(found.full_sync_read("canvas:lms", None));
-        assert!(!found.has_pending(&fresh) && found.has_pending(&other));
+        assert!(!found.full_sync_read(
+            "canvas:lms",
+            Some(&["canvas:lms/course/8".to_string()]),
+            &[]
+        ));
+        assert!(found.has_untried(&fresh));
+        assert!(found.full_sync_read("canvas:lms", None, &[]));
+        assert!(!found.has_untried(&fresh) && found.has_untried(&other));
         assert!(
-            !found.full_sync_read("canvas:lms", None),
+            !found.full_sync_read("canvas:lms", None, &[]),
             "nothing left to change"
         );
         // A light run's time is kept to the second, like a full sync's in the sources table;
@@ -591,9 +645,13 @@ mod tests {
         let ended: Timestamp = "2026-10-03T11:00:00.755Z".parse().unwrap();
         found.light_run_ended("canvas:lms", ended, &["canvas:lms/course/9".to_string()]);
         assert_eq!(found.synced_at["canvas:lms"], at("2026-10-03T11:00:00Z"));
-        assert!(found.full_sync_read("canvas:lms", Some(&["canvas:lms/course/9".to_string()])));
-        assert!(found.synced_at.contains_key("canvas:lms") && !found.has_pending(&fresh));
-        assert!(found.full_sync_read("canvas:lms", None));
+        assert!(found.full_sync_read(
+            "canvas:lms",
+            Some(&["canvas:lms/course/9".to_string()]),
+            &[]
+        ));
+        assert!(found.synced_at.contains_key("canvas:lms") && !found.has_untried(&fresh));
+        assert!(found.full_sync_read("canvas:lms", None, &[]));
         assert!(!found.synced_at.contains_key("canvas:lms"));
         // Removing a source forgets its stamp and its waiting courses.
         found
@@ -678,8 +736,12 @@ mod tests {
             (
                 attempts.failed,
                 attempts.full_failed,
-                attempts.retry_not_before(TimeDelta::hours(12), full),
-                attempts.retry_not_before(TimeDelta::hours(12), SyncScope::UserLevel)
+                attempts.retry_not_before(TimeDelta::hours(12), full, start + TimeDelta::hours(28)),
+                attempts.retry_not_before(
+                    TimeDelta::hours(12),
+                    SyncScope::UserLevel,
+                    start + TimeDelta::hours(28)
+                )
             ),
             (0, 0, None, None)
         );
@@ -734,6 +796,131 @@ mod tests {
         );
         assert!(!due(&capped, start + TimeDelta::hours(4)), "at its cap");
         assert!(due(&capped, start + TimeDelta::hours(25)));
+    }
+
+    /// A waiting course a full sync tried and couldn't read keeps waiting (every view says
+    /// so), but no longer makes a full sync due outside the interval.
+    #[test]
+    fn a_course_a_full_sync_could_not_read_keeps_waiting_without_making_one_due() {
+        let now = at("2026-10-03T12:00:00Z");
+        let fresh = source("canvas:lms", Some("2026-10-03T11:00:00Z"), None);
+        let none = AutoSyncAttempts::default();
+        let course = "canvas:lms/course/7".to_string();
+        let gone = "canvas:lms/course/8".to_string();
+        let mut light = LightSync::default();
+        light.light_run_ended(&fresh.id, now, &[course.clone(), gone.clone()]);
+        let due = |light: &LightSync, now| {
+            let clocks = Clocks {
+                sources: std::slice::from_ref(&fresh),
+                attempts: &none,
+                light,
+            };
+            due_by_the_clock(AutoSync::TwiceDaily, clocks, SyncScope::Everything, now)
+        };
+        assert!(due(&light, now));
+        // The full sync couldn't read course 7 (and course 8 has left Canvas's list).
+        assert!(light.full_sync_read(&fresh.id, None, std::slice::from_ref(&course)));
+        assert_eq!(light.structure_pending, BTreeSet::from([course.clone()]));
+        assert_eq!(light.structure_tried, BTreeSet::from([course.clone()]));
+        assert!(!light.has_untried(&fresh));
+        assert!(!due(&light, now), "tried: not due before the interval");
+        assert!(
+            due(&light, now + TimeDelta::hours(12)),
+            "the regular one tries again"
+        );
+        // Still unread then: nothing changes. Read: it waits no more.
+        assert!(!light.full_sync_read(&fresh.id, None, std::slice::from_ref(&course)));
+        assert!(light.full_sync_read(&fresh.id, None, &[]));
+        assert_eq!(light, LightSync::default());
+        // A sync limited to it that couldn't read it marks it tried as well.
+        light.light_run_ended(&fresh.id, now, std::slice::from_ref(&course));
+        assert!(light.full_sync_read(&fresh.id, Some(&[]), std::slice::from_ref(&course)));
+        assert!(light.structure_pending.contains(&course) && !light.has_untried(&fresh));
+        assert!(
+            light.synced_at.contains_key(&fresh.id),
+            "a limited sync keeps the stamp"
+        );
+    }
+
+    /// Only the sources that are due are read: one that keeps failing brings the others no
+    /// extra sync.
+    #[test]
+    fn only_the_sources_that_are_due_are_read() {
+        let now = at("2026-10-03T12:00:00Z");
+        let canvas = source("canvas:lms", Some("2026-10-03T10:00:00Z"), None);
+        let mut feed = source("ical:feed", Some("2026-10-02T20:00:00Z"), None);
+        feed.kind = SourceKind::Ical;
+        let never = source("canvas:other", None, None);
+        let sources = [canvas.clone(), feed.clone(), never.clone()];
+        let none = AutoSyncAttempts::default();
+        let mut light = LightSync::default();
+        let ids = |light: &LightSync, scope| -> Vec<String> {
+            let clocks = Clocks {
+                sources: &sources,
+                attempts: &none,
+                light,
+            };
+            due_now(AutoSync::TwiceDaily, clocks, scope, now)
+                .iter()
+                .map(|source| source.id.clone())
+                .collect()
+        };
+        for scope in [SyncScope::UserLevel, SyncScope::Everything] {
+            assert_eq!(ids(&light, scope), ["ical:feed", "canvas:other"]);
+        }
+        // A course of the fresh Canvas source waits: a full sync reads that source too.
+        light
+            .structure_pending
+            .insert("canvas:lms/course/7".to_string());
+        assert_eq!(
+            ids(&light, SyncScope::Everything),
+            ["canvas:lms", "ical:feed", "canvas:other"]
+        );
+        assert_eq!(
+            ids(&light, SyncScope::UserLevel),
+            ["ical:feed", "canvas:other"]
+        );
+    }
+
+    /// The clock was set forward, something was recorded, the clock was corrected: a time
+    /// after now tells nothing, and must not hold everything back until the clock catches up.
+    #[test]
+    fn a_time_recorded_in_the_future_holds_nothing_back() {
+        let now = at("2026-10-03T12:00:00Z");
+        let later = "2027-01-01T00:00:00Z";
+        let ahead = [source("a", Some(later), None)];
+        let refs: Vec<&SourceRecord> = ahead.iter().collect();
+        let light = LightSync::default();
+        let due = |attempts: &AutoSyncAttempts| {
+            let clocks = Clocks {
+                sources: &ahead,
+                attempts,
+                light: &light,
+            };
+            due_by_the_clock(AutoSync::TwiceDaily, clocks, SyncScope::Everything, now)
+        };
+        // "Last synced" next year: read as never synced, so one sync sets it right.
+        assert!(due(&AutoSyncAttempts::default()));
+        // A stop, a failed attempt and six attempts next year: none of them counts today.
+        let mut attempts = AutoSyncAttempts {
+            stopped_at: Some(at(later)),
+            ..AutoSyncAttempts::default()
+        };
+        for _ in 0..6 {
+            attempts.count(&refs, at(later), SyncScope::Everything);
+        }
+        assert!(!attempts.stopped_recently(now));
+        assert_eq!(
+            attempts.retry_not_before(TimeDelta::hours(12), SyncScope::Everything, now),
+            None
+        );
+        assert_eq!(attempts.attempts_in_last_day("a", now), 0);
+        assert!(due(&attempts));
+        // The next count drops them.
+        attempts.count(&refs, now, SyncScope::Everything);
+        assert_eq!(attempts.by_source["a"], [now]);
+        assert_eq!(known(Some(now), now), Some(now));
+        assert_eq!(known(Some(at(later)), now), None);
     }
 
     #[test]

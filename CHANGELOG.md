@@ -46,8 +46,9 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   needs the student, or `materials_old` when only its deadlines and announcements are current)
   and, when it is later than the last full sync, when those were read (`deadlines_synced_at`).
   `course_overview`, `week_materials` and `read_material` carry a "data as of" line;
-  `list_courses`, `course_overview`, `week_materials` and `search_materials` say when a course's
-  modules and materials haven't been read yet (`structure_pending`). The hints no longer
+  `list_courses`, `course_overview` and `week_materials` say when a course's modules and
+  materials haven't been read yet (`structure_pending`), and so does `search_materials` when a
+  search in that one course finds nothing. The hints no longer
   suggest running `pagelamp sync`: an AI app must not sync for the student.
 - `pagelamp courses` groups courses into Current, Upcoming and Past; past courses (also in
   `--json`) are listed with `--past` or `--all`. `pagelamp course term` dates mean the first and

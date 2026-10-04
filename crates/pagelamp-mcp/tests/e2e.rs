@@ -788,7 +788,28 @@ async fn sync_status_reports_automatic_sync_and_what_each_source_needs() {
     assert_eq!(partly["hint"], hint);
     assert!(hint.starts_with("Deadlines and announcements are current"));
     assert!(!hint.contains("by itself"));
-    set(&db, |s| s.remove_setting(LIGHT_SYNC_KEY).unwrap());
+    // With automatic sync off, opening the window reads nothing: the student presses Sync.
+    set(&db, |s| {
+        s.set_setting(
+            SYNC_PREFS_KEY,
+            &SyncPrefs {
+                auto_sync: AutoSync::Off,
+            },
+        )
+        .unwrap()
+    });
+    let partly_off = status().await;
+    assert_eq!(partly_off["sources"][0]["state"], "materials_old");
+    let hint_off = text::freshness_hint(Freshness::MaterialsOld, false).unwrap();
+    assert_eq!(partly_off["hint"], hint_off);
+    assert!(
+        hint_off.contains("press Sync") && !hint_off.contains("opens its window"),
+        "{hint_off}"
+    );
+    set(&db, |s| {
+        s.remove_setting(SYNC_PREFS_KEY).unwrap();
+        s.remove_setting(LIGHT_SYNC_KEY).unwrap();
+    });
     // Once a day, 30 hours isn't stale yet (the threshold follows the setting).
     set(&db, |s| {
         s.set_setting(
@@ -983,6 +1004,7 @@ async fn read_tools_carry_one_data_as_of_line() {
     // That sync also found a course no full sync has read. Every tool that would show its
     // (missing) modules and materials says they haven't been read: nothing calls them
     // complete, empty or "as of" the source's last full sync.
+    let today = Local::now().date_naive();
     set(&db, |s| {
         s.upsert_course(&CourseUpsert {
             id: cid("404"),
@@ -990,8 +1012,12 @@ async fn read_tools_carry_one_data_as_of_line() {
             external_id: "404".into(),
             code: Some("DEMO404".into()),
             name: "Demo Seminar".into(),
-            term_start: None,
-            term_end: None,
+            // With term dates the week is known (week 3, from a Monday two weeks ago), and an
+            // empty week would get its note.
+            term_start: Some(
+                today - TimeDelta::days(i64::from(today.weekday().num_days_from_monday()) + 14),
+            ),
+            term_end: Some(today + TimeDelta::days(80)),
             url: None,
             syllabus_text: None,
             lms: Default::default(),
@@ -1018,7 +1044,21 @@ async fn read_tools_carry_one_data_as_of_line() {
             text::structure_pending(),
             "{tool}"
         );
+        // Not "no modules or materials are assigned to week N": they weren't read.
+        assert!(answer.get("note").is_none(), "{tool}: {answer}");
     }
+    // (The same course once it has been read: an empty week says so.)
+    light.structure_pending.clear();
+    set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
+    let read = json_of(&call(&client, "week_materials", json!({"course": "DEMO404"})).await);
+    assert!(
+        read["note"]
+            .as_str()
+            .is_some_and(|note| note.contains("No modules or materials")),
+        "{read}"
+    );
+    light.structure_pending.insert(cid("404"));
+    set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
     let found = text_of(
         &call(
             &client,
@@ -1086,23 +1126,66 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
         )
         .unwrap();
     });
-    let snapshot = |db: &Path| -> Vec<(String, String, String)> {
+    // A source that needs the student: clearing its error would let the automatic sync try
+    // it again.
+    set(&db, |s| {
+        s.upsert_source(&SourceRecord {
+            id: "folder:gone".into(),
+            kind: SourceKind::Folder,
+            label: "Gone".into(),
+            config: json!({ "path": "/demo/gone" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+        s.record_sync(
+            "folder:gone",
+            Utc::now(),
+            Some((SourceErrorKind::NotFound, "the folder is gone")),
+        )
+        .unwrap();
+    });
+    // The whole settings table, and of every source what the rule reads.
+    let snapshot = |db: &Path| -> Vec<Vec<String>> {
         let raw = rusqlite::Connection::open(db).unwrap();
         let mut rows = Vec::new();
-        for sql in [
-            "SELECT key, value, updated_at FROM settings WHERE key LIKE 'sync.%' ORDER BY key",
-            "SELECT id, COALESCE(last_synced_at, ''), COALESCE(last_error, '') FROM sources ORDER BY id",
+        for (sql, columns) in [
+            (
+                "SELECT key, value, updated_at FROM settings ORDER BY key",
+                3,
+            ),
+            (
+                "SELECT id, kind, COALESCE(last_synced_at, ''), COALESCE(last_error, ''),
+                        COALESCE(last_error_kind, '')
+                 FROM sources ORDER BY id",
+                5,
+            ),
         ] {
             let mut statement = raw.prepare(sql).unwrap();
             let found = statement
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .query_map([], |row| {
+                    (0..columns)
+                        .map(|column| row.get::<_, String>(column))
+                        .collect::<rusqlite::Result<Vec<String>>>()
+                })
                 .unwrap();
             rows.extend(found.map(Result::unwrap));
         }
         rows
     };
     let before = snapshot(&db);
-    assert_eq!(before.len(), 4, "{before:?}");
+    assert!(
+        before
+            .iter()
+            .filter(|row| row[0].starts_with("sync."))
+            .count()
+            == 3
+            && before
+                .iter()
+                .any(|row| row[0] == "folder:gone" && row[4] == "not_found"),
+        "{before:?}"
+    );
 
     let client = connect(db.clone()).await;
     let plan = json!({ "plan": {
@@ -1127,6 +1210,24 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
         }
         let result = client.call_tool(params).await.unwrap();
         assert!(!is_error(&result), "{}: {}", tool.name, text_of(&result));
+    }
+    // The prompts too.
+    let prompts = client.list_all_prompts().await.unwrap();
+    assert_eq!(prompts.len(), 3);
+    for prompt in prompts {
+        let arguments = match prompt.name.as_ref() {
+            "weekly_review" => json!({"course": "DEMO101", "week": "3"}),
+            "catch_up" => json!({"course": "DEMO101", "since": "2026-09-01"}),
+            "study_plan" => json!({"days": "7"}),
+            other => panic!("add the new prompt `{other}` to this test"),
+        };
+        let Value::Object(arguments) = arguments else {
+            unreachable!()
+        };
+        client
+            .get_prompt(GetPromptRequestParams::new(prompt.name.clone()).with_arguments(arguments))
+            .await
+            .unwrap();
     }
     assert_eq!(snapshot(&db), before);
     client.cancel().await.unwrap();

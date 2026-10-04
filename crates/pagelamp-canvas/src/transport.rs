@@ -19,8 +19,9 @@
 //!   token, signed download URLs (file storage hops show the host only), or response bodies.
 //! - At most 2 requests at a time (1 in an automatic sync, which nobody is waiting for);
 //!   exponential backoff on throttling (429, or 403 "Rate Limit Exceeded"): 1s, 2s, 4s, 8s,
-//!   or as long as `Retry-After` asks (up to a minute) → `RateLimited` after 5 tries; slowing
-//!   down when `X-Rate-Limit-Remaining` drops below 100.
+//!   or as long as `Retry-After` asks → `RateLimited` after 5 tries, or at once when
+//!   `Retry-After` asks for more than a minute; slowing down when `X-Rate-Limit-Remaining`
+//!   drops below 100.
 //! - The User-Agent names the product, the version and "read-only"; an automatic sync adds
 //!   "automatic sync", so a school's administrator can tell the two apart.
 
@@ -246,10 +247,15 @@ impl TokenTransport {
             }
             if attempt < self.retry.max_tries {
                 // As long as Canvas asks, when it says (and never less than our own backoff).
-                let wait = retry_after(&fetched.headers).map_or(delay, |asked| {
-                    asked.min(self.retry.max_retry_after).max(delay)
-                });
-                tokio::time::sleep(wait).await;
+                // When it asks for longer than we wait inside a sync, the sync ends as
+                // throttled at once: the wait here couldn't be stopped, and whoever started
+                // the sync (the student, or the automatic sync's own wait) decides when to
+                // try again.
+                let asked = retry_after(&fetched.headers);
+                if asked.is_some_and(|asked| asked > self.retry.max_retry_after) {
+                    return Err(CanvasError::RateLimited);
+                }
+                tokio::time::sleep(asked.map_or(delay, |asked| asked.max(delay))).await;
                 delay *= 2;
             }
         }
@@ -565,7 +571,6 @@ pub(crate) fn canvas_error_messages(body: &[u8]) -> Vec<String> {
         .collect()
 }
 
-/// 429, or 403 whose body says "Rate Limit Exceeded" (Canvas's throttling response).
 /// "PageLamp/0.3.0 (read-only)", or "(read-only; automatic sync)" for a sync PageLamp started
 /// by itself.
 pub(crate) fn user_agent(automatic: bool) -> String {
@@ -594,6 +599,7 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {
         .map(Duration::from_secs)
 }
 
+/// 429, or 403 whose body says "Rate Limit Exceeded" (Canvas's throttling response).
 fn is_throttled(fetched: &Fetched) -> bool {
     fetched.status == StatusCode::TOO_MANY_REQUESTS
         || (fetched.status == StatusCode::FORBIDDEN

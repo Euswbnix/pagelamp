@@ -178,6 +178,8 @@ async fn nothing_runs_while_whats_new_waits() {
     app.acknowledge_whats_new().unwrap();
     assert!(!due(&app, now + TimeDelta::days(2)), "turned off there");
     set(&app, AutoSync::TwiceDaily);
+    // (Counted after `now` was taken: a time before the attempt would read it as unknown.)
+    let now = Utc::now();
     assert!(!due(&app, now), "the refusal's wait: an hour");
     assert!(due(&app, now + TimeDelta::minutes(61)));
 }
@@ -248,7 +250,7 @@ async fn an_automatic_run_is_counted_first_stays_quiet_and_leaves_what_needs_the
     assert_eq!(*tried.lock().unwrap(), [folder.id.clone(), feed.id.clone()]);
     assert!(!summary.ok);
     let feed_result = &summary.results[1];
-    assert_eq!(feed_result.error_kind, Some(SourceErrorKind::Other));
+    assert_eq!(feed_result.error_kind, Some(SourceErrorKind::Network));
     // Quiet: the feed isn't marked failed (nothing asks for the student's attention), and it
     // is still as old as it was.
     let sources = app.list_sources().unwrap();
@@ -294,7 +296,7 @@ async fn an_automatic_run_is_counted_first_stays_quiet_and_leaves_what_needs_the
         .await
         .unwrap();
     assert!(!manual.ok);
-    assert_eq!(feed_error(), Some(SourceErrorKind::Other));
+    assert_eq!(feed_error(), Some(SourceErrorKind::Network));
 
     // The feed's link is revoked: the next automatic run records that (only the student can
     // fix it), and after it the feed is left alone.
@@ -313,9 +315,10 @@ async fn an_automatic_run_is_counted_first_stays_quiet_and_leaves_what_needs_the
     };
     wait_is_over(&data);
     let revoked = app.sync_all(automatic(), |_| {}).await.unwrap();
-    assert_eq!(revoked.results.len(), 2, "every source it can try");
+    assert_eq!(revoked.results.len(), 1, "only the source that is due");
+    assert_eq!(revoked.results[0].source_id, feed.id);
     assert_eq!(
-        revoked.results[1].error_kind,
+        revoked.results[0].error_kind,
         Some(SourceErrorKind::AuthExpiredOrRevoked)
     );
     assert_eq!(feed_error(), Some(SourceErrorKind::AuthExpiredOrRevoked));
@@ -489,7 +492,11 @@ async fn an_unattended_run_reads_canvas_lightly_and_each_scope_has_its_clock() {
         .await;
     let missed = app.sync_all(automatic(), |_| {}).await.unwrap();
     assert!(!missed.ok);
-    assert_eq!(missed.results[0].error_kind, Some(SourceErrorKind::Other));
+    assert_eq!(
+        missed.results[0].error_kind,
+        Some(SourceErrorKind::Network),
+        "it may pass by itself"
+    );
     assert!(app.status().unwrap().deadlines_synced_at.is_empty());
     let row = app.list_sources().unwrap().remove(0);
     assert_eq!((row.last_error, row.last_error_kind), (None, None), "quiet");
@@ -759,4 +766,334 @@ async fn a_light_run_with_an_expired_token_is_recorded_and_stamps_nothing() {
             .sync_due,
         SyncDue::default()
     );
+}
+
+/// The requests the server got since its last reset, as (path, User-Agent).
+async fn requests(server: &MockServer) -> Vec<(String, String)> {
+    let requests = server.received_requests().await.unwrap();
+    requests
+        .iter()
+        .map(|request| {
+            let agent = request.headers["user-agent"].to_str().unwrap().to_string();
+            (request.url.path().to_string(), agent)
+        })
+        .collect()
+}
+
+/// DEMO101 also has a Files tab with one file (mounted over `canvas`).
+async fn with_a_file(server: &MockServer) {
+    use serde_json::json;
+    for (at, body) in [
+        (
+            "/api/v1/courses/101/tabs",
+            json!([{"id": "home"}, {"id": "modules"}, {"id": "files"}]),
+        ),
+        (
+            "/api/v1/courses/101/files",
+            json!([{"id": 501, "display_name": "slides.txt", "filename": "slides.txt",
+                    "content-type": "text/plain", "size": 20,
+                    "url": format!("{}/files/501/download?download_frd=1", server.uri()),
+                    "updated_at": "2026-09-20T10:00:00Z"}]),
+        ),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(at))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .with_priority(1)
+            .mount(server)
+            .await;
+    }
+}
+
+/// What the automatic sync's rule and the "data as of" lines read about one source.
+fn clocks(
+    app: &App,
+    data: &Path,
+) -> (
+    Option<DateTime<Utc>>,
+    LightSync,
+    bool,
+    Option<DateTime<Utc>>,
+) {
+    let light: LightSync = store(data)
+        .setting_or_absent(LIGHT_SYNC_KEY)
+        .unwrap()
+        .unwrap_or_default();
+    let status =
+        pagelamp_core::views::sync_status(&store(data), pagelamp_core::views::AsOf::now_local())
+            .unwrap();
+    (
+        app.list_sources().unwrap()[0].last_synced_at,
+        light,
+        status.sources[0].stale,
+        status.sources[0].deadlines_synced_at,
+    )
+}
+
+/// "Download this course's files" and a sync limited to some courses read only those. They
+/// must not make the whole source look freshly synced: not to the student, not to an AI app,
+/// not to the automatic sync's clocks.
+#[tokio::test]
+async fn a_sync_limited_to_some_courses_leaves_the_sources_clocks_alone() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    canvas(&server, true, json!([])).await;
+    with_a_file(&server).await;
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    let source = app
+        .add_canvas_source(&server.uri(), "demo-not-a-real-token")
+        .await
+        .unwrap();
+    assert!(
+        app.sync_all(SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    // The full sync is 30 hours old; a light run read the deadlines since.
+    synced_hours_ago(&data, &source.id, 30);
+    assert!(app.sync_all(automatic(), |_| {}).await.unwrap().ok);
+    let before = clocks(&app, &data);
+    assert!(before.2, "30 hours is stale");
+    assert!(before.1.synced_at.contains_key(&source.id));
+    let due = SyncDue {
+        unattended: false,
+        attended: true,
+    };
+    assert_eq!(app.startup_tasks(Utc::now()).unwrap().sync_due, due);
+
+    // The student downloads one course's files.
+    Mock::given(method("GET"))
+        .and(path("/files/501/download"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("lambdaword"))
+        .mount(&server)
+        .await;
+    let downloaded = app.download_course_files("DEMO101", |_| {}).await.unwrap();
+    assert!(downloaded.ok, "{downloaded:?}");
+    assert_eq!(downloaded.files_downloaded, 1);
+    assert_eq!(clocks(&app, &data), before);
+    assert_eq!(app.startup_tasks(Utc::now()).unwrap().sync_due, due);
+
+    // A sync limited to one course: the same.
+    let limited = SyncRequest {
+        only_courses: vec!["DEMO101".to_string()],
+        ..SyncRequest::default()
+    };
+    let summary = app.sync_all(limited.clone(), |_| {}).await.unwrap();
+    assert!(summary.ok, "{summary:?}");
+    assert_eq!(clocks(&app, &data), before);
+    assert_eq!(app.startup_tasks(Utc::now()).unwrap().sync_due, due);
+
+    // A good end still clears an error an earlier sync left on the source.
+    store(&data)
+        .record_sync(
+            &source.id,
+            Utc::now(),
+            Some((SourceErrorKind::Other, "an earlier failure")),
+        )
+        .unwrap();
+    assert!(app.sync_all(limited, |_| {}).await.unwrap().ok);
+    let row = app.list_sources().unwrap().remove(0);
+    assert_eq!((row.last_error, row.last_error_kind), (None, None));
+    assert_eq!(row.last_synced_at, before.0);
+}
+
+/// A waiting course a full sync couldn't read keeps waiting, which is the truth for every
+/// view and for an AI app, but it doesn't make full syncs follow one another.
+#[tokio::test]
+async fn a_waiting_course_a_full_sync_could_not_read_keeps_waiting() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    canvas(&server, false, json!([])).await;
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    let source = app
+        .add_canvas_source(&server.uri(), "demo-not-a-real-token")
+        .await
+        .unwrap();
+    assert!(
+        app.sync_all(SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    synced_hours_ago(&data, &source.id, 13);
+    canvas(&server, true, json!([])).await;
+    assert!(app.sync_all(automatic(), |_| {}).await.unwrap().ok);
+    assert!(app.course_overview("DEMO404").unwrap().structure_pending);
+
+    // The student comes back; Canvas answers 502 for the new course's modules.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/404/modules"))
+        .respond_with(ResponseTemplate::new(502))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let attended = SyncRequest {
+        automatic: Some(AutoSyncTrigger::Attended),
+        ..SyncRequest::default()
+    };
+    let full = app.sync_all(attended.clone(), |_| {}).await.unwrap();
+    assert!(full.ok, "a course's modules failing is a warning: {full:?}");
+    let seminar = app.course_overview("DEMO404").unwrap();
+    assert!(seminar.structure_pending, "it wasn't read: still said so");
+    assert_eq!(seminar.current_modules.len(), 0);
+    assert!(!app.course_overview("DEMO101").unwrap().structure_pending);
+    assert_eq!(
+        app.startup_tasks(Utc::now()).unwrap().sync_due,
+        SyncDue::default(),
+        "tried: no full sync right after"
+    );
+    assert!(
+        app.startup_tasks(Utc::now() + TimeDelta::hours(12))
+            .unwrap()
+            .sync_due
+            .attended,
+        "the regular one tries again"
+    );
+
+    // Canvas is well again and the full sync is 13 hours old: the course is read.
+    canvas(&server, true, json!([])).await;
+    synced_hours_ago(&data, &source.id, 13);
+    assert!(app.sync_all(attended, |_| {}).await.unwrap().ok);
+    let seminar = app.course_overview("DEMO404").unwrap();
+    assert!(!seminar.structure_pending);
+    let light: LightSync = store(&data)
+        .setting_or_absent(LIGHT_SYNC_KEY)
+        .unwrap()
+        .unwrap_or_default();
+    assert_eq!(light, LightSync::default());
+}
+
+/// A source that keeps failing brings the others no extra sync: a retry reads only what is
+/// due. And what an automatic request can and can't change about a run.
+#[tokio::test]
+async fn a_retry_reads_only_the_sources_that_are_due() {
+    use serde_json::json;
+    let server = MockServer::start().await;
+    canvas(&server, false, json!([])).await;
+    with_a_file(&server).await;
+    let feed_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/feed.ics"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(FEED))
+        .mount(&feed_server)
+        .await;
+    let temp = tempfile::tempdir().unwrap();
+    let data = data_dir(&temp);
+    let app = open(&data);
+    let source = app
+        .add_canvas_source(&server.uri(), "demo-not-a-real-token")
+        .await
+        .unwrap();
+    let feed = app
+        .add_ical_source(&format!("{}/feed.ics", feed_server.uri()), Some("Feed"))
+        .await
+        .unwrap();
+    assert!(
+        app.sync_all(SyncRequest::default(), |_| {})
+            .await
+            .unwrap()
+            .ok
+    );
+    // A sync the student started names itself plainly.
+    let manual = requests(&server).await;
+    assert!(
+        !manual.is_empty()
+            && manual
+                .iter()
+                .all(|(_, agent)| agent.ends_with("(read-only)")),
+        "{manual:?}"
+    );
+
+    // The feed is 13 hours old and its server is down; Canvas is fresh.
+    synced_hours_ago(&data, &feed.id, 13);
+    feed_server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/feed.ics"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&feed_server)
+        .await;
+    canvas(&server, false, json!([])).await;
+    with_a_file(&server).await;
+    for _ in 0..2 {
+        let run = app.sync_all(automatic(), |_| {}).await.unwrap();
+        assert_eq!(run.results.len(), 1, "{run:?}");
+        assert_eq!(run.results[0].source_id, feed.id);
+        assert_eq!(requests(&server).await, Vec::new(), "no Canvas request");
+        // The retry wait is over.
+        let mut record = attempts(&data);
+        record.last_at = Some(Utc::now() - TimeDelta::hours(13));
+        store(&data)
+            .set_setting(AUTO_SYNC_ATTEMPTS_KEY, &record)
+            .unwrap();
+    }
+    assert!(!attempts(&data).by_source.contains_key(&source.id));
+
+    // An automatic request can't ask for downloads or name courses: both are dropped, so the
+    // run reads the whole source and downloads nothing. It says "automatic sync".
+    synced_hours_ago(&data, &source.id, 13);
+    let greedy = SyncRequest {
+        automatic: Some(AutoSyncTrigger::Attended),
+        download_files: true,
+        only_courses: vec!["NO-SUCH-COURSE".to_string()],
+        ..SyncRequest::default()
+    };
+    let run = app.sync_all(greedy, |_| {}).await.unwrap();
+    let canvas_run = run
+        .results
+        .iter()
+        .find(|result| result.source_id == source.id)
+        .unwrap();
+    assert!(canvas_run.ok, "{canvas_run:?}");
+    assert_eq!(canvas_run.files_downloaded, 0);
+    let seen = requests(&server).await;
+    assert!(
+        seen.iter()
+            .any(|(path, _)| path == "/api/v1/courses/101/modules"),
+        "{seen:?}"
+    );
+    assert!(seen.iter().all(|(path, _)| !path.contains("/download")));
+    assert!(
+        seen.iter()
+            .all(|(_, agent)| agent.ends_with("(read-only; automatic sync)")),
+        "{seen:?}"
+    );
+    let row = |app: &App| {
+        app.list_sources()
+            .unwrap()
+            .into_iter()
+            .find(|row| row.id == source.id)
+            .unwrap()
+    };
+    assert!(Utc::now() - row(&app).last_synced_at.unwrap() < TimeDelta::minutes(5));
+
+    // Only `sync_all` runs by itself. For one source the flag changes nothing: a full sync,
+    // named plainly, and a failure that would be quiet in an automatic run is recorded.
+    canvas(&server, false, json!([])).await;
+    let one = app
+        .sync_source(&source.id, automatic(), |_| {})
+        .await
+        .unwrap();
+    assert!(one.ok, "{one:?}");
+    let seen = requests(&server).await;
+    assert!(
+        seen.iter()
+            .any(|(path, _)| path == "/api/v1/courses/101/modules")
+    );
+    assert!(seen.iter().all(|(_, agent)| agent.ends_with("(read-only)")));
+    server.reset().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let failed = app
+        .sync_source(&source.id, automatic(), |_| {})
+        .await
+        .unwrap();
+    assert_eq!(failed.error_kind, Some(SourceErrorKind::Network));
+    assert_eq!(row(&app).last_error_kind, Some(SourceErrorKind::Network));
 }

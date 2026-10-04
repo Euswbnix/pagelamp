@@ -50,6 +50,8 @@ struct Counts {
     new_courses: Vec<String>,
     /// Canvas, a full run: courses whose structure was read.
     read_courses: Vec<String>,
+    /// Canvas, a full run: courses whose structure couldn't be read this time.
+    unread_courses: Vec<String>,
 }
 
 impl App {
@@ -283,20 +285,30 @@ impl App {
                 .is_some_and(|(kind, _)| !automatic_run_records(*kind));
         // A light run of a Canvas source read only its deadlines and announcements: it has
         // its own stamp, and the source's `last_synced_at` (the last full sync) stays.
-        let light = is_light(req) && source.kind == SourceKind::Canvas;
+        let canvas = source.kind == SourceKind::Canvas;
+        let light = is_light(req) && canvas;
+        // A Canvas sync limited to some courses ("Download this course's files", `sync
+        // --course`) read only those: it must not make the whole source look freshly synced,
+        // to the student, to an AI app or to the automatic sync's clocks. A good end clears
+        // the source's error and nothing else. (Folder and feed sources ignore the limit.)
+        let limited = canvas && !req.only_courses.is_empty();
         if let (true, Ok(counts)) = (light, &outcome) {
             self.record_light_sync(&source.id, finished_at, &counts.new_courses);
         } else if !quiet {
             let recorded = self.write_store().and_then(|store| {
                 let error = error.as_ref().map(|(kind, msg)| (*kind, msg.as_str()));
-                Ok(store.record_sync(&source.id, finished_at, error)?)
+                match error {
+                    None if limited => store.clear_source_error(&source.id)?,
+                    error => store.record_sync(&source.id, finished_at, error)?,
+                }
+                Ok(())
             });
             if let Err(err) = recorded {
                 tracing::warn!(source = %source.id, "could not record sync outcome: {err}");
             }
-            if let (SourceKind::Canvas, Ok(counts)) = (source.kind, &outcome) {
-                let only = (!req.only_courses.is_empty()).then_some(counts.read_courses.as_slice());
-                self.structure_was_read(&source.id, only);
+            if let (true, Ok(counts)) = (canvas, &outcome) {
+                let only = limited.then_some(counts.read_courses.as_slice());
+                self.structure_was_read(&source.id, only, &counts.unread_courses);
             }
         }
         on_event(SyncEvent::SourceFinished {
@@ -452,8 +464,9 @@ impl App {
         if options.user_level_only && !report.user_level_read {
             // A light run is only for deadlines and announcements. One that couldn't read
             // them all doesn't count as having read them: no stamp, and the attempt waits
-            // like any that failed. (What it did read is stored.)
-            return Err(SourceError::other(
+            // like any that failed. (What it did read is stored.) It may pass by itself, so
+            // it is reported like a network failure, which an automatic run keeps quiet.
+            return Err(SourceError::network(
                 "Canvas deadlines and announcements could not be read completely.",
             ));
         }
@@ -469,6 +482,7 @@ impl App {
             requests: Some(u32::try_from(report.requests).unwrap_or(u32::MAX)),
             new_courses: report.new_courses,
             read_courses: report.read_courses,
+            unread_courses: report.unread_courses,
         })
     }
 

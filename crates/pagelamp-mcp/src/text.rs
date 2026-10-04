@@ -215,10 +215,15 @@ pub fn freshness_hint(worst: Freshness, auto_sync_on: bool) -> Option<String> {
             "Some data is old, and the student has turned automatic sync off. Ask the student \
              to press Sync in the {PRODUCT_NAME} app."
         ),
-        Freshness::MaterialsOld => format!(
+        Freshness::MaterialsOld if auto_sync_on => format!(
             "Deadlines and announcements are current, but modules and materials are as old as \
              the last full sync. {PRODUCT_NAME} reads those when the student opens its window \
              or presses Sync: ask the student to open {PRODUCT_NAME}."
+        ),
+        Freshness::MaterialsOld => format!(
+            "Deadlines and announcements are current, but modules and materials are as old as \
+             the last full sync, and the student has turned automatic sync off. Ask the student \
+             to press Sync in the {PRODUCT_NAME} app."
         ),
     };
     Some(format!("{what} {NEVER_SYNC_FOR_THE_STUDENT}"))

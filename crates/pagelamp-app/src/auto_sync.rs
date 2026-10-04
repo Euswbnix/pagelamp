@@ -25,17 +25,18 @@
 //!   just opened or brought to the front), a run reads everything, like pressing Sync.
 //! - After the student stops a sync (any sync of this app), nothing starts by itself for an
 //!   hour.
-//! - It leaves out the sources only the student can fix, never downloads files, and keeps a
-//!   failure that may pass by itself (network, throttling) to its attempts record: the source
-//!   isn't marked failed, so nothing asks for the student's attention. A failure the student
-//!   must fix (an expired or revoked token or link, a missing folder) is recorded as always
-//!   and shows on Sources; that source is then left alone until it is fixed.
+//! - It reads only the sources that are due, leaves out the ones only the student can fix,
+//!   never downloads files, and keeps a failure that may pass by itself (the network,
+//!   throttling, a server having trouble) to its attempts record: the source isn't marked
+//!   failed, so nothing asks for the student's attention. Any other failure is recorded as
+//!   always and shows on Sources; a source only the student can fix (an expired or revoked
+//!   token or link, a missing folder) is then left alone until it is fixed.
 
 use pagelamp_core::auto_sync::{
     self as rule, AUTO_SYNC_ATTEMPTS_KEY, AutoSyncTrigger, Clocks, LIGHT_SYNC_KEY, SYNC_PREFS_KEY,
     SyncPrefs, SyncScope,
 };
-use pagelamp_core::model::{SourceErrorKind, Timestamp};
+use pagelamp_core::model::{SourceErrorKind, SourceRecord, Timestamp};
 use pagelamp_core::paths;
 use pagelamp_core::store::Store;
 
@@ -94,7 +95,8 @@ impl App {
 
     /// The start of an automatic `sync_all`, before the lock: `None` when no run is due any
     /// more (nothing is counted); else the attempt is counted and the ids of the sources to
-    /// try are returned, or the refusal when What's new is waiting (counted too).
+    /// read are returned (the ones that are due, not every source), or the refusal when
+    /// What's new is waiting (counted too).
     pub(crate) fn begin_automatic_sync(
         &self,
         trigger: AutoSyncTrigger,
@@ -105,17 +107,26 @@ impl App {
             let sources = store.list_sources()?;
             let mut attempts = rule::attempts(store)?;
             let light = rule::light_sync(store)?;
-            let clocks = Clocks {
-                sources: &sources,
-                attempts: &attempts,
-                light: &light,
+            let scope = scope_of(trigger);
+            let ids: Vec<String> = {
+                let clocks = Clocks {
+                    sources: &sources,
+                    attempts: &attempts,
+                    light: &light,
+                };
+                rule::due_now(rule::auto_sync(store)?, clocks, scope, now)
+                    .iter()
+                    .map(|source| source.id.clone())
+                    .collect()
             };
-            if !rule::due_by_the_clock(rule::auto_sync(store)?, clocks, scope_of(trigger), now) {
+            if ids.is_empty() {
                 return Ok(None);
             }
-            let eligible = rule::eligible(&sources, &attempts, now);
-            let ids: Vec<String> = eligible.iter().map(|source| source.id.clone()).collect();
-            attempts.count(&eligible, now, scope_of(trigger));
+            let due: Vec<&SourceRecord> = sources
+                .iter()
+                .filter(|source| ids.contains(&source.id))
+                .collect();
+            attempts.count(&due, now, scope);
             store.set_setting(AUTO_SYNC_ATTEMPTS_KEY, &attempts)?;
             Ok(Some(ids))
         })?;
@@ -147,12 +158,18 @@ impl App {
 
     /// A full sync of a Canvas source ended well: its courses don't wait for their structure
     /// any more (`only`: the ones whose structure it read, when it was limited to some
-    /// courses).
-    pub(crate) fn structure_was_read(&self, source_id: &str, only: Option<&[String]>) {
+    /// courses). `unread`: the ones it couldn't read this time; a waiting one keeps waiting
+    /// but no longer makes a full sync due by itself (`LightSync::full_sync_read`).
+    pub(crate) fn structure_was_read(
+        &self,
+        source_id: &str,
+        only: Option<&[String]>,
+        unread: &[String],
+    ) {
         let recorded = self.write_store().and_then(|store| {
             Ok(store.in_transaction(|store| {
                 let mut light = rule::light_sync(store)?;
-                if light.full_sync_read(source_id, only) {
+                if light.full_sync_read(source_id, only, unread) {
                     store.set_setting(LIGHT_SYNC_KEY, &light)?;
                 }
                 Ok(())
@@ -212,10 +229,13 @@ impl App {
     }
 }
 
-/// Whether an automatic run records `kind` on the source: only what the student must fix.
+/// Whether an automatic run records `kind` on the source. Everything except a failure that
+/// may pass by itself: the network, throttling, a server having trouble. (An expired token, a
+/// missing folder, a database that can't be written or a feed that answers with something else
+/// is shown: nothing would fix it but the student.)
 pub(crate) fn automatic_run_records(kind: SourceErrorKind) -> bool {
-    matches!(
+    !matches!(
         kind,
-        SourceErrorKind::AuthExpiredOrRevoked | SourceErrorKind::NotFound
+        SourceErrorKind::Network | SourceErrorKind::RateLimited
     )
 }

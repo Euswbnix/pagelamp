@@ -6,10 +6,12 @@
 //! each outside any transaction. No `Store` is ever held across `.await`.
 //!
 //! A `user_level_only` sync (one nobody is at the app for) makes no request with a course in
-//! its address: the course list, planner items and announcements only. The rules below then
-//! keep everything it didn't read: modules, files, pages and links stay as the last full sync
-//! left them. Assignment due dates come from the planner instead (its window only: a new or
-//! moved date is taken, nothing is removed).
+//! its path: the course list, planner items and announcements only. The rules below then keep
+//! everything it didn't read: modules, files, pages and links stay as the last full sync left
+//! them. Like any sync it removes only what it read completely: an announcement that left the
+//! listing, a syllabus that became empty, a planner note that is gone. Assignment due dates
+//! come from the planner instead (its window only: a new or moved date is taken, none is
+//! removed).
 //!
 //! Safety rules (a sync must never destroy what it merely failed to see):
 //! - Materials are pruned per kind, and only when every listing that kind depends on was read
@@ -76,10 +78,23 @@ pub(crate) fn fatal(err: &CanvasError) -> Option<SourceError> {
 
 /// The first error of a call that must succeed (e.g. `/users/self`, the course list).
 pub(crate) fn required(err: CanvasError, what: &str) -> SourceError {
-    fatal(&err).unwrap_or_else(|| match err {
-        CanvasError::NotFound => no_canvas_here(),
-        other => SourceError::other(format!("Could not read {what} from Canvas: {other}.")),
-    })
+    fatal(&err)
+        .or_else(|| passing(&err))
+        .unwrap_or_else(|| match err {
+            CanvasError::NotFound => no_canvas_here(),
+            other => SourceError::other(format!("Could not read {what} from Canvas: {other}.")),
+        })
+}
+
+/// A failure on Canvas's side that may pass by itself (a 5xx): reported like a network
+/// failure, which is what it is to the student. An automatic sync keeps those quiet.
+pub(crate) fn passing(err: &CanvasError) -> Option<SourceError> {
+    match err {
+        CanvasError::Http(status) if (500..600).contains(status) => Some(SourceError::network(
+            format!("Canvas is having trouble (HTTP {status}). Try again later."),
+        )),
+        _ => None,
+    }
 }
 
 /// The Canvas address answered, but not with the Canvas API.
@@ -266,7 +281,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .await
             .map_err(crate::probe_error)?;
         self.run_inner().await.map_err(|err| {
-            fatal(&err).unwrap_or_else(|| SourceError::other(format!("Canvas sync failed: {err}.")))
+            fatal(&err)
+                .or_else(|| passing(&err))
+                .unwrap_or_else(|| SourceError::other(format!("Canvas sync failed: {err}.")))
         })
     }
 
@@ -359,6 +376,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         report.new_courses.push(upsert.id.clone());
                     } else if result.structure_read {
                         report.read_courses.push(upsert.id.clone());
+                    } else if !self.options.user_level_only {
+                        report.unread_courses.push(upsert.id.clone());
                     }
                     report.modules += result.modules;
                     report.materials += result.materials;
@@ -372,6 +391,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 Err(err) if fatal(&err).is_some() => return Err(err),
                 Err(err) => {
                     announcements_read = false;
+                    if !self.options.user_level_only {
+                        report.unread_courses.push(upsert.id.clone());
+                    }
                     self.warn(&mut report, format!("{label}: skipped ({err})"));
                 }
             }

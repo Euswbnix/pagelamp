@@ -43,7 +43,7 @@ sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
   instructions, the `sync_status` description and every hint and note about old or unread data
   name no sync command.
 - `crates/pagelamp-canvas/src/tests_sync.rs`, `every_request_is_an_allow_listed_get` and
-  `a_user_level_sync_asks_for_no_course_and_removes_nothing` (the paths a run with nobody at the
+  `a_user_level_sync_asks_for_no_course_and_removes_only_what_it_read` (the paths a run with nobody at the
   app asks for).
 - `crates/pagelamp-app/tests/crate_graph.rs`: the MCP crate depends on neither the Canvas crate
   nor the facade that runs syncs.

@@ -517,7 +517,9 @@ impl PageLampServer {
                     week: week.week,
                     requested_week: week.requested_week,
                     available_weeks: week.available_weeks,
-                    note: week.note,
+                    // (A waiting course's week isn't empty, it is unread: the note about an
+                    // empty week would contradict `structure_pending`.)
+                    note: week.note.filter(|_| !synced.structure_pending),
                     modules: week
                         .modules
                         .iter()

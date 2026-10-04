@@ -26,7 +26,8 @@
 //!     Authorization header to another host)
 //!   ```
 //!
-//! - Canvas is never called from the MCP server; only `pagelamp sync` calls this crate.
+//! - Canvas is never called from the MCP server; only a sync calls this crate (one the student
+//!   starts in an app or with `pagelamp sync`, or the app's automatic sync).
 //! - Pagination: follow `Link: <…>; rel="next"` as an opaque URL (must stay on base host).
 //! - Throttling: at most 2 concurrent requests; if `X-Rate-Limit-Remaining` < 100 slow down;
 //!   on 403 with body containing "Rate Limit Exceeded" or on 429, exponential backoff
@@ -112,9 +113,11 @@ pub struct SyncReport {
     /// old as before the run (the warnings say what was missed).
     pub user_level_read: bool,
     /// Courses whose structure this (full) sync read: it got the module listing, or was told
-    /// the student has none to see. Not one whose listing failed in a way that may pass (a
-    /// 5xx, a bad answer).
+    /// the student has none to see.
     pub read_courses: Vec<String>,
+    /// Courses a full sync selected but couldn't read the structure of, in a way that may pass
+    /// (a 5xx or a bad answer for the module listing, a course it had to skip).
+    pub unread_courses: Vec<String>,
     pub courses: usize,
     pub modules: usize,
     pub materials: usize,
