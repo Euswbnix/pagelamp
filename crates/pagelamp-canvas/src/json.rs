@@ -110,6 +110,10 @@ pub(crate) struct Course {
     pub term: Option<Term>,
     #[serde(default, deserialize_with = "lenient")]
     pub syllabus_body: Option<String>,
+    /// What the course's Home shows: `wiki` (a front page), `modules`, `syllabus`,
+    /// `assignments` or `feed`.
+    #[serde(default, deserialize_with = "lenient")]
+    pub default_view: Option<String>,
     /// Canvas returns a stub `{id, access_restricted_by_date: true}` for courses outside
     /// their dates; those are not upserted (only `lms_access_restricted` is recorded).
     #[serde(default, deserialize_with = "lenient")]
@@ -141,6 +145,14 @@ pub(crate) struct Tab {
     pub id: String,
     #[serde(default, deserialize_with = "lenient")]
     pub hidden: Option<bool>,
+    /// The name the course's navigation shows.
+    #[serde(default, deserialize_with = "lenient")]
+    pub label: Option<String>,
+    /// `internal`, or `external` for a tool that isn't part of Canvas.
+    #[serde(rename = "type", default, deserialize_with = "lenient")]
+    pub kind: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub html_url: Option<String>,
 }
 
 /// `GET /courses/:id/modules?include[]=items&include[]=content_details`
@@ -174,6 +186,31 @@ pub(crate) struct ModuleItem {
     pub page_url: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     pub external_url: Option<String>,
+    /// Where the student opens the item in Canvas.
+    #[serde(default, deserialize_with = "lenient")]
+    pub html_url: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub completion_requirement: Option<CompletionRequirement>,
+}
+
+/// What a module asks the student to do with an item.
+#[derive(Debug, Deserialize)]
+pub(crate) struct CompletionRequirement {
+    /// `must_view`, `must_submit`, `must_contribute`, `min_score`, `must_mark_done`.
+    #[serde(rename = "type", default, deserialize_with = "lenient")]
+    pub kind: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
+    pub completed: Option<bool>,
+}
+
+impl ModuleItem {
+    /// The module asks the student to view this item and Canvas doesn't say they have:
+    /// reading its body through the API would do it for them.
+    pub(crate) fn would_mark_viewed(&self) -> bool {
+        self.completion_requirement.as_ref().is_some_and(|req| {
+            req.kind.as_deref() == Some("must_view") && req.completed != Some(true)
+        })
+    }
 }
 
 /// `GET /courses/:id/files` and `/courses/:id/files/:file_id`
@@ -219,6 +256,9 @@ pub(crate) struct Page {
     pub body: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     pub locked_for_user: Option<bool>,
+    /// The page is the course's front page.
+    #[serde(default, deserialize_with = "lenient")]
+    pub front_page: Option<bool>,
 }
 
 /// `GET /courses/:id/assignments` — deliberately WITHOUT `description`: assignment

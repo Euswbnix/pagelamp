@@ -36,6 +36,10 @@ pub(crate) enum Endpoint<'a> {
         course: &'a CanvasId,
         url_or_id: &'a str,
     },
+    /// The page a course's Home shows, when the Home is a page.
+    FrontPage {
+        course: &'a CanvasId,
+    },
     Assignments {
         course: &'a CanvasId,
     },
@@ -99,6 +103,9 @@ impl Endpoint<'_> {
                 Endpoint::Page { course, url_or_id } => {
                     path.extend(["courses", &course.0, "pages", url_or_id]);
                 }
+                Endpoint::FrontPage { course } => {
+                    path.extend(["courses", &course.0, "front_page"]);
+                }
                 Endpoint::Assignments { course } => {
                     path.extend(["courses", &course.0, "assignments"]);
                 }
@@ -128,7 +135,10 @@ impl Endpoint<'_> {
     pub(crate) fn is_list(&self) -> bool {
         !matches!(
             self,
-            Endpoint::UsersSelf | Endpoint::File { .. } | Endpoint::Page { .. }
+            Endpoint::UsersSelf
+                | Endpoint::File { .. }
+                | Endpoint::Page { .. }
+                | Endpoint::FrontPage { .. }
         )
     }
 }
@@ -245,6 +255,10 @@ mod tests {
                     url_or_id: "week-3/../../users",
                 },
                 "https://lms.example.edu/api/v1/courses/101/pages/week-3%2F..%2F..%2Fusers",
+            ),
+            (
+                Endpoint::FrontPage { course: &course },
+                "https://lms.example.edu/api/v1/courses/101/front_page",
             ),
             (
                 Endpoint::Announcements {

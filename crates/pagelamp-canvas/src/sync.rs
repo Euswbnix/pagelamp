@@ -13,11 +13,32 @@
 //! come from the planner instead (its window only: a new or moved date is taken, none is
 //! removed).
 //!
+//! What a full sync reads of a course beyond its lists (`cover`, `pagelamp_core::coverage`):
+//! - The Home page, when the Home is a page: the entry of the Pages list that says so, else
+//!   one `front_page` request.
+//! - Pages and files of the same course that a text it read links to (the Home page, the
+//!   syllabus, module and listed pages, announcements), one level deep and within limits. The
+//!   request is built from the course id and the slug or file id; an address written in a
+//!   text is never requested. A linked file is asked about, never downloaded for that.
+//! - Never: a hidden list; a module's page the student is asked to view and hasn't (reading
+//!   it would mark it as viewed), by any path; any page while that can't be known (the module
+//!   list wasn't read completely).
+//! - An automatic sync reads a page no list dates (the Home page, a linked page, a module's
+//!   page while the Pages list is hidden) at most once a day: reading it shows in Canvas as
+//!   the student viewing it. A sync the student starts reads it.
+//! - What wasn't read is noted with a reason in the course's record, written with its
+//!   materials. A failed request for the Home page or a linked item is such a note, not a
+//!   failed sync.
+//! - Pages are read in a fixed order (the Home page, module pages, listed pages), so the
+//!   limits cut the same links every time.
+//!
 //! Safety rules (a sync must never destroy what it merely failed to see):
 //! - Materials are pruned per kind, and only when every listing that kind depends on was read
 //!   completely (all pages, every item understood). A hidden tab, a 403, a failed fetch or a
 //!   cut-off pagination keeps the existing materials of that kind. Announcements older than
 //!   the synced window are kept.
+//! - A page or a file only a link led to is kept while no list can say it is gone (the
+//!   record names them); a linked file Canvas no longer has stays and is noted.
 //! - Courses are NEVER deleted by a Canvas sync: one that leaves the active list (term ended,
 //!   enrollment concluded) keeps all its data and is marked `enrollment_active = false`.
 //!   Removing old courses is the student's decision.
@@ -30,9 +51,14 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use pagelamp_core::auto_sync;
+use pagelamp_core::coverage::{
+    self, CourseHomeKind, CourseHomeState, CoverageArea, CoverageListState, CoverageReason,
+    FileSeen, FoundLink, NotRead, PageRead,
+};
 use pagelamp_core::ingest::{self, IndexOutcome};
 use pagelamp_core::model::{
     CourseUpsert, DownloadBlock, Event, Material, MaterialKind, MaterialUpsert, Module, TextStatus,
@@ -41,6 +67,7 @@ use pagelamp_core::source::{CourseSyncSummary, ProgressFn, SourceError, SyncProg
 use pagelamp_core::store::Store;
 
 use crate::api::{Api, Listing};
+use crate::cover::{self, Cover, Rank};
 use crate::endpoint::Endpoint;
 use crate::json::{self, CanvasId};
 use crate::map::{self, Ids, Placement};
@@ -48,7 +75,7 @@ use crate::transport::{CanvasError, CanvasTransport};
 use crate::{SyncOptions, SyncReport};
 
 /// How far back announcements are synced, and the planner window.
-const ANNOUNCEMENT_DAYS: i64 = 120;
+const ANNOUNCEMENT_DAYS: i64 = 365;
 const PLANNER_DAYS_BACK: i64 = 7;
 const PLANNER_DAYS_AHEAD: i64 = 120;
 /// Longest local file name we create (bytes; file systems allow 255).
@@ -127,6 +154,9 @@ pub(crate) struct Syncer<'a, T> {
     pub options: &'a SyncOptions,
     pub progress: ProgressFn<'a>,
     pub now: DateTime<Utc>,
+    /// Requests this sync has made for linked pages and files, over all courses
+    /// (`cover::MAX_FOLLOW_REQUESTS`).
+    pub follow_requests: AtomicU32,
 }
 
 /// What one course contributed.
@@ -219,6 +249,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
     fn warn(&self, report: &mut SyncReport, message: String) {
         (self.progress)(SyncProgress::Warning(message.clone()));
         report.warnings.push(message);
+    }
+
+    /// Whether this sync may still ask for a linked page or file (and count it if so).
+    fn take_follow(&self) -> bool {
+        self.follow_requests
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |made| {
+                (made < cover::MAX_FOLLOW_REQUESTS).then_some(made + 1)
+            })
+            .is_ok()
     }
 
     /// After indexing one file: warn about it if it could not be read (and, once per sync,
@@ -588,6 +627,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         // is read, and (not being read completely) nothing of it is pruned.
         let full = !self.options.user_level_only;
 
+        // What this sync reads of the course and what it doesn't (`cover`). Only a full sync
+        // writes it.
+        let previous = if full {
+            let course_id = course_id.clone();
+            with_store(self.db, move |store| coverage::read(store, &course_id)).await?
+        } else {
+            None
+        };
+        let mut cover = Cover::new(self.now, previous);
+
         // Tabs tell which areas the student can see (hidden tabs are usually omitted).
         let tabs = if full {
             match api
@@ -607,6 +656,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             tabs.as_ref()
                 .is_none_or(|tabs| tabs.iter().any(|t| t.id == tab && t.hidden != Some(true)))
         };
+        cover.tabs(&api.base, tabs.as_deref());
 
         // ---- modules + items ------------------------------------------------------------------
         let mut modules_ok = true;
@@ -623,6 +673,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         let structure_read = matches!(
             &module_listing,
             Some(Ok(_) | Err(CanvasError::Forbidden | CanvasError::NotFound))
+        );
+        // Canvas says the student has no modules to see.
+        let no_modules_here = matches!(
+            &module_listing,
+            Some(Err(CanvasError::Forbidden | CanvasError::NotFound))
         );
         match module_listing {
             None => modules_ok = false,
@@ -674,6 +729,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 self.soft(report, label, "modules", err)?;
             }
         }
+        cover.record.modules_list = if modules_ok {
+            CoverageListState::Read
+        } else if no_modules_here {
+            CoverageListState::Hidden
+        } else {
+            CoverageListState::Failed
+        };
+        // Every "view this page" requirement the student has is known: a page that isn't a
+        // module's page can be read without marking anything as viewed.
+        let must_view_known = modules_ok || no_modules_here;
 
         // ---- files (only when the Files tab is visible; module items still bring files) --------
         let mut files_ok = modules_ok;
@@ -686,11 +751,18 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 .await
             {
                 Ok(listing) => {
-                    files_ok &= self.check_listing(report, label, "the files list", &listing);
+                    let complete = self.check_listing(report, label, "the files list", &listing);
+                    files_ok &= complete;
+                    cover.record.files_list = if complete {
+                        CoverageListState::Read
+                    } else {
+                        CoverageListState::Failed
+                    };
                     files.extend(listing.items.into_iter().map(|f| (f.id.clone(), f)));
                 }
                 Err(err) => {
                     files_ok = false;
+                    cover.record.files_list = CoverageListState::Failed;
                     self.soft(report, label, "files list", err)?;
                 }
             }
@@ -705,16 +777,27 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         // ---- pages ------------------------------------------------------------------------------
         let mut pages_ok = modules_ok;
         let mut pages: HashMap<String, json::Page> = HashMap::new(); // by slug
+        // The slugs in the order pages are read: never the map's own order.
+        let mut listed_order: Vec<String> = Vec::new();
         if full && visible("pages") {
             match api
                 .get_all::<json::Page>(Endpoint::Pages { course: cid })
                 .await
             {
                 Ok(listing) => {
-                    pages_ok &= self.check_listing(report, label, "the pages list", &listing);
+                    let complete = self.check_listing(report, label, "the pages list", &listing);
+                    pages_ok &= complete;
+                    cover.record.pages_list = if complete {
+                        CoverageListState::Read
+                    } else {
+                        CoverageListState::Failed
+                    };
                     for page in listing.items {
                         match page.url.clone() {
                             Some(slug) => {
+                                if !pages.contains_key(&slug) {
+                                    listed_order.push(slug.clone());
+                                }
                                 pages.insert(slug, page);
                             }
                             None => pages_ok = false,
@@ -723,12 +806,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
                 Err(err) => {
                     pages_ok = false;
+                    cover.record.pages_list = CoverageListState::Failed;
                     self.soft(report, label, "pages", err)?;
                 }
             }
         } else {
             pages_ok = false;
         }
+        let listed: HashSet<String> = listed_order.iter().cloned().collect();
 
         // ---- assignments → due dates only ----------------------------------------------------
         let events = if full {
@@ -800,6 +885,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         let mut file_objects: HashMap<String, json::File> = HashMap::new();
         let mut html_jobs: Vec<HtmlJob> = Vec::new();
         let mut placements: HashMap<String, Placement> = HashMap::new();
+        let mut module_page_order: Vec<String> = Vec::new();
 
         for file in files.values() {
             let material = map::file(
@@ -854,7 +940,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
                 Some("Page") => match &item.page_url {
                     Some(slug) => {
+                        if item.would_mark_viewed() {
+                            cover.guard(slug, item);
+                        }
                         placements.insert(slug.clone(), placement.clone());
+                        module_page_order.push(slug.clone());
                         pages.entry(slug.clone()).or_default();
                     }
                     None => pages_ok = false,
@@ -864,21 +954,136 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         materials.insert(material.id.clone(), material);
                     }
                 }
-                _ => {} // assignments, quizzes, discussions, headers: not course material
+                // Assignments, quizzes, discussions, tools: not course material. Noted.
+                _ => cover.module_item(item),
             }
         }
-        for (slug, listed) in &pages {
+        // ---- the Home page --------------------------------------------------------------------
+        // When the Home is a page, it is read like any other page. `front_page` is asked for
+        // only when no list names it.
+        let home_kind = CourseHomeKind::from_canvas(canvas.default_view.as_deref());
+        cover.record.home.kind = home_kind;
+        let pages_list_read = cover.record.pages_list == CoverageListState::Read;
+        let files_list_read = cover.record.files_list == CoverageListState::Read;
+        let mut prefetched: HashMap<String, json::Page> = HashMap::new();
+        let mut home_slug: Option<String> = listed_order
+            .iter()
+            .find(|slug| {
+                pages
+                    .get(*slug)
+                    .is_some_and(|page| page.front_page == Some(true))
+            })
+            .cloned();
+        if !full || home_slug.is_some() {
+            // Nothing of the course is asked for, or the loop below reads the page.
+        } else if home_kind == CourseHomeKind::Page
+            || (home_kind == CourseHomeKind::Unknown && !pages_list_read)
+        {
+            // An automatic sync that read the Home page less than a day ago leaves it alone
+            // (the loop below keeps what the last sync recorded).
+            let read_lately = cover.previous.as_ref().and_then(|previous| {
+                let id = previous.home.material_id.as_ref()?;
+                let read = previous.followed.pages.get(id)?;
+                (self.options.automatic
+                    && cover::within(read.read_at, cover::REREAD_AFTER, self.now))
+                .then(|| (read.slug.clone(), previous.home.state))
+            });
+            match read_lately {
+                Some((slug, state)) => {
+                    cover.record.home.state = state;
+                    home_slug = Some(slug);
+                }
+                None => {
+                    self.check_cancelled()?;
+                    match api
+                        .get_one::<json::Page>(Endpoint::FrontPage { course: cid })
+                        .await
+                    {
+                        Ok(page) => match page.url.clone() {
+                            Some(slug) => {
+                                home_slug = Some(slug.clone());
+                                prefetched.insert(slug, page);
+                            }
+                            None => cover.record.home.state = CourseHomeState::Failed,
+                        },
+                        // The course has no front page: nothing went wrong.
+                        Err(CanvasError::NotFound) => {
+                            cover.record.home.state = CourseHomeState::Missing;
+                        }
+                        Err(err) => {
+                            cover::follow_failed(err)?;
+                            cover.record.home.state = CourseHomeState::Failed;
+                            cover.note(
+                                Rank::Home,
+                                NotRead::new(
+                                    CoverageArea::Home,
+                                    CoverageReason::FailedThisSync,
+                                    None,
+                                    Some(&cover::course_address(&api.base, cid)),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        } else if home_kind != CourseHomeKind::Unknown {
+            cover.record.home.state = CourseHomeState::NotAPage;
+        }
+        if let Some(slug) = &home_slug {
+            pages.entry(slug.clone()).or_default();
+        }
+
+        // ---- pages, in a fixed order: the Home page, module pages, listed pages ------------------
+        let mut order: Vec<String> = Vec::new();
+        let mut in_order: HashSet<String> = HashSet::new();
+        for slug in home_slug
+            .iter()
+            .chain(&module_page_order)
+            .chain(&listed_order)
+        {
+            if in_order.insert(slug.clone()) {
+                order.push(slug.clone());
+            }
+        }
+        // What the pages link to, for the follow step: the Home page apart, the rest in order.
+        let mut home_links: Option<(Vec<FoundLink>, u32)> = None;
+        let mut page_links: Vec<(Vec<FoundLink>, u32)> = Vec::new();
+        let mut requirement_unknown = false;
+        for slug in &order {
+            let entry = &pages[slug];
             let placement = placements.get(slug).cloned().unwrap_or_default();
-            let unchanged = listed.page_id.as_ref().is_some_and(|id| {
+            let is_home = home_slug.as_deref() == Some(slug.as_str());
+            let earlier = cover.earlier_page(slug);
+            let guarded = cover.guarded.contains(slug);
+            let locked = entry.locked_for_user == Some(true);
+            let unchanged = entry.page_id.as_ref().is_some_and(|id| {
                 existing.get(&ids.page(id)).is_some_and(|old| {
                     old.text_status == TextStatus::Ok
-                        && listed.updated_at.is_some()
-                        && old.published_at == listed.updated_at
+                        && entry.updated_at.is_some()
+                        && old.published_at == entry.updated_at
                 })
             });
-            let page = if unchanged || listed.locked_for_user == Some(true) {
+            // No list dates this page: an automatic sync reads it again only after a day.
+            let read_lately = self.options.automatic
+                && entry.updated_at.is_none()
+                && earlier.as_ref().is_some_and(|(_, read)| {
+                    cover::within(read.read_at, cover::REREAD_AFTER, self.now)
+                });
+            // Stored by a version that didn't look at links, in a course whose Files list
+            // can't say what its pages link to: read once more.
+            let rescan = unchanged && earlier.is_none() && !files_list_read;
+            let wanted = !(guarded || locked || read_lately || (unchanged && !rescan));
+            let mut failed = false;
+            let page = if let Some(page) = prefetched.remove(slug) {
+                Some(page)
+            } else if !wanted {
+                None
+            } else if !must_view_known {
+                // Whether a module asks the student to view this page isn't known this time.
+                requirement_unknown = true;
                 None
             } else {
+                self.check_cancelled()?;
                 match api
                     .get_one::<json::Page>(Endpoint::Page {
                         course: cid,
@@ -889,24 +1094,133 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     Ok(page) => Some(page),
                     Err(err) => {
                         pages_ok = false;
+                        failed = true;
                         self.soft(report, label, "a page", err)?;
                         None
                     }
                 }
             };
-            let source = page.as_ref().unwrap_or(listed);
-            let Some(page_id) = source.page_id.clone().or_else(|| listed.page_id.clone()) else {
-                pages_ok = false;
+            let address = entry
+                .html_url
+                .clone()
+                .unwrap_or_else(|| cover::page_address(&api.base, cid, slug));
+            if failed {
+                cover.note(
+                    Rank::Failed,
+                    NotRead::new(
+                        CoverageArea::Pages,
+                        CoverageReason::FailedThisSync,
+                        entry.title.as_deref(),
+                        Some(&address),
+                    ),
+                );
+            }
+            let source = page.as_ref().unwrap_or(entry);
+            let Some(page_id) = source.page_id.clone().or_else(|| entry.page_id.clone()) else {
+                // Neither read now nor listed: only the last sync's record names it.
+                match earlier {
+                    Some((id, read)) => {
+                        let links = (read.links.clone(), read.off_site_links);
+                        if is_home {
+                            cover.record.home.material_id = Some(id.clone());
+                            home_links = Some(links);
+                        } else {
+                            page_links.push(links);
+                        }
+                        cover.record.followed.pages.insert(id, read);
+                    }
+                    None if !wanted => {}
+                    None => pages_ok = false,
+                }
                 continue;
             };
             let material = map::page(ids, &api.base, &course_id, &page_id, source, &placement);
-            if let Some(body) = page.and_then(|p| p.body) {
-                html_jobs.push(HtmlJob {
-                    material_id: material.id.clone(),
-                    html: body,
-                });
+            let material_id = material.id.clone();
+            let title = source.title.clone();
+            // Only the record says this page exists when no list or module names it.
+            let linked = !listed.contains(slug) && !placements.contains_key(slug);
+            let locked = locked
+                || page
+                    .as_ref()
+                    .is_some_and(|page| page.locked_for_user == Some(true) && page.body.is_none());
+            let mut has_text = existing
+                .get(&material_id)
+                .is_some_and(|old| old.text_status == TextStatus::Ok);
+            let links = match page {
+                Some(page) => {
+                    let (links, off_site) = page
+                        .body
+                        .as_deref()
+                        .map(|body| cover::scan(&api.base, cid, body))
+                        .unwrap_or_default();
+                    cover.record.followed.pages.insert(
+                        material_id.clone(),
+                        PageRead {
+                            slug: slug.clone(),
+                            read_at: Some(self.now),
+                            linked,
+                            links: links.clone(),
+                            off_site_links: off_site,
+                        },
+                    );
+                    if let Some(body) = page.body {
+                        has_text = true;
+                        html_jobs.push(HtmlJob {
+                            material_id: material_id.clone(),
+                            html: body,
+                        });
+                    }
+                    Some((links, off_site))
+                }
+                None => earlier.map(|(_, mut read)| {
+                    read.linked = linked;
+                    let links = (read.links.clone(), read.off_site_links);
+                    cover
+                        .record
+                        .followed
+                        .pages
+                        .insert(material_id.clone(), read);
+                    links
+                }),
+            };
+            if locked {
+                cover.note(
+                    Rank::Locked,
+                    NotRead::new(
+                        CoverageArea::Pages,
+                        CoverageReason::Locked,
+                        title.as_deref(),
+                        Some(&address),
+                    ),
+                );
             }
-            materials.insert(material.id.clone(), material);
+            if is_home {
+                cover.record.home.material_id = Some(material_id.clone());
+                cover.record.home.state = if locked {
+                    CourseHomeState::Locked
+                } else if has_text {
+                    CourseHomeState::Read
+                } else if failed {
+                    CourseHomeState::Failed
+                } else {
+                    CourseHomeState::Unknown
+                };
+                home_links = links;
+            } else {
+                page_links.extend(links);
+            }
+            materials.insert(material_id, material);
+        }
+        if requirement_unknown {
+            cover.note(
+                Rank::Failed,
+                NotRead::new(
+                    CoverageArea::Pages,
+                    CoverageReason::FailedThisSync,
+                    None,
+                    None,
+                ),
+            );
         }
         for announcement in &announcements {
             let material = map::announcement(ids, &api.base, &course_id, announcement);
@@ -929,6 +1243,321 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 html: body.to_string(),
             });
             materials.insert(material.id.clone(), material);
+        }
+
+        // ---- what the texts link to, one level deep (`cover`) -------------------------------------
+        if full {
+            // The texts in this order: the Home page, the syllabus, module pages, listed pages,
+            // announcements (newest first).
+            let mut seeds: Vec<(Vec<FoundLink>, u32)> = Vec::new();
+            seeds.extend(home_links);
+            if let Some(body) = canvas.syllabus_body.as_deref() {
+                seeds.push(cover::scan(&api.base, cid, body));
+            }
+            seeds.extend(page_links);
+            let mut newest_first: Vec<&json::Announcement> = announcements.iter().collect();
+            newest_first.sort_by_key(|announcement| std::cmp::Reverse(announcement.posted_at));
+            for announcement in newest_first {
+                if let Some(message) = &announcement.message {
+                    seeds.push(cover::scan(&api.base, cid, message));
+                }
+            }
+
+            let mut to_follow: Vec<String> = Vec::new();
+            let mut wanted_pages: HashSet<String> = HashSet::new();
+            let mut file_ids: Vec<String> = Vec::new();
+            let mut wanted_files: HashSet<String> = HashSet::new();
+            let mut off_site: u32 = 0;
+            for (links, outside) in &seeds {
+                off_site = off_site.saturating_add(*outside);
+                for link in links {
+                    match link {
+                        FoundLink::Page { slug } => {
+                            if !in_order.contains(slug) && wanted_pages.insert(slug.clone()) {
+                                to_follow.push(slug.clone());
+                            }
+                        }
+                        FoundLink::File { id } => {
+                            if wanted_files.insert(id.clone()) {
+                                file_ids.push(id.clone());
+                            }
+                        }
+                        other => cover.link(other),
+                    }
+                }
+            }
+
+            // Linked pages.
+            let mut linked_pages = 0usize;
+            for slug in &to_follow {
+                let address = cover::page_address(&api.base, cid, slug);
+                let earlier = cover.earlier_page(slug);
+                let failed_this_sync = || {
+                    NotRead::new(
+                        CoverageArea::Pages,
+                        CoverageReason::FailedThisSync,
+                        None,
+                        Some(&address),
+                    )
+                };
+                let read: Option<PageRead> = if !must_view_known {
+                    // Whether a module asks the student to view it isn't known this time.
+                    cover.note(Rank::Failed, failed_this_sync());
+                    None
+                } else if self.options.automatic
+                    && earlier.as_ref().is_some_and(|(_, read)| {
+                        cover::within(read.read_at, cover::REREAD_AFTER, self.now)
+                    })
+                {
+                    // Read less than a day ago: its stored links are used again.
+                    earlier.as_ref().map(|(_, read)| read.clone())
+                } else if linked_pages >= cover::MAX_LINKED_PAGES || !self.take_follow() {
+                    cover.capped(CoverageArea::Pages, &address);
+                    None
+                } else {
+                    self.check_cancelled()?;
+                    match api
+                        .get_one::<json::Page>(Endpoint::Page {
+                            course: cid,
+                            url_or_id: slug,
+                        })
+                        .await
+                    {
+                        Ok(page) => match page.page_id.clone() {
+                            Some(page_id) => {
+                                let material = map::page(
+                                    ids,
+                                    &api.base,
+                                    &course_id,
+                                    &page_id,
+                                    &page,
+                                    &Placement::default(),
+                                );
+                                if materials.contains_key(&material.id) {
+                                    // Another address of a page that was read above.
+                                    continue;
+                                }
+                                let (links, outside) = page
+                                    .body
+                                    .as_deref()
+                                    .map(|body| cover::scan(&api.base, cid, body))
+                                    .unwrap_or_default();
+                                let read = PageRead {
+                                    slug: slug.clone(),
+                                    read_at: Some(self.now),
+                                    linked: true,
+                                    links,
+                                    off_site_links: outside,
+                                };
+                                cover
+                                    .record
+                                    .followed
+                                    .pages
+                                    .insert(material.id.clone(), read.clone());
+                                if page.locked_for_user == Some(true) && page.body.is_none() {
+                                    cover.note(
+                                        Rank::Locked,
+                                        NotRead::new(
+                                            CoverageArea::Pages,
+                                            CoverageReason::Locked,
+                                            page.title.as_deref(),
+                                            Some(&address),
+                                        ),
+                                    );
+                                }
+                                if let Some(body) = page.body {
+                                    html_jobs.push(HtmlJob {
+                                        material_id: material.id.clone(),
+                                        html: body,
+                                    });
+                                }
+                                materials.insert(material.id.clone(), material);
+                                linked_pages += 1;
+                                // Nothing is carried over below: this read replaces it.
+                                Some(read)
+                            }
+                            None => {
+                                cover.note(Rank::Failed, failed_this_sync());
+                                None
+                            }
+                        },
+                        Err(err) => {
+                            cover::follow_failed(err)?;
+                            cover.note(Rank::Failed, failed_this_sync());
+                            None
+                        }
+                    }
+                };
+                // Not read this time: what the last sync recorded stays (nothing is deleted).
+                if let Some((id, earlier)) = earlier
+                    && !cover.record.followed.pages.contains_key(&id)
+                {
+                    if read.is_some() {
+                        linked_pages += 1;
+                    }
+                    cover.record.followed.pages.insert(id, earlier);
+                }
+                let Some(read) = read else {
+                    continue;
+                };
+                off_site = off_site.saturating_add(read.off_site_links);
+                // One level only: what a linked page links to is noted, and its files are
+                // asked about.
+                for link in &read.links {
+                    match link {
+                        FoundLink::Page { slug: deeper } => {
+                            if !in_order.contains(deeper) && !wanted_pages.contains(deeper) {
+                                cover.capped(
+                                    CoverageArea::Pages,
+                                    &cover::page_address(&api.base, cid, deeper),
+                                );
+                            }
+                        }
+                        FoundLink::File { id } => {
+                            if wanted_files.insert(id.clone()) {
+                                file_ids.push(id.clone());
+                            }
+                        }
+                        other => cover.link(other),
+                    }
+                }
+            }
+
+            // Linked files: what Canvas says about them, never their content.
+            let mut linked_files = 0usize;
+            for id in &file_ids {
+                let file_id = CanvasId(id.clone());
+                let material_id = ids.file(&file_id);
+                if materials.contains_key(&material_id) {
+                    // The Files list or a module names it.
+                    continue;
+                }
+                let address = cover::file_address(&api.base, cid, id);
+                let stored = existing.get(&material_id);
+                // What the last sync recorded, for a file PageLamp still has.
+                let earlier = cover
+                    .previous
+                    .as_ref()
+                    .and_then(|previous| previous.followed.files.get(&material_id))
+                    .filter(|_| stored.is_some())
+                    .cloned();
+                let checked_lately = earlier.as_ref().is_some_and(|seen| {
+                    cover::within(seen.checked_at, cover::RECHECK_FILE_AFTER, self.now)
+                });
+                if checked_lately && !self.options.download_files {
+                    cover
+                        .record
+                        .followed
+                        .files
+                        .extend(earlier.map(|seen| (material_id.clone(), seen)));
+                    linked_files += 1;
+                    continue;
+                }
+                if linked_files >= cover::MAX_LINKED_FILES || !self.take_follow() {
+                    cover.capped(CoverageArea::Files, &address);
+                    cover
+                        .record
+                        .followed
+                        .files
+                        .extend(earlier.map(|seen| (material_id.clone(), seen)));
+                    continue;
+                }
+                self.check_cancelled()?;
+                match api
+                    .get_one::<json::File>(Endpoint::File {
+                        course: cid,
+                        file: &file_id,
+                    })
+                    .await
+                {
+                    Ok(file) => {
+                        let material = map::file(
+                            ids,
+                            &api.base,
+                            cid,
+                            &course_id,
+                            &file,
+                            None,
+                            &Placement::default(),
+                        );
+                        if materials.contains_key(&material.id) {
+                            // Another form of an id the Files list or a module names.
+                            continue;
+                        }
+                        cover.record.followed.files.insert(
+                            material.id.clone(),
+                            FileSeen {
+                                checked_at: Some(self.now),
+                                gone: false,
+                            },
+                        );
+                        file_objects.insert(material.id.clone(), file);
+                        materials.insert(material.id.clone(), material);
+                        linked_files += 1;
+                    }
+                    Err(CanvasError::NotFound) => {
+                        // A link to nothing says nothing; a file PageLamp has stays, noted.
+                        if let Some(old) = stored {
+                            cover.record.followed.files.insert(
+                                material_id.clone(),
+                                FileSeen {
+                                    checked_at: Some(self.now),
+                                    gone: true,
+                                },
+                            );
+                            cover.note(
+                                Rank::Gone,
+                                NotRead::new(
+                                    CoverageArea::Files,
+                                    CoverageReason::NoLongerInCanvas,
+                                    Some(&old.title),
+                                    Some(&address),
+                                ),
+                            );
+                        }
+                    }
+                    Err(err) => {
+                        cover::follow_failed(err)?;
+                        cover.note(
+                            Rank::Failed,
+                            NotRead::new(
+                                CoverageArea::Files,
+                                CoverageReason::FailedThisSync,
+                                stored.map(|old| old.title.as_str()),
+                                Some(&address),
+                            ),
+                        );
+                        cover
+                            .record
+                            .followed
+                            .files
+                            .extend(earlier.map(|seen| (material_id.clone(), seen)));
+                    }
+                }
+            }
+
+            // Linked pages and files no text names any more stay as they are: stage 1 deletes
+            // nothing a link once led to.
+            if let Some(previous) = cover.previous.take() {
+                for (id, read) in previous.followed.pages {
+                    if read.linked
+                        && existing.contains_key(&id)
+                        && !materials.contains_key(&id)
+                        && !cover.record.followed.pages.contains_key(&id)
+                    {
+                        cover.record.followed.pages.insert(id, read);
+                    }
+                }
+                for (id, seen) in previous.followed.files {
+                    if existing.contains_key(&id)
+                        && !materials.contains_key(&id)
+                        && !cover.record.followed.files.contains_key(&id)
+                    {
+                        cover.record.followed.files.insert(id, seen);
+                    }
+                }
+            }
+            cover.record.counts.off_site_links = off_site;
         }
 
         // ---- files: download (when asked), keep earlier copies, or mark not downloaded -----------
@@ -1067,6 +1696,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 })
                 .map(|m| m.id.clone()),
         );
+        // What only the record knows of (linked pages and files) is never pruned.
+        let mut record = cover.finish();
+        keep.extend(record.followed.keep().map(str::to_string));
         let result_modules = modules.as_ref().map_or(0, Vec::len);
         let result_materials = materials.len();
         let result_pages = materials
@@ -1077,6 +1709,33 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .values()
             .filter(|m| m.kind == MaterialKind::File)
             .count();
+        // With the pages and files this sync left as they were (read lately, or kept by the
+        // record).
+        let kept_pages = record
+            .followed
+            .pages
+            .keys()
+            .filter(|id| !materials.contains_key(*id) && existing.contains_key(*id))
+            .count();
+        let kept_files = record
+            .followed
+            .files
+            .keys()
+            .filter(|id| !materials.contains_key(*id) && existing.contains_key(*id))
+            .count();
+        record.counts.pages = to_u32(result_pages + kept_pages);
+        record.counts.files = to_u32(result_files + kept_files);
+        // (The Home page is kept by the record too, but no link led to it.)
+        let home_id = record.home.material_id.clone();
+        record.counts.linked_pages = to_u32(
+            record
+                .followed
+                .pages
+                .iter()
+                .filter(|(id, read)| read.linked && home_id.as_ref() != Some(*id))
+                .count(),
+        );
+        record.counts.linked_files = to_u32(record.followed.files.len());
         {
             let upsert = upsert.clone();
             let course_id = course_id.clone();
@@ -1127,6 +1786,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         store.set_text_state(id, TextStatus::Unsupported, None, None)?;
                     }
                     store.prune_materials(&course_id, &keep)?;
+                    if full {
+                        coverage::write(store, &course_id, &record)?;
+                    }
                     Ok(())
                 })
             })
