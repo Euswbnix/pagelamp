@@ -97,10 +97,30 @@ fn generation_from_row(row: &Row<'_>) -> rusqlite::Result<GenerationRecord> {
     })
 }
 
+/// A JSON column as it is stored: without access parameters in its strings
+/// (`pagelamp_extract::scrub`). An answer is written by a model, or comes from an AI app, and
+/// either can copy a link's address from somewhere. Cleaned by its string values, not as text
+/// (`scrub_json` says why); text that isn't JSON is cleaned as plain text.
+fn cleaned(json: &str) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+    match serde_json::from_str::<serde_json::Value>(json) {
+        Ok(mut value) => {
+            if pagelamp_extract::scrub::scrub_json(&mut value) {
+                // (Serialising a `Value` can't fail.)
+                Cow::Owned(value.to_string())
+            } else {
+                Cow::Borrowed(json)
+            }
+        }
+        Err(_) => pagelamp_extract::scrub::scrub_text(json),
+    }
+}
+
 impl Store {
     /// Write a finished run (replacing a row with the same id), then keep the latest 5 accepted
     /// rows, the latest 5 drafts and the latest 5 failed or cancelled runs of its feature,
-    /// course and week.
+    /// course and week. The answer and the summary are stored without access parameters in
+    /// the addresses they hold (`cleaned`).
     pub fn record_generation(&self, record: &GenerationRecord) -> Result<()> {
         self.atomic(|| {
             self.conn.execute(
@@ -118,8 +138,8 @@ impl Store {
                     record.status.as_str(),
                     ts_text(record.created_at),
                     record.prompt_version,
-                    record.output_json,
-                    record.summary_json,
+                    record.output_json.as_deref().map(cleaned),
+                    record.summary_json.as_deref().map(cleaned),
                     record.error_kind,
                     opt_date_text(record.week_starts_on),
                 ],
@@ -337,6 +357,41 @@ mod tests {
             error_kind: None,
             week_starts_on: None,
         }
+    }
+
+    /// An answer can hold a link's address with a parameter that gives access to a file (a
+    /// model or an AI app copied it from somewhere). The stored row holds none, and its JSON
+    /// is still JSON: also when the parameter follows an escaped line break.
+    #[test]
+    fn a_run_is_stored_without_access_parameters() {
+        let store = demo_store();
+        let mut record = run("g1", 0);
+        record.output_json = Some(
+            json!({
+                "sections": [{
+                    "title": "Week 3",
+                    "body": "Read https://lms.example.edu/courses/101/pages/week-3?\nverifier=SECRET&id=9 \
+                             and the handout (https://lms.example.edu/courses/101/files/7/download?verifier=SECRET&wrap=1)."
+                }]
+            })
+            .to_string(),
+        );
+        record.summary_json = Some("not json: sf_verifier=SECRET".into());
+        store.record_generation(&record).unwrap();
+
+        let stored = store.generation("g1").unwrap().unwrap();
+        let output: serde_json::Value =
+            serde_json::from_str(stored.output_json.as_deref().unwrap()).expect("still JSON");
+        assert_eq!(
+            output["sections"][0]["body"],
+            "Read https://lms.example.edu/courses/101/pages/week-3?\nid=9 \
+             and the handout (https://lms.example.edu/courses/101/files/7/download)."
+        );
+        assert_eq!(stored.summary_json.as_deref(), Some("not json: "));
+        // A run with nothing to clean is stored exactly as it was given.
+        let plain = run("g2", 1);
+        store.record_generation(&plain).unwrap();
+        assert_eq!(store.generation("g2").unwrap().unwrap(), plain);
     }
 
     #[test]

@@ -8,7 +8,7 @@ import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
-import { LAUNCH_REPLY_MS } from "./useAutoSync";
+import { INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS } from "./useAutoSync";
 
 // Headroom for slow CI machines: a whole route renders before anything here can happen.
 // (Per-file setting: Vitest isolates each test file.)
@@ -76,6 +76,59 @@ function startClock(): Date {
 
 function later(start: Date, ms: number) {
   vi.setSystemTime(new Date(start.getTime() + ms));
+}
+
+/** The window comes to the front. Nobody need be at the computer for that. */
+function focusWindow() {
+  act(() => {
+    window.dispatchEvent(new Event("focus"));
+  });
+}
+
+/** Something is dispatched in the window, as the browser does for the student's input. */
+function input(event: Event) {
+  act(() => {
+    window.dispatchEvent(event);
+  });
+}
+
+/** The student comes back: the window gains focus, and they press something in it. */
+function comeBack() {
+  focusWindow();
+  input(new Event("pointerdown"));
+}
+
+/** Long enough for the question an input asks (a moment later) to be answered and acted on. */
+const afterInput = () => settle(INPUT_ASK_DELAY_MS + 150);
+
+/**
+ * An automatic run held until `release()`. While it is held the lock is taken, so
+ * `startup_tasks` answers "not due" whatever is stale, as the facade does.
+ */
+function holdSyncAll(api: PageLampApi) {
+  let held = false;
+  let open: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const sync = api.syncAll.bind(api);
+  api.syncAll = async (req, onEvent) => {
+    held = true;
+    const result = await sync(req, onEvent);
+    await gate;
+    return result;
+  };
+  const tasks = api.startupTasks.bind(api);
+  api.startupTasks = async () => {
+    const answer = await tasks();
+    return held ? { ...answer, sync_due: { unattended: false, attended: false } } : answer;
+  };
+  return {
+    release: () => {
+      held = false;
+      open();
+    },
+  };
 }
 
 function failedCanvas(kind: SourceErrorKind): SourceSyncResult {
@@ -264,9 +317,7 @@ describe("automatic sync", () => {
 
     // The student comes back ten minutes after that run: the light one doesn't hold the full.
     later(start, 11 * HOUR + 10 * MINUTE);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
+    comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
@@ -282,16 +333,12 @@ describe("automatic sync", () => {
 
     // A few minutes later the answer is still young: nothing is asked.
     later(start, 5 * MINUTE);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
-    await settle();
+    comeBack();
+    await afterInput();
     expect(tasks).toHaveBeenCalledTimes(1);
 
     later(start, 11 * HOUR);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
+    comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
   });
@@ -370,10 +417,8 @@ describe("automatic sync", () => {
 
     // The student comes back ten minutes later: no second full sync so soon.
     later(start, 10 * MINUTE);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
-    await settle();
+    comeBack();
+    await afterInput();
     expect(sync).toHaveBeenCalledTimes(1);
 
     later(start, 29 * MINUTE);
@@ -402,10 +447,8 @@ describe("automatic sync", () => {
       // An hour on, the student comes back. The answer read then is young and nothing is due.
       later(start, HOUR);
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
-      act(() => {
-        window.dispatchEvent(new Event("focus"));
-      });
-      await settle();
+      comeBack();
+      await afterInput();
       expect(sync).not.toHaveBeenCalled();
 
       alwaysDue(api);
@@ -476,11 +519,9 @@ describe("automatic sync", () => {
     await settle();
     expect(sync).toHaveBeenCalledTimes(1);
 
-    // The first time the window gains focus is the student arriving, minutes later or days.
+    // The student opens the window and does something in it, minutes later or days.
     later(start, 5 * MINUTE);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
+    comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
@@ -499,9 +540,7 @@ describe("automatic sync", () => {
 
     // The student comes back to the window: now it is attended.
     later(start, 5 * MINUTE);
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
+    comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
@@ -646,6 +685,260 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
   });
 
+  it("takes a window that gains focus for nobody: the full sync waits for the student's first input", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // At night another app quits and this window comes to the front: only the light sync.
+    later(start, 11 * HOUR);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // In the morning the student presses a key in it: the full sync starts at that moment.
+    later(start, 19 * HOUR);
+    input(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("doesn't take a pointer that moves or a key that repeats for the student", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // Only a full sync is due, and the window has come to the front.
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: { unattended: false, attended: true },
+    });
+    later(start, 11 * HOUR);
+    focusWindow();
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+    const noted = useSyncStore.getState().attendedUntil;
+
+    // The engines make up pointer moves themselves, a mouse can drift, and something can rest
+    // on the keyboard: none of it needs the student.
+    input(new MouseEvent("pointermove", { movementX: 0, movementY: 0 }));
+    input(new MouseEvent("pointermove", { movementX: 3, movementY: 1 }));
+    input(new MouseEvent("mousemove", { movementX: 3, movementY: 1 }));
+    input(new KeyboardEvent("keydown", { key: "j", repeat: true }));
+    input(new KeyboardEvent("keyup", { key: "j" }));
+    // Nor a key that tools press to keep a computer awake, a headset's button, a modifier.
+    input(new KeyboardEvent("keydown", { key: "F15" }));
+    input(new KeyboardEvent("keydown", { key: "MediaPlayPause" }));
+    input(new KeyboardEvent("keydown", { key: "Shift" }));
+    await afterInput();
+    expect(sync).not.toHaveBeenCalled();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+
+    // The wheel does.
+    input(new WheelEvent("wheel", { deltaY: 40 }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes only the first input after a focus: working in the window for hours says nothing new", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    // The student comes to the window and presses something; nothing is due.
+    later(start, MINUTE);
+    comeBack();
+    await afterInput();
+    expect(sync).not.toHaveBeenCalled();
+
+    // Hours later they are still typing, and the hourly re-read finds a full sync due: the
+    // timer never runs that one, whoever is typing.
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: { unattended: false, attended: true },
+    });
+    later(start, 11 * HOUR);
+    input(new KeyboardEvent("keydown", { key: "a" }));
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await afterInput();
+    expect(sync).not.toHaveBeenCalled();
+
+    // Away and back, and a press: now it runs.
+    comeBack();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes no input for the student coming back unless the window gained focus first", async () => {
+    // A press without a focus before it says nothing new, in a page that was loaded again too:
+    // what starts by itself there is unattended.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", reloaded: true });
+    alwaysDue(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+
+    later(start, 31 * MINUTE);
+    input(new Event("pointerdown"));
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("doesn't spend the student's input on a run that is in its way: the next one counts again", async () => {
+    // Back at the window with both kinds due: the answer is there before the student has done
+    // anything, so the light sync starts first, and their first press falls into it.
+    const start = startClock();
+    const api = mockApi();
+    const held = holdSyncAll(api);
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    later(start, 11 * HOUR);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    input(new Event("pointerdown"));
+    await afterInput();
+
+    // The light sync takes its time (a slow network after waking up): by its end that press is
+    // too old to count, and nothing more starts by itself.
+    later(start, 11 * HOUR + 40_000);
+    held.release();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await afterInput();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // The student is still here, and their next press says so: the full sync starts.
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("lets what the student pressed act first: their own Sync isn't replaced by an automatic one", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    const { user } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // Only a full sync is due (until one has run), and the window has come to the front.
+    let due = true;
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: { unattended: false, attended: due },
+    });
+    later(start, 11 * HOUR);
+    focusWindow();
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    // The first thing the student does is press "Sync now": that is the sync that runs.
+    await user.click(screen.getByRole("button", { name: "Sync now" }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    due = false;
+    expect(sync.mock.calls[0]?.[0]?.automatic ?? null).toBeNull();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    expect(useSyncStore.getState().automatic).toBeNull();
+    await afterInput();
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the press that brought the window to the front, though it came just before the focus", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // The click on the window reaches the page a moment before the window says it has focus.
+    later(start, 11 * HOUR);
+    input(new Event("pointerdown"));
+    later(start, 11 * HOUR + 200);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("keeps no input for a focus that comes later", async () => {
+    // The student's last press of the evening, then the window gains focus at night by itself.
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    later(start, HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, 11 * HOUR);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
+  it("asks at a focus when the last answer said a sync was due, and at an input when it is old", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", reloaded: true });
+    alwaysDue(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const tasks = vi.spyOn(api, "startupTasks");
+    renderRoute("/courses", { api });
+    // The page's own light sync, and the question after it: still due, and held for now.
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    const asked = tasks.mock.calls.length;
+
+    // A focus a minute later: the answer is young, but it said "due", so it is asked again.
+    later(start, MINUTE);
+    focusWindow();
+    await waitFor(() => expect(tasks.mock.calls.length).toBe(asked + 1));
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // Nothing is due any more, and the student's input comes when that answer is old.
+    const answer = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await answer()),
+      whats_new: null,
+      update_check_due: false,
+      sync_due: { unattended: false, attended: false },
+    });
+    const quiet = vi.spyOn(api, "startupTasks");
+    later(start, 2 * MINUTE);
+    focusWindow();
+    await waitFor(() => expect(quiet).toHaveBeenCalledTimes(1));
+    later(start, 20 * MINUTE);
+    input(new WheelEvent("wheel", { deltaY: 40 }));
+    await waitFor(() => expect(quiet).toHaveBeenCalledTimes(2));
+  });
+
   it("never runs an attended sync from the hourly re-read", async () => {
     const start = startClock();
     const api = mockApi();
@@ -666,9 +959,7 @@ describe("automatic sync", () => {
     expect(sync).not.toHaveBeenCalled();
 
     // The student comes back: now it runs, as attended.
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
-    });
+    comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
   });

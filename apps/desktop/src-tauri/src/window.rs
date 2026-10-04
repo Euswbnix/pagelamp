@@ -38,7 +38,7 @@ impl PageLoads {
     /// Takes one page-load event: counts a load that starts, and says (true) when the window
     /// is to be shown. That is once, when its first page has loaded. Showing it again after a
     /// reload would bring it forward by itself (on macOS it takes the focus, out of the Dock if
-    /// it was minimised), and the page takes a window gaining focus for the student coming back.
+    /// it was minimised): a window doesn't move because its page was loaded again.
     pub fn event(&self, event: PageLoadEvent, url: &Url) -> bool {
         match event {
             // Not the empty document a webview may start from.
