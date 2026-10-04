@@ -13,7 +13,12 @@ describe("mock What's new", () => {
   it("gives an upgrader from alpha.1 exactly course_removal, and one from 0.1 everything", () => {
     expect(topicsSince("0.3.0-alpha.1")).toEqual(["course_removal"]);
     expect(topicsSince("0.3.0-alpha.2")).toEqual([]);
-    expect(topicsSince(null)).toEqual(["update_check", "course_weeks", "course_removal"]);
+    expect(topicsSince(null)).toEqual([
+      "update_check",
+      "course_weeks",
+      "auto_sync",
+      "course_removal",
+    ]);
   });
 
   it("mirrors the facade: one row per WhatsNewTopic", () => {

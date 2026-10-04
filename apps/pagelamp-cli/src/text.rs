@@ -218,3 +218,13 @@ pub fn sharing_not_allowed_note() -> String {
          on this computer and your own AI app (over MCP) are not affected."
     )
 }
+
+/// The automatic sync setting in words (`status`, `sync --auto`).
+pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
+    use pagelamp_core::auto_sync::AutoSync;
+    match setting {
+        AutoSync::Off => "off (PageLamp syncs only when you start a sync)",
+        AutoSync::Daily => "once a day, while the PageLamp app is open",
+        AutoSync::TwiceDaily => "twice a day, while the PageLamp app is open",
+    }
+}

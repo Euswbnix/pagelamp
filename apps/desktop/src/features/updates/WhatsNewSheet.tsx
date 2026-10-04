@@ -2,8 +2,10 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useAcknowledgeWhatsNew,
+  useSetSyncPrefs,
   useSetUpdatePrefs,
   useStartupTasks,
+  useSyncPrefs,
   useUpdatePrefs,
 } from "@/api/queries";
 import type { WhatsNewTopic } from "@/api/types";
@@ -22,10 +24,11 @@ import { shownTopics, TOPIC_ICON } from "./whatsNewTopics";
 
 /**
  * One-time "What's new" for upgraders: the topics introduced since their version (all of them
- * from 0.1, which never saw onboarding). It explains the automatic update check BEFORE the first
- * one runs, with the switch right there. Closing it any way counts as read; the facade then
- * decides whether a check is due. Each topic is a heading; the focus starts on the title so the
- * sheet is read from the top, and a long list scrolls inside the window.
+ * from 0.1, which never saw onboarding). It explains the automatic update check and the
+ * automatic sync BEFORE the first one runs, each with its switch right there. Closing it any way
+ * counts as read; the facade then decides whether a check or a sync is due. Each topic is a
+ * heading; the focus starts on the title so the sheet is read from the top, and a long list
+ * scrolls inside the window.
  *
  * The update check waits for the acknowledgement, so a topic this build has no copy or icon for
  * is left out, and with none left the sheet is acknowledged without being shown.
@@ -63,11 +66,27 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
   const switchId = useId();
   const titleRef = useRef<HTMLHeadingElement>(null);
   const current = autoCheck ?? prefs.data?.auto_check ?? true;
+  const syncPrefs = useSyncPrefs();
+  const setSyncPrefs = useSetSyncPrefs();
+  // The same for automatic sync: null = untouched. How often is chosen on Sources & sync.
+  const [autoSync, setAutoSync] = useState<boolean | null>(null);
+  const syncSwitchId = useId();
+  const syncWasOn = syncPrefs.data?.auto_sync !== "off";
+  const syncOn = autoSync ?? syncWasOn;
 
   async function done() {
     setOpen(false);
     if (autoCheck !== null && prefs.data && autoCheck !== prefs.data.auto_check) {
       await setPrefs.mutateAsync({ auto_check: autoCheck, channel: prefs.data.channel ?? null });
+    }
+    // Saved before the acknowledgement: once that is in, a sync may be due.
+    // Only a real change is saved. When the setting couldn't be read it counts as on (the
+    // default), so "off" is still saved, and off-then-on writes nothing over a stored choice.
+    if (autoSync !== null && autoSync !== syncWasOn) {
+      await setSyncPrefs.mutateAsync({
+        ...syncPrefs.data,
+        auto_sync: autoSync ? "twice_daily" : "off",
+      });
     }
     await acknowledge.mutateAsync();
   }
@@ -112,6 +131,16 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
                         onCheckedChange={(checked) => setAutoCheck(checked)}
                       />
                       <Label htmlFor={switchId}>{t("settings.autoCheck")}</Label>
+                    </div>
+                  ) : null}
+                  {topic === "auto_sync" ? (
+                    <div className="flex items-center gap-2 pt-1">
+                      <Switch
+                        id={syncSwitchId}
+                        checked={syncOn}
+                        onCheckedChange={(checked) => setAutoSync(checked)}
+                      />
+                      <Label htmlFor={syncSwitchId}>{t("whatsNew.autoSync")}</Label>
                     </div>
                   ) : null}
                 </div>

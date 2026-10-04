@@ -7,6 +7,7 @@ import type { WhatsNewTopic } from "../types";
 export const WHATS_NEW: readonly (readonly [WhatsNewTopic, string])[] = [
   ["update_check", "0.3.0-alpha.1"],
   ["course_weeks", "0.3.0-alpha.1"],
+  ["auto_sync", "0.3.0-alpha.1"],
   ["course_removal", "0.3.0-alpha.2"],
 ];
 
