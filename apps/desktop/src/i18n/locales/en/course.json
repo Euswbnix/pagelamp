@@ -154,5 +154,60 @@
     "someSkipped": "Some files couldn't be downloaded",
     "moreWarnings_one": "…and {{count}} more",
     "moreWarnings_other": "…and {{count}} more"
+  },
+  "notRead": {
+    "title": "What {{product}} didn't read",
+    "asOf": "{{product}} last read this course in full {{when}}.",
+    "home": {
+      "read": "{{product}} read this course's Home page.",
+      "locked": "This course's Home page is locked in Canvas, so {{product}} has only its title."
+    },
+    "lists": {
+      "pages": "This course doesn't show its Pages list in Canvas. {{product}} found the pages that its modules and links point to; it can't see any others.",
+      "files": "This course doesn't show its Files list in Canvas. {{product}} found the files that its modules and links point to; it can't see any others.",
+      "both": "This course doesn't show its Pages and Files lists in Canvas. {{product}} found the pages and files that its modules and links point to; it can't see any others."
+    },
+    "linkedNote": "Pages and files found through links may not appear under a week above.",
+    "download_one": "{{count}} file in this course isn't downloaded yet.",
+    "download_other": "{{count}} files in this course aren't downloaded yet.",
+    "onlyNever": "Only the parts {{product}} never reads, such as assignments, quizzes and grades.",
+    "homeTitle": "The course's Home page",
+    "group": {
+      "yours": "Waiting for you",
+      "failed": "Couldn't be read last time",
+      "cant": "{{product}} can't read these",
+      "gone": "No longer in Canvas",
+      "never": "{{product}} never reads these"
+    },
+    "mustView": "A module asks you to view these pages. {{product}} reads each one at the next full sync after you've viewed it in Canvas; reading it for you could mark it as viewed.",
+    "failedNote": "They're tried again on the next full sync.",
+    "failed": {
+      "pagesList": "The Pages list",
+      "filesList": "The Files list",
+      "pagesAll": "This course's pages: {{product}} couldn't check which ones a module asks you to view, so it read none of them this time."
+    },
+    "lockedPages": "Locked in Canvas. {{product}} has only their titles.",
+    "lockedFiles_one": "{{count}} file is locked in Canvas.",
+    "lockedFiles_other": "{{count}} files are locked in Canvas.",
+    "tooLarge_one": "{{count}} file is too large to download.",
+    "tooLarge_other": "{{count}} files are too large to download.",
+    "pastLimit": "{{product}} opens a limited number of links in each course and doesn't follow links from a linked page. These are beyond that; syncing again won't read them.",
+    "cutShort": "{{product}} read these, but they hold more links than it looks at in one text; it left the rest of them:",
+    "goneNote": "{{product}} keeps what it already has of them.",
+    "never": {
+      "assignments": "Assignments and quizzes: {{product}} keeps only their title, due date and link.",
+      "parts": "Grades, People and Discussions: {{product}} doesn't read these.",
+      "menu": "Other items in the course menu: {{product}} doesn't read them.",
+      "tools": "Tools from other services open outside Canvas, and {{product}} doesn't read them:",
+      "otherCourse": "Links to other courses ({{product}} reads each course on its own):"
+    },
+    "other": "Other things {{product}} didn't read",
+    "untitled": {
+      "page": "A page",
+      "file": "A file",
+      "item": "An item"
+    },
+    "more_one": "…and {{count}} more that isn't listed here.",
+    "more_other": "…and {{count}} more that aren't listed here."
   }
 }

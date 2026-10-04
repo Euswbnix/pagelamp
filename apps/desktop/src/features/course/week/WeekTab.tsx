@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { outsideWeekViews } from "@/lib/phase";
 import { paths } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { NotReadSection } from "../notRead/NotReadSection";
 import { useSelectedWeek } from "../useCourseParams";
 import { AnnouncementList } from "./AnnouncementList";
 import { DownloadFilesCallout } from "./DownloadFilesCallout";
@@ -72,6 +73,7 @@ export function WeekTab({
     <div className="space-y-10">
       {body}
       <AnnouncementList announcements={overview.recent_announcements} />
+      <NotReadSection overview={overview} />
     </div>
   );
 }
