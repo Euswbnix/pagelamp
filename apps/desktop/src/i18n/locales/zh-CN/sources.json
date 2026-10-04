@@ -200,6 +200,15 @@
       "downloading_feed": "正在下载日历订阅",
       "saving_events_one": "正在保存 {{count}} 个日历事件",
       "saving_events_other": "正在保存 {{count}} 个日历事件"
+    },
+    "course": {
+      "listLabel": "{{label}} 的课程",
+      "linked": "通过链接找到：{{items}}",
+      "linkedBoth": "{{pages}}和 {{files}}",
+      "linkedPages_one": "{{count}} 个页面",
+      "linkedPages_other": "{{count}} 个页面",
+      "linkedFiles_one": "{{count}} 个文件",
+      "linkedFiles_other": "{{count}} 个文件"
     }
   }
 }

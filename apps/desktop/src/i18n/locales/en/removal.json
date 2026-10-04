@@ -49,7 +49,7 @@
     "busy": "A sync is running. Try again when it finishes."
   },
   "lost": {
-    "old_announcements": "announcements older than 120 days",
+    "old_announcements": "announcements older than a year",
     "locked_files": "files the course locked after it ended",
     "whole_course": "the whole course, when Canvas restricts access to it",
     "redownload_counts_as_viewing": "downloading files again counts as viewing them in Canvas"

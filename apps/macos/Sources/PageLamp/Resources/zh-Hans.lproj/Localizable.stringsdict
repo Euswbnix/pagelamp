@@ -563,6 +563,34 @@
 			<string>已移除 %2$ld 门课程</string>
 		</dict>
 	</dict>
+	<key>sources.progress.course.linkedFiles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 个文件</string>
+		</dict>
+	</dict>
+	<key>sources.progress.course.linkedPages</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 个页面</string>
+		</dict>
+	</dict>
 	<key>sources.progress.stage.saving_events</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

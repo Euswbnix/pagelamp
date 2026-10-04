@@ -558,6 +558,9 @@
 "common.aiMaterials.readableNone" = "No materials yet";
 "common.aiMaterials.turned_off" = "AI access to materials is off";
 "common.aiMaterials.withheld_by_policy" = "Materials not shared (No AI course)";
+"common.canvasLists.both" = "Pages and Files lists not shown in Canvas";
+"common.canvasLists.files" = "Files list not shown in Canvas";
+"common.canvasLists.pages" = "Pages list not shown in Canvas";
 "common.canvasNotice" = "Personal access tokens are for your own use only, and they expire — Canvas shows the maximum when you create one (often 30–90 days).";
 "common.confidence.high" = "high confidence";
 "common.confidence.low" = "low confidence";
@@ -679,6 +682,7 @@
 "common.textStatus.error" = "Couldn't extract text";
 "common.textStatus.noText" = "No text found";
 "common.textStatus.not_downloaded" = "Not downloaded";
+"common.textStatus.not_downloaded_yet" = "Not downloaded yet";
 "common.textStatus.ok" = "Readable by your AI app";
 "common.textStatus.pending" = "Waiting to be indexed";
 "common.textStatus.unsupported" = "Can't be read (e.g. video)";
@@ -1311,7 +1315,7 @@
 "removal.dialog.undoBody" = "You can undo with one click for 7 days. After that, restoring means syncing the course again, and some things can't be brought back:";
 "removal.dialog.undoTitle" = "Undo and restoring";
 "removal.lost.locked_files" = "files the course locked after it ended";
-"removal.lost.old_announcements" = "announcements older than 120 days";
+"removal.lost.old_announcements" = "announcements older than a year";
 "removal.lost.redownload_counts_as_viewing" = "downloading files again counts as viewing them in Canvas";
 "removal.lost.whole_course" = "the whole course, when Canvas restricts access to it";
 "removal.removed.confirmDeleteNowBody" = "You can't undo this. Restoring means syncing the course again.";
@@ -1501,6 +1505,9 @@
 "sources.problem.expiredTitle" = "Access expired";
 "sources.problem.title" = "The last sync didn't work";
 "sources.progress.barLabel" = "%1$@ progress";
+"sources.progress.course.linked" = "Found through links: %1$@";
+"sources.progress.course.linkedBoth" = "%1$@ and %2$@";
+"sources.progress.course.listLabel" = "Courses in %1$@";
 "sources.progress.dismiss" = "Hide";
 "sources.progress.dismissLabel" = "Hide sync results";
 "sources.progress.expiredHint" = "Access expired. Replace the token or feed address to sync this source again.";

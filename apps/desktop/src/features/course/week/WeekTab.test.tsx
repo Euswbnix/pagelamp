@@ -31,7 +31,9 @@ describe("This week tab", () => {
       within(list).getByRole("link", { name: "Week 4 slides — Sampling and Surveys" }),
     ).toBeInTheDocument();
     expect(within(list).getByText("32 sections")).toBeInTheDocument();
-    expect(within(list).getByText("Not downloaded")).toBeInTheDocument();
+    const archive = within(list).getByText("Survey dataset (large archive)").closest("li");
+    if (!(archive instanceof HTMLElement)) throw new Error("no row for the archive");
+    expect(within(archive).getByText("Can't be read (e.g. video)")).toBeInTheDocument();
     // A scan: read without errors but no text in it, said from the facade's text_problem.
     expect(within(list).getByText("No text found")).toBeInTheDocument();
     expect(
@@ -50,6 +52,15 @@ describe("This week tab", () => {
     expect(screen.getByText("没有找到文字")).toBeInTheDocument();
     expect(screen.getByText("里面没有找到文字，可能是扫描件或只有图片。")).toBeInTheDocument();
     expect(screen.queryByText(/no extractable text/)).toBeNull();
+  });
+
+  it("says in Chinese that a Canvas file isn't downloaded yet", async () => {
+    useUiStore.setState({ locale: "zh-CN" });
+    await i18n.changeLanguage("zh-CN");
+    renderRoute(paths.course(DEMO205));
+    const examples = (await screen.findByText("Unit C worked examples")).closest("li");
+    if (!(examples instanceof HTMLElement)) throw new Error("no row for the examples");
+    expect(within(examples).getByText("还没下载")).toBeInTheDocument();
   });
 
   it("shows an older facade's English reason (no code) only in an English UI", async () => {
@@ -241,7 +252,11 @@ describe("Downloading Canvas files", () => {
     const recording = (await screen.findByText("Unit C lecture recording")).closest("li");
     if (!(recording instanceof HTMLElement)) throw new Error("no row for the recording");
     expect(within(recording).getByText("Too large to download")).toBeInTheDocument();
-    expect(within(recording).queryByText("Not downloaded")).toBeNull();
+    // "Yet" is only said of a file the student can download.
+    expect(within(recording).queryByText(/not downloaded/i)).toBeNull();
+    const examples = screen.getByText("Unit C worked examples").closest("li");
+    if (!(examples instanceof HTMLElement)) throw new Error("no row for the examples");
+    expect(within(examples).getByText("Not downloaded yet")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Download files…" }));
     const dialog = await screen.findByRole("alertdialog", {
@@ -296,8 +311,14 @@ describe("Downloading Canvas files", () => {
   });
 
   it("never offers a download for folder courses", async () => {
-    // DEMO101's week 4 has a "not downloaded" archive, but folder courses are local.
-    await openCourse(DEMO101);
+    // Whatever the overview counts: a folder's files are on this computer already.
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const overview = api.courseOverview.bind(api);
+    vi.spyOn(api, "courseOverview").mockImplementation(async (id) => ({
+      ...(await overview(id)),
+      downloadable_files: 1,
+    }));
+    await openCourse(DEMO101, { api });
     expect(await screen.findByText("Survey dataset (large archive)")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Download files…" })).not.toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ import { queryKeys, useStatus } from "@/api/queries";
 import type {
   AppStatus,
   AutoSyncTrigger,
+  CourseSyncSummary,
   SourceErrorKind,
   SyncEvent,
   SyncStage,
@@ -29,6 +30,12 @@ export interface SourceProgress {
   warnings: string[];
   /** Set when the source finished. */
   result: { ok: boolean; error: string | null; errorKind: SourceErrorKind | null } | null;
+  /**
+   * What the run says about each course of the source, once it has ended (a Canvas source that
+   * finished without an error). Not after a download, whose own message says what it did, and
+   * not after a Stop: a stopped run comes back without a summary.
+   */
+  courses?: CourseSyncSummary[];
   /** The run ended (e.g. failed as a whole) before this source finished. */
   stopped: boolean;
 }
@@ -103,6 +110,8 @@ interface SyncState {
    * never takes the place of an action after it.
    */
   noteStudentAction: (at?: number) => void;
+  /** A source or a course was removed: the last run's lines may name what is gone. */
+  forgetCourseLines: () => void;
   reset: () => void;
 }
 
@@ -283,12 +292,17 @@ export const useSyncStore = create<SyncState>()((set) => ({
         // Sources that never reported back didn't run to the end: mark them stopped so no
         // spinner keeps going after the run is over.
         bySource: Object.fromEntries(
-          Object.entries(state.bySource).map(([id, p]) => [
-            id,
-            p.result && !(stoppedByUser && !p.result.ok && !p.result.errorKind)
-              ? p
-              : { ...p, result: null, stopped: true },
-          ]),
+          Object.entries(state.bySource).map(([id, p]) => {
+            if (!p.result || (stoppedByUser && !p.result.ok && !p.result.errorKind)) {
+              return [id, { ...p, result: null, stopped: true }];
+            }
+            // The lines live with the row: hidden with it, gone when the next run starts.
+            const courses =
+              p.result.ok && state.downloadCourseId === null
+                ? summary?.results.find((r) => r.source_id === id)?.course_summaries
+                : undefined;
+            return [id, courses && courses.length > 0 ? { ...p, courses } : p];
+          }),
         ),
       };
     }),
@@ -308,6 +322,12 @@ export const useSyncStore = create<SyncState>()((set) => ({
         at === undefined
           ? Date.now() + ATTENDED_WINDOW_MS
           : Math.max(state.attendedUntil, at + ATTENDED_WINDOW_MS),
+    })),
+  forgetCourseLines: () =>
+    set((state) => ({
+      bySource: Object.fromEntries(
+        Object.entries(state.bySource).map(([id, { courses: _, ...row }]) => [id, row]),
+      ),
     })),
   reset: () => set(idle),
 }));

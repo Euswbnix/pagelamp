@@ -200,6 +200,15 @@
       "downloading_feed": "Downloading the calendar feed",
       "saving_events_one": "Saving {{count}} calendar event",
       "saving_events_other": "Saving {{count}} calendar events"
+    },
+    "course": {
+      "listLabel": "Courses in {{label}}",
+      "linked": "Found through links: {{items}}",
+      "linkedBoth": "{{pages}} and {{files}}",
+      "linkedPages_one": "{{count}} page",
+      "linkedPages_other": "{{count}} pages",
+      "linkedFiles_one": "{{count}} file",
+      "linkedFiles_other": "{{count}} files"
     }
   }
 }

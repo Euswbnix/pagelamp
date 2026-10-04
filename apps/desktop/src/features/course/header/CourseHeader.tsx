@@ -1,4 +1,4 @@
-import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ExternalLink as ExternalLinkIcon, Eye, EyeOff, ListX, LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSources } from "@/api/queries";
 import type { Course, CourseOverview } from "@/api/types";
@@ -10,6 +10,7 @@ import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { WeekLabel } from "@/components/common/WeekLabel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { listsNotShown } from "@/lib/canvasLists";
 import { focusPageHeading } from "@/lib/focus";
 import { deadlinesReadSince } from "@/lib/freshness";
 import { isHttpUrl } from "@/lib/url";
@@ -22,7 +23,13 @@ import { SourceAlert } from "./SourceAlert";
 /** Back link, code + name (the page's h1), freshness, policy/week badges, source problems. */
 export function CourseHeader({ overview }: { overview: CourseOverview }) {
   const { t } = useTranslation("course");
+  const { t: tc } = useTranslation();
   const { course, timeline } = overview;
+  // From the last full sync's record; nothing is said while there is none.
+  const lists = listsNotShown(
+    overview.coverage?.pages_list === "hidden",
+    overview.coverage?.files_list === "hidden",
+  );
   return (
     <div className="pb-6">
       <PageHeader
@@ -55,6 +62,14 @@ export function CourseHeader({ overview }: { overview: CourseOverview }) {
         {course.hidden ? (
           <li className="flex items-center gap-2">
             <HiddenNotice course={course} />
+          </li>
+        ) : null}
+        {lists ? (
+          // Stays after the sync row's line has gone: what no module and no text of this
+          // course links to, PageLamp can't find.
+          <li className="flex items-center gap-1.5 text-muted-foreground">
+            <ListX className="size-4 shrink-0" aria-hidden />
+            {tc(`canvasLists.${lists}`)}
           </li>
         ) : null}
       </ul>
