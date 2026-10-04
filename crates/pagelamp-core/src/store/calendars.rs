@@ -152,6 +152,19 @@ fn json<T: Serialize>(value: &T) -> String {
     serde_json::to_string(value).expect("calendar rows serialise")
 }
 
+/// `json`, without access parameters in its strings (`pagelamp_extract::scrub`): a quote or a
+/// label can hold a link's address, and what an AI app proposes can hold one it copied from
+/// an earlier answer. Cleaned by its string values, not as text (`scrub_json` says why). The
+/// fields keep their declared order unless a string was cleaned.
+fn clean_json<T: Serialize>(value: &T) -> String {
+    let mut cleaned = serde_json::to_value(value).expect("calendar rows serialise");
+    if pagelamp_extract::scrub::scrub_json(&mut cleaned) {
+        cleaned.to_string()
+    } else {
+        json(value)
+    }
+}
+
 /// A JSON column, or a conversion error naming it (never a panic on a bad row).
 fn from_json<T: serde::de::DeserializeOwned>(row: &Row<'_>, column: &str) -> rusqlite::Result<T> {
     let text: String = row.get(column)?;
@@ -378,8 +391,8 @@ impl Store {
                 row.course_id,
                 row.origin.as_str(),
                 state.as_str(),
-                json(&row.calendar),
-                json(&row.dates),
+                clean_json(&row.calendar),
+                clean_json(&row.dates),
                 json(&StoredChecks {
                     checks: row.checks.clone(),
                     on_device: provenance.is_some_and(|p| p.on_device),
@@ -662,6 +675,90 @@ mod tests {
     fn user_term(store: &Store) -> (Option<NaiveDate>, Option<NaiveDate>) {
         let data = store.course_term_data(COURSE).unwrap().unwrap();
         (data.user_term_start, data.user_term_end)
+    }
+
+    /// A quote, a label or a link in a proposal can hold an address with a parameter that
+    /// gives access to a file. The stored row holds none: not in the dates with their quotes,
+    /// and not in the calendar itself.
+    #[test]
+    fn a_proposal_is_stored_without_access_parameters() {
+        use crate::calendar::assemble::{DateKind, ProposedDate};
+        use crate::calendar::validate::DateEvidence;
+
+        let store = demo_store();
+        let mut row = proposal(CalendarOrigin::Ai, "2026-09-08", "f1");
+        row.dates = vec![ProposedDate {
+            kind: DateKind::FirstClass,
+            segment: 0,
+            date: date("2026-09-08"),
+            end: None,
+            label: "First class (see https://lms.example.edu/courses/101/pages/1?sf_verifier=SECRET&x=1)"
+                .into(),
+            evidence: vec![DateEvidence {
+                material_id: "m1".into(),
+                title: "Course outline".into(),
+                locator: Some("p. 1".into()),
+                quote: Some(
+                    "Classes begin September 8.\nverifier=SECRET is in the outline \
+                     (https://lms.example.edu/courses/101/files/7/download?verifier=SECRET&wrap=1)"
+                        .into(),
+                ),
+                url: Some("https://lms.example.edu/courses/101/files/7?verifier=SECRET".into()),
+                derived: false,
+            }],
+            alternatives: Vec::new(),
+            week: None,
+            break_kind: None,
+            numbered: None,
+        }];
+        let id = store
+            .insert_calendar_proposal(&row, at("2026-09-20"))
+            .unwrap();
+
+        let (calendar_json, evidence_json): (String, String) = store
+            .conn()
+            .query_row(
+                "SELECT calendar_json, evidence_json FROM course_calendars WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        for stored in [&calendar_json, &evidence_json] {
+            assert!(!stored.contains("SECRET"), "{stored}");
+            assert!(!stored.contains("verifier"), "{stored}");
+        }
+        let stored = store.calendar_row(id).unwrap().unwrap();
+        assert_eq!(stored.calendar, row.calendar, "the dates are untouched");
+        assert_eq!(
+            stored.dates[0].label,
+            "First class (see https://lms.example.edu/courses/101/pages/1?x=1)"
+        );
+        let evidence = &stored.dates[0].evidence[0];
+        assert_eq!(
+            evidence.quote.as_deref(),
+            Some(
+                "Classes begin September 8.\n is in the outline \
+                 (https://lms.example.edu/courses/101/files/7/download)"
+            )
+        );
+        assert_eq!(
+            evidence.url.as_deref(),
+            Some("https://lms.example.edu/courses/101/files/7")
+        );
+        // A proposal with nothing to clean is stored in the order its fields are declared.
+        let plain = proposal(CalendarOrigin::Scan, "2026-09-08", "f2");
+        let plain_id = store
+            .insert_calendar_proposal(&plain, at("2026-09-20"))
+            .unwrap();
+        let text: String = store
+            .conn()
+            .query_row(
+                "SELECT calendar_json FROM course_calendars WHERE id = ?1",
+                [plain_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(text, serde_json::to_string(&plain.calendar).unwrap());
     }
 
     #[test]
