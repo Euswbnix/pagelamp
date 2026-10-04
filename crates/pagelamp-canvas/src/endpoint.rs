@@ -31,12 +31,14 @@ pub(crate) enum Endpoint<'a> {
     Pages {
         course: &'a CanvasId,
     },
-    /// `url_or_id` is a page slug from Canvas; it is percent-encoded as one path segment.
+    /// `url_or_id` is a page slug: one Canvas gave in a list or a module, or one a link in a
+    /// text of the course names (`links`). It is percent-encoded as one path segment.
     Page {
         course: &'a CanvasId,
         url_or_id: &'a str,
     },
-    /// The page a course's Home shows, when the Home is a page.
+    /// The page a course's Home shows. Asked for only when no Pages list that was read names
+    /// the Home page, and the Home is a page or Canvas doesn't say.
     FrontPage {
         course: &'a CanvasId,
     },

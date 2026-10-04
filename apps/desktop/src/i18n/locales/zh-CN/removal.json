@@ -49,7 +49,7 @@
     "busy": "正在同步。请等同步结束后再试。"
   },
   "lost": {
-    "old_announcements": "超过 120 天的公告",
+    "old_announcements": "超过 365 天的公告",
     "locked_files": "课程结束后被锁定的文件",
     "whole_course": "整门课程（如果 Canvas 限制了访问）",
     "redownload_counts_as_viewing": "重新下载文件会在 Canvas 中算作查看"

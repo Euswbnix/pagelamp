@@ -1311,7 +1311,7 @@
 "removal.dialog.undoBody" = "7 天内可以一键撤销。之后要恢复，就需要重新同步这门课，而且有些内容无法找回：";
 "removal.dialog.undoTitle" = "撤销与恢复";
 "removal.lost.locked_files" = "课程结束后被锁定的文件";
-"removal.lost.old_announcements" = "超过 120 天的公告";
+"removal.lost.old_announcements" = "超过 365 天的公告";
 "removal.lost.redownload_counts_as_viewing" = "重新下载文件会在 Canvas 中算作查看";
 "removal.lost.whole_course" = "整门课程（如果 Canvas 限制了访问）";
 "removal.removed.confirmDeleteNowBody" = "此操作无法撤销。要恢复需要重新同步这门课。";

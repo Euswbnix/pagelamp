@@ -205,7 +205,7 @@ pub(crate) struct CompletionRequirement {
 
 impl ModuleItem {
     /// The module asks the student to view this item and Canvas doesn't say they have:
-    /// reading its body through the API would do it for them.
+    /// reading its body through the API could do it for them.
     pub(crate) fn would_mark_viewed(&self) -> bool {
         self.completion_requirement.as_ref().is_some_and(|req| {
             req.kind.as_deref() == Some("must_view") && req.completed != Some(true)
