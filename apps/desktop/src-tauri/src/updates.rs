@@ -389,6 +389,8 @@ pub async fn updates_install<R: Runtime>(
             tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {err}");
             // Windows: the installer didn't take over; the tray it took down comes back.
             crate::background::restore_tray(&app);
+            // No updated app is coming: the next launch shows its window only if it would anyway.
+            crate::background::forget_window_at_next_launch(&app);
             return Err(app_error(&err));
         }
     };

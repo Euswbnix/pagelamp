@@ -86,6 +86,18 @@ pub fn show_window_at_next_launch<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// The install didn't happen after all: nothing is to show its window at the next launch. A
+/// marker left behind would show the window of a login launch within the next minutes, and the
+/// page would take that for the student opening PageLamp.
+pub fn forget_window_at_next_launch<R: Runtime>(app: &AppHandle<R>) {
+    forget_show_window(&app.config().identifier);
+}
+
+fn forget_show_window(identifier: &str) {
+    // Not there when the download failed before anything was written.
+    let _ = std::fs::remove_file(show_window_marker(identifier));
+}
+
 /// Whether this launch stays in the tray: `--hidden` (a login launch), unless an update asked for
 /// the window a moment ago. The marker is removed either way.
 pub fn launch_hidden(args: impl Iterator<Item = String>, identifier: &str) -> bool {
@@ -534,8 +546,8 @@ mod tests {
     use std::cell::RefCell;
 
     use super::{
-        Change, HIDDEN_ARG, LoginItem, after_read, after_save, launch_hidden, show_window_marker,
-        started_hidden, update_login_item,
+        Change, HIDDEN_ARG, LoginItem, after_read, after_save, forget_show_window, launch_hidden,
+        show_window_marker, started_hidden, update_login_item,
     };
 
     /// Records what `update_login_item` asked of the login item.
@@ -632,5 +644,14 @@ mod tests {
         std::fs::write(&marker, b"").unwrap();
         assert!(!launch_hidden(args(&["PageLamp"]), &identifier));
         assert!(!marker.exists(), "a normal launch removes it too");
+
+        // An install that failed takes its request back: the next login stays in the tray.
+        std::fs::write(&marker, b"").unwrap();
+        forget_show_window(&identifier);
+        assert!(!marker.exists());
+        assert!(launch_hidden(login(), &identifier));
+        // Nothing to take back (the download failed first): no harm.
+        forget_show_window(&identifier);
+        assert!(launch_hidden(login(), &identifier));
     }
 }

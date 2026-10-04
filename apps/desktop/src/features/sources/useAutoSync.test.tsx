@@ -4,6 +4,7 @@ import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
+import { createTauriApi } from "@/api/tauri";
 import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
@@ -843,6 +844,25 @@ describe("automatic sync", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+  });
+
+  it("reads a start at login from the window's own flag: only an unattended sync", async () => {
+    // What window.rs writes for `--hidden`, read by the real client, not by the mock's option.
+    window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "none", hidden: true });
+    try {
+      const api = mockApi({ scenario: "auto-sync-due" });
+      api.startedHidden = createTauriApi().startedHidden;
+      const sync = vi.spyOn(api, "syncAll");
+      renderRoute("/courses", { api });
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      await settle();
+      // Nothing "attended" follows by itself.
+      expect(sync.mock.calls.map((call) => call[0])).toEqual([{ automatic: "unattended" }]);
+    } finally {
+      Reflect.deleteProperty(window, "__PAGELAMP_WINDOW__");
+    }
   });
 
   it("still asks again when a dialog was opened while it waited for a sync to end", async () => {

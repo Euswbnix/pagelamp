@@ -75,3 +75,19 @@ it("takes the load for a reload when Rust says so, or when it can't be asked", a
   // Unsure is never "the student just opened PageLamp".
   expect(await createTauriApi().firstPageLoad()).toBe(false);
 });
+
+it("says the window started hidden only when the Rust side said so", () => {
+  const api = createTauriApi();
+  try {
+    // No window facts at all (a browser tab): not hidden.
+    Reflect.deleteProperty(window, "__PAGELAMP_WINDOW__");
+    expect(api.startedHidden()).toBe(false);
+    window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "none", hidden: false });
+    expect(api.startedHidden()).toBe(false);
+    // What window.rs writes for a start at login (`--hidden`).
+    window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "none", hidden: true });
+    expect(api.startedHidden()).toBe(true);
+  } finally {
+    Reflect.deleteProperty(window, "__PAGELAMP_WINDOW__");
+  }
+});
