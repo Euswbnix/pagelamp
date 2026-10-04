@@ -259,11 +259,22 @@ impl<T: CanvasTransport> Syncer<'_, T> {
 
     /// Whether this sync may still ask for a linked page or file (and count it if so).
     fn take_follow(&self) -> bool {
-        self.follow_requests
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |made| {
-                (made < cover::MAX_FOLLOW_REQUESTS).then_some(made + 1)
-            })
-            .is_ok()
+        let mut made = self.follow_requests.load(Ordering::SeqCst);
+        loop {
+            if made >= cover::MAX_FOLLOW_REQUESTS {
+                return false;
+            }
+            match self.follow_requests.compare_exchange(
+                made,
+                made + 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return true,
+                // Another request was counted meanwhile: look again.
+                Err(now) => made = now,
+            }
+        }
     }
 
     /// After indexing one file: warn about it if it could not be read (and, once per sync,
