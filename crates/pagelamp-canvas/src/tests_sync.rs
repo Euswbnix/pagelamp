@@ -728,11 +728,19 @@ async fn every_request_is_an_allow_listed_get() {
     f.standard().await;
     f.downloads().await;
     f.sync(&f.options(true)).await.unwrap();
+    assert_only_allow_listed_gets(&f).await;
+}
+
+/// Every request Canvas got is a GET of the allow-list that carries the token, and the
+/// storage server never got the token.
+async fn assert_only_allow_listed_gets(f: &Fixture) {
     let allowed = regex::Regex::new(
         r"^/api/v1/(users/self|courses|courses/\d+/(tabs|modules|modules/\d+/items|files|files/\d+|pages|pages/[^/]+|front_page|assignments)|announcements|planner/items)$|^/files/\d+/download$",
     )
     .unwrap();
-    for request in f.canvas.received_requests().await.unwrap() {
+    let requests = f.canvas.received_requests().await.unwrap();
+    assert!(!requests.is_empty());
+    for request in requests {
         assert_eq!(request.method.as_str(), "GET");
         assert!(
             allowed.is_match(request.url.path()),
@@ -2429,12 +2437,13 @@ async fn every_module_item_type_locked_items_and_embeds() {
             .iter()
             .any(|m| m.name == "Week 5" && m.unlock_at.is_some())
     );
+    // A hidden list is no warning: the course's summary line names it.
     assert!(
-        report
-            .warnings
-            .iter()
-            .any(|w| w.contains("Files tab hidden"))
+        !report.warnings.iter().any(|w| w.contains("hidden")),
+        "{:?}",
+        report.warnings
     );
+    assert!(report.course_summaries[0].files_hidden);
 }
 
 #[tokio::test]

@@ -2247,8 +2247,11 @@ export interface CourseSyncSummary {
   linked_pages?: number;
   modules: number;
   /**
-   * How many things the sync noted as not read, with reasons (`CourseOverview::coverage`
-   * lists them). Files that aren't downloaded are not among them.
+   * How many of the things the sync noted as not read went wrong or are for the student to
+   * act on: a page a module asks them to view, a failed request, what a limit left out,
+   * what Canvas locks, a file Canvas no longer has. Not what PageLamp never reads by rule,
+   * not the hidden lists (named by the two flags below), and not files that aren't
+   * downloaded. `CourseOverview::coverage` lists everything, with reasons.
    */
   not_read?: number;
   pages: number;
@@ -2873,9 +2876,10 @@ export interface StartupTasks {
  */
 export interface SyncDue {
   /**
-   * When the student is at the app: it was just opened or brought to the front, or What's
-   * new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then. The
-   * last full sync is the interval old, or a course waits for its first one.
+   * When the student is at the app (`AutoSyncTrigger::Attended`): they just opened it, did
+   * something in its window after it came to the front, closed What's new or changed the
+   * setting. Ask for this one first then. The last full sync is the interval old, or a
+   * course waits for its first one.
    */
   attended: boolean;
   /**

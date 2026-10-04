@@ -4,30 +4,34 @@
 //!
 //! Links are followed one level deep: the Home page, the syllabus, the pages of modules and of
 //! the Pages list, and the announcements are the texts a sync reads anyway; a page or a file
-//! of this course that one of them links to is asked for. What a linked page links to is
-//! noted, not asked for.
+//! of this course that one of them links to is asked for. Of what a linked page links to, the
+//! files are asked about and the pages are noted.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, TimeDelta, Utc};
 use pagelamp_core::coverage::{
-    CourseCoverage, CoverageArea, CoverageListState, CoverageReason, FoundLink, NotRead, PageRead,
+    CourseCoverage, CoverageArea, CoverageListState, CoverageReason, FileSeen, FoundLink, NotRead,
+    PageRead,
 };
+use pagelamp_core::model::{Material, TextStatus};
 use url::Url;
 
 use crate::json::{self, CanvasId};
 use crate::links::{self, Target};
 use crate::transport::CanvasError;
 
-/// The most linked pages one sync asks for in one course.
+/// The most linked pages one sync takes in one course: each request counts, whatever it
+/// answers, and so does a page kept from a read less than `REREAD_AFTER` old.
 pub(crate) const MAX_LINKED_PAGES: usize = 40;
-/// The most linked files one sync asks about in one course.
+/// The most linked files one sync takes in one course, counted the same way.
 pub(crate) const MAX_LINKED_FILES: usize = 150;
 /// The most requests one sync makes for linked pages and files, over all courses.
 pub(crate) const MAX_FOLLOW_REQUESTS: u32 = 600;
 /// A page no list gives a change date for (the Home page, a linked page, a module's page
 /// while the Pages list is hidden) is read again by an automatic sync only after this long:
-/// reading it shows in Canvas as the student viewing it. A sync the student starts reads it.
+/// reading it may show in Canvas as the student viewing it. A sync the student starts reads
+/// it.
 pub(crate) const REREAD_AFTER: TimeDelta = TimeDelta::hours(24);
 /// A linked file PageLamp already knows of is asked about again after this long (or when
 /// files are to be downloaded).
@@ -49,15 +53,33 @@ pub(crate) enum Rank {
     Link,
 }
 
+/// What identifies an entry (each thing is noted once).
+type NoteKey = (CoverageArea, CoverageReason, Option<String>, Option<String>);
+
+fn key_of(entry: &NotRead) -> NoteKey {
+    (
+        entry.area,
+        entry.reason,
+        entry.title.clone(),
+        entry.url.clone(),
+    )
+}
+
 /// The record being built for one course.
 pub(crate) struct Cover {
     pub record: CourseCoverage,
     /// The record the last full sync wrote.
     pub previous: Option<CourseCoverage>,
     notes: Vec<(Rank, NotRead)>,
-    noted: HashSet<(CoverageArea, CoverageReason, Option<String>, Option<String>)>,
+    noted: HashSet<NoteKey>,
     /// Slugs of module pages the student is asked to view and hasn't: never read.
     pub guarded: HashSet<String>,
+    /// The same pages by the slug form of their title and by their Canvas id, where the module
+    /// gives one: Canvas may answer for a page under those too.
+    guarded_forms: HashSet<String>,
+    guarded_ids: HashSet<String>,
+    /// The entry each guarded slug was noted with.
+    guard_notes: HashMap<String, NoteKey>,
 }
 
 impl Cover {
@@ -68,18 +90,15 @@ impl Cover {
             notes: Vec::new(),
             noted: HashSet::new(),
             guarded: HashSet::new(),
+            guarded_forms: HashSet::new(),
+            guarded_ids: HashSet::new(),
+            guard_notes: HashMap::new(),
         }
     }
 
     /// Note something that isn't read. Each thing is noted once: false when it already was.
     pub(crate) fn note(&mut self, rank: Rank, entry: NotRead) -> bool {
-        let key = (
-            entry.area,
-            entry.reason,
-            entry.title.clone(),
-            entry.url.clone(),
-        );
-        let new = self.noted.insert(key);
+        let new = self.noted.insert(key_of(&entry));
         if new {
             self.notes.push((rank, entry));
         }
@@ -94,10 +113,75 @@ impl Cover {
         }
     }
 
+    /// A body with more links, or longer, than a sync looks at: the rest of its links weren't
+    /// taken.
+    pub(crate) fn cut_body(&mut self, area: CoverageArea, title: Option<&str>, address: &str) {
+        let entry = NotRead::new(area, CoverageReason::Capped, title, Some(address));
+        if self.note(Rank::Capped, entry) {
+            self.record.counts.capped = self.record.counts.capped.saturating_add(1);
+        }
+    }
+
+    /// A page this sync didn't ask for again: what the last one noted about it still holds.
+    /// `id` is its material id and `stored` the material as the last sync left it.
+    pub(crate) fn carried_page(
+        &mut self,
+        id: &str,
+        read: &PageRead,
+        stored: Option<&Material>,
+        address: &str,
+    ) {
+        let title = stored.map(|old| old.title.as_str());
+        if read.locked {
+            self.note(
+                Rank::Locked,
+                NotRead::new(
+                    CoverageArea::Pages,
+                    CoverageReason::Locked,
+                    title,
+                    Some(address),
+                ),
+            );
+            if stored.is_some_and(|old| old.text_status != TextStatus::Ok) {
+                self.record
+                    .unread
+                    .insert(id.to_string(), CoverageReason::Locked);
+            }
+        }
+        if read.cut {
+            self.cut_body(CoverageArea::Pages, title, address);
+        }
+    }
+
+    /// A linked file as the last check found it: one Canvas no longer has is noted (the
+    /// material stays).
+    pub(crate) fn carried_file(&mut self, seen: &FileSeen, title: Option<&str>, address: &str) {
+        if seen.gone {
+            self.note(
+                Rank::Gone,
+                NotRead::new(
+                    CoverageArea::Files,
+                    CoverageReason::NoLongerInCanvas,
+                    title,
+                    Some(address),
+                ),
+            );
+        }
+    }
+
     /// The navigation: hidden lists, and the parts PageLamp doesn't read. `tabs` is `None`
-    /// when Canvas didn't give them (then nothing is known to be hidden).
+    /// when Canvas didn't give them: then no list is asked for, and both count as failed.
     pub(crate) fn tabs(&mut self, base: &Url, tabs: Option<&[json::Tab]>) {
         let Some(tabs) = tabs else {
+            // Which lists the course hides isn't known, so neither is asked for this time.
+            for area in [CoverageArea::Pages, CoverageArea::Files] {
+                self.note(
+                    Rank::Failed,
+                    NotRead::new(area, CoverageReason::FailedThisSync, None, None),
+                );
+            }
+            self.record.pages_list = CoverageListState::Failed;
+            self.record.files_list = CoverageListState::Failed;
             return;
         };
         let shown = |id: &str| tabs.iter().any(|t| t.id == id && t.hidden != Some(true));
@@ -163,30 +247,91 @@ impl Cover {
         );
     }
 
-    /// A module's page the student is asked to view and hasn't: reading it would mark it as
+    /// A module's page the student is asked to view and hasn't: reading it could mark it as
     /// viewed, so no path of the sync reads it.
     pub(crate) fn guard(&mut self, slug: &str, item: &json::ModuleItem) {
         self.guarded.insert(slug.to_string());
-        self.note(
-            Rank::MustView,
-            NotRead::new(
-                CoverageArea::Pages,
-                CoverageReason::WouldMarkViewed,
-                item.title.as_deref(),
-                item.html_url.as_deref(),
-            ),
+        self.guarded_forms.insert(slug.to_lowercase());
+        if let Some(title) = item.title.as_deref() {
+            self.guarded_forms.insert(slug_form(title));
+        }
+        if let Some(id) = &item.content_id {
+            self.guarded_ids.insert(id.0.clone());
+        }
+        let entry = NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::WouldMarkViewed,
+            item.title.as_deref(),
+            item.html_url.as_deref(),
         );
+        self.guard_notes.insert(slug.to_string(), key_of(&entry));
+        self.note(Rank::MustView, entry);
     }
 
-    /// What the last full sync recorded about the page `slug`: its material id and its read.
+    /// Whether a link's `slug` could lead to a guarded page under another address. Canvas
+    /// may answer `pages/:url_or_id` for a page's id, for the slug form of its title and for
+    /// a slug it had before it was renamed, and a renamed page's slug often starts like the
+    /// old one (or the other way round). Only asked while the Pages list isn't there to say
+    /// which slugs exist. Errs towards not reading.
+    pub(crate) fn could_be_guarded(&self, slug: &str) -> bool {
+        if self.guarded.is_empty() {
+            return false;
+        }
+        let lower = slug.to_lowercase();
+        let by_id = lower.starts_with("page_id:") || lower.bytes().all(|b| b.is_ascii_digit());
+        by_id
+            || self.guarded_forms.iter().any(|guarded| {
+                *guarded == lower || guarded.starts_with(&lower) || lower.starts_with(guarded)
+            })
+    }
+
+    /// Whether a page Canvas answered with (its own slug and id) is a guarded one.
+    pub(crate) fn is_guarded_page(&self, url: Option<&str>, page_id: Option<&CanvasId>) -> bool {
+        url.is_some_and(|url| {
+            self.guarded.contains(url) || self.guarded_forms.contains(&url.to_lowercase())
+        }) || page_id.is_some_and(|id| self.guarded_ids.contains(&id.0))
+    }
+
+    /// The Home page was read although a module asks the student to view it (its slug can't
+    /// be known before the first read): it is no longer "not read".
+    pub(crate) fn unguard_note(&mut self, slug: &str) {
+        if let Some(key) = self.guard_notes.remove(slug) {
+            self.noted.remove(&key);
+            self.notes.retain(|(_, entry)| key_of(entry) != key);
+        }
+    }
+
+    /// What the last full sync recorded about the page `slug` leads to (its own slug, or
+    /// another address of it): the page's material id and its read.
     pub(crate) fn earlier_page(&self, slug: &str) -> Option<(String, PageRead)> {
         self.previous
             .as_ref()?
             .followed
             .pages
             .iter()
-            .find(|(_, read)| read.slug == slug)
+            .find(|(_, read)| read.answers_to(slug))
             .map(|(id, read)| (id.clone(), read.clone()))
+    }
+
+    /// How many entries so far say that something went wrong or that the student can do
+    /// something about it (the sync summary's "not read"): not what PageLamp never reads by
+    /// rule, and not the hidden lists, which the summary names by themselves.
+    pub(crate) fn needs_attention(&self) -> u32 {
+        let count = self
+            .notes
+            .iter()
+            .filter(|(_, entry)| {
+                matches!(
+                    entry.reason,
+                    CoverageReason::WouldMarkViewed
+                        | CoverageReason::FailedThisSync
+                        | CoverageReason::Capped
+                        | CoverageReason::Locked
+                        | CoverageReason::NoLongerInCanvas
+                )
+            })
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
     }
 
     /// A link found in a text that isn't followed: noted by its address alone.
@@ -211,12 +356,45 @@ pub(crate) fn within(at: Option<DateTime<Utc>>, window: TimeDelta, now: DateTime
     at.is_some_and(|at| at <= now && at > now - window)
 }
 
-/// What a body links to, each target once and in document order, and how many of its links
-/// lead outside this Canvas.
-pub(crate) fn scan(base: &Url, course: &CanvasId, html: &str) -> (Vec<FoundLink>, u32) {
+/// The slug Canvas makes of a title: lowercase, every run of other characters one hyphen.
+pub(crate) fn slug_form(title: &str) -> String {
+    let mut slug = String::with_capacity(title.len());
+    for c in title.to_lowercase().chars() {
+        if c.is_alphanumeric() {
+            slug.push(c);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+/// The id of the discussion topic an address of this Canvas opens
+/// (`…/discussion_topics/<id>`): an announcement is one.
+pub(crate) fn discussion_topic_id(address: &str) -> Option<&str> {
+    let (_, rest) = address.split_once("/discussion_topics/")?;
+    let id = rest.split(['/', '?', '#']).next()?;
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit() || b == b'~')).then_some(id)
+}
+
+/// What one body links to.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Scanned {
+    /// Each target once, in document order.
+    pub links: Vec<FoundLink>,
+    /// How many links lead outside this Canvas.
+    pub off_site: u32,
+    /// The body was longer, or held more links, than is looked at.
+    pub cut: bool,
+}
+
+/// What a body links to.
+pub(crate) fn scan(base: &Url, course: &CanvasId, html: &str) -> Scanned {
     let mut found: Vec<FoundLink> = Vec::new();
     let mut off_site: u32 = 0;
-    for link in pagelamp_extract::links::links(html).links {
+    let body = pagelamp_extract::links::links(html);
+    let cut = body.cut;
+    for link in body.links {
         let target = match links::classify(base, course, &link) {
             Target::Page { slug } => FoundLink::Page { slug },
             Target::File { id } => FoundLink::File { id },
@@ -233,7 +411,11 @@ pub(crate) fn scan(base: &Url, course: &CanvasId, html: &str) -> (Vec<FoundLink>
             found.push(target);
         }
     }
-    (found, off_site)
+    Scanned {
+        links: found,
+        off_site,
+        cut,
+    }
 }
 
 /// Where the student opens the page `slug` in Canvas.
@@ -254,6 +436,18 @@ pub(crate) fn course_address(base: &Url, course: &CanvasId) -> String {
     url.set_fragment(None);
     if let Ok(mut path) = url.path_segments_mut() {
         path.clear().extend(["courses", &course.0]);
+    }
+    url.into()
+}
+
+/// Where the student opens the course's syllabus in Canvas.
+pub(crate) fn syllabus_address(base: &Url, course: &CanvasId) -> String {
+    let mut url = base.clone();
+    url.set_query(None);
+    url.set_fragment(None);
+    if let Ok(mut path) = url.path_segments_mut() {
+        path.clear()
+            .extend(["courses", &course.0, "assignments", "syllabus"]);
     }
     url.into()
 }
@@ -299,7 +493,11 @@ mod tests {
 
     #[test]
     fn a_body_gives_each_target_once_and_counts_other_sites() {
-        let (found, off_site) = scan(
+        let Scanned {
+            links: found,
+            off_site,
+            cut,
+        } = scan(
             &base(),
             &CanvasId("101".into()),
             r##"<p><a href="/courses/101/pages/week-1">one</a>
@@ -324,6 +522,144 @@ mod tests {
             ]
         );
         assert_eq!(off_site, 2);
+        assert!(!cut);
+        // A body with more links than are looked at says so.
+        let many: String = (0..pagelamp_extract::links::MAX_LINKS + 1)
+            .map(|n| format!(r#"<a href="/courses/101/pages/p{n}">p</a>"#))
+            .collect();
+        let scanned = scan(&base(), &CanvasId("101".into()), &many);
+        assert!(scanned.cut);
+        assert_eq!(scanned.links.len(), pagelamp_extract::links::MAX_LINKS);
+    }
+
+    fn must_view(slug: &str, title: &str, content_id: Option<u64>) -> json::ModuleItem {
+        serde_json::from_value(json!({
+            "id": 3, "type": "Page", "title": title, "page_url": slug, "content_id": content_id,
+            "html_url": "https://lms.example.edu/courses/101/modules/items/3",
+            "completion_requirement": {"type": "must_view", "completed": false}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_link_that_could_reach_a_guarded_page_under_another_address_is_recognised() {
+        let mut cover = Cover::new(now(), None);
+        // Nothing is guarded: nothing could be.
+        assert!(!cover.could_be_guarded("601"));
+        cover.guard(
+            "read-me-first-2",
+            &must_view("read-me-first-2", "Read Me: First (updated)", Some(602)),
+        );
+        for slug in [
+            // By id, in both forms Canvas takes.
+            "602",
+            "17",
+            "page_id:602",
+            // The slug itself in another letter case, and the slug form of its title.
+            "Read-Me-First-2",
+            "read-me-first-updated",
+            // A slug it had before, or got after: one starts with the other.
+            "read-me-first",
+            "read-me",
+            "read-me-first-2-old",
+        ] {
+            assert!(cover.could_be_guarded(slug), "{slug}");
+        }
+        for slug in ["week-1", "notes", "first", "readme"] {
+            assert!(!cover.could_be_guarded(slug), "{slug}");
+        }
+        // What Canvas answered with: by its own slug, its title's slug form, or its id.
+        let id = |n: &str| CanvasId(n.into());
+        assert!(cover.is_guarded_page(Some("read-me-first-2"), None));
+        assert!(cover.is_guarded_page(Some("Read-Me-First-Updated"), Some(&id("9"))));
+        assert!(cover.is_guarded_page(Some("renamed"), Some(&id("602"))));
+        assert!(!cover.is_guarded_page(Some("week-1"), Some(&id("601"))));
+        assert!(!cover.is_guarded_page(None, None));
+        assert_eq!(
+            slug_form("  Read Me: First (updated) "),
+            "read-me-first-updated"
+        );
+        assert_eq!(slug_form("第1周 讲义"), "第1周-讲义");
+    }
+
+    #[test]
+    fn the_home_page_that_was_read_is_no_longer_noted_as_not_read() {
+        let mut cover = Cover::new(now(), None);
+        cover.guard("welcome", &must_view("welcome", "Welcome", None));
+        cover.guard("other", &must_view("other", "Other", None));
+        assert_eq!(cover.needs_attention(), 2);
+        cover.unguard_note("welcome");
+        cover.unguard_note("never-guarded");
+        assert_eq!(cover.needs_attention(), 1);
+        // Still guarded for every other path of the sync.
+        assert!(cover.guarded.contains("welcome"));
+        let record = cover.finish();
+        assert_eq!(
+            record
+                .not_read
+                .iter()
+                .map(|entry| entry.title.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("Other")]
+        );
+    }
+
+    #[test]
+    fn the_summary_counts_what_went_wrong_or_the_student_can_act_on() {
+        let mut cover = Cover::new(now(), None);
+        // Not known which lists the course hides: neither was asked for.
+        cover.tabs(&base(), None);
+        assert_eq!(cover.record.pages_list, CoverageListState::Failed);
+        assert_eq!(cover.record.files_list, CoverageListState::Failed);
+        let note = |cover: &mut Cover, area, reason, title: &str| {
+            cover.note(Rank::Link, NotRead::new(area, reason, Some(title), None));
+        };
+        use CoverageArea as A;
+        use CoverageReason as R;
+        for (area, reason) in [
+            (A::Pages, R::Locked),
+            (A::Files, R::NoLongerInCanvas),
+            (A::Pages, R::Capped),
+            // What PageLamp never reads by rule doesn't count.
+            (A::Assignments, R::ByRule),
+            (A::Grades, R::NotRead),
+            (A::ExternalTool, R::OutsideCanvas),
+            (A::Other, R::OtherCourse),
+            (A::Pages, R::IndexHidden),
+        ] {
+            note(&mut cover, area, reason, "x");
+        }
+        // The two lists that weren't asked for, and the three above.
+        assert_eq!(cover.needs_attention(), 5);
+    }
+
+    #[test]
+    fn an_announcement_is_known_by_its_topic_id() {
+        for (address, id) in [
+            (
+                "https://lms.example.edu/courses/101/discussion_topics/701",
+                Some("701"),
+            ),
+            (
+                "https://lms.example.edu/courses/101/discussion_topics/1~701/",
+                Some("1~701"),
+            ),
+            (
+                "https://lms.example.edu/courses/101/discussion_topics/701?module_item_id=3",
+                Some("701"),
+            ),
+            (
+                "https://lms.example.edu/courses/101/discussion_topics",
+                None,
+            ),
+            (
+                "https://lms.example.edu/courses/101/discussion_topics/new",
+                None,
+            ),
+            ("https://lms.example.edu/courses/101/pages/701", None),
+        ] {
+            assert_eq!(discussion_topic_id(address), id, "{address}");
+        }
     }
 
     #[test]

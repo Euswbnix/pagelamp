@@ -14,6 +14,12 @@ use crate::json::CanvasId;
 
 /// The longest page slug that is followed, in bytes.
 const MAX_SLUG_BYTES: usize = 200;
+/// The longest written address that is looked at, in bytes. A longer one is no target: nothing
+/// PageLamp reads has such an address, and a request can't be built from one.
+const MAX_ADDRESS_BYTES: usize = 2000;
+/// The longest Canvas id, in characters (a 64-bit id has 20 digits; the short form of an id
+/// from another shard adds a `~`).
+const MAX_ID_CHARS: usize = 32;
 
 /// Where a link leads.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,7 +60,7 @@ pub(crate) fn classify(base: &Url, course: &CanvasId, link: &Link) -> Target {
 
 fn address(base: &Url, course: &CanvasId, written: &str) -> Target {
     // A fragment alone points into the same text.
-    if written.starts_with('#') {
+    if written.starts_with('#') || written.len() > MAX_ADDRESS_BYTES {
         return Target::Nothing;
     }
     let Ok(url) = base.join(written) else {
@@ -62,6 +68,10 @@ fn address(base: &Url, course: &CanvasId, written: &str) -> Target {
     };
     if !matches!(url.scheme(), "http" | "https") {
         // mailto:, tel:, javascript:, data:…
+        return Target::Nothing;
+    }
+    // An address that carries a user name or a password is nothing to keep or to give out.
+    if !url.username().is_empty() || url.password().is_some() {
         return Target::Nothing;
     }
     if !same_origin(base, &url) {
@@ -142,9 +152,12 @@ fn address(base: &Url, course: &CanvasId, written: &str) -> Target {
     }
 }
 
-/// Canvas ids are digits, with `~` in the short form of an id from another Canvas shard.
+/// Canvas ids are digits, with `~` in the short form of an id from another Canvas shard, and
+/// at most `MAX_ID_CHARS` long.
 fn is_canvas_id(text: &str) -> bool {
-    !text.is_empty() && text.chars().all(|c| c.is_ascii_digit() || c == '~')
+    !text.is_empty()
+        && text.len() <= MAX_ID_CHARS
+        && text.chars().all(|c| c.is_ascii_digit() || c == '~')
 }
 
 /// The slug a path segment names: percent-decoded once. Refused (`None`) when it is empty,
@@ -370,6 +383,41 @@ mod tests {
         ] {
             assert_eq!(target(href), Target::Nothing, "{href}");
         }
+    }
+
+    #[test]
+    fn an_address_too_long_or_with_a_user_in_it_is_no_target() {
+        // An id no Canvas has: a request for it couldn't even be built.
+        let long_id = "9".repeat(MAX_ID_CHARS + 1);
+        for href in [
+            format!("/courses/101/files/{long_id}/download"),
+            format!("/courses/101/files/{}", "7".repeat(65_000)),
+            format!("/courses/{long_id}/pages/week-1"),
+            format!(
+                "/courses/101/pages/week-1?x={}",
+                "a".repeat(MAX_ADDRESS_BYTES)
+            ),
+            format!("https://example.org/{}", "a".repeat(MAX_ADDRESS_BYTES)),
+            // A user name or a password in the address: not kept, not given out.
+            "https://alice:secret@lms.example.edu/courses/101/pages/week-1".to_string(),
+            "https://alice@lms.example.edu/courses/101/assignments/9".to_string(),
+            "https://alice:secret@example.org/notes".to_string(),
+        ] {
+            assert_eq!(
+                target(&href),
+                Target::Nothing,
+                "{}",
+                &href[..href.len().min(80)]
+            );
+        }
+        // The longest id that is one.
+        let id = "9".repeat(MAX_ID_CHARS);
+        assert_eq!(target(&format!("/courses/101/files/{id}")), file(&id));
+        // A file named without its course is never asked about, whatever its id.
+        assert!(matches!(
+            target(&format!("/files/{long_id}")),
+            Target::NotFollowed { .. }
+        ));
     }
 
     #[test]

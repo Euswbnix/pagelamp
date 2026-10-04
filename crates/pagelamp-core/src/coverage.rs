@@ -63,7 +63,7 @@ pub enum CoverageReason {
     TooLarge,
     /// Canvas locks it for this student (not released yet, or closed).
     Locked,
-    /// A page whose module asks the student to view it: reading it would mark it as viewed.
+    /// A page whose module asks the student to view it: reading it could mark it as viewed.
     /// It is read once the student has opened it in Canvas.
     WouldMarkViewed,
     /// Assignments and quizzes: PageLamp keeps the title, the due date and the link only.
@@ -323,6 +323,21 @@ pub struct PageRead {
     pub links: Vec<FoundLink>,
     /// Addresses outside Canvas in its body.
     pub off_site_links: u32,
+    /// Other slugs that led to this page: Canvas may answer for a page's old slug, its title
+    /// form and its id too. A link that uses one of them isn't asked for again.
+    pub also: Vec<String>,
+    /// Canvas locks the page for this student: PageLamp has its title only. Kept so that a
+    /// sync that doesn't ask again still says so.
+    pub locked: bool,
+    /// Its body held more links, or was longer, than a sync looks at: the rest wasn't taken.
+    pub cut: bool,
+}
+
+impl PageRead {
+    /// Whether `slug` is this page's slug or another address that led to it.
+    pub fn answers_to(&self, slug: &str) -> bool {
+        self.slug == slug || self.also.iter().any(|other| other == slug)
+    }
 }
 
 /// A file found through a link only, while the Files list is hidden.
@@ -378,6 +393,11 @@ pub struct CourseCoverage {
     pub not_read_total: u32,
     pub counts: CoverageCounts,
     pub followed: Followed,
+    /// Materials PageLamp lists but has no text of, by a rule or a failure: material id →
+    /// why (a page a module asks the student to view, a locked page, a request that failed).
+    /// `read_material` and `list_materials` say so instead of "no text". Files that aren't
+    /// downloaded are not here: their own state says it.
+    pub unread: BTreeMap<String, CoverageReason>,
 }
 
 impl CourseCoverage {
@@ -395,6 +415,26 @@ impl CourseCoverage {
         self.not_read_total = self.not_read_total.saturating_add(1);
         if self.not_read.len() < MAX_STORED {
             self.not_read.push(entry);
+        }
+    }
+
+    /// Whether Canvas no longer has the file `material_id` (a linked file whose last check
+    /// answered "not found"; the material stays).
+    pub fn is_gone(&self, material_id: &str) -> bool {
+        self.followed
+            .files
+            .get(material_id)
+            .is_some_and(|seen| seen.gone)
+    }
+
+    /// Why PageLamp has no text of the material `material_id`, when this record says: a page
+    /// it didn't read by a rule or after a failed request, or a file Canvas no longer has.
+    /// Only for a material without text: one that has text has it from an earlier sync.
+    pub fn why_no_text(&self, material_id: &str) -> Option<CoverageReason> {
+        if self.is_gone(material_id) {
+            Some(CoverageReason::NoLongerInCanvas)
+        } else {
+            self.unread.get(material_id).copied()
         }
     }
 }
@@ -506,6 +546,7 @@ pub fn view(
 
     // Files that aren't downloaded: counted from the materials as they are now (a download
     // since the sync changes them), one entry per reason.
+    // (A file Canvas no longer has can't be downloaded: the sync's own entry says so.)
     let waiting = |blocked: Option<DownloadBlock>| {
         materials
             .iter()
@@ -513,6 +554,7 @@ pub fn view(
                 material.kind == MaterialKind::File
                     && material.text_status == TextStatus::NotDownloaded
                     && material.download_blocked == blocked
+                    && !record.is_gone(&material.id)
             })
             .count()
     };
@@ -762,6 +804,7 @@ mod tests {
                     },
                 ],
                 off_site_links: 2,
+                ..PageRead::default()
             },
         );
         record.followed.pages.insert(
@@ -939,5 +982,76 @@ mod tests {
                 .home,
             None
         );
+    }
+    #[test]
+    fn a_file_canvas_no_longer_has_is_not_waiting_for_a_download() {
+        let (_temp, store) = store();
+        let course = store.resolve_course("DEMO101").unwrap();
+        for id in ["file/1", "file/2"] {
+            material(&store, id, MaterialKind::File, "A file");
+            store
+                .set_text_state(
+                    &format!("{SOURCE}/{id}"),
+                    TextStatus::NotDownloaded,
+                    None,
+                    None,
+                )
+                .unwrap();
+        }
+        let mut record = CourseCoverage::new(at());
+        record.followed.files.insert(
+            format!("{SOURCE}/file/2"),
+            FileSeen {
+                checked_at: Some(at()),
+                gone: true,
+            },
+        );
+        record.note(NotRead::new(
+            CoverageArea::Files,
+            CoverageReason::NoLongerInCanvas,
+            Some("A file"),
+            None,
+        ));
+        write(&store, COURSE, &record).unwrap();
+        assert!(record.is_gone(&format!("{SOURCE}/file/2")));
+        assert!(!record.is_gone(&format!("{SOURCE}/file/1")));
+        assert_eq!(
+            record.why_no_text(&format!("{SOURCE}/file/2")),
+            Some(CoverageReason::NoLongerInCanvas)
+        );
+        assert_eq!(record.why_no_text(&format!("{SOURCE}/file/1")), None);
+
+        let materials = store.list_materials(COURSE).unwrap();
+        let view = view(&store, &course, &materials).unwrap().unwrap();
+        assert_eq!(
+            view.not_readable
+                .iter()
+                .map(|entry| (entry.reason, entry.count))
+                .collect::<Vec<_>>(),
+            [
+                (CoverageReason::NeedsDownload, 1),
+                (CoverageReason::NoLongerInCanvas, 1)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_page_answers_to_its_slug_and_to_the_other_addresses_that_led_to_it() {
+        let read = PageRead {
+            slug: "week-1".into(),
+            also: vec!["week-one".into(), "601".into()],
+            ..PageRead::default()
+        };
+        for slug in ["week-1", "week-one", "601"] {
+            assert!(read.answers_to(slug), "{slug}");
+        }
+        assert!(!read.answers_to("week-2"));
+        // A record written before these fields existed reads with none of them.
+        let old: PageRead =
+            serde_json::from_value(json!({ "slug": "week-1", "linked": true })).unwrap();
+        assert!(old.also.is_empty() && !old.locked && !old.cut);
+        let record: CourseCoverage =
+            serde_json::from_value(json!({ "version": 1, "home": { "kind": "page" } })).unwrap();
+        assert!(record.unread.is_empty());
     }
 }
