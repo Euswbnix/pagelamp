@@ -838,6 +838,16 @@ pub struct CourseSyncSummary {
     pub files: u32,
     pub events: u32,
     pub warnings: u32,
+    #[uniffi(default)]
+    pub linked_pages: u32,
+    #[uniffi(default)]
+    pub linked_files: u32,
+    #[uniffi(default)]
+    pub not_read: u32,
+    #[uniffi(default)]
+    pub pages_hidden: bool,
+    #[uniffi(default)]
+    pub files_hidden: bool,
 }
 
 // ---------------------------------------------------------------------------------------------

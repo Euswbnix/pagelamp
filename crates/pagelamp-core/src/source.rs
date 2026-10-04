@@ -54,6 +54,24 @@ pub struct CourseSyncSummary {
     /// Deadlines/events read for this course.
     pub events: u32,
     pub warnings: u32,
+    /// Of `pages`, those no list or module gave: a text PageLamp read links to them (Canvas,
+    /// a full sync; `coverage`).
+    #[serde(default)]
+    pub linked_pages: u32,
+    /// Of `files`, those found through a link in a text only.
+    #[serde(default)]
+    pub linked_files: u32,
+    /// How many things the sync noted as not read, with reasons (`CourseOverview::coverage`
+    /// lists them). Files that aren't downloaded are not among them.
+    #[serde(default)]
+    pub not_read: u32,
+    /// The course's navigation hides its Pages list: only pages that modules and links lead
+    /// to were read.
+    #[serde(default)]
+    pub pages_hidden: bool,
+    /// The same for its Files list.
+    #[serde(default)]
+    pub files_hidden: bool,
 }
 
 /// Why a source failed to sync (or failed validation when being added).

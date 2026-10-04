@@ -177,6 +177,12 @@ struct CourseResult {
     /// has none to see (403, 404). False when it failed in a way that may pass (5xx, a bad
     /// answer) and for a sync that didn't ask.
     structure_read: bool,
+    /// What the course's record says, for the summary line (zeros for a sync that wrote none).
+    linked_pages: u32,
+    linked_files: u32,
+    not_read: u32,
+    pages_hidden: bool,
+    files_hidden: bool,
 }
 
 /// Which material kinds this sync may prune (their listings were read completely).
@@ -409,6 +415,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         files: to_u32(result.files),
                         events: to_u32(result.events.as_ref().map_or(0, Vec::len)),
                         warnings: to_u32(report.warnings.len() - warnings_before),
+                        linked_pages: result.linked_pages,
+                        linked_files: result.linked_files,
+                        not_read: result.not_read,
+                        pages_hidden: result.pages_hidden,
+                        files_hidden: result.files_hidden,
                     });
                     report.courses += 1;
                     if first_seen {
@@ -1736,6 +1747,21 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 .count(),
         );
         record.counts.linked_files = to_u32(record.followed.files.len());
+        // For the summary line (a sync that writes no record has nothing to say).
+        let summary_of = |record: &coverage::CourseCoverage| {
+            (
+                record.counts.linked_pages,
+                record.counts.linked_files,
+                record.not_read_total,
+                record.pages_list == CoverageListState::Hidden,
+                record.files_list == CoverageListState::Hidden,
+            )
+        };
+        let (linked_pages, linked_files, not_read, pages_hidden, files_hidden) = if full {
+            summary_of(&record)
+        } else {
+            Default::default()
+        };
         {
             let upsert = upsert.clone();
             let course_id = course_id.clone();
@@ -1959,6 +1985,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             events,
             announcements_read,
             structure_read,
+            linked_pages,
+            linked_files,
+            not_read,
+            pages_hidden,
+            files_hidden,
         })
     }
 }

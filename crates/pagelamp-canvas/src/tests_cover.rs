@@ -160,6 +160,20 @@ async fn a_home_page_and_what_it_links_to_are_read_without_asking_for_a_hidden_l
         report.warnings,
         ["DEMO101: Files tab hidden, used module items only"]
     );
+    // The course's line in the sync summary.
+    let line = &report.course_summaries[0];
+    assert_eq!(
+        (
+            line.pages,
+            line.files,
+            line.linked_pages,
+            line.linked_files,
+            line.not_read,
+            line.pages_hidden,
+            line.files_hidden
+        ),
+        (4, 3, 2, 3, 14, true, true)
+    );
 
     // Asked once: the Home page, the module's page, the two linked pages, the three linked
     // files. Never: a hidden list, the page the module asks the student to view, a page two
@@ -366,16 +380,22 @@ async fn linked_pages_stay_and_an_automatic_sync_leaves_them_alone_for_a_day() {
     assert_eq!(third.counts, first.counts);
     assert_eq!(f.store().search("stomata", None, 5).unwrap().len(), 1);
 
-    // A sync nobody is at the app for doesn't touch the record.
+    // A sync nobody is at the app for doesn't touch the record, and its summary says nothing
+    // about what a full sync reads.
     let light = SyncOptions {
         automatic: true,
         user_level_only: true,
         ..f.options(false)
     };
-    sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
+    let report = sync_with(&f.api_for(true), &f.db, &f.source, &light, &no_progress)
         .await
         .unwrap();
     assert_eq!(record(&f), third);
+    let line = &report.course_summaries[0];
+    assert_eq!(
+        (line.not_read, line.linked_pages, line.pages_hidden),
+        (0, 0, false)
+    );
 }
 
 #[tokio::test]

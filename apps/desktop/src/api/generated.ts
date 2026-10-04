@@ -2232,8 +2232,31 @@ export interface CourseSyncSummary {
    * Files listed (downloaded or not).
    */
   files: number;
+  /**
+   * The same for its Files list.
+   */
+  files_hidden?: boolean;
+  /**
+   * Of `files`, those found through a link in a text only.
+   */
+  linked_files?: number;
+  /**
+   * Of `pages`, those no list or module gave: a text PageLamp read links to them (Canvas,
+   * a full sync; `coverage`).
+   */
+  linked_pages?: number;
   modules: number;
+  /**
+   * How many things the sync noted as not read, with reasons (`CourseOverview::coverage`
+   * lists them). Files that aren't downloaded are not among them.
+   */
+  not_read?: number;
   pages: number;
+  /**
+   * The course's navigation hides its Pages list: only pages that modules and links lead
+   * to were read.
+   */
+  pages_hidden?: boolean;
   warnings: number;
 }
 /**
