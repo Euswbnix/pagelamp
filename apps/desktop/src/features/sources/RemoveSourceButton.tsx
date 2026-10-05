@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useReturnFocus } from "@/lib/focus";
+import { useSyncStore } from "@/stores/sync";
 
 /** "Remove" with a confirmation that spells out what goes away (courses, settings, secret). */
 export function RemoveSourceButton({
@@ -42,6 +43,8 @@ export function RemoveSourceButton({
     setError(null);
     try {
       await remove.mutateAsync(source.id);
+      // The last sync's lines may name courses that went with the source.
+      useSyncStore.getState().forgetCourseLines();
       setOpen(false);
       toast.success(t("remove.done", { label: source.label }));
     } catch (err) {

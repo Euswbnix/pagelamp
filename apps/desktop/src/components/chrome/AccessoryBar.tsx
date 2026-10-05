@@ -310,7 +310,10 @@ function SyncDetails({
         <ul className="max-h-72 divide-y overflow-y-auto px-4">
           {order.map((id) => {
             const progress = bySource[id];
-            return progress ? <SyncProgressRow key={id} progress={progress} showFixLink /> : null;
+            // No lines per course here: the popover is narrow, and gone soon after a clean run.
+            return progress ? (
+              <SyncProgressRow key={id} progress={progress} showFixLink courseLines={false} />
+            ) : null;
           })}
         </ul>
       ) : null}

@@ -58,6 +58,10 @@ use pagelamp_core::calendar::candidates::{CalendarCandidate, CandidateLeftOut, C
 use pagelamp_core::calendar::proposal::{AcceptedCalendar, CalendarProposal};
 use pagelamp_core::calendar::validate::{DateEvidence, DropCount, DropReason};
 use pagelamp_core::calendar::{CalendarWeek, CourseCalendar};
+use pagelamp_core::coverage::{
+    CourseHomeKind, CourseHomeState, CoverageArea, CoverageCounts, CoverageListState,
+    CoverageReason, CoverageView, MaterialRef, NotReadable,
+};
 use pagelamp_core::model::{
     AiLabel, AiMaterialsState, AiPolicy, BreakKind, CalendarBreak, CalendarOrigin, CalendarStatus,
     Confidence, Course, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline, DateSpan,
@@ -705,6 +709,112 @@ pub struct CourseOverview {
     pub deadlines_synced_at: Option<Timestamp>,
     #[uniffi(default)]
     pub structure_pending: bool,
+    #[uniffi(default = None)]
+    pub coverage: Option<CoverageView>,
+}
+
+// ----- what a sync read of a Canvas course, and what it didn't --------------------------------
+
+#[uniffi::remote(Enum)]
+pub enum CoverageReason {
+    IndexHidden,
+    NeedsDownload,
+    TooLarge,
+    Locked,
+    WouldMarkViewed,
+    ByRule,
+    OutsideCanvas,
+    NotRead,
+    OtherCourse,
+    Capped,
+    FailedThisSync,
+    NoLongerInCanvas,
+    Other,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CoverageArea {
+    Home,
+    Syllabus,
+    Modules,
+    Pages,
+    Files,
+    Announcements,
+    Assignments,
+    Quizzes,
+    Discussions,
+    Grades,
+    People,
+    ExternalTool,
+    Other,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CourseHomeKind {
+    Page,
+    Modules,
+    Syllabus,
+    Assignments,
+    Activity,
+    Unknown,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CourseHomeState {
+    Read,
+    Locked,
+    NotAPage,
+    Missing,
+    Failed,
+    Unknown,
+}
+
+#[uniffi::remote(Enum)]
+pub enum CoverageListState {
+    Read,
+    Hidden,
+    Failed,
+    Unknown,
+}
+
+#[uniffi::remote(Record)]
+pub struct MaterialRef {
+    pub id: String,
+    pub title: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct NotReadable {
+    pub area: CoverageArea,
+    pub reason: CoverageReason,
+    pub title: Option<String>,
+    pub url: Option<String>,
+    pub count: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct CoverageCounts {
+    pub pages: u32,
+    pub linked_pages: u32,
+    pub files: u32,
+    pub linked_files: u32,
+    pub capped: u32,
+    pub off_site_links: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct CoverageView {
+    pub home_kind: CourseHomeKind,
+    pub home_state: CourseHomeState,
+    pub home: Option<MaterialRef>,
+    pub syllabus: Option<MaterialRef>,
+    pub pages_list: CoverageListState,
+    pub files_list: CoverageListState,
+    pub not_readable: Vec<NotReadable>,
+    pub not_readable_more: u32,
+    pub announcements_synced: u32,
+    pub counts: CoverageCounts,
+    pub written_at: Option<Timestamp>,
 }
 
 #[uniffi::remote(Enum)]
@@ -738,6 +848,16 @@ pub struct CourseSyncSummary {
     pub files: u32,
     pub events: u32,
     pub warnings: u32,
+    #[uniffi(default)]
+    pub linked_pages: u32,
+    #[uniffi(default)]
+    pub linked_files: u32,
+    #[uniffi(default)]
+    pub not_read: u32,
+    #[uniffi(default)]
+    pub pages_hidden: bool,
+    #[uniffi(default)]
+    pub files_hidden: bool,
 }
 
 // ---------------------------------------------------------------------------------------------

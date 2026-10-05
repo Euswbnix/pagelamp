@@ -92,8 +92,10 @@ pub enum AutoSyncTrigger {
     /// The app's timer, with nobody known to be at the app. From a Canvas source such a run
     /// reads only the course list, deadlines and announcements.
     Unattended,
-    /// The student just opened PageLamp, brought its window to the front or closed What's new.
-    /// Such a run reads everything, like pressing Sync (it never downloads files).
+    /// The student just opened PageLamp, did something in its window after it came to the
+    /// front (a press, a key, the wheel), closed What's new or changed the setting. A window
+    /// that only gained focus doesn't count. Such a run reads everything, like pressing Sync
+    /// (it never downloads files).
     Attended,
 }
 

@@ -1982,6 +1982,15 @@ impl Store {
         Ok(())
     }
 
+    /// Forget every value whose key starts with `prefix`; how many there were.
+    pub fn remove_settings_with_prefix(&self, prefix: &str) -> Result<usize> {
+        // (`substr`, not `LIKE`: a prefix can hold `%` or `_`.)
+        Ok(self.conn.execute(
+            "DELETE FROM settings WHERE substr(key, 1, length(?1)) = ?1",
+            [prefix],
+        )?)
+    }
+
     // ----- statistics ----------------------------------------------------------------------
 
     /// `PRAGMA user_version` of this database (see `SCHEMA_VERSION`).

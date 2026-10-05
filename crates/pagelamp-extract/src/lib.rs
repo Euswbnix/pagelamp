@@ -55,6 +55,7 @@ mod docx;
 mod failure;
 mod format;
 mod html;
+pub mod links;
 mod notebook;
 mod ooxml;
 mod pdf;

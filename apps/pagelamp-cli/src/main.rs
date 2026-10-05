@@ -888,6 +888,9 @@ fn finish_sync(results: &[SourceSyncResult], json: bool, verbose: bool) -> anyho
                             n => format!("  {n} warnings"),
                         }
                     );
+                    if let Some(line) = text::coverage_line(c) {
+                        println!("  {:<width$}  {line}", "");
+                    }
                 }
             }
             match r.requests {

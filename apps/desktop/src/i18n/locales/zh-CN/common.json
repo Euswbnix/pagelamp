@@ -142,6 +142,7 @@
     "pending": "等待处理",
     "unsupported": "无法读取（如视频）",
     "not_downloaded": "未下载",
+    "not_downloaded_yet": "还没下载",
     "error": "文字提取失败",
     "noText": "没有找到文字"
   },
@@ -188,6 +189,11 @@
   },
   "punctuation": {
     "colon": "："
+  },
+  "canvasLists": {
+    "pages": "在 Canvas 中没有开放“页面”列表",
+    "files": "在 Canvas 中没有开放“文件”列表",
+    "both": "在 Canvas 中没有开放“页面”和“文件”列表"
   },
   "a11y": {
     "notifications": "通知"

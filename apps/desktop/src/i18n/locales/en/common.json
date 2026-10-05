@@ -142,6 +142,7 @@
     "pending": "Waiting to be indexed",
     "unsupported": "Can't be read (e.g. video)",
     "not_downloaded": "Not downloaded",
+    "not_downloaded_yet": "Not downloaded yet",
     "error": "Couldn't extract text",
     "noText": "No text found"
   },
@@ -188,6 +189,11 @@
   },
   "punctuation": {
     "colon": ": "
+  },
+  "canvasLists": {
+    "pages": "Pages list not shown in Canvas",
+    "files": "Files list not shown in Canvas",
+    "both": "Pages and Files lists not shown in Canvas"
   },
   "a11y": {
     "notifications": "Notifications"
