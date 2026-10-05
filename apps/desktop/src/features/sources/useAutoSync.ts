@@ -23,6 +23,12 @@ export const INPUT_ASK_DELAY_MS = 300;
 /** An input this soon before the window gained focus is the one that brought it to the front. */
 export const INPUT_BEFORE_FOCUS_MS = 1000;
 
+/**
+ * A dialog in a window where nothing was pressed, and that didn't come to the front, for this
+ * long was left open. It holds a light sync back no longer.
+ */
+export const DIALOG_LEFT_MS = 15 * 60 * 1000;
+
 function dialogOpen(): boolean {
   return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
 }
@@ -115,6 +121,7 @@ export function useAutoSync() {
   // nothing new (the hourly re-read stays unattended however long the student works here).
   const awaitingInput = useRef(false);
   const lastInputAt = useRef(0);
+  const lastFocusAt = useRef(0);
 
   // Whether this page load is the launch: null until Rust has said (it knows whether the process
   // loaded the page before). No answer is acted on before that, so a reload can't slip through
@@ -206,6 +213,7 @@ export function useAutoSync() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
+        lastFocusAt.current = Date.now();
         // The press that brought the window to the front can reach the page a moment before
         // this event does (Windows, Linux): it is the student all the same.
         const sinceInput = Date.now() - lastInputAt.current;
@@ -297,7 +305,19 @@ export function useAutoSync() {
       } else clear();
       return;
     }
-    if (blocked) {
+    // A dialog that was left open: in a window that sits in the tray it stays for days. Open,
+    // it says nothing about anyone being at it, so once nothing was pressed here and the window
+    // didn't come to the front for a quarter of an hour (or the clock went back, and nothing
+    // can be told), a light sync goes ahead under it. A full sync waits for every dialog, and
+    // a light one for whatever else is in its way.
+    const untouched =
+      Date.now() - Math.max(lastInputAt.current, lastFocusAt.current, api.pageLoadedAt());
+    const leftDialog =
+      trigger === "unattended" &&
+      !locked &&
+      !installing &&
+      (untouched >= DIALOG_LEFT_MS || untouched < 0);
+    if (blocked && !leftDialog) {
       waiting.current = true;
       underLock.current = locked;
       watchDialogs();
