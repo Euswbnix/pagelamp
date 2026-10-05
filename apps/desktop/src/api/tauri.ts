@@ -251,6 +251,21 @@ export function createTauriApi(): PageLampApi {
         unlisten?.();
       };
     },
+    onStartupCheck: (onCheck) => {
+      let unlisten: (() => void) | null = null;
+      let stopped = false;
+      // Needs core:event:default only. If listening fails, the page's own hourly timer asks.
+      listen("startup:check", () => onCheck())
+        .then((stop) => {
+          if (stopped) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        stopped = true;
+        unlisten?.();
+      };
+    },
     revealDataDir: () => call("reveal_data_dir"),
     onWindowFocus: (onFocus) => {
       let unlisten: (() => void) | null = null;

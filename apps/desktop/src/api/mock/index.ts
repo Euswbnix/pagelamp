@@ -78,6 +78,9 @@ import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
 
+/** A page event that stands in for the shell's "startup:check" (tests dispatch it). */
+export const MOCK_STARTUP_CHECK_EVENT = "pagelamp:startup-check";
+
 export interface MockOptions {
   scenario?: MockScenario;
   /** Simulated latency of every call in ms (0 in tests). */
@@ -1401,6 +1404,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     revealMaterial: async (materialId) => {
       await sleep(latency);
       return localDocument(materialId, false);
+    },
+    onStartupCheck: (onCheck) => {
+      const handler = () => onCheck();
+      window.addEventListener(MOCK_STARTUP_CHECK_EVENT, handler);
+      return () => window.removeEventListener(MOCK_STARTUP_CHECK_EVENT, handler);
     },
     onWindowFocus: (onFocus) => {
       // The browser tab's focus stands in for the desktop window's.

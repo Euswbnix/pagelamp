@@ -430,6 +430,13 @@ export interface PageLampApi {
   openNotificationSettings(): Promise<boolean>;
   /** Calls `onCheck` whenever the shell asks for a delivery (every 15 min, after a sleep). */
   onReminderCheck(onCheck: () => void): () => void;
+  /**
+   * Calls `onCheck` when the shell's ticker says so: every 15 minutes on a clock of its own,
+   * not as the computer wakes and not in the two minutes after. A moment at which the page may
+   * ask again what is due by itself: its own hourly timer may not run on time in a window that
+   * is out of sight. The tick says nothing about the student, and starts nothing.
+   */
+  onStartupCheck(onCheck: () => void): () => void;
 
   // ----- desktop helpers (not part of the facade) --------------------------------------------
   /** Native folder picker. Resolves null when cancelled. */
@@ -458,7 +465,7 @@ export interface PageLampApi {
   onStudentInput(onInput: () => void): () => void;
   /**
    * The window was started without being shown to the student (a start at login). Its launch
-   * then isn't the student opening PageLamp; their first input after the window gains focus is.
+   * then isn't the student opening PageLamp; their first input in the window is.
    */
   startedHidden(): boolean;
   /**

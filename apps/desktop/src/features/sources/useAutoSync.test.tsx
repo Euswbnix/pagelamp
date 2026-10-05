@@ -3,7 +3,7 @@ import { act, configure, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
-import { createMockApi, type MockOptions } from "@/api/mock";
+import { createMockApi, MOCK_STARTUP_CHECK_EVENT, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
 import { createTauriApi } from "@/api/tauri";
 import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
@@ -11,7 +11,7 @@ import { createQueryClient } from "@/app/Providers";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
-import { INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS } from "./useAutoSync";
+import { DIALOG_LEFT_MS, INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS, TICK_REREAD_MS } from "./useAutoSync";
 
 // Headroom for slow CI machines: a whole route renders before anything here can happen.
 // (Per-file setting: Vitest isolates each test file.)
@@ -675,6 +675,114 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
 
+  it("takes the first input in a window that started hidden, though no focus was heard", async () => {
+    // Showing the window from the tray can give focus before this page listens, or give none.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+
+    // Hours later the student opens the window and presses something. No focus event came.
+    later(start, 3 * HOUR);
+    // What isn't the student isn't taken for it here either.
+    input(new Event("pointermove"));
+    input(new KeyboardEvent("keydown", { key: "a", repeat: true }));
+    input(new KeyboardEvent("keydown", { key: "F15" }));
+    await afterInput();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes only the first: later input in that window says nothing new without a focus", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    alwaysDue(api);
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    later(start, 3 * HOUR);
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+
+    // The student works on; an hour later a press is no new coming.
+    const noted = useSyncStore.getState().attendedUntil;
+    later(start, 4 * HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
+  it("doesn't spend that first input on a run that is in its way", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    alwaysDue(api);
+    const held = holdSyncAll(api);
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    // The hidden launch's light sync is still running when the student opens the window and
+    // presses something.
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    input(new Event("pointerdown"));
+    await afterInput();
+
+    // The run ends two minutes later: that press is too old to say the student is here.
+    later(start, 2 * MINUTE);
+    held.release();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // Their next press counts, with no focus in between.
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("gives a page that was loaded again no such first input, hidden start or not", async () => {
+    // The flag says how the window started; after a reload it may have been in use for hours.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", reloaded: true, startedHidden: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, 5 * MINUTE);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a launch the student saw no input without a focus either", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
   it("never takes a page that was loaded again for the student opening PageLamp", async () => {
     // The system restarts the page by itself after ending its content process: nobody is here.
     const start = startClock();
@@ -1276,13 +1384,521 @@ describe("automatic sync", () => {
     await user.click(await screen.findByRole("button", { name: "Add source" }));
     const dialog = await screen.findByRole("dialog", { name: "Add a source" });
 
+    // The student is at the dialog (typing in it) when the hour's answer says a sync is due.
     later(start, 13 * HOUR);
+    input(new KeyboardEvent("keydown", { key: "a" }));
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await settle();
     expect(sync).not.toHaveBeenCalled();
 
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+  });
+
+  describe("a dialog that was left open", () => {
+    /** A dialog stays open in the window, as one does for days in the tray. */
+    function leaveDialogOpen() {
+      const dialog = document.createElement("div");
+      dialog.setAttribute("role", "dialog");
+      document.body.appendChild(dialog);
+      return () => dialog.remove();
+    }
+
+    /** A quiet launch with nothing due, then the hour's answer saying a sync is. */
+    async function quietLaunch(options: MockOptions = {}) {
+      const start = startClock();
+      const api = mockApi(options);
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const sync = vi.spyOn(api, "syncAll");
+      const { queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      await settle();
+      expect(sync).not.toHaveBeenCalled();
+      const becomeDue = () => {
+        due = true;
+      };
+      const hourly = async () => {
+        becomeDue();
+        await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+        await settle();
+      };
+      return { start, api, sync, queryClient, becomeDue, hourly };
+    }
+
+    it("lets a light sync start at the first answer that finds it untouched for a quarter of an hour", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, DIALOG_LEFT_MS - 1000);
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+
+        later(start, DIALOG_LEFT_MS);
+        await hourly();
+        await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+        expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      } finally {
+        close();
+      }
+    });
+
+    it("counts from the last thing pressed in the window", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, HOUR);
+        input(new Event("pointerdown"));
+        later(start, HOUR + DIALOG_LEFT_MS - 1000);
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+    });
+
+    it("counts from the window coming to the front too: someone may be about to use it", async () => {
+      const { start, sync, becomeDue } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, 13 * HOUR);
+        becomeDue();
+        // The focus asks by itself (the answer is old), and finds the sync due.
+        focusWindow();
+        await settle();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+    });
+
+    it("never lets a full sync start under it, however long it was left", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, 13 * HOUR);
+        // The student is known to be here by something that is no input in the window.
+        act(() => useSyncStore.getState().noteStudentAction());
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    });
+
+    it("doesn't start under it while an update is being installed", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, 13 * HOUR);
+        act(() => useUpdateStore.setState({ install: { phase: "installing" } }));
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        act(() => useUpdateStore.setState({ install: { phase: "idle" } }));
+        close();
+      }
+    });
+
+    it("doesn't start under it while another process syncs, whatever the answer says", async () => {
+      // The answer can have been worked out a moment before the other process took the lock.
+      const start = startClock();
+      const api = mockApi();
+      const status = api.status.bind(api);
+      api.status = async () => ({ ...(await status()), sync_in_progress: true });
+      alwaysDue(api);
+      const sync = vi.spyOn(api, "syncAll");
+      const { queryClient } = renderRoute("/courses", { api });
+      await seenSyncingElsewhere(queryClient);
+      const close = leaveDialogOpen();
+      try {
+        later(start, 13 * HOUR);
+        await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+        await settle();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+    });
+
+    it("keeps the purge and Monday's note behind the sync it starts under it", async () => {
+      const { start, api, sync, queryClient, hourly } = await quietLaunch();
+      const held = holdSyncAll(api);
+      const close = leaveDialogOpen();
+      try {
+        later(start, 13 * HOUR);
+        const before = useSyncStore.getState().clearedAnswer;
+        await hourly();
+        await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+        // Like any start: the answer it started on isn't done with for the others.
+        const answers = queryClient.getQueryState(queryKeys.startupTasks())?.dataUpdateCount;
+        expect(useSyncStore.getState().clearedAnswer).toBe(before);
+        expect(useSyncStore.getState().clearedAnswer).toBeLessThan(answers ?? 0);
+        held.release();
+        await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      } finally {
+        close();
+      }
+    });
+
+    it("keeps a run that goes wrong quiet under the capsule's own details, left open", async () => {
+      // Those details are such a dialog. Open, they tell the store that the student looks on.
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const { user, queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      // The student syncs, opens the details of "Sync finished" and leaves them open.
+      await user.click(await screen.findByRole("button", { name: "Sync now" }));
+      await user.click(await screen.findByRole("button", { name: "Sync finished" }));
+      await screen.findByRole("dialog", { name: "Sync details" });
+      expect(useSyncStore.getState().watched).toBe(true);
+
+      // Hours later the hour's light sync starts under them, and Canvas can't be reached.
+      later(start, 13 * HOUR);
+      const sync = failingWith(api, "network");
+      due = true;
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      await settle();
+      expectNoTrace();
+      expect(announced()).not.toContain("problems");
+      // The details went with the capsule; focus that was in them is on the page, not on
+      // something that is no longer shown.
+      expect(document.getElementById("main")).toHaveFocus();
+    });
+
+    /** A light run that is held until `fail()`, and then can't reach Canvas. */
+    function heldThenFailing(api: PageLampApi) {
+      let fail: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        fail = resolve;
+      });
+      const sync = vi
+        .spyOn(api, "syncAll")
+        .mockImplementation(async (_req, onEvent: (event: SyncEvent) => void) => {
+          onEvent({ type: "source_started", source_id: CANVAS, label: "Demo Canvas" });
+          await gate;
+          onEvent({
+            type: "source_finished",
+            source_id: CANVAS,
+            ok: false,
+            error: "Synthetic failure",
+            error_kind: "network",
+          });
+          const summary: SyncSummary = {
+            started_at: "2026-10-05T13:00:00Z",
+            finished_at: "2026-10-05T13:00:01Z",
+            ok: false,
+            results: [failedCanvas("network")],
+          };
+          return summary;
+        });
+      return { sync, fail: () => fail() };
+    }
+
+    /** The student syncs; afterwards a sync becomes due when the test says so. */
+    async function afterTheStudentsSync() {
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const { user, queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      await user.click(await screen.findByRole("button", { name: "Sync now" }));
+      const capsule = await screen.findByRole("button", { name: "Sync finished" });
+      const hourly = async () => {
+        due = true;
+        await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      };
+      return { start, api, user, capsule, hourly };
+    }
+
+    it("shows that run's problem after all when the student is back at the details before it ends", async () => {
+      const { start, api, user, capsule, hourly } = await afterTheStudentsSync();
+      await user.click(capsule);
+      const details = await screen.findByRole("dialog", { name: "Sync details" });
+
+      // Left open. Hours later the hour's light sync starts under them, watched by nobody.
+      later(start, 13 * HOUR);
+      const { sync, fail } = heldThenFailing(api);
+      await hourly();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      try {
+        expect(useSyncStore.getState().unwatched).toBe(true);
+        // The student comes back while it runs and presses in the details: they look on now.
+        input(new Event("pointerdown"));
+        expect(useSyncStore.getState().unwatched).toBe(false);
+        expect(details).toBeInTheDocument();
+      } finally {
+        // It can't reach Canvas. Nothing vanishes in front of them: the capsule says so.
+        fail();
+      }
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      expect(
+        await screen.findByRole("button", { name: "Sync finished with problems" }),
+      ).toBeInTheDocument();
+      expect(useSyncStore.getState().lastSummary).not.toBeNull();
+    });
+
+    it("changes nothing where no dialog is open: a capsule the student rests on still shows the problem", async () => {
+      const { start, api, capsule, hourly } = await afterTheStudentsSync();
+      // Focus rests on the capsule ("Sync finished" stays for that); its details are closed.
+      act(() => capsule.focus());
+      await waitFor(() => expect(useSyncStore.getState().watched).toBe(true));
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      // Hours later, with nothing in its way, the hour's light sync runs and can't reach Canvas.
+      later(start, 13 * HOUR);
+      const { sync, fail } = heldThenFailing(api);
+      await hourly();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      try {
+        expect(useSyncStore.getState().unwatched).toBe(false);
+      } finally {
+        fail();
+      }
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      expect(
+        await screen.findByRole("button", { name: "Sync finished with problems" }),
+      ).toBeInTheDocument();
+    });
+
+    it("doesn't start under it while the app is writing", async () => {
+      // Clearing removed courses, removing or restoring one: they hold the lock a sync needs.
+      const { start, sync, queryClient, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      let written: () => void = () => {};
+      const write = queryClient.getMutationCache().build(queryClient, {
+        mutationFn: () =>
+          new Promise<void>((resolve) => {
+            written = resolve;
+          }),
+      });
+      try {
+        later(start, 13 * HOUR);
+        void write.execute(undefined);
+        await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        written();
+        close();
+      }
+    });
+
+    it("lets the student finish what they left in the dialog while that run is going", async () => {
+      // Adding a source needs nothing the run holds: nothing typed is lost, nothing is refused.
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const held = holdSyncAll(api);
+      const sync = vi.spyOn(api, "syncAll");
+      const one = vi.spyOn(api, "syncSource");
+      const { user, queryClient } = renderRoute("/sources", { api });
+      await user.click(await screen.findByRole("button", { name: "Add source" }));
+      const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+      await user.click(within(dialog).getByRole("checkbox", { name: "I understand" }));
+      await user.click(within(dialog).getByRole("button", { name: "Choose folder…" }));
+      await within(dialog).findByDisplayValue("/Users/demo/Documents/Courses");
+
+      // They leave it at that. Hours later the hour's light sync starts under the dialog.
+      later(start, 13 * HOUR);
+      due = true;
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+
+      // Back at the window while it runs: the form is as they left it, and "Add source" adds.
+      expect(within(dialog).getByDisplayValue("/Users/demo/Documents/Courses")).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(
+        await screen.findByText("Source added. It will be included in the next sync."),
+      ).toBeInTheDocument();
+      expect(one).not.toHaveBeenCalled();
+
+      // And the new source is synced as soon as that run has ended.
+      held.release();
+      await waitFor(() => expect(one).toHaveBeenCalledTimes(1));
+    });
+
+    it("takes a clock that went back for a dialog left open: nothing can be told then", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, -HOUR);
+        await hourly();
+        await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+        expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      } finally {
+        close();
+      }
+    });
+
+    it("leaves What's new alone in a window that started hidden, for hours", async () => {
+      // An upgrader's start at login: What's new is such a dialog, and must be read first.
+      const start = startClock();
+      const api = mockApi({ scenario: "upgrader", startedHidden: true });
+      alwaysDue(api);
+      const sync = vi.spyOn(api, "syncAll");
+      const { queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+      later(start, 13 * HOUR);
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      await settle();
+      expect(sync).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog", { name: "What's new in PageLamp" })).toBeInTheDocument();
+    });
+  });
+
+  describe("the shell's tick", () => {
+    /** The shell's ticker fires, as it does every quarter of an hour. */
+    function tick(times = 1) {
+      act(() => {
+        for (let i = 0; i < times; i++) window.dispatchEvent(new Event(MOCK_STARTUP_CHECK_EVENT));
+      });
+    }
+
+    /** A launch with nothing due. Counts the questions; later answers are as the test says. */
+    async function launched() {
+      const start = startClock();
+      const api = mockApi();
+      let due: { unattended: boolean; attended: boolean } | null = null;
+      let failing = false;
+      const tasks = api.startupTasks.bind(api);
+      const asked = vi.fn();
+      api.startupTasks = async () => {
+        asked();
+        if (failing) throw new ApiError("internal", "Synthetic failure");
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: due } : answer;
+      };
+      const sync = vi.spyOn(api, "syncAll");
+      renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(sync).not.toHaveBeenCalled();
+      return {
+        start,
+        sync,
+        asked,
+        becomeDue: (what = DUE) => {
+          due = what;
+        },
+        fail: (on: boolean) => {
+          failing = on;
+        },
+      };
+    }
+
+    it("asks nothing while the last question is younger than the page's own hour", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue();
+      later(start, TICK_REREAD_MS - 1000);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it("asks when the page's timer is late, and what is due then starts unattended", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue();
+      later(start, TICK_REREAD_MS);
+      tick();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      // The question it asked, and the one after the run.
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(3);
+    });
+
+    it("asks once when several ticks come at once", async () => {
+      const { start, asked } = await launched();
+      later(start, 9 * HOUR);
+      tick(5);
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+    });
+
+    it("counts from the last question, answered or not: no retry every quarter of an hour", async () => {
+      const { start, asked, fail } = await launched();
+      fail(true);
+      later(start, 2 * HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+
+      later(start, 2 * HOUR + 15 * MINUTE);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+
+      later(start, 2 * HOUR + TICK_REREAD_MS);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(3);
+    });
+
+    it("asks when the clock went back", async () => {
+      const { start, asked } = await launched();
+      later(start, -HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+    });
+
+    it("is nobody: a full sync that is due doesn't start, and no input is waited for", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue({ unattended: false, attended: true });
+      const noted = useSyncStore.getState().attendedUntil;
+      later(start, 9 * HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+      expect(sync).not.toHaveBeenCalled();
+      expect(useSyncStore.getState().attendedUntil).toBe(noted);
+
+      // A press with no focus before it stays what it was: nothing new about the student.
+      input(new Event("pointerdown"));
+      await afterInput();
+      expect(useSyncStore.getState().attendedUntil).toBe(noted);
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it("leaves the question to what the student just did", async () => {
+      const { start, asked } = await launched();
+      later(start, 9 * HOUR);
+      act(() => useSyncStore.getState().noteStudentAction());
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("reads a start at login from the window's own flag: only an unattended sync", async () => {

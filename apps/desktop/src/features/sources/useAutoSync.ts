@@ -23,6 +23,30 @@ export const INPUT_ASK_DELAY_MS = 300;
 /** An input this soon before the window gained focus is the one that brought it to the front. */
 export const INPUT_BEFORE_FOCUS_MS = 1000;
 
+/**
+ * The shell's tick makes the page ask again only when its last question is older than this. The
+ * page's own hourly timer comes first whenever it runs on time: the tick is for when it doesn't.
+ * Where only the tick asks, the question comes 65 to 80 minutes after the last one at first
+ * (the first quarter-hour tick past the 65), and every 75 minutes from then on, not every hour.
+ */
+export const TICK_REREAD_MS = 65 * 60 * 1000;
+
+/**
+ * Whether the student is known to be here right now: something they did was noted in the last
+ * half minute. Bounded both ways: a clock set back after their action mustn't keep it "just now".
+ */
+function studentKnownHere(): boolean {
+  const left = useSyncStore.getState().attendedUntil - Date.now();
+  return left > 0 && left <= ATTENDED_WINDOW_MS;
+}
+
+/**
+ * A dialog in a window where nothing was pressed, and that didn't come to the front, for this
+ * long was left open. Nothing looks at it when the time is up: the first answer that finds it
+ * untouched for this long starts a light sync under it (the page's hour, or the shell's tick).
+ */
+export const DIALOG_LEFT_MS = 15 * 60 * 1000;
+
 function dialogOpen(): boolean {
   return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
 }
@@ -32,22 +56,33 @@ function dialogOpen(): boolean {
  * (`startup_tasks.sync_due`: the setting, how old the data is, retries); this hook only asks and
  * starts the same sync as the Sync button, marked with what triggered it:
  *
- * - attended: the student just did something here (opened PageLamp, pressed, typed or scrolled
- *   in its window after coming back to it, closed "What's new", changed the setting). Each is
- *   noted where it happens, never inferred from what an answer says;
- * - unattended: the hourly re-read, always, also with the window in front; a launch the
- *   student didn't see (the window started hidden); a page that was loaded again, which the
- *   system does by itself; and a window that gained focus, which it can with nobody there
- *   (another app quits at night and this window comes to the front). Those wait for the
- *   window to gain focus and then for the student's first input in it.
+ * - attended: the student just did something here: opened PageLamp, closed "What's new",
+ *   changed the setting, or pressed, typed or scrolled in its window. Attended needs something
+ *   the student did: opening PageLamp in a window that is shown, or a real input in the
+ *   window; after a hidden start or a focus, the first input counts (the ones after it say
+ *   nothing new). Each is noted where it happens, never inferred from what an answer says;
+ * - unattended: the regular re-read, always, also with the window in front (asked by this
+ *   page's timer once an hour, or at the shell's tick when that timer is late, which then
+ *   comes to every 75 minutes: `TICK_REREAD_MS`); a launch the student didn't see
+ *   (the window started hidden); a page that was loaded again, which the system does by
+ *   itself; and a window that gained focus, which it can with nobody there (another app quits
+ *   at night and this window comes to the front). Those wait for the student's first input.
+ *   A window that started hidden waits for it from the start, not from a focus: the focus that
+ *   comes with showing such a window may never be heard.
  *
  * Whether the window is visible, in front or focused is never taken for the student being here:
  * it can be all three for a night with nobody there.
  *
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
- * "What's new"); it asks again when that is over and lets the new answer decide. It never opens
- * anything, shows no message and takes no focus; a run that goes wrong stays quiet (stores/sync).
- * Nothing else may start a sync without the student: no link, argument or event.
+ * "What's new"); it asks again when that is over and lets the new answer decide. One thing in
+ * the way gives way: a dialog that was plainly left open (nothing pressed in the window, and
+ * the window not come to the front, for a quarter of an hour). The first answer that finds it
+ * so starts a light sync under it; a full sync waits for every dialog. It never opens
+ * anything, shows no message and takes no focus; a run that goes wrong stays quiet
+ * (stores/sync).
+ * Nothing else may start a sync without the student: no link, argument or event. An event from
+ * the shell can make this hook ask the facade again (the ticker's does, as this page's own
+ * timer does); only what the student does makes a run attended.
  *
  * Mount once, in the app shell (so never during onboarding, which runs the first sync itself).
  */
@@ -111,6 +146,12 @@ export function useAutoSync() {
     [client],
   );
 
+  // The first input after the window gained focus is the student being here; later ones say
+  // nothing new (the hourly re-read stays unattended however long the student works here).
+  const awaitingInput = useRef(false);
+  const lastInputAt = useRef(0);
+  const lastFocusAt = useRef(0);
+
   // Whether this page load is the launch: null until Rust has said (it knows whether the process
   // loaded the page before). No answer is acted on before that, so a reload can't slip through
   // as "the student just opened PageLamp" and run an attended sync with nobody there.
@@ -127,6 +168,14 @@ export function useAutoSync() {
       // (a start page that got through by itself hours later) finds that moment long past.
       if (first && !api.startedHidden()) {
         useSyncStore.getState().noteStudentAction(api.pageLoadedAt());
+      } else if (first) {
+        // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
+        // student's first input in this window is their coming, also when the focus that came
+        // with showing it was never heard: it can come before this page listens, or not at
+        // all. A window that isn't shown gets no input, and the proof is still the input, never
+        // the showing. Not for a page that was loaded again: its window may have been in use
+        // for hours.
+        awaitingInput.current = true;
       }
       setLaunch(first);
     };
@@ -140,10 +189,6 @@ export function useAutoSync() {
 
   useEffect(() => () => dialogs.current?.disconnect(), []);
 
-  // The first input after the window gained focus is the student being here; later ones say
-  // nothing new (the hourly re-read stays unattended however long the student works here).
-  const awaitingInput = useRef(false);
-  const lastInputAt = useRef(0);
   const askSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What is in the way right now, for the handlers below.
   const busy = useRef(false);
@@ -197,6 +242,7 @@ export function useAutoSync() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
+        lastFocusAt.current = Date.now();
         // The press that brought the window to the front can reach the page a moment before
         // this event does (Windows, Linux): it is the student all the same.
         const sinceInput = Date.now() - lastInputAt.current;
@@ -212,10 +258,37 @@ export function useAutoSync() {
     [api, client, ask, studentIsHere],
   );
 
+  // The shell's ticker, every quarter of an hour: this page's own hourly timer may not run on
+  // time in a window that is out of sight. A tick only ever asks again, and only when the last
+  // question is old; what the answer starts is decided below, as for any answer. It says
+  // nothing about the student: it notes nothing and arms nothing.
+  useEffect(
+    () =>
+      api.onStartupCheck(() => {
+        const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
+        // No question was asked yet (the launch asks), or one is on its way. The shell sends
+        // one tick a quarter of an hour at most; they pile up when this page was suspended,
+        // and then ask once.
+        if (state?.fetchStatus !== "idle") return;
+        const asked = Math.max(state.dataUpdatedAt, state.errorUpdatedAt);
+        if (!asked) return;
+        // What the student does asks by itself, and its answer may start a full sync: a tick
+        // that falls into that half minute leaves it alone.
+        if (studentKnownHere()) return;
+        // From the last question, answered or not: one that failed isn't asked again every
+        // quarter of an hour. (A clock that went back: ask.)
+        const age = Date.now() - asked;
+        if (age >= TICK_REREAD_MS || age < 0) void reread();
+      }),
+    [api, client, reread],
+  );
+
   useEffect(
     () =>
       api.onStudentInput(() => {
         lastInputAt.current = Date.now();
+        // They are back: a run that started with nobody here is watched like any other again.
+        if (useSyncStore.getState().unwatched) useSyncStore.setState({ unwatched: false });
         if (awaitingInput.current) studentIsHere(false);
       }),
     [api, studentIsHere],
@@ -269,9 +342,7 @@ export function useAutoSync() {
       return;
     }
 
-    // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
-    const left = useSyncStore.getState().attendedUntil - Date.now();
-    const attended = left > 0 && left <= ATTENDED_WINDOW_MS;
+    const attended = studentKnownHere();
     const trigger: AutoSyncTrigger | null =
       attended && data.sync_due.attended
         ? "attended"
@@ -288,7 +359,19 @@ export function useAutoSync() {
       } else clear();
       return;
     }
-    if (blocked) {
+    // A dialog that was left open: in a window that sits in the tray it stays for days. Open,
+    // it says nothing about anyone being at it, so once nothing was pressed here and the window
+    // didn't come to the front for a quarter of an hour (or the clock went back, and nothing
+    // can be told), a light sync goes ahead under it. A full sync waits for every dialog, and
+    // a light one for whatever else is in its way.
+    const untouched =
+      Date.now() - Math.max(lastInputAt.current, lastFocusAt.current, api.pageLoadedAt());
+    const leftDialog =
+      trigger === "unattended" &&
+      !locked &&
+      !installing &&
+      (untouched >= DIALOG_LEFT_MS || untouched < 0);
+    if (blocked && !leftDialog) {
       waiting.current = true;
       underLock.current = locked;
       watchDialogs();
@@ -307,8 +390,13 @@ export function useAutoSync() {
       return;
     }
     // Afterwards the cached answer must stop saying "due" (and the others get their turn on
-    // the answer that follows, however this run ends).
-    void startSync(undefined, { automatic: trigger }).then(reread);
+    // the answer that follows, however this run ends). Under a dialog that was left, nobody is
+    // watching this run, whatever is open: the capsule's own details are such a dialog, and
+    // would be taken for the student looking on. The run carries that mark (`unwatched`) until
+    // the student's next input.
+    void startSync(undefined, { automatic: trigger, unwatched: blocked && leftDialog }).then(
+      reread,
+    );
   }, [
     answer,
     loaded,
