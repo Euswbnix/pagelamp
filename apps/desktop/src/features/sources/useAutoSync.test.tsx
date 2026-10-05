@@ -937,6 +937,22 @@ describe("automatic sync", () => {
     expect(studentKnownHere()).toBe(false);
   });
 
+  it("notes nothing for a late launch whose page load lies ahead on the wall clock", async () => {
+    // The computer slept for eight hours (the steady clock may have stood still), and the
+    // clock was set back by more than that: neither clock can say how long ago the page loaded.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 5_000);
+    sleep(8 * HOUR);
+    clockSetTo(start, -HOUR);
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(studentKnownHere()).toBe(false);
+    expect(useSyncStore.getState().attendedUntil).toBe(0);
+  });
+
   it("takes 'Try again' on a failed start for the student being here, however old the launch", async () => {
     const start = startClock();
     const api = mockApi({ scenario: "auto-sync-due" });
@@ -1157,7 +1173,9 @@ describe("automatic sync", () => {
     await afterInput();
     expect(sync).not.toHaveBeenCalled();
 
-    // Away and back, and a press: now it runs.
+    // Away and back, and a press: now it runs. (Time passes first: the key above must not be
+    // taken for the press that brought the window to the front.)
+    pass(5_000);
     comeBack();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });

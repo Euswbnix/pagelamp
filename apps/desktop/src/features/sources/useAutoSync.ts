@@ -165,9 +165,15 @@ export function useAutoSync() {
       if (first && !api.startedHidden()) {
         // How long ago that was: the longer of what the two clocks say. The wall clock counts
         // a sleep, which the steady one may not; the steady one isn't moved when the clock is
-        // set back, which on the wall clock can make a load from hours ago look recent.
-        const ago = Math.max(Date.now() - api.pageLoadedAt(), steadyNow() - api.pageLoadedSteady());
-        useSyncStore.getState().noteStudentAction(Date.now() - ago);
+        // set back, which on the wall clock can make a load from hours ago look recent. A
+        // load that lies ahead on the wall clock can't be dated at all (the clock was set
+        // back by more than the time that passed, and the steady clock may have slept
+        // through most of it): nothing is noted, and the launch starts unattended.
+        const wallAgo = Date.now() - api.pageLoadedAt();
+        if (wallAgo >= 0) {
+          const ago = Math.max(wallAgo, steadyNow() - api.pageLoadedSteady());
+          useSyncStore.getState().noteStudentAction(Date.now() - ago);
+        }
       } else if (first) {
         // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
         // student's first input in this window is their coming, also when the focus that came
