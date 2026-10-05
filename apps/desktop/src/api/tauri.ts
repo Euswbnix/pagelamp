@@ -39,6 +39,7 @@ export function createTauriApi(): PageLampApi {
   let firstPageLoad: Promise<boolean> | null = null;
   return {
     status: () => call("status"),
+    activity: () => call("activity"),
     listSources: () => call("list_sources"),
     addCanvasSource: (baseUrl, token) => call("add_canvas_source", { baseUrl, token }),
     addFolderSource: (path, termStart, label) =>

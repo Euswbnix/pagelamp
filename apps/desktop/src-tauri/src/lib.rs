@@ -25,6 +25,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
     let builder = builder.manage(window::PageLoads::default());
     builder.invoke_handler(tauri::generate_handler![
         commands::status,
+        commands::activity,
         commands::list_sources,
         commands::add_canvas_source,
         commands::add_folder_source,
@@ -76,6 +77,8 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::doctor,
         commands::last_crash,
         commands::clear_last_crash,
+        commands::open_material,
+        commands::reveal_material,
         commands::reveal_data_dir,
         commands::reveal_logs_dir,
         commands::log_ui_error,

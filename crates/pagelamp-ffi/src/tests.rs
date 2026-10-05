@@ -288,6 +288,7 @@ const MIRRORED: &[&str] = &[
     "RestoreOutcome",
     "PurgeReport",
     "CourseDatesInput",
+    "LocalFileUse",
     "BreakInput",
     "SegmentInput",
     // Course calendar proposals (v0.3 F3)

@@ -10,15 +10,17 @@ describe("mock What's new", () => {
     expect(sorted).toEqual(["0.2.9", "0.3.0-alpha.2", "0.3.0-alpha.10", "0.3.0-beta.1", "0.3.0"]);
   });
 
-  it("gives an upgrader from alpha.1 exactly course_removal, and one from 0.1 everything", () => {
-    expect(topicsSince("0.3.0-alpha.1")).toEqual(["course_removal"]);
-    expect(topicsSince("0.3.0-alpha.2")).toEqual([]);
+  it("gives an upgrader the topics after their version, and one from 0.1 everything", () => {
+    expect(topicsSince("0.3.0-alpha.1")).toEqual(["course_removal", "syllabus_reading"]);
+    expect(topicsSince("0.3.0-alpha.2")).toEqual(["syllabus_reading"]);
+    expect(topicsSince("0.3.0-alpha.3")).toEqual([]);
     expect(topicsSince(null)).toEqual([
       "update_check",
       "course_weeks",
       "auto_sync",
       "canvas_coverage",
       "course_removal",
+      "syllabus_reading",
     ]);
   });
 
