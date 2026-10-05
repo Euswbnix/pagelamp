@@ -32,6 +32,9 @@ tauri-plugin-single-instance = "~2.4"
 tauri-plugin-opener = "2.5"
 # In-app updates (M0.4): Rust only, the webview gets no updater permission.
 tauri-plugin-updater = "~2.12"
+# The updater plugin's own HTTP client, already in the tree through it: only to name the type
+# its `configure_client` hands over (the download's timeouts). Must stay the plugin's version.
+reqwest = { version = "0.13", default-features = false }
 semver = "1"
 tracing.workspace = true
 
