@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
@@ -65,6 +65,11 @@ export function useAutoSync() {
   const loaded = status.data !== undefined;
   const noSources = status.data?.sources.length === 0;
   const otherProcess = status.data?.sync_in_progress === true;
+  // Something the app is writing right now (removing or restoring a course, clearing removed
+  // ones, a download for the calendar): several of these hold the lock a sync needs. A sync
+  // started into one is refused, and the facade counts the refused start as its try. (Not a
+  // write that is only waiting to be sent: it holds nothing, and may wait for the window.)
+  const writing = useIsMutating({ predicate: (mutation) => !mutation.state.isPaused }) > 0;
 
   // Answers are told apart by their number, not by what they say or when they came: an answer
   // equal to the one before it keeps its identity, and two can arrive in the same millisecond.
@@ -95,6 +100,8 @@ export function useAutoSync() {
   const handled = useRef(atMount);
   // A due answer found something in the way; ask again when it is gone.
   const waiting = useRef(false);
+  // That answer came while something held the sync lock, so it says "not due" whatever is true.
+  const underLock = useRef(false);
   const dialogs = useRef<MutationObserver | null>(null);
   // A dialog closed: look at what is in the way again.
   const [closed, setClosed] = useState(0);
@@ -140,7 +147,7 @@ export function useAutoSync() {
   const askSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What is in the way right now, for the handlers below.
   const busy = useRef(false);
-  busy.current = running || otherProcess || installing;
+  busy.current = running || otherProcess || installing || writing;
 
   /** Asks again if the answer is old or said a sync was due. */
   const ask = useCallback(
@@ -220,7 +227,7 @@ export function useAutoSync() {
     // "No sources" comes from the status, and whether this load is the launch from Rust: wait
     // for both.
     if (!data || !loaded || launch === null) return;
-    const blocked = running || otherProcess || installing || dialogOpen();
+    const blocked = running || otherProcess || installing || writing || dialogOpen();
     // Dialogs are portalled into <body>; nothing else says when the last one closes.
     const watchDialogs = () => {
       if (!dialogOpen() || dialogs.current) return;
@@ -233,11 +240,16 @@ export function useAutoSync() {
       observer.observe(document.body, { childList: true });
       dialogs.current = observer;
     };
+    // What holds the sync lock right now: a sync, here or in another process, or a write.
+    const locked = running || otherProcess || writing;
     if (handled.current === answer) {
       // Nothing new was answered; at most, what was in the way is gone, or something else is
-      // in the way now (a dialog opened while a sync was running).
-      if (waiting.current && !blocked) {
+      // in the way now (a dialog opened while a sync was running). When the lock is free
+      // again but a dialog still keeps a sync waiting, the answer that was taken under the
+      // lock is asked for again all the same: it said nothing, and the others wait on it.
+      if (waiting.current && (!blocked || (underLock.current && !locked))) {
         waiting.current = false;
+        underLock.current = false;
         void reread();
       } else if (waiting.current) {
         watchDialogs();
@@ -246,8 +258,16 @@ export function useAutoSync() {
     }
     handled.current = answer;
     waiting.current = false;
+    underLock.current = false;
     const store = useSyncStore.getState();
-    if (data.whats_new || noSources) return;
+    // Nothing automatic starts for this answer: the app's other automatic work (clearing
+    // removed courses, Monday's note) may go ahead on it. Until then it waits, so that a sync
+    // that is due goes first: it needs the same lock, and brings what the note is about.
+    const clear = () => useSyncStore.setState({ clearedAnswer: answer });
+    if (data.whats_new || noSources) {
+      clear();
+      return;
+    }
 
     // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
     const left = useSyncStore.getState().attendedUntil - Date.now();
@@ -259,22 +279,35 @@ export function useAutoSync() {
           ? "unattended"
           : null;
     if (!trigger) {
-      // While any sync holds the lock the facade answers "not due", whatever is stale: ask
-      // again when it has ended (a sync of one source leaves the others as old as they were).
-      if (running || otherProcess) waiting.current = true;
+      // While anything holds the lock the facade answers "not due", whatever is stale: ask
+      // again when it has ended (a sync of one source leaves the others as old as they were;
+      // a write hides a sync that is due).
+      if (locked) {
+        waiting.current = true;
+        underLock.current = true;
+      } else clear();
       return;
     }
     if (blocked) {
       waiting.current = true;
+      underLock.current = locked;
       watchDialogs();
+      // Only a dialog or an update being installed is in the way: the sync waits for it, and
+      // that can be long (a dialog left open in a window that sits in the tray). The others
+      // don't wait that long: they go ahead as they did, and the sync follows when it can.
+      if (!locked) clear();
       return;
     }
     // A backstop next to the facade's own clock: not so soon after the last automatic start
     // of this kind or the last attended one, nor right after the student stopped a sync.
     // (Bounded like the window above.)
     const hold = store.noAutomaticBefore[trigger] - Date.now();
-    if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) return;
-    // Afterwards the cached answer must stop saying "due".
+    if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) {
+      clear();
+      return;
+    }
+    // Afterwards the cached answer must stop saying "due" (and the others get their turn on
+    // the answer that follows, however this run ends).
     void startSync(undefined, { automatic: trigger }).then(reread);
   }, [
     answer,
@@ -284,9 +317,26 @@ export function useAutoSync() {
     running,
     otherProcess,
     installing,
+    writing,
     closed,
     client,
     startSync,
     reread,
   ]);
+}
+
+/**
+ * For the app's other automatic work at an answer of `startup_tasks` (clearing removed courses,
+ * Monday's note): the number of the answer now in the cache once the automatic sync has looked
+ * at it and starts nothing for it, and no sync is running; null until then. A sync that is due
+ * goes first: the purge needs the same lock (the sync does it itself as it starts), and the
+ * note is about what the sync brings. However that sync ends, the answer asked after it is
+ * cleared like any other.
+ */
+export function useAfterAutoSync(): number | null {
+  const client = useQueryClient();
+  const cleared = useSyncStore((s) => s.clearedAnswer);
+  const running = useSyncStore((s) => s.running);
+  const current = client.getQueryState(queryKeys.startupTasks())?.dataUpdateCount ?? 0;
+  return cleared > 0 && cleared === current && !running ? cleared : null;
 }
