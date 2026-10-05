@@ -79,8 +79,13 @@ interface SyncState {
   automaticProblem: boolean;
   /** The student is in the capsule or its details: an automatic run's problem stays on screen. */
   watched: boolean;
-  /** Until when (ms) an answer to "what's due?" counts as attended: the student just acted. */
+  /**
+   * Until when (ms) an answer to "what's due?" counts as attended: the student just acted. On
+   * the wall clock; `attendedUntilSteady` is the same moment on the clock that only runs
+   * forward. Read them through `studentKnownHere`: both must hold.
+   */
   attendedUntil: number;
+  attendedUntilSteady: number;
   begin: (
     total: number | null,
     downloadCourseId?: string | null,
@@ -108,7 +113,8 @@ interface SyncState {
    * The student opened the app or did something in its window: just now, or at `at` (ms) when
    * it is noted afterwards (the launch, which happened when the page loaded; the press that
    * brought the window to the front). What is noted afterwards never takes the place of an
-   * action after it.
+   * action after it that still counts; a mark that doesn't count now (it ran out, or the clock
+   * was set back under it) is replaced.
    */
   noteStudentAction: (at?: number) => void;
   /** A source or a course was removed: the last run's lines may name what is gone. */
@@ -118,6 +124,22 @@ interface SyncState {
 
 /** How long after the student's action an answer to "what's due?" counts as attended. */
 export const ATTENDED_WINDOW_MS = 30_000;
+
+/**
+ * Whether the student is known to be here right now: something they did was noted within the
+ * last half minute. On two clocks, and both must say so:
+ * - the wall clock ends it when the computer slept meanwhile (the other clock may stand still
+ *   through a sleep);
+ * - the steady clock ends it when the wall clock was set back. On the wall clock alone "just
+ *   now" is false at first, and true again for half a minute when the clock passes the old
+ *   mark: with a full sync due then, it would start as attended with nobody there.
+ * Each is bounded both ways: a mark far in the future is no "just now" either.
+ */
+export function studentKnownHere(): boolean {
+  const { attendedUntil, attendedUntilSteady } = useSyncStore.getState();
+  const justNow = (left: number) => left > 0 && left <= ATTENDED_WINDOW_MS;
+  return justNow(attendedUntil - Date.now()) && justNow(attendedUntilSteady - performance.now());
+}
 
 /**
  * The least time between two automatic starts of one kind, whatever the answers say. An attended
@@ -161,6 +183,7 @@ const idle = {
   automaticProblem: false,
   watched: false,
   attendedUntil: 0,
+  attendedUntilSteady: 0,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
@@ -318,12 +341,19 @@ export const useSyncStore = create<SyncState>()((set) => ({
           : { order: [], bySource: {}, lastSummary: null, runError: null, stoppedByUser: false },
     ),
   noteStudentAction: (at) =>
-    set((state) => ({
-      attendedUntil:
-        at === undefined
-          ? Date.now() + ATTENDED_WINDOW_MS
-          : Math.max(state.attendedUntil, at + ATTENDED_WINDOW_MS),
-    })),
+    set((state) => {
+      const now = Date.now();
+      // How long ago it happened, for what is noted afterwards (never in the future).
+      const ago = at === undefined ? 0 : Math.max(0, now - at);
+      const noted = {
+        attendedUntil: now - ago + ATTENDED_WINDOW_MS,
+        attendedUntilSteady: performance.now() - ago + ATTENDED_WINDOW_MS,
+      };
+      // An action after it stays, while it counts. Not for being the larger number: after the
+      // clock was set back, the old mark is the larger one for as long as the clock is behind.
+      const later = studentKnownHere() && state.attendedUntil >= noted.attendedUntil;
+      return later ? {} : noted;
+    }),
   forgetCourseLines: () =>
     set((state) => ({
       bySource: Object.fromEntries(

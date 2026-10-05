@@ -3,12 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
 import type { AutoSyncTrigger, StartupTasks } from "@/api/types";
-import {
-  ATTENDED_WINDOW_MS,
-  AUTO_SYNC_MIN_GAP_MS,
-  useStartSync,
-  useSyncStore,
-} from "@/stores/sync";
+import { AUTO_SYNC_MIN_GAP_MS, studentKnownHere, useStartSync, useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 
 /** Coming back to the window asks again once the last answer is this old. */
@@ -249,9 +244,7 @@ export function useAutoSync() {
     const store = useSyncStore.getState();
     if (data.whats_new || noSources) return;
 
-    // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
-    const left = useSyncStore.getState().attendedUntil - Date.now();
-    const attended = left > 0 && left <= ATTENDED_WINDOW_MS;
+    const attended = studentKnownHere();
     const trigger: AutoSyncTrigger | null =
       attended && data.sync_due.attended
         ? "attended"

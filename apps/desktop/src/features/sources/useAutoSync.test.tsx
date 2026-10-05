@@ -5,7 +5,7 @@ import { ApiError } from "@/api/errors";
 import { createMockApi, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
 import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
-import { useSyncStore } from "@/stores/sync";
+import { studentKnownHere, useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
 import { INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS } from "./useAutoSync";
@@ -198,6 +198,7 @@ function expectNoTrace() {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   // A sync still in flight would end inside the next test, in the store they share.
   await waitFor(() => expect(useSyncStore.getState().running).toBe(false), { timeout: 5000 });
@@ -477,6 +478,54 @@ describe("automatic sync", () => {
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("starts no full sync when a clock that was set back shows the launch's half minute again", async () => {
+    const start = startClock();
+    // The clock that only runs forward, moved by hand like the wall clock.
+    let steady = 10_000;
+    vi.spyOn(performance, "now").mockImplementation(() => steady);
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    // Ten minutes after the launch the clock is set back an hour. Fifty minutes on it shows
+    // ten seconds after the launch again: an hour has passed, and nobody is here.
+    steady += HOUR;
+    later(start, 10_000);
+    alwaysDue(api);
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("notes the press that brings the window to the front after the clock was set back", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    // The clock goes back an hour: the launch's mark now lies an hour ahead. Then the student
+    // clicks the window to the front; the press reaches the page a moment before the focus,
+    // and is noted afterwards for when it was. The old mark is the larger number.
+    later(start, -HOUR);
+    expect(studentKnownHere()).toBe(false);
+    input(new Event("pointerdown"));
+    later(start, -HOUR + 200);
+    focusWindow();
+    expect(studentKnownHere()).toBe(true);
+
+    // So an answer that comes now may start the full sync.
+    alwaysDue(api);
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
   });
 
   it("asks from the hourly timer itself, also with the window out of sight", async () => {
