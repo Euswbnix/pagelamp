@@ -18,12 +18,12 @@ design is in `docs/design/v0.3-plan.md` (M0.1, M0.3, M0.4, M0.6, M0.7).
 The update channels (D5): `updates/stable.json`, `updates/beta.json` (default for pre-release
 installs, D3) and `updates/test.json` (only builds made with the rehearsal overlay read it) on
 the `gh-pages` branch. The app asks
-`https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/<channel>.json` first and
-`https://euswbnix.github.io/pagelamp/updates/<channel>.json` (GitHub Pages) second; stable then
-falls back to `releases/latest/download/latest.json`. The updater tries the next endpoint after
-a network error or an error status but stops at an answer that isn't JSON, so the endpoint that
-depends on no domain comes first. Both hosts are GitHub's and serve the same files (raw caches
-for 5 minutes, Pages for up to 10).
+`https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/<channel>.json` (the
+branch itself; answers are cached for 5 minutes); stable then falls back to
+`releases/latest/download/latest.json`. The updater tries the next endpoint after a network
+error or an error status but stops at an answer that isn't JSON. A released app asks no other
+address for updates: both are on GitHub's own hosts. GitHub Pages serves the same branch, and
+only the test channel still uses it (a rehearsal build downloads its test update from there).
 
 **The updater is on** in a build when `apps/desktop/src-tauri/tauri.conf.json` has
 `bundle.createUpdaterArtifacts: true` and a real `plugins.updater.pubkey`. Until then a release
@@ -58,8 +58,10 @@ move.
    channels** → Run workflow → "Use workflow from": `main`, action `test-delete` (it creates
    `gh-pages` with `.nojekyll` when it is missing; any later channel change works too). Then
    Settings → Pages → Build and deployment → Source: **Deploy from a branch** → Branch:
-   **`gh-pages`**, folder **`/ (root)`** → Save. After the first channel update,
-   `https://euswbnix.github.io/pagelamp/updates/beta.json` answers.
+   **`gh-pages`**, folder **`/ (root)`** → Save. Pages is needed for the test channel only. After
+   the first channel update,
+   `https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/beta.json` answers:
+   that is the address the app asks.
 3. The rest of A10 (plan §5.1): turn on immutable releases, and add a ruleset on `main` that
    blocks force pushes and deletion. The `release` environment (deployment rules: branch `main`
    and tags `v*`; required reviewer: you) is already in place.
@@ -133,9 +135,10 @@ back (a red `deny` still marks the run failed). Nothing is created or changed in
    attestation), then publish the draft. Never publish earlier: `channels.yml` refuses a release
    without `SHA256SUMS`, and once immutable releases are on, nothing can be added after
    publishing. `channels.yml` runs: check that
-   `https://euswbnix.github.io/pagelamp/updates/beta.json` (and for a full release `stable.json`)
-   now shows the new version. A channel that already serves a newer version stays where it is
-   (e.g. `beta` on `0.4.0-alpha.2` when you publish the patch `0.3.1`); the run says so.
+   `https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/beta.json` (and for a
+   full release `stable.json`) shows the new version, at most 5 minutes later. A channel that
+   already serves a newer version stays where it is (e.g. `beta` on `0.4.0-alpha.2` when you
+   publish the patch `0.3.1`); the run says so.
 
 A failed job: "Re-run failed jobs" on the same run. A new run for an existing tag only with the
 tag as ref: `gh workflow run release.yml --ref v0.3.0-alpha.1`.
@@ -183,8 +186,8 @@ still checked in every rehearsal.
    full release is on both channels). This stops further updates to the bad version; it can't roll
    anyone back (the updater only moves to a newer version). For a bad full release also run
    `gh release edit <last good tag> --latest`, because the stable channel falls back to
-   `releases/latest/download/latest.json` when Pages doesn't answer. Leave the bad release and its
-   files in place and add a warning to its notes.
+   `releases/latest/download/latest.json` when the channel's own address doesn't answer. Leave
+   the bad release and its files in place and add a warning to its notes.
 2. **Ship the fix from a new tag** (N+1, e.g. `v0.3.1` or the next `-beta.N`). Never move or reuse
    a tag: immutable releases forbid replacing files in place. Publishing it moves the channels
    forward again.

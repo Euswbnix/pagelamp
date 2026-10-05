@@ -1594,6 +1594,7 @@
 "sources.technical.title" = "Technical details";
 "sources.technical.titleFor" = "Technical details for %1$@";
 "sources.title" = "Sources & sync";
+"updates.errors.network" = "Couldn't reach the update server. Check your internet connection.";
 "updates.install.aiApp" = "Afterwards, quit and reopen your AI app so it uses the new PageLamp.";
 "updates.install.availableAfterOtherSync" = "Available when the other sync (from the command line or another window) finishes";
 "updates.install.availableAfterSync" = "Available when the sync finishes";
@@ -1617,7 +1618,7 @@
 "updates.onboarding.autoCheck" = "Check for updates automatically";
 "updates.onboarding.autoCheckHint" = "Once a day PageLamp downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing, and you can change this in Settings.";
 "updates.settings.autoCheck" = "Check for updates automatically";
-"updates.settings.autoCheckHint" = "At launch and once a day. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent.";
+"updates.settings.autoCheckHint" = "Once a day, while PageLamp is open. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent.";
 "updates.settings.available" = "PageLamp %1$@ is available.";
 "updates.settings.channel" = "Update channel";
 "updates.settings.channelBeta" = "Beta";
@@ -1635,6 +1636,7 @@
 "updates.settings.neverChecked" = "Not checked yet.";
 "updates.settings.noStableRelease" = "PageLamp didn't find a stable release with update information yet. Early versions for testing are on the Beta channel.";
 "updates.settings.releaseNotes" = "Release notes";
+"updates.settings.releaseNotesOnGitHub" = "Read these notes on GitHub";
 "updates.settings.title" = "Updates";
 "updates.settings.upToDate" = "PageLamp is up to date.";
 "updates.settings.version" = "Version";

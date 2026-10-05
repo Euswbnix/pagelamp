@@ -4,7 +4,7 @@
     "description": "{{product}} looks for new versions on GitHub. It always asks before installing one.",
     "version": "Version",
     "autoCheck": "Check for updates automatically",
-    "autoCheckHint": "At launch and once a day. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent.",
+    "autoCheckHint": "Once a day, while {{product}} is open. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent.",
     "channel": "Update channel",
     "channelStable": "Stable",
     "channelStableHint": "Finished releases.",
@@ -19,9 +19,13 @@
     "lastChecked": "Last checked {{when}}",
     "neverChecked": "Not checked yet.",
     "releaseNotes": "Release notes",
+    "releaseNotesOnGitHub": "Read these notes on GitHub",
     "install": "Install and restart…",
     "download": "Download {{product}} {{version}}",
     "downloadHint": "This copy of {{product}} was installed from a .deb or .rpm package, so it updates by installing the new package."
+  },
+  "errors": {
+    "network": "Couldn't reach the update server. Check your internet connection."
   },
   "install": {
     "title": "Install {{product}} {{version}}?",
