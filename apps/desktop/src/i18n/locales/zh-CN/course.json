@@ -146,7 +146,7 @@
     "availableAfterSync": "同步结束后可用",
     "dialogTitle": "要下载这门课的文件吗？",
     "viewingNotice": "通过 Canvas 下载文件可能会被算作“已查看”（例如满足模块里“必须查看”的要求）。",
-    "dialogDetail": "{{product}} 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中提交或修改任何内容。",
+    "dialogDetail": "{{product}} 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中发布或提交任何内容。",
     "confirm": "下载",
     "done_one": "已下载 {{count}} 个文件",
     "done_other": "已下载 {{count}} 个文件",

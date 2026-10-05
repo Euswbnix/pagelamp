@@ -216,11 +216,32 @@ fn error_code(err: &tauri_plugin_updater::Error) -> &'static str {
 }
 
 fn app_error(err: &tauri_plugin_updater::Error) -> AppError {
-    let kind = match error_code(err) {
-        "network" => AppErrorKind::Network,
+    let kind = match err {
+        // The server answered, with an error status. The window's line for a network failure
+        // says it couldn't be reached and to check the connection; neither is the case here.
+        tauri_plugin_updater::Error::Network(_) => AppErrorKind::Internal,
+        _ if error_code(err) == "network" => AppErrorKind::Network,
         _ => AppErrorKind::Internal,
     };
-    AppError::new(kind, err.to_string())
+    AppError::new(kind, error_text(err))
+}
+
+/// The error with what caused it, for the window's small print and the log. The HTTP client
+/// names only the outermost step ("error decoding response body" for a download that stopped
+/// arriving): why is in the causes ("operation timed out").
+fn error_text(err: &dyn std::error::Error) -> String {
+    let mut text = err.to_string();
+    let mut cause = err.source();
+    while let Some(err) = cause {
+        let part = err.to_string();
+        // Some errors repeat their cause in their own text.
+        if !text.contains(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
+        cause = err.source();
+    }
+    text
 }
 
 /// A failed check, as the window hears it. For a test version on Stable, `ReleaseNotFound` (every
@@ -303,7 +324,7 @@ pub async fn updates_check<R: Runtime>(
         },
         Ok(None) => UpdateCheckOutcome::UpToDate,
         Err(err) => {
-            tracing::warn!(target: "pagelamp::updates", code = error_code(err), "update check failed: {err}");
+            tracing::warn!(target: "pagelamp::updates", code = error_code(err), "update check failed: {}", error_text(err));
             UpdateCheckOutcome::Error {
                 code: error_code(err).to_string(),
             }
@@ -401,7 +422,7 @@ pub async fn updates_install<R: Runtime>(
         Ok(gate) => gate,
         Err(Failure::Refused(err)) => return Err(err),
         Err(Failure::Updater(err)) => {
-            tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {err}");
+            tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {}", error_text(&err));
             return Err(app_error(&err));
         }
     };
@@ -561,6 +582,23 @@ mod tests {
     }
 
     #[test]
+    fn an_error_status_is_not_a_server_that_couldnt_be_reached() {
+        use pagelamp_app::AppErrorKind;
+        use tauri_plugin_updater::Error;
+
+        use super::{app_error, error_code};
+        // What the plugin returns when the download is answered with an error status. The
+        // window has a line for a network failure ("couldn't reach the update server, check
+        // your connection"): that would be wrong here, so this gets the general line and its
+        // own text under it. The diagnostic report keeps the "network" code.
+        let status = Error::Network("Download request failed with status: 503".to_string());
+        assert_eq!(error_code(&status), "network");
+        let failure = app_error(&status);
+        assert_eq!(failure.kind, AppErrorKind::Internal);
+        assert!(failure.message.contains("503"), "{}", failure.message);
+    }
+
+    #[test]
     fn without_the_facade_a_pre_release_checks_beta() {
         use super::default_channel;
         use pagelamp_app::UpdateChannel;
@@ -646,9 +684,10 @@ mod tests {
         use std::thread::{self, JoinHandle};
         use std::time::{Duration, Instant};
 
+        use pagelamp_app::AppErrorKind;
         use tauri::async_runtime::block_on;
 
-        use crate::updates::give_up_when_stuck;
+        use crate::updates::{app_error, give_up_when_stuck};
 
         const STALL: Duration = Duration::from_millis(500);
         /// How long the server keeps a connection it says nothing more on. Without the stall
@@ -701,6 +740,11 @@ mod tests {
             let err = result.expect_err("a package of which 10 bytes in 1000 arrived");
             assert!(err.is_timeout(), "{err:?}");
             assert!(took < HELD / 2, "gave up only after {took:?}");
+            // As the window and the log get it: a network failure that says it timed out (the
+            // client's own text is only "error decoding response body").
+            let failure = app_error(&tauri_plugin_updater::Error::from(err));
+            assert_eq!(failure.kind, AppErrorKind::Network);
+            assert!(failure.message.contains("timed out"), "{}", failure.message);
         }
 
         #[test]
@@ -716,6 +760,9 @@ mod tests {
             let err = result.expect_err("no answer");
             assert!(err.is_timeout(), "{err:?}");
             assert!(took < HELD / 2, "gave up only after {took:?}");
+            let failure = app_error(&tauri_plugin_updater::Error::from(err));
+            assert_eq!(failure.kind, AppErrorKind::Network);
+            assert!(failure.message.contains("timed out"), "{}", failure.message);
         }
 
         #[test]

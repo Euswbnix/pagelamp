@@ -777,7 +777,7 @@
 "course.download.availableAfterSync" = "Available when the sync finishes";
 "course.download.calloutHint" = "“Download files…” at the top of the page downloads all of this course's files.";
 "course.download.confirm" = "Download";
-"course.download.dialogDetail" = "PageLamp downloads the course's files to this computer and extracts their text. Nothing is submitted or changed in Canvas.";
+"course.download.dialogDetail" = "PageLamp downloads the course's files to this computer and extracts their text. It doesn't post or submit anything in Canvas.";
 "course.download.dialogTitle" = "Download this course's files?";
 "course.download.doneNone" = "No new files to download";
 "course.download.running" = "Downloading…";

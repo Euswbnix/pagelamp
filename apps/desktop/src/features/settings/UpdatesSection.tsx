@@ -157,7 +157,13 @@ function CheckNow({ status }: { status: UpdaterStatus | null }) {
         </span>
       </div>
       <div role="status" className="text-sm">
-        {checking ? null : checkError?.kind === "not_found" ? (
+        {checking ? (
+          // What was found stays while it is checked again (the daily check can start by
+          // itself): its install dialog may be open.
+          available ? (
+            <Available update={available} status={status} />
+          ) : null
+        ) : checkError?.kind === "not_found" ? (
           // Stable has no release with update information yet: an answer, not a failed check.
           <p>{t("settings.noStableRelease")}</p>
         ) : checkError ? (
@@ -196,7 +202,7 @@ function Available({ update, status }: { update: AvailableUpdate; status: Update
             tabIndex={0}
             className="mt-1 max-h-64 overflow-y-auto rounded-sm outline-hidden focus-visible:ring-3 focus-visible:ring-ring"
           >
-            <p lang="en" className="whitespace-pre-line">
+            <p lang="en" className="break-words whitespace-pre-line [overflow-wrap:anywhere]">
               {update.notes}
             </p>
           </section>

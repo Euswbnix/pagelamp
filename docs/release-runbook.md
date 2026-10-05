@@ -167,7 +167,8 @@ second round goes on with `.0.3` and `.0.4`).
    7 days of the rehearsal (the artifact expires).
 5. **Update:** on each machine, with Claude Desktop running, open N → Settings → Updates → Check
    now → Install and restart. Check the new version, the post-update banner, and that Claude
-   Desktop works again after you quit and reopen it (owner test A11).
+   Desktop works again after you quit and reopen it (owner test A11). The link under the release
+   notes leads to a page that doesn't exist: no release has a test version.
 6. **Clean up:** Update channels → action **`test-delete`**. The files leave `gh-pages` and its
    history. The test machines keep the rehearsal build, whose updater reads only `test.json`
    (now gone: each check reports an error) and never moves to a real channel. Uninstall it and

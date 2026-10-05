@@ -777,7 +777,7 @@
 "course.download.availableAfterSync" = "同步结束后可用";
 "course.download.calloutHint" = "页面顶部的“下载文件…”会下载这门课的全部文件。";
 "course.download.confirm" = "下载";
-"course.download.dialogDetail" = "PageLamp 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中提交或修改任何内容。";
+"course.download.dialogDetail" = "PageLamp 会把这门课的文件下载到这台电脑上并提取文字，不会在 Canvas 中发布或提交任何内容。";
 "course.download.dialogTitle" = "要下载这门课的文件吗？";
 "course.download.doneNone" = "没有需要下载的新文件";
 "course.download.running" = "正在下载…";

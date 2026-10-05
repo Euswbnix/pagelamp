@@ -4,11 +4,13 @@ import type { AvailableUpdate } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
+import { queryKeys } from "@/api/queries";
 import enCourse from "@/i18n/locales/en/course.json";
 import enUpdates from "@/i18n/locales/en/updates.json";
 import zhCourse from "@/i18n/locales/zh-CN/course.json";
 import zhUpdates from "@/i18n/locales/zh-CN/updates.json";
 import { useSyncStore } from "@/stores/sync";
+import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
 
 function mockApi(options: Parameters<typeof createMockApi>[0] = {}) {
@@ -388,6 +390,25 @@ describe("installing an update", () => {
     expect(install).toHaveBeenCalledTimes(1);
   });
 
+  it("hides the notice during an install only, not after one that failed or is held", async () => {
+    renderRoute("/courses", { scenario: "update-available" });
+    const notice = () => screen.queryByRole("region", { name: /is available\./ });
+    await waitFor(() => expect(notice()).toBeInTheDocument());
+    // Their dialog can be gone without having been closed (it sat on another screen).
+    act(() =>
+      useUpdateStore.setState({
+        install: { phase: "failed", error: new ApiError("network", "timed out") },
+      }),
+    );
+    expect(notice()).toBeInTheDocument();
+    act(() => useUpdateStore.setState({ install: { phase: "held" } }));
+    expect(notice()).toBeInTheDocument();
+    act(() =>
+      useUpdateStore.setState({ install: { phase: "downloading", downloaded: 0, total: null } }),
+    );
+    expect(notice()).toBeNull();
+  });
+
   it("keeps the shared line for an install that failed for another reason", async () => {
     const api = mockApi({ scenario: "update-available" });
     vi.spyOn(api, "installUpdate").mockRejectedValue(
@@ -531,6 +552,45 @@ describe("Settings → Updates", () => {
       ),
     ).toBeInTheDocument();
     expect(within(section).queryByText(/the address/)).toBeNull();
+  });
+
+  it("keeps the install dialog open when the daily check starts by itself", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    // Due at launch, not due once that check is recorded, due again a day later.
+    let due = true;
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({ ...(await tasks()), update_check_due: due });
+    let answer: (found: AvailableUpdate) => void = () => {};
+    const later = new Promise<AvailableUpdate>((resolve) => {
+      answer = resolve;
+    });
+    const check = vi
+      .spyOn(api, "checkForUpdate")
+      .mockResolvedValueOnce(foundUpdate({}))
+      .mockReturnValueOnce(later);
+    vi.spyOn(api, "installUpdate").mockRejectedValue(new ApiError("network", "timed out"));
+    const { user, queryClient } = renderRoute("/settings", { api });
+    const section = await updatesSection();
+    await user.click(await within(section).findByRole("button", { name: "Install and restart…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+    await within(dialog).findByRole("alert");
+    due = false;
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    expect(check).toHaveBeenCalledTimes(1);
+
+    due = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(check).toHaveBeenCalledTimes(2));
+    expect(useUpdateStore.getState().checking).toBe(true);
+    // Still there, with what it said: the check doesn't take the found update away.
+    expect(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Try again" }),
+    ).toBeInTheDocument();
+
+    answer(foundUpdate({}));
+    await waitFor(() => expect(useUpdateStore.getState().checking).toBe(false));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
   it("says once a day, not at launch, for the automatic check", async () => {
