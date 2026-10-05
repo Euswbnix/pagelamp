@@ -1,14 +1,8 @@
 {
   "plugins": {
     "pagelamp-updates": {
-      "stable": [
-        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test.json",
-        "https://euswbnix.github.io/pagelamp/updates/test.json"
-      ],
-      "beta": [
-        "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test.json",
-        "https://euswbnix.github.io/pagelamp/updates/test.json"
-      ]
+      "stable": ["https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test.json"],
+      "beta": ["https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test.json"]
     }
   }
 }

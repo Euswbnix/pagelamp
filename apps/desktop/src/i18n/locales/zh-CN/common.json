@@ -191,9 +191,9 @@
     "colon": "："
   },
   "canvasLists": {
-    "pages": "在 Canvas 中没有开放“页面”列表",
-    "files": "在 Canvas 中没有开放“文件”列表",
-    "both": "在 Canvas 中没有开放“页面”和“文件”列表"
+    "pages": "在 Canvas 中没有显示“页面”列表",
+    "files": "在 Canvas 中没有显示“文件”列表",
+    "both": "在 Canvas 中没有显示“页面”和“文件”列表"
   },
   "a11y": {
     "notifications": "通知"

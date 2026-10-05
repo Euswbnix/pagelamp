@@ -777,7 +777,7 @@
 "course.download.availableAfterSync" = "Available when the sync finishes";
 "course.download.calloutHint" = "“Download files…” at the top of the page downloads all of this course's files.";
 "course.download.confirm" = "Download";
-"course.download.dialogDetail" = "PageLamp downloads the course's files to this computer and extracts their text. Nothing is submitted or changed in Canvas.";
+"course.download.dialogDetail" = "PageLamp downloads the course's files to this computer and extracts their text. It doesn't post or submit anything in Canvas.";
 "course.download.dialogTitle" = "Download this course's files?";
 "course.download.doneNone" = "No new files to download";
 "course.download.running" = "Downloading…";
@@ -1440,7 +1440,7 @@
 "settings.privacy.keychain" = "Your Canvas token and calendar feed addresses are kept in your system keychain, never in PageLamp's database.";
 "settings.privacy.notAcknowledged" = "You haven't confirmed this yet. You'll be asked when you set up a source.";
 "settings.privacy.perCourse" = "You can stop your AI app from reading any course's materials: open the course and use the switch on its “AI policy” tab.";
-"settings.privacy.readOnly" = "PageLamp only reads from Canvas. It never posts, submits or changes anything there.";
+"settings.privacy.readOnly" = "PageLamp only reads from Canvas: it never posts or submits anything there.";
 "settings.privacy.title" = "Privacy";
 "settings.title" = "Settings";
 "sources.actions.add" = "Add source";
@@ -1594,6 +1594,7 @@
 "sources.technical.title" = "Technical details";
 "sources.technical.titleFor" = "Technical details for %1$@";
 "sources.title" = "Sources & sync";
+"updates.errors.network" = "Couldn't reach the update server. Check your internet connection.";
 "updates.install.aiApp" = "Afterwards, quit and reopen your AI app so it uses the new PageLamp.";
 "updates.install.availableAfterOtherSync" = "Available when the other sync (from the command line or another window) finishes";
 "updates.install.availableAfterSync" = "Available when the sync finishes";
@@ -1617,7 +1618,7 @@
 "updates.onboarding.autoCheck" = "Check for updates automatically";
 "updates.onboarding.autoCheckHint" = "Once a day PageLamp downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing, and you can change this in Settings.";
 "updates.settings.autoCheck" = "Check for updates automatically";
-"updates.settings.autoCheckHint" = "At launch and once a day. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent.";
+"updates.settings.autoCheckHint" = "Once a day, while PageLamp is open. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent.";
 "updates.settings.available" = "PageLamp %1$@ is available.";
 "updates.settings.channel" = "Update channel";
 "updates.settings.channelBeta" = "Beta";
@@ -1635,6 +1636,7 @@
 "updates.settings.neverChecked" = "Not checked yet.";
 "updates.settings.noStableRelease" = "PageLamp didn't find a stable release with update information yet. Early versions for testing are on the Beta channel.";
 "updates.settings.releaseNotes" = "Release notes";
+"updates.settings.releaseNotesOnGitHub" = "Read these notes on GitHub";
 "updates.settings.title" = "Updates";
 "updates.settings.upToDate" = "PageLamp is up to date.";
 "updates.settings.version" = "Version";
@@ -1647,6 +1649,8 @@
 "updates.whatsNew.title" = "What's new in PageLamp";
 "updates.whatsNew.topics.auto_sync.body" = "While PageLamp is open, it keeps your deadlines and announcements current by itself. When you open PageLamp or come back to it, it also refreshes your course materials, about twice a day, the same as pressing Sync. It never downloads Canvas files by itself. Canvas may record a full sync as your activity in each course. To change how often it syncs, or to turn it off, go to Sources & sync → Automatic sync.";
 "updates.whatsNew.topics.auto_sync.title" = "PageLamp now syncs by itself";
+"updates.whatsNew.topics.canvas_coverage.body" = "A full sync now also reads a course's Home page, and a limited number of pages of the same course that the Home page, the syllabus, other pages and announcements link to. Files they link to are listed, not downloaded. A page that a module asks you to view isn't read until you have viewed it in Canvas, because Canvas may record a page that PageLamp reads as viewed by you. In two cases PageLamp can't know this beforehand; when it has opened such a page, the sync's warnings say so. On a Canvas course's page, “What PageLamp didn't read” shows what the last full sync didn't read, and why.";
+"updates.whatsNew.topics.canvas_coverage.title" = "PageLamp reads more of each Canvas course";
 "updates.whatsNew.topics.course_weeks.body" = "Each course shows its current week and phase, and finished courses move to “Past courses”.";
 "updates.whatsNew.topics.course_weeks.title" = "Weeks and phases for every course";
 "updates.whatsNew.topics.update_check.body" = "Once a day it downloads a small file from GitHub to see whether there's a new version. GitHub sees your IP address and your PageLamp version, as with any download; nothing about your courses is sent. It always asks before installing anything.";

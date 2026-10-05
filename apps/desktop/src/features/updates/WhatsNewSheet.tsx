@@ -1,4 +1,4 @@
-import { CalendarRange, FolderSync, type LucideIcon, RefreshCw } from "lucide-react";
+import { BookOpenText, CalendarRange, FolderSync, type LucideIcon, RefreshCw } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,12 +27,14 @@ const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   update_check: RefreshCw,
   course_weeks: CalendarRange,
   auto_sync: FolderSync,
+  canvas_coverage: BookOpenText,
 };
 
 /**
  * One-time "What's new" for upgraders (from 0.1 or an earlier alpha), who never saw
  * onboarding. It explains the automatic update check and the automatic sync BEFORE the first
- * one runs, each with its switch right there. Closing it any way counts as read; the facade then
+ * one runs, each with its switch right there, and what a Canvas sync reads now (nothing turns
+ * that off, so that row has no control). Closing it any way counts as read; the facade then
  * decides whether a check or a sync is due.
  */
 export function WhatsNewSheet() {
@@ -86,7 +88,7 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
         if (!next) void done();
       }}
     >
-      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t("whatsNew.title")}</DialogTitle>
           {since ? (

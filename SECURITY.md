@@ -91,9 +91,9 @@ The certificate chains to Microsoft's "Microsoft Identity Verification Root Cert
 
 **Automatic updates** (from v0.3). The app installs an update only after checking its signature
 against the updater public key built into the app, whichever channel it came from; a changed or
-swapped file is refused. The stable and beta channels
-(`https://euswbnix.github.io/pagelamp/updates/stable.json` and `…/updates/beta.json`) point only
-at files of this repository's releases, and each update file is also in that release's
-`SHA256SUMS` and attestation. `…/updates/test.json` serves rehearsal builds from `updates/test/`
-on the same site, which belong to no release and have no `SHA256SUMS` or attestation; only
-rehearsal builds read it, never a released app.
+swapped file is refused. The stable and beta channels (`updates/stable.json` and
+`updates/beta.json` on this repository's `gh-pages` branch, which the app reads from
+`raw.githubusercontent.com`) point only at files of this repository's releases, and each update
+file is also in that release's `SHA256SUMS` and attestation. `updates/test.json` on the same
+branch serves rehearsal builds from `updates/test/`, which belong to no release and have no
+`SHA256SUMS` or attestation; only rehearsal builds read it, never a released app.
