@@ -1,14 +1,13 @@
 name: Update channels
 
-# The desktop app's update channels (docs/design/v0.3-plan.md M0.4, D5), static files on GitHub
-# Pages (source: branch gh-pages, folder /; the owner's one-time setup in docs/release-runbook.md):
-#   https://euswbnix.github.io/pagelamp/updates/beta.json    the newest published release
-#   https://euswbnix.github.io/pagelamp/updates/stable.json  the newest published release that
-#                                                              isn't a pre-release (no "-" in the
-#                                                              version; the app falls back to
-#                                                              releases/latest/download/latest.json)
-#   https://euswbnix.github.io/pagelamp/updates/test.json    a rehearsal's N+1 build, only for
-#                                                              builds made with the rehearsal overlay
+# The desktop app's update channels (docs/design/v0.3-plan.md M0.4, D5): static files on the
+# gh-pages branch, which the app reads as GitHub serves them, under
+# https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/
+#   updates/beta.json    the newest published release
+#   updates/stable.json  the newest published release that isn't a pre-release (no "-" in the
+#                        version; the app falls back to releases/latest/download/latest.json)
+#   updates/test.json    a rehearsal's N+1 build, only for builds made with the rehearsal
+#                        overlay; its packages are under updates/test/<commit>/ on the same branch
 # Each is a copy of a release's latest.json (release.yml writes it into the draft when the updater
 # is on), checked first against the manifest contract and the release's SHA256SUMS (which exists
 # only if every check of its Release run passed). Channels move only when the owner publishes a
@@ -59,7 +58,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PAGES_URL: https://euswbnix.github.io/pagelamp
+  CHANNELS_URL: https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages
 
 jobs:
   release:

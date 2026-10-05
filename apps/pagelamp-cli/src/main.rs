@@ -68,7 +68,7 @@ enum Command {
         /// always sync fully.
         #[arg(long = "course")]
         courses: Vec<String>,
-        /// Download and index Canvas files (counts as viewing them in Canvas).
+        /// Download and index Canvas files (can count as viewing them in Canvas).
         #[arg(long)]
         download_files: bool,
         /// Skip Canvas files larger than this many MB.

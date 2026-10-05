@@ -3722,6 +3722,7 @@ dependencies = [
  "chrono",
  "pagelamp-app",
  "pagelamp-core",
+ "reqwest",
  "semver",
  "serde",
  "serde_json",

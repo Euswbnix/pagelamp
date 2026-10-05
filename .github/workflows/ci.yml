@@ -124,6 +124,13 @@ jobs:
           sudo apt-get install -y pkg-config libdbus-1-dev libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev librsvg2-dev patchelf
       - run: pnpm install --frozen-lockfile
+      # THIRD-PARTY-NOTICES.txt names the licences of everything the installers and archives
+      # contain; cargo and pnpm say what that is. It fails when a dependency changed and the
+      # file wasn't regenerated (`node .github/scripts/third-party-notices.mjs`).
+      - name: Third-party notices are current
+        if: runner.os == 'Linux'
+        working-directory: ${{ github.workspace }}
+        run: node .github/scripts/third-party-notices.mjs --check
       - name: Typecheck
         run: pnpm run typecheck
       - name: Lint

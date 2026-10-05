@@ -1,4 +1,11 @@
-import { Archive, CalendarRange, FolderSync, type LucideIcon, RefreshCw } from "lucide-react";
+import {
+  Archive,
+  BookOpenText,
+  CalendarRange,
+  FolderSync,
+  type LucideIcon,
+  RefreshCw,
+} from "lucide-react";
 import type { WhatsNewTopic } from "@/api/types";
 
 /** Every topic's icon. A new WhatsNewTopic value adds its icon here, and its copy in updates.json. */
@@ -6,6 +13,7 @@ export const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   update_check: RefreshCw,
   course_weeks: CalendarRange,
   auto_sync: FolderSync,
+  canvas_coverage: BookOpenText,
   course_removal: Archive,
 };
 
