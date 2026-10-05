@@ -10,6 +10,8 @@ export const DEMO101 = "folder:demo-courses/course/DEMO101"; // week 4, learning
 export const DEMO205 = "canvas:canvas.demo.test/course/205"; // Canvas, policy not set, has URL
 export const DEMO310 = "folder:demo-courses/course/DEMO310"; // no term dates → week unknown
 export const DEMO099 = "canvas:canvas.demo.test/course/99"; // hidden, no deadlines
+/** Only in the scenario "canvas-hidden-lists": no Pages and no Files list in Canvas. */
+export const DEMO312 = "canvas:canvas.demo.test/course/312";
 
 /** Render /courses/<id>[?query] and wait until the course (its tab list) has loaded. */
 export async function openCourse(

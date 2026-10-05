@@ -5,7 +5,7 @@
 // session. Pick a state to look at with `?scenario=` in the URL, e.g.
 //   http://localhost:1420/?scenario=expired#/sources
 // Scenarios: demo (default) · empty · expired · error · busy · crashed · auto-sync-due ·
-// light-synced · canvas-old; updates (M0.4):
+// light-synced · canvas-old · canvas-hidden-lists; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · upgrader-from-alpha1 · updated · deb; worker-blocked (M0.5); AI setup
 // (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
 // ChatGPT plan (M2), offered only in these: codex-not-installed · codex-signed-out · codex-plus ·
@@ -27,9 +27,12 @@ import {
   type AutoSync,
   aiMaterialsState,
   type CourseSummary,
+  type CourseSyncSummary,
   type CourseTimeline,
+  type CoverageView,
   type Deadline,
   type MaterialView,
+  type NotReadable,
   type SourceKind,
   type SourceRecord,
   type SourceSyncResult,
@@ -64,6 +67,7 @@ import {
   type MockDb,
   type MockScenario,
   mcpClientConfigs,
+  plainCoverage,
 } from "./fixtures";
 import { createPlanMock } from "./plan";
 import { createProposalsMock, type MockAiRun } from "./proposals";
@@ -273,7 +277,95 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       files_indexed: 0,
       events: courses.reduce((n, c) => n + c.deadlines.length, 0),
       warnings: [],
-      course_summaries: [],
+      // Like the facade: each course is there, and nothing of what a full sync reads is counted.
+      course_summaries: courses.map((c) => ({
+        course: c.course.code ?? c.course.name,
+        modules: 0,
+        pages: 0,
+        files: 0,
+        events: 0,
+        warnings: 0,
+        linked_pages: 0,
+        linked_files: 0,
+        not_read: 0,
+        pages_hidden: false,
+        files_hidden: false,
+      })),
+    };
+  }
+
+  /**
+   * The reasons that count in a summary's `not_read`: what went wrong or what the student can
+   * act on, not what PageLamp never reads by rule.
+   */
+  const GAPS: ReadonlySet<NotReadable["reason"]> = new Set([
+    "would_mark_viewed",
+    "failed_this_sync",
+    "capped",
+    "locked",
+    "no_longer_in_canvas",
+  ]);
+
+  /** One course's line in a full sync's summary; its record is rewritten by that sync. */
+  function courseSummary(c: MockCourse): CourseSyncSummary {
+    const counts = {
+      course: c.course.code ?? c.course.name,
+      modules: c.modules.length,
+      pages: c.materials.filter((m) => m.kind === "page").length,
+      files: c.materials.filter((m) => m.kind === "file").length,
+      events: c.deadlines.length,
+      warnings: 0,
+    };
+    // Like the facade: a full sync writes the course's record, also when there was none (the
+    // first one after the update).
+    c.coverage ??= plainCoverage(c, now());
+    c.coverage.writtenAt = now().toISOString();
+    return {
+      ...counts,
+      linked_pages: c.coverage.linkedPages,
+      linked_files: c.coverage.linkedFiles,
+      not_read: c.coverage.notRead.filter((n) => GAPS.has(n.reason)).length,
+      pages_hidden: c.coverage.pagesList === "hidden",
+      files_hidden: c.coverage.filesList === "hidden",
+    };
+  }
+
+  /** `CourseOverview.coverage`: the record, with the files that aren't downloaded counted now. */
+  function coverageView(c: MockCourse): CoverageView | null {
+    const record = c.coverage;
+    if (!record) return null;
+    const files = c.materials.filter(
+      (m) => m.kind === "file" && m.text_status === "not_downloaded",
+    );
+    const group = (reason: NotReadable["reason"], count: number): NotReadable[] =>
+      count > 0 ? [{ area: "files", reason, title: null, url: null, count }] : [];
+    const all = [
+      ...group("needs_download", files.filter((m) => !m.download_blocked).length),
+      ...group("too_large", files.filter((m) => m.download_blocked === "too_large").length),
+      ...group("locked", files.filter((m) => m.download_blocked === "locked").length),
+      ...record.notRead,
+    ];
+    const shown = all.slice(0, 20);
+    const home = c.materials.find((m) => m.id === record.homeId);
+    return {
+      home_kind: record.homeKind,
+      home_state: record.homeState,
+      home: home ? { id: home.id, title: home.title } : null,
+      syllabus: null,
+      pages_list: record.pagesList,
+      files_list: record.filesList,
+      not_readable: shown,
+      not_readable_more: all.length - shown.length,
+      announcements_synced: c.announcements.length,
+      counts: {
+        pages: c.materials.filter((m) => m.kind === "page").length,
+        linked_pages: record.linkedPages,
+        files: c.materials.filter((m) => m.kind === "file").length,
+        linked_files: record.linkedFiles,
+        capped: record.notRead.filter((n) => n.reason === "capped").length,
+        off_site_links: 0,
+      },
+      written_at: record.writtenAt,
     };
   }
 
@@ -612,6 +704,15 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     db.courses = buildMockDb(now(), "demo").courses.map((c) => ({
       ...c,
       course: { ...c.course, source_id: source.id },
+      // A folder's files are on this computer: none of them is "not downloaded".
+      materials:
+        source.kind === "folder"
+          ? c.materials.map((m) =>
+              m.text_status === "not_downloaded"
+                ? { ...m, text_status: "unsupported" as const, download_blocked: null }
+                : m,
+            )
+          : c.materials,
     }));
   }
 
@@ -620,10 +721,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     sourceIds: string[],
     onEvent: (event: SyncEvent) => void,
     work: { kind: "sync" | "download"; source_id?: string } = { kind: "sync" },
-    wholeSource = true,
+    // A run of one course ("Download this course's files") reads only that course.
+    onlyCourse: MockCourse | null = null,
   ): Promise<SourceSyncResult[]> {
     return activity.during(work.kind, { source_id: work.source_id }, () =>
-      syncSources(sourceIds, onEvent, wholeSource),
+      syncSources(sourceIds, onEvent, onlyCourse),
     );
   }
 
@@ -631,9 +733,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     sourceIds: string[],
     onEvent: (event: SyncEvent) => void,
     // A run of one course ("Download this course's files") reads only that course: the source's
-    // own "last synced" stays where it was.
-    wholeSource = true,
+    // own "last synced" stays where it was, and only that course has a line and warnings.
+    onlyCourse: MockCourse | null = null,
   ): Promise<SourceSyncResult[]> {
+    const wholeSource = onlyCourse === null;
     if (syncing || db.externalSyncRunning) {
       await sleep(latency);
       throw new ApiError("busy", "Another PageLamp process is already syncing.");
@@ -647,7 +750,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         const startedAt = now().toISOString();
         onEvent({ type: "source_started", source_id: source.id, label: source.label });
         seedCoursesOnFirstSync(source);
-        const courses = db.courses.filter((c) => c.course.source_id === source.id);
+        const courses = onlyCourse
+          ? [onlyCourse]
+          : db.courses.filter((c) => c.course.source_id === source.id);
         const total = Math.max(courses.length, 1) * 3;
         const warnings: string[] = [];
         for (let step = 1; step <= total; step++) {
@@ -720,17 +825,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           events: courses.reduce((n, c) => n + c.deadlines.length, 0),
           warnings,
           // Per-course details come from Canvas only.
-          course_summaries:
-            source.kind === "canvas" && !failure
-              ? courses.map((c) => ({
-                  course: c.course.code ?? c.course.name,
-                  modules: c.modules.length,
-                  pages: c.materials.filter((m) => m.kind === "page").length,
-                  files: c.materials.filter((m) => m.kind === "file").length,
-                  events: c.deadlines.length,
-                  warnings: 0,
-                }))
-              : [],
+          course_summaries: source.kind === "canvas" && !failure ? courses.map(courseSummary) : [],
         });
       }
     } finally {
@@ -953,7 +1048,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         [source.id],
         onEvent,
         { kind: "download", source_id: source.id },
-        false,
+        c,
       );
       if (!result) throw new ApiError("internal", "Sync produced no result");
       let downloaded = 0;
@@ -1006,6 +1101,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           last_synced_at: sourceSyncedAt(c.course.source_id),
           deadlines_synced_at: deadlinesSyncedAt(c.course.source_id),
           structure_pending: c.structurePending ?? false,
+          // Null until a full sync has recorded what it read (the facade's `coverage` contract).
+          coverage: coverageView(c),
           ai_materials: aiMaterialsState(c.course),
           // Like the backend: what a course-wide download would fetch (all weeks).
           downloadable_files: c.materials.filter(

@@ -99,6 +99,70 @@
 			<string>…and %1$ld more</string>
 		</dict>
 	</dict>
+	<key>course.notRead.download</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld file in this course isn't downloaded yet.</string>
+			<key>other</key>
+			<string>%1$ld files in this course aren't downloaded yet.</string>
+		</dict>
+	</dict>
+	<key>course.notRead.lockedFiles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld file is locked in Canvas.</string>
+			<key>other</key>
+			<string>%1$ld files are locked in Canvas.</string>
+		</dict>
+	</dict>
+	<key>course.notRead.more</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>…and %1$ld more that isn't listed here.</string>
+			<key>other</key>
+			<string>…and %1$ld more that aren't listed here.</string>
+		</dict>
+	</dict>
+	<key>course.notRead.tooLarge</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld file is too large to download.</string>
+			<key>other</key>
+			<string>%1$ld files are too large to download.</string>
+		</dict>
+	</dict>
 	<key>course.week.readableSections</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -817,6 +881,54 @@
 			<string>%1$@ removed</string>
 			<key>other</key>
 			<string>%2$ld courses removed</string>
+		</dict>
+	</dict>
+	<key>sources.progress.course.linkedFiles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld file</string>
+			<key>other</key>
+			<string>%1$ld files</string>
+		</dict>
+	</dict>
+	<key>sources.progress.course.linkedPages</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld page</string>
+			<key>other</key>
+			<string>%1$ld pages</string>
+		</dict>
+	</dict>
+	<key>sources.progress.course.notRead</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld not read</string>
+			<key>other</key>
+			<string>%1$ld not read</string>
 		</dict>
 	</dict>
 	<key>sources.progress.stage.saving_events</key>
