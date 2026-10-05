@@ -1090,7 +1090,7 @@ jobs:
         run: |
           name="pagelamp-${TAG}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          cp LICENSE README.md "dist/$name/"
+          cp LICENSE THIRD-PARTY-NOTICES.txt README.md "dist/$name/"
           cp "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           archive="dist/$name.tar.gz"
@@ -1192,7 +1192,7 @@ jobs:
             name="pagelamp-${TAG}-${{ matrix.target }}"
           fi
           mkdir -p "dist/$name"
-          cp LICENSE README.md "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
+          cp LICENSE THIRD-PARTY-NOTICES.txt README.md "target/${{ matrix.target }}/release/pagelamp" "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"
           # Hash from inside dist/ so the .sha256 names the bare file (as in the `cli` job).
           (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
@@ -1324,7 +1324,7 @@ jobs:
           }
           $dist = Join-Path $env:GITHUB_WORKSPACE 'dist'
           New-Item -ItemType Directory -Force -Path (Join-Path $dist $name) | Out-Null
-          Copy-Item -LiteralPath LICENSE, README.md, "target/$target/release/pagelamp.exe" -Destination (Join-Path $dist $name)
+          Copy-Item -LiteralPath LICENSE, THIRD-PARTY-NOTICES.txt, README.md, "target/$target/release/pagelamp.exe" -Destination (Join-Path $dist $name)
           Push-Location $dist
           7z a "$name.zip" $name | Out-Null
           $code = $LASTEXITCODE
