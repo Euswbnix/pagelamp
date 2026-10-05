@@ -124,8 +124,10 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
   # "true" only for a manual run with the rehearsal box ticked.
   REHEARSAL: ${{ inputs.rehearsal == true }}
-  # GitHub Pages of this repo (D5), where channels.yml publishes updates/{stable,beta,test}.json.
-  PAGES_URL: https://euswbnix.github.io/pagelamp
+  # Where the app reads the update channels (D5): the files of this repo's gh-pages branch, as
+  # GitHub serves them. channels.yml publishes updates/{stable,beta,test}.json there, and a
+  # rehearsal's test packages.
+  CHANNELS_URL: https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages
 
 jobs:
   # The release configuration and the release scripts' tests, before anything is built. No secret.
@@ -1353,10 +1355,11 @@ jobs:
   # With the updater on: latest.json, the updater manifest (.github/scripts/updater-manifest.mjs),
   # after every signature has been checked against its artifact with tauri.conf.json's public key
   # and its version binding against the Cargo version. A release uploads it to the draft
-  # (channels.yml copies it to Pages when the release is published; the stable channel also reads
-  # releases/latest/download/latest.json). A rehearsal writes the test channel's manifest instead
-  # (macOS and Windows only; the ~95 MB AppImage is too big for Pages, its signature is still
-  # checked) and keeps it with those files as the artifact updater-test-<commit>-attempt<n>.
+  # (channels.yml copies it to the gh-pages branch when the release is published; the stable
+  # channel also reads releases/latest/download/latest.json). A rehearsal writes the test
+  # channel's manifest instead (macOS and Windows only; the ~95 MB AppImage is too big to keep in
+  # a branch, its signature is still checked) and keeps it with those files as the artifact
+  # updater-test-<commit>-attempt<n>. The test packages are served from the gh-pages branch too.
   updater-manifest:
     needs: [preflight, create-release, app-macos, app-windows, app-linux]
     if: ${{ !cancelled() && needs.preflight.outputs.updater == 'true' && needs.app-macos.result == 'success' && needs.app-windows.result == 'success' && needs.app-linux.result == 'success' && (inputs.rehearsal || needs.create-release.result == 'success') }}
@@ -1401,8 +1404,8 @@ jobs:
           dir="$RUNNER_TEMP/updater"
           key=apps/desktop/src-tauri/tauri.conf.json
           if [ "$REHEARSAL" = true ]; then
-            base="$PAGES_URL/updates/test/${GITHUB_SHA:0:7}/"
-            # All four signatures, then the test channel's manifest (the platforms Pages serves).
+            base="$CHANNELS_URL/updates/test/${GITHUB_SHA:0:7}/"
+            # All four signatures, then the test channel's manifest (the platforms it serves).
             node .github/scripts/updater-manifest.mjs build --dir "$dir" --version "$VERSION" \
               --base-url "$base" --pubkey-config "$key" --out "$RUNNER_TEMP/all-platforms.json"
             node .github/scripts/updater-manifest.mjs build --dir "$dir" --version "$VERSION" \
