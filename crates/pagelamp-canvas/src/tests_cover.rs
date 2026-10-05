@@ -1542,7 +1542,86 @@ async fn a_listed_front_page_is_not_the_home_when_the_home_shows_the_modules() {
 }
 
 #[tokio::test]
-async fn a_dead_link_takes_a_place_under_the_limit() {
+async fn a_link_to_a_page_canvas_does_not_have_is_asked_about_once_a_week_and_not_noted() {
+    let f = Fixture::new().await;
+    // "gone" leads nowhere (404). "closed" is a page this student may not open (403).
+    let mount = async |f: &Fixture, body: &str| {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/courses/101/pages/closed"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("no"))
+            .with_priority(1)
+            .mount(&f.canvas)
+            .await;
+        hidden_lists(f, Some("wiki")).await;
+        home_page(f, body).await;
+    };
+    let both = r#"<a href="/courses/101/pages/gone">old notes</a>
+        <a href="/courses/101/pages/closed">drafts</a>"#;
+    mount(&f, both).await;
+    let start = Utc::now();
+    let base = f.canvas.uri();
+    // The app's own syncs ask about it again a week after it was last asked about, not in
+    // between. A sync the student starts asks at once (the page may have been made since),
+    // and its answer counts from then. The page that may not be opened is asked for at every
+    // sync: it exists.
+    // (the day, the app's own sync?, requests for "gone" so far, the day it was last asked)
+    for (days, automatic, gone, asked_on) in [
+        (0, false, 1, 0),
+        (1, true, 1, 0),
+        (2, false, 2, 2),
+        (3, true, 2, 2),
+        (8, true, 2, 2),
+        (10, true, 3, 10),
+    ] {
+        let report = sync_at(&f, automatic, start + TimeDelta::days(days)).await;
+        assert_eq!(
+            asked(&f, "/courses/101/pages/gone").await,
+            gone,
+            "day {days}"
+        );
+        let record_now = record(&f);
+        // A dead link is the author's: no entry. The other one wasn't read: an entry.
+        let failed: Vec<String> = record_now
+            .not_read
+            .iter()
+            .filter(|entry| entry.reason == CoverageReason::FailedThisSync)
+            .map(|entry| entry.url.clone().unwrap())
+            .collect();
+        assert_eq!(
+            failed,
+            [format!("{base}/courses/101/pages/closed")],
+            "day {days}"
+        );
+        assert!(
+            !serde_json::to_string(&record_now.not_read)
+                .unwrap()
+                .contains("pages/gone"),
+            "day {days}"
+        );
+        // The summary counts the page the module asks the student to view and the page that
+        // couldn't be opened, not the dead link.
+        assert_eq!(report.course_summaries[0].not_read, 2, "day {days}");
+        // Remembered with the day it was last asked about.
+        assert_eq!(
+            record_now.followed.dead_pages.get("gone"),
+            Some(&(start + TimeDelta::days(asked_on))),
+            "day {days}"
+        );
+        assert!(!record_now.followed.dead_pages.contains_key("closed"));
+    }
+
+    // Six syncs, six requests for the page that may not be opened.
+    assert_eq!(asked(&f, "/courses/101/pages/closed").await, 6);
+
+    // The author takes the link out: nothing of it stays in the record.
+    f.canvas.reset().await;
+    mount(&f, r#"<a href="/courses/101/pages/closed">drafts</a>"#).await;
+    sync_at(&f, false, start + TimeDelta::days(11)).await;
+    assert!(record(&f).followed.dead_pages.is_empty());
+}
+
+#[tokio::test]
+async fn a_dead_link_takes_a_place_under_the_limit_only_when_it_is_asked_about() {
     let f = Fixture::new().await;
     hidden_lists(&f, Some("wiki")).await;
     let links: String = (0..45)
@@ -1558,26 +1637,48 @@ async fn a_dead_link_takes_a_place_under_the_limit() {
         .await;
     }
     let start = Utc::now();
-    // A sync the student starts, then the app's own an hour later, which reads no page again
-    // that it has: the same forty links are taken, the same six are left.
-    for (automatic, hours, dead, alive) in [(false, 0, 1, 1), (true, 1, 2, 1)] {
-        sync_at(&f, automatic, start + TimeDelta::hours(hours)).await;
-        assert_eq!(asked(&f, "/courses/101/pages/p00").await, dead);
-        assert_eq!(asked(&f, "/courses/101/pages/p04").await, dead);
-        assert_eq!(asked(&f, "/courses/101/pages/p05").await, alive);
-        assert_eq!(asked(&f, "/courses/101/pages/p39").await, alive);
-        assert_eq!(asked(&f, "/courses/101/pages/p40").await, 0);
-        assert_eq!(asked(&f, "/courses/101/pages/notes-2").await, 0);
-        let record_now = record(&f);
-        assert_eq!(record_now.counts.linked_pages, 35);
-        assert_eq!(record_now.counts.capped, 6);
-        let failed = record_now
+    let failed = |record: &CourseCoverage| {
+        record
             .not_read
             .iter()
             .filter(|entry| entry.reason == CoverageReason::FailedThisSync)
-            .count();
-        assert_eq!(failed, 5);
-    }
+            .count()
+    };
+
+    // The first sync asks about the five dead links: forty requests, five of them for
+    // nothing, and the last five links and the syllabus's one are left out.
+    sync_at(&f, false, start).await;
+    assert_eq!(asked(&f, "/courses/101/pages/p00").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/p39").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/p40").await, 0);
+    let first = record(&f);
+    assert_eq!((first.counts.linked_pages, first.counts.capped), (35, 6));
+    assert_eq!(first.followed.dead_pages.len(), 5);
+    assert_eq!(failed(&first), 0);
+
+    // An hour later the dead links aren't asked about and take no place: the five links
+    // that were left out are read.
+    sync_at(&f, true, start + TimeDelta::hours(1)).await;
+    assert_eq!(asked(&f, "/courses/101/pages/p00").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/p05").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/p40").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/p44").await, 1);
+    assert_eq!(asked(&f, "/courses/101/pages/notes-2").await, 0);
+    let second = record(&f);
+    assert_eq!((second.counts.linked_pages, second.counts.capped), (40, 1));
+    assert_eq!(second.followed.dead_pages.len(), 5);
+    assert_eq!(failed(&second), 0);
+
+    // A week on the app's own sync asks about them again, and they take their places for
+    // that sync: the last five pages aren't read again this time, and stay.
+    sync_at(&f, true, start + TimeDelta::days(8)).await;
+    assert_eq!(asked(&f, "/courses/101/pages/p00").await, 2);
+    assert_eq!(asked(&f, "/courses/101/pages/p05").await, 2);
+    assert_eq!(asked(&f, "/courses/101/pages/p40").await, 1);
+    let third = record(&f);
+    assert_eq!((third.counts.linked_pages, third.counts.capped), (40, 6));
+    assert!(has_material(&f, "/page/1044"));
+    assert_eq!(failed(&third), 0);
 }
 
 #[tokio::test]
