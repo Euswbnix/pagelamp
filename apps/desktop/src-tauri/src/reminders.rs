@@ -32,15 +32,18 @@ const TICK: Duration = Duration::from_secs(60);
 const CHECK_EVERY: TimeDelta = TimeDelta::minutes(15);
 /// A tick this much later than expected means the computer slept (or the clock was changed).
 const WOKE_AFTER: TimeDelta = TimeDelta::minutes(2);
+/// How long after waking the page is first asked to look at what is due: the network is often
+/// not back at once, and a sync tried without it fails and counts as its try.
+const STARTUP_AFTER_WAKING: TimeDelta = TimeDelta::minutes(2);
 
 /// What a tick asks the page for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Asks {
     /// A delivery of the reminders that are due.
     pub reminders: bool,
-    /// Another look at what is due by itself. Not at the tick that follows a sleep: the network
-    /// is often not back yet, and a sync tried then fails and counts as its try. The next
-    /// regular tick asks.
+    /// Another look at what is due by itself: every 15 minutes too, on a clock of its own. Not
+    /// at the tick that follows a sleep, nor in the two minutes after it (`STARTUP_AFTER_WAKING`);
+    /// what came due meanwhile is asked for then, not dropped.
     pub startup: bool,
 }
 
@@ -50,6 +53,12 @@ pub struct Asks {
 pub struct Ticker {
     last_check: DateTime<Utc>,
     last_tick: DateTime<Utc>,
+    /// The last time a look at what is due was asked for. A waking doesn't move it (it moves
+    /// `last_check`): a computer that never stays awake for a quarter of an hour would
+    /// otherwise never be asked.
+    last_startup: DateTime<Utc>,
+    /// No look at what is due before this: two minutes after the last waking.
+    startup_not_before: DateTime<Utc>,
 }
 
 impl Ticker {
@@ -58,6 +67,8 @@ impl Ticker {
         Ticker {
             last_check: now,
             last_tick: now,
+            last_startup: now,
+            startup_not_before: now,
         }
     }
 
@@ -71,9 +82,18 @@ impl Ticker {
         if due || woke {
             self.last_check = now;
         }
+        if woke {
+            self.startup_not_before = now + STARTUP_AFTER_WAKING;
+        }
+        let startup = !woke
+            && now >= self.startup_not_before
+            && (now - self.last_startup >= CHECK_EVERY || now < self.last_startup);
+        if startup {
+            self.last_startup = now;
+        }
         Asks {
             reminders: due || woke,
-            startup: due && !woke,
+            startup,
         }
     }
 }
@@ -287,25 +307,59 @@ mod tests {
             .collect()
     }
 
+    /// Ticks once a minute from `from` to `to` (inclusive), returning the minutes that asked
+    /// for a look at what is due.
+    fn looks(ticker: &mut Ticker, from: i64, to: i64) -> Vec<i64> {
+        (from..=to)
+            .filter(|&m| ticker.tick(at(m)).startup)
+            .collect()
+    }
+
     #[test]
-    fn asks_for_a_look_at_what_is_due_with_the_regular_ticks_only() {
+    fn asks_for_a_look_at_what_is_due_every_15_minutes_and_not_as_the_computer_wakes() {
         let mut ticker = Ticker::new(at(0));
-        let startup = |ticker: &mut Ticker, from: i64, to: i64| -> Vec<i64> {
-            (from..=to)
-                .filter(|&m| ticker.tick(at(m)).startup)
-                .collect()
-        };
-        assert_eq!(startup(&mut ticker, 1, 31), vec![15, 30]);
+        assert_eq!(looks(&mut ticker, 1, 31), vec![15, 30]);
         // Asleep from minute 31 to minute 151, through several regular ticks. The tick after
         // waking asks for a delivery and for nothing else: the network may not be back.
         let woke = ticker.tick(at(151));
         assert!(woke.reminders && !woke.startup, "{woke:?}");
-        // The next regular tick asks, a quarter of an hour after waking.
-        assert_eq!(startup(&mut ticker, 152, 167), vec![166]);
-        // The same when the clock goes back.
-        let back = ticker.tick(at(100));
+        // Two minutes later it asks for what came due meanwhile, then every 15 minutes again.
+        assert_eq!(looks(&mut ticker, 152, 170), vec![153, 168]);
+    }
+
+    #[test]
+    fn a_short_sleep_moves_no_look_that_isnt_due_yet() {
+        let mut ticker = Ticker::new(at(0));
+        assert_eq!(looks(&mut ticker, 1, 5), Vec::<i64>::new());
+        // Asleep from minute 5 to minute 9: nothing was due, and nothing is two minutes later.
+        assert!(!ticker.tick(at(9)).startup);
+        assert_eq!(looks(&mut ticker, 10, 20), vec![15]);
+    }
+
+    #[test]
+    fn a_computer_that_never_stays_awake_for_15_minutes_is_asked_all_the_same() {
+        let mut ticker = Ticker::new(at(0));
+        // Awake for 12 minutes, asleep for 8, again and again.
+        let mut asked = Vec::new();
+        let mut minute = 0;
+        for _ in 0..4 {
+            asked.extend(looks(&mut ticker, minute + 1, minute + 12));
+            minute += 20;
+            assert!(!ticker.tick(at(minute)).startup, "the tick after waking");
+        }
+        // Two minutes into the second stretch (the first look was due while it slept), and
+        // from then on whenever a quarter of an hour has passed since the last one.
+        assert_eq!(asked, vec![22, 42, 62]);
+    }
+
+    #[test]
+    fn asks_for_a_look_two_minutes_after_the_clock_went_back() {
+        let mut ticker = Ticker::new(at(0));
+        assert_eq!(looks(&mut ticker, 1, 16), vec![15]);
+        let back = ticker.tick(at(-60));
         assert!(back.reminders && !back.startup, "{back:?}");
-        assert_eq!(startup(&mut ticker, 101, 116), vec![115]);
+        // The last look is "in the future" now: asked for as soon as the two minutes are over.
+        assert_eq!(looks(&mut ticker, -59, -40), vec![-58, -43]);
     }
 
     #[test]

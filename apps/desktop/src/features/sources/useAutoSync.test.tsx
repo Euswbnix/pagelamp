@@ -1546,6 +1546,37 @@ describe("automatic sync", () => {
       }
     });
 
+    it("keeps a run that goes wrong quiet under the capsule's own details, left open", async () => {
+      // Those details are such a dialog. Open, they tell the store that the student looks on.
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const { user, queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      // The student syncs, opens the details of "Sync finished" and leaves them open.
+      await user.click(await screen.findByRole("button", { name: "Sync now" }));
+      await user.click(await screen.findByRole("button", { name: "Sync finished" }));
+      await screen.findByRole("dialog", { name: "Sync details" });
+      expect(useSyncStore.getState().watched).toBe(true);
+
+      // Hours later the hour's light sync starts under them, and Canvas can't be reached.
+      later(start, 13 * HOUR);
+      const sync = failingWith(api, "network");
+      due = true;
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      await settle();
+      expectNoTrace();
+      expect(announced()).not.toContain("problems");
+    });
+
     it("takes a clock that went back for a dialog left open: nothing can be told then", async () => {
       const { start, sync, hourly } = await quietLaunch();
       const close = leaveDialogOpen();

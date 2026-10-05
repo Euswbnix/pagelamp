@@ -378,6 +378,10 @@ export function useAutoSync() {
       clear();
       return;
     }
+    // Under a dialog that was left, nobody is watching this run, whatever is open: the
+    // capsule's own details are such a dialog, and the store would take them for the student
+    // looking on and keep a run that goes wrong on screen.
+    if (blocked && leftDialog) useSyncStore.setState({ watched: false });
     // Afterwards the cached answer must stop saying "due" (and the others get their turn on
     // the answer that follows, however this run ends).
     void startSync(undefined, { automatic: trigger }).then(reread);
