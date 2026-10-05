@@ -558,6 +558,9 @@
 "common.aiMaterials.readableNone" = "还没有资料";
 "common.aiMaterials.turned_off" = "已关闭 AI 读取资料";
 "common.aiMaterials.withheld_by_policy" = "资料不共享（禁止使用 AI 的课程）";
+"common.canvasLists.both" = "在 Canvas 中没有开放“页面”和“文件”列表";
+"common.canvasLists.files" = "在 Canvas 中没有开放“文件”列表";
+"common.canvasLists.pages" = "在 Canvas 中没有开放“页面”列表";
 "common.canvasNotice" = "个人访问令牌仅供你本人使用，而且会过期——创建时 Canvas 会显示最长有效期（通常是 30–90 天）。";
 "common.confidence.high" = "把握较大";
 "common.confidence.low" = "把握较小";
@@ -679,6 +682,7 @@
 "common.textStatus.error" = "文字提取失败";
 "common.textStatus.noText" = "没有找到文字";
 "common.textStatus.not_downloaded" = "未下载";
+"common.textStatus.not_downloaded_yet" = "还没下载";
 "common.textStatus.ok" = "AI 应用可以读取";
 "common.textStatus.pending" = "等待处理";
 "common.textStatus.unsupported" = "无法读取（如视频）";
@@ -1311,7 +1315,7 @@
 "removal.dialog.undoBody" = "7 天内可以一键撤销。之后要恢复，就需要重新同步这门课，而且有些内容无法找回：";
 "removal.dialog.undoTitle" = "撤销与恢复";
 "removal.lost.locked_files" = "课程结束后被锁定的文件";
-"removal.lost.old_announcements" = "超过 365 天的公告";
+"removal.lost.old_announcements" = "超过一年的公告";
 "removal.lost.redownload_counts_as_viewing" = "重新下载文件会在 Canvas 中算作查看";
 "removal.lost.whole_course" = "整门课程（如果 Canvas 限制了访问）";
 "removal.removed.confirmDeleteNowBody" = "此操作无法撤销。要恢复需要重新同步这门课。";
@@ -1501,6 +1505,9 @@
 "sources.problem.expiredTitle" = "访问权限已过期";
 "sources.problem.title" = "上次同步没有成功";
 "sources.progress.barLabel" = "%1$@ 的同步进度";
+"sources.progress.course.linked" = "通过链接找到：%1$@";
+"sources.progress.course.linkedBoth" = "%1$@和 %2$@";
+"sources.progress.course.listLabel" = "%1$@ 的课程";
 "sources.progress.dismiss" = "隐藏";
 "sources.progress.dismissLabel" = "隐藏同步结果";
 "sources.progress.expiredHint" = "访问权限已过期。更换访问令牌或日历订阅地址后，才能继续同步这个来源。";

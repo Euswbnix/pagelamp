@@ -31,6 +31,9 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 - What PageLamp didn't read of a Canvas course is recorded with a reason. `pagelamp sync` prints
   a line per course with what it found through links and how many things it couldn't read; your
   AI app gets the list with the reasons and is told not to guess at it.
+- In the app, after a sync the row of a Canvas source has a line for each course that doesn't
+  show its Pages or Files list in Canvas, or where pages and files were found through links;
+  the course's page says in its header which lists aren't shown.
 - MCP: a new read-only tool, `list_materials`, lists every material of a course, 50 at a time.
 - A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
   turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this
@@ -65,6 +68,8 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   sync says so.
 - Canvas: a sync asks for a course's announcements of the last 365 days (was 120). Older ones
   PageLamp already has are kept, as before.
+- In the app, a Canvas file you can still download is labelled "Not downloaded yet" (was "Not
+  downloaded"); locked and too-large files keep their own labels.
 - Canvas: after this update, a page that hasn't changed is read once more in a course that hides
   its Files list, to find the files it links to. Canvas may record that as one more view.
 - MCP: `course_overview` names the course's Home page and syllabus (`home`, `syllabus`), counts

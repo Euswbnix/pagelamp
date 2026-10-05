@@ -2,9 +2,10 @@ import type { TFunction } from "i18next";
 import { CircleAlert, CircleCheck, CircleMinus, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import type { SyncStage } from "@/api/types";
+import type { CourseSyncSummary, SyncStage } from "@/api/types";
 import { Progress } from "@/components/ui/progress";
 import { translateWithText } from "@/features/course/timeline/evidence";
+import { listsNotShown } from "@/lib/canvasLists";
 import { paths } from "@/lib/routes";
 import type { SourceProgress } from "@/stores/sync";
 import { TechnicalDetails } from "./TechnicalDetails";
@@ -13,10 +14,13 @@ import { TechnicalDetails } from "./TechnicalDetails";
 export function SyncProgressRow({
   progress,
   showFixLink,
+  courseLines = true,
 }: {
   progress: SourceProgress;
   /** Link to Sources & sync when access expired (the Sources screen has its own button). */
   showFixLink: boolean;
+  /** One line per course with something to say. Off where there is no room (the capsule). */
+  courseLines?: boolean;
 }) {
   const { t, i18n } = useTranslation("sources");
   const { t: tc } = useTranslation();
@@ -88,6 +92,10 @@ export function SyncProgressRow({
           </p>
         ) : null}
 
+        {courseLines && progress.courses ? (
+          <CourseLines label={label} courses={progress.courses} />
+        ) : null}
+
         {uniqueWarnings.length > 0 ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <TriangleAlert className="size-3.5 shrink-0 text-warning" aria-hidden />
@@ -105,6 +113,53 @@ export function SyncProgressRow({
       </div>
     </li>
   );
+}
+
+/**
+ * What a full Canvas sync says about each course: which of its lists the course doesn't show,
+ * and what was found through links. A course with nothing to say has no line, and nothing is
+ * concluded from that (a light sync reports no course's lists at all).
+ */
+function CourseLines({ label, courses }: { label: string; courses: CourseSyncSummary[] }) {
+  const { t } = useTranslation("sources");
+  const { t: tc } = useTranslation();
+  const lines = courses
+    .map((course) => ({ course: course.course, parts: courseParts(t, tc, course) }))
+    .filter((line) => line.parts.length > 0);
+  if (lines.length === 0) return null;
+  return (
+    <ul
+      aria-label={t("progress.course.listLabel", { label })}
+      className="space-y-1 text-xs text-muted-foreground"
+    >
+      {lines.map((line, index) => (
+        // The summary has no course id, and two courses can share a code: the place is the key.
+        // biome-ignore lint/suspicious/noArrayIndexKey: the list never reorders.
+        <li key={index}>
+          {/* The course's code or name is the instructor's text: a text node of its own. */}
+          <span className="font-medium text-foreground">{line.course}</span>
+          {tc("punctuation.colon")}
+          {line.parts.join(" · ")}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function courseParts(t: TFunction<"sources">, tc: TFunction, course: CourseSyncSummary): string[] {
+  const parts: string[] = [];
+  const lists = listsNotShown(course.pages_hidden === true, course.files_hidden === true);
+  if (lists) parts.push(tc(`canvasLists.${lists}`));
+  const pages = course.linked_pages ?? 0;
+  const files = course.linked_files ?? 0;
+  const pageText = pages > 0 ? t("progress.course.linkedPages", { count: pages }) : null;
+  const fileText = files > 0 ? t("progress.course.linkedFiles", { count: files }) : null;
+  const items =
+    pageText && fileText
+      ? t("progress.course.linkedBoth", { pages: pageText, files: fileText })
+      : (pageText ?? fileText);
+  if (items) parts.push(t("progress.course.linked", { items }));
+  return parts;
 }
 
 /** Stages about one course; without the course they use their "_no_course" wording. */

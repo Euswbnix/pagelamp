@@ -8,8 +8,11 @@ import type {
   AppStatus,
   Confidence,
   Course,
+  CourseHomeKind,
+  CourseHomeState,
   CourseLifecycle,
   CourseTimeline,
+  CoverageListState,
   CrashReport,
   Deadline,
   DownloadBlock,
@@ -18,6 +21,7 @@ import type {
   MaterialView,
   McpClientConfig,
   Module,
+  NotReadable,
   SourceErrorKind,
   SourceRecord,
   StoredStudyPlan,
@@ -50,6 +54,9 @@ export type MockScenario =
   // The folder and the feed synced 2 hours ago, Canvas 5 days ago, and nothing is wrong: the
   // student syncs one source at a time by hand (automatic sync is off here).
   | "canvas-old"
+  // One more Canvas course, whose Pages and Files lists aren't shown in Canvas: its Home page
+  // links to the notes and files. A full sync has recorded what it read of each Canvas course.
+  | "canvas-hidden-lists"
   // Updates (M0.4): an update is offered / an upgrader from 0.1 sees "What's new" / the first
   // launch after an update / a deb or rpm install (download link only).
   | "update-available"
@@ -100,6 +107,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "auto-sync-due",
   "light-synced",
   "canvas-old",
+  "canvas-hidden-lists",
   "update-available",
   "upgrader",
   "upgrader-from-01",
@@ -155,6 +163,27 @@ export interface MockCourse {
   deadlines: Deadline[];
   /** A light automatic sync found it; no full sync has read its modules and materials yet. */
   structurePending?: boolean;
+  /** What the last full sync recorded about a Canvas course; without it the views give none. */
+  coverage?: MockCoverage;
+}
+
+/**
+ * The facade's record of what a full sync read of a Canvas course and what it didn't. The files
+ * that aren't downloaded are not in `notRead`: the view counts them from the materials.
+ */
+export interface MockCoverage {
+  homeKind: CourseHomeKind;
+  homeState: CourseHomeState;
+  /** The Home page's material, when it is a page PageLamp stored. */
+  homeId: string | null;
+  pagesList: CoverageListState;
+  filesList: CoverageListState;
+  /** Pages and files that no list or module gave: a text PageLamp read links to them. */
+  linkedPages: number;
+  linkedFiles: number;
+  /** What the sync noted as not read, in the facade's order. */
+  notRead: NotReadable[];
+  writtenAt: string;
 }
 
 export interface MockDb {
@@ -517,9 +546,10 @@ function demo101(now: Date): MockCourse {
       module: m4,
       chunks: 15,
     }),
+    // A folder's file is always on this computer: an archive is one PageLamp can't read.
     material(c.id, "Survey dataset (large archive)", "file", 4, -2, now, {
       module: m4,
-      status: "not_downloaded",
+      status: "unsupported",
     }),
     material(c.id, "Week 4 practice questions", "page", 4, -1, now, { module: m4, chunks: 3 }),
     // A scan: read without errors, but no text in it (like pagelamp-core's ingest).
@@ -693,6 +723,126 @@ function demo099(now: Date): MockCourse {
     announcements: [],
     deadlines: [],
   });
+}
+
+/** What every Canvas course has that PageLamp never reads: its other tabs. */
+function tabsNotRead(courseUrl: string): NotReadable[] {
+  const tab = (
+    area: NotReadable["area"],
+    reason: NotReadable["reason"],
+    title: string,
+    path: string,
+  ): NotReadable => ({ area, reason, title, url: `${courseUrl}/${path}`, count: 1 });
+  return [
+    tab("assignments", "by_rule", "Assignments", "assignments"),
+    tab("quizzes", "by_rule", "Quizzes", "quizzes"),
+    tab("discussions", "not_read", "Discussions", "discussion_topics"),
+    tab("grades", "not_read", "Grades", "grades"),
+    tab("people", "not_read", "People", "users"),
+  ];
+}
+
+/** The record of a Canvas course that shows all its lists: only what is never read. */
+export function plainCoverage(c: MockCourse, now: Date): MockCoverage {
+  return {
+    homeKind: "modules",
+    homeState: "not_a_page",
+    homeId: null,
+    pagesList: "read",
+    filesList: "read",
+    linkedPages: 0,
+    linkedFiles: 0,
+    notRead: tabsNotRead(c.course.url ?? "https://canvas.demo.test"),
+    writtenAt: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+  };
+}
+
+/**
+ * A Canvas course that shows neither its Pages nor its Files list: the Home page, written by
+ * the instructor, links to the notes and to a practice exam.
+ */
+function demo312(now: Date): MockCourse {
+  const url = "https://canvas.demo.test/courses/312";
+  const spec: CourseSpec = {
+    id: `${SOURCE_CANVAS}/course/312`,
+    sourceId: SOURCE_CANVAS,
+    code: "DEMO312",
+    name: "Sampling in Practice",
+    policy: "unknown",
+    policyNote: null,
+    hidden: false,
+    materialSharing: "allowed",
+    termStartDays: -24,
+    week: 4,
+    confidence: "medium",
+    evidence: [`Term started ${dateOnly(now, -24)} (from Canvas) → week 4`],
+    url,
+  };
+  const c = course(spec, now);
+  const modules = weekModules(c.id, ["Getting started"], now, -24);
+  const [first] = modules as [Module];
+  const home = material(c.id, "Welcome to DEMO312", "page", 1, -24, now, {
+    chunks: 4,
+    url: `${url}/pages/welcome`,
+  });
+  const materials = [
+    home,
+    material(c.id, "How this course works", "page", 1, -24, now, { module: first, chunks: 3 }),
+    // Found through links on the Home page only.
+    material(c.id, "Reading notes A", "page", 2, -17, now, {
+      chunks: 7,
+      url: `${url}/pages/reading-notes-a`,
+    }),
+    material(c.id, "Reading notes B", "page", 3, -10, now, {
+      chunks: 6,
+      url: `${url}/pages/reading-notes-b`,
+    }),
+    material(c.id, "Practice exam", "file", 4, -3, now, { status: "not_downloaded" }),
+    material(c.id, "Formula sheet", "file", 4, -3, now, { status: "not_downloaded" }),
+    material(c.id, "Sample data set", "file", 3, -10, now, {
+      status: "not_downloaded",
+      blocked: "too_large",
+    }),
+  ];
+  const entry = (
+    area: NotReadable["area"],
+    reason: NotReadable["reason"],
+    title: string | null,
+    path: string | null,
+  ): NotReadable => ({ area, reason, title, url: path ? `${url}/${path}` : null, count: 1 });
+  return {
+    ...mockCourse({
+      course: c,
+      timeline: timeline(spec, now, [first.id]),
+      lifecycle: lifecycle({
+        state: "current",
+        last_activity: dateOnly(now, -3),
+        next_event: dateOnly(now, 5),
+      }),
+      modules,
+      materials,
+      announcements: [],
+      deadlines: [deadline(c, "Field report", "assignment_due", 5, now)],
+    }),
+    coverage: {
+      homeKind: "page",
+      homeState: "read",
+      homeId: home.id,
+      pagesList: "hidden",
+      filesList: "hidden",
+      linkedPages: 2,
+      linkedFiles: 3,
+      notRead: [
+        entry("pages", "index_hidden", null, null),
+        entry("files", "index_hidden", null, null),
+        entry("pages", "would_mark_viewed", "Lab safety briefing", "pages/lab-safety-briefing"),
+        entry("pages", "capped", null, "pages/older-notes"),
+        ...tabsNotRead(url),
+        entry("external_tool", "outside_canvas", "Demo Reader", "external_tools/7"),
+      ],
+      writtenAt: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+    },
+  };
 }
 
 /** A course Canvas listed since the last full sync: deadlines only, nothing else read yet. */
@@ -900,6 +1050,13 @@ export function buildMockDb(now: Date, scenario: MockScenario): MockDb {
   const courses = [demo101(now), demo205(now), demo310(now), demo099(now)];
   const light = scenario === "light-synced";
   if (light) courses.push(demo404(now));
+  if (scenario === "canvas-hidden-lists") {
+    // As after a full sync by this version: every Canvas course has its record.
+    for (const c of courses) {
+      if (c.course.source_id === SOURCE_CANVAS) c.coverage = plainCoverage(c, now);
+    }
+    courses.push(demo312(now));
+  }
   return {
     dataDir,
     sources: sources(now, scenario),
