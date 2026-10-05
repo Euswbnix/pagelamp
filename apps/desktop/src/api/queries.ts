@@ -1,9 +1,10 @@
 // TanStack Query hooks — the way screens read and change data. Screens never call `useApi()`
 // methods directly for reads; they use these hooks so caching and invalidation stay consistent.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { focusManager, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
+import { isApiError } from "./errors";
 import type {
   AiPolicy,
   IsoDate,
@@ -53,6 +54,10 @@ export function useStatus() {
     // with the window out of sight (the tray): what waits for that sync to end waits here.
     refetchInterval: (query) => (query.state.data?.sync_in_progress ? 3000 : false),
     refetchIntervalInBackground: true,
+    // A retry waits until the window is visible. Out of sight it would wait for good, and the
+    // poll's later ticks with it: there a failed read just fails, and the next tick asks anew.
+    retry: (failures, error) =>
+      focusManager.isFocused() && failures < 1 && !isApiError(error, "not_found"),
   });
 }
 

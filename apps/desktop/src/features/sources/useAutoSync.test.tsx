@@ -1,3 +1,4 @@
+import { onlineManager } from "@tanstack/react-query";
 import { act, configure, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PageLampApi } from "@/api/client";
@@ -5,6 +6,7 @@ import { ApiError } from "@/api/errors";
 import { createMockApi, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
 import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
+import { createQueryClient } from "@/app/Providers";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
@@ -377,11 +379,11 @@ describe("automatic sync", () => {
     expect(screen.queryByText("Sync failed")).toBeNull();
   });
 
-  it("sees another process's sync end with the window out of sight, and syncs then", async () => {
-    // The status poll's timer is faked; the waits below use real ones.
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const api = mockApi();
-    // As the facade answers while the other process holds the lock: nothing is due.
+  /**
+   * Another process syncs until `end()`. While it does, the status says so and, as the facade
+   * answers under the lock, nothing is due; afterwards a sync is.
+   */
+  function syncElsewhere(api: PageLampApi) {
     let elsewhere = true;
     const status = api.status.bind(api);
     api.status = async () => ({ ...(await status()), sync_in_progress: elsewhere });
@@ -390,8 +392,20 @@ describe("automatic sync", () => {
       ...(await tasks()),
       sync_due: elsewhere ? { unattended: false, attended: false } : DUE,
     });
-    const sync = vi.spyOn(api, "syncAll");
-    const { queryClient } = renderRoute("/courses", { api });
+    return {
+      end: () => {
+        elsewhere = false;
+      },
+    };
+  }
+
+  /** The window goes out of sight (the tray) until the returned function is called. */
+  function outOfSight() {
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    return () => Reflect.deleteProperty(document, "visibilityState");
+  }
+
+  async function seenSyncingElsewhere(queryClient: ReturnType<typeof createQueryClient>) {
     await screen.findByRole("heading", { level: 1 });
     await vi.waitFor(() =>
       expect(queryClient.getQueryData(queryKeys.status())).toMatchObject({
@@ -399,17 +413,116 @@ describe("automatic sync", () => {
       }),
     );
     await settle();
+  }
+
+  it("sees another process's sync end with the window out of sight, and syncs then", async () => {
+    // The status poll's timer is faked; the waits below use real ones.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const api = mockApi();
+    const other = syncElsewhere(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await seenSyncingElsewhere(queryClient);
     expect(sync).not.toHaveBeenCalled();
 
-    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    const back = outOfSight();
     try {
-      elsewhere = false;
+      other.end();
       await act(() => vi.advanceTimersByTimeAsync(3000));
       await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
       expect(sync.mock.calls[0]?.[0]).toMatchObject({ automatic: expect.any(String) });
     } finally {
-      Reflect.deleteProperty(document, "visibilityState");
+      back();
     }
+  });
+
+  it("keeps hearing of it out of sight when the computer is offline for a moment", async () => {
+    // With the app's own client: by its defaults a request made offline would wait, and go
+    // on only when the window is visible again.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const api = mockApi();
+    const other = syncElsewhere(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const queryClient = createQueryClient();
+    renderRoute("/courses", { api, queryClient });
+    await seenSyncingElsewhere(queryClient);
+
+    const back = outOfSight();
+    onlineManager.setOnline(false);
+    try {
+      other.end();
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    } finally {
+      onlineManager.setOnline(true);
+      back();
+    }
+  });
+
+  it("asks again at the next tick when a read of the status fails out of sight", async () => {
+    // With the app's own client: a retry would wait for the window to be visible, and the
+    // poll's later ticks would wait with it.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const api = mockApi();
+    const other = syncElsewhere(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const queryClient = createQueryClient();
+    renderRoute("/courses", { api, queryClient });
+    await seenSyncingElsewhere(queryClient);
+
+    const back = outOfSight();
+    try {
+      other.end();
+      const status = api.status.bind(api);
+      let failed = false;
+      api.status = async () => {
+        if (!failed) {
+          failed = true;
+          throw new ApiError("internal", "Synthetic failure");
+        }
+        return status();
+      };
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      await vi.waitFor(() => expect(failed).toBe(true));
+      await settle();
+      expect(sync).not.toHaveBeenCalled();
+
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    } finally {
+      back();
+    }
+  });
+
+  it("gives the others their turn when the lock is free again, though a dialog is still open", async () => {
+    // The answer taken while the other process synced said "not due" because of the lock. Left
+    // at that, clearing removed courses and Monday's note would wait behind the dialog.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const api = mockApi();
+    const other = syncElsewhere(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
+    try {
+      const { queryClient } = renderRoute("/courses", { api });
+      await seenSyncingElsewhere(queryClient);
+      const answers = () => queryClient.getQueryState(queryKeys.startupTasks())?.dataUpdateCount;
+      expect(answers()).toBe(1);
+      expect(useSyncStore.getState().clearedAnswer).toBe(0);
+
+      other.end();
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      // Asked again: a sync is due and waits for the dialog; the others needn't.
+      await vi.waitFor(() => expect(answers()).toBe(2), { timeout: 3000 });
+      await vi.waitFor(() => expect(useSyncStore.getState().clearedAnswer).toBe(2));
+      await settle();
+      expect(answers()).toBe(2);
+      expect(sync).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
+    await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
   });
 
   it("starts no second sync within half an hour, even after leaving the shell and coming back", async () => {
