@@ -78,7 +78,7 @@ import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
 
-/** A page event that stands in for the shell's "startup:check" (tests and the demo). */
+/** A page event that stands in for the shell's "startup:check" (tests dispatch it). */
 export const MOCK_STARTUP_CHECK_EVENT = "pagelamp:startup-check";
 
 export interface MockOptions {

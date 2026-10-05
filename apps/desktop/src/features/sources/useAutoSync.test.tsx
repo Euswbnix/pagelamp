@@ -1429,7 +1429,7 @@ describe("automatic sync", () => {
       return { start, api, sync, queryClient, becomeDue, hourly };
     }
 
-    it("holds a light sync back for a quarter of an hour, and no longer", async () => {
+    it("lets a light sync start at the first answer that finds it untouched for a quarter of an hour", async () => {
       const { start, sync, hourly } = await quietLaunch();
       const close = leaveDialogOpen();
       try {
@@ -1575,6 +1575,132 @@ describe("automatic sync", () => {
       await settle();
       expectNoTrace();
       expect(announced()).not.toContain("problems");
+      // The details went with the capsule; focus that was in them is on the page, not on
+      // something that is no longer shown.
+      expect(document.getElementById("main")).toHaveFocus();
+    });
+
+    /** A light run that is held until `fail()`, and then can't reach Canvas. */
+    function heldThenFailing(api: PageLampApi) {
+      let fail: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        fail = resolve;
+      });
+      const sync = vi
+        .spyOn(api, "syncAll")
+        .mockImplementation(async (_req, onEvent: (event: SyncEvent) => void) => {
+          onEvent({ type: "source_started", source_id: CANVAS, label: "Demo Canvas" });
+          await gate;
+          onEvent({
+            type: "source_finished",
+            source_id: CANVAS,
+            ok: false,
+            error: "Synthetic failure",
+            error_kind: "network",
+          });
+          const summary: SyncSummary = {
+            started_at: "2026-10-05T13:00:00Z",
+            finished_at: "2026-10-05T13:00:01Z",
+            ok: false,
+            results: [failedCanvas("network")],
+          };
+          return summary;
+        });
+      return { sync, fail: () => fail() };
+    }
+
+    /** The student syncs; afterwards a sync becomes due when the test says so. */
+    async function afterTheStudentsSync() {
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const { user, queryClient } = renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      await user.click(await screen.findByRole("button", { name: "Sync now" }));
+      const capsule = await screen.findByRole("button", { name: "Sync finished" });
+      const hourly = async () => {
+        due = true;
+        await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      };
+      return { start, api, user, capsule, hourly };
+    }
+
+    it("shows that run's problem after all when the student is back at the details before it ends", async () => {
+      const { start, api, user, capsule, hourly } = await afterTheStudentsSync();
+      await user.click(capsule);
+      const details = await screen.findByRole("dialog", { name: "Sync details" });
+
+      // Left open. Hours later the hour's light sync starts under them, watched by nobody.
+      later(start, 13 * HOUR);
+      const { sync, fail } = heldThenFailing(api);
+      await hourly();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      try {
+        expect(useSyncStore.getState().unwatched).toBe(true);
+        // The student comes back while it runs and presses in the details: they look on now.
+        input(new Event("pointerdown"));
+        expect(useSyncStore.getState().unwatched).toBe(false);
+        expect(details).toBeInTheDocument();
+      } finally {
+        // It can't reach Canvas. Nothing vanishes in front of them: the capsule says so.
+        fail();
+      }
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      expect(
+        await screen.findByRole("button", { name: "Sync finished with problems" }),
+      ).toBeInTheDocument();
+      expect(useSyncStore.getState().lastSummary).not.toBeNull();
+    });
+
+    it("changes nothing where no dialog is open: a capsule the student rests on still shows the problem", async () => {
+      const { start, api, capsule, hourly } = await afterTheStudentsSync();
+      // Focus rests on the capsule ("Sync finished" stays for that); its details are closed.
+      act(() => capsule.focus());
+      await waitFor(() => expect(useSyncStore.getState().watched).toBe(true));
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      // Hours later, with nothing in its way, the hour's light sync runs and can't reach Canvas.
+      later(start, 13 * HOUR);
+      const { sync, fail } = heldThenFailing(api);
+      await hourly();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      try {
+        expect(useSyncStore.getState().unwatched).toBe(false);
+      } finally {
+        fail();
+      }
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      expect(
+        await screen.findByRole("button", { name: "Sync finished with problems" }),
+      ).toBeInTheDocument();
+    });
+
+    it("doesn't start under it while the app is writing", async () => {
+      // Clearing removed courses, removing or restoring one: they hold the lock a sync needs.
+      const { start, sync, queryClient, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      let written: () => void = () => {};
+      const write = queryClient.getMutationCache().build(queryClient, {
+        mutationFn: () =>
+          new Promise<void>((resolve) => {
+            written = resolve;
+          }),
+      });
+      try {
+        later(start, 13 * HOUR);
+        void write.execute(undefined);
+        await waitFor(() => expect(queryClient.isMutating()).toBe(1));
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        written();
+        close();
+      }
     });
 
     it("lets the student finish what they left in the dialog while that run is going", async () => {

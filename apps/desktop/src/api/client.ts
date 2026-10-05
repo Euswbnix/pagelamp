@@ -431,10 +431,10 @@ export interface PageLampApi {
   /** Calls `onCheck` whenever the shell asks for a delivery (every 15 min, after a sleep). */
   onReminderCheck(onCheck: () => void): () => void;
   /**
-   * Calls `onCheck` at the shell's regular ticks (every 15 min; not at the one that follows a
-   * sleep). A moment at which the page may ask again what is due by itself: its own hourly
-   * timer may not run on time in a window that is out of sight. The tick says nothing about
-   * the student, and starts nothing.
+   * Calls `onCheck` when the shell's ticker says so: every 15 minutes on a clock of its own,
+   * not as the computer wakes and not in the two minutes after. A moment at which the page may
+   * ask again what is due by itself: its own hourly timer may not run on time in a window that
+   * is out of sight. The tick says nothing about the student, and starts nothing.
    */
   onStartupCheck(onCheck: () => void): () => void;
 

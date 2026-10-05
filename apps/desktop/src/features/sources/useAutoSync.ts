@@ -26,6 +26,8 @@ export const INPUT_BEFORE_FOCUS_MS = 1000;
 /**
  * The shell's tick makes the page ask again only when its last question is older than this. The
  * page's own hourly timer comes first whenever it runs on time: the tick is for when it doesn't.
+ * Where only the tick asks, the question comes 65 to 80 minutes after the last one at first
+ * (the first quarter-hour tick past the 65), and every 75 minutes from then on, not every hour.
  */
 export const TICK_REREAD_MS = 65 * 60 * 1000;
 
@@ -40,7 +42,8 @@ function studentKnownHere(): boolean {
 
 /**
  * A dialog in a window where nothing was pressed, and that didn't come to the front, for this
- * long was left open. It holds a light sync back no longer.
+ * long was left open. Nothing looks at it when the time is up: the first answer that finds it
+ * untouched for this long starts a light sync under it (the page's hour, or the shell's tick).
  */
 export const DIALOG_LEFT_MS = 15 * 60 * 1000;
 
@@ -54,12 +57,13 @@ function dialogOpen(): boolean {
  * starts the same sync as the Sync button, marked with what triggered it:
  *
  * - attended: the student just did something here: opened PageLamp, closed "What's new",
- *   changed the setting, or pressed, typed or scrolled in its window. Attended needs a real
- *   input in the window; after a hidden start or a focus, the first one counts (the ones after
- *   it say nothing new). Each is noted where it happens, never inferred from what an answer
- *   says;
- * - unattended: the hourly re-read, always, also with the window in front (asked by this page's
- *   timer, or at the shell's tick when that timer is late); a launch the student didn't see
+ *   changed the setting, or pressed, typed or scrolled in its window. Attended needs something
+ *   the student did: opening PageLamp in a window that is shown, or a real input in the
+ *   window; after a hidden start or a focus, the first input counts (the ones after it say
+ *   nothing new). Each is noted where it happens, never inferred from what an answer says;
+ * - unattended: the regular re-read, always, also with the window in front (asked by this
+ *   page's timer once an hour, or at the shell's tick when that timer is late, which then
+ *   comes to every 75 minutes: `TICK_REREAD_MS`); a launch the student didn't see
  *   (the window started hidden); a page that was loaded again, which the system does by
  *   itself; and a window that gained focus, which it can with nobody there (another app quits
  *   at night and this window comes to the front). Those wait for the student's first input.
@@ -72,12 +76,13 @@ function dialogOpen(): boolean {
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
  * "What's new"); it asks again when that is over and lets the new answer decide. One thing in
  * the way gives way: a dialog that was plainly left open (nothing pressed in the window, and
- * the window not come to the front, for a quarter of an hour) holds a light sync back no
- * longer; a full sync waits for every dialog. It never opens anything, shows no message and
- * takes no focus; a run that goes wrong stays quiet (stores/sync).
+ * the window not come to the front, for a quarter of an hour). The first answer that finds it
+ * so starts a light sync under it; a full sync waits for every dialog. It never opens
+ * anything, shows no message and takes no focus; a run that goes wrong stays quiet
+ * (stores/sync).
  * Nothing else may start a sync without the student: no link, argument or event. An event from
  * the shell can make this hook ask the facade again (the ticker's does, as this page's own
- * timer does); only the student's input makes a run attended.
+ * timer does); only what the student does makes a run attended.
  *
  * Mount once, in the app shell (so never during onboarding, which runs the first sync itself).
  */
@@ -261,8 +266,9 @@ export function useAutoSync() {
     () =>
       api.onStartupCheck(() => {
         const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
-        // No question was asked yet (the launch asks), or one is on its way: several ticks at
-        // once, after a sleep, ask once.
+        // No question was asked yet (the launch asks), or one is on its way. The shell sends
+        // one tick a quarter of an hour at most; they pile up when this page was suspended,
+        // and then ask once.
         if (state?.fetchStatus !== "idle") return;
         const asked = Math.max(state.dataUpdatedAt, state.errorUpdatedAt);
         if (!asked) return;
@@ -281,6 +287,8 @@ export function useAutoSync() {
     () =>
       api.onStudentInput(() => {
         lastInputAt.current = Date.now();
+        // They are back: a run that started with nobody here is watched like any other again.
+        if (useSyncStore.getState().unwatched) useSyncStore.setState({ unwatched: false });
         if (awaitingInput.current) studentIsHere(false);
       }),
     [api, studentIsHere],
@@ -381,13 +389,14 @@ export function useAutoSync() {
       clear();
       return;
     }
-    // Under a dialog that was left, nobody is watching this run, whatever is open: the
-    // capsule's own details are such a dialog, and the store would take them for the student
-    // looking on and keep a run that goes wrong on screen.
-    if (blocked && leftDialog) useSyncStore.setState({ watched: false });
     // Afterwards the cached answer must stop saying "due" (and the others get their turn on
-    // the answer that follows, however this run ends).
-    void startSync(undefined, { automatic: trigger }).then(reread);
+    // the answer that follows, however this run ends). Under a dialog that was left, nobody is
+    // watching this run, whatever is open: the capsule's own details are such a dialog, and
+    // would be taken for the student looking on. The run carries that mark (`unwatched`) until
+    // the student's next input.
+    void startSync(undefined, { automatic: trigger, unwatched: blocked && leftDialog }).then(
+      reread,
+    );
   }, [
     answer,
     loaded,

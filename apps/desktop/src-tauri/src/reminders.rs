@@ -25,7 +25,7 @@ pub const CHECK_EVENT: &str = "reminders:check";
 /// automatic sync among it). The page asks on its own hourly timer; a window that is out of
 /// sight may not run that timer on time. The event carries nothing and starts nothing. An event
 /// from the shell can make the page ask the facade; what a run is started as is the page's to
-/// decide, and only the student's input makes a run attended.
+/// decide, and only what the student does makes a run attended.
 pub const STARTUP_CHECK_EVENT: &str = "startup:check";
 /// How often the ticker looks at the clock.
 const TICK: Duration = Duration::from_secs(60);
@@ -73,8 +73,10 @@ impl Ticker {
         }
     }
 
-    /// What to ask for now: 15 minutes after the last time, at once after a sleep, and when the
-    /// clock went back (a check "in the future" would otherwise wait for it).
+    /// What to ask for now. A delivery: 15 minutes after the last time, at once after a sleep,
+    /// and when the clock went back (a check "in the future" would otherwise wait for it). A
+    /// look at what is due: 15 minutes after the last one too, but never at the tick that
+    /// follows a sleep or a clock that went back; two minutes later, if one is due by then.
     pub fn tick(&mut self, now: DateTime<Utc>) -> Asks {
         let gap = now - self.last_tick;
         let woke = gap > WOKE_AFTER || gap < TimeDelta::zero();
