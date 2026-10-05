@@ -481,6 +481,12 @@ export interface PageLampApi {
    * hours later, by itself, is not the student opening PageLamp.
    */
   pageLoadedAt(): number;
+  /**
+   * The same moment on the clock that only runs forward (whole ms, as `steadyNow` in
+   * stores/sync reads it). How long ago the page loaded is the longer of what the two clocks
+   * say: the wall clock counts a sleep, and this one isn't moved when the wall clock is set.
+   */
+  pageLoadedSteady(): number;
   /** Show the folder with PageLamp's log files in Finder / Explorer. */
   revealLogsDir(): Promise<void>;
   /**

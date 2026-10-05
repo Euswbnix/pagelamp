@@ -172,6 +172,7 @@ function canvasAddress(input: string): URL {
 export function createMockApi(options: MockOptions = {}): PageLampApi {
   // The mock stands for one page load: it "loaded" when it was made.
   const loadedAt = Date.now();
+  const loadedSteady = Math.floor(performance.now());
   const scenario = options.scenario ?? "demo";
   const latency = options.latencyMs ?? 250;
   const syncStep = options.syncStepMs ?? 350;
@@ -1421,6 +1422,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     startedHidden: () => options.startedHidden ?? false,
     firstPageLoad: async () => !(options.reloaded ?? false),
     pageLoadedAt: () => loadedAt,
+    pageLoadedSteady: () => loadedSteady,
     revealLogsDir: async () => {},
     updaterStatus: () =>
       respond(() => ({

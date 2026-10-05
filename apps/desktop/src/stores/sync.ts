@@ -160,7 +160,7 @@ export function studentKnownHere(): boolean {
  * can have fractions, and sums of those don't come out exact: a mark noted at 2770.8 would lie
  * 30000.000000000004 ms ahead at that same reading, over its bound.
  */
-function steadyNow(): number {
+export function steadyNow(): number {
   return Math.floor(performance.now());
 }
 

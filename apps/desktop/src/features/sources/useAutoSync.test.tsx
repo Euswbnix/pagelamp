@@ -74,11 +74,37 @@ function startClock(): Date {
   const start = new Date(2026, 9, 5, 9, 0);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(start);
+  // The clock that only runs forward is the tests' too, moved along with the date by `later`.
+  steady = STEADY_START;
+  vi.spyOn(performance, "now").mockImplementation(() => steady);
   return start;
 }
 
+/** Where the steady clock stands when `startClock` is called (the page loaded a minute before). */
+const STEADY_START = 60_000;
+let steady = STEADY_START;
+
+/** Time passes: it is `ms` after `start`, on both clocks. */
 function later(start: Date, ms: number) {
+  if (ms < 0) throw new Error("time doesn't go back: use clockSetTo for a clock that was set");
   vi.setSystemTime(new Date(start.getTime() + ms));
+  steady = STEADY_START + ms;
+}
+
+/** Time passes from where both clocks are now (also after `clockSetTo`). */
+function pass(ms: number) {
+  vi.setSystemTime(new Date(Date.now() + ms));
+  steady += ms;
+}
+
+/** The clock is set: the wall clock shows `ms` after `start`. No time passes. */
+function clockSetTo(start: Date, ms: number) {
+  vi.setSystemTime(new Date(start.getTime() + ms));
+}
+
+/** The computer sleeps: the wall clock goes on, the steady one stands still. */
+function sleep(ms: number) {
+  vi.setSystemTime(new Date(Date.now() + ms));
 }
 
 /** The window comes to the front. Nobody need be at the computer for that. */
@@ -631,9 +657,6 @@ describe("automatic sync", () => {
 
   it("starts no full sync when a clock that was set back shows the launch's half minute again", async () => {
     const start = startClock();
-    // The clock that only runs forward, moved by hand like the wall clock.
-    let steady = 10_000;
-    vi.spyOn(performance, "now").mockImplementation(() => steady);
     const api = mockApi();
     const sync = vi.spyOn(api, "syncAll");
     const { queryClient } = renderRoute("/courses", { api });
@@ -643,8 +666,8 @@ describe("automatic sync", () => {
 
     // Ten minutes after the launch the clock is set back an hour. Fifty minutes on it shows
     // ten seconds after the launch again: an hour has passed, and nobody is here.
-    steady += HOUR;
-    later(start, 10_000);
+    later(start, HOUR);
+    clockSetTo(start, 10_000);
     alwaysDue(api);
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
@@ -663,11 +686,11 @@ describe("automatic sync", () => {
     // The clock goes back an hour: the launch's mark now lies an hour ahead. Then the student
     // clicks the window to the front; the press reaches the page a moment before the focus,
     // and is noted afterwards for when it was. The old mark is the larger number.
-    later(start, -HOUR);
+    clockSetTo(start, -HOUR);
     expect(studentKnownHere()).toBe(false);
     alwaysDue(api);
     input(new Event("pointerdown"));
-    later(start, -HOUR + 200);
+    pass(200);
     focusWindow();
     expect(studentKnownHere()).toBe(true);
 
@@ -695,7 +718,7 @@ describe("automatic sync", () => {
 
     // The clock goes back an hour. The answer now lies an hour ahead, and says nothing about
     // how old it is: the focus asks. Nobody pressed anything, so what is due starts unattended.
-    later(start, -HOUR);
+    clockSetTo(start, -HOUR);
     alwaysDue(api);
     focusWindow();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
@@ -885,6 +908,33 @@ describe("automatic sync", () => {
     renderRoute("/courses", { api });
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+  });
+
+  it("dates a late launch as old though the clock, set back, shows it as recent", async () => {
+    // Three hours pass before the shell appears, and the clock was set back by about as much:
+    // the wall clock says the page loaded ten seconds ago.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 3 * HOUR);
+    clockSetTo(start, 10_000);
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("dates a late launch as old though the computer slept through the wait", async () => {
+    // The steady clock may have stood still through the sleep: it says the page just loaded.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    later(start, 5_000);
+    sleep(8 * HOUR);
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(studentKnownHere()).toBe(false);
   });
 
   it("takes 'Try again' on a failed start for the student being here, however old the launch", async () => {
@@ -1227,6 +1277,51 @@ describe("automatic sync", () => {
     const noted = useSyncStore.getState().attendedUntil;
 
     later(start, 11 * HOUR);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
+  it("doesn't take a press from before a sleep for the one that woke the window", async () => {
+    // The lid is closed right after a press. Opened hours later, the window gains focus by
+    // itself; on the steady clock, which may have stood still, the press is a moment old.
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    later(start, HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    const noted = useSyncStore.getState().attendedUntil;
+
+    pass(300);
+    sleep(8 * HOUR);
+    alwaysDue(api);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
+  it("doesn't take an old press for the one that raised the window when the clock is set back", async () => {
+    // The wall clock, set back, shows the evening's last press as half a second ago.
+    const start = startClock();
+    const api = mockApi();
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    later(start, HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, 11 * HOUR);
+    clockSetTo(start, HOUR + 500);
+    alwaysDue(api);
     focusWindow();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
@@ -1819,14 +1914,51 @@ describe("automatic sync", () => {
       await waitFor(() => expect(one).toHaveBeenCalledTimes(1));
     });
 
-    it("takes a clock that went back for a dialog left open: nothing can be told then", async () => {
+    it("doesn't take a dialog the student is typing in for left when the clock is set back", async () => {
+      // On the wall clock every dialog would look left for as long as the clock is behind.
       const { start, sync, hourly } = await quietLaunch();
       const close = leaveDialogOpen();
       try {
-        later(start, -HOUR);
+        later(start, 2 * HOUR);
+        input(new KeyboardEvent("keydown", { key: "a" }));
+        // An hour back: on the wall clock their last key lies an hour ahead.
+        clockSetTo(start, HOUR);
+        pass(MINUTE);
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+      } finally {
+        close();
+      }
+    });
+
+    it("counts the quarter of an hour on the steady clock, whatever the wall clock is set to", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        // Set forward by a day: no time has passed, and nothing was left.
+        later(start, MINUTE);
+        clockSetTo(start, 24 * HOUR);
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
+        // Set back by a day, and a quarter of an hour passes: it was.
+        clockSetTo(start, -24 * HOUR);
+        pass(DIALOG_LEFT_MS);
         await hourly();
         await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
         expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      } finally {
+        close();
+      }
+    });
+
+    it("waits when the computer slept: the steady clock may have stood still", async () => {
+      const { start, sync, hourly } = await quietLaunch();
+      const close = leaveDialogOpen();
+      try {
+        later(start, 5 * MINUTE);
+        sleep(8 * HOUR);
+        await hourly();
+        expect(sync).not.toHaveBeenCalled();
       } finally {
         close();
       }
@@ -1941,7 +2073,7 @@ describe("automatic sync", () => {
 
     it("asks when the clock went back", async () => {
       const { start, asked } = await launched();
-      later(start, -HOUR);
+      clockSetTo(start, -HOUR);
       tick();
       await settle();
       expect(asked).toHaveBeenCalledTimes(2);
