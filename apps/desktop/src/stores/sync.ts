@@ -86,8 +86,13 @@ interface SyncState {
    * with the run, or with the student's next real input in the window.
    */
   unwatched: boolean;
-  /** Until when (ms) an answer to "what's due?" counts as attended: the student just acted. */
+  /**
+   * Until when (ms) an answer to "what's due?" counts as attended: the student just acted. On
+   * the wall clock; `attendedUntilSteady` is the same moment on the clock that only runs
+   * forward. Read them through `studentKnownHere`: both must hold.
+   */
   attendedUntil: number;
+  attendedUntilSteady: number;
   /**
    * The number of the `startup_tasks` answer the automatic sync has looked at and starts
    * nothing for (0: none yet). The app's other automatic work waits for it (`useAfterAutoSync`).
@@ -121,7 +126,9 @@ interface SyncState {
    * The student opened the app or did something in its window: just now, or at `at` (ms) when
    * it is noted afterwards (the launch, which happened when the page loaded; the press that
    * brought the window to the front). What is noted afterwards never takes the place of an
-   * action after it.
+   * action after it that still counts; a mark that doesn't count now (it ran out, or the clock
+   * was set back under it) is replaced. A time after now notes nothing: the clock was set back
+   * since, and how long ago it was can't be told.
    */
   noteStudentAction: (at?: number) => void;
   /** A source or a course was removed: the last run's lines may name what is gone. */
@@ -131,6 +138,31 @@ interface SyncState {
 
 /** How long after the student's action an answer to "what's due?" counts as attended. */
 export const ATTENDED_WINDOW_MS = 30_000;
+
+/**
+ * Whether the student is known to be here right now: something they did was noted within the
+ * last half minute. On two clocks, and both must say so:
+ * - the wall clock ends it when the computer slept meanwhile (the other clock may stand still
+ *   through a sleep);
+ * - the steady clock ends it when the wall clock was set back. On the wall clock alone "just
+ *   now" is false at first, and true again for half a minute when the clock passes the old
+ *   mark: with a full sync due then, it would start as attended with nobody there.
+ * Each is bounded both ways: a mark far in the future is no "just now" either.
+ */
+export function studentKnownHere(): boolean {
+  const { attendedUntil, attendedUntilSteady } = useSyncStore.getState();
+  const justNow = (left: number) => left > 0 && left <= ATTENDED_WINDOW_MS;
+  return justNow(attendedUntil - Date.now()) && justNow(attendedUntilSteady - steadyNow());
+}
+
+/**
+ * The clock that only runs forward, in whole milliseconds like the wall clock. Its readings
+ * can have fractions, and sums of those don't come out exact: a mark noted at 2770.8 would lie
+ * 30000.000000000004 ms ahead at that same reading, over its bound.
+ */
+function steadyNow(): number {
+  return Math.floor(performance.now());
+}
 
 /**
  * The least time between two automatic starts of one kind, whatever the answers say. An attended
@@ -175,6 +207,7 @@ const idle = {
   automaticProblem: false,
   watched: false,
   attendedUntil: 0,
+  attendedUntilSteady: 0,
   clearedAnswer: 0,
 } satisfies Partial<SyncState>;
 
@@ -338,12 +371,23 @@ export const useSyncStore = create<SyncState>()((set) => ({
           : { order: [], bySource: {}, lastSummary: null, runError: null, stoppedByUser: false },
     ),
   noteStudentAction: (at) =>
-    set((state) => ({
-      attendedUntil:
-        at === undefined
-          ? Date.now() + ATTENDED_WINDOW_MS
-          : Math.max(state.attendedUntil, at + ATTENDED_WINDOW_MS),
-    })),
+    set((state) => {
+      const now = Date.now();
+      // How long ago it happened, for what is noted afterwards. A time after now can't be
+      // dated (the clock was set back since it was taken): taking it for "just now" would
+      // turn a launch from long ago into the student being here. Nothing is noted.
+      const ago = at === undefined ? 0 : now - at;
+      if (ago < 0) return {};
+      const noted = {
+        attendedUntil: now - ago + ATTENDED_WINDOW_MS,
+        attendedUntilSteady: steadyNow() - ago + ATTENDED_WINDOW_MS,
+      };
+      // An action after it stays, while it counts. Which of the two came after is told on
+      // the steady clock: on the wall clock the older mark is the larger number once the
+      // clock was set back.
+      const later = studentKnownHere() && state.attendedUntilSteady >= noted.attendedUntilSteady;
+      return later ? {} : noted;
+    }),
   forgetCourseLines: () =>
     set((state) => ({
       bySource: Object.fromEntries(
