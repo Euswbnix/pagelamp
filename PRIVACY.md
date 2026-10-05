@@ -34,8 +34,9 @@ and again from everything it gives your AI app. Two limits: a parameter whose na
 an encoded form can be missed, and a material's own link (for example a link your instructor put
 in a module) is stored as it is and cleaned only on its way to your AI app. Text stored earlier
 (materials, syllabuses, saved study plans) is cleaned once after the update: the app and the
-`pagelamp` command don't open your data until that is done. PageLamp also tries to clean it before
-it makes the backup copy; if that try fails, the copy is still made and keeps the old addresses.
+`pagelamp` commands other than the MCP server don't open your data until that is done; the MCP
+server starts in any case and cleans what it gives out. PageLamp also tries to clean it before it
+makes the backup copy; if that try fails, the copy is still made and keeps the old addresses.
 
 ## What leaves your computer
 
