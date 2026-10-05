@@ -16,6 +16,8 @@ flate2 = "1.1"
 zip = { version = "8.6", default-features = false, features = ["deflate"] }
 quick-xml = "0.42"
 html2text = "0.17"
+# The link scan (`links`): the tokenizer html2text already brings in, at the same version.
+html5ever = "0.39"
 
 [target.'cfg(unix)'.dependencies]
 # The extraction worker's rlimits, CPU clock and exit.

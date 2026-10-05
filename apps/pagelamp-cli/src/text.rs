@@ -228,3 +228,69 @@ pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
         AutoSync::TwiceDaily => "twice a day, while the PageLamp app is open",
     }
 }
+
+/// The second line of a course in the sync summary: what a Canvas sync found through links,
+/// what it noted as not read, and which lists the course hides. `None` when there is nothing
+/// to say.
+pub fn coverage_line(course: &pagelamp_core::source::CourseSyncSummary) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    let hidden = match (course.pages_hidden, course.files_hidden) {
+        (true, true) => Some("Pages and Files lists hidden"),
+        (true, false) => Some("Pages list hidden"),
+        (false, true) => Some("Files list hidden"),
+        (false, false) => None,
+    };
+    parts.extend(hidden.map(str::to_string));
+    if course.linked_pages > 0 || course.linked_files > 0 {
+        parts.push(format!(
+            "found through links: {} page(s), {} file(s)",
+            course.linked_pages, course.linked_files
+        ));
+    }
+    if course.not_read > 0 {
+        parts.push(format!("{} not read", course.not_read));
+    }
+    (!parts.is_empty()).then(|| parts.join(" · "))
+}
+
+#[cfg(test)]
+mod tests {
+    use pagelamp_core::source::CourseSyncSummary;
+
+    use super::coverage_line;
+
+    #[test]
+    fn the_coverage_line_says_only_what_there_is_to_say() {
+        let quiet = CourseSyncSummary {
+            course: "DEMO101".into(),
+            pages: 3,
+            files: 2,
+            ..CourseSyncSummary::default()
+        };
+        assert_eq!(coverage_line(&quiet), None);
+        let hidden = CourseSyncSummary {
+            linked_pages: 2,
+            linked_files: 3,
+            not_read: 14,
+            pages_hidden: true,
+            files_hidden: true,
+            ..quiet.clone()
+        };
+        assert_eq!(
+            coverage_line(&hidden).as_deref(),
+            Some(
+                "Pages and Files lists hidden · found through links: 2 page(s), 3 file(s) · \
+                 14 not read"
+            )
+        );
+        let one = CourseSyncSummary {
+            files_hidden: true,
+            not_read: 1,
+            ..quiet
+        };
+        assert_eq!(
+            coverage_line(&one).as_deref(),
+            Some("Files list hidden · 1 not read")
+        );
+    }
+}

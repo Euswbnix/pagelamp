@@ -153,9 +153,10 @@ pub struct SyncDue {
     /// From the app's timer (`AutoSyncTrigger::Unattended`): deadlines and announcements are
     /// the interval old.
     pub unattended: bool,
-    /// When the student is at the app: it was just opened or brought to the front, or What's
-    /// new was just closed (`AutoSyncTrigger::Attended`). Ask for this one first then. The
-    /// last full sync is the interval old, or a course waits for its first one.
+    /// When the student is at the app (`AutoSyncTrigger::Attended`): they just opened it, did
+    /// something in its window after it came to the front, closed What's new or changed the
+    /// setting. Ask for this one first then. The last full sync is the interval old, or a
+    /// course waits for its first one.
     pub attended: bool,
 }
 
