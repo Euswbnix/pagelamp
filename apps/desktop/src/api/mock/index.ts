@@ -18,6 +18,7 @@
 // Secrets passed to this mock (tokens, feed URLs) are validated and then dropped — never stored,
 // never logged.
 
+import { listenForStudentInput } from "@/lib/studentInput";
 import { type EstimateRequest, sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
@@ -1311,6 +1312,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       window.addEventListener("focus", handler);
       return () => window.removeEventListener("focus", handler);
     },
+    // A test can only dispatch events of its own, so those count here.
+    onStudentInput: (onInput) => listenForStudentInput(onInput, false),
     startedHidden: () => options.startedHidden ?? false,
     firstPageLoad: async () => !(options.reloaded ?? false),
     pageLoadedAt: () => loadedAt,
