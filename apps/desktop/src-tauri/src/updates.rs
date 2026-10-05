@@ -45,7 +45,9 @@ const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// ...or when nothing has arrived for this long. A download that got stuck would otherwise keep
 /// the install dialog open, with Cancel off and every sync refused, until PageLamp is quit.
-const STALL_TIMEOUT: Duration = Duration::from_secs(60);
+/// Two minutes, not less: a scanner between PageLamp and the network may take the whole package
+/// (35 MB for macOS) before it lets the first byte through.
+const STALL_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The real version of this build.
 pub fn current_version() -> Version {
