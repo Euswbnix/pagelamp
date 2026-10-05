@@ -142,9 +142,12 @@ export function useAutoSync() {
     (unattendedToo: boolean) => {
       const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
       const due = state?.data?.sync_due;
+      // An answer dated after now (the clock was set back since) is as good as an old one.
+      const age = state?.dataUpdatedAt ? Date.now() - state.dataUpdatedAt : null;
       if (
-        !state?.dataUpdatedAt ||
-        Date.now() - state.dataUpdatedAt > FOCUS_REREAD_MS ||
+        age === null ||
+        age > FOCUS_REREAD_MS ||
+        age < 0 ||
         due?.attended ||
         (unattendedToo && due?.unattended)
       ) {
@@ -264,7 +267,8 @@ export function useAutoSync() {
     }
     // A backstop next to the facade's own clock: not so soon after the last automatic start
     // of this kind or the last attended one, nor right after the student stopped a sync.
-    // (Bounded like the window above.)
+    // (On the wall clock alone, bounded both ways: a clock set back by more than the half
+    // hour ends the hold early.)
     const hold = store.noAutomaticBefore[trigger] - Date.now();
     if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) return;
     // Afterwards the cached answer must stop saying "due".

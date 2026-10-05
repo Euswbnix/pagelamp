@@ -506,7 +506,7 @@ describe("automatic sync", () => {
     const start = startClock();
     const api = mockApi();
     const sync = vi.spyOn(api, "syncAll");
-    const { queryClient } = renderRoute("/courses", { api });
+    renderRoute("/courses", { api });
     await screen.findByRole("heading", { level: 1 });
     await settle();
     expect(sync).not.toHaveBeenCalled();
@@ -516,16 +516,41 @@ describe("automatic sync", () => {
     // and is noted afterwards for when it was. The old mark is the larger number.
     later(start, -HOUR);
     expect(studentKnownHere()).toBe(false);
+    alwaysDue(api);
     input(new Event("pointerdown"));
     later(start, -HOUR + 200);
     focusWindow();
     expect(studentKnownHere()).toBe(true);
 
-    // So an answer that comes now may start the full sync.
-    alwaysDue(api);
-    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    // The last answer is dated an hour after now, which is no fresh answer: the question is
+    // asked, and the full sync that is due starts.
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("asks at a focus when the last answer is dated after now: the clock was set back", async () => {
+    const start = startClock();
+    const api = mockApi();
+    const tasks = vi.spyOn(api, "startupTasks");
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+    expect(tasks).toHaveBeenCalledTimes(1);
+
+    // A minute after the launch a focus asks nothing: the answer is fresh.
+    later(start, MINUTE);
+    focusWindow();
+    await settle();
+    expect(tasks).toHaveBeenCalledTimes(1);
+
+    // The clock goes back an hour. The answer now lies an hour ahead, and says nothing about
+    // how old it is: the focus asks. Nobody pressed anything, so what is due starts unattended.
+    later(start, -HOUR);
+    alwaysDue(api);
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
   });
 
   it("asks from the hourly timer itself, also with the window out of sight", async () => {

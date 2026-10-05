@@ -114,7 +114,8 @@ interface SyncState {
    * it is noted afterwards (the launch, which happened when the page loaded; the press that
    * brought the window to the front). What is noted afterwards never takes the place of an
    * action after it that still counts; a mark that doesn't count now (it ran out, or the clock
-   * was set back under it) is replaced.
+   * was set back under it) is replaced. A time after now notes nothing: the clock was set back
+   * since, and how long ago it was can't be told.
    */
   noteStudentAction: (at?: number) => void;
   /** A source or a course was removed: the last run's lines may name what is gone. */
@@ -138,7 +139,16 @@ export const ATTENDED_WINDOW_MS = 30_000;
 export function studentKnownHere(): boolean {
   const { attendedUntil, attendedUntilSteady } = useSyncStore.getState();
   const justNow = (left: number) => left > 0 && left <= ATTENDED_WINDOW_MS;
-  return justNow(attendedUntil - Date.now()) && justNow(attendedUntilSteady - performance.now());
+  return justNow(attendedUntil - Date.now()) && justNow(attendedUntilSteady - steadyNow());
+}
+
+/**
+ * The clock that only runs forward, in whole milliseconds like the wall clock. Its readings
+ * can have fractions, and sums of those don't come out exact: a mark noted at 2770.8 would lie
+ * 30000.000000000004 ms ahead at that same reading, over its bound.
+ */
+function steadyNow(): number {
+  return Math.floor(performance.now());
 }
 
 /**
@@ -343,15 +353,19 @@ export const useSyncStore = create<SyncState>()((set) => ({
   noteStudentAction: (at) =>
     set((state) => {
       const now = Date.now();
-      // How long ago it happened, for what is noted afterwards (never in the future).
-      const ago = at === undefined ? 0 : Math.max(0, now - at);
+      // How long ago it happened, for what is noted afterwards. A time after now can't be
+      // dated (the clock was set back since it was taken): taking it for "just now" would
+      // turn a launch from long ago into the student being here. Nothing is noted.
+      const ago = at === undefined ? 0 : now - at;
+      if (ago < 0) return {};
       const noted = {
         attendedUntil: now - ago + ATTENDED_WINDOW_MS,
-        attendedUntilSteady: performance.now() - ago + ATTENDED_WINDOW_MS,
+        attendedUntilSteady: steadyNow() - ago + ATTENDED_WINDOW_MS,
       };
-      // An action after it stays, while it counts. Not for being the larger number: after the
-      // clock was set back, the old mark is the larger one for as long as the clock is behind.
-      const later = studentKnownHere() && state.attendedUntil >= noted.attendedUntil;
+      // An action after it stays, while it counts. Which of the two came after is told on
+      // the steady clock: on the wall clock the older mark is the larger number once the
+      // clock was set back.
+      const later = studentKnownHere() && state.attendedUntilSteady >= noted.attendedUntilSteady;
       return later ? {} : noted;
     }),
   forgetCourseLines: () =>

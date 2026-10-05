@@ -177,6 +177,92 @@ describe("whether the student is known to be here", () => {
     expect(studentKnownHere()).toBe(true);
   });
 
+  it("runs the half minute from a later action that is noted with its time", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10_000);
+    // The older mark still counts; the press 200 ms ago came after it.
+    useSyncStore.getState().noteStudentAction(Date.now() - 200);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: T0 + 10_000 - 200 + 30_000,
+      attendedUntilSteady: steady - 200 + 30_000,
+    });
+    pass(25_000);
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("replaces a mark that came round on the wall clock and ran out on the steady one", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10 * 60_000);
+    // Set back to a tenth of a second after the old action: on the wall clock the old mark
+    // has 29.9 s left, and is the larger number next to a press from 200 ms ago.
+    setClock(T0 + 100);
+    expect(studentKnownHere()).toBe(false);
+    useSyncStore.getState().noteStudentAction(Date.now() - 200);
+    expect(studentKnownHere()).toBe(true);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: T0 + 100 - 200 + 30_000,
+      attendedUntilSteady: steady - 200 + 30_000,
+    });
+  });
+
+  it("tells before from after on the steady clock when the clock went back within the half minute", () => {
+    clocks();
+    steady = 100_000;
+    // The setting is changed at 09:00:00.000. A second later the clock goes back 20 s.
+    useSyncStore.getState().noteStudentAction();
+    pass(1_000);
+    setClock(Date.now() - 20_000);
+    // The press that brings the window to the front, at 119 500 on the steady clock, is
+    // noted at the focus 700 ms later. The old mark still counts (9.8 s on the steady clock)
+    // and is the larger number on the wall clock; the press came after it all the same.
+    pass(18_500);
+    expect(steady).toBe(119_500);
+    const pressed = Date.now();
+    pass(700);
+    useSyncStore.getState().noteStudentAction(pressed);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: pressed + 30_000,
+      attendedUntilSteady: 149_500,
+    });
+    // 29.3 s from here, not the 9.8 s the old mark had left.
+    pass(20_000);
+    expect(studentKnownHere()).toBe(true);
+    pass(10_000);
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("notes nothing for a time after now, and leaves a mark that counts alone", () => {
+    clocks();
+    // A launch from "an hour ahead": the clock was set back since the page loaded.
+    useSyncStore.getState().noteStudentAction(Date.now() + HOUR);
+    expect(useSyncStore.getState()).toMatchObject({ attendedUntil: 0, attendedUntilSteady: 0 });
+    expect(studentKnownHere()).toBe(false);
+    // Also by a second, where the mark it would make looks like "just now".
+    useSyncStore.getState().noteStudentAction(Date.now() + 1_000);
+    expect(studentKnownHere()).toBe(false);
+
+    useSyncStore.getState().noteStudentAction();
+    const mark = { ...useSyncStore.getState() };
+    useSyncStore.getState().noteStudentAction(Date.now() + 1_000);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: mark.attendedUntil,
+      attendedUntilSteady: mark.attendedUntilSteady,
+    });
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("holds at the reading it was noted at, though the steady clock gives fractions", () => {
+    clocks();
+    // (2770.8 + 30000) - 2770.8 is a hair over 30000.
+    steady = 2770.8;
+    useSyncStore.getState().noteStudentAction();
+    expect(studentKnownHere()).toBe(true);
+    useSyncStore.getState().noteStudentAction(Date.now());
+    expect(studentKnownHere()).toBe(true);
+  });
+
   it("replaces a mark the clock was set back under by what is noted afterwards", () => {
     clocks();
     useSyncStore.getState().noteStudentAction();
