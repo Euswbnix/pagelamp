@@ -36,7 +36,7 @@ use crate::{App, AppError, AppErrorKind, Result, SyncRequest};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LostAfterPurge {
-    /// Announcements older than the sync window (120 days).
+    /// Announcements older than the sync window (365 days).
     OldAnnouncements,
     /// Files the course may lock after it ends.
     LockedFiles,

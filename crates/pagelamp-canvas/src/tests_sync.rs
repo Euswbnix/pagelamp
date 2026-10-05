@@ -728,11 +728,19 @@ async fn every_request_is_an_allow_listed_get() {
     f.standard().await;
     f.downloads().await;
     f.sync(&f.options(true)).await.unwrap();
+    assert_only_allow_listed_gets(&f).await;
+}
+
+/// Every request Canvas got is a GET of the allow-list that carries the token, and the
+/// storage server never got the token.
+async fn assert_only_allow_listed_gets(f: &Fixture) {
     let allowed = regex::Regex::new(
-        r"^/api/v1/(users/self|courses|courses/\d+/(tabs|modules|modules/\d+/items|files|files/\d+|pages|pages/[^/]+|assignments)|announcements|planner/items)$|^/files/\d+/download$",
+        r"^/api/v1/(users/self|courses|courses/\d+/(tabs|modules|modules/\d+/items|files|files/\d+|pages|pages/[^/]+|front_page|assignments)|announcements|planner/items)$|^/files/\d+/download$",
     )
     .unwrap();
-    for request in f.canvas.received_requests().await.unwrap() {
+    let requests = f.canvas.received_requests().await.unwrap();
+    assert!(!requests.is_empty());
+    for request in requests {
         assert_eq!(request.method.as_str(), "GET");
         assert!(
             allowed.is_match(request.url.path()),
@@ -2095,24 +2103,49 @@ async fn n_old_announcements_outside_the_window_are_kept() {
     let f = Fixture::new().await;
     f.standard().await;
     f.sync(&f.options(false)).await.unwrap();
-    // An announcement from last term, stored by an earlier sync.
+    // Announcements stored by an earlier sync that Canvas no longer lists: one from before the
+    // window (a year), one inside it.
     let store = f.store();
-    let old = MaterialUpsert {
-        id: format!("{}/announcement/42", f.source),
-        course_id: course101(&f),
-        module_id: None,
-        kind: MaterialKind::Announcement,
-        title: "Welcome back".into(),
-        url: None,
-        local_path: None,
-        mime: None,
-        published_at: Some(Utc::now() - TimeDelta::days(200)),
-        week_hint: None,
-    };
-    store.upsert_material(&old).unwrap();
+    for (id, days) in [(42, 400), (43, 200)] {
+        let old = MaterialUpsert {
+            id: format!("{}/announcement/{id}", f.source),
+            course_id: course101(&f),
+            module_id: None,
+            kind: MaterialKind::Announcement,
+            title: "Welcome back".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: Some(Utc::now() - TimeDelta::days(days)),
+            week_hint: None,
+        };
+        store.upsert_material(&old).unwrap();
+    }
     f.sync(&f.options(false)).await.unwrap();
     assert!(has_material(&f, "/announcement/42"));
+    assert!(!has_material(&f, "/announcement/43"), "inside the window");
     assert!(!has_material(&f, "/announcement/999"));
+    // The window Canvas is asked for is a year.
+    let asked = f
+        .canvas
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .rev()
+        .find(|request| request.url.path() == "/api/v1/announcements")
+        .unwrap();
+    let start = asked
+        .url
+        .query_pairs()
+        .find(|(name, _)| name == "start_date")
+        .unwrap()
+        .1
+        .to_string();
+    assert_eq!(
+        start,
+        (Utc::now().date_naive() - TimeDelta::days(365)).to_string()
+    );
 }
 
 // ----- diagnostics never leak (pagelamp sync -v) -------------------------------------------
@@ -2404,12 +2437,13 @@ async fn every_module_item_type_locked_items_and_embeds() {
             .iter()
             .any(|m| m.name == "Week 5" && m.unlock_at.is_some())
     );
+    // A hidden list is no warning: the course's summary line names it.
     assert!(
-        report
-            .warnings
-            .iter()
-            .any(|w| w.contains("Files tab hidden"))
+        !report.warnings.iter().any(|w| w.contains("hidden")),
+        "{:?}",
+        report.warnings
     );
+    assert!(report.course_summaries[0].files_hidden);
 }
 
 #[tokio::test]
@@ -2538,3 +2572,7 @@ async fn p_a_stopped_sync_ends_between_courses_as_cancelled() {
     // It stopped before the first course: nothing was written for any course.
     assert!(f.store().list_courses(true).unwrap().is_empty());
 }
+
+// What a sync reads of a course and what it notes as not read (`cover`).
+#[path = "tests_cover.rs"]
+mod cover;

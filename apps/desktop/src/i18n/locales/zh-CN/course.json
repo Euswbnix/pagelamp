@@ -154,5 +154,62 @@
     "someSkipped": "有些文件没能下载",
     "moreWarnings_one": "……还有 {{count}} 条",
     "moreWarnings_other": "……还有 {{count}} 条"
+  },
+  "notRead": {
+    "title": "{{product}} 没有读取的部分",
+    "asOf": "{{product}} 上一次完整读取这门课是在{{when}}。",
+    "home": {
+      "read": "{{product}} 读取了这门课的主页。",
+      "locked": "这门课的主页在 Canvas 中被锁定，{{product}} 只有它的标题。"
+    },
+    "lists": {
+      "pages": "这门课在 Canvas 中没有开放“页面”列表。{{product}} 找到了模块和链接指向的页面，其余的它看不到。",
+      "files": "这门课在 Canvas 中没有开放“文件”列表。{{product}} 找到了模块和链接指向的文件，其余的它看不到。",
+      "both": "这门课在 Canvas 中没有开放“页面”和“文件”列表。{{product}} 找到了模块和链接指向的页面和文件，其余的它看不到。"
+    },
+    "linkedNote": "通过链接找到的页面和文件，不一定出现在上面某一周的列表里。",
+    "download_one": "这门课有 {{count}} 个文件还没下载。",
+    "download_other": "这门课有 {{count}} 个文件还没下载。",
+    "onlyNever": "这里只有 {{product}} 从不读取的部分，比如作业、测验和成绩。",
+    "homeTitle": "课程主页",
+    "group": {
+      "yours": "等你处理的",
+      "failed": "上次没能读取的",
+      "cant": "{{product}} 读不了的",
+      "gone": "Canvas 中已经没有的",
+      "never": "{{product}} 从不读取的"
+    },
+    "mustView": "模块要求你“查看”下面这些页面。你在 Canvas 中看过之后，{{product}} 会在下一次完整同步时读取；替你读取可能会让它被算作“已查看”。",
+    "mustViewLink": "一个可能打开这类页面的链接",
+    "failedNote": "下一次完整同步时会再试。",
+    "failed": {
+      "pagesList": "“页面”列表",
+      "filesList": "“文件”列表",
+      "modulesList": "模块列表",
+      "pagesAll": "这门课的页面：{{product}} 没能确认哪些是模块要求你“查看”的，所以这次一个也没有读取。"
+    },
+    "lockedPages": "在 Canvas 中被锁定，{{product}} 只有它们的标题。",
+    "lockedFiles_one": "有 {{count}} 个文件在 Canvas 中被锁定。",
+    "lockedFiles_other": "有 {{count}} 个文件在 Canvas 中被锁定。",
+    "tooLarge_one": "有 {{count}} 个文件太大，无法下载。",
+    "tooLarge_other": "有 {{count}} 个文件太大，无法下载。",
+    "pastLimit": "{{product}} 在每门课里只打开有限数量的链接，也不会从链接到的页面继续往下打开。下面这些超出了这个范围。其中一些以后的同步能读到，大部分不会。",
+    "cutShort": "{{product}} 读取了下面这些内容，但里面的链接太多，后面的链接它没有打开：",
+    "goneNote": "{{product}} 里已有的内容会保留。",
+    "never": {
+      "assignments": "作业和测验：{{product}} 只保留标题、截止日期和链接。",
+      "parts": "成绩、人员和讨论：{{product}} 不读取。",
+      "menu": "课程菜单里的其他栏目：{{product}} 不读取。",
+      "tools": "来自其他服务的工具在 Canvas 之外打开，{{product}} 不读取：",
+      "otherCourse": "指向其他课程的链接（{{product}} 每门课分开读取）："
+    },
+    "other": "{{product}} 没有读取的其他内容",
+    "untitled": {
+      "page": "一个页面",
+      "file": "一个文件",
+      "item": "一项内容"
+    },
+    "more_one": "……还有 {{count}} 项没有列在这里。",
+    "more_other": "……还有 {{count}} 项没有列在这里。"
   }
 }

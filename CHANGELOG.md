@@ -24,6 +24,21 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   start a sync, or when you open PageLamp or bring it to the front and the last full sync is old
   enough. A course found in between is listed at once and says that its materials haven't been
   read yet. After you stop a sync, nothing starts by itself for an hour.
+- Canvas: PageLamp reads the page a course's Home shows, and the pages of the same course that
+  the Home page, the syllabus, other pages and announcements link to (one step, within limits).
+  Files they link to are listed, not downloaded. This is how notes and files are found in a
+  course that hides its Pages or Files list; PageLamp still never asks for a hidden list.
+- What PageLamp didn't read of a Canvas course is recorded with a reason. `pagelamp sync` prints
+  a line per course with what it found through links and how many things it couldn't read; your
+  AI app gets the list with the reasons and is told not to guess at it.
+- In the app, after a sync the row of a Canvas source has a line for each course that doesn't
+  show its Pages or Files list in Canvas, or where pages and files were found through links;
+  the course's page says in its header which lists aren't shown.
+- In the app, a Canvas course's page lists what PageLamp didn't read of the course and why
+  ("What PageLamp didn't read", at the end of This week): what waits for you, what couldn't be
+  read last time, what PageLamp can't read, and what it never reads. When a sync left something
+  unread that went wrong or waits for you, the course's line on the sync row leads there.
+- MCP: a new read-only tool, `list_materials`, lists every material of a course, 50 at a time.
 - A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
   turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this
   week. On Windows 11 22H2 and later the window uses Mica; "Reduce transparency" in Settings (or
@@ -50,6 +65,21 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
   materials haven't been read yet (`structure_pending`), and so does `search_materials` when a
   search in that one course finds nothing. The hints no longer
   suggest running `pagelamp sync`: an AI app must not sync for the student.
+- Canvas: a page that a module asks you to view is no longer read until you have viewed it in
+  Canvas; as far as we can tell, reading it for you could mark it as viewed. Such pages are
+  listed as not read. In two cases PageLamp can't know beforehand: the first time it reads a
+  course's Home page, and when a link uses an old address of such a page. If it opened one, the
+  sync says so.
+- Canvas: a sync asks for a course's announcements of the last 365 days (was 120). Older ones
+  PageLamp already has are kept, as before.
+- In the app, a Canvas file you can still download is labelled "Not downloaded yet" (was "Not
+  downloaded"); locked and too-large files keep their own labels.
+- Canvas: after this update, a page that hasn't changed is read once more in a course that hides
+  its Files list, to find the files it links to. Canvas may record that as one more view.
+- MCP: `course_overview` names the course's Home page and syllabus (`home`, `syllabus`), counts
+  its announcements and lists what PageLamp didn't read (`not_readable`, with reasons).
+  `get_announcements` takes an `offset` and says which announcements it shows of how many.
+  `read_material` says when a file isn't downloaded, and why.
 - `pagelamp courses` groups courses into Current, Upcoming and Past; past courses (also in
   `--json`) are listed with `--past` or `--all`. `pagelamp course term` dates mean the first and
   last day of classes.

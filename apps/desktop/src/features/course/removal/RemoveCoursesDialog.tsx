@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useReturnFocus } from "@/lib/focus";
 import { useApiErrorText } from "@/lib/useApiErrorText";
+import { useSyncStore } from "@/stores/sync";
 import { evidenceText } from "../timeline/evidence";
 import { formatBytes } from "./format";
 
@@ -133,6 +134,8 @@ export function RemoveCoursesDialog({
           delete_pre_update_backup: !!backup && backupChecked,
         },
       });
+      // The last sync's lines may name a course that is gone now.
+      useSyncStore.getState().forgetCourseLines();
       onOpenChange(false);
       announce(report);
       onRemoved?.(report);
