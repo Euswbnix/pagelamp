@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useStopSync, useSyncActivity, useSyncStore } from "@/stores/sync";
 import { type InstallState, useInstallUpdate, useUpdateStore } from "@/stores/updates";
+import { useUpdateErrorLine } from "./errorLine";
 
 /**
  * "Install PageLamp x.y.z?": the only way an update gets installed (decision D2: always ask).
@@ -58,8 +59,11 @@ export function InstallUpdateDialog({
 
   const openChange = (next: boolean) => {
     if (working) return;
-    // Closing is "not now": nothing installs behind the student's back.
-    if (!next && install.phase === "held") useUpdateStore.setState({ install: { phase: "idle" } });
+    // Closing is "not now": nothing installs behind the student's back, and a failed install
+    // is over (the notice that an update is available comes back; it hides during an install).
+    if (!next && (install.phase === "held" || install.phase === "failed")) {
+      useUpdateStore.setState({ install: { phase: "idle" } });
+    }
     onOpenChange(next);
   };
 
@@ -119,7 +123,7 @@ export function InstallUpdateDialog({
 /** `heldId`: the held message describes the Install button, as the sync hint does otherwise. */
 function InstallProgress({ install, heldId }: { install: InstallState; heldId: string }) {
   const { t } = useTranslation("updates");
-  const { t: tc } = useTranslation();
+  const errorLine = useUpdateErrorLine();
   if (install.phase === "held") {
     return (
       <p id={heldId} role="status" className="text-sm text-muted-foreground">
@@ -131,7 +135,7 @@ function InstallProgress({ install, heldId }: { install: InstallState; heldId: s
     return (
       <div role="alert" className="space-y-1 text-sm text-destructive">
         <p className="font-medium">{t("install.failed")}</p>
-        <p>{tc(`errors.${install.error.kind}`)}</p>
+        <p>{errorLine(install.error)}</p>
         {install.error.message ? (
           <p lang="en" className="text-xs opacity-80">
             {install.error.message}

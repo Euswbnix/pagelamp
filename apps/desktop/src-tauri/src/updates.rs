@@ -7,12 +7,12 @@
 //! - Endpoints are static URLs from `tauri.conf.json` `plugins.pagelamp-updates` (no
 //!   `{{target}}`/`{{arch}}`/`{{current_version}}` templating), and requests carry a minimal
 //!   `User-Agent: PageLamp/<version>`. So GitHub sees the IP address and the app version, as
-//!   with any download, and nothing else. Each channel asks raw.githubusercontent.com first
-//!   (the `gh-pages` branch itself), then GitHub Pages: the updater moves to the next endpoint
-//!   on a network error or an error status, but stops at an answer that isn't JSON, so the
-//!   endpoint that depends on no domain comes first. The rehearsal overlay
-//!   (`tauri.rehearsal.conf.json`) swaps the endpoints at build time; nothing can change them
-//!   at runtime.
+//!   with any download, and nothing else. Every endpoint is on a host of GitHub's own:
+//!   each channel asks raw.githubusercontent.com (the `gh-pages` branch itself), and Stable
+//!   then falls back to the newest release's `latest.json` on github.com. The updater moves
+//!   to the next endpoint on a network error or an error status, but stops at an answer that
+//!   isn't JSON. The rehearsal overlay (`tauri.rehearsal.conf.json`) swaps the endpoints at
+//!   build time; nothing can change them at runtime.
 //! - Versions are compared with the real crate version (`CARGO_PKG_VERSION`, e.g.
 //!   `0.3.0-beta.2`), not `tauri.conf.json`'s numeric one, so betas are offered the release.
 //! - deb/rpm installs never auto-install: they read the AppImage entry only to learn the new
@@ -37,8 +37,17 @@ type CmdResult<T> = Result<T, AppError>;
 
 /// The manifest entry deb/rpm installs read to learn the new version (never installed).
 const DOWNLOAD_ONLY_TARGET: &str = "linux-x86_64-appimage";
-/// A check or download that hangs shouldn't hold the UI forever.
+/// A check that hangs shouldn't hold the UI forever: this is for the whole request, the answer
+/// included. Not for the download: the plugin drops it from the update a check returns.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+/// The download has no total time: a large package on a slow line must finish. It gives up when
+/// no connection is made in this time...
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// ...or when nothing has arrived for this long. A download that got stuck would otherwise keep
+/// the install dialog open, with Cancel off and every sync refused, until PageLamp is quit.
+/// Two minutes, not less: a scanner between PageLamp and the network may take the whole package
+/// (35 MB for macOS) before it lets the first byte through.
+const STALL_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The real version of this build.
 pub fn current_version() -> Version {
@@ -91,7 +100,10 @@ pub struct AvailableUpdate {
     pub version: String,
     pub date: Option<String>,
     pub notes: Option<String>,
-    /// The release page, for download-only installs.
+    /// The release's page. The window shows the notes as plain text and links here, where they
+    /// read as they were written.
+    pub release_page: String,
+    /// The release page again, only for download-only installs: where they get the package.
     pub download_url: Option<String>,
 }
 
@@ -164,6 +176,18 @@ fn endpoints(config: ChannelsConfig, channel: &UpdateChannel) -> Vec<Url> {
     }
 }
 
+/// The updater's HTTP client gives up on a connection that isn't made within `connect`, and on
+/// an answer of which nothing arrives for `stall` (the wait for its first byte included). The
+/// plugin builds a client for each request, the check's and the download's, and passes both
+/// through here.
+fn give_up_when_stuck(
+    client: reqwest::ClientBuilder,
+    connect: Duration,
+    stall: Duration,
+) -> reqwest::ClientBuilder {
+    client.connect_timeout(connect).read_timeout(stall)
+}
+
 /// A short code for the diagnostic report (never a message or URL).
 fn error_code(err: &tauri_plugin_updater::Error) -> &'static str {
     use tauri_plugin_updater::Error as E;
@@ -192,11 +216,32 @@ fn error_code(err: &tauri_plugin_updater::Error) -> &'static str {
 }
 
 fn app_error(err: &tauri_plugin_updater::Error) -> AppError {
-    let kind = match error_code(err) {
-        "network" => AppErrorKind::Network,
+    let kind = match err {
+        // The server answered, with an error status. The window's line for a network failure
+        // says it couldn't be reached and to check the connection; neither is the case here.
+        tauri_plugin_updater::Error::Network(_) => AppErrorKind::Internal,
+        _ if error_code(err) == "network" => AppErrorKind::Network,
         _ => AppErrorKind::Internal,
     };
-    AppError::new(kind, err.to_string())
+    AppError::new(kind, error_text(err))
+}
+
+/// The error with what caused it, for the window's small print and the log. The HTTP client
+/// names only the outermost step ("error decoding response body" for a download that stopped
+/// arriving): why is in the causes ("operation timed out").
+fn error_text(err: &dyn std::error::Error) -> String {
+    let mut text = err.to_string();
+    let mut cause = err.source();
+    while let Some(err) = cause {
+        let part = err.to_string();
+        // Some errors repeat their cause in their own text.
+        if !text.contains(&part) {
+            text.push_str(": ");
+            text.push_str(&part);
+        }
+        cause = err.source();
+    }
+    text
 }
 
 /// A failed check, as the window hears it. For a test version on Stable, `ReleaseNotFound` (every
@@ -259,6 +304,8 @@ pub async fn updates_check<R: Runtime>(
         .header("User-Agent", user_agent)
         .map_err(|err| app_error(&err))?
         .timeout(CHECK_TIMEOUT)
+        // Kept by the update the check returns, so the download has these too.
+        .configure_client(|client| give_up_when_stuck(client, CONNECT_TIMEOUT, STALL_TIMEOUT))
         // Windows: the installer takes over from here (Install is refused during syncs).
         .on_before_exit(
             || tracing::info!(target: "pagelamp::updates", "exiting for the installer"),
@@ -277,7 +324,7 @@ pub async fn updates_check<R: Runtime>(
         },
         Ok(None) => UpdateCheckOutcome::UpToDate,
         Err(err) => {
-            tracing::warn!(target: "pagelamp::updates", code = error_code(err), "update check failed: {err}");
+            tracing::warn!(target: "pagelamp::updates", code = error_code(err), "update check failed: {}", error_text(err));
             UpdateCheckOutcome::Error {
                 code: error_code(err).to_string(),
             }
@@ -304,6 +351,7 @@ pub async fn updates_check<R: Runtime>(
         *slot = None;
         return Ok(None);
     };
+    let page = release_page.replace("{version}", &update.version);
     let available = AvailableUpdate {
         version: update.version.clone(),
         date: update
@@ -312,8 +360,8 @@ pub async fn updates_check<R: Runtime>(
             .and_then(|date| date.as_str())
             .map(str::to_string),
         notes: update.body.clone(),
-        download_url: (mode == InstallMode::DownloadOnly)
-            .then(|| release_page.replace("{version}", &update.version)),
+        download_url: (mode == InstallMode::DownloadOnly).then(|| page.clone()),
+        release_page: page,
     };
     *slot = (mode == InstallMode::InApp).then_some(update);
     Ok(Some(available))
@@ -374,7 +422,7 @@ pub async fn updates_install<R: Runtime>(
         Ok(gate) => gate,
         Err(Failure::Refused(err)) => return Err(err),
         Err(Failure::Updater(err)) => {
-            tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {err}");
+            tracing::warn!(target: "pagelamp::updates", code = error_code(&err), "update install failed: {}", error_text(&err));
             return Err(app_error(&err));
         }
     };
@@ -534,6 +582,23 @@ mod tests {
     }
 
     #[test]
+    fn an_error_status_is_not_a_server_that_couldnt_be_reached() {
+        use pagelamp_app::AppErrorKind;
+        use tauri_plugin_updater::Error;
+
+        use super::{app_error, error_code};
+        // What the plugin returns when the download is answered with an error status. The
+        // window has a line for a network failure ("couldn't reach the update server, check
+        // your connection"): that would be wrong here, so this gets the general line and its
+        // own text under it. The diagnostic report keeps the "network" code.
+        let status = Error::Network("Download request failed with status: 503".to_string());
+        assert_eq!(error_code(&status), "network");
+        let failure = app_error(&status);
+        assert_eq!(failure.kind, AppErrorKind::Internal);
+        assert!(failure.message.contains("503"), "{}", failure.message);
+    }
+
+    #[test]
     fn without_the_facade_a_pre_release_checks_beta() {
         use super::default_channel;
         use pagelamp_app::UpdateChannel;
@@ -576,26 +641,157 @@ mod tests {
             );
         }
         assert!(channels.release_page.contains("{version}"));
-        // The first endpoint of each channel is the gh-pages branch on raw.githubusercontent.com,
-        // which depends on no domain of ours (see the module docs).
+        // The whole list, so that no address is added without this test being read: the
+        // gh-pages branch on raw.githubusercontent.com, and for Stable the newest release's
+        // manifest after it. Both hosts are GitHub's own and neither redirects to a host that
+        // isn't (see the module docs).
         let raw = "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/";
-        for list in [&channels.stable, &channels.beta] {
-            assert!(list[0].as_str().starts_with(raw), "{list:?}");
-        }
+        let listed = |list: &[tauri::Url]| -> Vec<String> {
+            list.iter().map(|url| url.as_str().to_string()).collect()
+        };
+        assert_eq!(
+            listed(&channels.stable),
+            [
+                format!("{raw}stable.json"),
+                "https://github.com/Euswbnix/pagelamp/releases/latest/download/latest.json"
+                    .to_string(),
+            ]
+        );
+        assert_eq!(listed(&channels.beta), [format!("{raw}beta.json")]);
+        assert!(
+            channels
+                .release_page
+                .starts_with("https://github.com/Euswbnix/pagelamp/releases/")
+        );
 
-        // The rehearsal overlay only swaps the endpoints, and only to the test manifest.
+        // The rehearsal overlay only swaps the endpoints, and only to the test manifest at the
+        // same place.
         let overlay: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.rehearsal.conf.json")).expect("overlay");
         let test = &overlay["plugins"]["pagelamp-updates"];
         for channel in ["stable", "beta"] {
             let list: Vec<tauri::Url> =
                 serde_json::from_value(test[channel].clone()).expect("urls");
+            assert_eq!(listed(&list), [format!("{raw}test.json")]);
+        }
+    }
+
+    /// The download's client against a server on this computer (plain HTTP, no proxy).
+    mod stuck {
+        use std::io::{Read, Write};
+        use std::net::{TcpListener, TcpStream};
+        use std::sync::mpsc::{Receiver, Sender, channel};
+        use std::thread::{self, JoinHandle};
+        use std::time::{Duration, Instant};
+
+        use pagelamp_app::AppErrorKind;
+        use tauri::async_runtime::block_on;
+
+        use crate::updates::{app_error, give_up_when_stuck};
+
+        const STALL: Duration = Duration::from_millis(500);
+        /// How long the server keeps a connection it says nothing more on. Without the stall
+        /// timeout the client would wait this long, and the tests below fail on the time.
+        const HELD: Duration = Duration::from_secs(8);
+
+        /// Answers one request as `serve` says. The connection stays open until `serve` returns.
+        fn server(
+            serve: impl FnOnce(&mut TcpStream, &Receiver<()>) + Send + 'static,
+        ) -> (String, Sender<()>, JoinHandle<()>) {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+            let url = format!("http://{}/package", listener.local_addr().expect("address"));
+            let (done, wait) = channel();
+            let thread = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().expect("accept");
+                let mut request = [0u8; 2048];
+                let _ = stream.read(&mut request);
+                serve(&mut stream, &wait);
+            });
+            (url, done, thread)
+        }
+
+        fn client() -> reqwest::Client {
+            give_up_when_stuck(
+                reqwest::Client::builder().no_proxy(),
+                Duration::from_secs(5),
+                STALL,
+            )
+            .build()
+            .expect("client")
+        }
+
+        #[test]
+        fn a_download_that_stops_arriving_ends_with_an_error() {
+            let (url, done, thread) = server(|stream, wait| {
+                // The start of a package, then nothing more.
+                let _ =
+                    stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n0123456789");
+                let _ = stream.flush();
+                let _ = wait.recv_timeout(HELD);
+            });
+            let started = Instant::now();
+            let result = block_on(async {
+                let response = client().get(&url).send().await.expect("the headers arrive");
+                response.bytes().await
+            });
+            let took = started.elapsed();
+            let _ = done.send(());
+            thread.join().expect("server");
+            let err = result.expect_err("a package of which 10 bytes in 1000 arrived");
+            assert!(err.is_timeout(), "{err:?}");
+            assert!(took < HELD / 2, "gave up only after {took:?}");
+            // As the window and the log get it: a network failure that says it timed out (the
+            // client's own text is only "error decoding response body").
+            let failure = app_error(&tauri_plugin_updater::Error::from(err));
+            assert_eq!(failure.kind, AppErrorKind::Network);
+            assert!(failure.message.contains("timed out"), "{}", failure.message);
+        }
+
+        #[test]
+        fn a_server_that_never_answers_ends_with_an_error() {
+            let (url, done, thread) = server(|_, wait| {
+                let _ = wait.recv_timeout(HELD);
+            });
+            let started = Instant::now();
+            let result = block_on(async { client().get(&url).send().await });
+            let took = started.elapsed();
+            let _ = done.send(());
+            thread.join().expect("server");
+            let err = result.expect_err("no answer");
+            assert!(err.is_timeout(), "{err:?}");
+            assert!(took < HELD / 2, "gave up only after {took:?}");
+            let failure = app_error(&tauri_plugin_updater::Error::from(err));
+            assert_eq!(failure.kind, AppErrorKind::Network);
+            assert!(failure.message.contains("timed out"), "{}", failure.message);
+        }
+
+        #[test]
+        fn a_slow_download_that_keeps_arriving_is_not_cut_off() {
+            // Fifteen pieces a tenth of the stall time apart: in all, longer than the stall
+            // time. A total time for the download would end it; a slow line must not.
+            const PIECES: usize = 15;
+            let (url, done, thread) = server(|stream, _| {
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {PIECES}\r\n\r\n");
+                let _ = stream.write_all(head.as_bytes());
+                for _ in 0..PIECES {
+                    let _ = stream.write_all(b"x");
+                    let _ = stream.flush();
+                    thread::sleep(STALL / 10);
+                }
+            });
+            let started = Instant::now();
+            let result = block_on(async {
+                let response = client().get(&url).send().await.expect("the headers arrive");
+                response.bytes().await
+            });
+            let took = started.elapsed();
+            let _ = done.send(());
+            thread.join().expect("server");
+            assert_eq!(result.expect("the whole package").len(), PIECES);
             assert!(
-                list.iter()
-                    .all(|u| u.as_str().ends_with("/updates/test.json")),
-                "{list:?}"
+                took > STALL,
+                "the download took {took:?}, less than the stall time"
             );
-            assert!(list[0].as_str().starts_with(raw), "{list:?}");
         }
     }
 

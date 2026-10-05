@@ -350,15 +350,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return updates.prefs.channel ?? (MOCK_APP_VERSION.includes("-") ? "beta" : "stable");
   }
   function mockUpdate(): AvailableUpdate {
+    const releasePage = `https://github.com/Euswbnix/pagelamp/releases/tag/v${MOCK_UPDATE_VERSION}`;
     return {
       version: MOCK_UPDATE_VERSION,
       date: new Date(now().getTime() - DAY).toISOString(),
       notes:
         "- Every course shows its week and phase.\n- Finished courses move to a “Past” group.\n- Fixes for syncing large course folders.",
-      download_url:
-        scenario === "deb"
-          ? `https://github.com/Euswbnix/pagelamp/releases/tag/v${MOCK_UPDATE_VERSION}`
-          : null,
+      release_page: releasePage,
+      download_url: scenario === "deb" ? releasePage : null,
     };
   }
 
@@ -1143,7 +1142,12 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             : {
                 // 0.1 never recorded its version, so upgraders from it have none.
                 since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-                topics: ["update_check" as const, "course_weeks" as const, "auto_sync" as const],
+                topics: [
+                  "update_check" as const,
+                  "course_weeks" as const,
+                  "auto_sync" as const,
+                  "canvas_coverage" as const,
+                ],
               },
           update_check_due:
             updates.prefs.auto_check &&

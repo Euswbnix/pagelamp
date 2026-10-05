@@ -1,13 +1,32 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { AvailableUpdate } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
+import { queryKeys } from "@/api/queries";
+import enCourse from "@/i18n/locales/en/course.json";
+import enUpdates from "@/i18n/locales/en/updates.json";
+import zhCourse from "@/i18n/locales/zh-CN/course.json";
+import zhUpdates from "@/i18n/locales/zh-CN/updates.json";
 import { useSyncStore } from "@/stores/sync";
+import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
 
 function mockApi(options: Parameters<typeof createMockApi>[0] = {}) {
   return createMockApi({ latencyMs: 0, syncStepMs: 0, ...options });
+}
+
+const RELEASE_PAGE = `https://github.com/Euswbnix/pagelamp/releases/tag/v${MOCK_UPDATE_VERSION}`;
+
+/** What a check finds, as the launch check of "update-available" would. */
+function foundUpdate(over: Partial<AvailableUpdate>): AvailableUpdate {
+  return {
+    version: MOCK_UPDATE_VERSION,
+    notes: "- Finished courses move to a “Past” group.",
+    release_page: RELEASE_PAGE,
+    ...over,
+  };
 }
 
 async function updatesSection() {
@@ -62,6 +81,9 @@ describe("What's new (upgraders)", () => {
     expect(within(sheet).getByText("Weeks and phases for every course")).toBeInTheDocument();
     expect(within(sheet).getByText("PageLamp now syncs by itself")).toBeInTheDocument();
     expect(
+      within(sheet).getByText("PageLamp reads more of each Canvas course"),
+    ).toBeInTheDocument();
+    expect(
       within(sheet).getByRole("switch", { name: "Check for updates automatically" }),
     ).toBeChecked();
     expect(within(sheet).getByRole("switch", { name: "Sync automatically" })).toBeChecked();
@@ -102,6 +124,36 @@ describe("What's new (upgraders)", () => {
     expect(row).toHaveTextContent("about twice a day");
     expect(row).toHaveTextContent("go to Sources & sync → Automatic sync.");
   });
+
+  it("says what a Canvas sync reads now and what it leaves, with nothing to switch", async () => {
+    renderRoute("/courses", { scenario: "upgrader" });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    const rows = within(sheet).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    // Last: the rows before it each ask for a decision.
+    const row = rows[3] as HTMLElement;
+    expect(row).toHaveTextContent("PageLamp reads more of each Canvas course");
+    expect(row).toHaveTextContent("also reads a course's Home page");
+    expect(row).toHaveTextContent("Files they link to are listed, not downloaded.");
+    expect(row).toHaveTextContent("isn't read until you have viewed it in Canvas");
+    expect(row).toHaveTextContent("Canvas may record a page that PageLamp reads as viewed by you.");
+    expect(row).toHaveTextContent("the sync's warnings say so.");
+    expect(row).toHaveTextContent("“What PageLamp didn't read”");
+    // Nothing turns it off.
+    expect(within(row).queryByRole("switch")).toBeNull();
+    expect(within(sheet).getAllByRole("switch")).toHaveLength(2);
+  });
+
+  it.each([
+    ["en", enUpdates, enCourse],
+    ["zh-CN", zhUpdates, zhCourse],
+  ] as const)(
+    "names the course page's card by its own title (%s)",
+    (_language, updates, course) => {
+      // The row sends the student to that card: the two must not drift apart.
+      expect(updates.whatsNew.topics.canvas_coverage.body).toContain(`“${course.notRead.title}”`);
+    },
+  );
 
   it("turns automatic sync off from there, before What's new counts as read", async () => {
     const api = mockApi({ scenario: "upgrader" });
@@ -306,6 +358,73 @@ describe("installing an update", () => {
     expect(install).toHaveBeenCalledTimes(1);
   });
 
+  it("offers the update again when the student closes a failed install", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    const install = vi
+      .spyOn(api, "installUpdate")
+      .mockRejectedValue(new ApiError("network", "error sending request"));
+    const { user } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+    const failed = await within(dialog).findByRole("alert");
+    expect(failed).toHaveTextContent("The update couldn't be installed.");
+    // A line of its own: nothing here has an address that the student typed.
+    expect(failed).toHaveTextContent(
+      "Couldn't reach the update server. Check your internet connection.",
+    );
+    expect(failed).not.toHaveTextContent("the address");
+    expect(within(dialog).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    // Not gone until the next launch: the notice is back, and asks from the start.
+    const again = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(again).getByRole("button", { name: "Install…" }));
+    const reopened = await screen.findByRole("alertdialog");
+    expect(within(reopened).queryByRole("alert")).toBeNull();
+    expect(
+      within(reopened).getByRole("button", { name: "Install and restart" }),
+    ).toBeInTheDocument();
+    expect(install).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the notice during an install only, not after one that failed or is held", async () => {
+    renderRoute("/courses", { scenario: "update-available" });
+    const notice = () => screen.queryByRole("region", { name: /is available\./ });
+    await waitFor(() => expect(notice()).toBeInTheDocument());
+    // Their dialog can be gone without having been closed (it sat on another screen).
+    act(() =>
+      useUpdateStore.setState({
+        install: { phase: "failed", error: new ApiError("network", "timed out") },
+      }),
+    );
+    expect(notice()).toBeInTheDocument();
+    act(() => useUpdateStore.setState({ install: { phase: "held" } }));
+    expect(notice()).toBeInTheDocument();
+    act(() =>
+      useUpdateStore.setState({ install: { phase: "downloading", downloaded: 0, total: null } }),
+    );
+    expect(notice()).toBeNull();
+  });
+
+  it("keeps the shared line for an install that failed for another reason", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    vi.spyOn(api, "installUpdate").mockRejectedValue(
+      new ApiError("internal", "the signature doesn't match"),
+    );
+    const { user } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+    const failed = await within(dialog).findByRole("alert");
+    expect(failed).toHaveTextContent("Something unexpected went wrong.");
+    expect(failed).toHaveTextContent("the signature doesn't match");
+    expect(failed).not.toHaveTextContent("update server");
+  });
+
   it("hides the notice for this launch with Later", async () => {
     const { user } = renderRoute("/courses", { scenario: "update-available" });
     const notice = await screen.findByRole("region", { name: /is available\./ });
@@ -384,6 +503,41 @@ describe("Settings → Updates", () => {
     expect(within(section).getByRole("button", { name: "Install and restart…" })).toBeVisible();
   });
 
+  it("shows the notes as text in a box that scrolls, with a link to the release page", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    // Notes as a release has them: Markdown, and longer than the box.
+    const notes = `## What's new\n\n- **Weeks** for [every course](https://example.test/weeks)\n${"- One more line.\n".repeat(60)}`;
+    vi.spyOn(api, "checkForUpdate").mockResolvedValue(foundUpdate({ notes }));
+    const openExternal = vi.spyOn(api, "openExternal");
+    const { user } = renderRoute("/settings", { api });
+    const section = await updatesSection();
+    await user.click(await within(section).findByText("Release notes"));
+
+    const box = within(section).getByRole("region", { name: "Release notes" });
+    // Text, not a rendering of it: the marks stay, and nothing in the notes is a link.
+    expect(box).toHaveTextContent("## What's new");
+    expect(box).toHaveTextContent("- **Weeks** for [every course](https://example.test/weeks)");
+    expect(within(box).queryByRole("link")).toBeNull();
+    // It scrolls inside itself, and the keyboard reaches it.
+    expect(box).toHaveClass("max-h-64", "overflow-y-auto");
+    expect(box).toHaveAttribute("tabindex", "0");
+
+    await user.click(within(section).getByRole("link", { name: "Read these notes on GitHub" }));
+    expect(openExternal).toHaveBeenCalledWith(RELEASE_PAGE);
+  });
+
+  it("gives no link when the release page isn't a web address", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    vi.spyOn(api, "checkForUpdate").mockResolvedValue(
+      foundUpdate({ release_page: "file:///notes" }),
+    );
+    const { user } = renderRoute("/settings", { api });
+    const section = await updatesSection();
+    await user.click(await within(section).findByText("Release notes"));
+    expect(within(section).getByText(/Finished courses move to a “Past” group/)).toBeVisible();
+    expect(within(section).queryByText("Read these notes on GitHub")).toBeNull();
+  });
+
   it("says when a check fails", async () => {
     const api = mockApi();
     vi.spyOn(api, "checkForUpdate").mockRejectedValue(new ApiError("network", "offline"));
@@ -391,6 +545,61 @@ describe("Settings → Updates", () => {
     const section = await updatesSection();
     await user.click(within(section).getByRole("button", { name: "Check now" }));
     expect(await within(section).findByText("Couldn't check for updates.")).toBeInTheDocument();
+    // A line of its own: nothing here has an address that the student typed.
+    expect(
+      within(section).getByText(
+        "Couldn't reach the update server. Check your internet connection.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(section).queryByText(/the address/)).toBeNull();
+  });
+
+  it("keeps the install dialog open when the daily check starts by itself", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    // Due at launch, not due once that check is recorded, due again a day later.
+    let due = true;
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({ ...(await tasks()), update_check_due: due });
+    let answer: (found: AvailableUpdate) => void = () => {};
+    const later = new Promise<AvailableUpdate>((resolve) => {
+      answer = resolve;
+    });
+    const check = vi
+      .spyOn(api, "checkForUpdate")
+      .mockResolvedValueOnce(foundUpdate({}))
+      .mockReturnValueOnce(later);
+    vi.spyOn(api, "installUpdate").mockRejectedValue(new ApiError("network", "timed out"));
+    const { user, queryClient } = renderRoute("/settings", { api });
+    const section = await updatesSection();
+    await user.click(await within(section).findByRole("button", { name: "Install and restart…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+    await within(dialog).findByRole("alert");
+    due = false;
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    expect(check).toHaveBeenCalledTimes(1);
+
+    due = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(check).toHaveBeenCalledTimes(2));
+    expect(useUpdateStore.getState().checking).toBe(true);
+    // Still there, with what it said: the check doesn't take the found update away.
+    expect(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Try again" }),
+    ).toBeInTheDocument();
+
+    answer(foundUpdate({}));
+    await waitFor(() => expect(useUpdateStore.getState().checking).toBe(false));
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  });
+
+  it("says once a day, not at launch, for the automatic check", async () => {
+    renderRoute("/settings", { api: mockApi() });
+    const section = await updatesSection();
+    expect(
+      await within(section).findByText(/^Once a day, while PageLamp is open\./),
+    ).toBeInTheDocument();
+    expect(within(section).queryByText(/At launch/)).toBeNull();
   });
 });
 
