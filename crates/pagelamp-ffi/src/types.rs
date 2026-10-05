@@ -1134,6 +1134,7 @@ pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
     AutoSync,
+    CanvasCoverage,
 }
 
 #[uniffi::remote(Record)]
