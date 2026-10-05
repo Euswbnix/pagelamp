@@ -2,7 +2,7 @@
 
 How PageLamp releases are built, published and rolled back, from v0.3 on (the updater). The
 workflows, in `.github/workflows/`, are `release.yml` (build, sign, draft release),
-`channels.yml` (update channels on GitHub Pages) and the `release-config` job in `ci.yml`. The
+`channels.yml` (update channels on the `gh-pages` branch) and the `release-config` job in `ci.yml`. The
 design is in `docs/design/v0.3-plan.md` (M0.1, M0.3, M0.4, M0.6, M0.7).
 
 ## What runs where
@@ -172,7 +172,7 @@ second round goes on with `.0.3` and `.0.4`).
 7. **Before the tag**, set the version to the real one (`0.3.0-alpha.1`), with `Cargo.lock`, as
    in "Before a tag".
 
-Linux isn't on the test channel: the AppImage (~95 MB) is too big for Pages. Its signature is
+Linux isn't on the test channel: the AppImage (~95 MB) is too big to keep in a branch. Its signature is
 still checked in every rehearsal.
 
 ## Bad release
