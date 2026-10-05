@@ -5,11 +5,19 @@
 [![CI](https://github.com/Euswbnix/pagelamp/actions/workflows/ci.yml/badge.svg)](https://github.com/Euswbnix/pagelamp/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-> **v0.1.0 is PageLamp's first public release.** It doesn't update itself: when a new version is
-> out, install it from the [releases page](https://github.com/Euswbnix/pagelamp/releases/latest)
+> **v0.1.0 is the latest stable release.** It doesn't update itself: when a new version is out,
+> install it from the [releases page](https://github.com/Euswbnix/pagelamp/releases/latest)
 > (on macOS, open PageLamp once), then quit your AI app completely and open it again. Known issues
 > in v0.1.0 — a wrong week for some Canvas terms, and old courses that keep syncing — have
 > workarounds in the [release notes](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0).
+>
+> **v0.3.0-alpha.1 is a pre-release for testers.** It isn't finished and it can have bugs. Get it
+> from its own [release page](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1):
+> the "latest release" links on this page lead to v0.1.0, and v0.1.0 won't offer it. Read its
+> release notes first. It moves your data to a format v0.1.0 can't open, it syncs by itself, and
+> it reads more of a Canvas course. In this README, **(v0.3)** marks what only the pre-release
+> does.
+>
 > Please [report anything odd](https://github.com/Euswbnix/pagelamp/issues/new/choose).
 
 ![PageLamp demo](docs/assets/demo.gif)
@@ -28,8 +36,9 @@ weeks"* — without re-uploading anything.
 - **Local-first.** Your course data lives in a database on your computer. There is no PageLamp
   server online (its MCP server runs only on your computer, started by your AI app), no account,
   and nothing is collected. See [PRIVACY.md](PRIVACY.md).
-- **Your AI, your account.** In v0.1 PageLamp calls no AI model itself: your own AI app reads your
-  local course data when you ask it something. PageLamp never resells or pays for AI usage, and
+- **Your AI, your account.** PageLamp calls no AI model itself (v0.1.0 and v0.3.0-alpha.1): your
+  own AI app reads your local course data when you ask it something. PageLamp never resells or
+  pays for AI usage, and
   never reads, stores or sends the credentials (passwords or tokens) you use to sign in to your AI
   account.
 - **Read-only and learning-first.** PageLamp never submits, posts or marks anything, and never
@@ -48,6 +57,13 @@ Download the installer for your system from the
 (`aarch64` = Apple silicon, `x64` = Intel), for Windows the `-setup.exe` (or the `.msi`), for
 Linux the `.deb`, `.rpm` or `.AppImage` (Windows and Linux: x86_64 only). The desktop app includes
 the `pagelamp` command-line tool your AI app needs.
+
+**Pre-release (v0.3.0-alpha.1).** Download it from the
+[v0.3.0-alpha.1 release page](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1).
+Its files differ from v0.1.0's: macOS has one `.dmg` for Apple silicon and Intel (`universal`),
+and Windows has only the `-setup.exe` (no `.msi`). Installer names say `0.3.0`; the app says
+`0.3.0-alpha.1`. The notes below apply to it too. Once installed, it looks for updates by itself
+and asks before installing one. To go back to v0.1.0, follow its release notes.
 
 - **macOS:** open the `.dmg` and **drag PageLamp into Applications**, then open it from there —
   your AI app is pointed at that location, so don't run PageLamp from the disk image or Downloads.
@@ -93,9 +109,10 @@ cd pagelamp
 cargo install --path apps/pagelamp-cli --locked
 ```
 
-This builds the released version (use the tag of the latest release) and installs `pagelamp` into
-`~/.cargo/bin`. `main` is the development branch: a build from it may move your database to a
-newer format that the released app can't open (a backup is kept next to it).
+This builds the released version (use the tag of the latest release, or `v0.3.0-alpha.1` for the
+pre-release) and installs `pagelamp` into `~/.cargo/bin`. The pre-release and `main`, the
+development branch, move your database to a newer format that v0.1.0 can't open (a backup is
+kept next to it).
 
 ## Quick start
 
@@ -140,7 +157,7 @@ newer format that the released app can't open (a backup is kept next to it).
 | AI app | How it connects | Plans |
 |---|---|---|
 | Claude Desktop | local MCP server in `claude_desktop_config.json` | every Claude plan, including Free |
-| ChatGPT desktop (Work/Codex mode), Codex CLI | `[mcp_servers.pagelamp]` in `~/.codex/config.toml` | Codex is included in every ChatGPT plan, including Free and Go (limits vary by plan) |
+| ChatGPT desktop (Work/Codex mode), Codex CLI | `[mcp_servers.pagelamp]` in `~/.codex/config.toml` | the ChatGPT plans that include Codex (see OpenAI's plans page; limits vary by plan) |
 | Claude Code | the `claude mcp add …` command printed by `pagelamp mcp-config claude-code` | a paid Claude plan (Pro or higher; not Free) |
 
 This table is about your own AI app reading PageLamp over MCP; PageLamp doesn't run any of these
@@ -166,10 +183,13 @@ expires, create a new one and use **Replace token** on the source; to end PageLa
 the token on the same Canvas page.
 
 Canvas sync never downloads files unless you ask, because downloads can count as "viewed" in
-module requirements. Canvas records a sync like any other access: your course access report (which
-instructors can see) may list each area PageLamp reads — modules, pages, assignments, files and
-announcements — plus each page it reads, and a sync may refresh the "Last Activity" time shown for
-you in the course.
+module requirements. Canvas may record a sync like any other access: as far as we know, your
+course access report (which instructors can see) may list each area PageLamp reads — modules,
+pages, assignments, files and announcements — plus each page it reads, and a sync may refresh
+the "Last Activity" time shown for you in the course. We can't see Canvas's records.
+
+Paragraphs marked (v0.3) describe the pre-release v0.3.0-alpha.1. v0.1.0, the latest stable
+release, doesn't do what they say.
 
 (v0.3) What PageLamp reads of a course: its modules, the pages and files its lists show, the page
 its Home shows, and the pages of the same course that those texts, the syllabus and announcements
@@ -181,8 +201,8 @@ for a list the course hides. Assignments and quizzes stay title, due date and li
 
 (v0.3) PageLamp doesn't read a page that a module asks you to view until you have viewed it in
 Canvas: as far as we can tell, reading it for you could mark it as viewed. In two cases it can't
-know beforehand: the first time it reads a course's Home page, and when a link uses an old address
-of such a page. If it opened one, the sync says so, and it doesn't read that page again until you
+know beforehand: the first time it reads a course's Home page, and when a link uses another
+address of such a page. If it opened one, the sync says so, and it doesn't read that page again until you
 have viewed it. v0.1.0 has no such rule: it reads every page of a module.
 
 (v0.3) What PageLamp didn't read of a course is recorded with a reason. `pagelamp sync` shows what
@@ -193,9 +213,10 @@ reasons and is told not to guess at it.
 once a day or off. With nobody at the app it checks your token and asks Canvas only for your
 course list (with each course's syllabus), your deadlines and your courses' announcements; it
 makes no request for a course's modules, pages, file list or assignments. The full sync described
-above runs when you start a sync, or when you open PageLamp or bring it to the front and the last
-full sync is old enough (or a newly found course is waiting for its first full sync). An automatic sync never
-downloads files.
+above runs when you start a sync, or when you open PageLamp, or come back to its window and
+click, type or scroll, and the last full sync is old enough (or a newly found course is waiting
+for its first full sync). A window that only comes to the front doesn't count. An automatic sync
+never downloads files.
 
 ### Course AI policies
 
@@ -257,8 +278,9 @@ pagelamp mcp  ──reads──▶  pagelamp.db (on your computer)  ◀──wri
                               course folder · calendar feed · Canvas (read-only)
 ```
 
-`pagelamp mcp` never connects to Canvas or the internet: it reads the database on your computer
-and writes to it only when your AI app asks it to save something for you (in v0.1, a study plan).
+`pagelamp mcp` never connects to Canvas or the internet: it reads the database on your computer.
+It writes to it when your AI app asks it to save something for you (a study plan), and once
+after an update, to move your data to the new format and (v0.3) to clean stored link addresses.
 Syncing is a separate step (with your own token for Canvas): you start it, or (v0.3) the PageLamp
 app does while it runs, under your setting. The MCP server gives your AI app no way to start a
 sync and tells it not to run one for you.
@@ -275,19 +297,22 @@ sync and tells it not to run one for you.
 
 - **v0.1** (released September 2026): your AI app reads your courses over MCP; signed builds for
   macOS and Windows.
-- **v0.3** (in development) is planned to add automatic updates, course weeks that follow the real
-  teaching dates, finished courses grouped under "Past" and removable (with undo), weekly
+- **v0.3.0-alpha.1** (pre-release): automatic updates, automatic sync, course weeks that follow
+  the real teaching dates, finished courses grouped under "Past courses", a wider and more
+  careful reading of Canvas with a list of what wasn't read, and a new look. Its
+  [release notes](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1) say what it
+  can't do.
+- **Planned for v0.3, not in the pre-release:** removing finished courses (with undo), weekly
   reminders, and PageLamp itself writing study plans, plus weekly explanations that cite your
   course materials, using a model you choose: your own API key or a model running on your
-  computer. With a model, it can also read a course's syllabus
-  and suggest dates for you to confirm. Connecting your own AI app over MCP stays available.
+  computer. With a model, it could also read a course's syllabus and suggest dates for you to
+  confirm. Connecting your own AI app over MCP stays available.
 
-PageLamp's own features use your API key or a model on your computer; they don't run on a
-ChatGPT plan. To use a ChatGPT plan with PageLamp, connect Codex or ChatGPT desktop as your AI app
-over MCP (see the table above). Whether a Claude plan could be used for these features is
-something we're asking Anthropic; it will be offered only if they confirm in writing that it's
-allowed. Plans can change before a release — the [CHANGELOG](CHANGELOG.md) lists what is already
-done.
+The planned features would use your API key or a model on your computer; they won't run on a
+ChatGPT plan. To use a ChatGPT plan with PageLamp, connect Codex or ChatGPT desktop as your AI
+app over MCP (see the table above). A Claude plan isn't offered for them either; it would be
+only if Anthropic confirms in writing that it's allowed. Plans can change before a release — the
+[CHANGELOG](CHANGELOG.md) lists what is already done.
 
 ## Contributing
 
@@ -296,7 +321,9 @@ Security issues: see [SECURITY.md](SECURITY.md).
 
 ## 中文说明
 
-> v0.1.0 是 PageLamp 的第一个正式版本，还不会自动更新：有新版本时从 [Releases](https://github.com/Euswbnix/pagelamp/releases/latest) 下载安装（macOS 上先打开一次 PageLamp），然后完全退出并重新打开你的 AI 应用。v0.1.0 的已知问题（部分 Canvas 学期周数不对、往期课程仍被同步）及临时解决办法见[发布说明](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0)。
+> v0.1.0 是 PageLamp 目前最新的正式版本，还不会自动更新：有新版本时从 [Releases](https://github.com/Euswbnix/pagelamp/releases/latest) 下载安装（macOS 上先打开一次 PageLamp），然后完全退出并重新打开你的 AI 应用。v0.1.0 的已知问题（部分 Canvas 学期周数不对、往期课程仍被同步）及临时解决办法见[发布说明](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0)。
+>
+> v0.3.0-alpha.1 是给测试者用的预发布版本，还没有做完，可能有问题。请到它自己的[发布页](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1)下载：本页的 Releases 链接指向 v0.1.0，v0.1.0 也不会提示你更新到它。安装前请先读它的发布说明：它会把你的数据改成 v0.1.0 打不开的格式，会自己同步，读取 Canvas 课程的范围也更大。下文标有（v0.3）的内容只有预发布版本才有，v0.1.0 没有。
 
 PageLamp（"读书灯"：为每门课点一盏读书灯）把你的课程——每门课讲到第几周、本周材料、截止日期——整理成一份**存在你电脑上**的课程知识库，
 再通过 MCP 交给你已经在用的 AI 应用（Claude Desktop、Claude Code、Codex，或 ChatGPT 桌面版的 Work/Codex 模式）。它只读：从不提交、发布或标记任何东西，
@@ -306,6 +333,8 @@ PageLamp（"读书灯"：为每门课点一盏读书灯）把你的课程——�
 macOS 请先把 PageLamp **拖进「应用程序」文件夹**再打开（AI 应用会指向这个位置，不要直接在磁盘映像或「下载」里运行）。
 macOS 版已用 Developer ID 签名并经过 Apple 公证，可以直接打开（第一次打开时 macOS 会问是否打开从互联网下载的应用，点「打开」即可）；Windows 版的安装包、应用和其中的 `pagelamp.exe` 也已签名（Azure Artifact Signing）。新版本刚发布时 SmartScreen 仍可能提示「Windows 已保护你的电脑」（签名证书还在积累信誉）：先点「更多信息」，确认显示的发布者是维护者本人、与以往 PageLamp 版本相同（而不是「未知发布者」，核对方法见 [SECURITY.md](SECURITY.md#verifying-downloads)），再点「仍要运行」。
 Linux 请用 `.deb`/`.rpm`（会同时安装 `/usr/bin/pagelamp`）；`.AppImage` 能运行应用，但 AI 应用用不了里面的 `pagelamp`。Linux 包没有代码签名，请用 `SHA256SUMS` 核对（[方法](SECURITY.md#verifying-downloads)）；保存 Canvas 令牌或日历订阅链接需要 GNOME Keyring 或 KWallet。
+
+**预发布版本（v0.3.0-alpha.1）**：从 [v0.3.0-alpha.1 发布页](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1)下载。文件和 v0.1.0 不同：macOS 只有一个 `.dmg`（`universal`，Apple 芯片和 Intel 通用），Windows 只有 `-setup.exe`（没有 `.msi`）。安装包文件名里写的是 `0.3.0`，应用里显示的是 `0.3.0-alpha.1`。装好以后它会自己检查更新，安装之前一定会先问你。想退回 v0.1.0，请按它的发布说明操作。
 
 **上手**：
 1. 把课件放进一个文件夹，每门课一个子文件夹，里面可以按「Week 1」「Week 2」分周（支持 PDF、.pptx、.docx、Markdown、文本等；旧版 .ppt/.doc 和扫描版 PDF 只列出、不能搜索）；
@@ -326,21 +355,21 @@ Linux 请用 `.deb`/`.rpm`（会同时安装 `/usr/bin/pagelamp`）；`.AppImage
 如果看不到 **+ New Access Token**，说明你的学校关闭了学生访问令牌，请改用「课程文件夹 + 日历订阅」。令牌代表你本人访问 Canvas，不要交给别人；过期后生成一个新的，在这个来源上点「更换访问令牌」；想停止 PageLamp 的访问，在同一个 Canvas 页面删除这个令牌即可。
 
 
-同步时 Canvas 会像记录其他访问一样记录下来：课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面；同步也可能刷新课程里显示的你的“上次活动”时间。下载文件可能会让模块要求算作“已查看”，所以默认不下载。
+Canvas 可能会像记录其他访问一样记录同步：就我们所知，课程访问报告（老师能看到）里可能出现 PageLamp 读取的模块、页面、作业、文件和公告列表，以及它读取的每个页面；同步也可能刷新课程里显示的你的“上次活动”时间。Canvas 自己的记录我们看不到。下载文件可能会让模块要求算作“已查看”，所以默认不下载。
 
 （v0.3）PageLamp 读一门课的这些部分：模块、列表里的页面和文件、课程首页显示的页面，以及这些文字、教学大纲和公告里链接到的同一门课的页面（只跟一层，有数量上限）。链接到的文件只登记，不下载。Canvas 列表里带修改时间的页面，只在新增或有变化时读取；没有修改时间可查的页面（课程没有开放“页面”列表时的首页和链接到的页面），在你点“同步”时重新读取，自动同步最多一天读一次。课程隐藏了的列表，PageLamp 不会去请求。作业和测验仍然只保留标题、截止日期和链接。
 
-（v0.3）模块要求你“查看”而你还没看过的页面，PageLamp 不读：就我们所知，替你读可能会让它算作已查看。有两种情况它事先无法知道：第一次读一门课的首页时，以及链接用的是这种页面的旧地址时。如果它因此打开了这样的页面，同步结果里会说明，之后在你看过之前不会再读。v0.1.0 没有这条规则，会读取模块里的所有页面。
+（v0.3）模块要求你“查看”而你还没看过的页面，PageLamp 不读：就我们所知，替你读可能会让它算作已查看。有两种情况它事先无法知道：第一次读一门课的首页时，以及链接用的是这种页面的另一个地址时。如果它因此打开了这样的页面，同步结果里会说明，之后在你看过之前不会再读。v0.1.0 没有这条规则，会读取模块里的所有页面。
 
 （v0.3）每门课里 PageLamp 没读到的部分会连同原因记录下来。`pagelamp sync` 会显示通过链接找到了什么、有多少项没能读取；带原因的清单会交给你的 AI 应用，并告诉它不要猜测这些内容。
 
-（v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行，或者在你打开 PageLamp、把它切到前台，而上次完整同步已经够久（或有新发现的课程还没读过）时进行。自动同步从不下载文件。
+（v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行，或者在你打开 PageLamp、或切回它并在窗口里点击、输入或滚动，而上次完整同步已经够久（或有新发现的课程还没读过）时进行。窗口只是被切到前台不算。自动同步从不下载文件。
 
-PageLamp 的 MCP 服务从不连接 Canvas 或互联网：它读取你电脑上的数据库，只在你的 AI 应用请求保存内容时写入（v0.1 中只有学习计划）；同步是单独的一步，用的是你自己的 Canvas 令牌：由你发起，或者（v0.3）由运行中的 PageLamp 应用按你的设置发起。MCP 服务不给你的 AI 应用任何发起同步的途径，并告诉它不要替你同步。
+PageLamp 的 MCP 服务从不连接 Canvas 或互联网：它读取你电脑上的数据库。它只在两种情况下写入：你的 AI 应用请求保存内容时（学习计划）；以及更新之后有一次，用来把数据转成新格式、（v0.3）清理已保存的链接地址。同步是单独的一步，用的是你自己的 Canvas 令牌：由你发起，或者（v0.3）由运行中的 PageLamp 应用按你的设置发起。MCP 服务不给你的 AI 应用任何发起同步的途径，并告诉它不要替你同步。
 
-**隐私**：数据只存在你的电脑上；只有你向 AI 提问时，AI 读取的课程内容才会发到你自己的 AI 账号。v0.1 的 PageLamp 自己不调用任何 AI 模型；它从不转售或代付 AI 用量，也从不读取、保存或发送你登录 AI 账号所用的凭据（密码或令牌）。详见 [PRIVACY.md](PRIVACY.md)。
+**隐私**：数据只存在你的电脑上；只有你向 AI 提问时，AI 读取的课程内容才会发到你自己的 AI 账号。PageLamp 自己不调用任何 AI 模型（v0.1.0 和 v0.3.0-alpha.1 都是如此）；它从不转售或代付 AI 用量，也从不读取、保存或发送你登录 AI 账号所用的凭据（密码或令牌）。详见 [PRIVACY.md](PRIVACY.md)。
 
-**路线图**：v0.1（2026 年 9 月发布）：AI 应用通过 MCP 读取你的课程，macOS 和 Windows 安装包已签名。v0.3（开发中）计划加入：自动更新；按真实上课日期推算周次；已结束的课程归入「往期课程」，也可以删除（可撤销）；每周提醒；以及由 PageLamp 用你选择的模型（你自己的 API key 或本机模型）直接生成学习计划，以及标注出处的每周讲解；有了模型，它还能读取教学大纲，提出日期建议由你确认。通过 MCP 连接你自己的 AI 应用会继续可用。这些功能使用你自己的 API key 或本机模型，不使用 ChatGPT 套餐；想用 ChatGPT 套餐，可以把 Codex 或 ChatGPT 桌面版作为你的 AI 应用，通过 MCP 连接 PageLamp。能否改用 Claude 套餐，我们正在询问 Anthropic，只有对方书面确认允许才会提供。发布前计划可能调整，已完成的内容见 [CHANGELOG](CHANGELOG.md)。
+**路线图**：v0.1（2026 年 9 月发布）：AI 应用通过 MCP 读取你的课程，macOS 和 Windows 安装包已签名。v0.3.0-alpha.1（预发布）：自动更新；自动同步；按真实上课日期推算周次；已结束的课程归入「往期课程」；读取 Canvas 课程的范围更大也更谨慎，并列出没有读取的部分；新的界面。它做不到的事见它的[发布说明](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1)。v0.3 还在计划中、预发布版本里没有的：删除已结束的课程（可撤销）；每周提醒；由 PageLamp 用你选择的模型（你自己的 API key 或本机模型）直接生成学习计划，以及标注出处的每周讲解；有了模型，它还可以读取教学大纲，提出日期建议由你确认。通过 MCP 连接你自己的 AI 应用会继续可用。计划中的这些功能会使用你自己的 API key 或本机模型，不使用 ChatGPT 套餐；想用 ChatGPT 套餐，可以把 Codex 或 ChatGPT 桌面版作为你的 AI 应用，通过 MCP 连接 PageLamp。这些功能也不提供 Claude 套餐；只有 Anthropic 书面确认允许才会提供。发布前计划可能调整，已完成的内容见 [CHANGELOG](CHANGELOG.md)。
 
 **声明**：PageLamp 是独立的开源项目，与 OpenAI、Anthropic、Instructure（Canvas）以及任何大学都没有关联，也没有得到它们的认可或赞助。文中提到 Claude、ChatGPT、Codex、Canvas，只是为了说明 PageLamp 能配合哪些应用和服务使用；Claude 是 Anthropic 的商标，ChatGPT 和 Codex 是 OpenAI 的商标，Canvas 是 Instructure, Inc. 的商标。
 
