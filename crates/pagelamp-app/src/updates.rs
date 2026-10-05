@@ -76,6 +76,7 @@ const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[
     (WhatsNewTopic::UpdateCheck, "0.3.0-alpha.1"),
     (WhatsNewTopic::CourseWeeks, "0.3.0-alpha.1"),
     (WhatsNewTopic::AutoSync, "0.3.0-alpha.1"),
+    (WhatsNewTopic::CanvasCoverage, "0.3.0-alpha.1"),
 ];
 
 /// Where updates come from.
@@ -115,6 +116,9 @@ pub enum WhatsNewTopic {
     /// PageLamp now syncs by itself while it runs (how often, what it does, how to turn it
     /// off; the row carries the setting).
     AutoSync,
+    /// A Canvas sync reads more of a course (its Home page, and the pages and files that the
+    /// course's texts link to) and says what it didn't read and why. The row has no control.
+    CanvasCoverage,
 }
 
 /// What's new since `since` (`None`: an update from 0.1, which didn't record its version).
@@ -350,14 +354,22 @@ fn topics_since(since: Option<&str>) -> Vec<WhatsNewTopic> {
         .collect()
 }
 
-/// `topics_since` as `shell` shows them. A row shows only in a shell that does the thing: the
-/// Mac app never gets the update-check topic (Sparkle updates it), nor the automatic sync one
-/// for as long as it doesn't run the timer.
+/// `topics_since` as `shell` shows them. A row shows only in a shell that does the thing and
+/// has the row: the Mac app never gets the update-check topic (Sparkle updates it), nor the
+/// automatic sync one for as long as it doesn't run the timer, nor the Canvas coverage one
+/// while it has no entry for it (it isn't part of the release that introduces the topic, and
+/// doesn't show what a sync didn't read yet).
 fn topics_for(shell: Shell, since: Option<&str>) -> Vec<WhatsNewTopic> {
     let mut topics = topics_since(since);
     if shell != Shell::Desktop {
-        topics
-            .retain(|topic| !matches!(topic, WhatsNewTopic::UpdateCheck | WhatsNewTopic::AutoSync));
+        topics.retain(|topic| {
+            !matches!(
+                topic,
+                WhatsNewTopic::UpdateCheck
+                    | WhatsNewTopic::AutoSync
+                    | WhatsNewTopic::CanvasCoverage
+            )
+        });
     }
     topics
 }
@@ -407,10 +419,17 @@ mod tests {
             WhatsNewTopic::UpdateCheck,
             WhatsNewTopic::CourseWeeks,
             WhatsNewTopic::AutoSync,
+            WhatsNewTopic::CanvasCoverage,
         ];
         assert_eq!(topics_since(None), alpha_1);
         assert_eq!(topics_since(Some("0.1.0")), alpha_1);
         assert!(topics_since(Some("0.3.0-alpha.1")).is_empty());
         assert!(topics_since(Some("0.3.0")).is_empty());
+        // A test build before alpha.1 (0.3.0-alpha.0.x) sorts before it: its students see
+        // the rows too.
+        assert_eq!(topics_since(Some("0.3.0-alpha.0.4")), alpha_1);
+        // The Mac app shows the one topic it has a row for.
+        assert_eq!(topics_for(Shell::Desktop, None), alpha_1);
+        assert_eq!(topics_for(Shell::Mac, None), [WhatsNewTopic::CourseWeeks]);
     }
 }
