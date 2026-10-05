@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockApi, type MockScenario } from "@/api/mock";
+import { removalKeys } from "@/api/removalQueries";
 import { paths } from "@/lib/routes";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
@@ -95,6 +96,72 @@ describe("the 'courses look finished' banner", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  it("keeps what the student chose when the list changes under the open dialog", async () => {
+    const { user, banner, api: mock } = await openBanner();
+    const removeCourses = vi.spyOn(mock, "removeCourses");
+    await user.click(within(banner).getByRole("button", { name: "Review" }));
+    const dialog = await screen.findByRole("dialog");
+    // The student unticks one course and sets the options...
+    await user.click(within(dialog).getByRole("checkbox", { name: /^PHS150/ }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "Keep downloaded files" }));
+    // ...and then keeps the other: the suggestions are read again, and are fewer now.
+    await user.click(
+      within(dialog).getByRole("button", { name: "Keep PHS190 and stop suggesting it" }),
+    );
+    expect(await screen.findByText("PHS190 won't be suggested again")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).queryByRole("checkbox", { name: /^PHS190/ })).toBeNull(),
+    );
+    // Nothing they chose is put back: the course stays unticked, the option stays on.
+    expect(within(dialog).getByRole("checkbox", { name: /^PHS150/ })).not.toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Keep downloaded files" })).toBeChecked();
+    expect(within(dialog).getByRole("button", { name: "Remove 0 courses" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(removeCourses).not.toHaveBeenCalled();
+  });
+
+  it("starts from the suggestions again at the next opening", async () => {
+    const { user, banner } = await openBanner();
+    await user.click(within(banner).getByRole("button", { name: "Review" }));
+    const first = await screen.findByRole("dialog");
+    await user.click(within(first).getByRole("checkbox", { name: /^PHS150/ }));
+    await user.click(within(first).getByRole("checkbox", { name: "Keep downloaded files" }));
+    await user.click(within(first).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await user.click(within(banner).getByRole("button", { name: "Review" }));
+    const again = await screen.findByRole("dialog");
+    expect(within(again).getByRole("checkbox", { name: /^PHS150/ })).toBeChecked();
+    expect(
+      within(again).getByRole("checkbox", { name: "Keep downloaded files" }),
+    ).not.toBeChecked();
+  });
+
+  it("keeps the dialog the student is in when the banner goes away under it", async () => {
+    // A sync that ends while the dialog is open can change what looks finished.
+    const mock = api("phases");
+    let banner = true;
+    const summary = mock.lifecycleSummary.bind(mock);
+    mock.lifecycleSummary = async () => ({ ...(await summary()), show_banner: banner });
+    const { user, queryClient } = renderRoute(paths.courses, { api: mock });
+    const region = await screen.findByRole("region", { name: /courses? looks? finished$/ });
+    await user.click(within(region).getByRole("button", { name: "Review" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove past courses" });
+    await user.click(within(dialog).getByRole("checkbox", { name: /^PHS150/ }));
+
+    banner = false;
+    await act(() => queryClient.invalidateQueries({ queryKey: removalKeys.lifecycleSummary() }));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: /courses? looks? finished$/ })).toBeNull(),
+    );
+    // Still there, as they left it.
+    expect(screen.getByRole("dialog", { name: "Remove past courses" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /^PHS150/ })).not.toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: /^PHS190/ })).toBeChecked();
   });
 
   it("deletes now without an Undo when asked", async () => {
