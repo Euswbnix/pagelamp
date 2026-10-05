@@ -1577,6 +1577,47 @@ describe("automatic sync", () => {
       expect(announced()).not.toContain("problems");
     });
 
+    it("lets the student finish what they left in the dialog while that run is going", async () => {
+      // Adding a source needs nothing the run holds: nothing typed is lost, nothing is refused.
+      const start = startClock();
+      const api = mockApi();
+      let due = false;
+      const tasks = api.startupTasks.bind(api);
+      api.startupTasks = async () => {
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: DUE } : answer;
+      };
+      const held = holdSyncAll(api);
+      const sync = vi.spyOn(api, "syncAll");
+      const one = vi.spyOn(api, "syncSource");
+      const { user, queryClient } = renderRoute("/sources", { api });
+      await user.click(await screen.findByRole("button", { name: "Add source" }));
+      const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+      await user.click(within(dialog).getByRole("checkbox", { name: "I understand" }));
+      await user.click(within(dialog).getByRole("button", { name: "Choose folder…" }));
+      await within(dialog).findByDisplayValue("/Users/demo/Documents/Courses");
+
+      // They leave it at that. Hours later the hour's light sync starts under the dialog.
+      later(start, 13 * HOUR);
+      due = true;
+      await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+
+      // Back at the window while it runs: the form is as they left it, and "Add source" adds.
+      expect(within(dialog).getByDisplayValue("/Users/demo/Documents/Courses")).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(
+        await screen.findByText("Source added. It will be included in the next sync."),
+      ).toBeInTheDocument();
+      expect(one).not.toHaveBeenCalled();
+
+      // And the new source is synced as soon as that run has ended.
+      held.release();
+      await waitFor(() => expect(one).toHaveBeenCalledTimes(1));
+    });
+
     it("takes a clock that went back for a dialog left open: nothing can be told then", async () => {
       const { start, sync, hourly } = await quietLaunch();
       const close = leaveDialogOpen();

@@ -53,16 +53,18 @@ function dialogOpen(): boolean {
  * (`startup_tasks.sync_due`: the setting, how old the data is, retries); this hook only asks and
  * starts the same sync as the Sync button, marked with what triggered it:
  *
- * - attended: the student just did something here (opened PageLamp, pressed, typed or scrolled
- *   in its window after coming back to it, closed "What's new", changed the setting). Each is
- *   noted where it happens, never inferred from what an answer says;
+ * - attended: the student just did something here: opened PageLamp, closed "What's new",
+ *   changed the setting, or pressed, typed or scrolled in its window. Attended needs a real
+ *   input in the window; after a hidden start or a focus, the first one counts (the ones after
+ *   it say nothing new). Each is noted where it happens, never inferred from what an answer
+ *   says;
  * - unattended: the hourly re-read, always, also with the window in front (asked by this page's
  *   timer, or at the shell's tick when that timer is late); a launch the student didn't see
  *   (the window started hidden); a page that was loaded again, which the system does by
  *   itself; and a window that gained focus, which it can with nobody there (another app quits
- *   at night and this window comes to the front). Those wait for the window to gain focus and
- *   then for the student's first input in it. A window that started hidden waits for that
- *   input from the start: the focus that comes with showing it may never be heard.
+ *   at night and this window comes to the front). Those wait for the student's first input.
+ *   A window that started hidden waits for it from the start, not from a focus: the focus that
+ *   comes with showing such a window may never be heard.
  *
  * Whether the window is visible, in front or focused is never taken for the student being here:
  * it can be all three for a night with nobody there.
@@ -73,8 +75,9 @@ function dialogOpen(): boolean {
  * the window not come to the front, for a quarter of an hour) holds a light sync back no
  * longer; a full sync waits for every dialog. It never opens anything, shows no message and
  * takes no focus; a run that goes wrong stays quiet (stores/sync).
- * Nothing else may start a sync without the student: no link, argument or event. The shell's
- * tick only makes this hook ask the facade again, as its own timer does.
+ * Nothing else may start a sync without the student: no link, argument or event. An event from
+ * the shell can make this hook ask the facade again (the ticker's does, as this page's own
+ * timer does); only the student's input makes a run attended.
  *
  * Mount once, in the app shell (so never during onboarding, which runs the first sync itself).
  */

@@ -23,8 +23,9 @@ type CmdResult<T> = Result<T, AppError>;
 pub const CHECK_EVENT: &str = "reminders:check";
 /// The event at which the page may ask again what is due by itself (`startup_tasks`: an
 /// automatic sync among it). The page asks on its own hourly timer; a window that is out of
-/// sight may not run that timer on time. The event carries nothing and starts nothing: the page
-/// asks the facade, and only the page's own rules start a sync.
+/// sight may not run that timer on time. The event carries nothing and starts nothing. An event
+/// from the shell can make the page ask the facade; what a run is started as is the page's to
+/// decide, and only the student's input makes a run attended.
 pub const STARTUP_CHECK_EVENT: &str = "startup:check";
 /// How often the ticker looks at the clock.
 const TICK: Duration = Duration::from_secs(60);
