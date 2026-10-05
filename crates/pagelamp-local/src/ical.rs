@@ -456,6 +456,7 @@ mod tests {
             ai_policy: AiPolicy::Unknown,
             ai_policy_note: None,
             ai_access: true,
+            material_sharing: Default::default(),
             enrollment_active: true,
             hidden: false,
             updated_at: Utc::now(),
