@@ -139,7 +139,7 @@ describe("what the card says, from the coverage view", () => {
     expect(spaced.lockedPages).toEqual([]);
   });
 
-  it("doesn't say it read the Home page when that page waits for the student or failed", () => {
+  it("doesn't say it read the Home page when that page waits for the student or failed last time", () => {
     // A module asks for the Home page to be viewed: it was read once, and is left since.
     const waiting = notReadModel(
       view({
@@ -153,6 +153,19 @@ describe("what the card says, from the coverage view", () => {
     expect(waiting.mustView).toEqual([
       { title: "Read me first", url: `${BASE}/modules/items/4`, kind: "page", home: true },
     ]);
+
+    // The Home page's request failed this time and an earlier copy is still there: the state
+    // stays "read", and the card says only that it couldn't be read last time.
+    const failed = notReadModel(
+      view({
+        home_kind: "page",
+        home_state: "read",
+        home: { id: "m1", title: "Welcome" },
+        not_readable: [entry("home", "failed_this_sync", null, "..")],
+      }),
+    );
+    expect(failed.home).toBeNull();
+    expect(failed.failed.items.map((i) => i.home)).toEqual([true]);
 
     // Another page that waits says nothing about the Home page.
     const other = notReadModel(
