@@ -21,12 +21,28 @@ type CmdResult<T> = Result<T, AppError>;
 
 /// The event the page answers with a delivery.
 pub const CHECK_EVENT: &str = "reminders:check";
+/// The event at which the page may ask again what is due by itself (`startup_tasks`: an
+/// automatic sync among it). The page asks on its own hourly timer; a window that is out of
+/// sight may not run that timer on time. The event carries nothing and starts nothing: the page
+/// asks the facade, and only the page's own rules start a sync.
+pub const STARTUP_CHECK_EVENT: &str = "startup:check";
 /// How often the ticker looks at the clock.
 const TICK: Duration = Duration::from_secs(60);
 /// How often it asks for a delivery.
 const CHECK_EVERY: TimeDelta = TimeDelta::minutes(15);
 /// A tick this much later than expected means the computer slept (or the clock was changed).
 const WOKE_AFTER: TimeDelta = TimeDelta::minutes(2);
+
+/// What a tick asks the page for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Asks {
+    /// A delivery of the reminders that are due.
+    pub reminders: bool,
+    /// Another look at what is due by itself. Not at the tick that follows a sleep: the network
+    /// is often not back yet, and a sync tried then fails and counts as its try. The next
+    /// regular tick asks.
+    pub startup: bool,
+}
 
 /// When to ask for a delivery, from the wall clock alone: the monotonic clock stops while a Mac
 /// or a Linux laptop sleeps, and a reminder that came due meanwhile should show on waking.
@@ -45,9 +61,9 @@ impl Ticker {
         }
     }
 
-    /// Whether to ask now: 15 minutes after the last time, at once after a sleep, and when the
+    /// What to ask for now: 15 minutes after the last time, at once after a sleep, and when the
     /// clock went back (a check "in the future" would otherwise wait for it).
-    pub fn tick(&mut self, now: DateTime<Utc>) -> bool {
+    pub fn tick(&mut self, now: DateTime<Utc>) -> Asks {
         let gap = now - self.last_tick;
         let woke = gap > WOKE_AFTER || gap < TimeDelta::zero();
         self.last_tick = now;
@@ -55,7 +71,10 @@ impl Ticker {
         if due || woke {
             self.last_check = now;
         }
-        due || woke
+        Asks {
+            reminders: due || woke,
+            startup: due && !woke,
+        }
     }
 }
 
@@ -209,10 +228,16 @@ pub fn start<R: Runtime>(app: AppHandle<R>) {
             let mut ticker = Ticker::new(Utc::now());
             loop {
                 std::thread::sleep(TICK);
-                if ticker.tick(Utc::now())
+                let asks = ticker.tick(Utc::now());
+                if asks.reminders
                     && let Err(error) = app.emit_to("main", CHECK_EVENT, ())
                 {
                     tracing::warn!(target: "pagelamp::reminders", %error, "ask for a delivery");
+                }
+                if asks.startup
+                    && let Err(error) = app.emit_to("main", STARTUP_CHECK_EVENT, ())
+                {
+                    tracing::warn!(target: "pagelamp::reminders", %error, "ask for a look at what is due");
                 }
             }
         });
@@ -254,9 +279,33 @@ mod tests {
         Utc.with_ymd_and_hms(2026, 10, 31, 23, 0, 0).unwrap() + TimeDelta::minutes(minutes)
     }
 
-    /// Ticks once a minute from `from` to `to` (inclusive), returning the minutes that asked.
+    /// Ticks once a minute from `from` to `to` (inclusive), returning the minutes that asked
+    /// for a delivery.
     fn run(ticker: &mut Ticker, from: i64, to: i64) -> Vec<i64> {
-        (from..=to).filter(|&m| ticker.tick(at(m))).collect()
+        (from..=to)
+            .filter(|&m| ticker.tick(at(m)).reminders)
+            .collect()
+    }
+
+    #[test]
+    fn asks_for_a_look_at_what_is_due_with_the_regular_ticks_only() {
+        let mut ticker = Ticker::new(at(0));
+        let startup = |ticker: &mut Ticker, from: i64, to: i64| -> Vec<i64> {
+            (from..=to)
+                .filter(|&m| ticker.tick(at(m)).startup)
+                .collect()
+        };
+        assert_eq!(startup(&mut ticker, 1, 31), vec![15, 30]);
+        // Asleep from minute 31 to minute 151, through several regular ticks. The tick after
+        // waking asks for a delivery and for nothing else: the network may not be back.
+        let woke = ticker.tick(at(151));
+        assert!(woke.reminders && !woke.startup, "{woke:?}");
+        // The next regular tick asks, a quarter of an hour after waking.
+        assert_eq!(startup(&mut ticker, 152, 167), vec![166]);
+        // The same when the clock goes back.
+        let back = ticker.tick(at(100));
+        assert!(back.reminders && !back.startup, "{back:?}");
+        assert_eq!(startup(&mut ticker, 101, 116), vec![115]);
     }
 
     #[test]
@@ -270,7 +319,7 @@ mod tests {
         let mut ticker = Ticker::new(at(0));
         assert_eq!(run(&mut ticker, 1, 5), Vec::<i64>::new());
         // Asleep from minute 5 to minute 125: the first tick after waking asks.
-        assert!(ticker.tick(at(125)));
+        assert!(ticker.tick(at(125)).reminders);
         // And the 15 minutes count from there.
         assert_eq!(run(&mut ticker, 126, 141), vec![140]);
     }
@@ -279,14 +328,17 @@ mod tests {
     fn a_short_sleep_counts_as_waking_too() {
         let mut ticker = Ticker::new(at(0));
         assert_eq!(run(&mut ticker, 1, 3), Vec::<i64>::new());
-        assert!(ticker.tick(at(6)), "three minutes between ticks");
+        assert!(ticker.tick(at(6)).reminders, "three minutes between ticks");
     }
 
     #[test]
     fn asks_when_the_clock_goes_back() {
         let mut ticker = Ticker::new(at(0));
         assert_eq!(run(&mut ticker, 1, 10), Vec::<i64>::new());
-        assert!(ticker.tick(at(-60)), "the clock went back an hour");
+        assert!(
+            ticker.tick(at(-60)).reminders,
+            "the clock went back an hour"
+        );
         assert_eq!(run(&mut ticker, -59, -44), vec![-45]);
     }
 }

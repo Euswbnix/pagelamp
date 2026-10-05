@@ -3,14 +3,14 @@ import { act, configure, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
-import { createMockApi, type MockOptions } from "@/api/mock";
+import { createMockApi, MOCK_STARTUP_CHECK_EVENT, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
 import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
 import { createQueryClient } from "@/app/Providers";
 import { useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
-import { DIALOG_LEFT_MS, INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS } from "./useAutoSync";
+import { DIALOG_LEFT_MS, INPUT_ASK_DELAY_MS, LAUNCH_REPLY_MS, TICK_REREAD_MS } from "./useAutoSync";
 
 // Headroom for slow CI machines: a whole route renders before anything here can happen.
 // (Per-file setting: Vitest isolates each test file.)
@@ -1572,6 +1572,133 @@ describe("automatic sync", () => {
       await settle();
       expect(sync).not.toHaveBeenCalled();
       expect(screen.getByRole("dialog", { name: "What's new in PageLamp" })).toBeInTheDocument();
+    });
+  });
+
+  describe("the shell's tick", () => {
+    /** The shell's ticker fires, as it does every quarter of an hour. */
+    function tick(times = 1) {
+      act(() => {
+        for (let i = 0; i < times; i++) window.dispatchEvent(new Event(MOCK_STARTUP_CHECK_EVENT));
+      });
+    }
+
+    /** A launch with nothing due. Counts the questions; later answers are as the test says. */
+    async function launched() {
+      const start = startClock();
+      const api = mockApi();
+      let due: { unattended: boolean; attended: boolean } | null = null;
+      let failing = false;
+      const tasks = api.startupTasks.bind(api);
+      const asked = vi.fn();
+      api.startupTasks = async () => {
+        asked();
+        if (failing) throw new ApiError("internal", "Synthetic failure");
+        const answer = await tasks();
+        return due ? { ...answer, sync_due: due } : answer;
+      };
+      const sync = vi.spyOn(api, "syncAll");
+      renderRoute("/courses", { api });
+      await screen.findByRole("heading", { level: 1 });
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(sync).not.toHaveBeenCalled();
+      return {
+        start,
+        sync,
+        asked,
+        becomeDue: (what = DUE) => {
+          due = what;
+        },
+        fail: (on: boolean) => {
+          failing = on;
+        },
+      };
+    }
+
+    it("asks nothing while the last question is younger than the page's own hour", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue();
+      later(start, TICK_REREAD_MS - 1000);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it("asks when the page's timer is late, and what is due then starts unattended", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue();
+      later(start, TICK_REREAD_MS);
+      tick();
+      await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+      expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+      // The question it asked, and the one after the run.
+      await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(3);
+    });
+
+    it("asks once when several ticks come at once", async () => {
+      const { start, asked } = await launched();
+      later(start, 9 * HOUR);
+      tick(5);
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+    });
+
+    it("counts from the last question, answered or not: no retry every quarter of an hour", async () => {
+      const { start, asked, fail } = await launched();
+      fail(true);
+      later(start, 2 * HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+
+      later(start, 2 * HOUR + 15 * MINUTE);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+
+      later(start, 2 * HOUR + TICK_REREAD_MS);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(3);
+    });
+
+    it("asks when the clock went back", async () => {
+      const { start, asked } = await launched();
+      later(start, -HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+    });
+
+    it("is nobody: a full sync that is due doesn't start, and no input is waited for", async () => {
+      const { start, sync, asked, becomeDue } = await launched();
+      becomeDue({ unattended: false, attended: true });
+      const noted = useSyncStore.getState().attendedUntil;
+      later(start, 9 * HOUR);
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(2);
+      expect(sync).not.toHaveBeenCalled();
+      expect(useSyncStore.getState().attendedUntil).toBe(noted);
+
+      // A press with no focus before it stays what it was: nothing new about the student.
+      input(new Event("pointerdown"));
+      await afterInput();
+      expect(useSyncStore.getState().attendedUntil).toBe(noted);
+      expect(sync).not.toHaveBeenCalled();
+    });
+
+    it("leaves the question to what the student just did", async () => {
+      const { start, asked } = await launched();
+      later(start, 9 * HOUR);
+      act(() => useSyncStore.getState().noteStudentAction());
+      tick();
+      await settle();
+      expect(asked).toHaveBeenCalledTimes(1);
     });
   });
 
