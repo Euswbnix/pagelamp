@@ -10,8 +10,9 @@ security reports seriously.
 Include steps to reproduce with **synthetic** data only — never real tokens, calendar links or
 course materials.
 
-We aim to acknowledge reports within 7 days. Only the latest release is supported during the 0.x
-series.
+We aim to acknowledge reports within 7 days. During the 0.x series we fix security problems in
+the latest stable release (now v0.1.0) and in the latest pre-release (now v0.3.0-alpha.1). Tell us
+which one you use.
 
 ## In scope
 
@@ -19,6 +20,9 @@ series.
 - Any way for course content (e.g. a malicious page or PDF) to make PageLamp write to Canvas, run
   commands, reach the network from the MCP server, or escape the `<course_material>` wrapper.
 - Material text reaching an AI app for a course whose AI access is off or policy is "No AI".
+- A link address stored or given out with a parameter that opens a file (`verifier`,
+  `sf_verifier`, `access_token`).
+- Any way for an MCP client to start, request or schedule a sync.
 - Crashes or resource exhaustion from malformed files during sync.
 
 ## Out of scope
@@ -29,8 +33,9 @@ third-party AI apps.
 ## Verifying downloads
 
 Every release on the [releases page](https://github.com/Euswbnix/pagelamp/releases) has a
-`SHA256SUMS` file listing every file in it. From v0.3 on, GitHub also **attests** each file in that
-list: a signed statement that this repository's Release workflow built it. v0.1.0 has checksums
+`SHA256SUMS` file listing every installer, archive and updater file in it. From v0.3.0-alpha.1 on,
+GitHub also **attests** each file in that list: a signed statement that this repository's Release
+workflow built it. v0.1.0 has checksums
 and code signatures, but no attestations. If a check below fails for a file from our releases
 page, don't run it, and tell us privately (see above).
 
@@ -52,7 +57,8 @@ gh attestation verify PageLamp_<version>_universal.dmg --repo Euswbnix/pagelamp 
 ```
 
 This works for every file listed in `SHA256SUMS`, including the Linux packages, which aren't
-code-signed.
+code-signed. In a v0.3 pre-release the installers' names say `0.3.0` (for example
+`PageLamp_0.3.0_universal.dmg`); the command-line archives carry the full tag.
 
 **macOS.** The app, the `.dmg` and the command-line `pagelamp` are signed with a Developer ID of
 team `CBU69BX7M8` and notarized by Apple; the ticket is stapled to the app and the `.dmg`.

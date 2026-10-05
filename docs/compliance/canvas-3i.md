@@ -35,7 +35,8 @@ sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
   nothing syncs while the app is closed.
 - A run the timer starts with nobody at the app makes no `/courses/:id/…` request: it checks
   the token and reads the course list, planner items and each course's announcements. A full
-  sync runs when the student starts one, or opens the app or brings it to the front.
+  sync runs when the student starts one, or opens the app, or comes back to its window and
+  clicks, types or scrolls.
 - No automatic run downloads files.
 
 ## Checked by tests
