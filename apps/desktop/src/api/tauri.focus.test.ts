@@ -52,12 +52,19 @@ it("says when the page loaded: one time, taken as the page starts and kept", () 
     vi.setSystemTime(new Date(2026, 9, 5, 23, 0));
     mockWindows("main");
     mockIPC(() => null);
+    // The clock that only runs forward, read with a fraction as some webviews give it.
+    let steady = 4_321.7;
+    vi.spyOn(performance, "now").mockImplementation(() => steady);
     const api = createTauriApi();
     expect(api.pageLoadedAt()).toBe(Date.now());
-    // A night later (the computer slept) it still names the same moment.
+    expect(api.pageLoadedSteady()).toBe(4_321);
+    // A night later (the computer slept) it still names the same moment, on both clocks.
     vi.setSystemTime(new Date(2026, 9, 6, 7, 0));
+    steady += 8 * 3_600_000;
     expect(api.pageLoadedAt()).toBe(new Date(2026, 9, 5, 23, 0).getTime());
+    expect(api.pageLoadedSteady()).toBe(4_321);
   } finally {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   }
 });

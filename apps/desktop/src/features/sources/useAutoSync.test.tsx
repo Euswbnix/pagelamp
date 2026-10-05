@@ -80,7 +80,12 @@ function startClock(): Date {
   return start;
 }
 
-/** Where the steady clock stands when `startClock` is called (the page loaded a minute before). */
+/**
+ * Where the steady clock stands when `startClock` is called. The mock's page loads when the
+ * mock is made, right after that: the hook sees a page 0 ms old on both clocks. Not 0, so that
+ * the steady readings stay clear of the marks' 0 ("none yet"), and a count that forgot the
+ * page's start would find a minute it mustn't.
+ */
 const STEADY_START = 60_000;
 let steady = STEADY_START;
 

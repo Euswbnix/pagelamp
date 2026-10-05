@@ -169,10 +169,13 @@ export function useAutoSync() {
         // load that lies ahead on the wall clock can't be dated at all (the clock was set
         // back by more than the time that passed, and the steady clock may have slept
         // through most of it): nothing is noted, and the launch starts unattended.
-        const wallAgo = Date.now() - api.pageLoadedAt();
+        const now = Date.now();
+        const wallAgo = now - api.pageLoadedAt();
         if (wallAgo >= 0) {
           const ago = Math.max(wallAgo, steadyNow() - api.pageLoadedSteady());
-          useSyncStore.getState().noteStudentAction(Date.now() - ago);
+          // From the reading the age was taken at: a second reading could be a millisecond
+          // on, and the mark that much late.
+          useSyncStore.getState().noteStudentAction(now - ago);
         }
       } else if (first) {
         // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
@@ -220,13 +223,13 @@ export function useAutoSync() {
     [client, reread],
   );
 
-  /** The student did something in the window, now or `ago` ms ago: they are known to be here. */
+  /** The student did something in the window, now or at `at`: they are known to be here. */
   const studentIsHere = useCallback(
-    (unattendedToo: boolean, ago?: number) => {
+    (unattendedToo: boolean, at?: number) => {
       // With something in the way (a sync, an update being installed, a dialog) this input
       // may be 30 seconds old before anything can start: then their next one counts again.
       awaitingInput.current = busy.current || dialogOpen();
-      useSyncStore.getState().noteStudentAction(ago === undefined ? undefined : Date.now() - ago);
+      useSyncStore.getState().noteStudentAction(at);
       // Asked a moment later, so that a full sync that is due starts now, yet after what the
       // student pressed has acted: a press reaches the page before the click it makes, and
       // "Sync" must find no automatic run in its way.
@@ -261,7 +264,11 @@ export function useAutoSync() {
         const press = lastInput.current;
         const justBefore = (since: number) => since >= 0 && since <= INPUT_BEFORE_FOCUS_MS;
         if (press && justBefore(now.wall - press.wall) && justBefore(now.steady - press.steady)) {
-          studentIsHere(true, Math.max(now.wall - press.wall, now.steady - press.steady));
+          // When it was: the longer ago of what the two clocks say, from this reading.
+          studentIsHere(
+            true,
+            now.wall - Math.max(now.wall - press.wall, now.steady - press.steady),
+          );
         } else {
           awaitingInput.current = true;
           ask(true);
