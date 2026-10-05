@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/api/errors";
 import type { SourceErrorKind, SyncSummary } from "@/api/types";
-import { afterCurrentRun, useSyncStore } from "./sync";
+import { afterCurrentRun, studentKnownHere, useSyncStore } from "./sync";
 
 /** A run of one source, "a", that ended with `kind` (null: it synced). */
 function summaryOfA(kind: SourceErrorKind | null): SyncSummary {
@@ -109,7 +109,190 @@ describe("sync store", () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
+});
+
+describe("whether the student is known to be here", () => {
+  const T0 = new Date(2026, 9, 5, 9, 0).getTime();
+  const HOUR = 3_600_000;
+  // The clock that only runs forward, set by hand like the wall clock.
+  let steady = 0;
+
+  function clocks() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+    steady = 5_000;
+    vi.spyOn(performance, "now").mockImplementation(() => steady);
+  }
+  /** Time passes, on both clocks. */
+  function pass(ms: number) {
+    steady += ms;
+    vi.setSystemTime(Date.now() + ms);
+  }
+  /** The computer sleeps: the wall clock goes on, the steady one may stand still. */
+  const sleep = (ms: number) => vi.setSystemTime(Date.now() + ms);
+  /** The clock is set: only the wall clock moves. */
+  const setClock = (to: number) => vi.setSystemTime(to);
+
+  it("is so for half a minute after what they did", () => {
+    clocks();
+    expect(studentKnownHere()).toBe(false);
+    useSyncStore.getState().noteStudentAction();
+    expect(studentKnownHere()).toBe(true);
+    pass(29_000);
+    expect(studentKnownHere()).toBe(true);
+    pass(2_000);
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("ends with a sleep, though the steady clock stood still through it", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    sleep(10 * 60_000);
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("doesn't come true again when a clock that was set back passes the old mark", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10 * 60_000);
+    expect(studentKnownHere()).toBe(false);
+    // Back an hour: the mark lies far ahead, which is no "just now" either.
+    setClock(Date.now() - HOUR);
+    expect(studentKnownHere()).toBe(false);
+    // Fifty minutes on, the wall clock shows ten seconds after what the student did, again.
+    pass(50 * 60_000 + 10_000);
+    expect(Date.now()).toBe(T0 + 10_000);
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("takes a mark far ahead on either clock for no 'just now'", () => {
+    clocks();
+    useSyncStore.setState({ attendedUntil: T0 + 600_000, attendedUntilSteady: steady + 20_000 });
+    expect(studentKnownHere()).toBe(false);
+    useSyncStore.setState({ attendedUntil: T0 + 20_000, attendedUntilSteady: steady + 600_000 });
+    expect(studentKnownHere()).toBe(false);
+    useSyncStore.setState({ attendedUntil: T0 + 20_000, attendedUntilSteady: steady + 20_000 });
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("runs the half minute from a later action that is noted with its time", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10_000);
+    // The older mark still counts; the press 200 ms ago came after it.
+    useSyncStore.getState().noteStudentAction(Date.now() - 200);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: T0 + 10_000 - 200 + 30_000,
+      attendedUntilSteady: steady - 200 + 30_000,
+    });
+    pass(25_000);
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("replaces a mark that came round on the wall clock and ran out on the steady one", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10 * 60_000);
+    // Set back to a tenth of a second after the old action: on the wall clock the old mark
+    // has 29.9 s left, and is the larger number next to a press from 200 ms ago.
+    setClock(T0 + 100);
+    expect(studentKnownHere()).toBe(false);
+    useSyncStore.getState().noteStudentAction(Date.now() - 200);
+    expect(studentKnownHere()).toBe(true);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: T0 + 100 - 200 + 30_000,
+      attendedUntilSteady: steady - 200 + 30_000,
+    });
+  });
+
+  it("tells before from after on the steady clock when the clock went back within the half minute", () => {
+    clocks();
+    steady = 100_000;
+    // The setting is changed at 09:00:00.000. A second later the clock goes back 20 s.
+    useSyncStore.getState().noteStudentAction();
+    pass(1_000);
+    setClock(Date.now() - 20_000);
+    // The press that brings the window to the front, at 119 500 on the steady clock, is
+    // noted at the focus 700 ms later. The old mark still counts (9.8 s on the steady clock)
+    // and is the larger number on the wall clock; the press came after it all the same.
+    pass(18_500);
+    expect(steady).toBe(119_500);
+    const pressed = Date.now();
+    pass(700);
+    useSyncStore.getState().noteStudentAction(pressed);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: pressed + 30_000,
+      attendedUntilSteady: 149_500,
+    });
+    // 29.3 s from here, not the 9.8 s the old mark had left.
+    pass(20_000);
+    expect(studentKnownHere()).toBe(true);
+    pass(10_000);
+    expect(studentKnownHere()).toBe(false);
+  });
+
+  it("notes nothing for a time after now, and leaves a mark that counts alone", () => {
+    clocks();
+    // A launch from "an hour ahead": the clock was set back since the page loaded.
+    useSyncStore.getState().noteStudentAction(Date.now() + HOUR);
+    expect(useSyncStore.getState()).toMatchObject({ attendedUntil: 0, attendedUntilSteady: 0 });
+    expect(studentKnownHere()).toBe(false);
+    // Also by a second, where the mark it would make looks like "just now".
+    useSyncStore.getState().noteStudentAction(Date.now() + 1_000);
+    expect(studentKnownHere()).toBe(false);
+
+    useSyncStore.getState().noteStudentAction();
+    const mark = { ...useSyncStore.getState() };
+    useSyncStore.getState().noteStudentAction(Date.now() + 1_000);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: mark.attendedUntil,
+      attendedUntilSteady: mark.attendedUntilSteady,
+    });
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("holds at the reading it was noted at, though the steady clock gives fractions", () => {
+    clocks();
+    // (2770.8 + 30000) - 2770.8 is a hair over 30000.
+    steady = 2770.8;
+    useSyncStore.getState().noteStudentAction();
+    expect(studentKnownHere()).toBe(true);
+    useSyncStore.getState().noteStudentAction(Date.now());
+    expect(studentKnownHere()).toBe(true);
+  });
+
+  it("replaces a mark the clock was set back under by what is noted afterwards", () => {
+    clocks();
+    useSyncStore.getState().noteStudentAction();
+    pass(10 * 60_000);
+    setClock(Date.now() - HOUR);
+    // The press that brought the window to the front, noted a moment later for when it was.
+    // The old mark is the larger number, and counts for nothing.
+    pass(200);
+    useSyncStore.getState().noteStudentAction(Date.now() - 200);
+    expect(studentKnownHere()).toBe(true);
+    expect(useSyncStore.getState().attendedUntil).toBe(Date.now() - 200 + 30_000);
+  });
+
+  it("counts what is noted afterwards from when it was, on both clocks", () => {
+    clocks();
+    // Twenty seconds ago leaves ten...
+    useSyncStore.getState().noteStudentAction(Date.now() - 20_000);
+    expect(studentKnownHere()).toBe(true);
+    expect(useSyncStore.getState()).toMatchObject({
+      attendedUntil: T0 + 10_000,
+      attendedUntilSteady: steady + 10_000,
+    });
+    pass(9_000);
+    expect(studentKnownHere()).toBe(true);
+    pass(2_000);
+    expect(studentKnownHere()).toBe(false);
+    // ...and long ago leaves nothing (a launch whose shell only appears an hour later).
+    useSyncStore.getState().noteStudentAction(Date.now() - HOUR);
+    expect(studentKnownHere()).toBe(false);
+  });
 });
 
 describe("a sync PageLamp started by itself", () => {
