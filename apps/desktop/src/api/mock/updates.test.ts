@@ -33,6 +33,7 @@ describe("mock updates", () => {
       "update_check",
       "course_weeks",
       "auto_sync",
+      "canvas_coverage",
       "course_removal",
     ]);
     expect(first.whats_new?.since).toBe("0.3.0-alpha.0");

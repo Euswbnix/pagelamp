@@ -79,6 +79,8 @@ export interface AvailableUpdate {
   date?: string | null;
   /** Release notes (plain text / Markdown from the manifest). */
   notes?: string | null;
+  /** The release's page on GitHub, where the notes read as they were written. */
+  release_page?: string | null;
   /** Release page for "download only" installs (deb/rpm). */
   download_url?: string | null;
 }

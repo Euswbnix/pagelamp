@@ -26,7 +26,8 @@ import { shownTopics, TOPIC_ICON } from "./whatsNewTopics";
 /**
  * One-time "What's new" for upgraders: the topics introduced since their version (all of them
  * from 0.1, which never saw onboarding). It explains the automatic update check and the
- * automatic sync BEFORE the first one runs, each with its switch right there. Closing it any way
+ * automatic sync BEFORE the first one runs, each with its switch right there, and what a Canvas
+ * sync reads now (nothing turns that off, so that row has no control). Closing it any way
  * counts as read; the facade then decides whether a check or a sync is due. Each topic is a
  * heading; the focus starts on the title so the sheet is read from the top, and a long list
  * scrolls inside the window.

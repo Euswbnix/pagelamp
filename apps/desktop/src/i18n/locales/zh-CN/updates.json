@@ -4,7 +4,7 @@
     "description": "{{product}} 会在 GitHub 上查找新版本，安装之前一定会先问你。",
     "version": "版本",
     "autoCheck": "自动检查更新",
-    "autoCheckHint": "启动时检查一次，之后每天一次。和任何下载一样，GitHub 会看到你的 IP 地址和 {{product}} 的版本号；不会发送任何课程内容。",
+    "autoCheckHint": "{{product}} 打开期间，每天一次。和任何下载一样，GitHub 会看到你的 IP 地址和 {{product}} 的版本号；不会发送任何课程内容。",
     "channel": "更新渠道",
     "channelStable": "正式版",
     "channelStableHint": "已经发布的正式版本。",
@@ -15,13 +15,17 @@
     "upToDate": "{{product}} 已是最新版本。",
     "available": "{{product}} {{version}} 已可更新。",
     "checkFailed": "无法检查更新。",
-    "noStableRelease": "{{product}} 还没有找到带更新信息的正式版。供测试用的早期版本在“测试版”渠道。",
+    "noStableRelease": "{{product}} 还没有找到可以自动更新到的正式版。供测试用的早期版本在“测试版”渠道。",
     "lastChecked": "上次检查：{{when}}",
     "neverChecked": "还没有检查过。",
     "releaseNotes": "更新说明",
+    "releaseNotesOnGitHub": "在 GitHub 上阅读这份说明",
     "install": "安装并重启…",
     "download": "下载 {{product}} {{version}}",
     "downloadHint": "这份 {{product}} 是通过 .deb 或 .rpm 安装包安装的，需要安装新的安装包来更新。"
+  },
+  "errors": {
+    "network": "无法连接更新服务器，请检查网络连接。"
   },
   "install": {
     "title": "安装 {{product}} {{version}}？",
@@ -68,7 +72,11 @@
       },
       "auto_sync": {
         "title": "{{product}} 现在会自己同步了",
-        "body": "只要 {{product}} 开着，它会自己更新截止日期和公告。你打开或切回 {{product}} 时，它还会刷新课程材料，大约每天两次，和你点“同步”一样。它不会自己下载 Canvas 文件。Canvas 可能会把完整同步记为你在各门课里的活动。想改成每天一次或者关掉，可以到“数据来源与同步”的“自动同步”里设置。"
+        "body": "只要 {{product}} 开着，它会自己让截止日期和公告保持最新。你打开或切回 {{product}} 时，它还会刷新课程资料，大约每天两次，和你点“同步”一样。它从不自己下载 Canvas 文件。Canvas 可能会把一次完整同步记为你在各门课里的活动。想改同步的频率，或者关掉它，可以到“数据来源与同步”→“自动同步”。"
+      },
+      "canvas_coverage": {
+        "title": "{{product}} 现在会读取 Canvas 课程里更多的内容",
+        "body": "完整同步现在还会读取课程的主页，以及主页、课程大纲、其他页面和公告里链接到的本课程页面（每门课数量有限）。链接到的文件只会列出来，不会下载。模块要求你“查看”的页面，在你自己到 Canvas 中看过之前不会读取，因为 Canvas 可能会把 {{product}} 读取的页面记为你查看过。有两种情况 {{product}} 事先无法判断；如果它因此打开了这样的页面，同步的提示里会写明。在 Canvas 课程的页面上，“{{product}} 没有读取的部分”会列出上一次完整同步没有读取的内容和原因。"
       },
       "course_removal": {
         "title": "移除已结束的课程",

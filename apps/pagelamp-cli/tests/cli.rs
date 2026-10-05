@@ -613,6 +613,12 @@ fn help_explains_arguments_and_removal_prints_json() {
         help.contains("Folder and calendar sources always sync fully"),
         "{help}"
     );
+    // What Canvas records is its own matter: the help says what can happen, not what does.
+    assert!(
+        help.contains("can count as viewing them in Canvas"),
+        "{help}"
+    );
+    assert!(!help.contains("(counts as viewing"), "{help}");
     let help = ok(&pagelamp(&home, &["course", "term", "--help"]));
     assert!(help.contains("Last day of the term (YYYY-MM-DD)"), "{help}");
 
