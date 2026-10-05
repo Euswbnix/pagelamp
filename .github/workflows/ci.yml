@@ -27,13 +27,41 @@ env:
 # Every action is pinned to a full commit SHA (the release-config job fails otherwise). To update
 # one, take the commit its version tag points at and keep the version in the comment.
 jobs:
+  # What a pull request changes decides how much runs for it (.github/scripts/ci-scope.mjs):
+  # only documentation skips the builds; only tests (and documentation) runs the Rust and desktop
+  # jobs on Linux alone; anything else, a push to main and a manual run get every job on every OS.
+  # A change to tests that depends on the OS can be run in full before it is merged:
+  #   gh workflow run ci.yml --ref <branch>
+  changes:
+    name: Changes
+    runs-on: ubuntu-22.04
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+      oses: ${{ steps.scope.outputs.oses }}
+      macos_app: ${{ steps.scope.outputs.macos_app }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A pull request is checked out as its merge commit: the base is its first parent.
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: What this run needs
+        id: scope
+        run: node .github/scripts/ci-scope.mjs
+
   # Rust core, sources, MCP server and CLI on every desktop OS we ship to.
   rust:
     name: Rust (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.scope != 'docs'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
+        os: ${{ fromJSON(needs.changes.outputs.oses) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,10 +87,12 @@ jobs:
   # Unsigned; the release builds are signed in release.yml. Windows too, since the app ships there.
   desktop:
     name: Desktop (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.scope != 'docs'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
+        os: ${{ fromJSON(needs.changes.outputs.oses) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -186,6 +216,8 @@ jobs:
   # installed Xcodes when there is none, instead of building with an older toolchain.
   macos-app:
     name: macOS app
+    needs: changes
+    if: needs.changes.outputs.macos_app == 'true'
     runs-on: ${{ vars.MACOS_APP_RUNNER || 'xcode-27' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
