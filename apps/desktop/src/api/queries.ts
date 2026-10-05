@@ -1,7 +1,13 @@
 // TanStack Query hooks — the way screens read and change data. Screens never call `useApi()`
 // methods directly for reads; they use these hooks so caching and invalidation stay consistent.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  focusManager,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
 import type {
@@ -44,13 +50,33 @@ export const queryKeys = {
 
 // ----- reads ----------------------------------------------------------------------------------
 
+/**
+ * The client's own retry rule, except out of sight. There a retry waits until the window is
+ * visible, and a poll's later ticks wait with it: so a read that fails there just fails, and
+ * the next tick asks anew.
+ */
+function retryInSight(client: QueryClient) {
+  const rule = client.getDefaultOptions().queries?.retry;
+  return (failures: number, error: Error): boolean => {
+    if (!focusManager.isFocused()) return false;
+    if (typeof rule === "function") return rule(failures, error);
+    if (typeof rule === "number") return failures < rule;
+    // The library's own default: three retries.
+    return rule ?? failures < 3;
+  };
+}
+
 export function useStatus() {
   const api = useApi();
+  const client = useQueryClient();
   return useQuery({
     queryKey: queryKeys.status(),
     queryFn: () => api.status(),
-    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself.
+    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself. Also
+    // with the window out of sight (the tray): what waits for that sync to end waits here.
     refetchInterval: (query) => (query.state.data?.sync_in_progress ? 3000 : false),
+    refetchIntervalInBackground: true,
+    retry: retryInSight(client),
   });
 }
 
