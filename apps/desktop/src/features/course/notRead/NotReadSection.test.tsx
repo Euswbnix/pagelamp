@@ -410,7 +410,7 @@ describe("What PageLamp didn't read, on the course page", () => {
     expect(within(section).getByText("PageLamp 读取了这门课的主页。")).toBeVisible();
     expect(
       within(section).getByText(
-        "这门课在 Canvas 中没有开放“页面”和“文件”列表。PageLamp 找到了模块和链接指向的页面和文件，其余的它看不到。",
+        "这门课在 Canvas 中没有显示“页面”和“文件”列表。PageLamp 找到了模块和链接指向的页面和文件，其余的它看不到。",
       ),
     ).toBeVisible();
     expect(within(section).getByText("通过链接找到：2 个页面和 3 个文件")).toBeVisible();

@@ -33,6 +33,7 @@ describe("mock updates", () => {
       "update_check",
       "course_weeks",
       "auto_sync",
+      "canvas_coverage",
       "course_removal",
       "syllabus_reading",
       "ai_writing",

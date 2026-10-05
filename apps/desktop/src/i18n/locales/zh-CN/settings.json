@@ -35,7 +35,7 @@
   "privacy": {
     "title": "隐私",
     "keychain": "你的 Canvas 访问令牌和日历订阅地址保存在系统钥匙串中，不会写入 {{product}} 的数据库。",
-    "readOnly": "{{product}} 只从 Canvas 读取数据，从不在上面发帖、提交或修改任何内容。",
+    "readOnly": "{{product}} 只从 Canvas 读取，从不在那里发布或提交任何内容。",
     "aiProvider": "只有当 AI 应用为了回答你的问题而读取课程内容时，这些内容才会发送给 AI 服务商。",
     "perCourse": "你可以不让 AI 应用读取任意一门课的资料：打开那门课，在“AI 使用规定”标签页里关掉开关即可。",
     "notAcknowledged": "你还没有确认过这段说明。添加数据来源时会请你确认。"
@@ -49,7 +49,7 @@
     "issueHint": "在浏览器中新建一个 issue，把诊断报告粘贴进去即可。",
     "helpLink": "帮助与常见问题",
     "fileReader": {
-      "blocked": "{{product}} 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，PDF 和超过 5 MB 的其他文件不会被读取。",
+      "blocked": "{{product}} 的文件读取程序没能启动（常见原因是被杀毒软件或“智能应用控制”拦截）。在它能运行之前，所有 PDF（不论大小）和超过 5 MB 的其他文件都不会被读取。",
       "mismatch": "{{product}} 的文件读取程序和当前版本不一致。请重新安装 {{product}}。",
       "unreadable": "{{product}} 没能读取的文件：{{list}}",
       "separator": "、",

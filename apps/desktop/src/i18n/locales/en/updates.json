@@ -4,7 +4,7 @@
     "description": "{{product}} looks for new versions on GitHub. It always asks before installing one.",
     "version": "Version",
     "autoCheck": "Check for updates automatically",
-    "autoCheckHint": "At launch and once a day. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent.",
+    "autoCheckHint": "Once a day, while {{product}} is open. GitHub sees your IP address and your {{product}} version, as with any download; nothing about your courses is sent.",
     "channel": "Update channel",
     "channelStable": "Stable",
     "channelStableHint": "Finished releases.",
@@ -19,9 +19,13 @@
     "lastChecked": "Last checked {{when}}",
     "neverChecked": "Not checked yet.",
     "releaseNotes": "Release notes",
+    "releaseNotesOnGitHub": "Read these notes on GitHub",
     "install": "Install and restart…",
     "download": "Download {{product}} {{version}}",
     "downloadHint": "This copy of {{product}} was installed from a .deb or .rpm package, so it updates by installing the new package."
+  },
+  "errors": {
+    "network": "Couldn't reach the update server. Check your internet connection."
   },
   "install": {
     "title": "Install {{product}} {{version}}?",
@@ -73,6 +77,10 @@
       "auto_sync": {
         "title": "{{product}} now syncs by itself",
         "body": "While {{product}} is open, it keeps your deadlines and announcements current by itself. When you open {{product}} or come back to it, it also refreshes your course materials, about twice a day, the same as pressing Sync. It never downloads Canvas files by itself. Canvas may record a full sync as your activity in each course. To change how often it syncs, or to turn it off, go to Sources & sync → Automatic sync."
+      },
+      "canvas_coverage": {
+        "title": "{{product}} reads more of each Canvas course",
+        "body": "A full sync now also reads a course's Home page, and a limited number of pages of the same course that the Home page, the syllabus, other pages and announcements link to. Files they link to are listed, not downloaded. A page that a module asks you to view isn't read until you have viewed it in Canvas, because Canvas may record a page that {{product}} reads as viewed by you. In two cases {{product}} can't know this beforehand; when it has opened such a page, the sync's warnings say so. On a Canvas course's page, “What {{product}} didn't read” shows what the last full sync didn't read, and why."
       },
       "course_removal": {
         "title": "Remove finished courses",

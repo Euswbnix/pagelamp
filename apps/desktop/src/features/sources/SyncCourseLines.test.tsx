@@ -17,7 +17,7 @@ const HIDDEN_LISTS = { scenario: "canvas-hidden-lists" } as const;
 const DEMO312_EN =
   "DEMO312: Pages and Files lists not shown in Canvas · Found through links: 2 pages and 3 files · 2 not read";
 const DEMO312_ZH =
-  "DEMO312：在 Canvas 中没有开放“页面”和“文件”列表 · 通过链接找到：2 个页面和 3 个文件 · 2 项没有读取";
+  "DEMO312：在 Canvas 中没有显示“页面”和“文件”列表 · 通过链接找到：2 个页面和 3 个文件 · 2 项没有读取";
 const DEMO312_ID = "canvas:canvas.demo.test/course/312";
 
 function line(fields: Partial<CourseSyncSummary> & { course: string }): CourseSyncSummary {

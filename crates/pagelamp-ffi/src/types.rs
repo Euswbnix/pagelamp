@@ -1186,6 +1186,7 @@ pub enum WhatsNewTopic {
     UpdateCheck,
     CourseWeeks,
     AutoSync,
+    CanvasCoverage,
     CourseRemoval,
     SyllabusReading,
     AiWriting,

@@ -152,6 +152,7 @@ fn an_upgrade_from_0_1_shows_whats_new_before_the_first_check() {
             WhatsNewTopic::UpdateCheck,
             WhatsNewTopic::CourseWeeks,
             WhatsNewTopic::AutoSync,
+            WhatsNewTopic::CanvasCoverage,
             WhatsNewTopic::CourseRemoval,
             WhatsNewTopic::SyllabusReading,
             WhatsNewTopic::AiWriting,

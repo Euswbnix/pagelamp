@@ -22,7 +22,7 @@ describe("the course header's mark for lists a course doesn't show", () => {
     useUiStore.setState({ locale: "zh-CN" });
     await i18n.changeLanguage("zh-CN");
     renderRoute(paths.course(DEMO312), HIDDEN_LISTS);
-    expect(await screen.findByText("在 Canvas 中没有开放“页面”和“文件”列表")).toBeInTheDocument();
+    expect(await screen.findByText("在 Canvas 中没有显示“页面”和“文件”列表")).toBeInTheDocument();
   });
 
   it("names one list when only one isn't shown, and is there on every tab", async () => {

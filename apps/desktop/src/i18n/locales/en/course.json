@@ -147,7 +147,7 @@
     "availableAfterSync": "Available when the sync finishes",
     "dialogTitle": "Download this course's files?",
     "viewingNotice": "Downloading files through Canvas can count as viewing them (e.g. module 'must view' requirements).",
-    "dialogDetail": "{{product}} downloads the course's files to this computer and extracts their text. Nothing is submitted or changed in Canvas.",
+    "dialogDetail": "{{product}} downloads the course's files to this computer and extracts their text. It doesn't post or submit anything in Canvas.",
     "confirm": "Download",
     "done_one": "Downloaded {{count}} file",
     "done_other": "Downloaded {{count}} files",
