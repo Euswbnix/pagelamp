@@ -1710,6 +1710,8 @@ nonisolated enum L10nKeys {
         "updates.whatsNew.title",
         "updates.whatsNew.topics.auto_sync.body",
         "updates.whatsNew.topics.auto_sync.title",
+        "updates.whatsNew.topics.canvas_coverage.body",
+        "updates.whatsNew.topics.canvas_coverage.title",
         "updates.whatsNew.topics.course_weeks.body",
         "updates.whatsNew.topics.course_weeks.title",
         "updates.whatsNew.topics.update_check.body",

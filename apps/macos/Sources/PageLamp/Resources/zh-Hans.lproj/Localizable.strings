@@ -1649,6 +1649,8 @@
 "updates.whatsNew.title" = "PageLamp 有哪些新变化";
 "updates.whatsNew.topics.auto_sync.body" = "只要 PageLamp 开着，它会自己让截止日期和公告保持最新。你打开或切回 PageLamp 时，它还会刷新课程资料，大约每天两次，和你点“同步”一样。它从不自己下载 Canvas 文件。Canvas 可能会把一次完整同步记为你在各门课里的活动。想改同步的频率，或者关掉它，可以到“数据来源与同步”→“自动同步”。";
 "updates.whatsNew.topics.auto_sync.title" = "PageLamp 现在会自己同步了";
+"updates.whatsNew.topics.canvas_coverage.body" = "完整同步现在还会读取课程的主页，以及主页、课程大纲、其他页面和公告里链接到的本课程页面（每门课数量有限）。链接到的文件只会列出来，不会下载。模块要求你“查看”的页面，在你自己到 Canvas 中看过之前不会读取，因为 Canvas 可能会把 PageLamp 读取的页面记为你查看过。有两种情况 PageLamp 事先无法判断；如果它因此打开了这样的页面，同步的提示里会写明。在 Canvas 课程的页面上，“PageLamp 没有读取的部分”会列出上一次完整同步没有读取的内容和原因。";
+"updates.whatsNew.topics.canvas_coverage.title" = "PageLamp 现在会读取 Canvas 课程里更多的内容";
 "updates.whatsNew.topics.course_weeks.body" = "每门课都会显示当前是第几周、处于哪个阶段，已经结束的课程会归入“往期课程”。";
 "updates.whatsNew.topics.course_weeks.title" = "每门课都有周次和阶段";
 "updates.whatsNew.topics.update_check.body" = "它每天会从 GitHub 下载一个很小的文件，看看有没有新版本。和任何下载一样，GitHub 会看到你的 IP 地址和 PageLamp 的版本号；不会发送任何课程内容。安装任何更新之前一定会先问你。";

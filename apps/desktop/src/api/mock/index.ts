@@ -1142,7 +1142,12 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             : {
                 // 0.1 never recorded its version, so upgraders from it have none.
                 since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-                topics: ["update_check" as const, "course_weeks" as const, "auto_sync" as const],
+                topics: [
+                  "update_check" as const,
+                  "course_weeks" as const,
+                  "auto_sync" as const,
+                  "canvas_coverage" as const,
+                ],
               },
           update_check_due:
             updates.prefs.auto_check &&

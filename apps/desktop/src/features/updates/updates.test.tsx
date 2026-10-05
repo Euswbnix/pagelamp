@@ -4,6 +4,10 @@ import type { AvailableUpdate } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
+import enCourse from "@/i18n/locales/en/course.json";
+import enUpdates from "@/i18n/locales/en/updates.json";
+import zhCourse from "@/i18n/locales/zh-CN/course.json";
+import zhUpdates from "@/i18n/locales/zh-CN/updates.json";
 import { useSyncStore } from "@/stores/sync";
 import { renderRoute } from "@/test/render";
 
@@ -75,6 +79,9 @@ describe("What's new (upgraders)", () => {
     expect(within(sheet).getByText("Weeks and phases for every course")).toBeInTheDocument();
     expect(within(sheet).getByText("PageLamp now syncs by itself")).toBeInTheDocument();
     expect(
+      within(sheet).getByText("PageLamp reads more of each Canvas course"),
+    ).toBeInTheDocument();
+    expect(
       within(sheet).getByRole("switch", { name: "Check for updates automatically" }),
     ).toBeChecked();
     expect(within(sheet).getByRole("switch", { name: "Sync automatically" })).toBeChecked();
@@ -115,6 +122,36 @@ describe("What's new (upgraders)", () => {
     expect(row).toHaveTextContent("about twice a day");
     expect(row).toHaveTextContent("go to Sources & sync → Automatic sync.");
   });
+
+  it("says what a Canvas sync reads now and what it leaves, with nothing to switch", async () => {
+    renderRoute("/courses", { scenario: "upgrader" });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    const rows = within(sheet).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    // Last: the rows before it each ask for a decision.
+    const row = rows[3] as HTMLElement;
+    expect(row).toHaveTextContent("PageLamp reads more of each Canvas course");
+    expect(row).toHaveTextContent("also reads a course's Home page");
+    expect(row).toHaveTextContent("Files they link to are listed, not downloaded.");
+    expect(row).toHaveTextContent("isn't read until you have viewed it in Canvas");
+    expect(row).toHaveTextContent("Canvas may record a page that PageLamp reads as viewed by you.");
+    expect(row).toHaveTextContent("the sync's warnings say so.");
+    expect(row).toHaveTextContent("“What PageLamp didn't read”");
+    // Nothing turns it off.
+    expect(within(row).queryByRole("switch")).toBeNull();
+    expect(within(sheet).getAllByRole("switch")).toHaveLength(2);
+  });
+
+  it.each([
+    ["en", enUpdates, enCourse],
+    ["zh-CN", zhUpdates, zhCourse],
+  ] as const)(
+    "names the course page's card by its own title (%s)",
+    (_language, updates, course) => {
+      // The row sends the student to that card: the two must not drift apart.
+      expect(updates.whatsNew.topics.canvas_coverage.body).toContain(`“${course.notRead.title}”`);
+    },
+  );
 
   it("turns automatic sync off from there, before What's new counts as read", async () => {
     const api = mockApi({ scenario: "upgrader" });

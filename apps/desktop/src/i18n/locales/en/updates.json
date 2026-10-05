@@ -73,6 +73,10 @@
       "auto_sync": {
         "title": "{{product}} now syncs by itself",
         "body": "While {{product}} is open, it keeps your deadlines and announcements current by itself. When you open {{product}} or come back to it, it also refreshes your course materials, about twice a day, the same as pressing Sync. It never downloads Canvas files by itself. Canvas may record a full sync as your activity in each course. To change how often it syncs, or to turn it off, go to Sources & sync → Automatic sync."
+      },
+      "canvas_coverage": {
+        "title": "{{product}} reads more of each Canvas course",
+        "body": "A full sync now also reads a course's Home page, and a limited number of pages of the same course that the Home page, the syllabus, other pages and announcements link to. Files they link to are listed, not downloaded. A page that a module asks you to view isn't read until you have viewed it in Canvas, because Canvas may record a page that {{product}} reads as viewed by you. In two cases {{product}} can't know this beforehand; when it has opened such a page, the sync's warnings say so. On a Canvas course's page, “What {{product}} didn't read” shows what the last full sync didn't read, and why."
       }
     }
   },
