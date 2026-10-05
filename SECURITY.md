@@ -20,8 +20,10 @@ which one you use.
 - Any way for course content (e.g. a malicious page or PDF) to make PageLamp write to Canvas, run
   commands, reach the network from the MCP server, or escape the `<course_material>` wrapper.
 - Material text reaching an AI app for a course whose AI access is off or policy is "No AI".
-- A link address stored or given out with a parameter that opens a file (`verifier`,
-  `sf_verifier`, `access_token`).
+- From v0.3: a link address in stored text, or in anything PageLamp gives an AI app, that still
+  carries a parameter which, as far as we can tell, opens a file (`verifier`, `sf_verifier`,
+  `access_token`). v0.1.0 keeps such addresses; that is known (see PRIVACY.md), and v0.3 removes
+  them.
 - Any way for an MCP client to start, request or schedule a sync.
 - Crashes or resource exhaustion from malformed files during sync.
 
@@ -73,6 +75,9 @@ codesign --verify --strict --verbose=2 ./pagelamp                  # the command
 codesign --display --verbose=2 ./pagelamp 2>&1 | grep TeamIdentifier
 ```
 
+v0.1.0 has one `.dmg` per chip (`aarch64` for Apple silicon, `x64` for Intel) and no `universal`
+one: in the `spctl` line, use the name of the file you downloaded.
+
 A bare command-line binary can't carry a stapled ticket; macOS looks its notarization up online
 the first time it runs.
 
@@ -93,7 +98,9 @@ The certificate chains to Microsoft's "Microsoft Identity Verification Root Cert
 against the updater public key built into the app, whichever channel it came from; a changed or
 swapped file is refused. The stable and beta channels (`updates/stable.json` and
 `updates/beta.json` on this repository's `gh-pages` branch, which the app reads from
-`raw.githubusercontent.com`) point only at files of this repository's releases, and each update
-file is also in that release's `SHA256SUMS` and attestation. `updates/test.json` on the same
-branch serves rehearsal builds from `updates/test/`, which belong to no release and have no
-`SHA256SUMS` or attestation; only rehearsal builds read it, never a released app.
+`raw.githubusercontent.com`; when the stable file can't be fetched, the app asks `github.com` for
+the `latest.json` of this repository's latest release) point only at files of this repository's
+releases, and each update file is also in that release's `SHA256SUMS` and attestation.
+`updates/test.json` on the same branch serves rehearsal builds from `updates/test/`, which belong
+to no release and have no `SHA256SUMS` or attestation; only rehearsal builds read it, never a
+released app.

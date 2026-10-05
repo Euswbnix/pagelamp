@@ -20,13 +20,16 @@ What will be the first pre-release of v0.3.
   PageLamp doesn't check on its own before you have seen it.
 - Automatic sync: while the PageLamp app is running it syncs by itself, twice a day unless you
   choose once a day or off (in the app, or `pagelamp sync --auto <off|daily|twice-daily>`). It
-  never downloads files. With nobody at the app it asks Canvas only for your course list,
-  deadlines and announcements; modules, pages, the file list and assignments are read when you
-  start a sync, or when the last full sync is old enough and you open PageLamp, or come back to
-  its window and click, type or scroll there. Canvas may record such a full sync as your activity
-  in each course, as when you press Sync. A course found in between is listed at once and says
-  that its materials haven't been read yet. After you stop a sync, nothing starts by itself for
-  an hour. A sync PageLamp starts by itself says so in the `User-Agent` it sends to Canvas.
+  never downloads files. With nobody at the app it checks your token and asks Canvas only for
+  your course list (with each course's syllabus), deadlines and announcements; modules, pages,
+  the file list and assignments are read when you start a sync, or when you open PageLamp, or
+  come back to its window and click, type or scroll there, and the last full sync is old enough
+  (or a newly found course is waiting for its first full sync). Closing *What's new* or changing
+  this setting counts as being at the app too. Canvas may record such a full sync as your
+  activity in each course, as when you press Sync. A course found in between is listed at once
+  and says that its materials haven't been read yet. After you stop a sync, nothing starts by
+  itself for an hour. A sync PageLamp starts by itself says so in the `User-Agent` it sends to
+  Canvas.
 - Course weeks that follow the real teaching dates: a Canvas term that is really an enrollment
   window (for example a "Fall" term that runs from May to January) is no longer used to count
   weeks. PageLamp uses the dates you set first; then the Canvas course's own dates or the Canvas
@@ -36,15 +39,18 @@ What will be the first pre-release of v0.3.
 - "Where this course is" on a course's **Timeline** tab: the week or phase and how sure PageLamp
   is, the dates it used and where they come from, the dates it didn't use and why, and the
   course's status.
-- Past courses: finished courses move to a collapsed "Past courses" group in the app ("Past" in
-  `pagelamp courses`), and courses that haven't started are listed under "Upcoming". Past courses
-  keep their deadlines in the list; "I'm still taking this" moves a course back.
+- Past courses: finished courses, and courses that have no dates and nothing new for about four
+  months, move to a collapsed "Past courses" group in the app ("Past" in `pagelamp courses`),
+  and courses that haven't started are listed under "Upcoming". Past courses keep their
+  deadlines in the list; "I'm still taking this" moves a course back.
 - Canvas: PageLamp reads the page a course's Home shows, and the pages of the same course that
   the Home page, the syllabus, other pages and announcements link to (one step, within limits).
   Files they link to are listed, not downloaded. This is how notes and files are found in a
-  course that hides its Pages or Files list; PageLamp still never asks for a hidden list. A page
-  that no list of the course gives a change date for is read again by every sync you start, and
-  by an automatic sync at most once a day; Canvas may record each read as a view.
+  course that hides its Pages or Files list; PageLamp still never asks for either of these lists
+  when the course hides it. (It asks for a course's modules, assignments and announcements
+  whatever the course menu shows, as v0.1 did.) A page that no list of the course gives a change
+  date for is read again by every sync you start, and by an automatic sync at most once a day;
+  Canvas may record each read as a view.
 - What PageLamp didn't read of a Canvas course is recorded with a reason. `pagelamp sync` prints
   a line per course with what it found through links and how many things it couldn't read; your
   AI app gets the list with the reasons and is told not to guess at it.
@@ -70,9 +76,9 @@ What will be the first pre-release of v0.3.
   updates*; your data isn't changed.
 - A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
   turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this
-  week. On Windows 11 22H2 and later the window uses Mica; "Reduce transparency" in Settings (or
-  the system setting) makes every surface solid, and on Linux "Increase contrast" gives darker
-  text and borders. On Windows and Linux the typeface is now Inter; macOS uses the system font.
+  week. On Windows 11 22H2 and later the window uses Mica; "Reduce transparency" in Settings
+  makes every surface solid, and on Linux "Increase contrast" gives darker text and borders. On
+  Windows and Linux the typeface is now Inter; macOS uses the system font.
 - Command line: `pagelamp course timeline <course>` prints where a course is, with the dates used
   and not used and why. `pagelamp course keep <course>` is "I'm still taking this" (`--until
   <date>`, or `--clear` to undo). `pagelamp courses -v` lists the reasons under each course.
@@ -87,11 +93,14 @@ What will be the first pre-release of v0.3.
 ### Changed
 - Canvas: a page that a module asks you to view is no longer read until you have viewed it in
   Canvas; as far as we can tell, reading it for you could mark it as viewed. Such pages are
-  listed as not read. In two cases PageLamp can't know beforehand: the first time it reads a
-  course's Home page, and when a link uses an old address of such a page. If it opened one, the
-  sync says so.
+  listed as not read. In two cases PageLamp can't know beforehand: when it reads a course's Home
+  page for the first time, or again after the course got another Home page; and when a link uses
+  another address of such a page. If it opened one, the sync says so.
 - Canvas: a sync asks for a course's announcements of the last 365 days (was 120). Older ones
   PageLamp already has are kept, as before.
+- A Canvas sync of only some courses (`pagelamp sync --course`, or downloading one course's
+  files) no longer counts as a sync of the whole source: "Last synced", `pagelamp status` (now
+  "Last full sync") and `sync_status` keep the time of the last full sync.
 - Canvas: the request that lists your courses also asks whether each course is concluded, and
   PageLamp keeps each course's time zone and the dates Canvas reports for it.
 - On a Canvas site whose session codes PageLamp knows how to read (one site so far), it takes the
@@ -169,8 +178,10 @@ What will be the first pre-release of v0.3.
 ### Security
 - Link addresses in Canvas pages, announcements and syllabuses can carry access parameters.
   PageLamp now removes them from the link addresses in the text it stores, whatever the text
-  came from, and before it gives text out (search, your AI app). Text stored earlier is cleaned
-  the next time PageLamp, the `pagelamp` command or your AI app's connection opens your data.
+  came from, and before it gives text out (search, your AI app). A link your instructor put in a
+  module as an item of its own keeps its address as written; that address is cleaned when it is
+  given to your AI app. Files you downloaded are not changed. Text stored earlier is cleaned the
+  next time PageLamp, the `pagelamp` command or your AI app's connection opens your data.
 
 ### Upgrading from 0.1
 - v0.1.0 doesn't update itself: download this version from the releases page and install it by
@@ -178,6 +189,13 @@ What will be the first pre-release of v0.3.
 - Quit your AI app before you install. Then open PageLamp once, and open your AI app again. An AI
   app that still runs the old `pagelamp` can't read the upgraded database and asks you to update
   PageLamp.
+- Windows, if you installed v0.1.0 from the `.msi`: this version has no `.msi`. The `-setup.exe`
+  is made to remove that installation first (Windows may ask for an administrator's permission)
+  and installs for your account only, so `pagelamp.exe` is in another folder afterwards: copy
+  the setup from *Connect your AI app* into your AI app again. Nobody has tried this path by
+  hand yet.
+- If your AI app starts a `pagelamp` you installed on its own (from an archive, or with
+  `cargo`), replace that file with this version's too.
 - The first start of this version (the app, the `pagelamp` command or your AI app's connection,
   whichever comes first) upgrades the database. It saves a copy as `pagelamp.db.v2.bak` next to
   it first; if the copy can't be written, the upgrade still goes ahead, and `pagelamp doctor`
@@ -191,9 +209,10 @@ What will be the first pre-release of v0.3.
 - The app shows *What's new* once. Automatic sync and the daily update check are on unless you
   turn them off there, and neither runs before you close it. When you close it, a full sync
   may start at once if your last one is 12 hours old or more.
-- The first full sync reads more of each Canvas course than v0.1 did (the Home page and linked
-  pages). In a course that hides its Files list, a page that hasn't changed is also read once
-  more, to find the files it links to. Canvas may record these reads as views.
+- From this version on, a full sync reads more of each Canvas course than v0.1 did (the Home
+  page and linked pages; see *Added*). In a course that hides its Files list, a page that hasn't
+  changed is also read once more, to find the files it links to. Canvas may record these reads
+  as views.
 - Finished courses move to "Past courses", and the week shown for a course can change, because
   weeks are counted from other dates than in v0.1.
 
@@ -203,6 +222,12 @@ What will be the first pre-release of v0.3.
 - A past course that Canvas still lists keeps syncing, and a course can't be removed yet. To
   keep one away from your AI app, hide it (course → *Settings* → *Hide this course*).
 - Automatic sync and the update check run only while the PageLamp app is open.
+- Updating inside the app is new. Nobody has tried it by hand on Windows or with the Linux
+  `.AppImage` yet, and nobody has installed the Linux packages and gone through a sync; they are
+  built by the same automation as the other downloads. If an update fails, install the new
+  version by hand from the releases page.
+- Reading the Home page and linked pages can't be turned off: it is part of every full sync of a
+  Canvas course. With automatic sync off, a full sync runs only when you start one.
 - Keep the Beta update channel (the default) while you run a 0.3 pre-release: the Stable channel
   has no 0.3 release.
 - Installer file names and the OS-level app version show `0.3.0` for every 0.3.0 pre-release;

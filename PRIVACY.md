@@ -11,7 +11,8 @@ who build PageLamp never receive your data.
 
 | Data | Where | Why |
 |---|---|---|
-| Course list, modules, material titles and text, announcements, deadlines, your study plan, your per-course settings (AI policy, AI access, term dates, hidden, and **(v0.3)** that you are still taking a course PageLamp counts as past) | a SQLite database in your data folder (macOS `~/Library/Application Support/dev.PageLamp.PageLamp`, Windows `%APPDATA%\PageLamp\PageLamp\data`, Linux `$XDG_DATA_HOME/pagelamp`, or `PAGELAMP_HOME`) | so your AI app can answer questions about your courses |
+| Course list, syllabuses, modules, material titles and text, announcements, deadlines and other dated items from your Canvas planner (your own planner notes and calendar events included: title, date and link), your study plan, your per-course settings (AI policy, AI access, term dates, hidden, and **(v0.3)** that you are still taking a course PageLamp counts as past) | a SQLite database in your data folder (macOS `~/Library/Application Support/dev.PageLamp.PageLamp`, Windows `%APPDATA%\PageLamp\PageLamp\data`, Linux `$XDG_DATA_HOME/pagelamp`, or `PAGELAMP_HOME`) | so your AI app can answer questions about your courses |
+| Your sources: the Canvas address and the name Canvas shows for your account, a course folder's full path, when each source last synced and its last error | the same database (and its backup); PageLamp doesn't give the name or the path to your AI app | to show "Connected as …" and each source's state |
 | Files you ask PageLamp to download from Canvas | the `files/` folder next to the database | so their text can be indexed |
 | Canvas access token, calendar-feed link | your operating system's keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) — never in the database, logs or AI output | to sync on your behalf |
 | **(v0.3)** Your update settings, the result of the last update check, and the version you last ran | the same database | to know when the next check is due and to show "What's new" once |
@@ -20,17 +21,21 @@ who build PageLamp never receive your data.
 | **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database (on macOS and Linux its permissions let only your account read it); only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
-dates and links, also where an assignment or a quiz appears in the list of what wasn't read.
-Canvas sends each assignment's description along with the list of assignments; PageLamp drops it
-and never stores it, and it never opens an assignment or a quiz. It never reads your university
-password.
+dates and links; **(v0.3)** an assignment or a quiz can also appear, by title and link, in the
+list of what wasn't read. Canvas sends each assignment's description along with the list of
+assignments; PageLamp drops it and never stores it, and it never opens an assignment or a quiz. It
+never reads your university password.
 
-**(v0.3)** A link address in a Canvas page, announcement or syllabus can carry a parameter that
-opens a file for whoever has the address. v0.1.0 stores such addresses as they are, and your AI
-app can read them with the text. From v0.3 PageLamp removes these parameters from the link
-addresses in the text it stores, and before it gives text out. Text stored earlier (materials,
-syllabuses, saved study plans) is cleaned the first time v0.3 opens your data; PageLamp does that
-before it makes the backup copy.
+**(v0.3)** A link address in a Canvas page, announcement or syllabus can carry a parameter
+(`verifier`, `sf_verifier`, `access_token`) that, as far as we can tell, opens a file for whoever
+has the address. v0.1.0 stores such addresses as they are, and your AI app can read them with the
+text. From v0.3 PageLamp removes these parameters from the link addresses in the text it stores,
+and again from everything it gives your AI app. Two limits: a parameter whose name is written in
+an encoded form can be missed, and a material's own link (for example a link your instructor put
+in a module) is stored as it is and cleaned only on its way to your AI app. Text stored earlier
+(materials, syllabuses, saved study plans) is cleaned once after the update: the app and the
+`pagelamp` command don't open your data until that is done. PageLamp also tries to clean it before
+it makes the backup copy; if that try fails, the copy is still made and keeps the old addresses.
 
 ## What leaves your computer
 
@@ -46,11 +51,11 @@ before it makes the backup copy.
     list (with each course's syllabus), your deadlines and your courses' announcements. It makes
     no request for a course's modules, pages, file list or assignments. Canvas keeps its own
     records, and we can't promise that these requests leave none.
-  - When you open PageLamp, come back to its window and click, type or scroll, or change this
-    setting, and the last full sync is old enough or a newly found course hasn't been read yet,
-    it runs the same sync as the Sync button. A window that only comes to the front doesn't
-    count. Canvas may record a full sync as your activity in each course, as it would if you
-    pressed Sync yourself.
+  - When you open PageLamp, come back to its window and click, type or scroll, close "What's new",
+    or change this setting, and the last full sync is old enough or a newly found course hasn't
+    been read yet, it runs the same sync as the Sync button. A window that only comes to the front
+    doesn't count. Canvas may record a full sync as your activity in each course, as it would if
+    you pressed Sync yourself.
   - PageLamp's MCP server gives your AI app no way to start a sync and tells it not to run one
     for you. PageLamp doesn't sync by itself while its app is closed.
 - **When you ask your AI app a question:** your AI app (Claude, ChatGPT, Codex, …) reads the course
@@ -66,7 +71,15 @@ before it makes the backup copy.
   turn the daily check off (see below).
 - **Downloading course files:** when you ask for a course's files, Canvas may send the download
   on to its file storage host; PageLamp follows it and doesn't send your token there.
-- Nothing else. PageLamp never contacts any other server.
+- **Adding a source:** when you add a Canvas source or replace its token, PageLamp checks the
+  token with Canvas right away; when you add a calendar feed or replace its link, it downloads the
+  feed once.
+- **A calendar feed that redirects:** PageLamp follows the redirect, to https addresses only, and
+  so contacts the server the feed names.
+- **Installing on Windows:** if your computer doesn't have Microsoft's WebView2 runtime (Windows
+  11 comes with it), the installer is set to download it from Microsoft.
+- Nothing else. The PageLamp app, the `pagelamp` command and the MCP server contact no other
+  server.
 
 ## Your controls
 
@@ -85,10 +98,13 @@ before it makes the backup copy.
   Canvas or your LMS calendar are never changed.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain), then quit PageLamp and delete the data folder above. Uninstalling the app doesn't do
-  this: the database, downloaded files, the backup and the logs stay until you delete the folder.
-  The desktop app also keeps its display preferences (such as theme, language, transparency and
-  contrast, which lists are open, and that the first-run setup is done) in its own app storage
-  under `dev.pagelamp.desktop`; they contain no course data.
+  this. The database, downloaded files, the backup, the logs and the list of course names stay
+  until you delete the folder. Your Canvas token or feed link isn't in that folder: it stays in
+  your system's keychain, under the service name `dev.pagelamp`, until you remove the source in
+  PageLamp or delete the entry there yourself. The desktop app also keeps its display preferences
+  (such as theme, language, transparency and contrast, which lists are open, and that the
+  first-run setup is done) in its own app storage under `dev.pagelamp.desktop`; they contain no
+  course data.
 
 ## AI disclosure
 
@@ -100,18 +116,22 @@ university rules.
 ## Logs and diagnostic reports
 
 PageLamp writes log files only on your computer, in the `logs/` folder of your data folder, and
-deletes them after 7 days. Logs record what PageLamp did (e.g. "synced 5 courses", request paths and
-status codes) — never tokens, calendar-feed links, signed download links or course text; your home
-folder is shown as `~`. A diagnostic report (*Copy diagnostic report* in the app, or
-`pagelamp report`) is created only when you ask for it, shows you its full content first, and
-replaces course names with "Course 1", "Course 2". From v0.3 it also lists the result of the last
-update check and of the last database update and backup, as codes only, whether the file reader
-can run, and how many files couldn't be read, by reason. Nothing is ever sent automatically — you
-decide whether to share a report, e.g. in a GitHub issue.
+keeps 7 days of them: each time it starts, it deletes the older ones. A short record of the last
+crash (`logs/last-crash.json`: time, version, a redacted message and the place in the code) stays
+until you dismiss the crash notice in the app or a later crash replaces it. Logs record what
+PageLamp did (e.g. "synced 5 courses", request paths and status codes) — never tokens,
+calendar-feed links, signed download links or course text; your home folder is shown as `~`. A
+diagnostic report (*Copy diagnostic report* in the app, or `pagelamp report`) is created only when
+you ask for it, shows you its full content first, and replaces course names with "Course 1",
+"Course 2". From v0.3 it also lists the result of the last update check and of the last database
+update and backup, as codes only, whether the file reader can run, and how many files couldn't be
+read, by reason. Nothing is ever sent automatically — you decide whether to share a report, e.g.
+in a GitHub issue.
 
-To replace names of courses you have since renamed or removed, PageLamp keeps a small list of course
-names, codes and folder names in `course-aliases.json` in your data folder (readable only by you,
-never included in a report). Each entry is deleted 30 days after the course was last seen.
+To replace names of courses you have since renamed or removed, PageLamp keeps a small list of
+course names, codes and folder names in `course-aliases.json` in your data folder (on macOS and
+Linux its permissions let only your account read it; it is never included in a report). Each entry
+is deleted 30 days after the course was last seen.
 
 ## Questions
 
