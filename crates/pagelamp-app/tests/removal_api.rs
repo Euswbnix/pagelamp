@@ -260,7 +260,23 @@ async fn stage_one_hides_at_once_and_undo_puts_everything_back() {
 
 #[tokio::test]
 async fn purging_deletes_the_data_and_moves_downloads_to_the_trash() {
+    use pagelamp_core::coverage::{self, CourseCoverage, CoverageArea, CoverageReason, NotRead};
+
     let f = fixture().await;
+    // What a sync noted about the course (the title of a page it didn't read).
+    let course_id = {
+        let store = Store::open(&f.app.db_path()).unwrap();
+        let id = store.resolve_course_with("DEMO303", true).unwrap().id;
+        let mut record = CourseCoverage::new(Utc::now());
+        record.note(NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::WouldMarkViewed,
+            Some("Read me first"),
+            Some("https://lms.example.edu/courses/303/modules/items/3"),
+        ));
+        coverage::write(&store, &id, &record).unwrap();
+        id
+    };
     let report = f
         .app
         .remove_courses(
@@ -279,6 +295,9 @@ async fn purging_deletes_the_data_and_moves_downloads_to_the_trash() {
     let store = Store::open(&f.app.db_path()).unwrap();
     assert!(store.get_course(&removed.course_id).unwrap().is_none());
     assert!(store.search("chlorophyll", None, 5).unwrap().is_empty());
+    // The record of what was and wasn't read of it goes too.
+    assert_eq!(removed.course_id, course_id);
+    assert_eq!(coverage::read(&store, &course_id).unwrap(), None);
     let events = store
         .list_events(
             chrono::DateTime::<Utc>::MIN_UTC,

@@ -7,6 +7,7 @@
 //! - `ingest`   — sync-time extract → chunk → FTS index (heavy work never runs in MCP calls).
 //! - `dates`    — instants to course calendar dates (course time zone), Monday alignment.
 //! - `calendar` — course calendars the student accepted or typed (types, legacy overrides).
+//! - `coverage` — what a sync read of a Canvas course and what it didn't, with reasons.
 //! - `term`     — which dates count a course's weeks (plausibility, anchors, phases).
 //! - `lifecycle` — upcoming / current / finishing / ended, and removal suggestions.
 //! - `timeline` — pure functions that infer "which week is this course in" with evidence.
@@ -27,6 +28,7 @@ pub mod ai_rules;
 pub mod auto_sync;
 pub mod brand;
 pub mod calendar;
+pub mod coverage;
 pub mod dates;
 pub mod diagnostics;
 pub mod error;

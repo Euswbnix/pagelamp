@@ -200,6 +200,31 @@ fn remove_source_deletes_rows_and_secret() {
         std::fs::write(files.join(dir).join("1-slides.txt"), "demo").unwrap();
     }
 
+    // What a sync noted as not read in its courses: the overview gives it, and it goes with
+    // the source.
+    let demo = "canvas:lms.example.edu/course/101";
+    {
+        use pagelamp_core::coverage::{
+            self, CourseCoverage, CoverageArea, CoverageReason, NotRead,
+        };
+        let store = Store::open(&app.db_path()).unwrap();
+        let mut record = CourseCoverage::new(Utc::now());
+        record.note(NotRead::new(
+            CoverageArea::Grades,
+            CoverageReason::NotRead,
+            Some("Grades"),
+            None,
+        ));
+        coverage::write(&store, demo, &record).unwrap();
+    }
+    let seen = app.course_overview("DEMO101").unwrap().coverage.unwrap();
+    assert!(
+        seen.not_readable
+            .iter()
+            .any(|entry| entry.title.as_deref() == Some("Grades")),
+        "{seen:?}"
+    );
+
     // Not while a sync runs (it could be writing those files).
     let lock = OpenOptions::new()
         .create(true)
@@ -216,6 +241,14 @@ fn remove_source_deletes_rows_and_secret() {
 
     app.remove_source("canvas:lms.example.edu").unwrap();
     assert!(app.list_sources().unwrap().is_empty());
+    let store = Store::open(&app.db_path()).unwrap();
+    assert_eq!(pagelamp_core::coverage::read(&store, demo).unwrap(), None);
+    assert!(
+        store
+            .setting::<serde_json::Value>(&pagelamp_core::coverage::key(demo))
+            .unwrap()
+            .is_none()
+    );
     assert!(app.list_courses().unwrap().is_empty());
     assert_eq!(secrets.get("canvas:lms.example.edu").unwrap(), None);
     assert!(!files.join("DEMO101-101").exists());

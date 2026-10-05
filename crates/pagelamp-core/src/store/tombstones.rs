@@ -4,9 +4,10 @@
 //!   so v3 readers already leave the course out; new readers leave tombstoned courses out of
 //!   every course list (`Store::list_courses`).
 //! - Stage 2 (`purge_course`) deletes the course's rows (its LMS events explicitly, the rest by
-//!   cascade) with `secure_delete` on (freed pages are zeroed), compacts the full-text index
-//!   and marks the tombstone `purged`, with `files_pending` set in the same transaction when
-//!   downloaded files are left to move. The caller then truncates the WAL
+//!   cascade) and its coverage record (`coverage`: what a sync noted as read and not read,
+//!   with titles and addresses of the course) with `secure_delete` on (freed pages are
+//!   zeroed), compacts the full-text index and marks the tombstone `purged`, with
+//!   `files_pending` set in the same transaction when downloaded files are left to move. The caller then truncates the WAL
 //!   (`checkpoint_after_purge`, outside a transaction), moves the files to the Trash and only
 //!   then clears `files_pending`.
 //! - The tombstone matches `(source_id, external_id)`; a sync skips `pending` and `purged` ones.
@@ -227,9 +228,10 @@ impl Store {
 
     /// Stage 2, the database part: delete the course's LMS events (by its own source; feed
     /// events only lose their link), the course row with everything that cascades (modules,
-    /// materials, chunks and their index entries, calendars, generations), compact the
-    /// full-text index, and mark the tombstone `purged`, with `files_pending` (downloaded files
-    /// are left to move) in the same transaction. `NotFound` without a tombstone.
+    /// materials, chunks and their index entries, calendars, generations), the course's
+    /// coverage record (a setting, so nothing cascades to it), compact the full-text index,
+    /// and mark the tombstone `purged`, with `files_pending` (downloaded files are left to
+    /// move) in the same transaction. `NotFound` without a tombstone.
     pub fn purge_course(&self, course_id: &str, now: Timestamp, files_pending: bool) -> Result<()> {
         // For this connection: pages the deletes free are overwritten with zeros.
         self.conn.execute_batch("PRAGMA secure_delete = ON;")?;
@@ -241,6 +243,9 @@ impl Store {
             )?;
             self.conn
                 .execute("DELETE FROM courses WHERE id = ?1", [course_id])?;
+            // What the last sync noted about the course (titles and addresses of what it
+            // read and didn't) is kept in the settings table: it goes with the course.
+            crate::coverage::remove(self, course_id)?;
             // The delete triggers only add FTS5 delete keys; merge the segments so the old
             // terms go.
             self.conn

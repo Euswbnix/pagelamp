@@ -316,6 +316,82 @@ describe("a sync PageLamp started by itself", () => {
   });
 });
 
+describe("a run's lines for each course", () => {
+  const LINE = { course: "DEMO312", modules: 1, pages: 4, files: 3, events: 1, warnings: 0 };
+  const withLines = (kind: SourceErrorKind | null): SyncSummary => {
+    const summary = summaryOfA(kind);
+    const [a] = summary.results;
+    if (!a) throw new Error("no result");
+    return {
+      ...summary,
+      results: [{ ...a, course_summaries: [{ ...LINE, pages_hidden: true, linked_pages: 2 }] }],
+    };
+  };
+  /** The student's own run of source "a" up to its end. */
+  function run(kind: SourceErrorKind | null, downloadCourseId: string | null = null) {
+    const store = useSyncStore.getState();
+    store.begin(1, downloadCourseId);
+    store.apply({ type: "source_started", source_id: "a", label: "Demo Canvas" });
+    store.apply({
+      type: "source_finished",
+      source_id: "a",
+      ok: kind === null,
+      error: kind === null ? null : "Synthetic failure",
+      error_kind: kind,
+    });
+  }
+
+  it("puts them on the source's row when the run has ended, and takes them away with it", () => {
+    run(null);
+    expect(useSyncStore.getState().bySource.a?.courses).toBeUndefined();
+    useSyncStore.getState().finish(withLines(null), null);
+    expect(useSyncStore.getState().bySource.a?.courses).toEqual([
+      { ...LINE, pages_hidden: true, linked_pages: 2 },
+    ]);
+
+    // The next run's rows start without them, while it runs and after a Stop.
+    run(null);
+    expect(useSyncStore.getState().bySource.a?.courses).toBeUndefined();
+    useSyncStore.getState().finish(null, new ApiError("cancelled", "The sync was stopped."));
+    expect(useSyncStore.getState().bySource.a?.courses).toBeUndefined();
+  });
+
+  it("has them after a sync PageLamp started by itself, when it ended well", () => {
+    automaticRun(null);
+    useSyncStore.getState().finish(withLines(null), null);
+    expect(useSyncStore.getState().bySource.a?.courses).toHaveLength(1);
+  });
+
+  it("has none for a source that failed, or for a run without any", () => {
+    run("network");
+    useSyncStore.getState().finish(withLines("network"), null);
+    expect(useSyncStore.getState().bySource.a?.courses).toBeUndefined();
+
+    run(null);
+    useSyncStore.getState().finish(summaryOfA(null), null);
+    expect(useSyncStore.getState().bySource.a?.courses).toBeUndefined();
+  });
+
+  it("forgets them when a source or a course is removed, and keeps the rows", () => {
+    run(null);
+    useSyncStore.getState().finish(withLines(null), null);
+    useSyncStore.getState().forgetCourseLines();
+    const state = useSyncStore.getState();
+    expect(state.order).toEqual(["a"]);
+    expect(state.bySource.a?.result?.ok).toBe(true);
+    expect(state.bySource.a).not.toHaveProperty("courses");
+  });
+
+  it("has none after a download: its own message says what it did", () => {
+    run(null, "canvas:canvas.demo.test/course/312");
+    useSyncStore.getState().finish(withLines(null), null);
+    const state = useSyncStore.getState();
+    expect(state.downloadCourseId).toBeNull();
+    expect(state.bySource.a?.result?.ok).toBe(true);
+    expect(state.bySource.a?.courses).toBeUndefined();
+  });
+});
+
 describe("afterCurrentRun", () => {
   it("runs at once when nothing is running, else once after the run has ended", async () => {
     const now = vi.fn();

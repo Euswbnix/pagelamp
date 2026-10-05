@@ -15,9 +15,15 @@
 //!   GET /courses/:id/tabs
 //!   GET /courses/:id/modules?include[]=items&include[]=content_details&per_page=100
 //!   GET /courses/:id/modules/:module_id/items?include[]=content_details&per_page=100 (fallback)
-//!   GET /courses/:id/files?per_page=100          (skip if Files tab hidden / 401 / 403)
-//!   GET /courses/:id/files/:file_id               (metadata for module file items)
-//!   GET /courses/:id/pages?per_page=100 and /courses/:id/pages/:url_or_id (body)
+//!   GET /courses/:id/files?per_page=100          (only when the navigation shows Files)
+//!   GET /courses/:id/files/:file_id               (metadata for module file items, and for
+//!                                                  files of this course a text links to)
+//!   GET /courses/:id/pages?per_page=100          (only when the navigation shows Pages)
+//!   GET /courses/:id/pages/:url_or_id             (body; also for pages of this course a
+//!                                                  text links to)
+//!   GET /courses/:id/front_page                  (only when no Pages list that was read names
+//!                                                  the Home page, and the Home is a page or
+//!                                                  Canvas doesn't say)
 //!   GET /courses/:id/assignments?per_page=100     (name + due_at + html_url ONLY; never
 //!                                                  store assignment descriptions)
 //!   GET /announcements?context_codes[]=course_:id&start_date=…&per_page=100
@@ -42,8 +48,10 @@
 //! assignments/quizzes due dates + planner items → `Event`s.
 
 mod api;
+mod cover;
 mod endpoint;
 mod json;
+mod links;
 mod map;
 mod sync;
 mod transport;
@@ -128,7 +136,8 @@ pub struct SyncReport {
     pub files_downloaded: usize,
     pub files_indexed: usize,
     pub events: usize,
-    /// Non-fatal problems (e.g. "DEMO101: Files tab hidden, used module items only").
+    /// Non-fatal problems (e.g. "DEMO101: Lecture 3.mp4 skipped (larger than the download
+    /// limit)").
     pub warnings: Vec<String>,
     /// One line per course synced (for the summary).
     pub course_summaries: Vec<pagelamp_core::source::CourseSyncSummary>,
@@ -294,6 +303,7 @@ pub(crate) async fn sync_with<T: CanvasTransport>(
         options,
         progress,
         now: chrono::Utc::now(),
+        follow_requests: Default::default(),
     }
     .run()
     .await
