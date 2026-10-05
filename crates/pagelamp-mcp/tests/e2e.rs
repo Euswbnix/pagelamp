@@ -225,6 +225,7 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
             "get_study_plan",
             "list_courses",
             "list_deadlines",
+            "list_materials",
             "propose_course_calendar",
             "read_material",
             "save_study_plan",
@@ -242,9 +243,16 @@ async fn tools_prompts_and_server_info_come_from_the_contract() {
             .to_string()
     };
     assert_eq!(description("list_courses"), text::LIST_COURSES);
-    assert_eq!(description("course_overview"), text::COURSE_OVERVIEW);
+    assert_eq!(
+        description("course_overview"),
+        text::course_overview_description()
+    );
     assert_eq!(description("week_materials"), text::WEEK_MATERIALS);
     assert_eq!(description("read_material"), text::READ_MATERIAL);
+    assert_eq!(
+        description("list_materials"),
+        text::list_materials_description()
+    );
     assert_eq!(description("search_materials"), text::SEARCH_MATERIALS);
     assert_eq!(description("list_deadlines"), text::LIST_DEADLINES);
     assert_eq!(description("get_announcements"), text::GET_ANNOUNCEMENTS);
@@ -332,9 +340,11 @@ async fn course_listing_overview_and_week() {
 
     // Unknown and hidden courses are tool errors listing what exists.
     for course in ["NOPE999", "DEMO303"] {
-        let result = call(&client, "course_overview", json!({ "course": course })).await;
-        assert!(is_error(&result));
-        assert!(text_of(&result).contains("DEMO101"), "{}", text_of(&result));
+        for tool in ["course_overview", "list_materials"] {
+            let result = call(&client, tool, json!({ "course": course })).await;
+            assert!(is_error(&result), "{tool} {course}");
+            assert!(text_of(&result).contains("DEMO101"), "{}", text_of(&result));
+        }
     }
     client.cancel().await.unwrap();
 }
@@ -1352,7 +1362,16 @@ async fn sync_status_reports_automatic_sync_and_what_each_source_needs() {
         text::sync_status_description(),
         text::not_initialised(),
         text::structure_pending(),
+        // What the tools say about a material without text, and where they are described.
+        text::course_overview_description(),
+        text::list_materials_description(),
+        text::READ_MATERIAL.to_string(),
+        text::some_not_downloaded(2),
+        text::not_downloaded(None),
+        text::not_downloaded(Some(DownloadBlock::TooLarge)),
+        text::not_downloaded(Some(DownloadBlock::Locked)),
     ];
+    texts.extend(pagelamp_core::coverage::CoverageReason::ALL.map(text::not_read));
     for structure_pending in [true, false] {
         let read_at = Some(Utc::now());
         for (materials, deadlines) in [(None, None), (read_at, None), (None, read_at)] {
@@ -1518,7 +1537,16 @@ async fn read_tools_carry_one_data_as_of_line() {
         // Not "no modules or materials are assigned to week N": they weren't read.
         assert!(answer.get("note").is_none(), "{tool}: {answer}");
     }
-    // (The same course once it has been read: an empty week says so.)
+    // list_materials doesn't count what wasn't read either: no "0", no "no materials".
+    let waiting = json_of(&call(&client, "list_materials", json!({"course": "DEMO404"})).await);
+    assert_eq!(waiting["data_as_of"], unread);
+    assert_eq!(waiting["structure_pending"], text::structure_pending());
+    assert_eq!(waiting["materials"], json!([]));
+    assert!(
+        waiting.get("shown").is_none() && waiting.get("total").is_none(),
+        "{waiting}"
+    );
+    // (The same course once it has been read: an empty week says so, and so does the list.)
     light.structure_pending.clear();
     set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
     let read = json_of(&call(&client, "week_materials", json!({"course": "DEMO404"})).await);
@@ -1528,6 +1556,20 @@ async fn read_tools_carry_one_data_as_of_line() {
             .is_some_and(|note| note.contains("No modules or materials")),
         "{read}"
     );
+    let empty = json_of(&call(&client, "list_materials", json!({"course": "DEMO404"})).await);
+    assert_eq!(
+        (&empty["shown"], &empty["total"]),
+        (&json!("No materials."), &json!(0))
+    );
+    let no_files = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO404", "kind": "file"}),
+        )
+        .await,
+    );
+    assert_eq!(no_files["shown"], "No materials of that kind.");
     light.structure_pending.insert(cid("404"));
     set(&db, |s| s.set_setting(LIGHT_SYNC_KEY, &light).unwrap());
     let found = text_of(
@@ -1671,7 +1713,7 @@ async fn no_tool_call_touches_what_the_automatic_sync_reads() {
     for tool in client.list_all_tools().await.unwrap() {
         let args = match tool.name.as_ref() {
             "list_courses" | "sync_status" | "get_study_plan" | "list_deadlines" => json!({}),
-            "course_overview" | "week_materials" | "get_announcements" => {
+            "course_overview" | "week_materials" | "get_announcements" | "list_materials" => {
                 json!({"course": "DEMO101"})
             }
             "read_material" => json!({"material_id": mid("week3-slides")}),
@@ -1899,6 +1941,15 @@ async fn local_file_paths_never_reach_the_ai_app() {
             .await,
         ),
         text_of(&call(&client, "search_materials", json!({"query": "stomata"})).await),
+        text_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await),
+        text_of(
+            &call(
+                &client,
+                "list_materials",
+                json!({"course": "DEMO101", "kind": "file"}),
+            )
+            .await,
+        ),
     ];
     for output in outputs {
         assert!(output.contains("local notes"), "{output}");
@@ -2072,6 +2123,7 @@ async fn no_tool_gives_out_an_access_parameter() {
         ("course_overview", json!({"course": "DEMO101"})),
         ("week_materials", json!({"course": "DEMO101"})),
         ("get_study_plan", json!({})),
+        ("list_materials", json!({"course": "DEMO101"})),
     ] {
         let result = call(&client, tool, args.clone()).await;
         assert!(!is_error(&result), "{tool}: {}", text_of(&result));
@@ -2137,5 +2189,368 @@ async fn no_tool_gives_out_an_access_parameter() {
         assert!(text.contains("week3-slides"), "{call}: {text}");
         assert!(text.contains(&cleaned_start), "{call}: {text}");
     }
+    client.cancel().await.unwrap();
+}
+
+/// What PageLamp read of a course and what it didn't reaches the AI app with reasons, as
+/// structure: also for a course whose text the student doesn't share. A file that isn't
+/// downloaded says so wherever it is named, and long lists come in pages.
+#[tokio::test]
+async fn what_was_not_read_is_said_and_lists_come_in_pages() {
+    use pagelamp_core::coverage::{
+        self, CourseCoverage, CourseHomeKind, CourseHomeState, CoverageArea, CoverageListState,
+        CoverageReason, FileSeen, Home, NotRead,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    let db = fixture(temp.path());
+    let home = mid("welcome");
+    let handout = mid("handout");
+    let big = mid("recording");
+    let closed = mid("solutions");
+    let gone = mid("old-handout");
+    let must_view = mid("read-me-first");
+    let locked_page = mid("week-9-notes");
+    let failed_page = mid("week-2-notes");
+    set(&db, |s| {
+        let add = |id: &str, kind: MaterialKind, title: &str, days_ago: i64| {
+            s.upsert_material(&MaterialUpsert {
+                id: id.into(),
+                course_id: cid("101"),
+                module_id: None,
+                kind,
+                title: title.into(),
+                url: Some("https://lms.example.edu/courses/101/x?verifier=SECRET-LIST".into()),
+                local_path: None,
+                mime: None,
+                published_at: Some(Utc::now() - TimeDelta::days(days_ago)),
+                week_hint: None,
+            })
+            .unwrap();
+        };
+        add(&home, MaterialKind::Page, "Welcome", 30);
+        s.set_text_state(&home, TextStatus::Ok, None, Some("h"))
+            .unwrap();
+        add(&handout, MaterialKind::File, "Mock exam", 20);
+        s.set_text_state(&handout, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        add(&big, MaterialKind::File, "Lecture recording", 20);
+        s.set_text_state(&big, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        s.set_download_blocked(&big, Some(DownloadBlock::TooLarge))
+            .unwrap();
+        // A file the LMS locks, one it no longer has, and three pages the last sync didn't
+        // read: by a rule, because it is locked, and after a failed request.
+        add(&closed, MaterialKind::File, "Solutions", 20);
+        s.set_text_state(&closed, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        s.set_download_blocked(&closed, Some(DownloadBlock::Locked))
+            .unwrap();
+        add(&gone, MaterialKind::File, "Old handout", 20);
+        s.set_text_state(&gone, TextStatus::NotDownloaded, None, None)
+            .unwrap();
+        for (id, title) in [
+            (&must_view, "Read me first"),
+            (&locked_page, "Week 9 notes"),
+            (&failed_page, "Week 2 notes"),
+        ] {
+            add(id, MaterialKind::Page, title, 20);
+        }
+        // Enough materials and announcements for a second page.
+        for n in 0..60 {
+            add(
+                &mid(&format!("extra-{n:02}")),
+                MaterialKind::ExternalLink,
+                &format!("Extra link {n:02}"),
+                40,
+            );
+        }
+        for n in 0..25 {
+            let id = mid(&format!("news-{n:02}"));
+            add(
+                &id,
+                MaterialKind::Announcement,
+                &format!("News {n:02}"),
+                n + 1,
+            );
+            s.set_text_state(&id, TextStatus::Ok, None, Some("h"))
+                .unwrap();
+            s.replace_chunks(
+                &id,
+                &[Chunk {
+                    material_id: id.clone(),
+                    ord: 0,
+                    locator: None,
+                    text: format!("Announcement text number {n}."),
+                }],
+            )
+            .unwrap();
+        }
+        let mut record = CourseCoverage::new(Utc::now());
+        record.home = Home {
+            kind: CourseHomeKind::Page,
+            state: CourseHomeState::Read,
+            material_id: Some(home.clone()),
+        };
+        record.pages_list = CoverageListState::Hidden;
+        record.note(NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::IndexHidden,
+            None,
+            None,
+        ));
+        record.note(NotRead::new(
+            CoverageArea::Pages,
+            CoverageReason::WouldMarkViewed,
+            Some("Read me first"),
+            Some("https://lms.example.edu/courses/101/modules/items/3?verifier=SECRET-ENTRY"),
+        ));
+        for n in 0..30 {
+            record.note(NotRead::new(
+                CoverageArea::Assignments,
+                CoverageReason::ByRule,
+                Some(&format!("Problem set {n}")),
+                Some(&format!(
+                    "https://lms.example.edu/courses/101/assignments/{n}"
+                )),
+            ));
+        }
+        record.unread = [
+            (must_view.clone(), CoverageReason::WouldMarkViewed),
+            (locked_page.clone(), CoverageReason::Locked),
+            (failed_page.clone(), CoverageReason::FailedThisSync),
+        ]
+        .into();
+        record.followed.files.insert(
+            gone.clone(),
+            FileSeen {
+                checked_at: Some(Utc::now()),
+                gone: true,
+            },
+        );
+        coverage::write(s, &cid("101"), &record).unwrap();
+    });
+    let client = connect(db.clone()).await;
+
+    // course_overview: the Home page as a material, the files that aren't downloaded as one
+    // entry per reason, then what the sync noted; the rest is counted.
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(overview["home_shows"], "page");
+    assert_eq!(overview["home"], json!({ "id": home, "title": "Welcome" }));
+    // (The fixture has one of its own.)
+    assert_eq!(overview["announcements_synced"], 26);
+    let entries = overview["not_readable"].as_array().unwrap();
+    assert_eq!(entries.len(), 20);
+    assert_eq!(
+        entries[0],
+        json!({ "area": "files", "reason": "needs_download" })
+    );
+    assert_eq!(
+        entries[1],
+        json!({ "area": "files", "reason": "too_large" })
+    );
+    assert_eq!(entries[2], json!({ "area": "files", "reason": "locked" }));
+    assert_eq!(
+        entries[3],
+        json!({ "area": "pages", "reason": "index_hidden" })
+    );
+    assert_eq!(
+        entries[4],
+        json!({ "area": "pages", "reason": "would_mark_viewed", "title": "Read me first",
+                "url": "https://lms.example.edu/courses/101/modules/items/3" })
+    );
+    assert_eq!(overview["not_readable_more"], 15);
+    // A course without a record says nothing about it.
+    let other = json_of(&call(&client, "course_overview", json!({"course": "DEMO202"})).await);
+    assert!(other.get("not_readable").is_none() && other.get("home_shows").is_none());
+
+    // list_materials: 50 at a time, in a fixed order, with a line about the next ones and
+    // one about the files that aren't downloaded. Never an assignment.
+    let first = json_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await);
+    let total = first["total"].as_u64().unwrap();
+    assert!(total > 88, "{total}");
+    assert_eq!(first["materials"].as_array().unwrap().len(), 50);
+    assert_eq!(
+        first["shown"],
+        format!("Materials 1–50 of {total}. For the next ones pass offset=50.")
+    );
+    let second = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "offset": 50}),
+        )
+        .await,
+    );
+    let ids = |page: &Value| -> Vec<String> {
+        page["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert!(ids(&first).iter().all(|id| !ids(&second).contains(id)));
+    let files = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "kind": "file"}),
+        )
+        .await,
+    );
+    let listed = files["materials"].as_array().unwrap();
+    assert!(listed.iter().all(|m| m["kind"] == "file"), "{files}");
+    let item = |id: &str| listed.iter().find(|m| m["id"] == id).unwrap();
+    assert_eq!(item(&handout)["text"], "not_downloaded");
+    // Only the file the student can download counts in the line about downloading; each
+    // other one says why a download won't help.
+    assert_eq!(files["not_downloaded"], text::some_not_downloaded(1));
+    for (id, key, why) in [
+        (&big, "download_blocked", "too_large"),
+        (&closed, "download_blocked", "locked"),
+        (&gone, "not_read", "no_longer_in_canvas"),
+    ] {
+        assert_eq!(item(id)[key], why, "{}", item(id));
+    }
+    assert!(
+        item(&handout).get("download_blocked").is_none()
+            && item(&handout).get("not_read").is_none(),
+        "{}",
+        item(&handout)
+    );
+    // A page the last sync didn't read says why, not just "pending".
+    let pages = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "kind": "page"}),
+        )
+        .await,
+    );
+    let page = |id: &str| {
+        pages["materials"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["id"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(page(&must_view)["not_read"], "would_mark_viewed");
+    assert_eq!(page(&locked_page)["not_read"], "locked");
+    assert_eq!(page(&failed_page)["not_read"], "failed_this_sync");
+    assert!(page(&home).get("not_read").is_none());
+    assert!(pages.get("not_downloaded").is_none(), "{pages}");
+    assert!(
+        text_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await)
+            .contains("Extra link 00")
+    );
+    let past = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "offset": 5000}),
+        )
+        .await,
+    );
+    assert_eq!(past["materials"], json!([]));
+    assert_eq!(
+        past["shown"],
+        format!("No more materials: there are {total}.")
+    );
+    for page in [&first, &second, &files] {
+        let text = page.to_string();
+        assert!(!text.contains("Problem Set"), "assignments are deadlines");
+        assert!(!text.contains("SECRET-"), "{text}");
+    }
+
+    // read_material says why there is no text, per reason.
+    let read = |id: &str| {
+        let client = &client;
+        let id = id.to_string();
+        async move { text_of(&call(client, "read_material", json!({"material_id": id})).await) }
+    };
+    assert!(read(&handout).await.contains(&text::not_downloaded(None)));
+    assert!(
+        read(&big)
+            .await
+            .contains(&text::not_downloaded(Some(DownloadBlock::TooLarge)))
+    );
+    for (id, reason) in [
+        (&must_view, CoverageReason::WouldMarkViewed),
+        (&locked_page, CoverageReason::Locked),
+        (&failed_page, CoverageReason::FailedThisSync),
+        (&gone, CoverageReason::NoLongerInCanvas),
+    ] {
+        let answer = read(id).await;
+        assert!(answer.contains(&text::not_read(reason)), "{answer}");
+        assert!(!answer.contains(text::NO_TEXT), "{answer}");
+        assert!(!answer.contains("Ask the student to download"), "{answer}");
+    }
+    // The description explains every reason code, by the product's name.
+    let description = text::course_overview_description();
+    for reason in CoverageReason::ALL {
+        assert!(
+            description.contains(&format!("\n- {}: ", reason.as_str())),
+            "{}",
+            reason.as_str()
+        );
+    }
+    assert_eq!(
+        text::explained_reasons(),
+        CoverageReason::ALL.map(CoverageReason::as_str)
+    );
+    assert!(!description.contains("{name}"), "{description}");
+    assert!(!description.contains("isn't in"), "{description}");
+
+    // get_announcements: which ones are shown of how many, and the next ones by offset.
+    let news = |args: Value| {
+        let client = &client;
+        async move { text_of(&call(client, "get_announcements", args).await) }
+    };
+    let recent = news(json!({"course": "DEMO101", "days": 365})).await;
+    let first_line = recent.lines().next().unwrap();
+    assert!(
+        first_line.starts_with("Announcements 1–20 of ")
+            && first_line.ends_with("from the last 365 days. For the next ones pass offset=20."),
+        "{first_line}"
+    );
+    assert!(recent.contains("Announcement text number 0."));
+    assert!(!recent.contains("Announcement text number 24."));
+    let later = news(json!({"course": "DEMO101", "days": 365, "offset": 20})).await;
+    assert!(later.starts_with("Announcements 21–"), "{later}");
+    assert!(later.contains("Announcement text number 24."));
+    assert!(
+        news(json!({"course": "DEMO101", "days": 365, "offset": 900}))
+            .await
+            .starts_with("No more announcements: there are ")
+    );
+
+    // The student turns AI access off: the text goes, the structure and the reasons stay.
+    set(&db, |s| {
+        s.set_course_ai_access(&cid("101"), false).unwrap();
+    });
+    let overview = json_of(&call(&client, "course_overview", json!({"course": "DEMO101"})).await);
+    assert_eq!(overview["ai_materials"], "turned_off");
+    assert_eq!(overview["not_readable"].as_array().unwrap().len(), 20);
+    assert_eq!(overview["home"]["title"], "Welcome");
+    let list = json_of(&call(&client, "list_materials", json!({"course": "DEMO101"})).await);
+    assert_eq!(list["materials"].as_array().unwrap().len(), 50);
+    assert_eq!(list["note"], text::withheld(true));
+    // Nothing to download for the AI app's sake while the text isn't shared; the reasons stay.
+    let files = json_of(
+        &call(
+            &client,
+            "list_materials",
+            json!({"course": "DEMO101", "kind": "file"}),
+        )
+        .await,
+    );
+    assert!(files.get("not_downloaded").is_none(), "{files}");
+    assert!(files.to_string().contains("no_longer_in_canvas"), "{files}");
+    let withheld = news(json!({"course": "DEMO101", "days": 365})).await;
+    assert!(withheld.starts_with("Announcements 1–20 of "), "{withheld}");
+    assert!(!withheld.contains("Announcement text number"));
     client.cancel().await.unwrap();
 }

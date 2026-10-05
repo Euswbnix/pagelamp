@@ -86,6 +86,7 @@ export function SourcesPage() {
           onRetry={() => void startSync()}
           onDismiss={() => useSyncStore.getState().hideRun()}
           announce={false}
+          linkCourses
         />
 
         <SourceList

@@ -89,6 +89,9 @@ export function TextStatusLabel({
           <span aria-hidden>{t("week.sections", { count: chunks })}</span>
           <span className="sr-only">{t("week.readableSections", { count: chunks })}</span>
         </>
+      ) : status === "not_downloaded" ? (
+        // A file that is locked or too large was labelled above.
+        tc("textStatus.not_downloaded_yet")
       ) : (
         tc(`textStatus.${status}`)
       )}

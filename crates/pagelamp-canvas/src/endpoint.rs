@@ -31,10 +31,16 @@ pub(crate) enum Endpoint<'a> {
     Pages {
         course: &'a CanvasId,
     },
-    /// `url_or_id` is a page slug from Canvas; it is percent-encoded as one path segment.
+    /// `url_or_id` is a page slug: one Canvas gave in a list or a module, or one a link in a
+    /// text of the course names (`links`). It is percent-encoded as one path segment.
     Page {
         course: &'a CanvasId,
         url_or_id: &'a str,
+    },
+    /// The page a course's Home shows. Asked for only when no Pages list that was read names
+    /// the Home page, and the Home is a page or Canvas doesn't say.
+    FrontPage {
+        course: &'a CanvasId,
     },
     Assignments {
         course: &'a CanvasId,
@@ -99,6 +105,9 @@ impl Endpoint<'_> {
                 Endpoint::Page { course, url_or_id } => {
                     path.extend(["courses", &course.0, "pages", url_or_id]);
                 }
+                Endpoint::FrontPage { course } => {
+                    path.extend(["courses", &course.0, "front_page"]);
+                }
                 Endpoint::Assignments { course } => {
                     path.extend(["courses", &course.0, "assignments"]);
                 }
@@ -128,7 +137,10 @@ impl Endpoint<'_> {
     pub(crate) fn is_list(&self) -> bool {
         !matches!(
             self,
-            Endpoint::UsersSelf | Endpoint::File { .. } | Endpoint::Page { .. }
+            Endpoint::UsersSelf
+                | Endpoint::File { .. }
+                | Endpoint::Page { .. }
+                | Endpoint::FrontPage { .. }
         )
     }
 }
@@ -245,6 +257,10 @@ mod tests {
                     url_or_id: "week-3/../../users",
                 },
                 "https://lms.example.edu/api/v1/courses/101/pages/week-3%2F..%2F..%2Fusers",
+            ),
+            (
+                Endpoint::FrontPage { course: &course },
+                "https://lms.example.edu/api/v1/courses/101/front_page",
             ),
             (
                 Endpoint::Announcements {
