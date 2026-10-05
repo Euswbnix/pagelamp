@@ -3,12 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
 import type { AutoSyncTrigger, StartupTasks } from "@/api/types";
-import {
-  ATTENDED_WINDOW_MS,
-  AUTO_SYNC_MIN_GAP_MS,
-  useStartSync,
-  useSyncStore,
-} from "@/stores/sync";
+import { AUTO_SYNC_MIN_GAP_MS, studentKnownHere, useStartSync, useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 
 /** Coming back to the window asks again once the last answer is this old. */
@@ -147,9 +142,12 @@ export function useAutoSync() {
     (unattendedToo: boolean) => {
       const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
       const due = state?.data?.sync_due;
+      // An answer dated after now (the clock was set back since) is as good as an old one.
+      const age = state?.dataUpdatedAt ? Date.now() - state.dataUpdatedAt : null;
       if (
-        !state?.dataUpdatedAt ||
-        Date.now() - state.dataUpdatedAt > FOCUS_REREAD_MS ||
+        age === null ||
+        age > FOCUS_REREAD_MS ||
+        age < 0 ||
         due?.attended ||
         (unattendedToo && due?.unattended)
       ) {
@@ -249,9 +247,7 @@ export function useAutoSync() {
     const store = useSyncStore.getState();
     if (data.whats_new || noSources) return;
 
-    // Bounded both ways: a clock set back after the student's action mustn't keep it "just now".
-    const left = useSyncStore.getState().attendedUntil - Date.now();
-    const attended = left > 0 && left <= ATTENDED_WINDOW_MS;
+    const attended = studentKnownHere();
     const trigger: AutoSyncTrigger | null =
       attended && data.sync_due.attended
         ? "attended"
@@ -271,7 +267,8 @@ export function useAutoSync() {
     }
     // A backstop next to the facade's own clock: not so soon after the last automatic start
     // of this kind or the last attended one, nor right after the student stopped a sync.
-    // (Bounded like the window above.)
+    // (On the wall clock alone, bounded both ways: a clock set back by more than the half
+    // hour ends the hold early.)
     const hold = store.noAutomaticBefore[trigger] - Date.now();
     if (hold > 0 && hold <= AUTO_SYNC_MIN_GAP_MS) return;
     // Afterwards the cached answer must stop saying "due".
