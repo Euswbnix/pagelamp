@@ -1440,7 +1440,7 @@
 "settings.privacy.keychain" = "Your Canvas token and calendar feed addresses are kept in your system keychain, never in PageLamp's database.";
 "settings.privacy.notAcknowledged" = "You haven't confirmed this yet. You'll be asked when you set up a source.";
 "settings.privacy.perCourse" = "You can stop your AI app from reading any course's materials: open the course and use the switch on its “AI policy” tab.";
-"settings.privacy.readOnly" = "PageLamp only reads from Canvas. It never posts, submits or changes anything there.";
+"settings.privacy.readOnly" = "PageLamp only reads from Canvas: it never posts or submits anything there.";
 "settings.privacy.title" = "Privacy";
 "settings.title" = "Settings";
 "sources.actions.add" = "Add source";
