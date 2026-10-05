@@ -10,12 +10,14 @@ import {
   useUpdaterStatus,
 } from "@/api/queries";
 import type { UpdateChannel, UpdatePrefs } from "@/api/types";
+import { ExternalLink } from "@/components/common/ExternalLink";
 import { SentenceWithTime, WHEN } from "@/components/common/SentenceWithTime";
 import { useOpenExternal } from "@/components/common/useOpenExternal";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
+import { useUpdateErrorLine } from "@/features/updates/errorLine";
 import { InstallUpdateDialog } from "@/features/updates/InstallUpdateDialog";
 import { isHttpUrl } from "@/lib/url";
 import { useCheckForUpdate, useUpdateStore } from "@/stores/updates";
@@ -121,7 +123,7 @@ function ChannelOption({ channel }: { channel: UpdateChannel }) {
 
 function CheckNow({ status }: { status: UpdaterStatus | null }) {
   const { t } = useTranslation("updates");
-  const { t: tc } = useTranslation();
+  const errorLine = useUpdateErrorLine();
   const check = useCheckForUpdate();
   const checking = useUpdateStore((s) => s.checking);
   const checked = useUpdateStore((s) => s.checked);
@@ -155,13 +157,19 @@ function CheckNow({ status }: { status: UpdaterStatus | null }) {
         </span>
       </div>
       <div role="status" className="text-sm">
-        {checking ? null : checkError?.kind === "not_found" ? (
+        {checking ? (
+          // What was found stays while it is checked again (the daily check can start by
+          // itself): its install dialog may be open.
+          available ? (
+            <Available update={available} status={status} />
+          ) : null
+        ) : checkError?.kind === "not_found" ? (
           // Stable has no release with update information yet: an answer, not a failed check.
           <p>{t("settings.noStableRelease")}</p>
         ) : checkError ? (
           <div className="space-y-0.5 text-destructive">
             <p className="font-medium">{t("settings.checkFailed")}</p>
-            <p>{tc(`errors.${checkError.kind}`)}</p>
+            <p>{errorLine(checkError)}</p>
           </div>
         ) : available ? (
           <Available update={available} status={status} />
@@ -177,16 +185,34 @@ function Available({ update, status }: { update: AvailableUpdate; status: Update
   const { t } = useTranslation("updates");
   const openExternal = useOpenExternal();
   const [open, setOpen] = useState(false);
+  const notesId = useId();
   const downloadOnly = status?.install === "download_only";
   return (
     <div className="space-y-3 rounded-row bg-muted p-3">
       <p className="font-medium">{t("settings.available", { version: update.version })}</p>
       {update.notes ? (
         <details className="text-muted-foreground">
-          <summary className="cursor-pointer text-foreground">{t("settings.releaseNotes")}</summary>
-          <p lang="en" className="mt-1 whitespace-pre-line">
-            {update.notes}
-          </p>
+          <summary id={notesId} className="cursor-pointer text-foreground">
+            {t("settings.releaseNotes")}
+          </summary>
+          {/* As text, the way the manifest has them. Long notes scroll in here. */}
+          <section
+            aria-labelledby={notesId}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: a box that scrolls takes focus, so that the keyboard can scroll it
+            tabIndex={0}
+            className="mt-1 max-h-64 overflow-y-auto rounded-sm outline-hidden focus-visible:ring-3 focus-visible:ring-ring"
+          >
+            <p lang="en" className="break-words whitespace-pre-line [overflow-wrap:anywhere]">
+              {update.notes}
+            </p>
+          </section>
+          {isHttpUrl(update.release_page) ? (
+            <p className="mt-2">
+              <ExternalLink href={update.release_page ?? ""} className="text-foreground">
+                {t("settings.releaseNotesOnGitHub")}
+              </ExternalLink>
+            </p>
+          ) : null}
         </details>
       ) : null}
       {downloadOnly ? (

@@ -24,8 +24,13 @@ export function UpdateNotice() {
   const [open, setOpen] = useState(false);
   const titleId = useId();
 
-  // Keep the dialog mounted while it is open (an install hides the notice itself).
-  if (!available || ((dismissed || install.phase !== "idle") && !open)) return null;
+  // An install under way hides the notice; one that failed or is held back doesn't (its dialog
+  // may be gone without having been closed). Keep the dialog mounted while it is open.
+  const installing =
+    install.phase === "downloading" ||
+    install.phase === "installing" ||
+    install.phase === "restarting";
+  if (!available || ((dismissed || installing) && !open)) return null;
   const downloadOnly = status.data?.install === "download_only";
 
   return (

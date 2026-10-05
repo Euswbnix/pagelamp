@@ -1,6 +1,7 @@
 import {
   Archive,
   Bell,
+  BookOpenText,
   CalendarRange,
   FileSearch,
   FolderSync,
@@ -15,6 +16,7 @@ export const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   update_check: RefreshCw,
   course_weeks: CalendarRange,
   auto_sync: FolderSync,
+  canvas_coverage: BookOpenText,
   course_removal: Archive,
   syllabus_reading: FileSearch,
   ai_writing: Sparkles,
