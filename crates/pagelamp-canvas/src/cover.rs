@@ -74,8 +74,10 @@ pub(crate) struct Cover {
     noted: HashSet<NoteKey>,
     /// Slugs of module pages the student is asked to view and hasn't: never read.
     pub guarded: HashSet<String>,
-    /// The same pages by the slug form of their title and by their Canvas id, where the module
-    /// gives one: Canvas may answer for a page under those too.
+    /// The same slugs in lower case (what Canvas answers with is compared without case).
+    guarded_lower: HashSet<String>,
+    /// The same pages by the slug form of their slug and of their title, and by their Canvas
+    /// id, where the module gives one: Canvas may answer for a page under those too.
     guarded_forms: HashSet<String>,
     guarded_ids: HashSet<String>,
     /// The entry each guarded slug was noted with.
@@ -90,6 +92,7 @@ impl Cover {
             notes: Vec::new(),
             noted: HashSet::new(),
             guarded: HashSet::new(),
+            guarded_lower: HashSet::new(),
             guarded_forms: HashSet::new(),
             guarded_ids: HashSet::new(),
             guard_notes: HashMap::new(),
@@ -174,14 +177,8 @@ impl Cover {
     pub(crate) fn tabs(&mut self, base: &Url, tabs: Option<&[json::Tab]>) {
         let Some(tabs) = tabs else {
             // Which lists the course hides isn't known, so neither is asked for this time.
-            for area in [CoverageArea::Pages, CoverageArea::Files] {
-                self.note(
-                    Rank::Failed,
-                    NotRead::new(area, CoverageReason::FailedThisSync, None, None),
-                );
-            }
-            self.record.pages_list = CoverageListState::Failed;
-            self.record.files_list = CoverageListState::Failed;
+            self.list_failed(CoverageArea::Pages);
+            self.list_failed(CoverageArea::Files);
             return;
         };
         let shown = |id: &str| tabs.iter().any(|t| t.id == id && t.hidden != Some(true));
@@ -225,6 +222,21 @@ impl Cover {
         }
     }
 
+    /// A list (modules, Pages, Files) that wasn't read, or not completely, in this sync: its
+    /// state says so, and so does an entry, since only entries are shown.
+    pub(crate) fn list_failed(&mut self, area: CoverageArea) {
+        match area {
+            CoverageArea::Modules => self.record.modules_list = CoverageListState::Failed,
+            CoverageArea::Pages => self.record.pages_list = CoverageListState::Failed,
+            CoverageArea::Files => self.record.files_list = CoverageListState::Failed,
+            _ => {}
+        }
+        self.note(
+            Rank::Failed,
+            NotRead::new(area, CoverageReason::FailedThisSync, None, None),
+        );
+    }
+
     /// A module item that isn't course material: noted with its title and address.
     pub(crate) fn module_item(&mut self, item: &json::ModuleItem) {
         let (area, reason) = match item.kind.as_deref() {
@@ -251,10 +263,16 @@ impl Cover {
     /// viewed, so no path of the sync reads it.
     pub(crate) fn guard(&mut self, slug: &str, item: &json::ModuleItem) {
         self.guarded.insert(slug.to_string());
-        self.guarded_forms.insert(slug.to_lowercase());
-        if let Some(title) = item.title.as_deref() {
-            self.guarded_forms.insert(slug_form(title));
-        }
+        self.guarded_lower.insert(slug.to_lowercase());
+        // (Never an empty form: a title of symbols alone has none, and would match every
+        // link.)
+        let forms = [
+            slug.to_lowercase(),
+            slug_form(slug),
+            item.title.as_deref().map(slug_form).unwrap_or_default(),
+        ];
+        self.guarded_forms
+            .extend(forms.into_iter().filter(|form| !form.is_empty()));
         if let Some(id) = &item.content_id {
             self.guarded_ids.insert(id.0.clone());
         }
@@ -270,26 +288,41 @@ impl Cover {
 
     /// Whether a link's `slug` could lead to a guarded page under another address. Canvas
     /// may answer `pages/:url_or_id` for a page's id, for the slug form of its title and for
-    /// a slug it had before it was renamed, and a renamed page's slug often starts like the
-    /// old one (or the other way round). Only asked while the Pages list isn't there to say
-    /// which slugs exist. Errs towards not reading.
+    /// a slug it had before it was renamed, and a renamed page's slug often goes on from the
+    /// old one with a hyphen (or the other way round): "week-1" and "week-1-intro", not
+    /// "week-1" and "week-10". The link's slug is compared as written and in slug form
+    /// ("Read me first", "read_me_first"). Only asked while the Pages list isn't there to
+    /// say which slugs exist. Errs towards not reading.
     pub(crate) fn could_be_guarded(&self, slug: &str) -> bool {
         if self.guarded.is_empty() {
             return false;
         }
         let lower = slug.to_lowercase();
-        let by_id = lower.starts_with("page_id:") || lower.bytes().all(|b| b.is_ascii_digit());
-        by_id
-            || self.guarded_forms.iter().any(|guarded| {
-                *guarded == lower || guarded.starts_with(&lower) || lower.starts_with(guarded)
+        if lower.starts_with("page_id:") || lower.bytes().all(|b| b.is_ascii_digit()) {
+            return true;
+        }
+        // One slug goes on from the other at a word boundary.
+        let goes_on = |longer: &str, shorter: &str| {
+            longer
+                .strip_prefix(shorter)
+                .is_some_and(|rest| rest.starts_with('-'))
+        };
+        [lower.clone(), slug_form(&lower)]
+            .iter()
+            .filter(|written| !written.is_empty())
+            .any(|written| {
+                self.guarded_forms.iter().any(|guarded| {
+                    guarded == written || goes_on(guarded, written) || goes_on(written, guarded)
+                })
             })
     }
 
-    /// Whether a page Canvas answered with (its own slug and id) is a guarded one.
+    /// Whether a page Canvas answered with is a guarded one: by its own slug (compared
+    /// without case) or its id. Not by its title: the answer's `url` is the page's own slug,
+    /// and two pages can share a title.
     pub(crate) fn is_guarded_page(&self, url: Option<&str>, page_id: Option<&CanvasId>) -> bool {
-        url.is_some_and(|url| {
-            self.guarded.contains(url) || self.guarded_forms.contains(&url.to_lowercase())
-        }) || page_id.is_some_and(|id| self.guarded_ids.contains(&id.0))
+        url.is_some_and(|url| self.guarded_lower.contains(&url.to_lowercase()))
+            || page_id.is_some_and(|id| self.guarded_ids.contains(&id.0))
     }
 
     /// The Home page was read although a module asks the student to view it (its slug can't
@@ -302,14 +335,17 @@ impl Cover {
     }
 
     /// What the last full sync recorded about the page `slug` leads to (its own slug, or
-    /// another address of it): the page's material id and its read.
+    /// another address of it): the page's material id and its read. When more than one page
+    /// answers to it (a slug one page had and another page has now), the page whose own slug
+    /// it is comes first, then the one read last.
     pub(crate) fn earlier_page(&self, slug: &str) -> Option<(String, PageRead)> {
         self.previous
             .as_ref()?
             .followed
             .pages
             .iter()
-            .find(|(_, read)| read.answers_to(slug))
+            .filter(|(_, read)| read.answers_to(slug))
+            .max_by_key(|(_, read)| (read.slug == slug, read.read_at))
             .map(|(id, read)| (id.clone(), read.clone()))
     }
 
@@ -558,28 +594,81 @@ mod tests {
             // The slug itself in another letter case, and the slug form of its title.
             "Read-Me-First-2",
             "read-me-first-updated",
-            // A slug it had before, or got after: one starts with the other.
+            // Written with spaces or underscores: the slug form is compared too.
+            "Read me first (updated)",
+            "read_me_first_2",
+            // A slug it had before, or got after: one goes on from the other with a hyphen.
             "read-me-first",
             "read-me",
             "read-me-first-2-old",
         ] {
             assert!(cover.could_be_guarded(slug), "{slug}");
         }
-        for slug in ["week-1", "notes", "first", "readme"] {
+        // Not at a word boundary: another page. (With "week-1" guarded, "week-10" is free.)
+        for slug in [
+            "week-1",
+            "notes",
+            "first",
+            "readme",
+            "read-me-first-20",
+            "re",
+        ] {
             assert!(!cover.could_be_guarded(slug), "{slug}");
         }
-        // What Canvas answered with: by its own slug, its title's slug form, or its id.
+        // What Canvas answered with: by its own slug (in any letter case) or its id. Not by
+        // its title: another page can have the same one.
         let id = |n: &str| CanvasId(n.into());
         assert!(cover.is_guarded_page(Some("read-me-first-2"), None));
-        assert!(cover.is_guarded_page(Some("Read-Me-First-Updated"), Some(&id("9"))));
+        assert!(cover.is_guarded_page(Some("Read-Me-First-2"), Some(&id("9"))));
         assert!(cover.is_guarded_page(Some("renamed"), Some(&id("602"))));
+        assert!(!cover.is_guarded_page(Some("read-me-first-updated"), Some(&id("9"))));
         assert!(!cover.is_guarded_page(Some("week-1"), Some(&id("601"))));
+
+        // A title of symbols alone gives no form to compare: it must not match every link.
+        let mut cover = Cover::new(now(), None);
+        cover.guard("x1", &must_view("x1", "★★★", None));
+        for slug in ["notes", "week-1", "a", "-notes"] {
+            assert!(!cover.could_be_guarded(slug), "{slug}");
+        }
+        assert!(cover.could_be_guarded("x1-old"));
+        // With "week-1" guarded, the other weeks are read.
+        let mut cover = Cover::new(now(), None);
+        cover.guard("week-1", &must_view("week-1", "Week 1", None));
+        for slug in ["week-10", "week-11", "week-12", "week-2"] {
+            assert!(!cover.could_be_guarded(slug), "{slug}");
+        }
+        for slug in ["week-1-intro", "week", "Week_1"] {
+            assert!(cover.could_be_guarded(slug), "{slug}");
+        }
         assert!(!cover.is_guarded_page(None, None));
         assert_eq!(
             slug_form("  Read Me: First (updated) "),
             "read-me-first-updated"
         );
         assert_eq!(slug_form("第1周 讲义"), "第1周-讲义");
+    }
+
+    #[test]
+    fn the_page_a_slug_names_now_comes_before_one_it_named_earlier() {
+        let read = |slug: &str, also: &[&str], hours_ago: i64| PageRead {
+            slug: slug.into(),
+            also: also.iter().map(|s| s.to_string()).collect(),
+            read_at: Some(now() - TimeDelta::hours(hours_ago)),
+            ..PageRead::default()
+        };
+        let mut previous = CourseCoverage::new(now());
+        // "week-1" was page 1's slug once, is another address of page 2, and is page 3's own.
+        previous.followed.pages = [
+            ("s/page/1".to_string(), read("week-1", &[], 50)),
+            ("s/page/2".to_string(), read("old", &["week-1"], 1)),
+            ("s/page/3".to_string(), read("week-1", &[], 20)),
+        ]
+        .into();
+        let cover = Cover::new(now(), Some(previous));
+        // Its own slug first, and of those the page read last.
+        assert_eq!(cover.earlier_page("week-1").unwrap().0, "s/page/3");
+        assert_eq!(cover.earlier_page("old").unwrap().0, "s/page/2");
+        assert_eq!(cover.earlier_page("nothing"), None);
     }
 
     #[test]

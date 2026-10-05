@@ -86,6 +86,23 @@ pub enum CoverageReason {
 }
 
 impl CoverageReason {
+    /// Every reason, in the order they are declared.
+    pub const ALL: [CoverageReason; 13] = [
+        CoverageReason::IndexHidden,
+        CoverageReason::NeedsDownload,
+        CoverageReason::TooLarge,
+        CoverageReason::Locked,
+        CoverageReason::WouldMarkViewed,
+        CoverageReason::ByRule,
+        CoverageReason::OutsideCanvas,
+        CoverageReason::NotRead,
+        CoverageReason::OtherCourse,
+        CoverageReason::Capped,
+        CoverageReason::FailedThisSync,
+        CoverageReason::NoLongerInCanvas,
+        CoverageReason::Other,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             CoverageReason::IndexHidden => "index_hidden",
@@ -519,9 +536,11 @@ pub fn view(
     course: &Course,
     materials: &[Material],
 ) -> Result<Option<CoverageView>> {
-    let Some(record) = read(store, &course.id)? else {
-        return Ok(None);
-    };
+    Ok(read(store, &course.id)?.map(|record| view_of(&record, materials)))
+}
+
+/// `view` of a record that was read already.
+pub fn view_of(record: &CourseCoverage, materials: &[Material]) -> CoverageView {
     let named = |id: &str| {
         materials
             .iter()
@@ -589,7 +608,7 @@ pub fn view(
     entries.truncate(MAX_SHOWN);
     let shown = to_u32(entries.len());
 
-    Ok(Some(CoverageView {
+    CoverageView {
         home_kind: record.home.kind,
         home_state: record.home.state,
         home,
@@ -601,7 +620,7 @@ pub fn view(
         announcements_synced: to_u32(announcements),
         counts: record.counts,
         written_at: record.written_at,
-    }))
+    }
 }
 
 fn to_u32(n: usize) -> u32 {
@@ -1015,6 +1034,30 @@ mod tests {
         write(&store, COURSE, &record).unwrap();
         assert!(record.is_gone(&format!("{SOURCE}/file/2")));
         assert!(!record.is_gone(&format!("{SOURCE}/file/1")));
+        // `ALL` names every reason once. (A new reason doesn't compile here until it is
+        // added to this match: add it to `ALL` and to `as_str` too.)
+        for reason in CoverageReason::ALL {
+            match reason {
+                CoverageReason::IndexHidden
+                | CoverageReason::NeedsDownload
+                | CoverageReason::TooLarge
+                | CoverageReason::Locked
+                | CoverageReason::WouldMarkViewed
+                | CoverageReason::ByRule
+                | CoverageReason::OutsideCanvas
+                | CoverageReason::NotRead
+                | CoverageReason::OtherCourse
+                | CoverageReason::Capped
+                | CoverageReason::FailedThisSync
+                | CoverageReason::NoLongerInCanvas
+                | CoverageReason::Other => {}
+            }
+        }
+        let codes: std::collections::BTreeSet<&str> = CoverageReason::ALL
+            .iter()
+            .map(|reason| reason.as_str())
+            .collect();
+        assert_eq!(codes.len(), CoverageReason::ALL.len());
         assert_eq!(
             record.why_no_text(&format!("{SOURCE}/file/2")),
             Some(CoverageReason::NoLongerInCanvas)

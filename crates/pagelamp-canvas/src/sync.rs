@@ -32,16 +32,24 @@
 //!   Home page's slug isn't known yet), and a link whose address says nothing about its page.
 //!   When the answer is a page the student is asked to view, the sync report tells the
 //!   student that Canvas may show it as viewed; a linked page's text isn't kept, the Home
-//!   page's is; and neither is asked for again while the module asks for the view.
+//!   page's is; and neither is asked for again while the module asks for the view. A Home
+//!   page the Pages list names is known by its slug before any request: when a module asks
+//!   for the view, the record keeps that slug, read or not, so a sync that can't read the
+//!   list doesn't ask for it by `front_page`.
 //! - An automatic sync reads a page no list dates (the Home page, a linked page, a module's
 //!   page while the Pages list is hidden) at most once a day: reading it may show in Canvas
 //!   as the student viewing it. A sync the student starts reads it.
 //! - Other addresses that led to a page are remembered with the page (`PageRead::also`) and
 //!   not asked for again; they never replace the page's own entry or its place in a module.
+//!   A slug that was a page's own, once the page is read under another, is asked for once
+//!   more: another page may have it now, and the answer's page id says whose it is.
+//! - A file a link led to is still asked about once a week, and taken by a download, when
+//!   no text links to it any more: the request is built from the id in the record's key.
 //! - What wasn't read is noted with a reason in the course's record, written with its
 //!   materials. A failed request for the Home page or a linked item is such a note, not a
-//!   failed sync. A page that is listed without its text keeps the change date of the text
-//!   PageLamp has, so it is read when it can be.
+//!   failed sync, and so is a list (modules, Pages, Files) that couldn't be read. A page
+//!   that is listed without its text keeps the change date of the text PageLamp has, so it
+//!   is read when it can be.
 //! - Pages are read in a fixed order (the Home page, module pages, listed pages), and a
 //!   limit counts every linked item it takes, read now or kept from a recent read, so the
 //!   limits cut the same links every time.
@@ -791,13 +799,15 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 self.soft(report, label, "modules", err)?;
             }
         }
-        cover.record.modules_list = if modules_ok {
-            CoverageListState::Read
+        if modules_ok {
+            cover.record.modules_list = CoverageListState::Read;
         } else if no_modules_here {
-            CoverageListState::Hidden
-        } else {
-            CoverageListState::Failed
-        };
+            cover.record.modules_list = CoverageListState::Hidden;
+        } else if full {
+            // With it, no page body is read in this sync: nothing says which pages a module
+            // asks the student to view.
+            cover.list_failed(CoverageArea::Modules);
+        }
         // Every "view this page" requirement the student has is known: a page that isn't a
         // module's page can be read without marking anything as viewed.
         let must_view_known = modules_ok || no_modules_here;
@@ -815,16 +825,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 Ok(listing) => {
                     let complete = self.check_listing(report, label, "the files list", &listing);
                     files_ok &= complete;
-                    cover.record.files_list = if complete {
-                        CoverageListState::Read
+                    if complete {
+                        cover.record.files_list = CoverageListState::Read;
                     } else {
-                        CoverageListState::Failed
-                    };
+                        cover.list_failed(CoverageArea::Files);
+                    }
                     files.extend(listing.items.into_iter().map(|f| (f.id.clone(), f)));
                 }
                 Err(err) => {
                     files_ok = false;
-                    cover.record.files_list = CoverageListState::Failed;
+                    cover.list_failed(CoverageArea::Files);
                     self.soft(report, label, "files list", err)?;
                 }
             }
@@ -847,11 +857,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 Ok(listing) => {
                     let complete = self.check_listing(report, label, "the pages list", &listing);
                     pages_ok &= complete;
-                    cover.record.pages_list = if complete {
-                        CoverageListState::Read
+                    if complete {
+                        cover.record.pages_list = CoverageListState::Read;
                     } else {
-                        CoverageListState::Failed
-                    };
+                        cover.list_failed(CoverageArea::Pages);
+                    }
                     for page in listing.items {
                         match page.url.clone() {
                             Some(slug) => {
@@ -866,7 +876,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
                 Err(err) => {
                     pages_ok = false;
-                    cover.record.pages_list = CoverageListState::Failed;
+                    cover.list_failed(CoverageArea::Pages);
                     self.soft(report, label, "pages", err)?;
                 }
             }
@@ -1039,11 +1049,26 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         .is_some_and(|page| page.front_page == Some(true))
             })
             .cloned();
-        // What the last full sync recorded as the Home page: its slug, its read and state.
+        // What the last full sync recorded as the Home page: its slug, its read and state. A
+        // failure isn't carried into a sync that doesn't ask: nothing failed in it. The state
+        // is then what PageLamp has of the page.
         let earlier_home = cover.previous.as_ref().and_then(|previous| {
             let id = previous.home.material_id.as_ref()?;
             let read = previous.followed.pages.get(id)?;
-            Some((read.slug.clone(), read.read_at, previous.home.state))
+            let state = match previous.home.state {
+                CourseHomeState::Failed => {
+                    if existing
+                        .get(id)
+                        .is_some_and(|old| old.text_status == TextStatus::Ok)
+                    {
+                        CourseHomeState::Read
+                    } else {
+                        CourseHomeState::Unknown
+                    }
+                }
+                state => state,
+            };
+            Some((read.slug.clone(), read.read_at, state))
         });
         // The Home page isn't asked for in this sync: what the last sync has of it stays.
         let mut home_untouched = false;
@@ -1153,12 +1178,18 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         // What the texts link to, for the follow step: the Home page apart, the rest in order.
         let mut home_links: Option<cover::Scanned> = None;
         let mut page_links: Vec<cover::Scanned> = Vec::new();
-        let mut requirement_unknown = false;
         for slug in &order {
             let entry = &pages[slug];
             let placement = placements.get(slug).cloned().unwrap_or_default();
             let is_home = home_slug.as_deref() == Some(slug.as_str());
-            let earlier = cover.earlier_page(slug);
+            // What the record has for this slug. A listed page is known by its id, and a slug
+            // can pass from one page to another: only the same page's entry counts.
+            let earlier = cover.earlier_page(slug).filter(|(id, _)| {
+                entry
+                    .page_id
+                    .as_ref()
+                    .is_none_or(|page_id| *id == ids.page(page_id))
+            });
             let guarded = cover.guarded.contains(slug);
             let locked = entry.locked_for_user == Some(true);
             let unchanged = entry.page_id.as_ref().is_some_and(|id| {
@@ -1189,8 +1220,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             } else if !wanted {
                 None
             } else if !must_view_known {
-                // Whether a module asks the student to view this page isn't known this time.
-                requirement_unknown = true;
+                // Whether a module asks the student to view this page isn't known this time
+                // (the module list's own entry says that it failed).
                 unknown = true;
                 None
             } else {
@@ -1232,6 +1263,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 match earlier {
                     Some((id, read)) => {
                         cover.carried_page(&id, &read, existing.get(&id), &address);
+                        if guarded
+                            && existing
+                                .get(&id)
+                                .is_some_and(|old| old.text_status != TextStatus::Ok)
+                        {
+                            cover
+                                .record
+                                .unread
+                                .insert(id.clone(), CoverageReason::WouldMarkViewed);
+                        }
                         let links = cover::Scanned {
                             links: read.links.clone(),
                             off_site: read.off_site_links,
@@ -1263,6 +1304,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 .get(&material_id)
                 .filter(|old| old.text_status == TextStatus::Ok);
             let mut has_text = stored.is_some();
+            // (The answer says which page the slug names now.)
+            let earlier = earlier.filter(|(id, _)| *id == material_id);
             let also = earlier
                 .as_ref()
                 .map(|(_, read)| read.also.clone())
@@ -1305,7 +1348,18 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     if let Some(old) = stored {
                         material.published_at = old.published_at;
                     }
-                    earlier.map(|(_, mut read)| {
+                    // The Home page that the list names, that a module asks the student to
+                    // view and that was never read: the record keeps its slug. A later sync
+                    // that can't read the list then still knows which page the Home is, and
+                    // doesn't ask for it by `front_page`.
+                    let never_read = (is_home && guarded).then(|| {
+                        let read = PageRead {
+                            slug: slug.clone(),
+                            ..PageRead::default()
+                        };
+                        (material_id.clone(), read)
+                    });
+                    earlier.or(never_read).map(|(_, mut read)| {
                         read.linked = linked;
                         read.locked = locked;
                         if read.cut {
@@ -1370,17 +1424,6 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 page_links.extend(links);
             }
             materials.insert(material_id, material);
-        }
-        if requirement_unknown {
-            cover.note(
-                Rank::Failed,
-                NotRead::new(
-                    CoverageArea::Pages,
-                    CoverageReason::FailedThisSync,
-                    None,
-                    None,
-                ),
-            );
         }
         for announcement in &announcements {
             let material = map::announcement(ids, &api.base, &course_id, announcement);
@@ -1492,7 +1535,14 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     continue;
                 }
                 let address = cover::page_address(&api.base, cid, slug);
-                let earlier = cover.earlier_page(slug);
+                // What the record has for this address. Not when the address was the page's
+                // own slug and the page was read in this sync under another one: the slug may
+                // be another page's now. It is asked for once, and the answer's page id says
+                // whose it is.
+                let earlier = cover.earlier_page(slug).filter(|(id, read)| {
+                    read.also.iter().any(|other| other == slug)
+                        || !cover.record.followed.pages.contains_key(id)
+                });
                 let not_read =
                     |reason| NotRead::new(CoverageArea::Pages, reason, None, Some(&address));
                 // What the last sync recorded for this address stays unless this sync reads it.
@@ -1505,7 +1555,8 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     }
                 };
                 if let Some((id, read)) = &earlier {
-                    // Another address of a page this sync already has: nothing to ask for.
+                    // An address Canvas answered with this page before, and this sync has the
+                    // page: nothing to ask for.
                     if let Some(known) = cover.record.followed.pages.get_mut(id) {
                         if !known.answers_to(slug) {
                             known.also.push(slug.clone());
@@ -1632,8 +1683,10 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                                     &address,
                                 );
                             }
+                            // (Other addresses are the page's own: only from its entry.)
                             let mut also = earlier
                                 .as_ref()
+                                .filter(|(id, _)| *id == material.id)
                                 .map(|(_, read)| read.also.clone())
                                 .unwrap_or_default();
                             if own_slug != *slug && !also.contains(slug) {
@@ -1717,6 +1770,22 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                                 cover.link(other);
                             }
                         }
+                    }
+                }
+            }
+
+            // Files a link led to in an earlier sync that no text read in this one links to:
+            // at the end, under the same limits, so they are still asked about once a week
+            // and taken by a download. The request is built from the id the record's key
+            // holds.
+            if let Some(previous) = &cover.previous {
+                for material_id in previous.followed.files.keys() {
+                    if existing.contains_key(material_id)
+                        && let Some(id) = ids.file_id(material_id)
+                        && crate::links::is_canvas_id(id)
+                        && wanted_files.insert(id.to_string())
+                    {
+                        file_ids.push(id.to_string());
                     }
                 }
             }
@@ -1836,15 +1905,21 @@ impl<T: CanvasTransport> Syncer<'_, T> {
 
             // Linked pages and files no text names any more stay as they are: stage 1 deletes
             // nothing a link once led to.
+            // And while the Pages list couldn't be read, the entries of the pages only it gives
+            // stay too (as they are): the next sync that reads the list then finds its
+            // unchanged pages known, and doesn't read them again.
+            let pages_list_failed = cover.record.pages_list == CoverageListState::Failed;
             if let Some(previous) = cover.previous.take() {
                 for (id, read) in previous.followed.pages {
-                    if read.linked
+                    if (read.linked || pages_list_failed)
                         && existing.contains_key(&id)
                         && !materials.contains_key(&id)
                         && !cover.record.followed.pages.contains_key(&id)
                     {
-                        let address = cover::page_address(&api.base, cid, &read.slug);
-                        cover.carried_page(&id, &read, existing.get(&id), &address);
+                        if read.linked {
+                            let address = cover::page_address(&api.base, cid, &read.slug);
+                            cover.carried_page(&id, &read, existing.get(&id), &address);
+                        }
                         cover.record.followed.pages.insert(id, read);
                     }
                 }

@@ -31,6 +31,12 @@ impl Ids<'_> {
     pub(crate) fn file(&self, id: &CanvasId) -> String {
         format!("{}/file/{id}", self.source)
     }
+    /// The Canvas id in a file's material id (`file`).
+    pub(crate) fn file_id<'m>(&self, material_id: &'m str) -> Option<&'m str> {
+        material_id
+            .strip_prefix(self.source)?
+            .strip_prefix("/file/")
+    }
     pub(crate) fn page(&self, id: &CanvasId) -> String {
         format!("{}/page/{id}", self.source)
     }
