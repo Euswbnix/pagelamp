@@ -111,6 +111,11 @@ export function useAutoSync() {
     [client],
   );
 
+  // The first input after the window gained focus is the student being here; later ones say
+  // nothing new (the hourly re-read stays unattended however long the student works here).
+  const awaitingInput = useRef(false);
+  const lastInputAt = useRef(0);
+
   // Whether this page load is the launch: null until Rust has said (it knows whether the process
   // loaded the page before). No answer is acted on before that, so a reload can't slip through
   // as "the student just opened PageLamp" and run an attended sync with nobody there.
@@ -127,6 +132,14 @@ export function useAutoSync() {
       // (a start page that got through by itself hours later) finds that moment long past.
       if (first && !api.startedHidden()) {
         useSyncStore.getState().noteStudentAction(api.pageLoadedAt());
+      } else if (first) {
+        // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
+        // student's first input in this window is their coming, also when the focus that came
+        // with showing it was never heard: it can come before this page listens, or not at
+        // all. A window that isn't shown gets no input, and the proof is still the input, never
+        // the showing. Not for a page that was loaded again: its window may have been in use
+        // for hours.
+        awaitingInput.current = true;
       }
       setLaunch(first);
     };
@@ -140,10 +153,6 @@ export function useAutoSync() {
 
   useEffect(() => () => dialogs.current?.disconnect(), []);
 
-  // The first input after the window gained focus is the student being here; later ones say
-  // nothing new (the hourly re-read stays unattended however long the student works here).
-  const awaitingInput = useRef(false);
-  const lastInputAt = useRef(0);
   const askSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What is in the way right now, for the handlers below.
   const busy = useRef(false);

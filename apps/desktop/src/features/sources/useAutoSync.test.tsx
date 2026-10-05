@@ -674,6 +674,114 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
 
+  it("takes the first input in a window that started hidden, though no focus was heard", async () => {
+    // Showing the window from the tray can give focus before this page listens, or give none.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+
+    // Hours later the student opens the window and presses something. No focus event came.
+    later(start, 3 * HOUR);
+    // What isn't the student isn't taken for it here either.
+    input(new Event("pointermove"));
+    input(new KeyboardEvent("keydown", { key: "a", repeat: true }));
+    input(new KeyboardEvent("keydown", { key: "F15" }));
+    await afterInput();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes only the first: later input in that window says nothing new without a focus", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    alwaysDue(api);
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    later(start, 3 * HOUR);
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+
+    // The student works on; an hour later a press is no new coming.
+    const noted = useSyncStore.getState().attendedUntil;
+    later(start, 4 * HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
+  it("doesn't spend that first input on a run that is in its way", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", startedHidden: true });
+    alwaysDue(api);
+    const held = holdSyncAll(api);
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    // The hidden launch's light sync is still running when the student opens the window and
+    // presses something.
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    input(new Event("pointerdown"));
+    await afterInput();
+
+    // The run ends two minutes later: that press is too old to say the student is here.
+    later(start, 2 * MINUTE);
+    held.release();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await settle();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // Their next press counts, with no focus in between.
+    input(new Event("pointerdown"));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("gives a page that was loaded again no such first input, hidden start or not", async () => {
+    // The flag says how the window started; after a reload it may have been in use for hours.
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due", reloaded: true, startedHidden: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, 5 * MINUTE);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a launch the student saw no input without a focus either", async () => {
+    const start = startClock();
+    const api = mockApi({ scenario: "auto-sync-due" });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    const noted = useSyncStore.getState().attendedUntil;
+
+    later(start, HOUR);
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(useSyncStore.getState().attendedUntil).toBe(noted);
+  });
+
   it("never takes a page that was loaded again for the student opening PageLamp", async () => {
     // The system restarts the page by itself after ending its content process: nobody is here.
     const start = startClock();
