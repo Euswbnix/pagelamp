@@ -897,7 +897,12 @@ export type SnoozeKind = "not_now" | "keep";
  * via the `definition` "WhatsNewTopic".
  */
 export type WhatsNewTopic =
-  "update_check" | "course_weeks" | "auto_sync" | "course_removal" | "syllabus_reading";
+  | "update_check"
+  | "course_weeks"
+  | "auto_sync"
+  | "canvas_coverage"
+  | "course_removal"
+  | "syllabus_reading";
 /**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *
