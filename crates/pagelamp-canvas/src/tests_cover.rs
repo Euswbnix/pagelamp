@@ -1560,18 +1560,23 @@ async fn a_link_to_a_page_canvas_does_not_have_is_asked_about_once_a_week_and_no
     mount(&f, both).await;
     let start = Utc::now();
     let base = f.canvas.uri();
-    // Asked about on the first day and again after a week, not in between. The page that
-    // may not be opened is asked for at every sync: it exists.
-    for (days, gone, closed) in [(0, 1, 1), (1, 1, 2), (6, 1, 3), (8, 2, 4)] {
-        let report = sync_at(&f, false, start + TimeDelta::days(days)).await;
+    // The app's own syncs ask about it again a week after it was last asked about, not in
+    // between. A sync the student starts asks at once (the page may have been made since),
+    // and its answer counts from then. The page that may not be opened is asked for at every
+    // sync: it exists.
+    // (the day, the app's own sync?, requests for "gone" so far, the day it was last asked)
+    for (days, automatic, gone, asked_on) in [
+        (0, false, 1, 0),
+        (1, true, 1, 0),
+        (2, false, 2, 2),
+        (3, true, 2, 2),
+        (8, true, 2, 2),
+        (10, true, 3, 10),
+    ] {
+        let report = sync_at(&f, automatic, start + TimeDelta::days(days)).await;
         assert_eq!(
             asked(&f, "/courses/101/pages/gone").await,
             gone,
-            "day {days}"
-        );
-        assert_eq!(
-            asked(&f, "/courses/101/pages/closed").await,
-            closed,
             "day {days}"
         );
         let record_now = record(&f);
@@ -1596,8 +1601,7 @@ async fn a_link_to_a_page_canvas_does_not_have_is_asked_about_once_a_week_and_no
         // The summary counts the page the module asks the student to view and the page that
         // couldn't be opened, not the dead link.
         assert_eq!(report.course_summaries[0].not_read, 2, "day {days}");
-        // Remembered with the day it was asked about.
-        let asked_on = if days < 8 { 0 } else { 8 };
+        // Remembered with the day it was last asked about.
         assert_eq!(
             record_now.followed.dead_pages.get("gone"),
             Some(&(start + TimeDelta::days(asked_on))),
@@ -1606,10 +1610,13 @@ async fn a_link_to_a_page_canvas_does_not_have_is_asked_about_once_a_week_and_no
         assert!(!record_now.followed.dead_pages.contains_key("closed"));
     }
 
+    // Six syncs, six requests for the page that may not be opened.
+    assert_eq!(asked(&f, "/courses/101/pages/closed").await, 6);
+
     // The author takes the link out: nothing of it stays in the record.
     f.canvas.reset().await;
     mount(&f, r#"<a href="/courses/101/pages/closed">drafts</a>"#).await;
-    sync_at(&f, false, start + TimeDelta::days(9)).await;
+    sync_at(&f, false, start + TimeDelta::days(11)).await;
     assert!(record(&f).followed.dead_pages.is_empty());
 }
 
@@ -1662,9 +1669,9 @@ async fn a_dead_link_takes_a_place_under_the_limit_only_when_it_is_asked_about()
     assert_eq!(second.followed.dead_pages.len(), 5);
     assert_eq!(failed(&second), 0);
 
-    // A week on they are asked about again, and take their places for that sync: the last
-    // five pages aren't read again this time, and stay.
-    sync_at(&f, false, start + TimeDelta::days(8)).await;
+    // A week on the app's own sync asks about them again, and they take their places for
+    // that sync: the last five pages aren't read again this time, and stay.
+    sync_at(&f, true, start + TimeDelta::days(8)).await;
     assert_eq!(asked(&f, "/courses/101/pages/p00").await, 2);
     assert_eq!(asked(&f, "/courses/101/pages/p05").await, 2);
     assert_eq!(asked(&f, "/courses/101/pages/p40").await, 1);

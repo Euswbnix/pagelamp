@@ -45,10 +45,12 @@
 //!   more: another page may have it now, and the answer's page id says whose it is.
 //! - A file a link led to is still asked about once a week, and taken by a download, when
 //!   no text links to it any more: the request is built from the id in the record's key.
-//! - A link to a page Canvas doesn't have (404) is remembered with the time and asked about
-//!   again a week later, taking no place under the limit in between. It is the author's
-//!   dead link, like one to a file that isn't there: no entry, and not counted as not read.
-//!   Any other failed request for a linked page (a 403, say) is noted as failed.
+//! - A link to a page Canvas doesn't have (404) is remembered with the time. An automatic
+//!   sync asks about it again a week later, and it takes no place under the limit in
+//!   between; a sync the student starts asks at once, as it reads a page again inside the
+//!   day (the page may have been made since). It is the author's dead link, like one to a
+//!   file that isn't there: no entry, and not counted as not read. Any other failed request
+//!   for a linked page (a 403, say) is noted as failed.
 //! - What wasn't read is noted with a reason in the course's record, written with its
 //!   materials. A failed request for the Home page or a linked item is such a note, not a
 //!   failed sync, and so is a list (modules, Pages, Files) that couldn't be read. A page
@@ -1580,12 +1582,16 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         continue;
                     }
                 }
-                // Canvas had no page at this address less than a week ago: not asked again yet.
-                // A dead link is the author's: nothing is noted, and it takes no place under
-                // the limit.
-                if let Some(asked) = dead_before.get(slug).copied().filter(|asked| {
-                    cover::within(Some(*asked), cover::RECHECK_DEAD_AFTER, self.now)
-                }) {
+                // Canvas had no page at this address less than a week ago: an automatic sync
+                // doesn't ask again yet. A dead link is the author's: nothing is noted, and it
+                // takes no place under the limit. A sync the student starts asks (below), as
+                // it reads a page again inside the day: an instructor may write the link
+                // first and make the page later.
+                if self.options.automatic
+                    && let Some(asked) = dead_before.get(slug).copied().filter(|asked| {
+                        cover::within(Some(*asked), cover::RECHECK_DEAD_AFTER, self.now)
+                    })
+                {
                     cover.record.followed.dead_pages.insert(slug.clone(), asked);
                     keep_earlier(&mut cover);
                     continue;
@@ -1757,9 +1763,10 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                             Some(read)
                         }
                         // Canvas has no page at this address: a dead link. Remembered with
-                        // the time, so it is asked about again a week from now. Nothing
-                        // PageLamp failed to read: no entry. (A copy from an earlier sync
-                        // stays; nothing a link once led to is deleted.)
+                        // the time (renewed when it is asked about again), so an automatic
+                        // sync leaves it alone for a week from now. Nothing PageLamp failed
+                        // to read: no entry. (A copy from an earlier sync stays; nothing a
+                        // link once led to is deleted.)
                         Err(CanvasError::NotFound) => {
                             cover
                                 .record

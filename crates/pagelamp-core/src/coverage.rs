@@ -376,8 +376,9 @@ pub struct Followed {
     /// By file material id: files only a link leads to.
     pub files: BTreeMap<String, FileSeen>,
     /// Page slugs a link names for which Canvas said there is no such page, with when it
-    /// was asked. Such a link is asked about again a week later, not at every sync. It is
-    /// the author's dead link, not something PageLamp failed to read: no entry says it.
+    /// was last asked. An automatic sync asks about such a link again a week later, not at
+    /// every sync; a sync the student starts asks. It is the author's dead link, not
+    /// something PageLamp failed to read: no entry says it.
     pub dead_pages: BTreeMap<String, Timestamp>,
 }
 
