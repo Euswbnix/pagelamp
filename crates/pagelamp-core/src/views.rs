@@ -249,7 +249,8 @@ pub struct CourseOverview {
     /// When the course's source last synced in full (modules and materials).
     pub last_synced_at: Option<Timestamp>,
     /// Files a "download this course's files" action would fetch: kind `file`, text status
-    /// `not_downloaded` and no `download_blocked` reason (all weeks).
+    /// `not_downloaded`, no `download_blocked` reason, and not one Canvas no longer has (all
+    /// weeks).
     pub downloadable_files: u32,
     /// When its deadlines and announcements were last read (`CourseSummary`).
     pub deadlines_synced_at: Option<Timestamp>,
@@ -491,6 +492,8 @@ pub fn course_overview(
         .map(|event| deadline(event, Some(&course)))
         .collect();
     let synced = SourceIndex::load(store)?.info(&course);
+    let record = coverage::read(store, &course.id)?;
+    // (A file Canvas no longer has can't be downloaded: a download would fetch nothing.)
     let downloadable_files = data
         .materials
         .iter()
@@ -498,6 +501,7 @@ pub fn course_overview(
             m.kind == MaterialKind::File
                 && m.text_status == TextStatus::NotDownloaded
                 && m.download_blocked.is_none()
+                && !record.as_ref().is_some_and(|record| record.is_gone(&m.id))
         })
         .count();
     Ok(CourseOverview {
@@ -513,7 +517,9 @@ pub fn course_overview(
         deadlines_synced_at: synced.deadlines_synced_at,
         structure_pending: synced.structure_pending,
         downloadable_files: u32::try_from(downloadable_files).unwrap_or(u32::MAX),
-        coverage: coverage::view(store, &course, &data.materials)?,
+        coverage: record
+            .as_ref()
+            .map(|record| coverage::view_of(record, &data.materials)),
         course,
     })
 }

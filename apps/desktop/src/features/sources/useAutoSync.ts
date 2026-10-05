@@ -17,6 +17,12 @@ export const FOCUS_REREAD_MS = 10 * 60 * 1000;
 /** How long to wait to hear whether this page load is the launch, before taking it for none. */
 export const LAUNCH_REPLY_MS = 5000;
 
+/** How long after the student's input the question is asked: time for a press to become a click. */
+export const INPUT_ASK_DELAY_MS = 300;
+
+/** An input this soon before the window gained focus is the one that brought it to the front. */
+export const INPUT_BEFORE_FOCUS_MS = 1000;
+
 function dialogOpen(): boolean {
   return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
 }
@@ -26,15 +32,17 @@ function dialogOpen(): boolean {
  * (`startup_tasks.sync_due`: the setting, how old the data is, retries); this hook only asks and
  * starts the same sync as the Sync button, marked with what triggered it:
  *
- * - attended: the student just did something here (opened PageLamp, came back to its window,
- *   closed "What's new", changed the setting). Each is noted where it happens, never inferred
- *   from what an answer says;
+ * - attended: the student just did something here (opened PageLamp, pressed, typed or scrolled
+ *   in its window after coming back to it, closed "What's new", changed the setting). Each is
+ *   noted where it happens, never inferred from what an answer says;
  * - unattended: the hourly re-read, always, also with the window in front; a launch the
- *   student didn't see (the window started hidden); and a page that was loaded again, which the
- *   system does by itself. Those wait for the window to gain focus.
+ *   student didn't see (the window started hidden); a page that was loaded again, which the
+ *   system does by itself; and a window that gained focus, which it can with nobody there
+ *   (another app quits at night and this window comes to the front). Those wait for the
+ *   window to gain focus and then for the student's first input in it.
  *
- * Whether the window is visible or in front is never asked: it can be both for a night with
- * nobody there.
+ * Whether the window is visible, in front or focused is never taken for the student being here:
+ * it can be all three for a night with nobody there.
  *
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
  * "What's new"); it asks again when that is over and lets the new answer decide. It never opens
@@ -125,26 +133,85 @@ export function useAutoSync() {
 
   useEffect(() => () => dialogs.current?.disconnect(), []);
 
-  // The student comes back to the window: ask again if the answer is old, or if it said a sync
-  // was due (the student's own sync may have changed that since).
+  // The first input after the window gained focus is the student being here; later ones say
+  // nothing new (the hourly re-read stays unattended however long the student works here).
+  const awaitingInput = useRef(false);
+  const lastInputAt = useRef(0);
+  const askSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What is in the way right now, for the handlers below.
+  const busy = useRef(false);
+  busy.current = running || otherProcess || installing;
+
+  /** Asks again if the answer is old or said a sync was due. */
+  const ask = useCallback(
+    (unattendedToo: boolean) => {
+      const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
+      const due = state?.data?.sync_due;
+      if (
+        !state?.dataUpdatedAt ||
+        Date.now() - state.dataUpdatedAt > FOCUS_REREAD_MS ||
+        due?.attended ||
+        (unattendedToo && due?.unattended)
+      ) {
+        void reread();
+      }
+    },
+    [client, reread],
+  );
+
+  /** The student did something in the window, now or at `at`: they are known to be here. */
+  const studentIsHere = useCallback(
+    (unattendedToo: boolean, at?: number) => {
+      // With something in the way (a sync, an update being installed, a dialog) this input
+      // may be 30 seconds old before anything can start: then their next one counts again.
+      awaitingInput.current = busy.current || dialogOpen();
+      useSyncStore.getState().noteStudentAction(at);
+      // Asked a moment later, so that a full sync that is due starts now, yet after what the
+      // student pressed has acted: a press reaches the page before the click it makes, and
+      // "Sync" must find no automatic run in its way.
+      if (askSoon.current) clearTimeout(askSoon.current);
+      askSoon.current = setTimeout(() => {
+        askSoon.current = null;
+        ask(unattendedToo);
+      }, INPUT_ASK_DELAY_MS);
+    },
+    [ask],
+  );
+  useEffect(
+    () => () => {
+      if (askSoon.current) clearTimeout(askSoon.current);
+    },
+    [],
+  );
+
+  // The window gains focus: ask again if the answer is old, or if it said a sync was due (the
+  // student's own sync may have changed that since). Whether the student is here is not known
+  // yet: an answer that comes before their first input can only start an unattended sync.
   useEffect(
     () =>
       api.onWindowFocus(() => {
-        useSyncStore.getState().noteStudentAction();
-        const state = client.getQueryState<StartupTasks>(queryKeys.startupTasks());
-        const due = state?.data?.sync_due;
-        if (
-          !state?.dataUpdatedAt ||
-          Date.now() - state.dataUpdatedAt > FOCUS_REREAD_MS ||
-          due?.attended ||
-          due?.unattended
-        ) {
-          void reread();
+        // The press that brought the window to the front can reach the page a moment before
+        // this event does (Windows, Linux): it is the student all the same.
+        const sinceInput = Date.now() - lastInputAt.current;
+        if (sinceInput >= 0 && sinceInput <= INPUT_BEFORE_FOCUS_MS) {
+          studentIsHere(true, lastInputAt.current);
+        } else {
+          awaitingInput.current = true;
+          ask(true);
         }
         // The setting may have been changed elsewhere (the command line).
         void client.invalidateQueries({ queryKey: queryKeys.syncPrefs() });
       }),
-    [api, client, reread],
+    [api, client, ask, studentIsHere],
+  );
+
+  useEffect(
+    () =>
+      api.onStudentInput(() => {
+        lastInputAt.current = Date.now();
+        if (awaitingInput.current) studentIsHere(false);
+      }),
+    [api, studentIsHere],
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `closed` only re-runs the check.

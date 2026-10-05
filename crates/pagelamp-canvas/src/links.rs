@@ -154,7 +154,7 @@ fn address(base: &Url, course: &CanvasId, written: &str) -> Target {
 
 /// Canvas ids are digits, with `~` in the short form of an id from another Canvas shard, and
 /// at most `MAX_ID_CHARS` long.
-fn is_canvas_id(text: &str) -> bool {
+pub(crate) fn is_canvas_id(text: &str) -> bool {
     !text.is_empty()
         && text.len() <= MAX_ID_CHARS
         && text.chars().all(|c| c.is_ascii_digit() || c == '~')

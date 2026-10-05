@@ -1723,7 +1723,8 @@ export interface CourseOverview {
   deadlines_synced_at?: string | null;
   /**
    * Files a "download this course's files" action would fetch: kind `file`, text status
-   * `not_downloaded` and no `download_blocked` reason (all weeks).
+   * `not_downloaded`, no `download_blocked` reason, and not one Canvas no longer has (all
+   * weeks).
    */
   downloadable_files: number;
   /**
