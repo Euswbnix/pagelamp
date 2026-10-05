@@ -36,7 +36,7 @@ body:
     id: version
     attributes:
       label: PageLamp version and OS
-      placeholder: e.g. PageLamp 0.1.0 on macOS 27 (Apple silicon) — see Settings → About or `pagelamp --version`
+      placeholder: e.g. PageLamp 0.1.0 (or 0.3.0-alpha.1) on macOS 27 (Apple silicon) — see Settings → About or `pagelamp --version`
     validations:
       required: true
   - type: textarea

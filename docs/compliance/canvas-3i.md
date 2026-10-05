@@ -17,7 +17,10 @@ sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
 ## What PageLamp does
 
 - `pagelamp mcp` never opens a network connection. It reads the database on the student's
-  computer, and writes to it only what the student's AI app asks it to save (a study plan).
+  computer. It writes to it in two cases only: when it is the first PageLamp program to open the
+  data after an update (it copies the old database, moves the data to the new format and removes
+  access parameters from stored link addresses), and when the student's AI app asks it to save a
+  study plan.
 - Canvas is read only by sync, in `pagelamp-canvas`: GET requests only, with the student's own
   access token, for the student's own use.
 - A sync starts in two ways only:
@@ -33,9 +36,11 @@ sync, and no MCP tool call may cause one (docs/ARCHITECTURE.md §3 rule 1).
     student.
 - PageLamp doesn't schedule its command-line tool (no launchd or Task Scheduler entry), and
   nothing syncs while the app is closed.
-- A run the timer starts with nobody at the app makes no `/courses/:id/…` request: it checks
-  the token and reads the course list, planner items and each course's announcements. A full
-  sync runs when the student starts one, or opens the app or brings it to the front.
+- A run the timer starts with nobody at the app makes no `/courses/:id/…` request: it checks the
+  token and reads the course list, planner items and each course's announcements. A full sync runs
+  when the student starts one, or, when one is due, when the student opens the app, comes back to
+  its window and clicks, types or scrolls, closes "What's new", or changes the automatic sync
+  setting.
 - No automatic run downloads files.
 
 ## Checked by tests

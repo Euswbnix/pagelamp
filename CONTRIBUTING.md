@@ -3,12 +3,16 @@
 Thanks for helping! Bug reports, ideas, docs fixes and code are all welcome.
 [中文 ↓](#中文)
 
+**Reporting a bug:** say which version you use (*Settings → About*, or `pagelamp --version`). For
+a pre-release, read its release notes first: known limits are listed there.
+
 ## Ground rules
 
 - **Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first**, especially §3 (hard rules): Canvas
-  access is GET-only and only from sync; the MCP server never touches the network; secrets live only
-  in the OS keychain; no assignment solving; course materials are withheld for "No AI" courses.
-  Pull requests that break these rules can't be merged.
+  access is GET-only and only from sync; the MCP server never touches the network, and no MCP tool
+  call may start a sync; secrets live only in the OS keychain; no assignment solving; course
+  materials are withheld for "No AI" courses. Pull requests that break these rules can't be
+  merged.
 - **Synthetic data only.** Never commit real course materials, names, tokens or calendar links —
   not in tests, fixtures, screenshots or issues.
 - **Licence:** contributions are accepted under [Apache-2.0](LICENSE). New dependencies must be
@@ -20,7 +24,7 @@ Thanks for helping! Bug reports, ideas, docs fixes and code are all welcome.
 - Rust 1.90+ (`rustup`), Node 24, pnpm 12 (`corepack enable`).
 - macOS: Xcode Command Line Tools · Windows: Visual Studio Build Tools (+ NASM or
   `AWS_LC_SYS_PREBUILT_NASM=1`) · Linux: `build-essential pkg-config libdbus-1-dev
-  libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf`.
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf`.
 
 ```bash
 # Rust workspace (core, sources, MCP server, CLI)
@@ -59,14 +63,19 @@ cargo run -p pagelamp-cli -- mcp-config claude-desktop
 | `crates/pagelamp-extract` | PDF/PPTX/DOCX/notebook/HTML text extraction |
 | `crates/pagelamp-local`, `crates/pagelamp-canvas` | folder + calendar-feed sources, Canvas (read-only) |
 | `crates/pagelamp-mcp` | MCP server — **all wording sent to AI apps is in `src/text.rs`** (editable without Rust knowledge) |
-| `crates/pagelamp-app` | the facade used by the CLI and the desktop app |
+| `crates/pagelamp-app` | the facade used by the CLI and the apps |
+| `crates/pagelamp-llm` | model access for features that aren't released yet |
+| `crates/pagelamp-ffi` | the facade for the native macOS app |
 | `apps/pagelamp-cli` | the `pagelamp` command |
 | `apps/desktop` | Tauri 2 + React app (copy in `src/i18n`, brand in `src/brand`) |
+| `apps/macos` | native macOS app, a developer preview that isn't in the releases |
 
 ## Before you open a pull request
 
 This is the Definition of Done from [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §8; run the checks for
-what you changed. CI runs all of them except the last one.
+what you changed. CI runs all of them except the last one. A pull request that changes only
+documentation or only tests runs fewer CI jobs; `gh workflow run ci.yml --ref <branch>` runs all
+of them.
 
 - [ ] Rust: `cargo fmt --all --check`,
       `cargo clippy --workspace --exclude pagelamp-desktop --all-targets -- -D warnings`,
@@ -82,7 +91,8 @@ what you changed. CI runs all of them except the last one.
 
 ## Pull requests
 
-- Small, focused PRs with tests. CI must be green (Linux, macOS, Windows).
+- Small, focused PRs with tests. CI must be green (Linux, macOS and Windows for a change to
+  code).
 - Commit subject: imperative, ≤ 72 characters, area prefix — `core:`, `extract:`, `canvas:`,
   `local:`, `mcp:`, `llm:`, `app:`, `ffi:`, `cli:`, `desktop:`, `macos:`, `docs:`, `ci:`. Explain *why*
   in the body.
@@ -91,7 +101,7 @@ what you changed. CI runs all of them except the last one.
 ## 中文
 
 欢迎提 bug、提建议、改文档和提交代码。提交前请先读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 第 3 节的硬性规则
-（Canvas 只读、MCP 不联网、密钥只存系统钥匙串、不代写作业、"禁止使用 AI"的课不共享课件）。
+（Canvas 只读、MCP 不联网、任何 MCP 工具调用都不能发起同步、密钥只存系统钥匙串、不代写作业、"禁止使用 AI"的课不共享课件）。
 测试和截图只能用合成数据，不能出现真实课件、姓名、令牌或日历链接。贡献按 Apache-2.0 授权，新依赖必须与之兼容。
 给 AI 看的所有文字都在 `crates/pagelamp-mcp/src/text.rs`，界面文案在 `apps/desktop/src/i18n`，不会 Rust 也能改。
 面向用户的文字改动需要同时提供英文和简体中文。
