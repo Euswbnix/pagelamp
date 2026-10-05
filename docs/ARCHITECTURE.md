@@ -57,7 +57,16 @@ Rust workspace:
    nothing an MCP client can write is read by the timer's rule. A run the timer starts with nobody
    at the app makes no `/courses/:id/…` request: it checks the token and reads the course list,
    planner items and each course's announcements. Everything else is read when the student starts
-   a sync or comes back to the app. An automatic run never downloads files. The MCP server
+   a sync or comes back to the app. A full sync also reads the page a course's Home shows and,
+   one level deep and within limits, the pages and files of the same course that a text it read
+   links to; the request is built from the course id and the page slug or file id, never from an
+   address written in a text. It never asks for a list the course hides, and doesn't read a
+   module's page the student is asked to view and hasn't (as we read Canvas's code, reading it
+   could mark it as viewed; nobody has tested that on a real account). Two cases can't be ruled
+   out beforehand, and the sync reports them when they happen: the first read of a course's Home
+   page, and a link that uses an old address of such a page. What a sync didn't read is recorded
+   per course with a reason (`core::coverage`) and given to the student and the AI app. An
+   automatic run never downloads files. The MCP server
    never touches the network (Canvas API Policy §3(i) restricts access to Canvas APIs through MCP
    servers that Instructure hasn't approved; our understanding is that this rules out Canvas access
    from the MCP server, so all Canvas access happens in sync).
@@ -209,6 +218,11 @@ Additions agreed 2026-09-26 (release audit):
   quit Claude Desktop, then edit, save, reopen — it saves over its config when it quits.
 - `CourseOverview.downloadable_files` (Canvas files not yet downloaded and not blocked) and
   `MaterialView.download_blocked: Option<locked | too_large>`.
+- `CourseOverview.coverage` (Canvas, after a full sync): what the course's Home shows, its Home
+  page and syllabus as materials, the state of its Pages and Files lists, and at most 20
+  `not_readable` entries with an area and a reason (`core::coverage`), the rest counted.
+  Structure only, so it is there for a course whose text is withheld too.
+  `CourseSyncSummary` carries the same record's counts for the sync row.
 - `App::open_at_with_secrets(data_dir, Arc<dyn SecretBackend>)` for embedders and tests
   (`MemorySecrets` never touches the OS keychain).
 - `pagelamp mcp` never creates a database but migrates an existing older one once at startup

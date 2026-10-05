@@ -1311,7 +1311,7 @@
 "removal.dialog.undoBody" = "You can undo with one click for 7 days. After that, restoring means syncing the course again, and some things can't be brought back:";
 "removal.dialog.undoTitle" = "Undo and restoring";
 "removal.lost.locked_files" = "files the course locked after it ended";
-"removal.lost.old_announcements" = "announcements older than 120 days";
+"removal.lost.old_announcements" = "announcements older than 365 days";
 "removal.lost.redownload_counts_as_viewing" = "downloading files again counts as viewing them in Canvas";
 "removal.lost.whole_course" = "the whole course, when Canvas restricts access to it";
 "removal.removed.confirmDeleteNowBody" = "You can't undo this. Restoring means syncing the course again.";

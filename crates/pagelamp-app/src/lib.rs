@@ -755,6 +755,8 @@ impl App {
         }
         // Before the row goes: if this fails the source stays and removing can be retried.
         self.forget_light_sync(&store, source_id)?;
+        // What its courses' syncs noted as not read names those courses: it goes too.
+        pagelamp_core::coverage::remove_for_source(&store, source_id)?;
         store.remove_source(source_id)?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;

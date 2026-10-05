@@ -1,6 +1,6 @@
 # Privacy
 
-*Last updated: 2026-10-03 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
+*Last updated: 2026-10-04 · applies to PageLamp v0.1. Items marked **(v0.3)** describe the v0.3
 pre-releases and later; v0.1.0 doesn't have them.*
 
 PageLamp is a local app. There is no PageLamp server, account, analytics or telemetry. The people
@@ -15,10 +15,14 @@ who build PageLamp never receive your data.
 | Canvas access token, calendar-feed link | your operating system's keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) — never in the database, logs or AI output | to sync on your behalf |
 | **(v0.3)** Your update settings, the result of the last update check, and the version you last ran | the same database | to know when the next check is due and to show "What's new" once |
 | **(v0.3)** Your automatic sync setting, and when PageLamp last synced or tried to | the same database | to know when the next sync is due |
+| **(v0.3)** For each Canvas course, a list of what PageLamp didn't read and why: the title Canvas shows for the item (a tab, a module item, a page or a file), its link and a reason; and which pages and files the texts it read link to (addresses only, never a link's words) | the same database; deleted when you remove the source | to tell you and your AI app what isn't in PageLamp, and to avoid reading a page again just to follow its links |
 | **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database, readable only by you; only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
-dates and links. It never reads your university password.
+dates and links, also where an assignment or a quiz appears in the list of what wasn't read.
+Canvas sends each assignment's description along with the list of assignments; PageLamp drops it
+and never stores it, and it never opens an assignment or a quiz. It never reads your university
+password.
 
 ## What leaves your computer
 

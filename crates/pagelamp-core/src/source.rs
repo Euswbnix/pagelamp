@@ -54,6 +54,27 @@ pub struct CourseSyncSummary {
     /// Deadlines/events read for this course.
     pub events: u32,
     pub warnings: u32,
+    /// Of `pages`, those no list or module gave: a text PageLamp read links to them (Canvas,
+    /// a full sync; `coverage`).
+    #[serde(default)]
+    pub linked_pages: u32,
+    /// Of `files`, those found through a link in a text only.
+    #[serde(default)]
+    pub linked_files: u32,
+    /// How many of the things the sync noted as not read went wrong or are for the student to
+    /// act on: a page a module asks them to view, a failed request, what a limit left out,
+    /// what Canvas locks, a file Canvas no longer has. Not what PageLamp never reads by rule,
+    /// not the hidden lists (named by the two flags below), and not files that aren't
+    /// downloaded. `CourseOverview::coverage` lists everything, with reasons.
+    #[serde(default)]
+    pub not_read: u32,
+    /// The course's navigation hides its Pages list: only pages that modules and links lead
+    /// to were read.
+    #[serde(default)]
+    pub pages_hidden: bool,
+    /// The same for its Files list.
+    #[serde(default)]
+    pub files_hidden: bool,
 }
 
 /// Why a source failed to sync (or failed validation when being added).
@@ -171,7 +192,8 @@ pub enum SyncProgress {
         /// The course the step is about (its code, else its name), as in `message`.
         course: Option<String>,
     },
-    /// A non-fatal problem, e.g. "DEMO101: Files tab hidden, used module items only".
+    /// A non-fatal problem, e.g. "DEMO101: Lecture 3.mp4 skipped (larger than the download
+    /// limit)".
     Warning(String),
 }
 
