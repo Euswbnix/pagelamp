@@ -49,8 +49,10 @@ export function useStatus() {
   return useQuery({
     queryKey: queryKeys.status(),
     queryFn: () => api.status(),
-    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself.
+    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself. Also
+    // with the window out of sight (the tray): what waits for that sync to end waits here.
     refetchInterval: (query) => (query.state.data?.sync_in_progress ? 3000 : false),
+    refetchIntervalInBackground: true,
   });
 }
 

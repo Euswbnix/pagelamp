@@ -319,6 +319,141 @@ describe("Monday's note (the opt-in)", () => {
   });
 });
 
+describe("Monday's note and the automatic sync", () => {
+  const DUE = { unattended: true, attended: true };
+  const NOT_DUE = { unattended: false, attended: false };
+
+  /**
+   * A Monday launch on which a sync is due too, until one has run. `syncAll` is held until
+   * `release()`; while it runs the lock is taken, so `startup_tasks` says "not due".
+   */
+  function mondayWithSyncDue(end: "ok" | "refused" = "ok") {
+    const api = mockApi({ scenario: "weekly-note-monday", now: () => MONDAY });
+    let synced = false;
+    let running = false;
+    let open: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: synced || running ? NOT_DUE : DUE,
+    });
+    const sync = api.syncAll.bind(api);
+    const syncAll = vi.fn(async (...args: Parameters<typeof sync>) => {
+      running = true;
+      try {
+        await gate;
+        if (end === "refused") throw new ApiError("busy", "Another sync is running.");
+        return await sync(...args);
+      } finally {
+        running = false;
+        synced = true;
+      }
+    });
+    api.syncAll = syncAll;
+    const write = vi.spyOn(api, "writeWeeklyNote");
+    return { api, syncAll, write, release: () => open() };
+  }
+
+  it("is written after the sync that is due at the same launch, from what that sync leaves", async () => {
+    const { api, syncAll, write, release } = mondayWithSyncDue();
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(syncAll).toHaveBeenCalledTimes(1));
+    expect(syncAll.mock.calls[0]?.[0]).toMatchObject({ automatic: "attended" });
+    // The sync is still reading: no note yet, however long it takes.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(write).not.toHaveBeenCalled();
+    expect(screen.queryByText("Preparing Monday's note")).toBeNull();
+
+    release();
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(write.mock.calls[0]?.[1]).toMatchObject({ automatic: true });
+    expect(syncAll).toHaveBeenCalledTimes(1);
+    await screen.findByRole("article", { name: /^Weekly note for the week of/ });
+  });
+
+  it("is written all the same when that sync is refused", async () => {
+    const { api, syncAll, write, release } = mondayWithSyncDue("refused");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(syncAll).toHaveBeenCalledTimes(1));
+    expect(write).not.toHaveBeenCalled();
+    release();
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    await screen.findByRole("article", { name: /^Weekly note for the week of/ });
+  });
+
+  it("doesn't wait for a sync that nobody is there to start", async () => {
+    // A start at login: only the full sync is due, and it waits for the student. The note is
+    // prepared in the meantime, as before.
+    const api = mockApi({ scenario: "weekly-note-monday", now: () => MONDAY, startedHidden: true });
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: { unattended: false, attended: true },
+    });
+    const sync = vi.spyOn(api, "syncAll");
+    const write = vi.spyOn(api, "writeWeeklyNote");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    expect(sync).not.toHaveBeenCalled();
+    await screen.findByRole("article", { name: /^Weekly note for the week of/ });
+  });
+
+  it("is tried again at the next answer when a click's run was in its way", async () => {
+    const api = mockApi({ scenario: "ai-key", now: () => MONDAY });
+    await api.setPrepareWeeklyNoteOnMonday(true);
+    // The first answer comes before the note's model is chosen: nothing to prepare yet.
+    const write = api.writeWeeklyNote.bind(api);
+    let stopClick: () => void = () => {};
+    const clicked = new Promise<never>((_, reject) => {
+      stopClick = () => reject(new ApiError("cancelled", "The run was stopped."));
+    });
+    const calls: boolean[] = [];
+    api.writeWeeklyNote = async (...args) => {
+      calls.push(args[1]?.automatic === true);
+      // The click's run is held, and ends stopped: no note is saved by it.
+      return calls.length === 1 ? clicked : write(...args);
+    };
+    const tasks = api.startupTasks.bind(api);
+    let prepare = false;
+    api.startupTasks = async () => ({ ...(await tasks()), prepare_weekly_note: prepare });
+    const { user, queryClient } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    await waitFor(() => expect(calls).toEqual([false]));
+
+    // The answer says to prepare Monday's note while the click's run is going: not now.
+    prepare = true;
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls).toEqual([false]);
+
+    // The run ends; the hourly answer says the same again, and nothing is in the way now.
+    stopClick();
+    await waitFor(() => expect(useNoteRunStore.getState().run.phase).not.toBe("running"));
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
+    await waitFor(() => expect(calls).toEqual([false, true]));
+  });
+
+  it("doesn't wait behind a dialog: the sync follows when the dialog closes", async () => {
+    // A dialog can stay open for days in a window that sits in the tray.
+    const { api, syncAll, write, release } = mondayWithSyncDue();
+    release();
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    document.body.appendChild(dialog);
+    try {
+      renderRoute("/courses", { api });
+      await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+      expect(syncAll).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
+    await waitFor(() => expect(syncAll).toHaveBeenCalledTimes(1));
+  });
+});
+
 describe("Settings → Weekly note", () => {
   async function prepareSwitch() {
     return screen.findByRole("switch", {

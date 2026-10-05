@@ -6,8 +6,8 @@ import type { GenStage } from "@/api/ai";
 import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys, useStartupTasks } from "@/api/queries";
-import type { StartupTasks } from "@/api/types";
 import type { WeeklyNote } from "@/api/weeklyNote";
+import { useAfterAutoSync } from "@/features/sources/useAutoSync";
 import { AI_SETUP_ENABLED } from "@/lib/features";
 
 export const weeklyNoteKeys = {
@@ -149,20 +149,26 @@ export function useWeeklyNoteRun() {
  * run is going, start one, automatic. The app can live in the tray for days and the answer is
  * asked again hourly, so each answer is handled once (the facade says so at most once a Monday).
  * Mount once, in the app shell.
+ *
+ * It waits for the automatic sync's turn (`useAfterAutoSync`): a sync that is due at the same
+ * answer brings the weekend's deadlines and announcements, and the note is written once a
+ * Monday, so it is written from what that sync leaves.
  */
 export function useWeeklyNotePreparation(enabled: boolean = AI_SETUP_ENABLED) {
   const tasks = useStartupTasks();
   const { start } = useWeeklyNoteRun();
   const { i18n } = useTranslation();
-  const handled = useRef<StartupTasks | null>(null);
+  const turn = useAfterAutoSync();
+  // Answers are told apart by their number: one equal to the last keeps its identity, and an
+  // answer that found a run in its way must not be the last one this launch looks at.
+  const handled = useRef(0);
   const data = tasks.data;
   useEffect(() => {
-    // Query results keep their identity when nothing changed, so each answer is handled once.
-    if (!enabled || !data || handled.current === data) return;
-    handled.current = data;
+    if (!enabled || !data || turn === null || handled.current === turn) return;
+    handled.current = turn;
     if (!data.prepare_weekly_note || noteRunInFlight()) return;
     void start({ automatic: true, uiLanguage: i18n.language });
-  }, [enabled, data, start, i18n.language]);
+  }, [enabled, data, turn, start, i18n.language]);
 }
 
 /** The last 5 notes, newest first. */

@@ -377,6 +377,41 @@ describe("automatic sync", () => {
     expect(screen.queryByText("Sync failed")).toBeNull();
   });
 
+  it("sees another process's sync end with the window out of sight, and syncs then", async () => {
+    // The status poll's timer is faked; the waits below use real ones.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const api = mockApi();
+    // As the facade answers while the other process holds the lock: nothing is due.
+    let elsewhere = true;
+    const status = api.status.bind(api);
+    api.status = async () => ({ ...(await status()), sync_in_progress: elsewhere });
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => ({
+      ...(await tasks()),
+      sync_due: elsewhere ? { unattended: false, attended: false } : DUE,
+    });
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryData(queryKeys.status())).toMatchObject({
+        sync_in_progress: true,
+      }),
+    );
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      elsewhere = false;
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1), { timeout: 3000 });
+      expect(sync.mock.calls[0]?.[0]).toMatchObject({ automatic: expect.any(String) });
+    } finally {
+      Reflect.deleteProperty(document, "visibilityState");
+    }
+  });
+
   it("starts no second sync within half an hour, even after leaving the shell and coming back", async () => {
     const api = mockApi({ scenario: "auto-sync-due" });
     alwaysDue(api);

@@ -74,6 +74,11 @@ interface SyncState {
   watched: boolean;
   /** Until when (ms) an answer to "what's due?" counts as attended: the student just acted. */
   attendedUntil: number;
+  /**
+   * The number of the `startup_tasks` answer the automatic sync has looked at and starts
+   * nothing for (0: none yet). The app's other automatic work waits for it (`useAfterAutoSync`).
+   */
+  clearedAnswer: number;
   begin: (
     total: number | null,
     downloadCourseId?: string | null,
@@ -152,6 +157,7 @@ const idle = {
   automaticProblem: false,
   watched: false,
   attendedUntil: 0,
+  clearedAnswer: 0,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
