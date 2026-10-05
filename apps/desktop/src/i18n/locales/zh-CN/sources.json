@@ -208,7 +208,10 @@
       "linkedPages_one": "{{count}} 个页面",
       "linkedPages_other": "{{count}} 个页面",
       "linkedFiles_one": "{{count}} 个文件",
-      "linkedFiles_other": "{{count}} 个文件"
+      "linkedFiles_other": "{{count}} 个文件",
+      "notRead_one": "{{count}} 项没有读取",
+      "notRead_other": "{{count}} 项没有读取",
+      "notReadLabel": "{{course}} 有 {{count}} 项没有读取"
     }
   }
 }

@@ -208,7 +208,10 @@
       "linkedPages_one": "{{count}} page",
       "linkedPages_other": "{{count}} pages",
       "linkedFiles_one": "{{count}} file",
-      "linkedFiles_other": "{{count}} files"
+      "linkedFiles_other": "{{count}} files",
+      "notRead_one": "{{count}} not read",
+      "notRead_other": "{{count}} not read",
+      "notReadLabel": "{{count}} not read in {{course}}"
     }
   }
 }

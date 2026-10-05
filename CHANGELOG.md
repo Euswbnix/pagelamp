@@ -34,6 +34,10 @@ All notable changes are listed here. The project follows [Semantic Versioning](h
 - In the app, after a sync the row of a Canvas source has a line for each course that doesn't
   show its Pages or Files list in Canvas, or where pages and files were found through links;
   the course's page says in its header which lists aren't shown.
+- In the app, a Canvas course's page lists what PageLamp didn't read of the course and why
+  ("What PageLamp didn't read", at the end of This week): what waits for you, what couldn't be
+  read last time, what PageLamp can't read, and what it never reads. When a sync left something
+  unread that went wrong or waits for you, the course's line on the sync row leads there.
 - MCP: a new read-only tool, `list_materials`, lists every material of a course, 50 at a time.
 - A new look for the desktop app: course pages read like paper with thin dividers, the toolbar
   turns to glass as you scroll, sync status sits in a small capsule, and a warm band marks this

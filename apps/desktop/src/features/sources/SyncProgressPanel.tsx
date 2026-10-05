@@ -26,6 +26,8 @@ export interface SyncProgressPanelProps {
   onDismiss?: () => void;
   /** Link expired sources to Sources & sync (onboarding); the Sources screen has buttons. */
   showFixLink?: boolean;
+  /** Link "N not read" to the course's page (not in onboarding, which isn't to be left). */
+  linkCourses?: boolean;
   /**
    * Announce the headline (onboarding). Inside the app shell the accessory bar announces this
    * window's runs, so the panel stays quiet there (one voice per event).
@@ -50,6 +52,7 @@ export function SyncProgressPanel({
   onRetry,
   onDismiss,
   showFixLink = false,
+  linkCourses = false,
   announce = true,
   className,
 }: SyncProgressPanelProps) {
@@ -119,7 +122,12 @@ export function SyncProgressPanel({
               {order.map((sourceId) => {
                 const progress = bySource[sourceId];
                 return progress ? (
-                  <SyncProgressRow key={sourceId} progress={progress} showFixLink={showFixLink} />
+                  <SyncProgressRow
+                    key={sourceId}
+                    progress={progress}
+                    showFixLink={showFixLink}
+                    linkCourses={linkCourses}
+                  />
                 ) : null;
               })}
             </ul>

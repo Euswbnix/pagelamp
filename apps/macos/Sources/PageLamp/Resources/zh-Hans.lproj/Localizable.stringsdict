@@ -87,6 +87,62 @@
 			<string>……还有 %1$ld 条</string>
 		</dict>
 	</dict>
+	<key>course.notRead.download</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>这门课有 %1$ld 个文件还没下载。</string>
+		</dict>
+	</dict>
+	<key>course.notRead.lockedFiles</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>有 %1$ld 个文件在 Canvas 中被锁定。</string>
+		</dict>
+	</dict>
+	<key>course.notRead.more</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>……还有 %1$ld 项没有列在这里。</string>
+		</dict>
+	</dict>
+	<key>course.notRead.tooLarge</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>有 %1$ld 个文件太大，无法下载。</string>
+		</dict>
+	</dict>
 	<key>course.week.readableSections</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -589,6 +645,20 @@
 			<string>ld</string>
 			<key>other</key>
 			<string>%1$ld 个页面</string>
+		</dict>
+	</dict>
+	<key>sources.progress.course.notRead</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%1$ld 项没有读取</string>
 		</dict>
 	</dict>
 	<key>sources.progress.stage.saving_events</key>
