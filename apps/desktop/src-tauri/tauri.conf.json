@@ -40,6 +40,10 @@
     "copyright": "© 2026 PageLamp contributors",
     "license": "Apache-2.0",
     "externalBin": ["binaries/pagelamp"],
+    "resources": {
+      "../../../LICENSE": "LICENSE",
+      "../../../THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",
