@@ -36,6 +36,9 @@ pub(crate) const REREAD_AFTER: TimeDelta = TimeDelta::hours(24);
 /// A linked file PageLamp already knows of is asked about again after this long (or when
 /// files are to be downloaded).
 pub(crate) const RECHECK_FILE_AFTER: TimeDelta = TimeDelta::days(7);
+/// A link to a page Canvas said it doesn't have is asked for again after this long. In
+/// between it takes no place under `MAX_LINKED_PAGES`.
+pub(crate) const RECHECK_DEAD_AFTER: TimeDelta = TimeDelta::days(7);
 
 /// The order of the record's entries: what the student or the AI app most needs to know
 /// first, since only the first ones are stored and shown.
