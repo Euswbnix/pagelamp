@@ -1,0 +1,19 @@
+{
+  "version": "0.3.0-alpha.0.4",
+  "notes": "Rehearsal build 70423eb (test channel)",
+  "pub_date": "2026-10-06T04:09:19Z",
+  "platforms": {
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVUR3ZXZsbm14aG5OM2NlLzZ5djBzZjRnWXVrZUhXMGZqRHdlSEI5OThlSVBrRlEzL1ZDbUJaVnRLekxoRy8vQXk4V1E3MVBXd3RaRFA2LzJBZGxVMk5NM1BEb3FOcUF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMjU5NzM1CWZpbGU6UGFnZUxhbXBfMC4zLjBfdW5pdmVyc2FsLmFwcC50YXIuZ3oJdmVyc2lvbjowLjMuMC1hbHBoYS4wLjQKKzloN1BzTGc1M3BPSnhsSnR1YWpuMFVTaC9UblkzS3JuQWQvR0QzRW9FZWgyUzU0VXQ2bUx1REI0WjAxZE8vUUtKQlRqNGduUC9ZWVVrb2gvOGF5Qmc9PQo=",
+      "url": "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test/70423eb/PageLamp_0.3.0_universal.app.tar.gz"
+    },
+    "darwin-x86_64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVUR3ZXZsbm14aG5OM2NlLzZ5djBzZjRnWXVrZUhXMGZqRHdlSEI5OThlSVBrRlEzL1ZDbUJaVnRLekxoRy8vQXk4V1E3MVBXd3RaRFA2LzJBZGxVMk5NM1BEb3FOcUF3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMjU5NzM1CWZpbGU6UGFnZUxhbXBfMC4zLjBfdW5pdmVyc2FsLmFwcC50YXIuZ3oJdmVyc2lvbjowLjMuMC1hbHBoYS4wLjQKKzloN1BzTGc1M3BPSnhsSnR1YWpuMFVTaC9UblkzS3JuQWQvR0QzRW9FZWgyUzU0VXQ2bUx1REI0WjAxZE8vUUtKQlRqNGduUC9ZWVVrb2gvOGF5Qmc9PQo=",
+      "url": "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test/70423eb/PageLamp_0.3.0_universal.app.tar.gz"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVUR3ZXZsbm14aHNVeWpOS09kS2V0VFQ2OHVzdWJjR29mbEFzZkRuaDZQVS9ucm1OeGR0YVNCU1ZKeWpaWUUyOTNGNWdNTEgzL0J4NnRxV3RrbzNXNnpjQnBxTmMvVlFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMjU5MzMwCWZpbGU6UGFnZUxhbXBfMC4zLjBfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuMy4wLWFscGhhLjAuNApFTmE2TmZTUG9raitMMDZXVy9ENGtCcmRVSUtjR3NTaTgvWkZTUEYwUW5pZURYOUhObG0yRXRJUUhJZTM5UEpBdVNTTm4vUFQwQi9DQ2lkdXFCeUFBQT09Cg==",
+      "url": "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test/70423eb/PageLamp_0.3.0_x64-setup.exe"
+    }
+  }
+}
