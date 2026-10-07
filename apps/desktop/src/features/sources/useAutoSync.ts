@@ -3,7 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
 import type { AutoSyncTrigger, StartupTasks } from "@/api/types";
-import { AUTO_SYNC_MIN_GAP_MS, studentKnownHere, useStartSync, useSyncStore } from "@/stores/sync";
+import {
+  AUTO_SYNC_MIN_GAP_MS,
+  steadyNow,
+  studentKnownHere,
+  useStartSync,
+  useSyncStore,
+} from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 
 /** Coming back to the window asks again once the last answer is this old. */
@@ -135,8 +141,12 @@ export function useAutoSync() {
   // The first input after the window gained focus is the student being here; later ones say
   // nothing new (the hourly re-read stays unattended however long the student works here).
   const awaitingInput = useRef(false);
-  const lastInputAt = useRef(0);
-  const lastFocusAt = useRef(0);
+  // When the student last did something in the window, and when it last came to the front
+  // (null: not yet). Like the half minute (`studentKnownHere`), what has to be recent has to
+  // be so on two clocks: on the wall clock alone an old moment comes round again when the
+  // clock is set back, and the steady clock alone may stand still through a sleep.
+  const lastInput = useRef<{ wall: number; steady: number } | null>(null);
+  const lastFocusSteady = useRef<number | null>(null);
 
   // Whether this page load is the launch: null until Rust has said (it knows whether the process
   // loaded the page before). No answer is acted on before that, so a reload can't slip through
@@ -153,7 +163,20 @@ export function useAutoSync() {
       // action is the launch itself, when the page loaded: a shell that only appears long after
       // (a start page that got through by itself hours later) finds that moment long past.
       if (first && !api.startedHidden()) {
-        useSyncStore.getState().noteStudentAction(api.pageLoadedAt());
+        // How long ago that was: the longer of what the two clocks say. The wall clock counts
+        // a sleep, which the steady one may not; the steady one isn't moved when the clock is
+        // set back, which on the wall clock can make a load from hours ago look recent. A
+        // load that lies ahead on the wall clock can't be dated at all (the clock was set
+        // back by more than the time that passed, and the steady clock may have slept
+        // through most of it): nothing is noted, and the launch starts unattended.
+        const now = Date.now();
+        const wallAgo = now - api.pageLoadedAt();
+        if (wallAgo >= 0) {
+          const ago = Math.max(wallAgo, steadyNow() - api.pageLoadedSteady());
+          // From the reading the age was taken at: a second reading could be a millisecond
+          // on, and the mark that much late.
+          useSyncStore.getState().noteStudentAction(now - ago);
+        }
       } else if (first) {
         // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
         // student's first input in this window is their coming, also when the focus that came
@@ -231,12 +254,21 @@ export function useAutoSync() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
-        lastFocusAt.current = Date.now();
+        const now = { wall: Date.now(), steady: steadyNow() };
+        lastFocusSteady.current = now.steady;
         // The press that brought the window to the front can reach the page a moment before
-        // this event does (Windows, Linux): it is the student all the same.
-        const sinceInput = Date.now() - lastInputAt.current;
-        if (sinceInput >= 0 && sinceInput <= INPUT_BEFORE_FOCUS_MS) {
-          studentIsHere(true, lastInputAt.current);
+        // this event does (Windows, Linux): it is the student all the same. "A moment before"
+        // on both clocks: a press from before a sleep is no such press (the steady clock may
+        // not have moved since), and neither is an old one that the wall clock, set back,
+        // shows as a second ago.
+        const press = lastInput.current;
+        const justBefore = (since: number) => since >= 0 && since <= INPUT_BEFORE_FOCUS_MS;
+        if (press && justBefore(now.wall - press.wall) && justBefore(now.steady - press.steady)) {
+          // When it was: the longer ago of what the two clocks say, from this reading.
+          studentIsHere(
+            true,
+            now.wall - Math.max(now.wall - press.wall, now.steady - press.steady),
+          );
         } else {
           awaitingInput.current = true;
           ask(true);
@@ -275,7 +307,7 @@ export function useAutoSync() {
   useEffect(
     () =>
       api.onStudentInput(() => {
-        lastInputAt.current = Date.now();
+        lastInput.current = { wall: Date.now(), steady: steadyNow() };
         // They are back: a run that started with nobody here is watched like any other again.
         if (useSyncStore.getState().unwatched) useSyncStore.setState({ unwatched: false });
         if (awaitingInput.current) studentIsHere(false);
@@ -350,16 +382,21 @@ export function useAutoSync() {
     }
     // A dialog that was left open: in a window that sits in the tray it stays for days. Open,
     // it says nothing about anyone being at it, so once nothing was pressed here and the window
-    // didn't come to the front for a quarter of an hour (or the clock went back, and nothing
-    // can be told), a light sync goes ahead under it. A full sync waits for every dialog, and
-    // a light one for whatever else is in its way.
+    // didn't come to the front for a quarter of an hour, a light sync goes ahead under it. A
+    // full sync waits for every dialog, and a light one for whatever else is in its way.
+    // Counted on the steady clock: on a wall clock that was set back every dialog would look
+    // left, also one the student is typing in, for as long as the clock is behind. (Through a
+    // sleep the steady clock may stand still: the dialog then counts as touched for longer,
+    // and the sync waits.)
     const untouched =
-      Date.now() - Math.max(lastInputAt.current, lastFocusAt.current, api.pageLoadedAt());
+      steadyNow() -
+      Math.max(
+        lastInput.current?.steady ?? 0,
+        lastFocusSteady.current ?? 0,
+        api.pageLoadedSteady(),
+      );
     const leftDialog =
-      trigger === "unattended" &&
-      !locked &&
-      !installing &&
-      (untouched >= DIALOG_LEFT_MS || untouched < 0);
+      trigger === "unattended" && !locked && !installing && untouched >= DIALOG_LEFT_MS;
     if (blocked && !leftDialog) {
       waiting.current = true;
       underLock.current = locked;

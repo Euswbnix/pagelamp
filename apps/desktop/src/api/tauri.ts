@@ -36,6 +36,7 @@ export function createTauriApi(): PageLampApi {
   // Taken once, as the page starts. (Not read later from performance.timeOrigin: WebKit works
   // that out anew on each read, and it moves by however long the computer has slept since.)
   const loadedAt = Date.now();
+  const loadedSteady = Math.floor(performance.now());
   // Rust says "first" once per process, to the first ask: one ask per page, the answer kept.
   let firstPageLoad: Promise<boolean> | null = null;
   return {
@@ -292,6 +293,7 @@ export function createTauriApi(): PageLampApi {
     onStudentInput: (onInput) => listenForStudentInput(onInput, true),
     startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
     pageLoadedAt: () => loadedAt,
+    pageLoadedSteady: () => loadedSteady,
     firstPageLoad: () => {
       // A failed call counts as a reload: never the student opening PageLamp.
       firstPageLoad ??= call<boolean>("first_page_load").then(
