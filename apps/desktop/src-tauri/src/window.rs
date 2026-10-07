@@ -15,6 +15,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tauri::webview::PageLoadEvent;
 use tauri::{App, Manager, Runtime, Url, WebviewWindowBuilder};
 
+use crate::background::{self, Background};
+
 /// How often this process has loaded the page. The first load is the launch. A later one is a
 /// reload, and a reload needs nobody at the app: when the system ends the webview's content
 /// process (memory pressure, a long sleep, a crash), Tauri loads the page again by itself. The
@@ -84,6 +86,23 @@ pub fn init_script(backdrop: Backdrop, hidden: bool) -> String {
     )
 }
 
+/// Whether the main window starts without being shown: a login launch (`--hidden`) waiting in
+/// the tray.
+fn starts_hidden<R: Runtime>(app: &App<R>) -> bool {
+    app.try_state::<Background>()
+        .is_some_and(|state| !state.may_show())
+}
+
+/// Takes one page-load event and says whether to show the window now. Every event is counted
+/// (`PageLoads::event`), and the one show is spent at the first page also when the window may
+/// not be shown (a login launch waiting in the tray): a later reload must not bring the window
+/// up by itself once the student has opened it. A window that started hidden is shown by the
+/// student only.
+fn shows_now(loads: &PageLoads, background: &Background, event: PageLoadEvent, url: &Url) -> bool {
+    let show = loads.event(event, url);
+    show && background.may_show()
+}
+
 /// Builds the "main" window from its `tauri.conf.json` entry.
 pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     let config = app
@@ -99,28 +118,36 @@ pub fn create_main<R: Runtime>(app: &App<R>) -> tauri::Result<()> {
     app.manage(PageLoads::default());
     let builder = WebviewWindowBuilder::from_config(app.handle(), &config)?;
     let (builder, backdrop, os_build) = with_backdrop(builder);
+    // Read before the window exists: the page's script carries it.
+    let hidden = starts_hidden(app);
     builder
-        // This build has no hidden start: the window is always shown once the page has loaded.
-        .initialization_script(init_script(backdrop, false))
+        .initialization_script(init_script(backdrop, hidden))
         // Shown once the first page has loaded. Windows and Linux report a failed load as
         // finished too, so the window doesn't stay hidden there (macOS reports no failed load).
-        // A reload finds the window as the student left it.
+        // A reload finds the window as the student left it. After a login launch (`--hidden`)
+        // no page load shows it: the student opens it from the tray (`shows_now`).
         .on_page_load(|window, payload| {
-            if window
-                .state::<PageLoads>()
-                .event(payload.event(), payload.url())
-                && let Err(error) = window.show()
+            if shows_now(
+                &window.state::<PageLoads>(),
+                &window.state::<Background>(),
+                payload.event(),
+                payload.url(),
+            ) && let Err(error) = window.show()
             {
                 tracing::warn!(target: "pagelamp::window", %error, "show main window");
             }
         })
         .build()?;
+    if let Some(window) = app.get_webview_window("main") {
+        background::watch_close(&window);
+    }
     // The Windows build tells a tester's "no Mica" apart: gated (Windows 10, 21H2) or DWM's own
     // solid fallback (Battery Saver, transparency off, an inactive window).
     tracing::info!(
         target: "pagelamp::window",
         backdrop = backdrop.name(),
         os_build = ?os_build,
+        hidden,
         "main window"
     );
     Ok(())
@@ -212,6 +239,62 @@ mod tests {
         );
         assert!(init_script(Backdrop::None, false).contains(r#"backdrop: "none""#));
         assert!(init_script(Backdrop::None, true).contains("hidden: true"));
+    }
+
+    /// After a login launch no page load shows the window: not the first one (it waits in the
+    /// tray), and not a reload later, when the student has opened it and it may be shown. The
+    /// one show was spent at the first page.
+    #[test]
+    fn a_window_that_started_hidden_is_never_shown_by_a_page_load() {
+        let loads = PageLoads::default();
+        let in_tray = Background::new(true);
+        assert!(!shows_now(
+            &loads,
+            &in_tray,
+            PageLoadEvent::Started,
+            &page()
+        ));
+        assert!(!shows_now(
+            &loads,
+            &in_tray,
+            PageLoadEvent::Finished,
+            &page()
+        ));
+        // The student opened it from the tray; then the page loads again.
+        let opened = Background::new(false);
+        assert!(!shows_now(&loads, &opened, PageLoadEvent::Started, &page()));
+        assert!(!shows_now(
+            &loads,
+            &opened,
+            PageLoadEvent::Finished,
+            &page()
+        ));
+        // The load was counted all the same: this page is not the launch.
+        assert!(!loads.first());
+
+        // A start the student made: shown once, at the first page.
+        let loads = PageLoads::default();
+        assert!(!shows_now(&loads, &opened, PageLoadEvent::Started, &page()));
+        assert!(shows_now(&loads, &opened, PageLoadEvent::Finished, &page()));
+        assert!(!shows_now(
+            &loads,
+            &opened,
+            PageLoadEvent::Finished,
+            &page()
+        ));
+    }
+
+    /// A login start (`--hidden`) is told to the page: such a launch must never count as the
+    /// student opening PageLamp. A start the student made is told as one.
+    #[test]
+    fn the_page_is_told_a_login_start() {
+        for hidden in [true, false] {
+            let app = tauri::test::mock_builder()
+                .manage(Background::new(hidden))
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))
+                .expect("mock app");
+            assert_eq!(starts_hidden(&app), hidden);
+        }
     }
 
     fn shipped_config() -> serde_json::Value {

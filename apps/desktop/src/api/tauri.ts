@@ -8,6 +8,7 @@
 // ───────────────────────────────────────────────────────────────────────────────────────────
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -35,6 +36,7 @@ export function createTauriApi(): PageLampApi {
   // Taken once, as the page starts. (Not read later from performance.timeOrigin: WebKit works
   // that out anew on each read, and it moves by however long the computer has slept since.)
   const loadedAt = Date.now();
+  const loadedSteady = Math.floor(performance.now());
   // Rust says "first" once per process, to the first ask: one ask per page, the answer kept.
   let firstPageLoad: Promise<boolean> | null = null;
   return {
@@ -80,6 +82,7 @@ export function createTauriApi(): PageLampApi {
     snoozeLifecycleBanner: () => call("snooze_lifecycle_banner"),
     snoozeRemovalSuggestions: (courseIds, kind) =>
       call("snooze_removal_suggestions", { courses: courseIds, kind }),
+    snoozeCalendarOffers: () => call("snooze_calendar_offers"),
     clearRemovalSnooze: (courseIds) => call("clear_removal_snooze", { courses: courseIds }),
     removalPreview: (courseIds) => call("removal_preview", { courses: courseIds }),
     removeCourses: (courseIds, options) => call("remove_courses", { courses: courseIds, options }),
@@ -119,6 +122,34 @@ export function createTauriApi(): PageLampApi {
         onEvent: eventChannel(onEvent),
       }),
     cancelGeneration: (generationId) => call("cancel_generation", { generationId }),
+    explainWeek: (courseId, week, generationId, options, onEvent) =>
+      call("explain_week", {
+        course: courseId,
+        week,
+        generationId,
+        options,
+        onEvent: eventChannel(onEvent),
+      }),
+    savedExplanations: (courseId, week) => call("saved_explanations", { course: courseId, week }),
+    deleteExplanation: (generationId) => call("delete_explanation", { generationId }),
+    aiOutputLanguage: () => call("ai_output_language"),
+    setAiOutputLanguage: (language) => call("set_ai_output_language", { language }),
+    writeWeeklyNote: (generationId, options, onEvent) =>
+      call("write_weekly_note", { generationId, options, onEvent: eventChannel(onEvent) }),
+    weeklyNotes: () => call("weekly_notes"),
+    deleteWeeklyNote: (generationId) => call("delete_weekly_note", { generationId }),
+    weeklyNoteSettings: () => call("weekly_note_settings"),
+    setPrepareWeeklyNoteOnMonday: (on) => call("set_prepare_weekly_note_on_monday", { on }),
+    generateStudyPlan: (request, generationId, onEvent) =>
+      call("generate_study_plan", {
+        request,
+        generationId,
+        onEvent: eventChannel(onEvent),
+      }),
+    planLimits: () => call("plan_limits"),
+    acceptStudyPlan: (generationId) => call("accept_study_plan", { generationId }),
+    setStudyPlanItemDone: (planId, itemIndex, done) =>
+      call("set_study_plan_item_done", { planId, itemIndex, done }),
     setCourseAiAccess: (courseId, allowed) =>
       call("set_course_ai_access", { course: courseId, allowed }),
     setCourseMaterialSharing: (courseId, answer) =>
@@ -197,11 +228,50 @@ export function createTauriApi(): PageLampApi {
         throw toApiError(error);
       }
     },
+    reminderSettings: () => call("reminder_settings"),
+    setReminderSettings: (settings) => call("set_reminder_settings", { settings }),
+    backgroundStatus: () => call("background_status"),
+    setTrayLabels: (labels) => call("set_tray_labels", { labels }),
+    dueReminders: () => call("due_reminders"),
+    showReminders: (notifications) => call("show_reminders", { notifications }),
+    markRemindersShown: (ids) => call("mark_reminders_shown", { ids }),
+    openNotificationSettings: () => call("open_notification_settings"),
+    showRemindersOnNotice: (title, body) => call("show_reminders_on_notice", { title, body }),
+    onReminderCheck: (onCheck) => {
+      let unlisten: (() => void) | null = null;
+      let stopped = false;
+      // Needs core:event:default only. If listening fails, reminders still come at launch.
+      listen("reminders:check", () => onCheck())
+        .then((stop) => {
+          if (stopped) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        stopped = true;
+        unlisten?.();
+      };
+    },
+    onStartupCheck: (onCheck) => {
+      let unlisten: (() => void) | null = null;
+      let stopped = false;
+      // Needs core:event:default only. If listening fails, the page's own hourly timer asks.
+      listen("startup:check", () => onCheck())
+        .then((stop) => {
+          if (stopped) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        stopped = true;
+        unlisten?.();
+      };
+    },
     revealDataDir: () => call("reveal_data_dir"),
     onWindowFocus: (onFocus) => {
       let unlisten: (() => void) | null = null;
       let stopped = false;
-      // Events need no extra capability (core:default). If listening fails, the UI just
+      // Events need no extra capability (core:event:default). If listening fails, the UI just
       // doesn't refresh on focus; that's not worth an error.
       Promise.resolve()
         .then(() =>
@@ -223,6 +293,7 @@ export function createTauriApi(): PageLampApi {
     onStudentInput: (onInput) => listenForStudentInput(onInput, true),
     startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
     pageLoadedAt: () => loadedAt,
+    pageLoadedSteady: () => loadedSteady,
     firstPageLoad: () => {
       // A failed call counts as a reload: never the student opening PageLamp.
       firstPageLoad ??= call<boolean>("first_page_load").then(

@@ -52,12 +52,19 @@ it("says when the page loaded: one time, taken as the page starts and kept", () 
     vi.setSystemTime(new Date(2026, 9, 5, 23, 0));
     mockWindows("main");
     mockIPC(() => null);
+    // The clock that only runs forward, read with a fraction as some webviews give it.
+    let steady = 4_321.7;
+    vi.spyOn(performance, "now").mockImplementation(() => steady);
     const api = createTauriApi();
     expect(api.pageLoadedAt()).toBe(Date.now());
-    // A night later (the computer slept) it still names the same moment.
+    expect(api.pageLoadedSteady()).toBe(4_321);
+    // A night later (the computer slept) it still names the same moment, on both clocks.
     vi.setSystemTime(new Date(2026, 9, 6, 7, 0));
+    steady += 8 * 3_600_000;
     expect(api.pageLoadedAt()).toBe(new Date(2026, 9, 5, 23, 0).getTime());
+    expect(api.pageLoadedSteady()).toBe(4_321);
   } finally {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   }
 });
@@ -112,5 +119,21 @@ it("listens for the student's input in the window, and takes only the browser's 
   } finally {
     add.mockRestore();
     remove.mockRestore();
+  }
+});
+
+it("says the window started hidden only when the Rust side said so", () => {
+  const api = createTauriApi();
+  try {
+    // No window facts at all (a browser tab): not hidden.
+    Reflect.deleteProperty(window, "__PAGELAMP_WINDOW__");
+    expect(api.startedHidden()).toBe(false);
+    window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "none", hidden: false });
+    expect(api.startedHidden()).toBe(false);
+    // What window.rs writes for a start at login (`--hidden`).
+    window.__PAGELAMP_WINDOW__ = Object.freeze({ backdrop: "none", hidden: true });
+    expect(api.startedHidden()).toBe(true);
+  } finally {
+    Reflect.deleteProperty(window, "__PAGELAMP_WINDOW__");
   }
 });

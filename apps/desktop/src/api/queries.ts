@@ -1,10 +1,23 @@
 // TanStack Query hooks — the way screens read and change data. Screens never call `useApi()`
 // methods directly for reads; they use these hooks so caching and invalidation stay consistent.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  focusManager,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useApi } from "./context";
-import type { AiPolicy, IsoDate, StartupTasks, SyncPrefs, UpdatePrefs } from "./types";
+import type {
+  AiPolicy,
+  IsoDate,
+  StartupTasks,
+  StoredStudyPlan,
+  SyncPrefs,
+  UpdatePrefs,
+} from "./types";
 
 export const queryKeys = {
   all: ["pagelamp"] as const,
@@ -18,6 +31,7 @@ export const queryKeys = {
   deadlines: (courseId: string | null, daysAhead: number, daysBack: number) =>
     [...queryKeys.all, "deadlines", courseId, daysAhead, daysBack] as const,
   studyPlan: () => [...queryKeys.all, "study-plan"] as const,
+  planLimits: () => [...queryKeys.all, "plan-limits"] as const,
   mcpConfigs: () => [...queryKeys.all, "mcp-configs"] as const,
   lastCrash: () => [...queryKeys.all, "last-crash"] as const,
   doctor: () => [...queryKeys.all, "doctor"] as const,
@@ -36,13 +50,33 @@ export const queryKeys = {
 
 // ----- reads ----------------------------------------------------------------------------------
 
+/**
+ * The client's own retry rule, except out of sight. There a retry waits until the window is
+ * visible, and a poll's later ticks wait with it: so a read that fails there just fails, and
+ * the next tick asks anew.
+ */
+function retryInSight(client: QueryClient) {
+  const rule = client.getDefaultOptions().queries?.retry;
+  return (failures: number, error: Error): boolean => {
+    if (!focusManager.isFocused()) return false;
+    if (typeof rule === "function") return rule(failures, error);
+    if (typeof rule === "number") return failures < rule;
+    // The library's own default: three retries.
+    return rule ?? failures < 3;
+  };
+}
+
 export function useStatus() {
   const api = useApi();
+  const client = useQueryClient();
   return useQuery({
     queryKey: queryKeys.status(),
     queryFn: () => api.status(),
-    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself.
+    // While another process (e.g. the CLI) is syncing, poll so "busy" clears by itself. Also
+    // with the window out of sight (the tray): what waits for that sync to end waits here.
     refetchInterval: (query) => (query.state.data?.sync_in_progress ? 3000 : false),
+    refetchIntervalInBackground: true,
+    retry: retryInSight(client),
   });
 }
 
@@ -108,6 +142,42 @@ export function useStudyPlan() {
   return useQuery({ queryKey: queryKeys.studyPlan(), queryFn: () => api.latestStudyPlan() });
 }
 
+/** The facade's limits on a study plan request (fixed for the app's life: asked once). */
+export function usePlanLimits() {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.planLimits(),
+    queryFn: () => api.planLimits(),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** Ticks a plan item off or back on (M3), shown at once and put back if saving fails. */
+export function useSetStudyPlanItemDone() {
+  const api = useApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { planId: number; itemIndex: number; done: boolean }) =>
+      api.setStudyPlanItemDone(v.planId, v.itemIndex, v.done),
+    onMutate: async ({ itemIndex, done }) => {
+      await client.cancelQueries({ queryKey: queryKeys.studyPlan() });
+      const previous = client.getQueryData<StoredStudyPlan | null>(queryKeys.studyPlan());
+      if (previous) {
+        const items = previous.plan.items.map((item, i) =>
+          i === itemIndex ? { ...item, done } : item,
+        );
+        client.setQueryData(queryKeys.studyPlan(), {
+          ...previous,
+          plan: { ...previous.plan, items },
+        });
+      }
+      return { previous };
+    },
+    onSuccess: (stored) => client.setQueryData(queryKeys.studyPlan(), stored),
+    onError: (_error, _v, context) => client.setQueryData(queryKeys.studyPlan(), context?.previous),
+  });
+}
+
 export function useMcpClientConfigs() {
   const api = useApi();
   return useQuery({
@@ -128,7 +198,17 @@ export function useRefreshOnWindowFocus() {
   useEffect(
     () =>
       api.onWindowFocus(() => {
-        for (const queryKey of [queryKeys.studyPlan(), queryKeys.courses(), queryKeys.status()]) {
+        // The weekly note's estimate too (ai-queries' aiKeys.estimate key, spelled out: importing
+        // it here would be circular): a sync elsewhere can give a week with nothing to write
+        // about something to write about, and only that one keeps Write off. The other estimates
+        // stay as they are, so their buttons don't change on every focus.
+        const noteEstimate = [...queryKeys.all, "ai", "estimate", { feature: "weekly_note" }];
+        for (const queryKey of [
+          queryKeys.studyPlan(),
+          queryKeys.courses(),
+          queryKeys.status(),
+          noteEstimate,
+        ]) {
           void client.invalidateQueries({ queryKey });
         }
       }),
