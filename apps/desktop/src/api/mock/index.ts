@@ -1234,8 +1234,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       window.addEventListener("focus", handler);
       return () => window.removeEventListener("focus", handler);
     },
+    onWindowBlur: (onBlur) => {
+      const handler = () => onBlur();
+      window.addEventListener("blur", handler);
+      return () => window.removeEventListener("blur", handler);
+    },
     // A test can only dispatch events of its own, so those count here.
-    onStudentInput: (onInput) => listenForStudentInput(onInput, false),
+    onStudentInput: (onInput, onRelease) => listenForStudentInput(onInput, false, onRelease),
     startedHidden: () => options.startedHidden ?? false,
     firstPageLoad: async () => !(options.reloaded ?? false),
     pageLoadedAt: () => loadedAt,
@@ -1288,6 +1293,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       onEvent({ type: "restarting" });
     },
     logUiError: async () => {},
+    logAutoSyncStart: async () => {},
   };
 }
 

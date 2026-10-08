@@ -25,6 +25,23 @@ it("calls back when the window gains focus, not when it loses it, until stopped"
   expect(onFocus).toHaveBeenCalledTimes(1);
 });
 
+it("calls back when the window loses focus, not when it gains it, until stopped", async () => {
+  mockWindows("main");
+  mockIPC(() => null, { shouldMockEvents: true });
+  const onBlur = vi.fn();
+  const stop = createTauriApi().onWindowBlur(onBlur);
+  await flush();
+
+  await emit("tauri://focus");
+  expect(onBlur).not.toHaveBeenCalled();
+  await emit("tauri://blur");
+  expect(onBlur).toHaveBeenCalledTimes(1);
+
+  stop();
+  await emit("tauri://blur");
+  expect(onBlur).toHaveBeenCalledTimes(1);
+});
+
 it("stops cleanly when stopped before listening has started", async () => {
   mockWindows("main");
   mockIPC(() => null, { shouldMockEvents: true });
@@ -83,34 +100,83 @@ it("listens for the student's input in the window, and takes only the browser's 
   const remove = vi.spyOn(window, "removeEventListener");
   try {
     const onInput = vi.fn();
-    const stop = createTauriApi().onStudentInput(onInput);
+    const onRelease = vi.fn();
+    const stop = createTauriApi().onStudentInput(onInput, onRelease);
     const heard = (type: string) => add.mock.calls.filter(([name]) => name === type);
-    for (const type of ["pointerdown", "click", "keydown", "wheel"]) {
+    const types = [
+      "pointerdown",
+      "click",
+      "keydown",
+      "pointerup",
+      "pointercancel",
+      "contextmenu",
+      "dragend",
+      "keyup",
+    ];
+    for (const type of types) {
       expect(heard(type), type).toHaveLength(1);
       expect(heard(type)[0]?.[2], type).toEqual({ capture: true, passive: true });
     }
-    expect(heard("pointermove")).toHaveLength(0);
-    expect(heard("mousemove")).toHaveLength(0);
+    // Scrolling and a pointer that moves are never heard at all.
+    for (const type of ["wheel", "scroll", "pointermove", "mousemove"]) {
+      expect(heard(type), type).toHaveLength(0);
+    }
 
     // Nothing a script dispatches is the student (and a test can dispatch nothing else)...
     window.dispatchEvent(new Event("pointerdown"));
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
-    window.dispatchEvent(new WheelEvent("wheel"));
+    window.dispatchEvent(new Event("pointerup"));
     expect(onInput).not.toHaveBeenCalled();
+    expect(onRelease).not.toHaveBeenCalled();
     // ...so the listener is handed what the browser would give it.
     const listener = heard("pointerdown")[0]?.[1] as (event: unknown) => void;
     listener({ type: "pointerdown", isTrusted: true });
-    expect(onInput).toHaveBeenCalledTimes(1);
+    expect(onInput.mock.calls).toEqual([["press"]]);
     listener({ type: "keydown", isTrusted: true, key: "a", repeat: true });
     listener({ type: "keydown", isTrusted: false, key: "a" });
-    expect(onInput).toHaveBeenCalledTimes(1);
+    listener({ type: "keydown", isTrusted: true, key: "Tab", metaKey: true });
+    listener({ type: "wheel", isTrusted: true });
+    expect(onInput.mock.calls).toEqual([["press"]]);
+    listener({ type: "pointerup", isTrusted: true });
+    listener({ type: "keyup", isTrusted: true, key: "a" });
+    expect(onRelease.mock.calls).toEqual([["pointer"], ["key"]]);
 
     stop();
-    for (const type of ["pointerdown", "click", "keydown", "wheel"]) {
+    for (const type of types) {
       expect(remove, type).toHaveBeenCalledWith(type, listener, { capture: true, passive: true });
     }
   } finally {
     add.mockRestore();
     remove.mockRestore();
   }
+});
+
+it("writes an automatic start to the log, and never rejects", async () => {
+  mockWindows("main");
+  const calls: Array<[string, unknown]> = [];
+  mockIPC((cmd, args) => {
+    calls.push([cmd, args]);
+    return null;
+  });
+  await createTauriApi().logAutoSyncStart({
+    trigger: "attended",
+    noted_by: "press",
+    noted_ms_ago: 412,
+  });
+  expect(calls).toEqual([
+    ["log_auto_sync_start", { trigger: "attended", notedBy: "press", notedMsAgo: 412 }],
+  ]);
+
+  clearMocks();
+  mockWindows("main");
+  mockIPC(() => {
+    throw new Error("Synthetic IPC failure");
+  });
+  await expect(
+    createTauriApi().logAutoSyncStart({
+      trigger: "unattended",
+      noted_by: null,
+      noted_ms_ago: null,
+    }),
+  ).resolves.toBeUndefined();
 });

@@ -9,6 +9,7 @@
 
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { afterEach, expect, it } from "vitest";
+import type { StudentAction } from "./client";
 import { createTauriApi } from "./tauri";
 
 afterEach(() => clearMocks());
@@ -21,6 +22,17 @@ const OFFLINE_CANVAS_URL = "contract-test-not-a-url";
 const OFFLINE_FEED_URL = "http://calendar.example.edu/feed.ics"; // plain http → invalid
 const OFFLINE_LLM_URL = "http://llm.example.edu/v1"; // plain http to another computer → invalid
 const PROVIDER = { kind: "provider", provider_id: "contract-test-provider" } as const; // not_found
+// Every kind of thing that notes the student (a new one fails to compile until it is here).
+const STUDENT_ACTIONS: Record<StudentAction, true> = {
+  launch: true,
+  press: true,
+  click: true,
+  key: true,
+  press_before_focus: true,
+  whats_new: true,
+  setting: true,
+  try_again: true,
+};
 
 it("sends the commands and arguments the Rust side expects", async () => {
   const calls: { cmd: string; args: unknown }[] = [];
@@ -106,6 +118,11 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.revealLogsDir();
   await api.logUiError("contract-test error", "Error: contract-test error\n    at render");
   await api.logUiError("contract-test error without a stack", null);
+  await api.logAutoSyncStart({ trigger: "unattended", noted_by: null, noted_ms_ago: null });
+  // Every kind the page can name, so that Rust knows each of them.
+  for (const noted_by of Object.keys(STUDENT_ACTIONS) as StudentAction[]) {
+    await api.logAutoSyncStart({ trigger: "attended", noted_by, noted_ms_ago: 412 });
+  }
   await api.firstPageLoad();
   await api.updatePrefs();
   await api.setUpdatePrefs({ auto_check: true, channel: "beta" });
