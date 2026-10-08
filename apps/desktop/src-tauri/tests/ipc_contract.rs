@@ -133,3 +133,79 @@ fn first_page_load_is_true_for_the_launch_only() {
     assert!(ask(false));
     assert!(!ask(true));
 }
+
+/// The log's line for an automatic start is made from what the page sent: every start in the
+/// fixture comes back with its kind and its number in it. A name the page spelt otherwise
+/// than the command reads it would be taken for "not sent" without any error.
+#[test]
+fn an_automatic_start_is_logged_with_what_the_page_sent() {
+    let data_dir = tempfile::tempdir().expect("temp dir");
+    let facade = App::open_at_with_secrets(
+        data_dir.path().to_path_buf(),
+        Arc::new(MemorySecrets::new()),
+    )
+    .expect("open App in a temp dir");
+    let app = with_commands(mock_builder())
+        .manage(Backend::from_app(facade))
+        .build(mock_context(noop_assets()))
+        .expect("build mock app");
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("mock webview");
+
+    let calls: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/ipc-calls.json")).expect("fixture JSON");
+    let starts: Vec<&Value> = calls
+        .iter()
+        .filter(|call| call["cmd"] == "log_auto_sync_start")
+        .collect();
+    let mut kinds = Vec::new();
+    for call in &starts {
+        let args = &call["args"];
+        let line = get_ipc_response(
+            &webview,
+            InvokeRequest {
+                cmd: "log_auto_sync_start".into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: APP_ORIGIN.parse().expect("url"),
+                body: InvokeBody::Json(args.clone()),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .expect("log_auto_sync_start")
+        .deserialize::<String>()
+        .expect("the line");
+        if args["trigger"] == "unattended" {
+            assert_eq!(line, "automatic sync: unattended");
+            continue;
+        }
+        assert_eq!(args["trigger"], "attended");
+        let kind = args["notedBy"].as_str().expect("the fixture names a kind");
+        let ms = args["notedMsAgo"]
+            .as_u64()
+            .expect("the fixture gives a number");
+        assert_eq!(
+            line,
+            format!("automatic sync: attended, the student noted by {kind} {ms} ms before")
+        );
+        kinds.push(kind.to_string());
+    }
+    kinds.sort();
+    assert_eq!(
+        kinds,
+        [
+            "click",
+            "key",
+            "launch",
+            "press",
+            "press_before_focus",
+            "setting",
+            "try_again",
+            "whats_new"
+        ],
+        "the fixture should hold one attended start of every kind"
+    );
+    assert_eq!(starts.len(), kinds.len() + 1, "and one unattended start");
+}

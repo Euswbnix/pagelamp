@@ -31,6 +31,30 @@ function eventChannel<E = SyncEvent>(onEvent: (event: E) => void): Channel<E> {
   return channel;
 }
 
+/** Calls `then` whenever the app window gains (`focused`) or loses focus; returns the stop. */
+function whenFocusBecomes(focused: boolean, then: () => void): () => void {
+  let unlisten: (() => void) | null = null;
+  let stopped = false;
+  // Events need no extra capability (core:default). If listening fails, nothing says so:
+  // the UI doesn't refresh on focus, and the automatic sync hears neither a focus nor the
+  // loss of one (no wait for the student's input begins, or one that began doesn't end).
+  Promise.resolve()
+    .then(() =>
+      getCurrentWindow().onFocusChanged(({ payload: now }) => {
+        if (now === focused) then();
+      }),
+    )
+    .then((stop) => {
+      if (stopped) stop();
+      else unlisten = stop;
+    })
+    .catch(() => {});
+  return () => {
+    stopped = true;
+    unlisten?.();
+  };
+}
+
 export function createTauriApi(): PageLampApi {
   // Taken once, as the page starts. (Not read later from performance.timeOrigin: WebKit works
   // that out anew on each read, and it moves by however long the computer has slept since.)
@@ -197,29 +221,11 @@ export function createTauriApi(): PageLampApi {
       }
     },
     revealDataDir: () => call("reveal_data_dir"),
-    onWindowFocus: (onFocus) => {
-      let unlisten: (() => void) | null = null;
-      let stopped = false;
-      // Events need no extra capability (core:default). If listening fails, the UI just
-      // doesn't refresh on focus; that's not worth an error.
-      Promise.resolve()
-        .then(() =>
-          getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-            if (focused) onFocus();
-          }),
-        )
-        .then((stop) => {
-          if (stopped) stop();
-          else unlisten = stop;
-        })
-        .catch(() => {});
-      return () => {
-        stopped = true;
-        unlisten?.();
-      };
-    },
+    onWindowFocus: (onFocus) => whenFocusBecomes(true, onFocus),
+    onWindowBlur: (onBlur) => whenFocusBecomes(false, onBlur),
     // Only the browser's own events: nothing a script dispatches is the student.
-    onStudentInput: (onInput) => listenForStudentInput(onInput, true),
+    onStudentInput: (onInput, onRelease) =>
+      listenForStudentInput(onInput, true, onRelease, (onBlur) => whenFocusBecomes(false, onBlur)),
     startedHidden: () => window.__PAGELAMP_WINDOW__?.hidden === true,
     pageLoadedAt: () => loadedAt,
     firstPageLoad: () => {
@@ -239,6 +245,18 @@ export function createTauriApi(): PageLampApi {
         await call("log_ui_error", { message, stack });
       } catch {
         // Nowhere left to report it; the UI already shows the original error.
+      }
+    },
+    logAutoSyncStart: async ({ trigger, noted_by, noted_ms_ago }) => {
+      try {
+        // (It answers with the line it wrote, which only the contract test reads.)
+        await call("log_auto_sync_start", {
+          trigger,
+          notedBy: noted_by,
+          notedMsAgo: noted_ms_ago,
+        });
+      } catch {
+        // Only a line in the log: the sync goes on without it.
       }
     },
   };

@@ -386,6 +386,78 @@
     }
   },
   {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "unattended",
+      "notedBy": null,
+      "notedMsAgo": null
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "launch",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "press",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "click",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "key",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "press_before_focus",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "whats_new",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "setting",
+      "notedMsAgo": 412
+    }
+  },
+  {
+    "cmd": "log_auto_sync_start",
+    "args": {
+      "trigger": "attended",
+      "notedBy": "try_again",
+      "notedMsAgo": 412
+    }
+  },
+  {
     "cmd": "first_page_load",
     "args": {}
   },
