@@ -69,8 +69,14 @@ import type {
 
 /**
  * What noted the student as being here (stores/sync `noteStudentAction`): the kind of thing
- * they did, never which key or where. `press_before_focus` is the press that brought the
- * window to the front, heard a moment before its focus.
+ * they did, never which key or where.
+ * - `press_before_focus`: a press or click heard up to a second before the window's focus,
+ *   while the window was not known to have focus. Mostly the press that brought it to the
+ *   front; also one in a window whose focus was never heard (after a launch or a reload no
+ *   focus event may have come yet).
+ * - `click`: a click that counted by itself. Assistive technology's, with no press before it;
+ *   or an ordinary one, where the wait was on again after its press (something was in the
+ *   way, or the press was held).
  */
 export type StudentAction =
   | "launch"

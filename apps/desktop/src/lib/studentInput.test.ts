@@ -24,7 +24,7 @@ it("calls back for a press, a click and a key going down, wherever they happen, 
   expect(onInput.mock.calls).toEqual([["press"], ["key"], ["click"]]);
 });
 
-it("doesn't call back for the wheel: scrolling reaches a window nobody is at", () => {
+it("doesn't call back for the wheel: scrolling takes nobody at this window", () => {
   const onInput = vi.fn();
   const add = vi.spyOn(window, "addEventListener");
   try {
@@ -66,7 +66,7 @@ it("says when a pointer or a key comes up again", () => {
   window.dispatchEvent(new Event("pointerup"));
   window.dispatchEvent(new Event("pointercancel"));
   window.dispatchEvent(new KeyboardEvent("keyup", { key: "j" }));
-  // Any key: with Command held, the other key's release is never reported on macOS.
+  // Any key (but see the modifiers below).
   window.dispatchEvent(new KeyboardEvent("keyup", { key: "Meta" }));
   expect(onRelease.mock.calls).toEqual([["pointer"], ["pointer"], ["key"], ["key"]]);
   expect(onInput).not.toHaveBeenCalled();
@@ -80,7 +80,8 @@ it("takes no modifier coming up for a release, except Command", () => {
     window.dispatchEvent(new KeyboardEvent("keyup", { key }));
   }
   expect(onRelease).not.toHaveBeenCalled();
-  // With Command held, macOS reports no other key's release: Command's own stands for it.
+  // With Command held, the other key's release may never be reported (as browsers on macOS
+  // are known to do): Command's own stands for it.
   window.dispatchEvent(new KeyboardEvent("keyup", { key: "Meta" }));
   window.dispatchEvent(new KeyboardEvent("keyup", { key: "OS" }));
   expect(onRelease.mock.calls).toEqual([["key"], ["key"]]);
@@ -109,8 +110,31 @@ it("doesn't call back for the clicks a repeating key makes", () => {
   expect(onInput.mock.calls).toEqual([["click"], ["click"], ["key"], ["click"]]);
 });
 
+it("lets go of a repeating key when the window loses focus", () => {
+  const onInput = vi.fn();
+  let lost: () => void = () => {};
+  const stopped = vi.fn();
+  stop = listenForStudentInput(onInput, false, undefined, (onBlur) => {
+    lost = onBlur;
+    return stopped;
+  });
+  const button = document.body.appendChild(document.createElement("button"));
+  // A key repeats as the window goes; its release is never heard here.
+  button.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", repeat: true }));
+  lost();
+  // Back in the window, a click with no press before it (assistive technology) is heard.
+  button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+  expect(onInput.mock.calls).toEqual([["click"]]);
+
+  expect(stopped).not.toHaveBeenCalled();
+  stop();
+  stop = null;
+  expect(stopped).toHaveBeenCalledTimes(1);
+});
+
 it("takes a context menu and the end of a drag for the pointer's release", () => {
-  // The system's menu opens on the press and keeps the release; a drag ends without one.
+  // A menu of the system's may keep the release of the press that opened it, and a drag may
+  // end without one.
   const onRelease = vi.fn();
   stop = listenForStudentInput(vi.fn(), false, onRelease);
   window.dispatchEvent(new MouseEvent("contextmenu"));

@@ -93,9 +93,10 @@ it("takes the load for a reload when Rust says so, or when it can't be asked", a
   expect(await createTauriApi().firstPageLoad()).toBe(false);
 });
 
-it("listens for the student's input in the window, and takes only the browser's own events", () => {
+it("listens for the student's input in the window, and takes only the browser's own events", async () => {
   mockWindows("main");
-  mockIPC(() => null);
+  // (It also listens for the window losing focus: an event of Tauri's.)
+  mockIPC(() => null, { shouldMockEvents: true });
   const add = vi.spyOn(window, "addEventListener");
   const remove = vi.spyOn(window, "removeEventListener");
   try {
@@ -145,6 +146,8 @@ it("listens for the student's input in the window, and takes only the browser's 
     for (const type of types) {
       expect(remove, type).toHaveBeenCalledWith(type, listener, { capture: true, passive: true });
     }
+    // (Listening for the loss of focus starts a moment later, and is stopped then.)
+    await flush();
   } finally {
     add.mockRestore();
     remove.mockRestore();
@@ -179,4 +182,30 @@ it("writes an automatic start to the log, and never rejects", async () => {
       noted_ms_ago: null,
     }),
   ).resolves.toBeUndefined();
+});
+
+it("lets go of a repeating key when the window loses focus", async () => {
+  mockWindows("main");
+  mockIPC(() => null, { shouldMockEvents: true });
+  const add = vi.spyOn(window, "addEventListener");
+  try {
+    const onInput = vi.fn();
+    const stop = createTauriApi().onStudentInput(onInput);
+    await flush();
+    const listener = add.mock.calls.find(([name]) => name === "click")?.[1] as (
+      event: unknown,
+    ) => void;
+    // While a key repeats, a click with no pointer is the key's own.
+    listener({ type: "keydown", isTrusted: true, key: "Enter", repeat: true });
+    listener({ type: "click", isTrusted: true, detail: 0 });
+    expect(onInput).not.toHaveBeenCalled();
+    // The window loses focus, and the key's release is never heard: back in the window, a
+    // click with no press before it counts again.
+    await emit("tauri://blur");
+    listener({ type: "click", isTrusted: true, detail: 0 });
+    expect(onInput.mock.calls).toEqual([["click"]]);
+    stop();
+  } finally {
+    add.mockRestore();
+  }
 });

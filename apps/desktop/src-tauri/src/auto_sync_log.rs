@@ -18,11 +18,13 @@ pub enum NotedBy {
     Launch,
     /// A press in the window (mouse, pen or touch) after it gained focus.
     Press,
-    /// A click with no press before it (assistive technology).
+    /// A click that counted by itself: one with no press before it (assistive technology),
+    /// or an ordinary one where the wait was on again after its press.
     Click,
     /// A key going down in the window after it gained focus.
     Key,
-    /// The press that brought the window to the front, heard a moment before its focus.
+    /// A press or click heard up to a second before the window's focus, while the window was
+    /// not known to have focus: mostly the one that brought it to the front.
     PressBeforeFocus,
     /// "Got it" on What's new.
     WhatsNew,
@@ -61,13 +63,17 @@ fn line(trigger: AutoSyncTrigger, noted_by: Option<NotedBy>, noted_ms_ago: Optio
 }
 
 /// The window is about to start a sync by itself (`useStartSync`, right before `sync_all`).
+/// Answers with the line it wrote: the page has no use for it, the contract test does (a
+/// name the page spelt otherwise would be read as "not sent", and the line would say so).
 #[tauri::command]
 pub fn log_auto_sync_start(
     trigger: AutoSyncTrigger,
     noted_by: Option<NotedBy>,
     noted_ms_ago: Option<u64>,
-) {
-    tracing::info!(target: "pagelamp::sync", "{}", line(trigger, noted_by, noted_ms_ago));
+) -> String {
+    let line = line(trigger, noted_by, noted_ms_ago);
+    tracing::info!(target: "pagelamp::sync", "{line}");
+    line
 }
 
 #[cfg(test)]

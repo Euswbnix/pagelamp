@@ -4,7 +4,13 @@ import type { PageLampApi } from "@/api/client";
 import { ApiError } from "@/api/errors";
 import { createMockApi, type MockOptions } from "@/api/mock";
 import { queryKeys } from "@/api/queries";
-import type { SourceErrorKind, SourceSyncResult, SyncEvent, SyncSummary } from "@/api/types";
+import type {
+  SourceErrorKind,
+  SourceSyncResult,
+  StartupTasks,
+  SyncEvent,
+  SyncSummary,
+} from "@/api/types";
 import { studentKnownHere, useSyncStore } from "@/stores/sync";
 import { useUpdateStore } from "@/stores/updates";
 import { renderRoute } from "@/test/render";
@@ -85,6 +91,20 @@ function startClock(): Date {
 
 function later(start: Date, ms: number) {
   vi.setSystemTime(new Date(start.getTime() + ms));
+}
+
+/**
+ * The steady clock stands still and moves only by hand, so that what is measured on it doesn't
+ * depend on how fast the test runs. (Timers are not touched.)
+ */
+function holdSteadyClock() {
+  let now = Math.floor(performance.now());
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  return {
+    pass: (ms: number) => {
+      now += ms;
+    },
+  };
 }
 
 /** The window comes to the front. Nobody need be at the computer for that. */
@@ -376,12 +396,13 @@ describe("automatic sync", () => {
     expect(tasks).toHaveBeenCalledTimes(1);
 
     // Hours later both kinds are due. The window gains focus, which says nothing about the
-    // student: the light sync starts. Their press counts a moment later, and the full one
-    // follows.
+    // student: the light sync starts. Then they press, and the full one follows.
     later(start, 11 * HOUR);
-    comeBack();
-    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    focusWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    press();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
     expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
   });
 
@@ -487,6 +508,8 @@ describe("automatic sync", () => {
       await settle();
 
       // An hour on, the student comes back. The answer read then is young and nothing is due.
+      // (Both clocks are moved by hand from here: the half minute is counted from the press.)
+      const steady = holdSteadyClock();
       later(start, HOUR);
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
       comeBack();
@@ -494,6 +517,7 @@ describe("automatic sync", () => {
       expect(sync).not.toHaveBeenCalled();
 
       alwaysDue(api);
+      steady.pass(seconds * 1000);
       later(start, HOUR + seconds * 1000);
       await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
       await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
@@ -868,7 +892,7 @@ describe("automatic sync", () => {
     input(new KeyboardEvent("keydown", { key: "F15" }));
     input(new KeyboardEvent("keydown", { key: "MediaPlayPause" }));
     input(new KeyboardEvent("keydown", { key: "Shift" }));
-    // Nor scrolling: the system sends it to the window under the pointer, whoever is there.
+    // Nor scrolling: it takes nobody at this window.
     input(new WheelEvent("wheel", { deltaY: 40 }));
     input(new Event("scroll"));
     await afterInput();
@@ -1005,19 +1029,22 @@ describe("automatic sync", () => {
     await screen.findByRole("heading", { level: 1 });
     await settle();
 
-    // The click on the window reaches the page a moment before the window says it has focus.
+    // The press in the window is dispatched before the window says it has focus: 0.8 s on
+    // the wall clock, none on the steady one (which stands still here).
+    holdSteadyClock();
     later(start, 11 * HOUR);
     press();
     later(start, 11 * HOUR + 800);
     focusWindow();
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
-    // The log says it was that press, and counts from the press (0.8 s before the focus),
-    // not from the focus (which the question follows by 0.3 s).
-    const logged = log.mock.calls[0]?.[0];
-    expect(logged).toMatchObject({ trigger: "attended", noted_by: "press_before_focus" });
-    expect(logged?.noted_ms_ago).toBeGreaterThanOrEqual(800);
-    expect(logged?.noted_ms_ago).toBeLessThan(5_000);
+    // The log says it was that press, and counts from the press, by the clock that says
+    // longer; not from the focus.
+    expect(log.mock.calls[0]?.[0]).toEqual({
+      trigger: "attended",
+      noted_by: "press_before_focus",
+      noted_ms_ago: 800,
+    });
   });
 
   it("keeps no input for a focus that comes later", async () => {
@@ -1076,9 +1103,8 @@ describe("automatic sync", () => {
   });
 
   it("doesn't take scrolling for the student: a page loaded again that comes to the front syncs nothing in full", async () => {
-    // The system loads the page again by itself and the window is brought to the front. What
-    // a trackpad was given a moment before goes on arriving, in the window now under the
-    // pointer: nobody has done anything in PageLamp.
+    // The page is loaded again with nobody there, and the window is brought to the front.
+    // Scrolling is dispatched in it: nobody has pressed anything in PageLamp.
     const start = startClock();
     const api = mockApi({ reloaded: true });
     const sync = vi.spyOn(api, "syncAll");
@@ -1112,8 +1138,8 @@ describe("automatic sync", () => {
     focusWindow();
     blurWindow();
     await settle();
-    // What reaches it afterwards is not the student at work in it: a window without focus
-    // still gets a press that passes over it, or a key.
+    // What is dispatched in it afterwards (a press, a key, a click) is not the student at
+    // work in it.
     later(start, 11 * HOUR + 5_000);
     press();
     typeKey("a");
@@ -1204,7 +1230,8 @@ describe("automatic sync", () => {
     await screen.findByRole("heading", { level: 1 });
     await settle();
 
-    // Command+Tab or Alt+Tab ends on this window, and the Tab still reaches it.
+    // A Tab goes down in the window with Command or Alt held (an app switcher's, should one
+    // ever reach the page).
     onlyFullDue(api);
     later(start, 11 * HOUR);
     focusWindow();
@@ -1237,17 +1264,17 @@ describe("automatic sync", () => {
     later(start, 11 * HOUR);
     focusWindow();
     await settle();
-    // Assistive technology activates a control with a click alone.
+    // A click alone, as assistive technology activates a control. The steady clock is moved
+    // by hand: 0.4 s pass on it before the click counts, none on the wall clock.
+    const steady = holdSteadyClock();
     input(new MouseEvent("click"));
+    steady.pass(400);
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    // How long before: by the clock that says longer, in whole milliseconds.
     expect(log.mock.calls).toEqual([
-      [{ trigger: "attended", noted_by: "click", noted_ms_ago: expect.any(Number) }],
+      [{ trigger: "attended", noted_by: "click", noted_ms_ago: 400 }],
     ]);
-    const ago = log.mock.calls[0]?.[0].noted_ms_ago ?? -1;
-    expect(Number.isInteger(ago)).toBe(true);
-    expect(ago).toBeGreaterThanOrEqual(INPUT_ASK_DELAY_MS - 50);
-    expect(ago).toBeLessThan(5_000);
   });
 
   it.each([
@@ -1304,12 +1331,12 @@ describe("automatic sync", () => {
       expect(sync).not.toHaveBeenCalled();
       expect(button).not.toHaveAttribute("aria-disabled");
 
-      // Let go, and a moment later it becomes the click (a touch screen takes its time):
+      // Let go, and a moment later it becomes the click (they need not come together):
       // that is the sync that runs, and it is the student's.
       act(() => {
         up(button);
       });
-      await settle(100);
+      await settle(50);
       expect(sync).not.toHaveBeenCalled();
       act(() => {
         fireEvent.click(button);
@@ -1359,7 +1386,7 @@ describe("automatic sync", () => {
     later(start, 11 * HOUR);
     focusWindow();
     await settle();
-    // A key goes down, and its release is another window's to hear.
+    // A key goes down, and the window loses focus before it comes up.
     input(new KeyboardEvent("keydown", { key: "a" }));
     await settle(INPUT_ASK_DELAY_MS + 500);
     expect(sync).not.toHaveBeenCalled();
@@ -1370,7 +1397,7 @@ describe("automatic sync", () => {
   });
 
   it("doesn't wait for ever for a release it never hears", async () => {
-    // A menu of the system's can take the release of the press that opened it. PageLamp
+    // A press whose release is never heard (a menu of the system's may keep it). PageLamp
     // must not take that press for held all night.
     const start = startClock();
     const api = mockApi({ reloaded: true });
@@ -1380,28 +1407,27 @@ describe("automatic sync", () => {
     await settle();
 
     alwaysDue(api);
+    const steady = holdSteadyClock();
     later(start, 31 * MINUTE);
     input(new Event("pointerdown"));
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await settle(INPUT_ASK_DELAY_MS + 500);
     expect(sync).not.toHaveBeenCalled();
 
-    // Within the minute the hourly re-read still finds it held...
-    const steady = performance.now.bind(performance);
-    const clock = vi.spyOn(performance, "now");
-    clock.mockImplementation(() => steady() + HELD_MS - 5_000);
+    // To the end of the minute the hourly re-read still finds it held...
+    steady.pass(HELD_MS);
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await settle();
     expect(sync).not.toHaveBeenCalled();
     // ...and after it no longer.
-    clock.mockImplementation(() => steady() + HELD_MS + 1_000);
+    steady.pass(1);
     later(start, 91 * MINUTE);
     await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.startupTasks() }));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
   });
 
-  it("takes no input that sends the window away for the student at work in it", async () => {
+  it("takes no key that hides the window at once for the student at work in it", async () => {
     const start = startClock();
     const api = mockApi({ reloaded: true });
     const sync = vi.spyOn(api, "syncAll");
@@ -1409,8 +1435,8 @@ describe("automatic sync", () => {
     await screen.findByRole("heading", { level: 1 });
     await settle();
 
-    // The window comes to the front. Command+H hides it again: the key reaches the page,
-    // and the window is gone a moment later.
+    // The window comes to the front, and Command+H hides it again: the key goes down in the
+    // page, and the window has lost focus before the key counts.
     onlyFullDue(api);
     later(start, 11 * HOUR);
     focusWindow();
@@ -1421,7 +1447,7 @@ describe("automatic sync", () => {
     expect(sync).not.toHaveBeenCalled();
     expect(useSyncStore.getState()).toMatchObject({ attendedUntil: 0, attendedBy: null });
 
-    // The same for a press: a link that opens in the browser takes the focus with it.
+    // The same for a press, when the window goes within that moment.
     later(start, 11 * HOUR + MINUTE);
     focusWindow();
     press();
@@ -1439,29 +1465,225 @@ describe("automatic sync", () => {
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
   });
 
-  it("takes the press that brought the window forward once only", async () => {
+  it("counts a press whose click takes the focus elsewhere later: it was made in this window", async () => {
+    const start = startClock();
+    const api = mockApi({ reloaded: true });
+    const sync = vi.spyOn(api, "syncAll");
+    const log = vi.spyOn(api, "logAutoSyncStart");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // The window comes to the front and the student presses a link in it. The press counts
+    // while they still hold it; the click then opens the browser, which takes the focus.
+    onlyFullDue(api);
+    later(start, 11 * HOUR);
+    focusWindow();
+    await settle();
+    input(new Event("pointerdown"));
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+    expect(sync).not.toHaveBeenCalled();
+    input(new Event("pointerup"));
+    input(new MouseEvent("click"));
+    blurWindow();
+    // The full sync that waited for the release starts, with the browser in front.
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    expect(log.mock.calls[0]?.[0]).toMatchObject({ trigger: "attended", noted_by: "press" });
+  });
+
+  it("still asks the focus's own question when the window goes within the moment", async () => {
+    const start = startClock();
+    const api = mockApi({ reloaded: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // A press in the window behind brings it to the front, and what it pressed takes the
+    // focus away again at once. The press counts for nothing; the light sync that is due is
+    // not left for the next focus or the next hour.
+    alwaysDue(api);
+    later(start, 11 * HOUR);
+    blurWindow();
+    press();
+    focusWindow();
+    blurWindow();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    expect(studentKnownHere()).toBe(false);
+    expect(useSyncStore.getState().attendedBy).toBeNull();
+  });
+
+  it("counts the next input again when the light sync began between a press and its count", async () => {
     const steady = performance.now.bind(performance);
     let skipped = 0;
     vi.spyOn(performance, "now").mockImplementation(() => steady() + skipped);
+    const start = startClock();
+    const api = mockApi();
+    const held = holdSyncAll(api);
+    const sync = vi.spyOn(api, "syncAll");
+    const { queryClient } = renderRoute("/courses", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // Back at the window with both kinds due, the student presses before the focus's answer
+    // is in. The answer comes right after the press is let go, with nobody known yet: the
+    // light sync.
+    later(start, 11 * HOUR);
+    focusWindow();
+    press();
+    const answer = queryClient.getQueryData<StartupTasks>(queryKeys.startupTasks());
+    act(() => {
+      queryClient.setQueryData(queryKeys.startupTasks(), { ...answer, sync_due: DUE });
+    });
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "unattended" });
+    // A moment later the press counts, with that sync in its way.
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+
+    // The light sync takes its time: by its end the press is too old, and nothing more
+    // starts by itself.
+    skipped = 40_000;
+    later(start, 11 * HOUR + 40_000);
+    held.release();
+    await waitFor(() => expect(useSyncStore.getState().running).toBe(false));
+    await afterInput();
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    // The student is still here, and their next press says so: the full sync starts.
+    press();
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(2));
+    expect(sync.mock.calls[1]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("counts what the student does in a dialog that opened after their press had counted", async () => {
+    const steady = performance.now.bind(performance);
+    let skipped = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => steady() + skipped);
+    const start = startClock();
+    const api = mockApi({ reloaded: true });
+    const sync = vi.spyOn(api, "syncAll");
+    renderRoute("/sources", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    onlyFullDue(api);
+    later(start, 11 * HOUR);
+    focusWindow();
+    await settle();
+    // From here an answer waits until the test lets it through.
+    let letThrough: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      letThrough = resolve;
+    });
+    const tasks = api.startupTasks.bind(api);
+    api.startupTasks = async () => {
+      await gate;
+      return tasks();
+    };
+
+    // The student presses "Add source" and holds it a little: the press counts, and the
+    // question it asks is on its way...
+    const button = screen.getByRole("button", { name: "Add source" });
+    act(() => {
+      fireEvent.pointerDown(button);
+    });
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+    // ...when they let go and the click opens the dialog. Only then is the answer in: the
+    // full sync waits under a dialog that was not there when the press counted.
+    act(() => {
+      fireEvent.pointerUp(button);
+      fireEvent.click(button);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+    await act(async () => {
+      letThrough();
+      await gate;
+    });
+    await settle();
+    expect(sync).not.toHaveBeenCalled();
+
+    // Half a minute passes in the dialog, and what they do in it says they are here.
+    skipped = 40_000;
+    later(start, 11 * HOUR + 40_000);
+    expect(studentKnownHere()).toBe(false);
+    typeKey("a");
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+
+    // The dialog closes: the full sync starts.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("counts what the student does in a dialog that their first press opened", async () => {
+    const steady = performance.now.bind(performance);
+    let skipped = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => steady() + skipped);
+    const start = startClock();
+    const api = mockApi({ reloaded: true });
+    const sync = vi.spyOn(api, "syncAll");
+    const { user } = renderRoute("/sources", { api });
+    await screen.findByRole("heading", { level: 1 });
+    await settle();
+
+    // The window comes to the front, and the first thing the student presses opens a
+    // dialog: it opens on the click, after the press. The full sync waits under it.
+    onlyFullDue(api);
+    later(start, 11 * HOUR);
+    focusWindow();
+    await settle();
+    await user.click(screen.getByRole("button", { name: "Add source" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add a source" });
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+    expect(sync).not.toHaveBeenCalled();
+
+    // Half a minute passes in the dialog: that press is too old now. What they do in the
+    // dialog says they are here all the same.
+    skipped = 40_000;
+    later(start, 11 * HOUR + 40_000);
+    expect(studentKnownHere()).toBe(false);
+    typeKey("a");
+    await afterInput();
+    expect(studentKnownHere()).toBe(true);
+    expect(sync).not.toHaveBeenCalled();
+
+    // The dialog closes: the full sync starts.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+    expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+  });
+
+  it("takes the press that brought the window forward once only", async () => {
     const start = startClock();
     const api = mockApi({ reloaded: true });
     renderRoute("/courses", { api });
     await screen.findByRole("heading", { level: 1 });
     await settle();
 
+    // Both clocks are moved by hand: the press is 0.2 s old at the focus.
+    const steady = holdSteadyClock();
     later(start, 11 * HOUR);
     blurWindow();
     press();
+    steady.pass(200);
     later(start, 11 * HOUR + 200);
     focusWindow();
     await waitFor(() => expect(studentKnownHere()).toBe(true));
-    // Within that second the window loses focus and has it back by itself: nothing brought
-    // it forward this time, so the wait for the student's first input is on.
+    // 0.6 s after that press the window loses focus and has it back by itself: nothing
+    // brought it forward this time, so the wait for the student's first input is on.
     blurWindow();
+    steady.pass(400);
     later(start, 11 * HOUR + 600);
     focusWindow();
     await afterInput();
-    skipped = 40_000;
+    steady.pass(40_000);
     later(start, 11 * HOUR + 40_600);
     expect(studentKnownHere()).toBe(false);
     press();
