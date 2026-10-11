@@ -157,6 +157,13 @@ function canvasAddress(input: string): URL {
   return url;
 }
 
+/** The browser tab losing focus stands in for the desktop window's. */
+function onWindowBlur(onBlur: () => void): () => void {
+  const handler = () => onBlur();
+  window.addEventListener("blur", handler);
+  return () => window.removeEventListener("blur", handler);
+}
+
 export function createMockApi(options: MockOptions = {}): PageLampApi {
   // The mock stands for one page load: it "loaded" when it was made.
   const loadedAt = Date.now();
@@ -1261,8 +1268,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       window.addEventListener("focus", handler);
       return () => window.removeEventListener("focus", handler);
     },
+    onWindowBlur,
     // A test can only dispatch events of its own, so those count here.
-    onStudentInput: (onInput) => listenForStudentInput(onInput, false),
+    onStudentInput: (onInput, onRelease) =>
+      listenForStudentInput(onInput, false, onRelease, onWindowBlur),
     startedHidden: () => options.startedHidden ?? false,
     firstPageLoad: async () => !(options.reloaded ?? false),
     pageLoadedAt: () => loadedAt,
@@ -1315,6 +1324,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       onEvent({ type: "restarting" });
     },
     logUiError: async () => {},
+    logAutoSyncStart: async () => {},
   };
 }
 

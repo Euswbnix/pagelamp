@@ -38,7 +38,7 @@ export function StartGate() {
           error={status.error}
           onRetry={() => {
             // The student is here: a sync that is due once the app opens is attended.
-            useSyncStore.getState().noteStudentAction();
+            useSyncStore.getState().noteStudentAction("try_again");
             void status.refetch();
           }}
         />
