@@ -1204,6 +1204,9 @@ impl<T: CanvasTransport> Syncer<'_, T> {
         // What the texts link to, for the follow step: the Home page apart, the rest in order.
         let mut home_links: Option<cover::Scanned> = None;
         let mut page_links: Vec<cover::Scanned> = Vec::new();
+        // S4: the front page, when the pages list says which one it is (None: it doesn't).
+        let mut front_page: Option<Option<String>> =
+            (pages_ok && pages.values().any(|p| p.front_page.is_some())).then_some(None);
         for slug in &order {
             let entry = &pages[slug];
             let placement = placements.get(slug).cloned().unwrap_or_default();
@@ -1319,6 +1322,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             };
             let mut material = map::page(ids, &api.base, &course_id, &page_id, source, &placement);
             let material_id = material.id.clone();
+            if entry.front_page == Some(true)
+                && let Some(front) = front_page.as_mut()
+            {
+                *front = Some(material_id.clone());
+            }
             let title = source.title.clone();
             // Only the record says this page exists when no list or module names it.
             let linked = !listed.contains(slug) && !placements.contains_key(slug);
@@ -2038,7 +2046,13 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                 }
                 continue;
             }
-            let downloadable = self.options.download_files
+            let asked = self.options.download_files
+                && self
+                    .options
+                    .only_files
+                    .as_ref()
+                    .is_none_or(|only| only.contains(id));
+            let downloadable = asked
                 && file.locked_for_user != Some(true)
                 && file.size.is_none_or(|s| s <= self.options.max_file_bytes);
             let link = file.url.as_deref().and_then(|u| url::Url::parse(u).ok());
@@ -2066,9 +2080,7 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                     downloads.push(job);
                 }
                 _ => {
-                    if self.options.download_files
-                        && file.size.is_some_and(|s| s > self.options.max_file_bytes)
-                    {
+                    if asked && file.size.is_some_and(|s| s > self.options.max_file_bytes) {
                         self.warn(
                             report,
                             format!(
@@ -2147,6 +2159,20 @@ impl<T: CanvasTransport> Syncer<'_, T> {
             .values()
             .filter(|m| m.kind == MaterialKind::File)
             .count();
+        // S5: files of this course the syllabus links to.
+        let linked: std::collections::BTreeSet<String> = canvas
+            .syllabus_body
+            .as_deref()
+            .map(|html| map::syllabus_file_links(ids, cid, html))
+            .unwrap_or_default()
+            .into_iter()
+            // (In this sync's materials, or a file a link led to earlier that this sync left
+            // as it was: asked about once a week, and kept by the record.)
+            .filter(|id| {
+                materials.contains_key(id)
+                    || (existing.contains_key(id) && record.followed.files.contains_key(id))
+            })
+            .collect();
         // With the pages and files this sync left as they were (read lately, or kept by the
         // record).
         let kept_pages = record
@@ -2239,6 +2265,11 @@ impl<T: CanvasTransport> Syncer<'_, T> {
                         store.set_text_state(id, TextStatus::Unsupported, None, None)?;
                     }
                     store.prune_materials(&course_id, &keep)?;
+                    store.set_calendar_links(
+                        &course_id,
+                        Some(&linked),
+                        front_page.as_ref().map(|front| front.as_deref()),
+                    )?;
                     if full {
                         coverage::write(store, &course_id, &record)?;
                     }

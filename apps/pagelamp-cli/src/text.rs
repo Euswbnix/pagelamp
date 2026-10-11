@@ -229,6 +229,16 @@ pub fn sharing_not_allowed_note() -> String {
     )
 }
 
+/// The one-time question (b) reminder, after a course's first cloud reading (D37 option 2).
+pub fn sharing_reminder_note() -> String {
+    format!(
+        "This course's material text was just sent to a cloud AI service. Check whether your \
+         instructor allows that, then record it: `{} course sharing <course> allowed | \
+         not-sure | not-allowed`.",
+        pagelamp_core::brand::CLI_NAME
+    )
+}
+
 /// The automatic sync setting in words (`status`, `sync --auto`).
 pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
     use pagelamp_core::auto_sync::AutoSync;

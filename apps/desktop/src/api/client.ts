@@ -22,6 +22,7 @@ import type {
   UsageSummary,
 } from "./ai";
 import type {
+  Activity,
   AiPolicy,
   AppStatus,
   AutoSyncTrigger,
@@ -139,6 +140,8 @@ export type UpdateEvent =
 export interface PageLampApi {
   // ----- status & sources ------------------------------------------------------------------
   status(): Promise<AppStatus>;
+  /** What the app is doing now; "Install and restart" waits for all of it. */
+  activity(): Promise<Activity>;
   listSources(): Promise<SourceRecord[]>;
   /** Validates the token. The token is passed through and never stored by the UI. */
   addCanvasSource(baseUrl: string, token: string): Promise<SourceRecord>;
