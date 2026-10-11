@@ -34,7 +34,7 @@ export function AutoSyncSetting() {
     // A single ToggleGroup reports "" when the active item is clicked again; ignore that.
     if (!current || !isAutoSync(value) || value === chosen || save.isPending) return;
     // The student chose this just now: a sync that becomes due counts as attended.
-    useSyncStore.getState().noteStudentAction();
+    useSyncStore.getState().noteStudentAction("setting");
     try {
       await save.mutateAsync({ ...current, auto_sync: value });
     } catch (error) {

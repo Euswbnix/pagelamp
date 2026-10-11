@@ -11,6 +11,7 @@
 //! data and logs folders are opened by commands that take no path from the UI.
 //! ─────────────────────────────────────────────────────────────────────────────────────────────
 
+mod auto_sync_log;
 pub mod backend;
 mod commands;
 pub mod updates;
@@ -73,6 +74,7 @@ pub fn with_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Bu
         commands::reveal_data_dir,
         commands::reveal_logs_dir,
         commands::log_ui_error,
+        auto_sync_log::log_auto_sync_start,
         commands::first_page_load,
         commands::update_prefs,
         commands::set_update_prefs,
