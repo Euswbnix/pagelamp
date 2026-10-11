@@ -1,5 +1,4 @@
-import { BookOpenText, CalendarRange, FolderSync, type LucideIcon, RefreshCw } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useAcknowledgeWhatsNew,
@@ -22,26 +21,40 @@ import {
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useSyncStore } from "@/stores/sync";
-
-const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
-  update_check: RefreshCw,
-  course_weeks: CalendarRange,
-  auto_sync: FolderSync,
-  canvas_coverage: BookOpenText,
-};
+import { shownTopics, TOPIC_ICON } from "./whatsNewTopics";
 
 /**
- * One-time "What's new" for upgraders (from 0.1 or an earlier alpha), who never saw
- * onboarding. It explains the automatic update check and the automatic sync BEFORE the first
- * one runs, each with its switch right there, and what a Canvas sync reads now (nothing turns
- * that off, so that row has no control). Closing it any way counts as read; the facade then
- * decides whether a check or a sync is due.
+ * One-time "What's new" for upgraders: the topics introduced since their version (all of them
+ * from 0.1, which never saw onboarding). It explains the automatic update check and the
+ * automatic sync BEFORE the first one runs, each with its switch right there, and what a Canvas
+ * sync reads now (nothing turns that off, so that row has no control). Closing it any way
+ * counts as read; the facade then decides whether a check or a sync is due. Each topic is a
+ * heading; the focus starts on the title so the sheet is read from the top, and a long list
+ * scrolls inside the window.
+ *
+ * The update check waits for the acknowledgement, so a topic this build has no copy or icon for
+ * is left out, and with none left the sheet is acknowledged without being shown.
  */
 export function WhatsNewSheet() {
   const tasks = useStartupTasks();
+  const { i18n } = useTranslation("updates");
   const whatsNew = tasks.data?.whats_new;
-  if (!whatsNew || whatsNew.topics.length === 0) return null;
-  return <Sheet since={whatsNew.since ?? null} topics={whatsNew.topics} />;
+  if (!whatsNew) return null;
+  const topics = shownTopics(whatsNew.topics, (key) => i18n.exists(key, { ns: "updates" }));
+  if (topics.length === 0) return <AcknowledgeUnshown />;
+  return <Sheet since={whatsNew.since ?? null} topics={topics} />;
+}
+
+/** Nothing to show: still count What's new as read, once, so the update check isn't held. */
+function AcknowledgeUnshown() {
+  const acknowledge = useAcknowledgeWhatsNew();
+  const sent = useRef(false);
+  useEffect(() => {
+    if (sent.current) return;
+    sent.current = true;
+    acknowledge.mutate();
+  }, [acknowledge]);
+  return null;
 }
 
 function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[] }) {
@@ -53,6 +66,7 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
   // null = untouched: keep whatever the preference is.
   const [autoCheck, setAutoCheck] = useState<boolean | null>(null);
   const switchId = useId();
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const current = autoCheck ?? prefs.data?.auto_check ?? true;
   const syncPrefs = useSyncPrefs();
   const setSyncPrefs = useSetSyncPrefs();
@@ -88,9 +102,18 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
         if (!next) void done();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg" showCloseButton={false}>
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          titleRef.current?.focus();
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>{t("whatsNew.title")}</DialogTitle>
+          <DialogTitle ref={titleRef} tabIndex={-1} className="outline-none">
+            {t("whatsNew.title")}
+          </DialogTitle>
           {since ? (
             <DialogDescription>{t("whatsNew.since", { version: since })}</DialogDescription>
           ) : null}
@@ -102,7 +125,7 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
               <li key={topic} className="flex gap-3">
                 <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
                 <div className="min-w-0 space-y-1">
-                  <p className="font-medium">{t(`whatsNew.topics.${topic}.title`)}</p>
+                  <h3 className="font-medium">{t(`whatsNew.topics.${topic}.title`)}</h3>
                   <p className="text-muted-foreground">{t(`whatsNew.topics.${topic}.body`)}</p>
                   {topic === "update_check" ? (
                     <div className="flex items-center gap-2 pt-1">

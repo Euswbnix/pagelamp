@@ -77,6 +77,10 @@
       "canvas_coverage": {
         "title": "{{product}} reads more of each Canvas course",
         "body": "A full sync now also reads a course's Home page, and a limited number of pages of the same course that the Home page, the syllabus, other pages and announcements link to. Files they link to are listed, not downloaded. A page that a module asks you to view isn't read until you have viewed it in Canvas, because Canvas may record a page that {{product}} reads as viewed by you. In two cases {{product}} can't know this beforehand; when it has opened such a page, the sync's warnings say so. On a Canvas course's page, “What {{product}} didn't read” shows what the last full sync didn't read, and why."
+      },
+      "course_removal": {
+        "title": "Remove finished courses",
+        "body": "When a course is over, you can remove it from {{product}}. You can undo it for 7 days, and your own course folders are never touched."
       }
     }
   },

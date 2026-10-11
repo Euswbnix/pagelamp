@@ -5,6 +5,7 @@ import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
 import { queryKeys } from "@/api/queries";
+import type { WhatsNewTopic } from "@/api/types";
 import enCourse from "@/i18n/locales/en/course.json";
 import enUpdates from "@/i18n/locales/en/updates.json";
 import zhCourse from "@/i18n/locales/zh-CN/course.json";
@@ -129,8 +130,8 @@ describe("What's new (upgraders)", () => {
     renderRoute("/courses", { scenario: "upgrader" });
     const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
     const rows = within(sheet).getAllByRole("listitem");
-    expect(rows).toHaveLength(4);
-    // Last: the rows before it each ask for a decision.
+    expect(rows).toHaveLength(5);
+    // After the rows that each ask for a decision; the row of the next version comes last.
     const row = rows[3] as HTMLElement;
     expect(row).toHaveTextContent("PageLamp reads more of each Canvas course");
     expect(row).toHaveTextContent("also reads a course's Home page");
@@ -239,6 +240,32 @@ describe("What's new (upgraders)", () => {
     expect(
       await screen.findByRole("region", { name: `PageLamp was updated to ${MOCK_APP_VERSION}` }),
     ).toBeInTheDocument();
+  });
+
+  it("is read from the top: the title takes the focus, each topic is a heading", async () => {
+    renderRoute("/courses", { scenario: "upgrader" });
+    const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
+    await waitFor(() => expect(within(sheet).getByRole("heading", { level: 2 })).toHaveFocus());
+    expect(
+      within(sheet)
+        .getAllByRole("heading", { level: 3 })
+        .map((h) => h.textContent),
+    ).toContain("PageLamp now updates itself");
+  });
+
+  it("never holds the update check on a topic this build can't show", async () => {
+    const api = mockApi({ scenario: "upgrader" });
+    const original = api.startupTasks;
+    vi.spyOn(api, "startupTasks").mockImplementationOnce(async () => ({
+      ...(await original()),
+      whats_new: { since: null, topics: ["not_a_topic" as WhatsNewTopic] },
+    }));
+    const acknowledge = vi.spyOn(api, "acknowledgeWhatsNew");
+    const check = vi.spyOn(api, "checkForUpdate");
+    renderRoute("/courses", { api });
+    await waitFor(() => expect(acknowledge).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog", { name: "What's new in PageLamp" })).toBeNull();
+    await waitFor(() => expect(check).toHaveBeenCalledTimes(1));
   });
 
   it("isn't shown to anyone else", async () => {
