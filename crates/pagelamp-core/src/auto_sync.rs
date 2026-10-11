@@ -93,9 +93,9 @@ pub enum AutoSyncTrigger {
     /// reads only the course list, deadlines and announcements.
     Unattended,
     /// The student just opened PageLamp, did something in its window after it came to the
-    /// front (a press, a key, the wheel), closed What's new or changed the setting. A window
-    /// that only gained focus doesn't count. Such a run reads everything, like pressing Sync
-    /// (it never downloads files).
+    /// front (a press or a key, not scrolling), closed What's new or changed the setting. A
+    /// window that only gained focus doesn't count. Such a run reads everything, like pressing
+    /// Sync (it never downloads files).
     Attended,
 }
 
