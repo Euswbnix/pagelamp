@@ -1,5 +1,6 @@
 import { useIsMutating, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { StudentAction } from "@/api/client";
 import { useApi } from "@/api/context";
 import { queryKeys, useStartupTasks, useStatus } from "@/api/queries";
 import type { AutoSyncTrigger, StartupTasks } from "@/api/types";
@@ -18,11 +19,21 @@ export const FOCUS_REREAD_MS = 10 * 60 * 1000;
 /** How long to wait to hear whether this page load is the launch, before taking it for none. */
 export const LAUNCH_REPLY_MS = 5000;
 
-/** How long after the student's input the question is asked: time for a press to become a click. */
+/**
+ * How long after the student's input it counts and the question is asked: time for a press to
+ * become a click, and for the window to go if the input was a key that hides it at once.
+ */
 export const INPUT_ASK_DELAY_MS = 300;
 
-/** An input this soon before the window gained focus is the one that brought it to the front. */
+/** A press this soon before the window gained focus is taken for the one that brought it there. */
 export const INPUT_BEFORE_FOCUS_MS = 1000;
+
+/**
+ * A press or a key held for longer than this is taken for one whose release was never heard.
+ * Nothing looks again when that time is over: a start it kept waiting comes with the next
+ * release, loss of focus, focus or hourly answer.
+ */
+export const HELD_MS = 60 * 1000;
 
 /**
  * The shell's tick makes the page ask again only when its last question is older than this. The
@@ -33,8 +44,8 @@ export const INPUT_BEFORE_FOCUS_MS = 1000;
 export const TICK_REREAD_MS = 65 * 60 * 1000;
 
 /**
- * A dialog in a window where nothing was pressed, and that didn't come to the front, for this
- * long was left open. Nothing looks at it when the time is up: the first answer that finds it
+ * A dialog in a window where nothing was pressed or typed, and that didn't come to the front,
+ * for this long was left open (scrolling in it is not heard, and doesn't count). Nothing looks at it when the time is up: the first answer that finds it
  * untouched for this long starts a light sync under it (the page's hour, or the shell's tick).
  */
 export const DIALOG_LEFT_MS = 15 * 60 * 1000;
@@ -49,24 +60,33 @@ function dialogOpen(): boolean {
  * starts the same sync as the Sync button, marked with what triggered it:
  *
  * - attended: the student just did something here: opened PageLamp, closed "What's new",
- *   changed the setting, or pressed, typed or scrolled in its window. Attended needs something
- *   the student did: opening PageLamp in a window that is shown, or a real input in the
- *   window; after a hidden start or a focus, the first input counts (the ones after it say
- *   nothing new). Each is noted where it happens, never inferred from what an answer says;
+ *   changed the setting, or pressed or typed in its window. Attended needs something the
+ *   student did: opening PageLamp in a window that is shown, or a real input in the window;
+ *   after a hidden start or a focus, the first input counts (the ones after it say nothing
+ *   new). Each is noted where it happens, never inferred from what an answer says. Scrolling
+ *   is no such thing: it takes no key and no button, and a window can get it without being
+ *   in front (lib/studentInput);
  * - unattended: the regular re-read, always, also with the window in front (asked by this
  *   page's timer once an hour, or at the shell's tick when that timer is late, which then
  *   comes to every 75 minutes: `TICK_REREAD_MS`); a launch the student didn't see
  *   (the window started hidden); a page that was loaded again, which the system does by
  *   itself; and a window that gained focus, which it can with nobody there (another app quits
- *   at night and this window comes to the front). Those wait for the student's first input.
+ *   at night and this window comes to the front). Those wait for the student's first input
+ *   in the window, while it has focus: the wait ends when the window loses focus.
  *   A window that started hidden waits for it from the start, not from a focus: the focus that
- *   comes with showing such a window may never be heard.
+ *   comes with showing such a window may never be heard. Once a loss of focus was heard, a
+ *   focus comes first there too (its events do reach this page).
+ *   The input counts a moment later, if the window still has focus then: a key that hides
+ *   the window at once (Command+H, Command+M, Command+W where closing hides it) notes
+ *   nothing. A press whose click takes the focus elsewhere later than that moment (a link
+ *   that opens the browser) does count: it was a deliberate press in this window.
  *
  * Whether the window is visible, in front or focused is never taken for the student being here:
  * it can be all three for a night with nobody there.
  *
  * It never starts while something else is going on (a sync, an update being installed, a dialog,
- * "What's new"); it asks again when that is over and lets the new answer decide. One thing in
+ * "What's new", a button or a key the student is holding down: what they press must find no run
+ * of ours in its way); it asks again when that is over and lets the new answer decide. One thing in
  * the way gives way: a dialog that was plainly left open (nothing pressed in the window, and
  * the window not come to the front, for a quarter of an hour). The first answer that finds it
  * so starts a light sync under it; a full sync waits for every dialog. It never opens
@@ -127,26 +147,36 @@ export function useAutoSync() {
   const handled = useRef(atMount);
   // A due answer found something in the way; ask again when it is gone.
   const waiting = useRef(false);
-  // That answer came while something held the sync lock, so it says "not due" whatever is true.
+  // That answer came while something held the sync lock, so it says "not due" whatever is true;
+  // or while the student held something down, so nothing was done about it. Either way it is
+  // asked for again once the lock is free, whatever else is in the way by then.
   const underLock = useRef(false);
   const dialogs = useRef<MutationObserver | null>(null);
-  // A dialog closed: look at what is in the way again.
-  const [closed, setClosed] = useState(0);
+  // A dialog closed, or what the student held down came up: look at what is in the way again.
+  const [again, setAgain] = useState(0);
 
   const reread = useCallback(
     () => client.invalidateQueries({ queryKey: queryKeys.startupTasks() }),
     [client],
   );
 
+  // Whether the window has focus, as far as its events have said (null: none came yet).
+  const focused = useRef<boolean | null>(null);
   // The first input after the window gained focus is the student being here; later ones say
-  // nothing new (the hourly re-read stays unattended however long the student works here).
+  // nothing new (the hourly re-read stays unattended however long the student works here). The
+  // wait ends when the window loses focus again.
   const awaitingInput = useRef(false);
-  // When the student last did something in the window, and when it last came to the front
-  // (null: not yet). Like the half minute (`studentKnownHere`), what has to be recent has to
-  // be so on two clocks: on the wall clock alone an old moment comes round again when the
-  // clock is set back, and the steady clock alone may stand still through a sleep.
-  const lastInput = useRef<{ wall: number; steady: number } | null>(null);
+  // When something was last pressed or typed in the window, whatever its focus, and when it
+  // last came to the front, on the steady clock (null: not yet): for a dialog that was left.
+  const lastInputSteady = useRef<number | null>(null);
   const lastFocusSteady = useRef<number | null>(null);
+  // The last press in the window while it was not known to have focus (none of its focus
+  // events came yet, or the last one was a loss), on both clocks: see the focus below.
+  const pressedWithoutFocus = useRef<{ wall: number; steady: number } | null>(null);
+  // The input that waits to count (see `studentIsHere`); null once the window lost focus.
+  const noteSoon = useRef<{ by: StudentAction; wall: number; steady: number } | null>(null);
+  // Since when (steady clock) the student has held a button or a key down; null: they don't.
+  const down = useRef<{ pointer: number | null; key: number | null }>({ pointer: null, key: null });
 
   // Whether this page load is the launch: null until Rust has said (it knows whether the process
   // loaded the page before). No answer is acted on before that, so a reload can't slip through
@@ -175,7 +205,7 @@ export function useAutoSync() {
           const ago = Math.max(wallAgo, steadyNow() - api.pageLoadedSteady());
           // From the reading the age was taken at: a second reading could be a millisecond
           // on, and the mark that much late.
-          useSyncStore.getState().noteStudentAction(now - ago);
+          useSyncStore.getState().noteStudentAction("launch", now - ago);
         }
       } else if (first) {
         // Started hidden (at login): nobody saw this launch, so nothing is noted. But the
@@ -183,7 +213,7 @@ export function useAutoSync() {
         // with showing it was never heard: it can come before this page listens, or not at
         // all. A window that isn't shown gets no input, and the proof is still the input, never
         // the showing. Not for a page that was loaded again: its window may have been in use
-        // for hours.
+        // for hours. (Like every wait, this one ends when a loss of focus is heard.)
         awaitingInput.current = true;
       }
       setLaunch(first);
@@ -199,6 +229,7 @@ export function useAutoSync() {
   useEffect(() => () => dialogs.current?.disconnect(), []);
 
   const askSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lookSoon = useRef<ReturnType<typeof setTimeout> | null>(null);
   // What is in the way right now, for the handlers below.
   const busy = useRef(false);
   busy.current = running || otherProcess || installing || writing;
@@ -223,19 +254,47 @@ export function useAutoSync() {
     [client, reread],
   );
 
-  /** The student did something in the window, now or at `at`: they are known to be here. */
+  /** Whether the student holds a button or a key down right now, as far as was heard. */
+  const holding = useCallback(() => {
+    const now = steadyNow();
+    return [down.current.pointer, down.current.key].some(
+      (since) => since !== null && now - since <= HELD_MS,
+    );
+  }, []);
+
+  /**
+   * The student did something in the window, now or at `since` (both clocks): a moment later,
+   * if the window still has focus then, they are known to be here.
+   */
   const studentIsHere = useCallback(
-    (unattendedToo: boolean, at?: number) => {
+    (unattendedToo: boolean, by: StudentAction, since?: { wall: number; steady: number }) => {
       // With something in the way (a sync, an update being installed, a dialog) this input
       // may be 30 seconds old before anything can start: then their next one counts again.
       awaitingInput.current = busy.current || dialogOpen();
-      useSyncStore.getState().noteStudentAction(at);
-      // Asked a moment later, so that a full sync that is due starts now, yet after what the
-      // student pressed has acted: a press reaches the page before the click it makes, and
-      // "Sync" must find no automatic run in its way.
+      noteSoon.current = { by, ...(since ?? { wall: Date.now(), steady: steadyNow() }) };
+      // Counted and asked a moment later, for two reasons. A key that hides the window at
+      // once is not the student at work in it: on macOS Command+H and Command+M reach the
+      // page first (wry leaves Command+key to the web view), and when the window has lost
+      // focus by then, the input counts for nothing (see the blur below; that the loss
+      // always comes within this moment has not been measured). And what they pressed must
+      // act first: a press reaches the page before the click it makes, and "Sync" must find
+      // no automatic run in its way. (A press held for longer than that moment keeps the
+      // start waiting by itself: see `holding`.)
       if (askSoon.current) clearTimeout(askSoon.current);
       askSoon.current = setTimeout(() => {
         askSoon.current = null;
+        const input = noteSoon.current;
+        noteSoon.current = null;
+        if (input) {
+          // For when it happened: by the clock that says longer ago.
+          const ago = Math.max(Date.now() - input.wall, steadyNow() - input.steady);
+          useSyncStore.getState().noteStudentAction(input.by, Date.now() - ago);
+          // A sync may have begun since the input (the light one that the focus's answer
+          // started). While it runs the facade answers "not due", so nothing further down
+          // sees a start that is kept waiting: the next input counts again from here. (A
+          // dialog that opened since, on this very press's click, is seen there.)
+          if (busy.current) awaitingInput.current = true;
+        }
         ask(unattendedToo);
       }, INPUT_ASK_DELAY_MS);
     },
@@ -244,9 +303,22 @@ export function useAutoSync() {
   useEffect(
     () => () => {
       if (askSoon.current) clearTimeout(askSoon.current);
+      if (lookSoon.current) clearTimeout(lookSoon.current);
     },
     [],
   );
+
+  /**
+   * What the student held down came up (or is no longer this window's to hear): a moment
+   * later, when a release has become its click, what waited for it is looked at again.
+   */
+  const released = useCallback(() => {
+    if (lookSoon.current) clearTimeout(lookSoon.current);
+    lookSoon.current = setTimeout(() => {
+      lookSoon.current = null;
+      if (waiting.current) setAgain((n) => n + 1);
+    }, INPUT_ASK_DELAY_MS);
+  }, []);
 
   // The window gains focus: ask again if the answer is old, or if it said a sync was due (the
   // student's own sync may have changed that since). Whether the student is here is not known
@@ -255,20 +327,23 @@ export function useAutoSync() {
     () =>
       api.onWindowFocus(() => {
         const now = { wall: Date.now(), steady: steadyNow() };
+        focused.current = true;
         lastFocusSteady.current = now.steady;
         // The press that brought the window to the front can reach the page a moment before
-        // this event does (Windows, Linux): it is the student all the same. "A moment before"
-        // on both clocks: a press from before a sleep is no such press (the steady clock may
-        // not have moved since), and neither is an old one that the wall clock, set back,
-        // shows as a second ago.
-        const press = lastInput.current;
+        // this event does (Windows, Linux): it is the student all the same. Only a press or
+        // a click made while the window was not known to have focus is that, once, and "a
+        // moment before" on both clocks: a press from before a sleep is no such press (the
+        // steady clock may not have moved since), and neither is an old one that the wall
+        // clock, set back, shows as a second ago.
+        const pressed = pressedWithoutFocus.current;
+        pressedWithoutFocus.current = null;
         const justBefore = (since: number) => since >= 0 && since <= INPUT_BEFORE_FOCUS_MS;
-        if (press && justBefore(now.wall - press.wall) && justBefore(now.steady - press.steady)) {
-          // When it was: the longer ago of what the two clocks say, from this reading.
-          studentIsHere(
-            true,
-            now.wall - Math.max(now.wall - press.wall, now.steady - press.steady),
-          );
+        if (
+          pressed &&
+          justBefore(now.wall - pressed.wall) &&
+          justBefore(now.steady - pressed.steady)
+        ) {
+          studentIsHere(true, "press_before_focus", pressed);
         } else {
           awaitingInput.current = true;
           ask(true);
@@ -277,6 +352,23 @@ export function useAutoSync() {
         void client.invalidateQueries({ queryKey: queryKeys.syncPrefs() });
       }),
     [api, client, ask, studentIsHere],
+  );
+
+  // The window loses focus: whatever comes next in it isn't the student at work here. The wait
+  // for their first input is over until the next focus (also the one a hidden start began),
+  // and nothing counts as held any more. An input from a moment ago that hasn't counted yet
+  // never will: it may be what hid the window. The question that waits with it is still asked
+  // (it may be the focus's own).
+  useEffect(
+    () =>
+      api.onWindowBlur(() => {
+        focused.current = false;
+        awaitingInput.current = false;
+        noteSoon.current = null;
+        down.current = { pointer: null, key: null };
+        released();
+      }),
+    [api, released],
   );
 
   // The shell's ticker, every quarter of an hour: this page's own hourly timer may not run on
@@ -306,22 +398,41 @@ export function useAutoSync() {
 
   useEffect(
     () =>
-      api.onStudentInput(() => {
-        lastInput.current = { wall: Date.now(), steady: steadyNow() };
-        // They are back: a run that started with nobody here is watched like any other again.
-        if (useSyncStore.getState().unwatched) useSyncStore.setState({ unwatched: false });
-        if (awaitingInput.current) studentIsHere(false);
-      }),
-    [api, studentIsHere],
+      api.onStudentInput(
+        (kind) => {
+          const now = { wall: Date.now(), steady: steadyNow() };
+          if (kind === "press") down.current.pointer = now.steady;
+          if (kind === "key") down.current.key = now.steady;
+          // Something was pressed or typed in the window, whatever its focus: a dialog in it
+          // isn't left, and a run that started with nobody here is watched like any other
+          // again. (Neither says the student is here for a full sync: that is the wait's.)
+          lastInputSteady.current = now.steady;
+          if (useSyncStore.getState().unwatched) useSyncStore.setState({ unwatched: false });
+          // A press or a click in a window not known to have focus is kept for a second, for
+          // the focus it may be bringing; a key brings none. (After a loss of focus no wait
+          // is on, and the input says nothing by itself.)
+          if (focused.current !== true && kind !== "key") pressedWithoutFocus.current = now;
+          if (awaitingInput.current) studentIsHere(false, kind);
+        },
+        (what) => {
+          down.current[what] = null;
+          released();
+        },
+      ),
+    [api, studentIsHere, released],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `closed` only re-runs the check.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `again` only re-runs the check.
   useEffect(() => {
     const data = client.getQueryData<StartupTasks>(queryKeys.startupTasks());
     // "No sources" comes from the status, and whether this load is the launch from Rust: wait
     // for both.
     if (!data || !loaded || launch === null) return;
     const blocked = running || otherProcess || installing || writing || dialogOpen();
+    // What the student holds down is in the way too, for a moment: the click it becomes may
+    // be their own "Sync now", which an automatic run started under the finger would turn
+    // away.
+    const held = holding();
     // Dialogs are portalled into <body>; nothing else says when the last one closes.
     const watchDialogs = () => {
       if (!dialogOpen() || dialogs.current) return;
@@ -329,7 +440,7 @@ export function useAutoSync() {
         if (dialogOpen()) return;
         observer.disconnect();
         dialogs.current = null;
-        setClosed((n) => n + 1);
+        setAgain((n) => n + 1);
       });
       observer.observe(document.body, { childList: true });
       dialogs.current = observer;
@@ -341,7 +452,8 @@ export function useAutoSync() {
       // in the way now (a dialog opened while a sync was running). When the lock is free
       // again but a dialog still keeps a sync waiting, the answer that was taken under the
       // lock is asked for again all the same: it said nothing, and the others wait on it.
-      if (waiting.current && (!blocked || (underLock.current && !locked))) {
+      // (Not while the student still holds something down: its release looks again.)
+      if (waiting.current && !held && (!blocked || (underLock.current && !locked))) {
         waiting.current = false;
         underLock.current = false;
         void reread();
@@ -388,15 +500,32 @@ export function useAutoSync() {
     // left, also one the student is typing in, for as long as the clock is behind. (Through a
     // sleep the steady clock may stand still: the dialog then counts as touched for longer,
     // and the sync waits.)
+    // Scrolling is not heard, on purpose (lib/studentInput): someone who only scrolls in a
+    // dialog for a quarter of an hour counts as having left it, and a light sync may start
+    // under it, unwatched. And what the student holds down was pressed within the last
+    // minute, so a dialog is never "left" under a hold: this start never passes over one.
     const untouched =
       steadyNow() -
-      Math.max(
-        lastInput.current?.steady ?? 0,
-        lastFocusSteady.current ?? 0,
-        api.pageLoadedSteady(),
-      );
+      Math.max(lastInputSteady.current ?? 0, lastFocusSteady.current ?? 0, api.pageLoadedSteady());
     const leftDialog =
       trigger === "unattended" && !locked && !installing && untouched >= DIALOG_LEFT_MS;
+    // A start for the student that is kept waiting (by what they hold down, by a dialog that
+    // opened since their input counted): that input may be too old by the time the way is
+    // free. Then their next one counts again. Never for the timer's own start: the hourly
+    // re-read stays unattended whoever is typing.
+    if ((held || blocked) && trigger === "attended" && focused.current !== false) {
+      awaitingInput.current = true;
+    }
+    if (held && !blocked) {
+      // Only what they hold down is in the way, and that is over in a moment: the release
+      // looks again. Unlike a dialog it doesn't let the app's other automatic work go ahead
+      // (no `clear()`): the sync that is due goes first. The question is asked again then,
+      // also when a dialog is in the way by then (the release may have opened it): the new
+      // answer is dealt with as any answer under a dialog, and the others get their turn.
+      waiting.current = true;
+      underLock.current = true;
+      return;
+    }
     if (blocked && !leftDialog) {
       waiting.current = true;
       underLock.current = locked;
@@ -433,10 +562,11 @@ export function useAutoSync() {
     otherProcess,
     installing,
     writing,
-    closed,
+    again,
     client,
     startSync,
     reread,
+    holding,
   ]);
 }
 

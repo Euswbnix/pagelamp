@@ -4,6 +4,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { create } from "zustand";
+import type { StudentAction } from "@/api/client";
 import { useApi } from "@/api/context";
 import { type ApiError, toApiError } from "@/api/errors";
 import { queryKeys, useStatus } from "@/api/queries";
@@ -98,6 +99,8 @@ interface SyncState {
    * nothing for (0: none yet). The app's other automatic work waits for it (`useAfterAutoSync`).
    */
   clearedAnswer: number;
+  /** What the student did that those marks stand for: its kind, for the log. */
+  attendedBy: StudentAction | null;
   begin: (
     total: number | null,
     downloadCourseId?: string | null,
@@ -123,14 +126,14 @@ interface SyncState {
    */
   hideRun: () => void;
   /**
-   * The student opened the app or did something in its window: just now, or at `at` (ms) when
-   * it is noted afterwards (the launch, which happened when the page loaded; the press that
-   * brought the window to the front). What is noted afterwards never takes the place of an
-   * action after it that still counts; a mark that doesn't count now (it ran out, or the clock
-   * was set back under it) is replaced. A time after now notes nothing: the clock was set back
-   * since, and how long ago it was can't be told.
+   * The student opened the app or did something in its window (`by`: the kind of thing): just
+   * now, or at `at` (ms) when it is noted afterwards (the launch, which happened when the page
+   * loaded; the press that brought the window to the front). What is noted afterwards never
+   * takes the place of an action after it that still counts; a mark that doesn't count now (it
+   * ran out, or the clock was set back under it) is replaced. A time after now notes nothing:
+   * the clock was set back since, and how long ago it was can't be told.
    */
-  noteStudentAction: (at?: number) => void;
+  noteStudentAction: (by: StudentAction, at?: number) => void;
   /** A source or a course was removed: the last run's lines may name what is gone. */
   forgetCourseLines: () => void;
   reset: () => void;
@@ -162,6 +165,17 @@ export function studentKnownHere(): boolean {
  */
 export function steadyNow(): number {
   return Math.floor(performance.now());
+}
+
+/**
+ * What noted the student, and how long ago (ms; the longer of the two clocks' answers), while
+ * it counts (`studentKnownHere`). For the log's line about an attended start.
+ */
+export function studentNotedBy(): { by: StudentAction; msAgo: number } | null {
+  const { attendedBy, attendedUntil, attendedUntilSteady } = useSyncStore.getState();
+  if (!attendedBy || !studentKnownHere()) return null;
+  const left = Math.min(attendedUntil - Date.now(), attendedUntilSteady - steadyNow());
+  return { by: attendedBy, msAgo: Math.max(0, Math.round(ATTENDED_WINDOW_MS - left)) };
 }
 
 /**
@@ -209,6 +223,7 @@ const idle = {
   attendedUntil: 0,
   attendedUntilSteady: 0,
   clearedAnswer: 0,
+  attendedBy: null,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
@@ -370,7 +385,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
           ? {}
           : { order: [], bySource: {}, lastSummary: null, runError: null, stoppedByUser: false },
     ),
-  noteStudentAction: (at) =>
+  noteStudentAction: (by, at) =>
     set((state) => {
       const now = Date.now();
       // How long ago it happened, for what is noted afterwards. A time after now can't be
@@ -381,6 +396,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
       const noted = {
         attendedUntil: now - ago + ATTENDED_WINDOW_MS,
         attendedUntilSteady: steadyNow() - ago + ATTENDED_WINDOW_MS,
+        attendedBy: by,
       };
       // An action after it stays, while it counts. Which of the two came after is told on
       // the steady clock: on the wall clock the older mark is the larger number once the
@@ -464,6 +480,15 @@ export function useStartSync() {
       // An automatic run syncs only the sources that are due, which only the facade knows: the
       // capsule then names the source without a count.
       const total = sourceId ? 1 : automatic ? null : (before?.sources.length ?? null);
+      if (automatic) {
+        // For the log only: what started it and, when attended, what noted the student.
+        const noted = automatic === "attended" ? studentNotedBy() : null;
+        void api.logAutoSyncStart({
+          trigger: automatic,
+          noted_by: noted?.by ?? null,
+          noted_ms_ago: noted?.msAgo ?? null,
+        });
+      }
       store.begin(total, null, automatic, automatic !== null && options?.unwatched === true);
       // What an automatic run leaves on a source is the facade's decision, read from the status
       // afterwards (refreshed below), not guessed from the kinds of failure.
