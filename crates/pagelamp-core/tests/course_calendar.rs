@@ -2122,6 +2122,26 @@ fn a_split_session_lends_nothing() {
     );
 }
 
+/// Whether the student's dates are confirmed, as copying them decides it: dates from 0.1 the
+/// student never confirmed aren't, a last day of classes alone included (no legacy anchor says
+/// so then); no dates at all, or confirmed ones, are.
+#[test]
+fn the_term_says_whether_the_student_s_dates_are_confirmed() {
+    let confirmed = |start: Option<&str>, end: Option<&str>, listed: bool| {
+        let mut data = uoft_window_term();
+        data.user_term_start = start.map(date);
+        data.user_term_end = end.map(date);
+        let mut case = Case::new(dem332(), data);
+        case.confirmed = listed;
+        case.timeline("2026-10-16").term.student_dates_confirmed
+    };
+    assert!(confirmed(None, None, false));
+    assert!(!confirmed(Some("2026-09-08"), None, false));
+    assert!(!confirmed(None, Some("2026-12-08"), false));
+    assert!(confirmed(None, Some("2026-12-08"), true));
+    assert!(confirmed(Some("2026-09-08"), Some("2026-12-08"), true));
+}
+
 /// Dates the student copied from another course are theirs (High), and say where they came
 /// from.
 #[test]

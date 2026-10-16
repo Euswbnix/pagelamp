@@ -218,6 +218,7 @@ function scenarioCourses(now: Date, scenario: CalendarScenario): MockCourse[] {
         outer_frame: wide,
         not_used: [wideNotUsed],
         student_start: on(-3, 1),
+        student_dates_confirmed: false,
       }),
       evidence_items: [
         ev("legacy_dates", { start: on(-3, 1) }),
