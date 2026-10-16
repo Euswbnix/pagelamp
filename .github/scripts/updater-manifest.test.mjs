@@ -147,14 +147,14 @@ describe("build", () => {
       artifacts: findArtifacts(onlyTested, platforms),
       signatures,
       version: VERSION,
-      baseUrl: "https://euswbnix.github.io/pagelamp/updates/test/abc1234",
+      baseUrl: "https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test/abc1234",
       platforms,
       pubDate: PUB_DATE,
     });
     assert.deepEqual(Object.keys(manifest.platforms), platforms);
     assert.equal(
       manifest.platforms["windows-x86_64-nsis"].url,
-      `https://euswbnix.github.io/pagelamp/updates/test/abc1234/${WIN}`,
+      `https://raw.githubusercontent.com/Euswbnix/pagelamp/gh-pages/updates/test/abc1234/${WIN}`,
     );
   });
 

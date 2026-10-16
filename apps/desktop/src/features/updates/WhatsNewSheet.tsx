@@ -65,7 +65,7 @@ function Sheet({ since, topics }: { since: string | null; topics: WhatsNewTopic[
   async function done() {
     setOpen(false);
     // Closing the sheet is the student's action: a sync that becomes due with it is attended.
-    useSyncStore.getState().noteStudentAction();
+    useSyncStore.getState().noteStudentAction("whats_new");
     if (autoCheck !== null && prefs.data && autoCheck !== prefs.data.auto_check) {
       await setPrefs.mutateAsync({ auto_check: autoCheck, channel: prefs.data.channel ?? null });
     }

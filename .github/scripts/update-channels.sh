@@ -14,29 +14,31 @@
 #                                     updates/test/<commit>/ (the test channel)
 #   update-channels.sh test-delete    remove updates/test.json and updates/test/
 #
-# GitHub Pages serves the branch gh-pages from its root (the owner's one-time setup,
-# docs/release-runbook.md), at $PAGES_URL. gh-pages holds only what Pages serves (.nojekyll,
+# The app reads the files of the branch gh-pages as GitHub serves them, at $CHANNELS_URL (the
+# branch itself, on GitHub's host for raw files). gh-pages holds only the channels (.nojekyll,
 # updates/) and is replaced by one new commit each time (a force push with a lease on the commit
 # it started from), so the test channel's installers (tens of MB) never stay in the repository's
-# history. Every change is in this workflow's run log. A release's manifest is checked
+# history. The test channel's packages are files of the branch too, and its manifest gives their
+# addresses there. Every change is in this workflow's run log. A release's manifest is checked
 # (updater-manifest.mjs check) before any channel serves it: against the contract, the release's
 # assets, and its SHA256SUMS, which release.yml's `checksums` job uploads only after every check of
 # the run passed (so a release whose run failed never reaches a channel). The test channel's
 # signatures are checked against the committed updater public key.
 #
-# Needs GH_TOKEN (contents: write; actions: read for test-publish), GH_REPO, PAGES_URL and
+# Needs GH_TOKEN (contents: write; actions: read for test-publish), GH_REPO, CHANNELS_URL and
 # RUNNER_TEMP. The token reaches git only as an HTTP header on the command line of the clone and
 # the push; nothing is written to disk.
 set -euo pipefail
 
-: "${GH_TOKEN:?GH_TOKEN is not set}" "${GH_REPO:?GH_REPO is not set}" "${PAGES_URL:?PAGES_URL is not set}"
+: "${GH_TOKEN:?GH_TOKEN is not set}" "${GH_REPO:?GH_REPO is not set}" "${CHANNELS_URL:?CHANNELS_URL is not set}"
 BRANCH=gh-pages
 WORK="${RUNNER_TEMP:?RUNNER_TEMP is not set}/update-channels"
 SITE="$WORK/site"
 MANIFEST="$(cd "$(dirname "$0")" && pwd)/updater-manifest.mjs"
 # CHANNELS_REMOTE is for testing this script against a local repository (it gets no token).
 REMOTE="${CHANNELS_REMOTE:-https://github.com/$GH_REPO.git}"
-# What a rehearsal serves on the test channel (the AppImage is too big for Pages).
+# What a rehearsal serves on the test channel (the AppImage, ~95 MB, is too big to keep in a
+# branch).
 TEST_PLATFORMS=darwin-aarch64-app,darwin-x86_64-app,windows-x86_64-nsis
 
 fail() {
@@ -151,7 +153,7 @@ cmd_release() {
       fi
     fi
     cp "$WORK/release/latest.json" "$SITE/updates/$channel.json"
-    summary "$channel → $TAG: $PAGES_URL/updates/$channel.json"
+    summary "$channel → $TAG: $CHANNELS_URL/updates/$channel.json"
     moved="$moved $channel"
   done
   if [ -z "$moved" ]; then
@@ -174,7 +176,7 @@ cmd_promote() {
   download_manifest "$TAG" || fail "$TAG has no latest.json (it was released with the updater off)"
   fetch_site
   cp "$WORK/release/latest.json" "$SITE/updates/$CHANNEL.json"
-  summary "$CHANNEL → $TAG (by ${GITHUB_ACTOR:-hand}): $PAGES_URL/updates/$CHANNEL.json"
+  summary "$CHANNEL → $TAG (by ${GITHUB_ACTOR:-hand}): $CHANNELS_URL/updates/$CHANNEL.json"
   push_site "Update channels: $CHANNEL → $TAG (by hand)"
 }
 
@@ -196,7 +198,7 @@ cmd_test_publish() {
   short=${sha:0:7}
   gh run download "$RUN_ID" --name "$name" --dir "$dir"
   (cd "$dir" && ls) > "$WORK/test-assets.txt"
-  node "$MANIFEST" check "$dir/latest.json" --base-url "$PAGES_URL/updates/test/$short/" \
+  node "$MANIFEST" check "$dir/latest.json" --base-url "$CHANNELS_URL/updates/test/$short/" \
     --platforms "$TEST_PLATFORMS" --assets "$WORK/test-assets.txt" ||
     fail "The test manifest of run $RUN_ID doesn't follow the contract (see above)"
   node "$MANIFEST" verify "$dir/latest.json" --dir "$dir" --pubkey-config apps/desktop/src-tauri/tauri.conf.json ||
@@ -208,7 +210,7 @@ cmd_test_publish() {
     [ "$(basename "$f")" = latest.json ] || cp "$f" "$SITE/updates/test/$short/"
   done
   cp "$dir/latest.json" "$SITE/updates/test.json"
-  summary "test → rehearsal $short (run $RUN_ID, version $(node -p 'require(process.argv[1]).version' "$dir/latest.json")): $PAGES_URL/updates/test.json"
+  summary "test → rehearsal $short (run $RUN_ID, version $(node -p 'require(process.argv[1]).version' "$dir/latest.json")): $CHANNELS_URL/updates/test.json"
   push_site "Test channel → rehearsal $short (run $RUN_ID)"
 }
 

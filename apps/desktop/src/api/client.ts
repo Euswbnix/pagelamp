@@ -1,3 +1,4 @@
+import type { StudentInput, StudentRelease } from "@/lib/studentInput";
 import type {
   AiFeature,
   AiStatus,
@@ -25,6 +26,7 @@ import type {
 import type {
   AiPolicy,
   AppStatus,
+  AutoSyncTrigger,
   CalendarBatchEvent,
   CalendarCandidate,
   CalendarProposal,
@@ -62,6 +64,37 @@ import type {
   UpdatePrefs,
   WeekMaterials,
 } from "./types";
+
+// ----- automatic sync, for the log (desktop only: src-tauri, not the facade) ------------------
+
+/**
+ * What noted the student as being here (stores/sync `noteStudentAction`): the kind of thing
+ * they did, never which key or where.
+ * - `press_before_focus`: a press or click heard up to a second before the window's focus,
+ *   while the window was not known to have focus. Mostly the press that brought it to the
+ *   front; also one in a window whose focus was never heard (after a launch or a reload no
+ *   focus event may have come yet).
+ * - `click`: a click that counted by itself. Assistive technology's, with no press before it;
+ *   or an ordinary one, where the wait was on again after its press (something was in the
+ *   way, or the press was held).
+ */
+export type StudentAction =
+  | "launch"
+  | "press"
+  | "click"
+  | "key"
+  | "press_before_focus"
+  | "whats_new"
+  | "setting"
+  | "try_again";
+
+/** An automatic sync about to start, as the log gets it. */
+export interface AutoSyncStart {
+  trigger: AutoSyncTrigger;
+  /** For an attended start: what noted the student, and how long before (ms). */
+  noted_by: StudentAction | null;
+  noted_ms_ago: number | null;
+}
 
 // ----- updater (desktop only: src-tauri's updates.rs, not the facade) -------------------------
 
@@ -355,11 +388,20 @@ export interface PageLampApi {
    */
   onWindowFocus(onFocus: () => void): () => void;
   /**
-   * Calls `onInput` whenever the student does something in the window: a press, a key, the
-   * wheel (lib/studentInput). A window gaining focus is not that: it can happen with nobody at
-   * the computer. Returns a function that stops listening.
+   * Calls `onBlur` whenever the app window loses focus: what the student does next, they do
+   * somewhere else. Returns a function that stops listening.
    */
-  onStudentInput(onInput: () => void): () => void;
+  onWindowBlur(onBlur: () => void): () => void;
+  /**
+   * Calls `onInput` whenever the student does something in the window, with its kind: a press,
+   * a click, a key (lib/studentInput; never scrolling). A window gaining focus is not that: it
+   * can happen with nobody at the computer. `onRelease`: the pointer or a key came up again.
+   * Returns a function that stops listening.
+   */
+  onStudentInput(
+    onInput: (kind: StudentInput) => void,
+    onRelease?: (what: StudentRelease) => void,
+  ): () => void;
   /**
    * The window was started without being shown to the student (a start at login). Its launch
    * then isn't the student opening PageLamp; their first input after the window gains focus is.
@@ -385,6 +427,12 @@ export interface PageLampApi {
    * Never rejects — logging must not cause a second error.
    */
   logUiError(message: string, stack: string | null): Promise<void>;
+  /**
+   * Write to the log that PageLamp is starting a sync by itself: the trigger and, for an
+   * attended one, the kind of thing that noted the student and how long before. Kinds only,
+   * never a key or a place. Never rejects: a line in the log must not get in a sync's way.
+   */
+  logAutoSyncStart(start: AutoSyncStart): Promise<void>;
   updaterStatus(): Promise<UpdaterStatus>;
   /** Checks the effective channel; the result is recorded (codes only) for diagnostics. */
   checkForUpdate(): Promise<AvailableUpdate | null>;

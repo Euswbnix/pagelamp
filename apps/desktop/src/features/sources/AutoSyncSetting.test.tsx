@@ -89,6 +89,7 @@ describe("Sources & sync → Automatic sync", () => {
     const api = mockApi({ scenario: "auto-sync-due" });
     await api.setSyncPrefs({ auto_sync: "off" });
     const sync = vi.spyOn(api, "syncAll");
+    const log = vi.spyOn(api, "logAutoSyncStart");
     const { user } = renderRoute("/sources", { api });
     await group();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -99,6 +100,7 @@ describe("Sources & sync → Automatic sync", () => {
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     // The student asked for it just now.
     expect(sync.mock.calls[0]?.[0]).toEqual({ automatic: "attended" });
+    expect(log.mock.calls[0]?.[0]).toMatchObject({ trigger: "attended", noted_by: "setting" });
   });
 
   it("isn't offered before there is a source", async () => {
