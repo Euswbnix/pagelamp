@@ -138,8 +138,8 @@ evidence_codes! {
     // ----- cross-checks between date sources -----
     /// `source`, `monday`: another source agrees on week 1.
     DatesAgree = "dates_agree",
-    /// `course`, `monday`, `days`: `course`, of the same session, starts week 1 on the week of
-    /// `monday`, `days` days from this course's own dates, which it keeps.
+    /// `course`, `monday`, `days`: `course`, of the same session, puts week 1 in the week of
+    /// `monday`, `days` days (at least 7) from this course's own dates, which it keeps.
     SameSessionDisagrees = "same_session_disagrees",
     /// `session`: the courses of the session that could lend their dates disagree on week 1, so
     /// none is used.
@@ -478,7 +478,7 @@ fn english(item: &EvidenceItem) -> String {
             p("monday")
         ),
         EvidenceCode::SameSessionDisagrees => format!(
-            "{}, same session, starts week 1 on the week of {}, {} days from this course's own \
+            "{}, same session, puts week 1 in the week of {}, {} days from this course's own \
              dates",
             p("course"),
             p("monday"),

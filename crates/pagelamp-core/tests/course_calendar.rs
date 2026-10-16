@@ -2004,8 +2004,8 @@ fn own_dates_stay_and_a_session_course_that_disagrees_is_noted() {
     assert_eq!(t.current_week, Some(5));
     assert!(codes(&t).contains(&"same_session_disagrees"));
     assert!(t.evidence.iter().any(|line| line
-        == "DEM240H5 F LEC0101 20269, same session, starts week 1 on the week of 2026-09-07, \
-            7 days from this course's own dates"));
+        == "DEM240H5 F LEC0101 20269, same session, puts week 1 in the week of 2026-09-07, 7 \
+            days from this course's own dates"));
     let agreeing = borrower(
         data,
         lent(DonorKind::StudentDates, "2026-09-15", None, None),

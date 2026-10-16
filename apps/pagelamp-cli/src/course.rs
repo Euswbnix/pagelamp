@@ -264,17 +264,21 @@ fn dates_used(timeline: &CourseTimeline) -> String {
         Some(CalendarOrigin::Legacy) => " — set in PageLamp 0.1, check them",
         _ => "",
     };
-    format!(
-        "{} → {end} from {} ({}){origin}",
-        first.first_class,
-        anchor_name(timeline),
-        confidence(term.anchor_confidence)
-    )
+    let confidence = confidence(term.anchor_confidence);
+    let source = match lender(timeline) {
+        // "from DEM240H5 … (same session, medium)": one bracket, like the other sources.
+        Some(course) => format!("{course} (same session, {confidence})"),
+        None => format!("{} ({confidence})", source_name(term.anchor)),
+    };
+    format!("{} → {end} from {source}{origin}", first.first_class)
 }
 
-/// The dates' source, naming the course for dates of another course of the same session.
-fn anchor_name(timeline: &CourseTimeline) -> String {
-    let lender = timeline
+/// The course that lent the dates, when they are another course's of the same session.
+fn lender(timeline: &CourseTimeline) -> Option<&str> {
+    if timeline.term.anchor != TermAnchorSource::SameSession {
+        return None;
+    }
+    timeline
         .evidence_items
         .iter()
         .find(|item| {
@@ -283,11 +287,7 @@ fn anchor_name(timeline: &CourseTimeline) -> String {
                 Some(EvidenceCode::SameSessionAnchor | EvidenceCode::SameSessionUnlocks)
             )
         })
-        .and_then(|item| item.param("course"));
-    match (timeline.term.anchor, lender) {
-        (TermAnchorSource::SameSession, Some(course)) => format!("{course} (same session)"),
-        (source, _) => source_name(source).to_string(),
-    }
+        .and_then(|item| item.param("course"))
 }
 
 fn source_name(source: TermAnchorSource) -> &'static str {
@@ -423,7 +423,7 @@ pub fn copy_dates(
     for skipped in &report.skipped {
         let why = match skipped.reason {
             ApplySkipReason::NotSameSession => "not a course of the same session",
-            ApplySkipReason::NoDates => "the course to copy from has no dates of yours",
+            ApplySkipReason::NoDates => "the course to copy from has no dates you set",
             ApplySkipReason::UnknownCourse => "no such course",
         };
         println!("  Skipped {}: {why}", label(&skipped.course_id));

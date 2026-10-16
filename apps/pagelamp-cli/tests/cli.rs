@@ -1059,8 +1059,8 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
     ));
     assert!(
         timeline.contains(
-            "Dates:     2028-09-05 → 2028-12-05 from DEM240H5 F LEC0101 20289 (same session) \
-             (medium)"
+            "Dates:     2028-09-05 → 2028-12-05 from DEM240H5 F LEC0101 20289 (same session, \
+             medium)"
         ),
         "{timeline}"
     );

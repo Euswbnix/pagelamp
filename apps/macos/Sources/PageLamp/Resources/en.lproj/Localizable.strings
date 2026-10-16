@@ -391,7 +391,7 @@
 "calendar.evidence.removal_snoozed" = "Removal suggestions are paused until %1$@";
 "calendar.evidence.same_session_anchor" = "Week 1 comes from %1$@, another course of session %2$@: classes from %3$@ to %4$@, week 1 the week of %5$@";
 "calendar.evidence.same_session_anchor_no_end" = "Week 1 comes from %1$@, another course of session %2$@: the week of %3$@";
-"calendar.evidence.same_session_disagrees" = "%1$@, a course of the same session, starts week 1 the week of %2$@, %3$@ days from this course's own dates";
+"calendar.evidence.same_session_disagrees" = "%1$@, a course of the same session, puts week 1 in the week of %2$@, %3$@ days from this course's own dates";
 "calendar.evidence.same_session_split" = "The courses of session %1$@ disagree on week 1, so none of their dates is used. Set the first day of classes in one of them.";
 "calendar.evidence.same_session_unlocks" = "Week 1 comes from the module unlocks of %1$@, another course of session %2$@: the week of %3$@. Set this course's first day of classes to be sure.";
 "calendar.evidence.session_ended" = "Session %1$@ ended %2$@";
