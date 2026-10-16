@@ -1173,3 +1173,55 @@ fn courses_on_another_host_share_nothing() {
         .unwrap();
     assert_eq!(week_of(&store, "2"), None);
 }
+
+/// Two courses whose confirmed dates disagree on week 1 lend nothing. Each keeps its own dates
+/// and names the other; the course without dates says that nothing is lent.
+#[test]
+fn courses_whose_dates_disagree_name_each_other() {
+    let store = session_store();
+    for (external, start) in [("1", "2026-09-08"), ("2", "2026-09-15")] {
+        store
+            .set_course_term(
+                &session_id(external),
+                Some(date(start)),
+                Some(date("2026-12-08")),
+            )
+            .unwrap();
+    }
+    store
+        .set_setting(
+            CONFIRMED_DATES_KEY,
+            &BTreeSet::from([session_id("1"), session_id("2")]),
+        )
+        .unwrap();
+    let evidence = |external: &str| {
+        views::course_overview(&store, &session_id(external), true, session_at())
+            .unwrap()
+            .timeline
+            .evidence
+            .join("\n")
+    };
+    let one = evidence("1");
+    assert!(
+        one.contains(
+            "DEM332H7 F LEC0102 20269, same session, puts week 1 in the week of 2026-09-14, 7 \
+             days from the dates you set for this course"
+        ),
+        "{one}"
+    );
+    let two = evidence("2");
+    assert!(
+        two.contains(
+            "DEM240H7 F LEC0101 20269, same session, puts week 1 in the week of 2026-09-07, 7 \
+             days from the dates you set for this course"
+        ),
+        "{two}"
+    );
+    assert_eq!(week_of(&store, "3"), None);
+    let three = evidence("3");
+    assert!(
+        three.contains("the courses of session 20269 disagree on week 1"),
+        "{three}"
+    );
+    assert!(!three.contains("same session, puts week 1"), "{three}");
+}

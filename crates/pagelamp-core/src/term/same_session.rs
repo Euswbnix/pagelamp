@@ -14,11 +14,16 @@
 //!   source, with which its own week-numbered materials and module unlocks agree over the term
 //!   (`established`). Only LMS course dates state an end it lends.
 //! - `ModuleUnlocks`: a course without dates of its own whose module unlocks pin week 1: two or
-//!   more unlock days, each naming one week, all give the same Monday (the fit's day rule: a
-//!   Friday evening or a weekend counts for the next Monday). Week 1 only, lent at Low.
+//!   more unlock days inside its session's window, each naming one week, all give the same
+//!   Monday (the fit's day rule: a Friday evening or a weekend counts for the next Monday), and
+//!   that Monday passes the window check (§6.3). Modules copied from an earlier year keep their
+//!   old unlock dates: those lie outside the window and count for nothing. Week 1 only, lent at
+//!   Low.
 //!
 //! The strongest kind present decides. Its courses must agree on week 1, else nothing is lent
-//! and every course of the session says so (`Lend::Split`), the disagreeing lenders included.
+//! (`Lend::Split`) and every course of the session says so: a course without dates of its own
+//! that nothing is lent, a course with its own (the disagreeing lenders among them) which
+//! lenders put week 1 elsewhere.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -26,7 +31,7 @@ use chrono::NaiveDate;
 
 use super::fit::posting_day;
 use super::phase::teaching_week_on;
-use super::{CalendarOrigin, TermAnchorSource};
+use super::{CalendarOrigin, DateSpan, MAX_DAYS_BEFORE_WINDOW, TermAnchorSource};
 use crate::calendar::CalendarInForce;
 use crate::dates::{Tz, add_days, course_datetime, days_between, week_one_monday};
 use crate::model::{Confidence, Course, CourseTermData, Module};
@@ -96,9 +101,12 @@ impl LentDates {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Lend {
     Dates(LentDates),
-    /// The courses of the strongest kind disagree on week 1: nothing is lent.
+    /// The courses of the strongest kind disagree on week 1: nothing is lent. `lenders`: those
+    /// of them other than this course, each with what it would lend (a course with dates of its
+    /// own names the ones that put week 1 elsewhere).
     Split {
         session: String,
+        lenders: Vec<LentDates>,
     },
 }
 
@@ -128,27 +136,29 @@ pub fn lend(
     let best = all.iter().map(|d| d.kind).min()?;
     let top: Vec<&Donor> = all.into_iter().filter(|d| d.kind == best).collect();
     let monday = top[0].monday();
-    if top.iter().any(|d| d.monday() != monday) {
-        return Some(Lend::Split {
-            session: session.to_string(),
-        });
-    }
     let mut lenders: Vec<&Donor> = others.iter().filter(|d| d.kind == best).collect();
     // A fixed order, so every view names the same course.
     lenders.sort_by(|a, b| a.course.cmp(&b.course).then(a.start.cmp(&b.start)));
-    // They agree on week 1: the first, by name, that states an end lends it.
-    let donor = *lenders
-        .iter()
-        .find(|d| d.end.is_some())
-        .or(lenders.first())?;
-    Some(Lend::Dates(LentDates {
+    let lent = |donor: &Donor| LentDates {
         course: (!donor.hidden || show_hidden).then(|| donor.course.clone()),
         session: session.to_string(),
         kind: best,
         start: donor.start,
         end: donor.end,
         exams_end: donor.exams_end,
-    }))
+    };
+    if top.iter().any(|d| d.monday() != monday) {
+        return Some(Lend::Split {
+            session: session.to_string(),
+            lenders: lenders.into_iter().map(lent).collect(),
+        });
+    }
+    // They agree on week 1: the first, by name, that states an end lends it.
+    let donor = *lenders
+        .iter()
+        .find(|d| d.end.is_some())
+        .or(lenders.first())?;
+    Some(Lend::Dates(lent(donor)))
 }
 
 /// One course's own result, worked out with nothing lent to it.
@@ -207,7 +217,8 @@ pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
             ))
         }
         TermAnchorSource::PublishedWeekLabels | TermAnchorSource::NoAnchor => {
-            let monday = unlock_week_one(input.modules, input.today, resolved.tz)?;
+            let window = resolved.session.as_ref().map(|s| s.window);
+            let monday = unlock_week_one(input.modules, input.today, resolved.tz, window)?;
             // Its own fit says otherwise: the course doesn't know its week 1 well enough to lend.
             if term.anchor == TermAnchorSource::PublishedWeekLabels
                 && let Some(fitted) = term.week_one_monday
@@ -254,14 +265,17 @@ pub fn course_label(course: &Course) -> String {
         .to_string()
 }
 
-/// Week 1 by the course's module unlocks: each unlock day on or before `today` whose modules
-/// name exactly one week gives `monday_of(day) − 7 × (week − 1)`, the day counted like a posting
-/// day of the fit (a Friday evening or a weekend counts for the next Monday). Two or more such
-/// days, all giving the same Monday, or nothing.
+/// Week 1 by the course's module unlocks: each unlock day on or before `today` (and inside
+/// `window`, the session's, when given) whose modules name exactly one week gives
+/// `monday_of(day) − 7 × (week − 1)`, the day counted like a posting day of the fit (a Friday
+/// evening or a weekend counts for the next Monday). Two or more such days, all giving the same
+/// Monday, which itself passes the window check (§6.3: not more than 14 days before the window,
+/// not after it), or nothing.
 pub(crate) fn unlock_week_one(
     modules: &[Module],
     today: NaiveDate,
     tz: Option<Tz>,
+    window: Option<DateSpan>,
 ) -> Option<NaiveDate> {
     let mut weeks_by_day: BTreeMap<NaiveDate, BTreeSet<u32>> = BTreeMap::new();
     for module in modules {
@@ -269,12 +283,13 @@ pub(crate) fn unlock_week_one(
             continue;
         };
         let local = course_datetime(at, tz);
-        if local.date() <= today {
-            weeks_by_day
-                .entry(posting_day(local))
-                .or_default()
-                .insert(week);
+        if local.date() > today || window.is_some_and(|w| !w.contains(local.date())) {
+            continue;
         }
+        weeks_by_day
+            .entry(posting_day(local))
+            .or_default()
+            .insert(week);
     }
     let mondays: Vec<NaiveDate> = weeks_by_day
         .iter()
@@ -283,10 +298,13 @@ pub(crate) fn unlock_week_one(
             _ => None,
         })
         .collect();
-    match mondays[..] {
-        [first, ..] if mondays.len() >= 2 && mondays.iter().all(|m| *m == first) => Some(first),
-        _ => None,
-    }
+    let monday = match mondays[..] {
+        [first, ..] if mondays.len() >= 2 && mondays.iter().all(|m| *m == first) => first,
+        _ => return None,
+    };
+    let in_window = window
+        .is_none_or(|w| days_between(monday, w.start) <= MAX_DAYS_BEFORE_WINDOW && monday <= w.end);
+    in_window.then_some(monday)
 }
 
 #[cfg(test)]
@@ -364,15 +382,31 @@ mod tests {
             (Some("DEM240H7"), Some(date(2026, 12, 8)))
         );
         let late = donor("DEM310H7", DonorKind::CourseDates, date(2026, 9, 15), None);
-        let split = Some(Lend::Split {
-            session: "20269".into(),
-        });
-        assert_eq!(lend("20269", None, &[a.clone(), late.clone()], true), split);
+        let split = |lenders: &[&Donor]| {
+            Some(Lend::Split {
+                session: "20269".into(),
+                lenders: lenders
+                    .iter()
+                    .map(|d| LentDates {
+                        course: Some(d.course.clone()),
+                        session: "20269".into(),
+                        kind: DonorKind::CourseDates,
+                        start: d.start,
+                        end: d.end,
+                        exams_end: None,
+                    })
+                    .collect(),
+            })
+        };
+        assert_eq!(
+            lend("20269", None, &[late.clone(), a.clone()], true),
+            split(&[&a, &late])
+        );
         // A course that is itself one of the disagreeing lenders gets the split too, not the
-        // other's date.
+        // other's date, and learns which course disagrees.
         assert_eq!(
             lend("20269", Some(&a), std::slice::from_ref(&late), true),
-            split
+            split(&[&late])
         );
         // The only one of the strongest kind borrows nothing.
         let unlocks = donor("DEM332H7", DonorKind::ModuleUnlocks, date(2026, 9, 7), None);
@@ -410,18 +444,18 @@ mod tests {
         let today = date(2026, 10, 16);
         // One unlock lends nothing.
         assert_eq!(
-            unlock_week_one(&[module(5, "2026-10-05 09:00")], today, None),
+            unlock_week_one(&[module(5, "2026-10-05 09:00")], today, None, None),
             None
         );
         // Week 5 on Monday Oct 5 and week 6 on Sunday Oct 11 (counts for Monday Oct 12).
         let agreeing = [module(5, "2026-10-05 09:00"), module(6, "2026-10-11 20:00")];
         assert_eq!(
-            unlock_week_one(&agreeing, today, None),
+            unlock_week_one(&agreeing, today, None, None),
             Some(date(2026, 9, 7))
         );
         // One early unlock makes them disagree.
         let early = [module(5, "2026-10-05 09:00"), module(7, "2026-10-12 09:00")];
-        assert_eq!(unlock_week_one(&early, today, None), None);
+        assert_eq!(unlock_week_one(&early, today, None, None), None);
         // A day naming two weeks says nothing; a future unlock doesn't count.
         let batch = [
             module(5, "2026-10-05 09:00"),
@@ -429,7 +463,46 @@ mod tests {
             module(3, "2026-09-14 09:00"),
             module(7, "2026-10-19 09:00"),
         ];
-        assert_eq!(unlock_week_one(&batch, today, None), None);
+        assert_eq!(unlock_week_one(&batch, today, None, None), None);
+    }
+
+    /// Only unlocks inside the session's window count, and the Monday they give must pass the
+    /// window check: modules copied from last year keep their old dates and lend nothing.
+    #[test]
+    fn unlocks_outside_the_session_window_count_for_nothing() {
+        let today = date(2026, 10, 16);
+        let fall = Some(DateSpan {
+            start: date(2026, 9, 1),
+            end: date(2026, 12, 31),
+        });
+        let last_year = [module(2, "2025-09-15 09:00"), module(3, "2025-09-22 09:00")];
+        assert_eq!(
+            unlock_week_one(&last_year, today, None, None),
+            Some(date(2025, 9, 8))
+        );
+        assert_eq!(unlock_week_one(&last_year, today, None, fall), None);
+        // Last year's modules kept next to this year's: only this year's count.
+        let both = [
+            last_year.to_vec(),
+            vec![module(4, "2026-09-28 09:00"), module(5, "2026-10-05 09:00")],
+        ]
+        .concat();
+        assert_eq!(unlock_week_one(&both, today, None, None), None);
+        assert_eq!(
+            unlock_week_one(&both, today, None, fall),
+            Some(date(2026, 9, 7))
+        );
+        // Inside the window, but naming weeks that put week 1 in early August: not this session's.
+        let early = [
+            module(9, "2026-09-28 09:00"),
+            module(10, "2026-10-05 09:00"),
+        ];
+        assert_eq!(unlock_week_one(&early, today, None, fall), None);
+        let sound = [module(4, "2026-09-28 09:00"), module(5, "2026-10-05 09:00")];
+        assert_eq!(
+            unlock_week_one(&sound, today, None, fall),
+            Some(date(2026, 9, 7))
+        );
     }
 
     /// The fit's day rule: a module opening on a Friday evening counts for the next Monday, one
@@ -439,21 +512,21 @@ mod tests {
         let today = date(2026, 10, 16);
         let friday_evening = [module(5, "2026-10-05 09:00"), module(6, "2026-10-09 19:00")];
         assert_eq!(
-            unlock_week_one(&friday_evening, today, None),
+            unlock_week_one(&friday_evening, today, None, None),
             Some(date(2026, 9, 7))
         );
         // Friday morning is still its own week: week 6 then puts week 1 a week earlier, so the
         // two unlocks disagree.
         let friday_morning = [module(5, "2026-10-05 09:00"), module(6, "2026-10-09 09:00")];
-        assert_eq!(unlock_week_one(&friday_morning, today, None), None);
+        assert_eq!(unlock_week_one(&friday_morning, today, None, None), None);
         let thursday = [module(5, "2026-10-01 09:00"), module(6, "2026-10-08 09:00")];
         assert_eq!(
-            unlock_week_one(&thursday, today, None),
+            unlock_week_one(&thursday, today, None, None),
             Some(date(2026, 8, 31))
         );
         // The fit puts the same days in the same weeks.
         for days in [&friday_evening[..], &thursday[..]] {
-            let expected = unlock_week_one(days, today, None).unwrap();
+            let expected = unlock_week_one(days, today, None, None).unwrap();
             for o in super::super::fit::observations(days, &[], None, today) {
                 assert_eq!(
                     add_days(week_one_monday(o.day), -7 * (i64::from(o.week) - 1)),

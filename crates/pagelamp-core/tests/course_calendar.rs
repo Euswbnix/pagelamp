@@ -2072,15 +2072,24 @@ fn the_school_calendar_stays_above_lent_dates() {
     assert!(!codes(&t).contains(&"same_session_anchor"));
 }
 
-/// Session courses that disagree lend nothing, and say so.
+/// Session courses that disagree lend nothing, and every course says so: one without dates of
+/// its own that nothing is lent, one with its own (a disagreeing lender too) which lenders put
+/// week 1 elsewhere.
 #[test]
 fn a_split_session_lends_nothing() {
-    let case = borrower(
-        uoft_window_term(),
-        Lend::Split {
-            session: "20269".into(),
-        },
-    );
+    let Lend::Dates(early) = lent(DonorKind::StudentDates, "2026-09-08", None, None) else {
+        unreachable!()
+    };
+    let late = LentDates {
+        course: Some("DEM310H5 F LEC0101 20269".into()),
+        start: date("2026-09-15"),
+        ..early.clone()
+    };
+    let split = Lend::Split {
+        session: "20269".into(),
+        lenders: vec![early, late],
+    };
+    let case = borrower(uoft_window_term(), split.clone());
     let t = case.timeline("2026-10-16");
     assert_eq!(t.term.anchor, TermAnchorSource::NoAnchor);
     assert_eq!(t.current_week, None);
@@ -2088,6 +2097,26 @@ fn a_split_session_lends_nothing() {
         &t,
         "the courses of session 20269 disagree on week 1, so none of their dates is used"
     ));
+
+    // A course with its own dates (09-14, as the second lender) keeps them and names the
+    // lender that puts week 1 elsewhere, not the one that agrees.
+    let mut data = uoft_window_term();
+    data.lms.course_start = Some(date("2026-09-14"));
+    let t = borrower(data, split).timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::LmsCourseDates);
+    assert!(!codes(&t).contains(&"same_session_split"));
+    let disagree: Vec<&String> = t
+        .evidence
+        .iter()
+        .filter(|line| line.contains("same session, puts week 1"))
+        .collect();
+    assert_eq!(
+        disagree,
+        vec![
+            "DEM240H5 F LEC0101 20269, same session, puts week 1 in the week of 2026-09-07, 7 \
+             days from this course's LMS course dates"
+        ]
+    );
 }
 
 /// Dates the student copied from another course are theirs (High), and say where they came
@@ -2207,6 +2236,139 @@ fn module_unlocks_alone_lend_week_one() {
     assert_eq!(donor_of(&lender, "2026-10-16"), None, "a single unlock");
 }
 
+/// Modules copied from last year keep their old unlock dates ("Week 2" 2025-09-15, "Week 3"
+/// 2025-09-22): they lie outside the session's window, so that course lends nothing, and the
+/// sound course next to it lends to the others alone (no split, nothing noted as not used).
+#[test]
+fn last_year_s_unlocks_lend_nothing() {
+    let today = "2026-10-16";
+    let mut copied = Case::new(
+        course(UOFT, "DEM250H5 F LEC0101 20269", "Demo Copied"),
+        uoft_window_term(),
+    );
+    copied.school = Some(no_school());
+    copied.modules = vec![
+        module_unlocked("w2", "Week 2", "2025-09-15T13:00:00Z"),
+        module_unlocked("w3", "Week 3", "2025-09-22T13:00:00Z"),
+    ];
+    assert_eq!(donor_of(&copied, today), None);
+
+    let mut sound = Case::new(course(UOFT, LENDER, "Demo Lending"), uoft_window_term());
+    sound.school = Some(no_school());
+    sound.modules = vec![
+        module_unlocked("w4", "Week 4", "2026-09-28T13:00:00Z"),
+        module_unlocked("w5", "Week 5", "2026-10-05T13:00:00Z"),
+    ];
+    let donors: Vec<Donor> = [&copied, &sound]
+        .into_iter()
+        .filter_map(|case| donor_of(case, today))
+        .collect();
+    let lend = same_session::lend("20269", None, &donors, true).unwrap();
+    assert_eq!(
+        lend.dates().map(|d| (d.kind, d.monday())),
+        Some((DonorKind::ModuleUnlocks, date("2026-09-07")))
+    );
+    let t = borrower(uoft_window_term(), lend).timeline(today);
+    assert_eq!(t.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!((t.current_week, t.confidence), (Some(6), Confidence::Low));
+    assert!(
+        t.term
+            .not_used
+            .iter()
+            .all(|r| r.source != TermAnchorSource::SameSession)
+    );
+}
+
+/// A course whose own fit puts week 1 a week from its module unlocks doesn't know its week 1
+/// well enough to lend; when they agree, it lends.
+#[test]
+fn unlocks_its_own_fit_contradicts_lend_nothing() {
+    let today = "2026-10-16";
+    let slides = vec![
+        material("s4", "Week 4 slides", "2026-09-29T12:00:00Z"),
+        material("s5", "Week 5 slides", "2026-10-06T12:00:00Z"),
+        material("s6", "Week 6 slides", "2026-10-13T12:00:00Z"),
+    ];
+    let mut lender = Case::new(course(UOFT, LENDER, "Demo Lending"), uoft_window_term());
+    lender.school = Some(no_school());
+    lender.materials = slides;
+    // The fit, from the latest weeks: week 1 the week of 09-07. The unlocks: of 09-14.
+    lender.modules = vec![
+        module_unlocked("w1", "Week 1", "2026-09-14T13:00:00Z"),
+        module_unlocked("w2", "Week 2", "2026-09-21T13:00:00Z"),
+    ];
+    let resolved = resolve_term(&lender.input(today));
+    assert_eq!(
+        resolved.resolution.anchor,
+        TermAnchorSource::PublishedWeekLabels
+    );
+    assert_eq!(
+        resolved.resolution.week_one_monday,
+        Some(date("2026-09-07"))
+    );
+    assert_eq!(donor_of(&lender, today), None);
+
+    lender.modules = vec![
+        module_unlocked("w1", "Week 1", "2026-09-07T13:00:00Z"),
+        module_unlocked("w2", "Week 2", "2026-09-14T13:00:00Z"),
+    ];
+    assert_eq!(
+        donor_of(&lender, today).map(|d| (d.kind, d.start)),
+        Some((DonorKind::ModuleUnlocks, date("2026-09-07")))
+    );
+}
+
+/// Course dates whose own week-numbered posts contradict them more often than they bear them
+/// out lend nothing, even when the latest posts agree (the dates stay Medium).
+#[test]
+fn course_dates_contradicted_more_than_borne_out_lend_nothing() {
+    let today = "2026-11-05";
+    let mut lender = dated_lender();
+    // Late handouts: weeks 1–4 posted in weeks 3–6. Then weeks 7–9 on time.
+    lender.materials = vec![
+        material("h1", "Week 1 handout", "2026-09-22T12:00:00Z"),
+        material("h2", "Week 2 handout", "2026-09-29T12:00:00Z"),
+        material("h3", "Week 3 handout", "2026-10-06T12:00:00Z"),
+        material("h4", "Week 4 handout", "2026-10-13T12:00:00Z"),
+        material("s7", "Week 7 slides", "2026-10-20T12:00:00Z"),
+        material("s8", "Week 8 slides", "2026-10-27T12:00:00Z"),
+        material("s9", "Week 9 slides", "2026-11-03T12:00:00Z"),
+    ];
+    let resolved = resolve_term(&lender.input(today));
+    assert_eq!(resolved.resolution.anchor, TermAnchorSource::LmsCourseDates);
+    assert_eq!(resolved.resolution.anchor_confidence, Confidence::Medium);
+    assert_eq!(donor_of(&lender, today), None);
+
+    // One handout fewer: as many bear them out as contradict them, and they lend.
+    lender.materials.remove(0);
+    assert_eq!(
+        donor_of(&lender, today).map(|d| d.kind),
+        Some(DonorKind::CourseDates)
+    );
+}
+
+/// Course dates that a lower source disputes (lowered to Low) lend nothing, even when their own
+/// posts bear them out as often as not.
+#[test]
+fn disputed_course_dates_lend_nothing() {
+    let today = "2026-10-29";
+    let mut lender = dated_lender();
+    // Weeks 1–3 on time; then weeks 5–7 a week behind, so the fit says week 1 is the week of
+    // 09-14, a week from the course dates.
+    lender.materials = vec![
+        material("s1", "Week 1 slides", "2026-09-08T12:00:00Z"),
+        material("s2", "Week 2 slides", "2026-09-15T12:00:00Z"),
+        material("s3", "Week 3 slides", "2026-09-22T12:00:00Z"),
+        material("s5", "Week 5 slides", "2026-10-13T12:00:00Z"),
+        material("s6", "Week 6 slides", "2026-10-20T12:00:00Z"),
+        material("s7", "Week 7 slides", "2026-10-27T12:00:00Z"),
+    ];
+    let resolved = resolve_term(&lender.input(today));
+    assert_eq!(resolved.resolution.anchor, TermAnchorSource::LmsCourseDates);
+    assert_eq!(resolved.resolution.anchor_confidence, Confidence::Low);
+    assert_eq!(donor_of(&lender, today), None);
+}
+
 /// No chains: a course whose week comes from another course's dates lends nothing itself.
 #[test]
 fn a_borrowed_week_is_never_lent_on() {
@@ -2256,15 +2418,29 @@ fn a_borrower_s_confidence_follows_its_own_signals() {
     assert_eq!(t.term.anchor_confidence, Confidence::Low);
     assert!(codes(&t).contains(&"dates_may_be_wrong"));
 
-    // From module unlocks: Low, and agreeing notes don't raise the lent week.
+    // From module unlocks: Low, and an agreeing signal doesn't raise the lent week. Notes of
+    // week 6 posted 11 days ago are a Low signal, so the dates' week is the one chosen: lent
+    // student dates are raised by them, lent unlocks aren't.
+    let older_notes = vec![material("w6", "Week 6 notes", "2026-10-05T12:00:00Z")];
+    let mut dated = borrower(
+        uoft_window_term(),
+        lent(DonorKind::StudentDates, "2026-09-08", None, None),
+    );
+    dated.materials = older_notes.clone();
+    let t = dated.timeline("2026-10-16");
+    assert_eq!((t.current_week, t.confidence), (Some(6), Confidence::High));
     let mut unlocks = borrower(
         uoft_window_term(),
         lent(DonorKind::ModuleUnlocks, "2026-09-07", None, None),
     );
-    unlocks.materials = vec![material("w6", "Week 6 notes", "2026-10-13T12:00:00Z")];
+    unlocks.materials = older_notes;
     let t = unlocks.timeline("2026-10-16");
     assert_eq!(t.term.anchor_confidence, Confidence::Low);
-    assert_ne!(t.confidence, Confidence::High);
+    assert_eq!((t.current_week, t.confidence), (Some(6), Confidence::Low));
+    assert!(has_line(
+        &t,
+        "week 1 is the week of 2026-09-07 (from another course"
+    ));
 }
 
 /// The anchor's line shows the lender's dates; the borrower's own last day of classes has its
