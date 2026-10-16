@@ -210,6 +210,13 @@ export type SourceKind = "canvas" | "folder" | "ical";
 export type SourceErrorKind =
   "auth_expired_or_revoked" | "network" | "not_found" | "rate_limited" | "other";
 /**
+ * Why `apply_course_dates_to` left a course alone.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ApplySkipReason".
+ */
+export type ApplySkipReason = "not_same_session" | "no_dates" | "unknown_course";
+/**
  * How often PageLamp syncs by itself while it runs.
  *
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
@@ -540,6 +547,7 @@ export type TermAnchorSource =
   | "lms_term"
   | "folder_config"
   | "institution_calendar"
+  | "same_session"
   | "published_week_labels"
   | "none";
 /**
@@ -639,12 +647,17 @@ export type EvidenceCode =
   | "lms_term_dates"
   | "folder_dates"
   | "institution_calendar"
+  | "same_session_anchor"
+  | "same_session_unlocks"
+  | "dates_copied_from"
   | "week_labels_fit"
   | "no_course_dates"
   | "term_looks_like_enrollment_window"
   | "dates_not_used"
   | "end_not_used"
   | "dates_agree"
+  | "same_session_disagrees"
+  | "same_session_split"
   | "dates_may_be_wrong"
   | "session_window"
   | "institution_calendar_missing"
@@ -911,6 +924,7 @@ export interface PageLampAppTypes {
   ai_status: AiStatus;
   app_error: AppError;
   app_status: AppStatus;
+  apply_dates_report: ApplyDatesReport;
   auto_sync: AutoSync;
   auto_sync_trigger: AutoSyncTrigger;
   backend_kind: BackendKind;
@@ -967,10 +981,12 @@ export interface PageLampAppTypes {
   removal_report: RemovalReport;
   remove_ai_data_report: RemoveAiDataReport;
   remove_options: RemoveOptions;
+  replaced_dates: ReplacedDates;
   restore_outcome: RestoreOutcome;
   retention_fact: RetentionFact;
   search_hit: SearchHit;
   sent_data: SentData;
+  session_courses: SessionCourses;
   snooze_kind: SnoozeKind;
   source_error_kind: SourceErrorKind;
   source_record: SourceRecord;
@@ -1272,6 +1288,51 @@ export interface SourceRecord {
    */
   last_error_kind?: SourceErrorKind | null;
   last_synced_at?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ApplyDatesReport".
+ */
+export interface ApplyDatesReport {
+  /**
+   * The courses that now have the dates (ids).
+   */
+  applied: string[];
+  /**
+   * One per applied course, for undo (`restore_course_dates`).
+   */
+  replaced: ReplacedDates[];
+  skipped: SkippedCourse[];
+}
+/**
+ * What a course had before `apply_course_dates_to` replaced it: `restore_course_dates` puts it
+ * back exactly.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "ReplacedDates".
+ */
+export interface ReplacedDates {
+  course_id: string;
+  end?: string | null;
+  /**
+   * Those were dates from PageLamp 0.1 the student had never confirmed.
+   */
+  legacy: boolean;
+  /**
+   * The student's dates before (both `None`: it had none).
+   */
+  start?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SkippedCourse".
+ */
+export interface SkippedCourse {
+  /**
+   * The course as asked for (its id when it is known).
+   */
+  course_id: string;
+  reason: ApplySkipReason;
 }
 /**
  * Token counts of a run.
@@ -2883,6 +2944,49 @@ export interface SearchHit {
   snippet: string;
   url?: string | null;
   week_hint?: number | null;
+}
+/**
+ * The other courses of a course's session.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SessionCourses".
+ */
+export interface SessionCourses {
+  /**
+   * The other courses of the same session, section group and campus: removed ones left out,
+   * hidden ones in (`hidden`), the course itself not listed.
+   */
+  courses: SessionCourse[];
+  /**
+   * The school's session code (e.g. "20269"); `None` when the course has no session, and then
+   * `courses` is empty.
+   */
+  session?: string | null;
+}
+/**
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "SessionCourse".
+ */
+export interface SessionCourse {
+  anchor: TermAnchorSource;
+  code?: string | null;
+  course_id: string;
+  hidden: boolean;
+  name: string;
+  /**
+   * The student set dates in that course (dates from PageLamp 0.1 included): applying
+   * replaces them.
+   */
+  own_dates: boolean;
+  student_end?: string | null;
+  /**
+   * Those dates as saved; both `None` without own dates.
+   */
+  student_start?: string | null;
+  /**
+   * What counts the course's weeks now (lent dates included).
+   */
+  week_one_monday?: string | null;
 }
 /**
  * Outcome of syncing one source. A failing source is `ok: false` (not an `Err`), so

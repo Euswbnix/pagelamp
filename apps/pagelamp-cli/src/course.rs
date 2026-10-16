@@ -3,10 +3,10 @@
 //! from the facade; this module only renders.
 
 use chrono::NaiveDate;
-use pagelamp_app::{App, RemoveOptions, RestoreFailure, TombstoneState};
+use pagelamp_app::{App, ApplySkipReason, RemoveOptions, RestoreFailure, TombstoneState};
 use pagelamp_core::model::{
     CalendarOrigin, Confidence, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline,
-    EvidenceItem, LifecycleState, TermAnchorSource,
+    EvidenceCode, EvidenceItem, LifecycleState, TermAnchorSource,
 };
 use pagelamp_core::views::CourseSummary;
 
@@ -267,9 +267,27 @@ fn dates_used(timeline: &CourseTimeline) -> String {
     format!(
         "{} → {end} from {} ({}){origin}",
         first.first_class,
-        source_name(term.anchor),
+        anchor_name(timeline),
         confidence(term.anchor_confidence)
     )
+}
+
+/// The dates' source, naming the course for dates of another course of the same session.
+fn anchor_name(timeline: &CourseTimeline) -> String {
+    let lender = timeline
+        .evidence_items
+        .iter()
+        .find(|item| {
+            matches!(
+                item.evidence_code(),
+                Some(EvidenceCode::SameSessionAnchor | EvidenceCode::SameSessionUnlocks)
+            )
+        })
+        .and_then(|item| item.param("course"));
+    match (timeline.term.anchor, lender) {
+        (TermAnchorSource::SameSession, Some(course)) => format!("{course} (same session)"),
+        (source, _) => source_name(source).to_string(),
+    }
 }
 
 fn source_name(source: TermAnchorSource) -> &'static str {
@@ -279,6 +297,7 @@ fn source_name(source: TermAnchorSource) -> &'static str {
         TermAnchorSource::LmsTerm => "the LMS term",
         TermAnchorSource::FolderConfig => "the folder's dates",
         TermAnchorSource::InstitutionCalendar => "the school calendar",
+        TermAnchorSource::SameSession => "another course of the same session",
         TermAnchorSource::PublishedWeekLabels => "the week numbers of posted materials",
         TermAnchorSource::NoAnchor => "nothing",
     }
@@ -312,6 +331,102 @@ pub fn keep(
             course.display_name(),
             lifecycle.state.as_str()
         ),
+    }
+    Ok(())
+}
+
+/// `pagelamp course copy-dates <from> [<to>…] [--same-session]`: the student's dates of one
+/// course become the dates of other courses of its session. Without courses to copy to, it
+/// lists the session's courses.
+pub fn copy_dates(
+    app: &App,
+    from: &str,
+    to: Vec<String>,
+    same_session: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let from_course = app.course_overview(from)?.course;
+    let session = app.session_courses(&from_course.id)?;
+    let Some(code) = &session.session else {
+        anyhow::bail!(
+            "{} has no school session in its code, so no other course shares its dates.",
+            from_course.display_name()
+        );
+    };
+    if to.is_empty() && !same_session {
+        if json {
+            return print_json(&session);
+        }
+        if session.courses.is_empty() {
+            println!(
+                "{} is the only course of session {code}.",
+                from_course.display_name()
+            );
+            return Ok(());
+        }
+        println!(
+            "Courses of session {code} besides {}:",
+            from_course.display_name()
+        );
+        for course in &session.courses {
+            let own = match (course.student_start, course.student_end) {
+                (None, None) => String::new(),
+                (start, end) => format!(
+                    " — has its own dates ({} → {}), which would be replaced",
+                    start.map_or_else(|| "?".to_string(), |d| d.to_string()),
+                    end.map_or_else(|| "?".to_string(), |d| d.to_string())
+                ),
+            };
+            println!(
+                "  {}{}{own}",
+                course.code.as_deref().unwrap_or(&course.name),
+                if course.hidden { " (hidden)" } else { "" }
+            );
+        }
+        println!("Name the courses to copy to, or use --same-session for all of them.");
+        return Ok(());
+    }
+    let to = if same_session {
+        session
+            .courses
+            .iter()
+            .map(|c| c.course_id.clone())
+            .collect()
+    } else {
+        to
+    };
+    let report = app.apply_course_dates_to(&from_course.id, to)?;
+    if json {
+        return print_json(&report);
+    }
+    let label = |id: &str| {
+        session
+            .courses
+            .iter()
+            .find(|c| c.course_id == id)
+            .map_or_else(
+                || id.to_string(),
+                |c| c.code.clone().unwrap_or(c.name.clone()),
+            )
+    };
+    if report.applied.is_empty() {
+        println!("No course got the dates of {}.", from_course.display_name());
+    } else {
+        println!(
+            "The dates of {} are now also the dates of:",
+            from_course.display_name()
+        );
+        for id in &report.applied {
+            println!("  {}", label(id));
+        }
+    }
+    for skipped in &report.skipped {
+        let why = match skipped.reason {
+            ApplySkipReason::NotSameSession => "not a course of the same session",
+            ApplySkipReason::NoDates => "the course to copy from has no dates of yours",
+            ApplySkipReason::UnknownCourse => "no such course",
+        };
+        println!("  Skipped {}: {why}", label(&skipped.course_id));
     }
     Ok(())
 }

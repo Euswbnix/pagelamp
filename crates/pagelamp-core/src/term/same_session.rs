@@ -82,14 +82,6 @@ impl LentDates {
             DonorKind::ModuleUnlocks => Confidence::Low,
         }
     }
-
-    /// The evidence `basis` parameter.
-    pub fn basis(&self) -> &'static str {
-        match self.kind {
-            DonorKind::ModuleUnlocks => "module_unlocks",
-            DonorKind::StudentDates | DonorKind::CourseDates => "dates",
-        }
-    }
 }
 
 /// What the other courses of a session give one course.
@@ -290,10 +282,7 @@ mod tests {
         let Some(Lend::Dates(dates)) = lend("20269", &[unlocks]) else {
             panic!("unlocks lend");
         };
-        assert_eq!(
-            (dates.confidence(), dates.basis()),
-            (Confidence::Low, "module_unlocks")
-        );
+        assert_eq!(dates.confidence(), Confidence::Low);
     }
 
     #[test]

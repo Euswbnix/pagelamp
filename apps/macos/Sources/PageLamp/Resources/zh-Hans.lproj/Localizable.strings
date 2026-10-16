@@ -319,6 +319,7 @@
 "calendar.anchor.lms_term" = "Canvas 学期日期";
 "calendar.anchor.none" = "无来源";
 "calendar.anchor.published_week_labels" = "教授资料里的周数";
+"calendar.anchor.same_session" = "本学期另一门课的日期";
 "calendar.anchor.student_confirmed" = "你设置的日期";
 "calendar.anchorTitle.folder_config" = "课程文件夹设置";
 "calendar.anchorTitle.institution_calendar" = "学校校历";
@@ -326,6 +327,7 @@
 "calendar.anchorTitle.lms_term" = "Canvas 学期日期";
 "calendar.anchorTitle.none" = "无";
 "calendar.anchorTitle.published_week_labels" = "教授资料里的周数";
+"calendar.anchorTitle.same_session" = "本学期另一门课";
 "calendar.anchorTitle.student_confirmed" = "你设置的日期";
 "calendar.breakKind.holiday" = "假日";
 "calendar.breakKind.other" = "假期";
@@ -343,6 +345,7 @@
 "calendar.evidence.calendar_disagrees_with_notes" = "最近的资料是第 %1$@ 周的，但按日期是第 %2$@ 周";
 "calendar.evidence.course_end_passed" = "根据%2$@，这门课已于 %1$@ 结束";
 "calendar.evidence.dates_agree" = "与%1$@一致：第 1 周是 %2$@ 那一周";
+"calendar.evidence.dates_copied_from" = "你的日期，复制自 %1$@";
 "calendar.evidence.dates_ended" = "按课程日期，这门课已于 %1$@ 结束";
 "calendar.evidence.dates_may_be_wrong" = "根据%1$@，第 1 周是 %2$@ 那一周，相差 %3$@ 天。这些日期可能有误，请检查。";
 "calendar.evidence.dates_not_used" = "未采用：%1$@，%2$@ → %3$@。%4$@";
@@ -386,6 +389,11 @@
 "calendar.evidence.recent_activity" = "最近动态：%1$@";
 "calendar.evidence.removal_kept" = "你选择了保留这门课";
 "calendar.evidence.removal_snoozed" = "移除建议已暂停到 %1$@";
+"calendar.evidence.same_session_anchor" = "第 1 周取自同一学期（%2$@）的另一门课 %1$@：%3$@ 到 %4$@ 上课，第 1 周是 %5$@ 那一周";
+"calendar.evidence.same_session_anchor_no_end" = "第 1 周取自同一学期（%2$@）的另一门课 %1$@：%3$@ 那一周";
+"calendar.evidence.same_session_disagrees" = "同一学期的 %1$@ 把第 1 周定在 %2$@ 那一周，与本课自己的日期相差 %3$@ 天";
+"calendar.evidence.same_session_split" = "%1$@ 学期的几门课对第 1 周的判断不一致，因此都没有采用。请在其中一门课里设置开课第一天。";
+"calendar.evidence.same_session_unlocks" = "第 1 周根据同一学期（%2$@）另一门课 %1$@ 的模块开放时间推算：%3$@ 那一周。设置本课的开课第一天可以确保准确。";
 "calendar.evidence.session_ended" = "%1$@ 学期已于 %2$@ 结束";
 "calendar.evidence.session_starts" = "%1$@ 学期于 %2$@ 开始";
 "calendar.evidence.session_window" = "%1$@ 学期（%2$@）在 %3$@ – %4$@ 之间";

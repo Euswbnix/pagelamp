@@ -12,7 +12,6 @@
 //! | `reason`                                              | a `RejectReason` value          |
 //! | `signal`                                              | an `EvidenceSignal` value       |
 //! | `term_name`, `title`, `session`, `section`, `course`  | plain text, shown verbatim      |
-//! | `basis`                                               | `dates` or `module_unlocks`     |
 //!
 //! Text parameters are structure (titles, the LMS term name, a session code), never material
 //! text: no break labels, week topics or quotes (design §7.11, rule 8). Titles are still
@@ -111,10 +110,12 @@ evidence_codes! {
     FolderDates = "folder_dates",
     /// `session`, `start`, `end`: the school's published calendar is used (from alpha.2).
     InstitutionCalendar = "institution_calendar",
-    /// `course`, `session`, `monday`, `start`, `end?`, `basis`: week 1, and the ends of classes
-    /// and exams that course states, come from `course`, another course of the same session
-    /// (its own dates; `basis` `module_unlocks`: its module unlocks, so only Low).
+    /// `course`, `session`, `monday`, `start`, `end?`: week 1, and the ends of classes and exams
+    /// that course states, come from the dates of `course`, another course of the same session.
     SameSessionAnchor = "same_session_anchor",
+    /// `course`, `session`, `monday`: week 1 comes from the module unlocks of `course`, another
+    /// course of the same session (Low: setting the first day of classes makes it sure).
+    SameSessionUnlocks = "same_session_unlocks",
     /// `course`: the student's dates here were copied from `course` ("apply to my other
     /// courses").
     DatesCopiedFrom = "dates_copied_from",
@@ -427,15 +428,13 @@ fn english(item: &EvidenceItem) -> String {
             p("session"),
             span()
         ),
-        EvidenceCode::SameSessionAnchor if opt("basis").as_deref() == Some("module_unlocks") => {
-            format!(
-                "week 1 from the module unlocks of {}, same session {}: the week of {}. Set \
-                 this course's first day of classes to be sure",
-                p("course"),
-                p("session"),
-                p("monday")
-            )
-        }
+        EvidenceCode::SameSessionUnlocks => format!(
+            "week 1 from the module unlocks of {}, same session {}: the week of {}. Set this \
+             course's first day of classes to be sure",
+            p("course"),
+            p("session"),
+            p("monday")
+        ),
         EvidenceCode::SameSessionAnchor => format!(
             "using the dates of {}, same session {} ({}): week 1 is the week of {}",
             p("course"),

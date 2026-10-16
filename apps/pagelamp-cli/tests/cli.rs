@@ -1013,3 +1013,95 @@ fn search_never_prints_an_access_parameter() {
     assert!(ok(&pagelamp(&home, &["search", "zebrafish"])).contains("handout"));
     assert!(ok(&pagelamp(&home, &["search", "kiwi"])).contains("lemon"));
 }
+
+/// One course's dates count the weeks of the other courses of its session, and can be copied to
+/// them as their own (folder courses that name their school, so their session codes count).
+#[test]
+fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let courses = temp.path().join("Courses");
+    for (folder, code) in [
+        ("A", "DEM240H5 F LEC0101 20289"),
+        ("B", "DEM332H5 F LEC0102 20289"),
+        ("C", "DEM101H1 F LEC0101 20289"),
+    ] {
+        write(
+            &courses,
+            &format!("{folder}/course.toml"),
+            &format!(
+                "code = \"{code}\"\nname = \"Demo course {folder}\"\ninstitution = \"uoft\"\n"
+            ),
+        );
+    }
+    ok(&pagelamp(
+        &home,
+        &["folder", "add", courses.to_str().unwrap()],
+    ));
+    ok(&pagelamp(&home, &["sync"]));
+    ok(&pagelamp(
+        &home,
+        &[
+            "course",
+            "term",
+            "DEM240H5 F LEC0101 20289",
+            "--start",
+            "2028-09-05",
+            "--end",
+            "2028-12-05",
+        ],
+    ));
+
+    // The course of the same session counts the same weeks already, and says from where.
+    let timeline = ok(&pagelamp(
+        &home,
+        &["course", "timeline", "DEM332H5 F LEC0102 20289"],
+    ));
+    assert!(
+        timeline.contains(
+            "Dates:     2028-09-05 → 2028-12-05 from DEM240H5 F LEC0101 20289 (same session) \
+             (medium)"
+        ),
+        "{timeline}"
+    );
+
+    let listed = ok(&pagelamp(
+        &home,
+        &["course", "copy-dates", "DEM240H5 F LEC0101 20289"],
+    ));
+    assert!(
+        listed.contains("Courses of session 20289 besides DEM240H5 F LEC0101 20289"),
+        "{listed}"
+    );
+    assert!(listed.contains("  DEM332H5 F LEC0102 20289\n"), "{listed}");
+    assert!(!listed.contains("DEM101H1"), "{listed}");
+
+    let copied = ok(&pagelamp(
+        &home,
+        &[
+            "course",
+            "copy-dates",
+            "DEM240H5 F LEC0101 20289",
+            "--same-session",
+        ],
+    ));
+    assert!(
+        copied.contains(
+            "The dates of DEM240H5 F LEC0101 20289 — Demo course A are now also the dates \
+             of:\n  DEM332H5 F LEC0102 20289\n"
+        ),
+        "{copied}"
+    );
+    let timeline = ok(&pagelamp(
+        &home,
+        &["course", "timeline", "DEM332H5 F LEC0102 20289"],
+    ));
+    assert!(
+        timeline.contains("Dates:     2028-09-05 → 2028-12-05 from your dates (high)"),
+        "{timeline}"
+    );
+    assert!(
+        timeline.contains("your dates were copied from DEM240H5 F LEC0101 20289"),
+        "{timeline}"
+    );
+}

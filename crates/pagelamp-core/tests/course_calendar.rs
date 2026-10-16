@@ -2047,6 +2047,7 @@ fn module_unlocks_lend_at_low_and_lose_to_a_medium_fit() {
     assert_eq!(t.term.anchor, TermAnchorSource::SameSession);
     assert_eq!(t.term.anchor_confidence, Confidence::Low);
     assert_eq!((t.current_week, t.confidence), (Some(6), Confidence::Low));
+    assert!(codes(&t).contains(&"same_session_unlocks"));
     assert!(t.evidence.iter().any(|line| line
         == "week 1 from the module unlocks of DEM240H5 F LEC0101 20269, same session 20269: \
             the week of 2026-09-07. Set this course's first day of classes to be sure"));

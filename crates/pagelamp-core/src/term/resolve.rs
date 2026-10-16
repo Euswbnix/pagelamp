@@ -836,17 +836,21 @@ fn anchor_item(anchor: &Anchor, names: &AnchorNames<'_>) -> EvidenceItem {
                 .opt_date("end", end)
         }
         TermAnchorSource::SameSession => {
-            let item = EvidenceItem::new(EvidenceCode::SameSessionAnchor);
-            let item = match names.lent {
-                Some(lent) => item
-                    .text("course", &lent.course)
-                    .text("session", &lent.session)
-                    .text("basis", lent.basis()),
-                None => item,
-            };
-            item.date("monday", week_one_monday(anchor.start))
-                .date("start", anchor.start)
-                .opt_date("end", end)
+            let monday = week_one_monday(anchor.start);
+            match names.lent {
+                Some(lent) if lent.kind == DonorKind::ModuleUnlocks => {
+                    EvidenceItem::new(EvidenceCode::SameSessionUnlocks)
+                        .text("course", &lent.course)
+                        .text("session", &lent.session)
+                        .date("monday", monday)
+                }
+                lent => EvidenceItem::new(EvidenceCode::SameSessionAnchor)
+                    .opt_text("course", lent.map(|l| l.course.as_str()))
+                    .opt_text("session", lent.map(|l| l.session.as_str()))
+                    .date("monday", monday)
+                    .date("start", anchor.start)
+                    .opt_date("end", end),
+            }
         }
         TermAnchorSource::FolderConfig | TermAnchorSource::NoAnchor => {
             EvidenceItem::new(EvidenceCode::FolderDates)
