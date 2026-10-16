@@ -13,6 +13,7 @@ describe("mock: the other courses of a session", () => {
     const api = mock();
     const listed = await api.sessionCourses(FITTED);
     expect(listed.session).toMatch(/^\d{4}9$/);
+    expect(listed.campus).toBe(5);
     expect(listed.courses.map((c) => c.course_id).sort()).toEqual([LEGACY, UNLABELLED].sort());
     const legacy = listed.courses.find((c) => c.course_id === LEGACY);
     expect(legacy).toMatchObject({ own_dates: true, hidden: false });
@@ -28,6 +29,7 @@ describe("mock: the other courses of a session", () => {
     const api = createMockApi({ latencyMs: 0 });
     expect(await api.sessionCourses("folder:demo-courses/course/DEMO101")).toEqual({
       session: null,
+      campus: null,
       courses: [],
     });
   });
@@ -38,7 +40,7 @@ describe("mock: the other courses of a session", () => {
     const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED, SUMMER, "no-such-course"]);
     expect(report.applied).toEqual([UNLABELLED]);
     expect(report.replaced).toEqual([
-      { course_id: UNLABELLED, start: null, end: null, legacy: false },
+      { course_id: UNLABELLED, start: null, end: null, legacy: false, copied_from: null },
     ]);
     expect(report.skipped).toEqual([
       { course_id: SUMMER, reason: "not_same_session" },
@@ -62,11 +64,34 @@ describe("mock: the other courses of a session", () => {
     });
   });
 
-  it("never gives a course its own dates", async () => {
+  it("never gives a course its own dates, and gives a course asked for twice its dates once", async () => {
     const api = mock();
     await api.setCourseTerm(FITTED, "2026-09-08", null);
-    expect((await api.applyCourseDatesTo(FITTED, [FITTED])).skipped).toEqual([
-      { course_id: FITTED, reason: "not_same_session" },
+    const report = await api.applyCourseDatesTo(FITTED, [FITTED, UNLABELLED, UNLABELLED]);
+    expect(report.skipped).toEqual([{ course_id: FITTED, reason: "from_course" }]);
+    expect(report.applied).toEqual([UNLABELLED]);
+    expect(report.replaced).toHaveLength(1);
+  });
+
+  it("gives on no dates from version 0.1 the student hasn't confirmed", async () => {
+    const api = mock();
+    expect((await api.applyCourseDatesTo(LEGACY, [UNLABELLED])).skipped).toEqual([
+      { course_id: UNLABELLED, reason: "dates_not_confirmed" },
+    ]);
+  });
+
+  it("puts back where a course's dates had been copied from before", async () => {
+    const api = mock();
+    await api.setCourseTerm(FITTED, "2026-09-08", null);
+    await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    // Then the dates of the course they went to go on to a third one... and come back.
+    await api.setCourseTerm(LEGACY, "2026-09-15", null);
+    const report = await api.applyCourseDatesTo(LEGACY, [UNLABELLED]);
+    expect(report.replaced[0]).toMatchObject({ course_id: UNLABELLED, copied_from: FITTED });
+    await api.restoreCourseDates(report.replaced);
+    const items = (await api.courseOverview(UNLABELLED)).timeline.evidence_items;
+    expect(items.find((i) => i.code === "dates_copied_from")?.params).toEqual([
+      expect.objectContaining({ key: "course", value: expect.stringMatching(/^DEM332H5/) }),
     ]);
   });
 
@@ -88,8 +113,14 @@ describe("mock: the other courses of a session", () => {
     await api.setCourseTerm(FITTED, "2026-09-08", "2026-12-04");
     const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED, LEGACY]);
     expect(report.replaced).toEqual([
-      { course_id: UNLABELLED, start: null, end: null, legacy: false },
-      { course_id: LEGACY, start: before.student_start, end: null, legacy: true },
+      { course_id: UNLABELLED, start: null, end: null, legacy: false, copied_from: null },
+      {
+        course_id: LEGACY,
+        start: before.student_start,
+        end: null,
+        legacy: true,
+        copied_from: null,
+      },
     ]);
     await api.restoreCourseDates(report.replaced);
     const legacy = (await api.courseOverview(LEGACY)).timeline.term;

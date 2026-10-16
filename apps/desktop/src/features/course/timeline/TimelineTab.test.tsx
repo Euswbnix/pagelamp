@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
+import type { ApplySkipReason } from "@/api/types";
 import { todayIso } from "@/lib/format";
 import { DEMO101, DEMO310, openCourse } from "../testing";
 
@@ -440,19 +441,33 @@ describe("Timeline tab — also use these dates in", () => {
     expect(screen.queryByText(failed)).toBeNull();
   });
 
-  it("names the courses the dates couldn't be used in", async () => {
-    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
-    await othersGroup();
-    vi.spyOn(api, "applyCourseDatesTo").mockResolvedValue({
-      applied: [],
-      skipped: [{ course_id: UNLABELLED, reason: "not_same_session" }],
-      replaced: [],
-    });
-    await user.clear(start);
-    await user.type(start, "2026-09-08");
-    await user.click(screen.getByRole("button", { name: "Save dates" }));
-    expect(await screen.findByText(/^Not used in DEM240H5/)).toBeInTheDocument();
-  });
+  // Every reason the facade can give: a reason added in Rust fails to compile until it is here.
+  const SKIP_REASONS: Record<ApplySkipReason, true> = {
+    not_same_session: true,
+    no_dates: true,
+    unknown_course: true,
+    from_course: true,
+    dates_not_confirmed: true,
+  };
+
+  it.each(Object.keys(SKIP_REASONS) as ApplySkipReason[])(
+    "names the courses the dates couldn't be used in (%s)",
+    async (reason) => {
+      const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+      await othersGroup();
+      vi.spyOn(api, "applyCourseDatesTo").mockResolvedValue({
+        applied: [],
+        skipped: [{ course_id: UNLABELLED, reason }],
+        replaced: [],
+      });
+      await user.clear(start);
+      await user.type(start, "2026-09-08");
+      await user.click(screen.getByRole("button", { name: "Save dates" }));
+      expect(await screen.findByText(/^Not used in DEM240H5/)).toBeInTheDocument();
+      // This course's dates were saved all the same.
+      expect(screen.getByText("Course dates saved")).toBeInTheDocument();
+    },
+  );
 
   it("says in the other course where its dates came from", async () => {
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
@@ -469,7 +484,11 @@ describe("Timeline tab — also use these dates in", () => {
     await openCourse(DEMO101, { query: "tab=timeline", api });
     // Once the listing is in (empty for this course), and the form has rendered it.
     await waitFor(() => expect(listed).toHaveBeenCalled());
-    expect(await listed.mock.results[0]?.value).toEqual({ session: null, courses: [] });
+    expect(await listed.mock.results[0]?.value).toEqual({
+      session: null,
+      campus: null,
+      courses: [],
+    });
     await screen.findByLabelText("First day of classes");
     expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
     expect(screen.queryByText(/couldn't be listed/)).toBeNull();

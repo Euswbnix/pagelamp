@@ -732,6 +732,24 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return !open || m.text_status !== "unsupported";
   }
 
+  /** Which course a course's dates were copied from ("also use these dates in"), by id. */
+  const copiedFrom = new Map<string, string>();
+
+  /** The course's dates came from `fromId`: remembered, and said in its evidence. */
+  function markCopied(c: MockCourse, fromId: string) {
+    copiedFrom.set(c.course.id, fromId);
+    const from = db.courses.find((o) => o.course.id === fromId);
+    c.timeline = {
+      ...c.timeline,
+      evidence_items: [
+        from
+          ? ev("dates_copied_from", { course: from.course.code ?? from.course.name })
+          : ev("dates_copied_from"),
+        ...c.timeline.evidence_items,
+      ],
+    };
+  }
+
   /** The student's dates for a course, as the dates form saves them (null, null: clear them). */
   function setStudentTerm(c: MockCourse, start: string | null, end: string | null) {
     if (start === null && end === null) {
@@ -1073,13 +1091,15 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
       setStudentTerm(findCourse(courseId), start, end);
+      // The student's own dates now: no longer the ones copied from another course.
+      copiedFrom.delete(courseId);
     },
 
     sessionCourses: async (courseId) => {
       await sleep(latency);
       const c = findCourse(courseId);
       const key = sessionKey(c.course.code ?? null);
-      if (!key) return { session: null, courses: [] };
+      if (!key) return { session: null, campus: null, courses: [] };
       const courses = db.courses
         .filter((o) => o !== c && sessionKey(o.course.code ?? null)?.id === key.id)
         .map((o) => {
@@ -1096,7 +1116,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             anchor: o.timeline.term.anchor,
           };
         });
-      return { session: key.session, courses };
+      return { session: key.session, campus: key.campus, courses };
     },
 
     applyCourseDatesTo: async (from, to) => {
@@ -1104,16 +1124,23 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const source = findCourse(from);
       const key = sessionKey(source.course.code ?? null);
       const dates = ownDates(source);
+      // Dates from version 0.1 the student never confirmed aren't given on (like the facade).
+      const unconfirmed = source.timeline.term.anchor_origin === "legacy";
       const report: ApplyDatesReport = { applied: [], skipped: [], replaced: [] };
-      for (const courseId of to) {
+      // A course asked for twice is given the dates once.
+      for (const courseId of [...new Set(to)]) {
         const target = db.courses.find((c) => c.course.id === courseId);
         const reason = !target
           ? "unknown_course"
-          : target === source || !key || sessionKey(target.course.code ?? null)?.id !== key.id
-            ? "not_same_session"
-            : dates.start === null && dates.end === null
-              ? "no_dates"
-              : null;
+          : target === source
+            ? "from_course"
+            : !key || sessionKey(target.course.code ?? null)?.id !== key.id
+              ? "not_same_session"
+              : dates.start === null && dates.end === null
+                ? "no_dates"
+                : unconfirmed
+                  ? "dates_not_confirmed"
+                  : null;
         if (reason || !target) {
           report.skipped.push({ course_id: courseId, reason: reason ?? "unknown_course" });
           continue;
@@ -1126,16 +1153,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           start: before.start,
           end: before.end,
           legacy: target.timeline.term.anchor_origin === "legacy",
+          copied_from: copiedFrom.get(courseId) ?? null,
         });
         setStudentTerm(target, dates.start, dates.end);
-        // Where they came from, until the student saves dates of their own there.
-        target.timeline = {
-          ...target.timeline,
-          evidence_items: [
-            ev("dates_copied_from", { course: source.course.code ?? source.course.name }),
-            ...target.timeline.evidence_items,
-          ],
-        };
+        markCopied(target, source.course.id);
         report.applied.push(courseId);
       }
       return report;
@@ -1152,6 +1173,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           // Dates kept from version 0.1, still for the student to check.
           c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "legacy" } };
         }
+        // An earlier copy's mark comes back with its dates.
+        if (r.copied_from) markCopied(c, r.copied_from);
+        else copiedFrom.delete(r.course_id);
       }
     },
 
