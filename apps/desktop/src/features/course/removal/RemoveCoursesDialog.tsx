@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { toApiError } from "@/api/errors";
@@ -79,11 +79,13 @@ export function RemoveCoursesDialog({
   const [deleteBackup, setDeleteBackup] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Each opening starts from the suggestions again.
-  const [openedWith, setOpenedWith] = useState<string | null>(null);
-  const key = open ? initiallySelected.join("|") : null;
-  if (key !== openedWith) {
-    setOpenedWith(key);
+  // Each opening starts from the suggestions again. Only the opening: while the dialog is open
+  // the list can change under it (a "Keep" here, a sync that ends), and what the student has
+  // chosen stays as they left it. A course that is no longer listed drops out (`chosen`); one
+  // that is newly suggested isn't ticked for them.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) {
       setSelected(initiallySelected);
       setKept([]);
@@ -101,10 +103,6 @@ export function RemoveCoursesDialog({
   const backup = preview.data?.backup ?? null;
   // The backup box starts as the facade suggests, until the student changes it.
   const backupChecked = deleteBackup ?? backup?.delete_by_default ?? false;
-
-  useEffect(() => {
-    if (!open) setOpenedWith(null);
-  }, [open]);
 
   function toggle(id: string, on: boolean) {
     setSelected((list) => (on ? [...list, id] : list.filter((x) => x !== id)));

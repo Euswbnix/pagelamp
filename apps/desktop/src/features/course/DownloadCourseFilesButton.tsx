@@ -38,6 +38,7 @@ export function DownloadCourseFilesButton({
   const errorText = useApiErrorText();
   const download = useDownloadCourseFiles();
   const hintId = useId();
+  const dialogHintId = useId();
   const [open, setOpen] = useState(false);
   // "Downloading…" only while THIS course's files download. During any other run (a sync, the
   // first sync, another course's download, the CLI) the label stays, the button waits and says
@@ -107,9 +108,28 @@ export function DownloadCourseFilesButton({
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="items-center">
+          {/* A run can start under the open dialog (one PageLamp starts by itself, another
+              window's): the reason is said in here, where a screen reader is by then. */}
+          {waiting ? (
+            <span id={dialogHintId} className="text-xs text-muted-foreground sm:mr-auto">
+              {t("download.availableAfterSync")}
+            </span>
+          ) : null}
           <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
-          <AlertDialogAction disabled={busy} onClick={() => void start()}>
+          <AlertDialogAction
+            aria-disabled={busy || undefined}
+            aria-describedby={waiting ? dialogHintId : undefined}
+            className="aria-disabled:opacity-50"
+            onClick={(event) => {
+              if (busy) {
+                // Waiting: the dialog stays, with the reason next to the button.
+                event.preventDefault();
+                return;
+              }
+              void start();
+            }}
+          >
             {t("download.confirm")}
           </AlertDialogAction>
         </AlertDialogFooter>

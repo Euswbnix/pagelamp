@@ -1,11 +1,13 @@
 import {
   Archive,
+  Bell,
   BookOpenText,
   CalendarRange,
   FileSearch,
   FolderSync,
   type LucideIcon,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import type { WhatsNewTopic } from "@/api/types";
 
@@ -17,6 +19,8 @@ export const TOPIC_ICON: Record<WhatsNewTopic, LucideIcon> = {
   canvas_coverage: BookOpenText,
   course_removal: Archive,
   syllabus_reading: FileSearch,
+  ai_writing: Sparkles,
+  reminders: Bell,
 };
 
 /** Every WhatsNewTopic value this build knows. */
