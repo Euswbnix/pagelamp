@@ -3,9 +3,9 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
-## [Unreleased]
+## [0.3.0-alpha.1] — 2026-10-18
 
-What will be the first pre-release of v0.3.
+The first pre-release of v0.3.
 
 ### Added
 - Automatic updates: while it is open, PageLamp looks for a new version on GitHub once a day and
@@ -23,13 +23,14 @@ What will be the first pre-release of v0.3.
   never downloads files. With nobody at the app it checks your token and asks Canvas only for
   your course list (with each course's syllabus), deadlines and announcements; modules, pages,
   the file list and assignments are read when you start a sync, or when you open PageLamp, or
-  come back to its window and click, type or scroll there, and the last full sync is old enough
+  come back to its window and click or type there (scrolling doesn't count), and the last full sync is old enough
   (or a newly found course is waiting for its first full sync). Closing *What's new* or changing
   this setting counts as being at the app too. Canvas may record such a full sync as your
   activity in each course, as when you press Sync. A course found in between is listed at once
   and says that its materials haven't been read yet. After you stop a sync, nothing starts by
   itself for an hour. A sync PageLamp starts by itself says so in the `User-Agent` it sends to
-  Canvas.
+  Canvas, and in the log, with the kind of input that showed you were at the app (never which
+  key).
 - Course weeks that follow the real teaching dates: a Canvas term that is really an enrollment
   window (for example a "Fall" term that runs from May to January) is no longer used to count
   weeks. PageLamp uses the dates you set first; then the Canvas course's own dates or the Canvas

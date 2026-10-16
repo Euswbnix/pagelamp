@@ -52,7 +52,7 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
     list (with each course's syllabus), your deadlines and your courses' announcements. It makes
     no request for a course's modules, pages, file list or assignments. Canvas keeps its own
     records, and we can't promise that these requests leave none.
-  - When you open PageLamp, come back to its window and click, type or scroll, close "What's new",
+  - When you open PageLamp, come back to its window and click or type (scrolling doesn't count), close "What's new",
     or change this setting, and the last full sync is old enough or a newly found course hasn't
     been read yet, it runs the same sync as the Sync button. A window that only comes to the front
     doesn't count. Canvas may record a full sync as your activity in each course, as it would if
@@ -120,7 +120,9 @@ PageLamp writes log files only on your computer, in the `logs/` folder of your d
 keeps 7 days of them: each time it starts, it deletes the older ones. A short record of the last
 crash (`logs/last-crash.json`: time, version, a redacted message and the place in the code) stays
 until you dismiss the crash notice in the app or a later crash replaces it. Logs record what
-PageLamp did (e.g. "synced 5 courses", request paths and status codes) — never tokens,
+PageLamp did (e.g. "synced 5 courses", request paths and status codes; from v0.3, for each sync
+it starts by itself, whether you were at the app and the kind of thing that showed it, such as
+"a key", never which one) — never tokens,
 calendar-feed links, signed download links or course text; your home folder is shown as `~`. A
 diagnostic report (*Copy diagnostic report* in the app, or `pagelamp report`) is created only when
 you ask for it, shows you its full content first, and replaces course names with "Course 1",

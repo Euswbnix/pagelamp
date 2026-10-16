@@ -227,7 +227,7 @@ course list (with each course's syllabus), your deadlines and your courses' anno
 makes no request for a course's modules, pages, file list or assignments. The full sync described
 above runs when you start a sync. It also runs by itself when the last full sync is old enough (or
 a newly found course is waiting for its first full sync) and you are at the app: you open
-PageLamp, come back to its window and click, type or scroll, close "What's new" after an update,
+PageLamp, come back to its window and click or type (scrolling doesn't count), close "What's new" after an update,
 or change the automatic sync setting (*Sources & sync → Automatic sync*). A window that only comes
 to the front doesn't count. An automatic sync never downloads files.
 
@@ -379,7 +379,7 @@ Canvas 可能会像记录其他访问一样记录同步：就我们所知，课�
 
 （v0.3）每门课里 PageLamp 没读到的部分会连同原因记录下来。`pagelamp sync` 会显示通过链接找到了什么、有多少项没能读取；带原因的清单会交给你的 AI 应用，并告诉它不要猜测这些内容。
 
-（v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行。上次完整同步已经够久（或有新发现的课程还没读过）、而你正在使用应用时，它也会自己进行：你打开 PageLamp，切回它并在窗口里点击、输入或滚动，更新后关闭“有哪些新变化”，或更改自动同步设置（「数据来源与同步 → 自动同步」）。窗口只是被切到前台不算。自动同步从不下载文件。
+（v0.3）PageLamp 应用运行期间也会自己同步，默认每天两次，可以改成每天一次或关闭。你不在应用前时，它先验证令牌，然后只向 Canvas 请求你的课程列表（含每门课的教学大纲）、截止日期和各门课的公告，不请求任何课程的模块、页面、文件列表或作业。上面说的完整同步在你发起同步时进行。上次完整同步已经够久（或有新发现的课程还没读过）、而你正在使用应用时，它也会自己进行：你打开 PageLamp，切回它并在窗口里点击或按键（滚动不算），更新后关闭“有哪些新变化”，或更改自动同步设置（「数据来源与同步 → 自动同步」）。窗口只是被切到前台不算。自动同步从不下载文件。
 
 PageLamp 的 MCP 服务从不连接 Canvas 或互联网：它读取你电脑上的数据库。它只在两种情况下写入：你的 AI 应用请求保存内容时（学习计划）；以及更新之后有一次，用来把数据转成新格式、（v0.3）清理已保存的链接地址。同步是单独的一步，用的是你自己的 Canvas 令牌：由你发起，或者（v0.3）由运行中的 PageLamp 应用按你的设置发起。MCP 服务不给你的 AI 应用任何发起同步的途径。（v0.3）它还会告诉 AI 应用不要替你同步；v0.1.0 没有这句提示，能执行命令的 AI 应用有可能自己运行 `pagelamp sync`。
 
