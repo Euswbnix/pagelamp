@@ -1813,6 +1813,7 @@ pub struct SegmentInput {
 #[uniffi::remote(Record)]
 pub struct SessionCourses {
     pub session: Option<String>,
+    pub campus: Option<u8>,
     pub courses: Vec<SessionCourse>,
 }
 
@@ -1832,7 +1833,9 @@ pub struct SessionCourse {
 #[uniffi::remote(Enum)]
 pub enum ApplySkipReason {
     NotSameSession,
+    FromCourse,
     NoDates,
+    DatesNotConfirmed,
     UnknownCourse,
 }
 
@@ -1848,6 +1851,7 @@ pub struct ReplacedDates {
     pub start: Option<IsoDate>,
     pub end: Option<IsoDate>,
     pub legacy: bool,
+    pub copied_from: Option<String>,
 }
 
 #[uniffi::remote(Record)]

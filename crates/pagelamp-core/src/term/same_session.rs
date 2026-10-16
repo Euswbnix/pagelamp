@@ -4,27 +4,31 @@
 //! other courses with the same `session::SessionKey`, where they have nothing better.
 //!
 //! Who lends (a donor), from its OWN evidence only: a lent date never lends on, so there are no
-//! chains and no cycles (the views work every course out alone first, then lend).
+//! chains and no cycles (each course's donor is worked out with nothing lent to it). Whether a
+//! course lends is decided over its term, never by today's phase or today's strongest signal:
+//! a course keeps lending in a break, after its last class and when nothing new was posted.
 //! - `StudentDates`: the student's dates (the dates form, the CLI, an accepted calendar), not
 //!   the 0.1 dates the student never confirmed. Its ends: the student's last day of classes, or
 //!   the calendar's last class and end of exams.
-//! - `CourseDates`: its own LMS course dates, LMS term or folder dates, which the timeline raised
-//!   to High because an independent signal agrees (§6.7 rule 3), not disputed by a lower
-//!   source. Only LMS course dates state an end it lends.
-//! - `ModuleUnlocks`: a week that is High from module unlocks alone, when two or more unlock
-//!   days, each naming one week, all give the same week 1. Week 1 only, lent at Low.
+//! - `CourseDates`: its own LMS course dates, LMS term or folder dates, not disputed by a lower
+//!   source, with which its own week-numbered materials and module unlocks agree over the term
+//!   (`established`). Only LMS course dates state an end it lends.
+//! - `ModuleUnlocks`: a course without dates of its own whose module unlocks pin week 1: two or
+//!   more unlock days, each naming one week, all give the same Monday (the fit's day rule: a
+//!   Friday evening or a weekend counts for the next Monday). Week 1 only, lent at Low.
 //!
-//! The strongest kind present decides. Its donors must agree on week 1, else nothing is lent
-//! and the borrowers say the session's courses disagree (`Lend::Split`).
+//! The strongest kind present decides. Its courses must agree on week 1, else nothing is lent
+//! and every course of the session says so (`Lend::Split`), the disagreeing lenders included.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
 
-use super::evidence::EvidenceSignal;
+use super::fit::posting_day;
+use super::phase::teaching_week_on;
 use super::{CalendarOrigin, TermAnchorSource};
 use crate::calendar::CalendarInForce;
-use crate::dates::{Tz, add_days, course_date, week_one_monday};
+use crate::dates::{Tz, add_days, course_datetime, days_between, week_one_monday};
 use crate::model::{Confidence, Course, CourseTermData, Module};
 use crate::term::ResolvedTerm;
 
@@ -41,6 +45,9 @@ pub enum DonorKind {
 pub struct Donor {
     /// The course's code, or its name without one.
     pub course: String,
+    /// A hidden course lends too, but a reader that never shows hidden courses (the MCP server)
+    /// doesn't learn its name.
+    pub hidden: bool,
     pub kind: DonorKind,
     /// The first day of classes (for `ModuleUnlocks`, the Monday of week 1).
     pub start: NaiveDate,
@@ -59,8 +66,9 @@ impl Donor {
 /// The dates a course borrows from the others of its session.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LentDates {
-    /// The lending course's code, or its name without one.
-    pub course: String,
+    /// The lending course's code or name; `None` when the reader doesn't show hidden courses
+    /// and the lender is hidden ("another course of the same session").
+    pub course: Option<String>,
     /// The session code ("20269").
     pub session: String,
     pub kind: DonorKind,
@@ -88,7 +96,7 @@ impl LentDates {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Lend {
     Dates(LentDates),
-    /// The donors of the strongest kind disagree on week 1: nothing is lent.
+    /// The courses of the strongest kind disagree on week 1: nothing is lent.
     Split {
         session: String,
     },
@@ -103,23 +111,38 @@ impl Lend {
     }
 }
 
-/// What `donors` (the other courses of the session, never the borrower itself) lend; `None`
-/// when no course of the session can lend.
-pub fn lend(session: &str, donors: &[Donor]) -> Option<Lend> {
-    let best = donors.iter().map(|d| d.kind).min()?;
-    let mut top: Vec<&Donor> = donors.iter().filter(|d| d.kind == best).collect();
-    // A fixed order, so every view picks the same course to name.
-    top.sort_by(|a, b| a.course.cmp(&b.course).then(a.start.cmp(&b.start)));
+/// What one course is lent. `own` is what the course could lend itself, `others` what the other
+/// courses of its session can. `show_hidden`: whether the reader may name a hidden lender.
+///
+/// The strongest kind among all of them decides. If its courses disagree on week 1, it is a
+/// split for every course of the session, the disagreeing lenders too. Otherwise the course
+/// borrows from the others of that kind; a course that is the only one of the strongest kind
+/// borrows nothing (its own evidence is the best there is).
+pub fn lend(
+    session: &str,
+    own: Option<&Donor>,
+    others: &[Donor],
+    show_hidden: bool,
+) -> Option<Lend> {
+    let all: Vec<&Donor> = own.into_iter().chain(others).collect();
+    let best = all.iter().map(|d| d.kind).min()?;
+    let top: Vec<&Donor> = all.into_iter().filter(|d| d.kind == best).collect();
     let monday = top[0].monday();
     if top.iter().any(|d| d.monday() != monday) {
         return Some(Lend::Split {
             session: session.to_string(),
         });
     }
-    // They agree on week 1: the one that states an end lends it (the first, by name).
-    let donor = top.iter().find(|d| d.end.is_some()).unwrap_or(&top[0]);
+    let mut lenders: Vec<&Donor> = others.iter().filter(|d| d.kind == best).collect();
+    // A fixed order, so every view names the same course.
+    lenders.sort_by(|a, b| a.course.cmp(&b.course).then(a.start.cmp(&b.start)));
+    // They agree on week 1: the first, by name, that states an end lends it.
+    let donor = *lenders
+        .iter()
+        .find(|d| d.end.is_some())
+        .or(lenders.first())?;
     Some(Lend::Dates(LentDates {
-        course: donor.course.clone(),
+        course: (!donor.hidden || show_hidden).then(|| donor.course.clone()),
         session: session.to_string(),
         kind: best,
         start: donor.start,
@@ -128,26 +151,29 @@ pub fn lend(session: &str, donors: &[Donor]) -> Option<Lend> {
     }))
 }
 
-/// One course's own result, worked out without anything lent (the views' first pass).
+/// One course's own result, worked out with nothing lent to it.
 pub struct DonorInput<'a> {
     pub course: &'a Course,
     pub data: &'a CourseTermData,
     /// The course's accepted calendar, if any.
     pub calendar: Option<&'a CalendarInForce>,
     pub resolved: &'a ResolvedTerm,
-    /// The timeline's week confidence and the signal that chose the week.
-    pub week_confidence: Confidence,
-    pub chosen: Option<EvidenceSignal>,
     pub modules: &'a [Module],
     pub today: NaiveDate,
 }
 
 /// What the course can lend to the others of its session, if anything (module docs).
 pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
-    let term = &input.resolved.resolution;
-    let course = course_label(input.course);
-    let high_from =
-        |signal| input.week_confidence == Confidence::High && input.chosen == Some(signal);
+    let resolved = input.resolved;
+    let term = &resolved.resolution;
+    let donor = |kind, start, end, exams_end| Donor {
+        course: course_label(input.course),
+        hidden: input.course.hidden,
+        kind,
+        start,
+        end,
+        exams_end,
+    };
     match term.anchor {
         TermAnchorSource::StudentConfirmed
             if term.anchor_origin != Some(CalendarOrigin::Legacy) =>
@@ -160,45 +186,61 @@ pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
                 ),
                 None => (input.data.user_term_end, None),
             };
-            Some(Donor {
-                course,
-                kind: DonorKind::StudentDates,
-                start,
-                end,
-                exams_end,
-            })
+            Some(donor(DonorKind::StudentDates, start, end, exams_end))
         }
         TermAnchorSource::LmsCourseDates
         | TermAnchorSource::LmsTerm
         | TermAnchorSource::FolderConfig
-            if term.anchor_confidence == Confidence::Medium && high_from(EvidenceSignal::Dates) =>
+            if term.anchor_confidence == Confidence::Medium && established(resolved) =>
         {
             let segment = term.teaching.first()?;
             // Only the LMS course's own end is stated by the course: a term's end is the
             // school's, and a clipped end was replaced by the session window's.
             let end = segment.last_class.filter(|_| {
-                term.anchor == TermAnchorSource::LmsCourseDates && !input.resolved.end_clipped
+                term.anchor == TermAnchorSource::LmsCourseDates && !resolved.end_clipped
             });
-            Some(Donor {
-                course,
-                kind: DonorKind::CourseDates,
-                start: segment.first_class,
+            Some(donor(
+                DonorKind::CourseDates,
+                segment.first_class,
                 end,
-                exams_end: None,
-            })
+                None,
+            ))
         }
-        _ if high_from(EvidenceSignal::ModuleUnlock) => {
-            let monday = unlock_week_one(input.modules, input.today, input.resolved.tz)?;
-            Some(Donor {
-                course,
-                kind: DonorKind::ModuleUnlocks,
-                start: monday,
-                end: None,
-                exams_end: None,
-            })
+        TermAnchorSource::PublishedWeekLabels | TermAnchorSource::NoAnchor => {
+            let monday = unlock_week_one(input.modules, input.today, resolved.tz)?;
+            // Its own fit says otherwise: the course doesn't know its week 1 well enough to lend.
+            if term.anchor == TermAnchorSource::PublishedWeekLabels
+                && let Some(fitted) = term.week_one_monday
+                && days_between(fitted, monday).abs() >= 7
+            {
+                return None;
+            }
+            Some(donor(DonorKind::ModuleUnlocks, monday, None, None))
         }
         _ => None,
     }
+}
+
+/// The course's own dates are borne out over its term: at least two of its week-numbered
+/// posting days (materials and module unlocks, `fit::observations`) fall in the week they name
+/// or the week before it (posted a week ahead), and no more of them fall elsewhere.
+fn established(resolved: &ResolvedTerm) -> bool {
+    let term = &resolved.resolution;
+    let (agree, disagree) = resolved
+        .observations
+        .iter()
+        .filter_map(|o| {
+            let expected = teaching_week_on(term, o.day)?;
+            Some(o.week == expected || o.week == expected + 1)
+        })
+        .fold((0, 0), |(agree, disagree), ok| {
+            if ok {
+                (agree + 1, disagree)
+            } else {
+                (agree, disagree + 1)
+            }
+        });
+    agree >= 2 && disagree <= agree
 }
 
 /// The course's name in evidence: its code, or its name without one.
@@ -213,8 +255,9 @@ pub fn course_label(course: &Course) -> String {
 }
 
 /// Week 1 by the course's module unlocks: each unlock day on or before `today` whose modules
-/// name exactly one week gives `monday_of(day) − 7 × (week − 1)` (a weekend unlock counts for
-/// the next Monday). Two or more such days, all giving the same Monday, or nothing.
+/// name exactly one week gives `monday_of(day) − 7 × (week − 1)`, the day counted like a posting
+/// day of the fit (a Friday evening or a weekend counts for the next Monday). Two or more such
+/// days, all giving the same Monday, or nothing.
 pub(crate) fn unlock_week_one(
     modules: &[Module],
     today: NaiveDate,
@@ -225,9 +268,12 @@ pub(crate) fn unlock_week_one(
         let (Some(at), Some(week)) = (module.unlock_at, module.week_hint) else {
             continue;
         };
-        let day = course_date(at, tz);
-        if day <= today {
-            weeks_by_day.entry(day).or_default().insert(week);
+        let local = course_datetime(at, tz);
+        if local.date() <= today {
+            weeks_by_day
+                .entry(posting_day(local))
+                .or_default()
+                .insert(week);
         }
     }
     let mondays: Vec<NaiveDate> = weeks_by_day
@@ -245,6 +291,8 @@ pub(crate) fn unlock_week_one(
 
 #[cfg(test)]
 mod tests {
+    use chrono::{NaiveDateTime, TimeZone, Utc};
+
     use super::*;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -254,6 +302,7 @@ mod tests {
     fn donor(course: &str, kind: DonorKind, start: NaiveDate, end: Option<NaiveDate>) -> Donor {
         Donor {
             course: course.into(),
+            hidden: false,
             kind,
             start,
             end,
@@ -263,60 +312,95 @@ mod tests {
 
     #[test]
     fn the_strongest_kind_lends_when_its_courses_agree() {
-        assert_eq!(lend("20269", &[]), None);
-        let student = donor("DEM240H5", DonorKind::StudentDates, date(2026, 9, 8), None);
+        assert_eq!(lend("20269", None, &[], true), None);
+        let student = donor("DEM240H7", DonorKind::StudentDates, date(2026, 9, 8), None);
+        let dates = donor("DEM205H7", DonorKind::CourseDates, date(2026, 9, 21), None);
         let unlocks = donor(
-            "DEM332H5",
+            "DEM332H7",
             DonorKind::ModuleUnlocks,
             date(2026, 8, 31),
             None,
         );
-        let Some(Lend::Dates(dates)) = lend("20269", &[unlocks.clone(), student.clone()]) else {
+        // Student dates beat course dates beat unlocks, whatever the weaker ones say.
+        let Some(Lend::Dates(lent)) = lend(
+            "20269",
+            None,
+            &[unlocks.clone(), dates.clone(), student.clone()],
+            true,
+        ) else {
             panic!("the student's dates lend");
         };
-        assert_eq!(dates.course, "DEM240H5");
-        assert_eq!(dates.kind, DonorKind::StudentDates);
-        assert_eq!(dates.monday(), date(2026, 9, 7));
-        assert_eq!(dates.confidence(), Confidence::Medium);
+        assert_eq!(
+            (lent.course.as_deref(), lent.kind),
+            (Some("DEM240H7"), DonorKind::StudentDates)
+        );
+        assert_eq!(lent.monday(), date(2026, 9, 7));
+        assert_eq!(lent.confidence(), Confidence::Medium);
+        let Some(Lend::Dates(lent)) = lend("20269", None, &[unlocks.clone(), dates], true) else {
+            panic!("course dates lend");
+        };
+        assert_eq!(lent.kind, DonorKind::CourseDates);
         // Module unlocks alone lend at Low.
-        let Some(Lend::Dates(dates)) = lend("20269", &[unlocks]) else {
+        let Some(Lend::Dates(lent)) = lend("20269", None, &[unlocks], true) else {
             panic!("unlocks lend");
         };
-        assert_eq!(dates.confidence(), Confidence::Low);
+        assert_eq!(lent.confidence(), Confidence::Low);
     }
 
     #[test]
-    fn agreeing_donors_lend_the_one_with_an_end_and_disagreeing_ones_lend_nothing() {
-        let a = donor("DEM205H5", DonorKind::CourseDates, date(2026, 9, 9), None);
+    fn agreeing_lenders_lend_the_one_with_an_end_and_disagreeing_ones_lend_nothing() {
+        let a = donor("DEM205H7", DonorKind::CourseDates, date(2026, 9, 9), None);
         let b = donor(
-            "DEM240H5",
+            "DEM240H7",
             DonorKind::CourseDates,
             date(2026, 9, 8),
             Some(date(2026, 12, 8)),
         );
-        let Some(Lend::Dates(dates)) = lend("20269", &[a.clone(), b]) else {
+        let Some(Lend::Dates(lent)) = lend("20269", None, &[a.clone(), b], true) else {
             panic!("same week 1");
         };
         assert_eq!(
-            (dates.course.as_str(), dates.end),
-            ("DEM240H5", Some(date(2026, 12, 8)))
+            (lent.course.as_deref(), lent.end),
+            (Some("DEM240H7"), Some(date(2026, 12, 8)))
         );
-        let late = donor("DEM310H5", DonorKind::CourseDates, date(2026, 9, 15), None);
+        let late = donor("DEM310H7", DonorKind::CourseDates, date(2026, 9, 15), None);
+        let split = Some(Lend::Split {
+            session: "20269".into(),
+        });
+        assert_eq!(lend("20269", None, &[a.clone(), late.clone()], true), split);
+        // A course that is itself one of the disagreeing lenders gets the split too, not the
+        // other's date.
         assert_eq!(
-            lend("20269", &[a, late]),
-            Some(Lend::Split {
-                session: "20269".into()
-            })
+            lend("20269", Some(&a), std::slice::from_ref(&late), true),
+            split
         );
+        // The only one of the strongest kind borrows nothing.
+        let unlocks = donor("DEM332H7", DonorKind::ModuleUnlocks, date(2026, 9, 7), None);
+        assert_eq!(lend("20269", Some(&late), &[unlocks], true), None);
     }
 
-    fn module(week: u32, unlock: NaiveDate) -> Module {
+    #[test]
+    fn a_hidden_lender_is_named_only_to_a_reader_that_shows_hidden_courses() {
+        let mut hidden = donor("DEM240H7", DonorKind::StudentDates, date(2026, 9, 8), None);
+        hidden.hidden = true;
+        let named = |show| {
+            lend("20269", None, std::slice::from_ref(&hidden), show)
+                .and_then(|l| l.dates().cloned())
+                .map(|d| d.course)
+        };
+        assert_eq!(named(true), Some(Some("DEM240H7".into())));
+        assert_eq!(named(false), Some(None));
+    }
+
+    /// A module opening at `local` (taken as UTC: the tests pass no zone).
+    fn module(week: u32, local: &str) -> Module {
+        let at = NaiveDateTime::parse_from_str(local, "%Y-%m-%d %H:%M").unwrap();
         Module {
-            id: format!("m{week}-{unlock}"),
+            id: format!("m{week}-{local}"),
             course_id: "c".into(),
             name: format!("Week {week}"),
             position: Some(i64::from(week)),
-            unlock_at: Some(unlock.and_hms_opt(12, 0, 0).unwrap().and_utc()),
+            unlock_at: Some(Utc.from_utc_datetime(&at)),
             week_hint: Some(week),
         }
     }
@@ -326,25 +410,56 @@ mod tests {
         let today = date(2026, 10, 16);
         // One unlock lends nothing.
         assert_eq!(
-            unlock_week_one(&[module(5, date(2026, 10, 5))], today, None),
+            unlock_week_one(&[module(5, "2026-10-05 09:00")], today, None),
             None
         );
-        // Week 5 on Oct 5 and week 6 on Sunday Oct 11 (counts for Monday Oct 12): Sept 7.
-        let agreeing = [module(5, date(2026, 10, 5)), module(6, date(2026, 10, 11))];
+        // Week 5 on Monday Oct 5 and week 6 on Sunday Oct 11 (counts for Monday Oct 12).
+        let agreeing = [module(5, "2026-10-05 09:00"), module(6, "2026-10-11 20:00")];
         assert_eq!(
             unlock_week_one(&agreeing, today, None),
             Some(date(2026, 9, 7))
         );
         // One early unlock makes them disagree.
-        let early = [module(5, date(2026, 10, 5)), module(7, date(2026, 10, 12))];
+        let early = [module(5, "2026-10-05 09:00"), module(7, "2026-10-12 09:00")];
         assert_eq!(unlock_week_one(&early, today, None), None);
         // A day naming two weeks says nothing; a future unlock doesn't count.
         let batch = [
-            module(5, date(2026, 10, 5)),
-            module(2, date(2026, 9, 14)),
-            module(3, date(2026, 9, 14)),
-            module(7, date(2026, 10, 19)),
+            module(5, "2026-10-05 09:00"),
+            module(2, "2026-09-14 09:00"),
+            module(3, "2026-09-14 09:00"),
+            module(7, "2026-10-19 09:00"),
         ];
         assert_eq!(unlock_week_one(&batch, today, None), None);
+    }
+
+    /// The fit's day rule: a module opening on a Friday evening counts for the next Monday, one
+    /// opening on a Thursday for its own week, exactly as the fit counts a posting.
+    #[test]
+    fn unlocks_count_their_day_like_the_fit() {
+        let today = date(2026, 10, 16);
+        let friday_evening = [module(5, "2026-10-05 09:00"), module(6, "2026-10-09 19:00")];
+        assert_eq!(
+            unlock_week_one(&friday_evening, today, None),
+            Some(date(2026, 9, 7))
+        );
+        // Friday morning is still its own week: week 6 then puts week 1 a week earlier, so the
+        // two unlocks disagree.
+        let friday_morning = [module(5, "2026-10-05 09:00"), module(6, "2026-10-09 09:00")];
+        assert_eq!(unlock_week_one(&friday_morning, today, None), None);
+        let thursday = [module(5, "2026-10-01 09:00"), module(6, "2026-10-08 09:00")];
+        assert_eq!(
+            unlock_week_one(&thursday, today, None),
+            Some(date(2026, 8, 31))
+        );
+        // The fit puts the same days in the same weeks.
+        for days in [&friday_evening[..], &thursday[..]] {
+            let expected = unlock_week_one(days, today, None).unwrap();
+            for o in super::super::fit::observations(days, &[], None, today) {
+                assert_eq!(
+                    add_days(week_one_monday(o.day), -7 * (i64::from(o.week) - 1)),
+                    expected
+                );
+            }
+        }
     }
 }

@@ -215,7 +215,8 @@ export type SourceErrorKind =
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "ApplySkipReason".
  */
-export type ApplySkipReason = "not_same_session" | "no_dates" | "unknown_course";
+export type ApplySkipReason =
+  "not_same_session" | "from_course" | "no_dates" | "dates_not_confirmed" | "unknown_course";
 /**
  * How often PageLamp syncs by itself while it runs.
  *
@@ -1312,6 +1313,10 @@ export interface ApplyDatesReport {
  * via the `definition` "ReplacedDates".
  */
 export interface ReplacedDates {
+  /**
+   * They were themselves copied from this course (its id).
+   */
+  copied_from?: string | null;
   course_id: string;
   end?: string | null;
   /**
@@ -2953,13 +2958,18 @@ export interface SearchHit {
  */
 export interface SessionCourses {
   /**
+   * The campus digit of the course's code; `None` when its code doesn't say (then no other
+   * course shares its session, and `courses` is empty).
+   */
+  campus?: number | null;
+  /**
    * The other courses of the same session, section group and campus: removed ones left out,
    * hidden ones in (`hidden`), the course itself not listed.
    */
   courses: SessionCourse[];
   /**
-   * The school's session code (e.g. "20269"); `None` when the course has no session, and then
-   * `courses` is empty.
+   * The school's session code (e.g. "20269"); `None` when the course's code or name has
+   * none, and then `courses` is empty.
    */
   session?: string | null;
 }
