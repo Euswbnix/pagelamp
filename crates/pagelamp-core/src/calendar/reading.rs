@@ -52,8 +52,10 @@ pub fn reading_inputs(
     signals: &CandidateSignals,
 ) -> crate::Result<ReadingInputs> {
     let data = CourseData::load(store, course)?;
-    // The week the views show today (none for a course that is over or hasn't started).
-    let (resolved, timeline, _) = data.state(course, at);
+    // The week the views show today (none for a course that is over or hasn't started). What
+    // is read here may go to a model: a hidden course of the session isn't named.
+    let lend = data.session_lend(store, course, at, false)?;
+    let (resolved, timeline, _) = data.state(course, at, lend.as_ref(), false);
     let candidates = candidates_in(store, &data, &resolved, signals)?;
     let mut sources = HashMap::new();
     let mut manifest = Vec::new();

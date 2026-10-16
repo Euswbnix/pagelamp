@@ -1014,3 +1014,134 @@ fn search_never_prints_an_access_parameter() {
     assert!(ok(&pagelamp(&home, &["search", "zebrafish"])).contains("handout"));
     assert!(ok(&pagelamp(&home, &["search", "kiwi"])).contains("lemon"));
 }
+
+/// One course's dates count the weeks of the other courses of its session, and can be copied to
+/// them as their own (folder courses that name their school, so their session codes count;
+/// campus digits 7 and 8, which no school calendar file holds).
+#[test]
+fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let courses = temp.path().join("Courses");
+    for (folder, code, school) in [
+        ("A", "DEM240H7 F LEC0101 20289", true),
+        ("B", "DEM332H7 F LEC0102 20289", true),
+        ("C", "DEM101H8 F LEC0101 20289", true),
+        ("D", "DEMO999 20289", true),
+        ("E", "DEM250H7 F LEC0101 20289", false),
+        ("F", "DEM260H7 F LEC0101", true),
+    ] {
+        let institution = if school {
+            "institution = \"uoft\"\n"
+        } else {
+            ""
+        };
+        write(
+            &courses,
+            &format!("{folder}/course.toml"),
+            &format!("code = \"{code}\"\nname = \"Demo course {folder}\"\n{institution}"),
+        );
+    }
+    ok(&pagelamp(
+        &home,
+        &["folder", "add", courses.to_str().unwrap()],
+    ));
+    ok(&pagelamp(&home, &["sync"]));
+    ok(&pagelamp(
+        &home,
+        &[
+            "course",
+            "term",
+            "DEM240H7 F LEC0101 20289",
+            "--start",
+            "2028-09-05",
+            "--end",
+            "2028-12-05",
+        ],
+    ));
+
+    // The course of the same session counts the same weeks already, and says from where.
+    let timeline = ok(&pagelamp(
+        &home,
+        &["course", "timeline", "DEM332H7 F LEC0102 20289"],
+    ));
+    assert!(
+        timeline.contains(
+            "Dates:     2028-09-05 → 2028-12-05 from DEM240H7 F LEC0101 20289 (same session, \
+             medium)"
+        ),
+        "{timeline}"
+    );
+
+    let listed = ok(&pagelamp(
+        &home,
+        &["course", "copy-dates", "DEM240H7 F LEC0101 20289"],
+    ));
+    assert!(
+        listed.contains("Courses of session 20289 besides DEM240H7 F LEC0101 20289"),
+        "{listed}"
+    );
+    assert!(listed.contains("  DEM332H7 F LEC0102 20289\n"), "{listed}");
+    assert!(!listed.contains("DEM101H8"), "{listed}");
+
+    let copied = ok(&pagelamp(
+        &home,
+        &[
+            "course",
+            "copy-dates",
+            "DEM240H7 F LEC0101 20289",
+            "DEM332H7 F LEC0102 20289",
+            "DEM101H8 F LEC0101 20289",
+        ],
+    ));
+    assert!(
+        copied.contains(
+            "The dates of DEM240H7 F LEC0101 20289 — Demo course A are now also the dates \
+             of:\n  DEM332H7 F LEC0102 20289\n"
+        ),
+        "{copied}"
+    );
+    // A skipped course is named by its code, not its id.
+    assert!(
+        copied.contains("  Skipped DEM101H8 F LEC0101 20289: not a course of the same session"),
+        "{copied}"
+    );
+    let timeline = ok(&pagelamp(
+        &home,
+        &["course", "timeline", "DEM332H7 F LEC0102 20289"],
+    ));
+    assert!(
+        timeline.contains("Dates:     2028-09-05 → 2028-12-05 from your dates (high)"),
+        "{timeline}"
+    );
+    assert!(
+        timeline.contains("your dates were copied from DEM240H7 F LEC0101 20289"),
+        "{timeline}"
+    );
+
+    // A code without a campus digit: what is missing is said.
+    let no_campus = pagelamp(&home, &["course", "copy-dates", "DEMO999 20289"]);
+    assert!(!no_campus.status.success());
+    let message = String::from_utf8_lossy(&no_campus.stderr);
+    assert!(message.contains("doesn't say its campus"), "{message}");
+    // A session code, but a course of a school whose sessions PageLamp doesn't read (a folder
+    // course that doesn't name it): that is what is said.
+    let no_school = pagelamp(&home, &["course", "copy-dates", "DEM250H7 F LEC0101 20289"]);
+    assert!(!no_school.status.success());
+    let message = String::from_utf8_lossy(&no_school.stderr);
+    assert!(
+        message.contains(
+            "DEM250H7 F LEC0101 20289 — Demo course E's school isn't one PageLamp reads session \
+             codes for"
+        ),
+        "{message}"
+    );
+    // No session code at all.
+    let no_code = pagelamp(&home, &["course", "copy-dates", "DEM260H7 F LEC0101"]);
+    assert!(!no_code.status.success());
+    let message = String::from_utf8_lossy(&no_code.stderr);
+    assert!(
+        message.contains("has no session code at the end of its code or name"),
+        "{message}"
+    );
+}

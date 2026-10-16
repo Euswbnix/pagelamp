@@ -96,6 +96,7 @@ export function resolution(partial: Partial<TermResolution> = {}): TermResolutio
     not_used: [],
     student_start: null,
     student_end: null,
+    student_dates_confirmed: true,
     ...partial,
   };
 }
@@ -187,6 +188,7 @@ export function withStudentDates(
     anchor_origin: "user",
     student_start: start,
     student_end: end,
+    student_dates_confirmed: true,
   });
   const evidence = [
     ev("student_dates", { ...(start ? { start } : {}), ...(end ? { end } : {}) }),
