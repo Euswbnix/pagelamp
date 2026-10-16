@@ -686,7 +686,8 @@ fn a_finished_course_shows_its_lifecycle_not_a_week() {
     }
     let today = Local::now().date_naive();
     // Next year's winter session: its window (January to April) is always ahead.
-    let winter = format!("DEM210H5 S LEC0101 {}1", today.year() + 1);
+    // (Campus digit 7: no school calendar file holds it, so no shipped dates ever reach it.)
+    let winter = format!("DEM210H7 S LEC0101 {}1", today.year() + 1);
     // (source, external id, code, Canvas's facts, a week-numbered file and its age in days)
     let courses = [
         // No dates at all, nothing for two years.
@@ -764,7 +765,7 @@ fn a_finished_course_shows_its_lifecycle_not_a_week() {
     for (code, label) in [
         ("OLD909", "inactive"),
         ("DONE777", "ended"),
-        ("DEM210H5", "starts "),
+        ("DEM210H7", "starts "),
     ] {
         assert!(line(code).contains(label), "{}", line(code));
         assert!(!line(code).contains("week"), "{}", line(code));
@@ -1022,18 +1023,23 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
     let courses = temp.path().join("Courses");
-    for (folder, code) in [
-        ("A", "DEM240H7 F LEC0101 20289"),
-        ("B", "DEM332H7 F LEC0102 20289"),
-        ("C", "DEM101H8 F LEC0101 20289"),
-        ("D", "DEMO999 20289"),
+    for (folder, code, school) in [
+        ("A", "DEM240H7 F LEC0101 20289", true),
+        ("B", "DEM332H7 F LEC0102 20289", true),
+        ("C", "DEM101H8 F LEC0101 20289", true),
+        ("D", "DEMO999 20289", true),
+        ("E", "DEM250H7 F LEC0101 20289", false),
+        ("F", "DEM260H7 F LEC0101", true),
     ] {
+        let institution = if school {
+            "institution = \"uoft\"\n"
+        } else {
+            ""
+        };
         write(
             &courses,
             &format!("{folder}/course.toml"),
-            &format!(
-                "code = \"{code}\"\nname = \"Demo course {folder}\"\ninstitution = \"uoft\"\n"
-            ),
+            &format!("code = \"{code}\"\nname = \"Demo course {folder}\"\n{institution}"),
         );
     }
     ok(&pagelamp(
@@ -1118,4 +1124,24 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
     assert!(!no_campus.status.success());
     let message = String::from_utf8_lossy(&no_campus.stderr);
     assert!(message.contains("doesn't say its campus"), "{message}");
+    // A session code, but a course of a school whose sessions PageLamp doesn't read (a folder
+    // course that doesn't name it): that is what is said.
+    let no_school = pagelamp(&home, &["course", "copy-dates", "DEM250H7 F LEC0101 20289"]);
+    assert!(!no_school.status.success());
+    let message = String::from_utf8_lossy(&no_school.stderr);
+    assert!(
+        message.contains(
+            "DEM250H7 F LEC0101 20289 — Demo course E's school isn't one PageLamp reads session \
+             codes for"
+        ),
+        "{message}"
+    );
+    // No session code at all.
+    let no_code = pagelamp(&home, &["course", "copy-dates", "DEM260H7 F LEC0101"]);
+    assert!(!no_code.status.success());
+    let message = String::from_utf8_lossy(&no_code.stderr);
+    assert!(
+        message.contains("has no session code at the end of its code or name"),
+        "{message}"
+    );
 }

@@ -454,6 +454,8 @@ pub struct TermResolution {
     pub not_used: Vec<RejectedDates>,
     pub student_start: Option<IsoDate>,
     pub student_end: Option<IsoDate>,
+    #[uniffi(default = true)]
+    pub student_dates_confirmed: bool,
 }
 
 #[uniffi::remote(Record)]

@@ -8,6 +8,7 @@ use pagelamp_core::model::{
     CalendarOrigin, Confidence, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline,
     EvidenceCode, EvidenceItem, LifecycleState, TermAnchorSource,
 };
+use pagelamp_core::term::session::parse_uoft_session;
 use pagelamp_core::views::CourseSummary;
 
 use crate::{ai_materials, confidence, print_json};
@@ -349,6 +350,14 @@ pub fn copy_dates(
     let from_name = from_course.display_name();
     let session = app.session_courses(&from_course.id)?;
     let Some(code) = &session.session else {
+        // The code may end in a session code all the same: then its school (its LMS host, or
+        // a folder course's `institution`) isn't one whose sessions PageLamp reads.
+        if parse_uoft_session(from_course.code.as_deref(), &from_course.name).is_some() {
+            anyhow::bail!(
+                "{from_name}'s school isn't one PageLamp reads session codes for, so no other \
+                 course shares its dates."
+            );
+        }
         anyhow::bail!(
             "{from_name} has no session code at the end of its code or name, so no other course \
              shares its dates."

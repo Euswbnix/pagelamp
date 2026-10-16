@@ -2151,6 +2151,13 @@ export interface TermResolution {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * False exactly when the course has dates of the student's (`student_start` or
+   * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
+   * `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
+   * copied to the other courses of the session.
+   */
+  student_dates_confirmed: boolean;
   student_end?: string | null;
   /**
    * The student's own first/last day of classes as saved (the raw overrides, whichever
@@ -3370,6 +3377,13 @@ export interface TermResolution1 {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * False exactly when the course has dates of the student's (`student_start` or
+   * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
+   * `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
+   * copied to the other courses of the session.
+   */
+  student_dates_confirmed: boolean;
   student_end?: string | null;
   /**
    * The student's own first/last day of classes as saved (the raw overrides, whichever

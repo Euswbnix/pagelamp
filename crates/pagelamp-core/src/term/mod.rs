@@ -294,6 +294,11 @@ pub struct TermResolution {
     /// the fields the student didn't edit.
     pub student_start: Option<NaiveDate>,
     pub student_end: Option<NaiveDate>,
+    /// False exactly when the course has dates of the student's (`student_start` or
+    /// `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
+    /// `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
+    /// copied to the other courses of the session.
+    pub student_dates_confirmed: bool,
 }
 
 impl Default for TermResolution {
@@ -311,6 +316,7 @@ impl Default for TermResolution {
             not_used: Vec::new(),
             student_start: None,
             student_end: None,
+            student_dates_confirmed: true,
         }
     }
 }
