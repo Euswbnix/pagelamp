@@ -23,8 +23,8 @@
 //!   the source's `last_synced_at`, and a course it finds for the first time is listed with
 //!   `structure_pending` until a full sync reads it. When the student is at the app, a run
 //!   reads everything, like pressing Sync. At the app means: the student opened PageLamp, did
-//!   something in its window after it came to the front (a press, a key, the wheel), closed
-//!   What's new, or changed the setting. A window that only gained focus is not attended.
+//!   something in its window after it came to the front (a press or a key, not scrolling),
+//!   closed What's new, or changed the setting. A window that only gained focus is not attended.
 //! - After the student stops a sync (any sync of this app), nothing starts by itself for an
 //!   hour.
 //! - It reads only the sources that are due, leaves out the ones only the student can fix,
