@@ -20,6 +20,7 @@ import { sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
+  type ApplyDatesReport,
   type AppStatus,
   type AutoSync,
   aiMaterialsState,
@@ -44,6 +45,7 @@ import {
 import { createMockAi } from "./ai";
 import {
   defaultKeepUntil,
+  ev,
   isoOf,
   withCourseDates,
   withoutStudentDates,
@@ -65,6 +67,7 @@ import {
 } from "./fixtures";
 import { createProposalsMock } from "./proposals";
 import { createLifecycleMock } from "./removal";
+import { sessionKey } from "./sessions";
 import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
@@ -729,6 +732,29 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return !open || m.text_status !== "unsupported";
   }
 
+  /** The student's dates for a course, as the dates form saves them (null, null: clear them). */
+  function setStudentTerm(c: MockCourse, start: string | null, end: string | null) {
+    if (start === null && end === null) {
+      clearStudentDates(c);
+      return;
+    }
+    // COALESCE(user, synced), per field; the student's end is the last day of classes.
+    c.course.term_start = start ?? c.synced.termStart;
+    c.course.term_end = end ?? c.synced.termEnd;
+    c.course.term_source = "user";
+    const next = withStudentDates(c.timeline, start, end, isoOf(now()));
+    c.timeline = next.timeline;
+    c.lifecycle = next.lifecycle;
+  }
+
+  /** The dates the student set in a course (also ones kept from version 0.1). */
+  function ownDates(c: MockCourse): { start: string | null; end: string | null } {
+    return {
+      start: c.timeline.term.student_start ?? null,
+      end: c.timeline.term.student_end ?? null,
+    };
+  }
+
   /** The student's dates cleared: back to what the source reported (like the facade). */
   function clearStudentDates(c: MockCourse) {
     c.course.term_start = c.synced.termStart;
@@ -1046,19 +1072,87 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (start && end && end < start) {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
+      setStudentTerm(findCourse(courseId), start, end);
+    },
+
+    sessionCourses: async (courseId) => {
+      await sleep(latency);
       const c = findCourse(courseId);
-      const today = isoOf(now());
-      if (start === null && end === null) {
-        clearStudentDates(c);
-        return;
+      const key = sessionKey(c.course.code ?? null);
+      if (!key) return { session: null, courses: [] };
+      const courses = db.courses
+        .filter((o) => o !== c && sessionKey(o.course.code ?? null)?.id === key.id)
+        .map((o) => {
+          const own = ownDates(o);
+          return {
+            course_id: o.course.id,
+            name: o.course.name,
+            code: o.course.code ?? null,
+            hidden: o.course.hidden,
+            own_dates: own.start !== null || own.end !== null,
+            student_start: own.start,
+            student_end: own.end,
+            week_one_monday: o.timeline.term.week_one_monday ?? null,
+            anchor: o.timeline.term.anchor,
+          };
+        });
+      return { session: key.session, courses };
+    },
+
+    applyCourseDatesTo: async (from, to) => {
+      await sleep(latency);
+      const source = findCourse(from);
+      const key = sessionKey(source.course.code ?? null);
+      const dates = ownDates(source);
+      const report: ApplyDatesReport = { applied: [], skipped: [], replaced: [] };
+      for (const courseId of to) {
+        const target = db.courses.find((c) => c.course.id === courseId);
+        const reason = !target
+          ? "unknown_course"
+          : target === source || !key || sessionKey(target.course.code ?? null)?.id !== key.id
+            ? "not_same_session"
+            : dates.start === null && dates.end === null
+              ? "no_dates"
+              : null;
+        if (reason || !target) {
+          report.skipped.push({ course_id: courseId, reason: reason ?? "unknown_course" });
+          continue;
+        }
+        // They become that course's own dates, as if the student had typed them there. What it
+        // had is kept for Undo, exactly (dates from version 0.1 stay unconfirmed).
+        const before = ownDates(target);
+        report.replaced.push({
+          course_id: courseId,
+          start: before.start,
+          end: before.end,
+          legacy: target.timeline.term.anchor_origin === "legacy",
+        });
+        setStudentTerm(target, dates.start, dates.end);
+        // Where they came from, until the student saves dates of their own there.
+        target.timeline = {
+          ...target.timeline,
+          evidence_items: [
+            ev("dates_copied_from", { course: source.course.code ?? source.course.name }),
+            ...target.timeline.evidence_items,
+          ],
+        };
+        report.applied.push(courseId);
       }
-      // COALESCE(user, synced), per field; the student's end is the last day of classes.
-      c.course.term_start = start ?? c.synced.termStart;
-      c.course.term_end = end ?? c.synced.termEnd;
-      c.course.term_source = "user";
-      const next = withStudentDates(c.timeline, start, end, today);
-      c.timeline = next.timeline;
-      c.lifecycle = next.lifecycle;
+      return report;
+    },
+
+    restoreCourseDates: async (replaced) => {
+      await sleep(latency);
+      // From what the apply reported, like the facade: a course removed since is left alone.
+      for (const r of replaced) {
+        const c = db.courses.find((course) => course.course.id === r.course_id);
+        if (!c) continue;
+        setStudentTerm(c, r.start ?? null, r.end ?? null);
+        if (r.legacy && (r.start || r.end)) {
+          // Dates kept from version 0.1, still for the student to check.
+          c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "legacy" } };
+        }
+      }
     },
 
     setCourseHidden: async (courseId, hidden) => {

@@ -31,6 +31,34 @@
 			<string>最多保存 %1$ld 天</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.saved</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>已保存，并用于另外 %1$ld 门课</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.undone</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>另外 %1$ld 门课已恢复原样</string>
+		</dict>
+	</dict>
 	<key>common.aiMaterials.readable</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

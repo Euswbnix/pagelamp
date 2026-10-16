@@ -35,6 +35,38 @@
 			<string>kept up to %1$ld days</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.saved</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Saved, and used in %1$ld other course</string>
+			<key>other</key>
+			<string>Saved, and used in %1$ld other courses</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.undone</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld other course is back as it was</string>
+			<key>other</key>
+			<string>The %1$ld other courses are back as they were</string>
+		</dict>
+	</dict>
 	<key>common.aiMaterials.readable</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
