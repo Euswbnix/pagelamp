@@ -200,16 +200,6 @@ pub fn course_timeline(input: &TermInput<'_>) -> CourseTimeline {
 /// Combine the resolved dates with the module-unlock and material signals (module docs).
 /// `input.modules` / `materials` / `events` must belong to `input.course`.
 pub fn infer_timeline(input: &TermInput<'_>, resolved: &ResolvedTerm) -> CourseTimeline {
-    infer_timeline_and_signal(input, resolved).0
-}
-
-/// `infer_timeline`, and which signal chose the week (`None`: none did). A course lends its
-/// dates to the others of its session only when its own week is High from its dates or its
-/// module unlocks (`term::same_session::donor`).
-pub(crate) fn infer_timeline_and_signal(
-    input: &TermInput<'_>,
-    resolved: &ResolvedTerm,
-) -> (CourseTimeline, Option<EvidenceSignal>) {
     let today = input.today;
     let tz = resolved.tz;
     let term = &resolved.resolution;
@@ -246,7 +236,6 @@ pub(crate) fn infer_timeline_and_signal(
     let material = material_signal(input.materials, today, tz, &mut lines);
 
     let student = term.anchor == TermAnchorSource::StudentConfirmed;
-    let mut chosen_signal = None;
     let (current_week, confidence) = match state.phase {
         CoursePhase::Teaching => {
             let signals: Vec<&WeekSignal> = if student {
@@ -261,7 +250,6 @@ pub(crate) fn infer_timeline_and_signal(
                     .collect()
             };
             let (week, mut confidence, chosen) = choose(&signals, &mut lines);
-            chosen_signal = chosen;
             if let Some(calendar) = calendar
                 .as_ref()
                 .filter(|_| chosen == Some(EvidenceSignal::Dates))
@@ -276,8 +264,7 @@ pub(crate) fn infer_timeline_and_signal(
                 .into_iter()
                 .flatten()
                 .collect();
-            let (week, confidence, chosen) = choose(&signals, &mut lines);
-            chosen_signal = chosen;
+            let (week, confidence, _) = choose(&signals, &mut lines);
             (week, confidence)
         }
         // Outside teaching, week signals only add notes; they never change the phase.
@@ -345,7 +332,7 @@ pub(crate) fn infer_timeline_and_signal(
         CoursePhase::Break => state.week.or(state.break_after_week),
         CoursePhase::NotStarted | CoursePhase::ExamPeriod | CoursePhase::Ended => None,
     };
-    let timeline = CourseTimeline {
+    CourseTimeline {
         as_of: today,
         current_week,
         confidence,
@@ -369,8 +356,7 @@ pub(crate) fn infer_timeline_and_signal(
         term: term.clone(),
         calendar: resolved.calendar,
         evidence_items: lines.items,
-    };
-    (timeline, chosen_signal)
+    }
 }
 
 /// High first.
@@ -752,6 +738,10 @@ fn calendar_signal(term: &TermResolution, week: u32, today: NaiveDate) -> WeekSi
         (TermAnchorSource::PublishedWeekLabels, _) | (_, None) => format!(
             "week 1 is the week of {monday} (fitted from the week numbers of posted materials), \
              so {today} is calendar week {week}"
+        ),
+        (TermAnchorSource::SameSession, _) => format!(
+            "week 1 is the week of {monday} (from another course of the same session), so \
+             {today} is calendar week {week}"
         ),
         (_, Some(start)) => format!("term started {start}, so {today} is calendar week {week}"),
     };

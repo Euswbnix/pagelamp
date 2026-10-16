@@ -926,56 +926,62 @@ fn session_id(external: &str) -> String {
     format!("{SESSION_HOST}/course/{external}")
 }
 
-/// Three courses of one Fall 2028 session on one campus and one on another, none with dates of
-/// its own: the LMS term is an enrollment window, too long to count weeks. (A session years
-/// ahead, so no school calendar shipped with PageLamp has its dates.)
+/// Three courses of one Fall 2026 session on campus 7 and one on campus 8, none with dates of its
+/// own: the LMS term is an enrollment window, too long to count weeks. (A school calendar file
+/// holds campuses 1, 3 and 5 only, so no dates shipped with PageLamp ever reach these courses.)
 fn session_store() -> Store {
     let store = Store::open_in_memory().unwrap();
-    store
-        .upsert_source(&SourceRecord {
-            id: SESSION_HOST.into(),
-            kind: SourceKind::Canvas,
-            label: "Session LMS".into(),
-            config: json!({}),
-            last_synced_at: None,
-            last_error: None,
-            last_error_kind: None,
-        })
-        .unwrap();
-    for (external, code) in [
-        ("1", "DEM240H5 F LEC0101 20289"),
-        ("2", "DEM332H5 F LEC0102 20289"),
-        ("3", "DEM205H5 LEC0101 20289"),
-        ("4", "DEM101H1 F LEC0101 20289"),
-    ] {
+    for (id, label) in [(SESSION_HOST, "Session LMS"), (SOURCE, "Demo LMS")] {
         store
-            .upsert_course(&CourseUpsert {
-                id: session_id(external),
-                source_id: SESSION_HOST.into(),
-                external_id: external.into(),
-                code: Some(code.into()),
-                name: format!("Demo course {external}"),
-                term_start: Some(date("2028-05-01")),
-                term_end: Some(date("2029-01-31")),
-                url: None,
-                syllabus_text: None,
-                lms: LmsCourseInfo {
-                    term_name: Some("Fall 2028".into()),
-                    term_start: Some(date("2028-05-01")),
-                    term_end: Some(date("2029-01-31")),
-                    ..LmsCourseInfo::default()
-                },
+            .upsert_source(&SourceRecord {
+                id: id.into(),
+                kind: SourceKind::Canvas,
+                label: label.into(),
+                config: json!({}),
+                last_synced_at: None,
+                last_error: None,
+                last_error_kind: None,
             })
             .unwrap();
+    }
+    for (external, code) in [
+        ("1", "DEM240H7 F LEC0101 20269"),
+        ("2", "DEM332H7 F LEC0102 20269"),
+        ("3", "DEM205H7 LEC0101 20269"),
+        ("4", "DEM101H8 F LEC0101 20269"),
+    ] {
+        session_course(&store, SESSION_HOST, external, code);
     }
     store
 }
 
-/// A Friday of teaching week 6 (week 1 is the week of Monday 2028-09-04).
+fn session_course(store: &Store, source: &str, external: &str, code: &str) {
+    store
+        .upsert_course(&CourseUpsert {
+            id: format!("{source}/course/{external}"),
+            source_id: source.into(),
+            external_id: external.into(),
+            code: Some(code.into()),
+            name: format!("Demo course {external}"),
+            term_start: Some(date("2026-05-04")),
+            term_end: Some(date("2027-01-31")),
+            url: None,
+            syllabus_text: None,
+            lms: LmsCourseInfo {
+                term_name: Some("Fall 2026".into()),
+                term_start: Some(date("2026-05-04")),
+                term_end: Some(date("2027-01-31")),
+                ..LmsCourseInfo::default()
+            },
+        })
+        .unwrap();
+}
+
+/// A Friday of teaching week 6 (week 1 is the week of Monday 2026-09-07).
 fn session_at() -> AsOf {
     AsOf {
-        now: ts("2028-10-13T12:00:00Z"),
-        today: date("2028-10-13"),
+        now: ts("2026-10-16T12:00:00Z"),
+        today: date("2026-10-16"),
         tz: None,
     }
 }
@@ -986,6 +992,27 @@ fn weeks_by_course(store: &Store, include_hidden: bool) -> Vec<(String, Option<u
         .into_iter()
         .map(|s| (s.course.id, s.timeline.current_week, s.timeline.confidence))
         .collect()
+}
+
+fn week_of(store: &Store, external: &str) -> Option<u32> {
+    views::course_overview(store, &session_id(external), true, session_at())
+        .unwrap()
+        .timeline
+        .current_week
+}
+
+/// Confirm the student's dates of one course (09-08 → 12-08).
+fn confirm_dates(store: &Store, external: &str) {
+    store
+        .set_course_term(
+            &session_id(external),
+            Some(date("2026-09-08")),
+            Some(date("2026-12-08")),
+        )
+        .unwrap();
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([session_id(external)]))
+        .unwrap();
 }
 
 #[test]
@@ -999,16 +1026,7 @@ fn the_courses_of_one_session_count_the_same_week() {
 
     // The student confirms the dates of one course: the others of its session count the same
     // weeks, at Medium; the course on another campus doesn't.
-    store
-        .set_course_term(
-            &session_id("1"),
-            Some(date("2028-09-05")),
-            Some(date("2028-12-05")),
-        )
-        .unwrap();
-    store
-        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([session_id("1")]))
-        .unwrap();
+    confirm_dates(&store, "1");
     assert_eq!(
         weeks_by_course(&store, true),
         vec![
@@ -1029,24 +1047,26 @@ fn the_courses_of_one_session_count_the_same_week() {
             .evidence
             .iter()
             .any(|line| line.starts_with(
-                "using the dates of DEM240H5 F LEC0101 20289, same session 20289 (2028-09-05 → \
-         2028-12-05)"
+                "using the dates of DEM240H7 F LEC0101 20269, same session 20269 (2026-09-08 → \
+         2026-12-08)"
             ))
     );
 
     // The courses of the session, for "apply these dates to my other courses".
     let one = store.get_course(&session_id("1")).unwrap().unwrap();
-    let (session, others) = views::session_courses(&store, &one, session_at())
-        .unwrap()
-        .unwrap();
-    assert_eq!(session, "20289");
-    let listed: Vec<(&str, TermAnchorSource, Option<NaiveDate>)> = others
+    let listed = views::session_courses(&store, &one, session_at()).unwrap();
+    assert_eq!(
+        (listed.session.as_deref(), listed.campus),
+        (Some("20269"), Some(7))
+    );
+    let rows: Vec<(&str, TermAnchorSource, Option<NaiveDate>)> = listed
+        .courses
         .iter()
         .map(|o| (o.course.id.as_str(), o.term.anchor, o.term.week_one_monday))
         .collect();
-    let monday = Some(date("2028-09-04"));
+    let monday = Some(date("2026-09-07"));
     assert_eq!(
-        listed,
+        rows,
         vec![
             (
                 session_id("3").as_str(),
@@ -1061,14 +1081,26 @@ fn the_courses_of_one_session_count_the_same_week() {
         ]
     );
     let four = store.get_course(&session_id("4")).unwrap().unwrap();
-    assert_eq!(
+    assert!(
         views::session_courses(&store, &four, session_at())
             .unwrap()
-            .map(|(_, others)| others.len()),
-        Some(0)
+            .courses
+            .is_empty()
     );
 
-    // A hidden course still lends its dates.
+    // Dates from PageLamp 0.1 the student never confirmed lend nothing.
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::<String>::new())
+        .unwrap();
+    assert_eq!(week_of(&store, "2"), None);
+}
+
+/// A hidden course still lends; a reader that never shows hidden courses (the MCP server) gets
+/// its dates without its name, in the list and in a single course's view alike.
+#[test]
+fn a_hidden_lender_lends_without_its_name_where_hidden_courses_are_not_shown() {
+    let store = session_store();
+    confirm_dates(&store, "1");
     store.set_course_hidden(&session_id("1"), true).unwrap();
     assert_eq!(
         weeks_by_course(&store, false)
@@ -1077,11 +1109,67 @@ fn the_courses_of_one_session_count_the_same_week() {
             .map(|(_, week, _)| *week),
         Some(Some(6))
     );
-
-    // Dates from PageLamp 0.1 the student never confirmed lend nothing.
-    store
-        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::<String>::new())
+    let hidden_reader =
+        views::course_overview(&store, &session_id("2"), false, session_at()).unwrap();
+    assert_eq!(hidden_reader.timeline.current_week, Some(6));
+    let lines = hidden_reader.timeline.evidence.join("\n");
+    assert!(!lines.contains("DEM240"), "{lines}");
+    assert!(
+        lines.contains("using the dates of another course of session 20269"),
+        "{lines}"
+    );
+    let summary = views::list_courses(&store, false, session_at())
+        .unwrap()
+        .into_iter()
+        .find(|s| s.course.id == session_id("2"))
         .unwrap();
-    let overview = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
-    assert_eq!(overview.timeline.current_week, None);
+    assert!(!summary.timeline.evidence.join("\n").contains("DEM240"));
+    // The desktop app, which shows hidden courses, names it.
+    let shown = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert!(shown.timeline.evidence.join("\n").contains("DEM240H7"));
+}
+
+/// A removed course neither lends nor borrows.
+#[test]
+fn a_removed_course_neither_lends_nor_borrows() {
+    let store = session_store();
+    confirm_dates(&store, "1");
+    assert_eq!(week_of(&store, "2"), Some(6));
+    store
+        .remove_course(
+            &session_id("1"),
+            pagelamp_core::removal::RemovalReason::Other,
+            false,
+            false,
+            ts("2026-10-16T12:00:00Z"),
+        )
+        .unwrap();
+    assert_eq!(week_of(&store, "2"), None);
+    // Nor is it listed among the session's courses.
+    let two = store.get_course(&session_id("2")).unwrap().unwrap();
+    let listed = views::session_courses(&store, &two, session_at()).unwrap();
+    assert!(
+        listed
+            .courses
+            .iter()
+            .all(|o| o.course.id != session_id("1"))
+    );
+}
+
+/// The same code on another host is no course of the session.
+#[test]
+fn courses_on_another_host_share_nothing() {
+    let store = session_store();
+    session_course(&store, SOURCE, "9", "DEM999H7 F LEC0101 20269");
+    store
+        .set_course_term(
+            &cid("9"),
+            Some(date("2026-09-08")),
+            Some(date("2026-12-08")),
+        )
+        .unwrap();
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([cid("9")]))
+        .unwrap();
+    assert_eq!(week_of(&store, "2"), None);
 }

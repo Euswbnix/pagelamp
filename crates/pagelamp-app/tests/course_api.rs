@@ -298,8 +298,9 @@ fn session_id(external: &str) -> String {
     format!("{SESSION_HOST}/course/{external}")
 }
 
-/// Three courses of a Fall 2028 session on one campus (the third with dates from PageLamp 0.1
-/// the student never confirmed) and one on another campus.
+/// Four courses of a Fall 2026 session on campus 7 (the third with dates from PageLamp 0.1 the
+/// student never confirmed) and one on campus 8. A school calendar file holds campuses 1, 3 and
+/// 5 only, so no dates shipped with PageLamp reach these courses.
 fn app_with_session(dir: &Path) -> App {
     let app = App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap();
     let store = Store::open(&app.db_path()).unwrap();
@@ -315,10 +316,11 @@ fn app_with_session(dir: &Path) -> App {
         })
         .unwrap();
     for (external, code) in [
-        ("1", "DEM240H5 F LEC0101 20289"),
-        ("2", "DEM332H5 F LEC0102 20289"),
-        ("3", "DEM205H5 LEC0101 20289"),
-        ("4", "DEM101H1 F LEC0101 20289"),
+        ("1", "DEM240H7 F LEC0101 20269"),
+        ("2", "DEM332H7 F LEC0102 20269"),
+        ("3", "DEM205H7 LEC0101 20269"),
+        ("4", "DEM101H8 F LEC0101 20269"),
+        ("5", "DEM310H7 F LEC0101 20269"),
     ] {
         store
             .upsert_course(&CourseUpsert {
@@ -336,9 +338,17 @@ fn app_with_session(dir: &Path) -> App {
             .unwrap();
     }
     store
-        .set_course_term(&session_id("3"), Some(date("2028-09-12")), None)
+        .set_course_term(&session_id("3"), Some(date("2026-09-15")), None)
         .unwrap();
     app
+}
+
+fn copied(app: &App) -> BTreeMap<String, String> {
+    Store::open(&app.db_path())
+        .unwrap()
+        .setting(COPIED_DATES_KEY)
+        .unwrap()
+        .unwrap_or_default()
 }
 
 #[test]
@@ -346,15 +356,18 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_session(temp.path());
     app.set_course_term(
-        "DEM240H5 F LEC0101 20289",
-        Some(date("2028-09-05")),
-        Some(date("2028-12-05")),
+        "DEM240H7 F LEC0101 20269",
+        Some(date("2026-09-08")),
+        Some(date("2026-12-08")),
     )
     .unwrap();
 
-    // The other courses of the session: one borrows its week 1 already, one has its own dates.
+    // The other courses of the session: two borrow its week 1 already, one has its own dates.
     let listed = app.session_courses(&session_id("1")).unwrap();
-    assert_eq!(listed.session.as_deref(), Some("20289"));
+    assert_eq!(
+        (listed.session.as_deref(), listed.campus),
+        (Some("20269"), Some(7))
+    );
     let rows: Vec<(&str, bool, Option<NaiveDate>, TermAnchorSource)> = listed
         .courses
         .iter()
@@ -366,8 +379,14 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
             (
                 session_id("3").as_str(),
                 true,
-                Some(date("2028-09-12")),
+                Some(date("2026-09-15")),
                 TermAnchorSource::StudentConfirmed
+            ),
+            (
+                session_id("5").as_str(),
+                false,
+                None,
+                TermAnchorSource::SameSession
             ),
             (
                 session_id("2").as_str(),
@@ -377,10 +396,13 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
             ),
         ]
     );
-    assert_eq!(listed.courses[1].week_one_monday, Some(date("2028-09-04")));
+    assert_eq!(listed.courses[2].week_one_monday, Some(date("2026-09-07")));
     // A course on another campus has no other course in its session.
     let alone = app.session_courses(&session_id("4")).unwrap();
-    assert_eq!(alone.session.as_deref(), Some("20289"));
+    assert_eq!(
+        (alone.session.as_deref(), alone.campus),
+        (Some("20269"), Some(8))
+    );
     assert!(alone.courses.is_empty());
 
     let report = app
@@ -388,7 +410,10 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
             &session_id("1"),
             vec![
                 session_id("2"),
-                "DEM205H5 LEC0101 20289".into(),
+                "DEM205H7 LEC0101 20269".into(),
+                // Named twice: once is enough (and the undo stays exact).
+                session_id("2"),
+                session_id("1"),
                 session_id("4"),
                 "NOPE999".into(),
             ],
@@ -398,6 +423,10 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
     assert_eq!(
         report.skipped,
         vec![
+            SkippedCourse {
+                course_id: session_id("1"),
+                reason: ApplySkipReason::FromCourse
+            },
             SkippedCourse {
                 course_id: session_id("4"),
                 reason: ApplySkipReason::NotSameSession
@@ -415,13 +444,15 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
                 course_id: session_id("2"),
                 start: None,
                 end: None,
-                legacy: false
+                legacy: false,
+                copied_from: None
             },
             ReplacedDates {
                 course_id: session_id("3"),
-                start: Some(date("2028-09-12")),
+                start: Some(date("2026-09-15")),
                 end: None,
-                legacy: true
+                legacy: true,
+                copied_from: None
             },
         ]
     );
@@ -430,7 +461,7 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
         let data = term_data(&app, &id);
         assert_eq!(
             (data.user_term_start, data.user_term_end),
-            (Some(date("2028-09-05")), Some(date("2028-12-05")))
+            (Some(date("2026-09-08")), Some(date("2026-12-08")))
         );
         assert!(confirmed(&app).contains(&id));
         let timeline = app.course_timeline(&id).unwrap();
@@ -440,7 +471,7 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
                 .evidence_items
                 .iter()
                 .any(|item| item.code == "dates_copied_from"
-                    && item.param("course") == Some("DEM240H5 F LEC0101 20289")),
+                    && item.param("course") == Some("DEM240H7 F LEC0101 20269")),
             "{id}"
         );
     }
@@ -450,32 +481,110 @@ fn the_dates_of_one_course_apply_to_the_others_of_its_session_and_undo_exactly()
     let two = term_data(&app, &session_id("2"));
     assert_eq!((two.user_term_start, two.user_term_end), (None, None));
     let three = term_data(&app, &session_id("3"));
-    assert_eq!(three.user_term_start, Some(date("2028-09-12")));
+    assert_eq!(three.user_term_start, Some(date("2026-09-15")));
     assert_eq!(
         confirmed(&app),
         BTreeSet::from([session_id("1")]),
         "only the course the student saved"
     );
-    let copied: BTreeMap<String, String> = Store::open(&app.db_path())
-        .unwrap()
-        .setting(COPIED_DATES_KEY)
-        .unwrap()
-        .unwrap_or_default();
-    assert!(copied.is_empty());
+    assert!(copied(&app).is_empty());
 
     // A course without dates of the student's has nothing to copy.
     let report = app
-        .apply_course_dates_to(&session_id("2"), vec![session_id("3")])
+        .apply_course_dates_to(&session_id("2"), vec![session_id("5")])
         .unwrap();
     assert!(report.applied.is_empty());
     assert_eq!(report.skipped[0].reason, ApplySkipReason::NoDates);
+}
+
+/// 0.1 dates the student never confirmed aren't copied: saving them first confirms them.
+#[test]
+fn unconfirmed_dates_are_not_copied() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    let report = app
+        .apply_course_dates_to(&session_id("3"), vec![session_id("2")])
+        .unwrap();
+    assert!(report.applied.is_empty());
+    assert_eq!(report.skipped[0].reason, ApplySkipReason::DatesNotConfirmed);
+    assert_eq!(term_data(&app, &session_id("2")).user_term_start, None);
+
+    app.set_course_term(&session_id("3"), Some(date("2026-09-15")), None)
+        .unwrap();
+    let report = app
+        .apply_course_dates_to(&session_id("3"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+}
+
+/// One transaction: a course that can't be told apart (the query matches several) stops the
+/// whole copy, and nothing of it stays.
+#[test]
+fn a_failed_apply_changes_nothing() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_term(&session_id("1"), Some(date("2026-09-08")), None)
+        .unwrap();
+    let err = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2"), "DEM".into()])
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Ambiguous, "{err:?}");
+    assert_eq!(term_data(&app, &session_id("2")).user_term_start, None);
+    assert!(copied(&app).is_empty());
+}
+
+/// Undo puts back a course's earlier "copied from", and leaves a course removed since alone.
+#[test]
+fn undo_restores_the_earlier_copy_and_skips_removed_courses() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_term(&session_id("1"), Some(date("2026-09-08")), None)
+        .unwrap();
+    app.set_course_term(&session_id("5"), Some(date("2026-09-09")), None)
+        .unwrap();
+    // Course 2 first gets course 1's dates, then course 5's.
+    app.apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    let second = app
+        .apply_course_dates_to(&session_id("5"), vec![session_id("2"), session_id("3")])
+        .unwrap();
+    assert_eq!(
+        second.replaced[0].copied_from.as_deref(),
+        Some(session_id("1").as_str())
+    );
+    // Course 3 is removed before the undo.
+    let store = Store::open(&app.db_path()).unwrap();
+    store
+        .remove_course(
+            &session_id("3"),
+            pagelamp_core::removal::RemovalReason::Other,
+            false,
+            false,
+            chrono::Utc::now(),
+        )
+        .unwrap();
+    app.restore_course_dates(second.replaced).unwrap();
+    assert_eq!(
+        term_data(&app, &session_id("2")).user_term_start,
+        Some(date("2026-09-08"))
+    );
+    assert_eq!(
+        copied(&app).get(&session_id("2")),
+        Some(&session_id("1")),
+        "copied from course 1 again"
+    );
+    assert_eq!(
+        term_data(&app, &session_id("3")).user_term_start,
+        Some(date("2026-09-09")),
+        "a removed course is left as it was"
+    );
 }
 
 #[test]
 fn saving_a_course_s_own_dates_ends_their_copied_from_line() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_session(temp.path());
-    app.set_course_term(&session_id("1"), Some(date("2028-09-05")), None)
+    app.set_course_term(&session_id("1"), Some(date("2026-09-08")), None)
         .unwrap();
     app.apply_course_dates_to(&session_id("1"), vec![session_id("2")])
         .unwrap();
@@ -487,7 +596,7 @@ fn saving_a_course_s_own_dates_ends_their_copied_from_line() {
             .any(|item| item.code == "dates_copied_from")
     };
     assert!(copied_line(&app));
-    app.set_course_term(&session_id("2"), Some(date("2028-09-06")), None)
+    app.set_course_term(&session_id("2"), Some(date("2026-09-09")), None)
         .unwrap();
     assert!(!copied_line(&app));
 }

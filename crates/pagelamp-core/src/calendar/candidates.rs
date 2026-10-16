@@ -378,7 +378,8 @@ pub fn course_candidates(
     signals: &CandidateSignals,
 ) -> crate::Result<Vec<ScoredCandidate>> {
     let data = CourseData::load(store, course)?;
-    let (resolved, _) = data.timeline(course, at);
+    let lend = data.session_lend(store, course, at, false)?;
+    let (resolved, _) = data.timeline(course, at, lend.as_ref(), false);
     candidates_in(store, &data, &resolved, signals)
 }
 

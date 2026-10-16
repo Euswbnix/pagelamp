@@ -1015,16 +1015,18 @@ fn search_never_prints_an_access_parameter() {
 }
 
 /// One course's dates count the weeks of the other courses of its session, and can be copied to
-/// them as their own (folder courses that name their school, so their session codes count).
+/// them as their own (folder courses that name their school, so their session codes count;
+/// campus digits 7 and 8, which no school calendar file holds).
 #[test]
 fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
     let courses = temp.path().join("Courses");
     for (folder, code) in [
-        ("A", "DEM240H5 F LEC0101 20289"),
-        ("B", "DEM332H5 F LEC0102 20289"),
-        ("C", "DEM101H1 F LEC0101 20289"),
+        ("A", "DEM240H7 F LEC0101 20289"),
+        ("B", "DEM332H7 F LEC0102 20289"),
+        ("C", "DEM101H8 F LEC0101 20289"),
+        ("D", "DEMO999 20289"),
     ] {
         write(
             &courses,
@@ -1044,7 +1046,7 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
         &[
             "course",
             "term",
-            "DEM240H5 F LEC0101 20289",
+            "DEM240H7 F LEC0101 20289",
             "--start",
             "2028-09-05",
             "--end",
@@ -1055,53 +1057,65 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
     // The course of the same session counts the same weeks already, and says from where.
     let timeline = ok(&pagelamp(
         &home,
-        &["course", "timeline", "DEM332H5 F LEC0102 20289"],
+        &["course", "timeline", "DEM332H7 F LEC0102 20289"],
     ));
     assert!(
         timeline.contains(
-            "Dates:     2028-09-05 → 2028-12-05 from DEM240H5 F LEC0101 20289 (same session) \
-             (medium)"
+            "Dates:     2028-09-05 → 2028-12-05 from DEM240H7 F LEC0101 20289 (same session, \
+             medium)"
         ),
         "{timeline}"
     );
 
     let listed = ok(&pagelamp(
         &home,
-        &["course", "copy-dates", "DEM240H5 F LEC0101 20289"],
+        &["course", "copy-dates", "DEM240H7 F LEC0101 20289"],
     ));
     assert!(
-        listed.contains("Courses of session 20289 besides DEM240H5 F LEC0101 20289"),
+        listed.contains("Courses of session 20289 besides DEM240H7 F LEC0101 20289"),
         "{listed}"
     );
-    assert!(listed.contains("  DEM332H5 F LEC0102 20289\n"), "{listed}");
-    assert!(!listed.contains("DEM101H1"), "{listed}");
+    assert!(listed.contains("  DEM332H7 F LEC0102 20289\n"), "{listed}");
+    assert!(!listed.contains("DEM101H8"), "{listed}");
 
     let copied = ok(&pagelamp(
         &home,
         &[
             "course",
             "copy-dates",
-            "DEM240H5 F LEC0101 20289",
-            "--same-session",
+            "DEM240H7 F LEC0101 20289",
+            "DEM332H7 F LEC0102 20289",
+            "DEM101H8 F LEC0101 20289",
         ],
     ));
     assert!(
         copied.contains(
-            "The dates of DEM240H5 F LEC0101 20289 — Demo course A are now also the dates \
-             of:\n  DEM332H5 F LEC0102 20289\n"
+            "The dates of DEM240H7 F LEC0101 20289 — Demo course A are now also the dates \
+             of:\n  DEM332H7 F LEC0102 20289\n"
         ),
+        "{copied}"
+    );
+    // A skipped course is named by its code, not its id.
+    assert!(
+        copied.contains("  Skipped DEM101H8 F LEC0101 20289: not a course of the same session"),
         "{copied}"
     );
     let timeline = ok(&pagelamp(
         &home,
-        &["course", "timeline", "DEM332H5 F LEC0102 20289"],
+        &["course", "timeline", "DEM332H7 F LEC0102 20289"],
     ));
     assert!(
         timeline.contains("Dates:     2028-09-05 → 2028-12-05 from your dates (high)"),
         "{timeline}"
     );
     assert!(
-        timeline.contains("your dates were copied from DEM240H5 F LEC0101 20289"),
+        timeline.contains("your dates were copied from DEM240H7 F LEC0101 20289"),
         "{timeline}"
     );
+
+    // A code without a campus digit: what is missing is said.
+    let no_campus = pagelamp(&home, &["course", "copy-dates", "DEMO999 20289"]);
+    assert!(!no_campus.status.success());
+    let message = String::from_utf8_lossy(&no_campus.stderr);
+    assert!(message.contains("doesn't say its campus"), "{message}");
 }

@@ -110,13 +110,14 @@ evidence_codes! {
     FolderDates = "folder_dates",
     /// `session`, `start`, `end`: the school's published calendar is used (from alpha.2).
     InstitutionCalendar = "institution_calendar",
-    /// `course`, `session`, `monday`, `start`, `end?`: week 1, and the ends of classes and exams
-    /// that course states, come from the dates of `course`, another course of the same session.
+    /// `course?`, `session`, `monday`, `start`, `end?`: week 1, and the ends of classes and
+    /// exams that course states, come from the dates of `course`, another course of the same
+    /// session (`course` is absent where a hidden course mustn't be named).
     SameSessionAnchor = "same_session_anchor",
-    /// `course`, `session`, `monday`: week 1 comes from the module unlocks of `course`, another
+    /// `course?`, `session`, `monday`: week 1 comes from the module unlocks of `course`, another
     /// course of the same session (Low: setting the first day of classes makes it sure).
     SameSessionUnlocks = "same_session_unlocks",
-    /// `course`: the student's dates here were copied from `course` ("apply to my other
+    /// `course?`: the student's dates here were copied from `course` ("apply to my other
     /// courses").
     DatesCopiedFrom = "dates_copied_from",
     /// `monday`, `weeks`: week 1 fitted to the week of `monday` from the week numbers of
@@ -138,8 +139,9 @@ evidence_codes! {
     // ----- cross-checks between date sources -----
     /// `source`, `monday`: another source agrees on week 1.
     DatesAgree = "dates_agree",
-    /// `course`, `monday`, `days`: `course`, of the same session, starts week 1 on the week of
-    /// `monday`, `days` days from this course's own dates, which it keeps.
+    /// `course?`, `source`, `monday`, `days`: `course`, of the same session, puts week 1 in the
+    /// week of `monday`, `days` days (at least 7) from this course's own week 1, which comes
+    /// from `source` and stays.
     SameSessionDisagrees = "same_session_disagrees",
     /// `session`: the courses of the session that could lend their dates disagree on week 1, so
     /// none is used.
@@ -360,6 +362,19 @@ fn source_name(source: &str) -> &'static str {
     }
 }
 
+/// What a course's own week 1 comes from, after a lender that disagrees with it.
+fn own_source(source: Option<&str>) -> &'static str {
+    match source {
+        Some("student_confirmed") => "the dates you set for this course",
+        Some("lms_course_dates") => "this course's LMS course dates",
+        Some("lms_term") => "this course's LMS term",
+        Some("folder_config") => "this course's folder dates",
+        Some("institution_calendar") => "the school calendar",
+        Some("published_week_labels") => "the week numbers of this course's posted materials",
+        _ => "this course's own dates",
+    }
+}
+
 fn signal_name(signal: &str) -> &'static str {
     match signal {
         "module_unlock" => "module unlock dates",
@@ -401,6 +416,11 @@ fn english(item: &EvidenceItem) -> String {
         (None, Some(end)) => format!("until {end}"),
         (None, None) => "no dates".to_string(),
     };
+    // The lending course of the same session ("another course" when it isn't named).
+    let lender = || match opt("course") {
+        Some(course) => format!("{course}, same session {}", p("session")),
+        None => format!("another course of session {}", p("session")),
+    };
     // " 'Fall 2026'" or nothing, to follow "term".
     let term = || match opt("term_name") {
         Some(name) => format!(" '{name}'"),
@@ -429,20 +449,21 @@ fn english(item: &EvidenceItem) -> String {
             span()
         ),
         EvidenceCode::SameSessionUnlocks => format!(
-            "week 1 from the module unlocks of {}, same session {}: the week of {}. Set this \
-             course's first day of classes to be sure",
-            p("course"),
-            p("session"),
+            "week 1 from the module unlocks of {}: the week of {}. Set this course's first day \
+             of classes to be sure",
+            lender(),
             p("monday")
         ),
         EvidenceCode::SameSessionAnchor => format!(
-            "using the dates of {}, same session {} ({}): week 1 is the week of {}",
-            p("course"),
-            p("session"),
+            "using the dates of {} ({}): week 1 is the week of {}",
+            lender(),
             span(),
             p("monday")
         ),
-        EvidenceCode::DatesCopiedFrom => format!("your dates were copied from {}", p("course")),
+        EvidenceCode::DatesCopiedFrom => format!(
+            "your dates were copied from {}",
+            opt("course").unwrap_or_else(|| "another course of the same session".to_string())
+        ),
         EvidenceCode::WeekLabelsFit => format!(
             "week 1 is the week of {}, fitted from the week numbers of materials posted over \
              {} weeks",
@@ -478,11 +499,14 @@ fn english(item: &EvidenceItem) -> String {
             p("monday")
         ),
         EvidenceCode::SameSessionDisagrees => format!(
-            "{}, same session, starts week 1 on the week of {}, {} days from this course's own \
-             dates",
-            p("course"),
+            "{} puts week 1 in the week of {}, {} days from {}",
+            match opt("course") {
+                Some(course) => format!("{course}, same session,"),
+                None => "another course of the same session".to_string(),
+            },
             p("monday"),
-            p("days")
+            p("days"),
+            own_source(opt("source").as_deref())
         ),
         EvidenceCode::SameSessionSplit => format!(
             "the courses of session {} disagree on week 1, so none of their dates is used: set \
