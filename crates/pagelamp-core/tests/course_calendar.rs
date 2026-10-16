@@ -8,6 +8,7 @@ use pagelamp_core::calendar::{
 use pagelamp_core::lifecycle::{LifecycleInput, course_lifecycle, is_active};
 use pagelamp_core::model::*;
 use pagelamp_core::term::institution::InstitutionCalendar;
+use pagelamp_core::term::same_session::{DonorKind, Lend, LentDates};
 use pagelamp_core::term::{TermInput, resolve_term};
 use pagelamp_core::timeline::{self, course_timeline, infer_timeline};
 
@@ -93,6 +94,10 @@ struct Case {
     confirmed: bool,
     /// A school calendar fixture instead of the shipped file.
     school: Option<InstitutionCalendar>,
+    /// What other courses of the same session lend.
+    lend: Option<Lend>,
+    /// The course the student's dates were copied from.
+    copied_from: Option<String>,
 }
 
 impl Case {
@@ -106,6 +111,8 @@ impl Case {
             events: Vec::new(),
             confirmed: false,
             school: None,
+            lend: None,
+            copied_from: None,
         }
     }
 
@@ -121,6 +128,8 @@ impl Case {
             events: &self.events,
             today: date(today),
             institution: self.school.as_ref(),
+            same_session: self.lend.as_ref(),
+            copied_from: self.copied_from.as_deref(),
         }
     }
 
@@ -1907,5 +1916,197 @@ fn institution_calendar_sections_and_full_year_courses() {
     assert_ne!(
         st_george_year.timeline("2026-10-01").term.anchor,
         TermAnchorSource::InstitutionCalendar
+    );
+}
+
+// ----- same session, same week (§6.4, between anchors 5 and 6; §14) -----------------------------
+
+/// A school calendar without any year: whatever the shipped file holds, these courses get no
+/// dates from it.
+fn no_school() -> InstitutionCalendar {
+    InstitutionCalendar::parse("format = 1\ninstitution = \"uoft\"\nfixture = true\n").unwrap()
+}
+
+const LENDER: &str = "DEM240H5 F LEC0101 20269";
+
+fn lent(kind: DonorKind, start: &str, end: Option<&str>, exams_end: Option<&str>) -> Lend {
+    Lend::Dates(LentDates {
+        course: LENDER.into(),
+        session: "20269".into(),
+        kind,
+        start: date(start),
+        end: end.map(date),
+        exams_end: exams_end.map(date),
+    })
+}
+
+/// DEM332 with the wide LMS term only (not used), borrowing `lend`.
+fn borrower(data: CourseTermData, lend: Lend) -> Case {
+    let mut case = Case::new(dem332(), data);
+    case.school = Some(no_school());
+    case.lend = Some(lend);
+    case
+}
+
+fn has_line(timeline: &CourseTimeline, start: &str) -> bool {
+    timeline.evidence.iter().any(|line| line.starts_with(start))
+}
+
+/// A course with no dates of its own counts the weeks of the session's confirmed dates, at
+/// Medium, names where they come from, and takes the lent end of classes and of exams.
+#[test]
+fn a_course_without_dates_takes_week_one_from_its_session() {
+    let case = borrower(
+        uoft_window_term(),
+        lent(
+            DonorKind::StudentDates,
+            "2026-09-08",
+            Some("2026-12-08"),
+            Some("2026-12-22"),
+        ),
+    );
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(t.term.anchor_confidence, Confidence::Medium);
+    assert_eq!(t.term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(
+        (t.current_week, t.confidence),
+        (Some(6), Confidence::Medium)
+    );
+    assert!(codes(&t).contains(&"same_session_anchor"));
+    assert!(has_line(
+        &t,
+        "using the dates of DEM240H5 F LEC0101 20269, same session 20269 (2026-09-08 → \
+         2026-12-08): week 1 is the week of 2026-09-07"
+    ));
+    // The lent ends: the exam period, then the end.
+    assert_eq!(case.timeline("2026-12-15").phase, CoursePhase::ExamPeriod);
+    assert_eq!(case.timeline("2026-12-28").phase, CoursePhase::Ended);
+    // Without it, nothing counts this course's weeks.
+    let mut alone = case;
+    alone.lend = None;
+    assert_eq!(alone.timeline("2026-10-16").current_week, None);
+}
+
+/// A course with dates of its own keeps them; a session course that disagrees is noted, and
+/// one that agrees isn't.
+#[test]
+fn own_dates_stay_and_a_session_course_that_disagrees_is_noted() {
+    let mut data = uoft_window_term();
+    data.lms.course_start = Some(date("2026-09-14"));
+    data.lms.course_end = Some(date("2026-12-11"));
+    let case = borrower(
+        data.clone(),
+        lent(DonorKind::StudentDates, "2026-09-08", None, None),
+    );
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::LmsCourseDates);
+    assert_eq!(t.current_week, Some(5));
+    assert!(codes(&t).contains(&"same_session_disagrees"));
+    assert!(t.evidence.iter().any(|line| line
+        == "DEM240H5 F LEC0101 20269, same session, starts week 1 on the week of 2026-09-07, \
+            7 days from this course's own dates"));
+    let agreeing = borrower(
+        data,
+        lent(DonorKind::StudentDates, "2026-09-15", None, None),
+    );
+    let t = agreeing.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::LmsCourseDates);
+    assert!(!codes(&t).contains(&"same_session_disagrees"));
+}
+
+/// The course's own Medium fit beats lent dates that put week 1 elsewhere; lent dates that agree
+/// with it become the anchor (the fit then agrees with them).
+#[test]
+fn a_medium_fit_of_its_own_beats_lent_dates_that_disagree() {
+    let mut case = borrower(
+        uoft_window_term(),
+        lent(DonorKind::StudentDates, "2026-09-22", None, None),
+    );
+    case.materials = weekly_slides();
+    let t = case.timeline("2026-09-29");
+    assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
+    assert_eq!(t.current_week, Some(4));
+    assert!(codes(&t).contains(&"same_session_disagrees"));
+
+    case.lend = Some(lent(DonorKind::StudentDates, "2026-09-08", None, None));
+    let t = case.timeline("2026-09-29");
+    assert_eq!(t.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(t.term.anchor_confidence, Confidence::Medium);
+    assert_eq!(t.current_week, Some(4));
+    assert!(codes(&t).contains(&"dates_agree"));
+}
+
+/// A week lent from module unlocks alone is Low, says where it comes from and asks for the first
+/// day of classes; the course's own Medium fit beats it even when they agree.
+#[test]
+fn module_unlocks_lend_at_low_and_lose_to_a_medium_fit() {
+    let unlocks = lent(DonorKind::ModuleUnlocks, "2026-09-07", None, None);
+    let case = borrower(uoft_window_term(), unlocks.clone());
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(t.term.anchor_confidence, Confidence::Low);
+    assert_eq!((t.current_week, t.confidence), (Some(6), Confidence::Low));
+    assert!(t.evidence.iter().any(|line| line
+        == "week 1 from the module unlocks of DEM240H5 F LEC0101 20269, same session 20269: \
+            the week of 2026-09-07. Set this course's first day of classes to be sure"));
+
+    let mut fitted = borrower(uoft_window_term(), unlocks);
+    fitted.materials = weekly_slides();
+    let t = fitted.timeline("2026-09-29");
+    assert_eq!(t.term.anchor, TermAnchorSource::PublishedWeekLabels);
+    assert!(!codes(&t).contains(&"same_session_disagrees"));
+}
+
+/// The school's calendar, where it has the session, stays above lent dates; its dates are
+/// named as the school's.
+#[test]
+fn the_school_calendar_stays_above_lent_dates() {
+    let mut case = with_school(dem332(), uoft_window_term());
+    case.lend = Some(lent(DonorKind::StudentDates, "2026-09-08", None, None));
+    let t = case.timeline("2026-10-01");
+    assert_eq!(t.term.anchor, TermAnchorSource::InstitutionCalendar);
+    assert!(codes(&t).contains(&"institution_calendar"));
+    assert!(!codes(&t).contains(&"folder_dates"));
+    assert!(!codes(&t).contains(&"same_session_anchor"));
+}
+
+/// Session courses that disagree lend nothing, and say so.
+#[test]
+fn a_split_session_lends_nothing() {
+    let case = borrower(
+        uoft_window_term(),
+        Lend::Split {
+            session: "20269".into(),
+        },
+    );
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::NoAnchor);
+    assert_eq!(t.current_week, None);
+    assert!(has_line(
+        &t,
+        "the courses of session 20269 disagree on week 1, so none of their dates is used"
+    ));
+}
+
+/// Dates the student copied from another course are theirs (High), and say where they came
+/// from.
+#[test]
+fn copied_dates_say_where_they_came_from() {
+    let mut data = uoft_window_term();
+    data.user_term_start = Some(date("2026-09-08"));
+    data.user_term_end = Some(date("2026-12-08"));
+    let mut case = Case::new(dem332(), data);
+    case.school = Some(no_school());
+    case.confirmed = true;
+    case.copied_from = Some(LENDER.into());
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.anchor, TermAnchorSource::StudentConfirmed);
+    assert_eq!(t.confidence, Confidence::High);
+    assert!(codes(&t).contains(&"dates_copied_from"));
+    assert!(
+        t.evidence
+            .iter()
+            .any(|line| line == "your dates were copied from DEM240H5 F LEC0101 20269")
     );
 }

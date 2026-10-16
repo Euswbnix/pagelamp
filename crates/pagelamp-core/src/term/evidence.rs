@@ -11,7 +11,8 @@
 //! | `kind`                                                | a `BreakKind` value             |
 //! | `reason`                                              | a `RejectReason` value          |
 //! | `signal`                                              | an `EvidenceSignal` value       |
-//! | `term_name`, `title`, `session`, `section`            | plain text, shown verbatim      |
+//! | `term_name`, `title`, `session`, `section`, `course`  | plain text, shown verbatim      |
+//! | `basis`                                               | `dates` or `module_unlocks`     |
 //!
 //! Text parameters are structure (titles, the LMS term name, a session code), never material
 //! text: no break labels, week topics or quotes (design §7.11, rule 8). Titles are still
@@ -110,6 +111,13 @@ evidence_codes! {
     FolderDates = "folder_dates",
     /// `session`, `start`, `end`: the school's published calendar is used (from alpha.2).
     InstitutionCalendar = "institution_calendar",
+    /// `course`, `session`, `monday`, `start`, `end?`, `basis`: week 1, and the ends of classes
+    /// and exams that course states, come from `course`, another course of the same session
+    /// (its own dates; `basis` `module_unlocks`: its module unlocks, so only Low).
+    SameSessionAnchor = "same_session_anchor",
+    /// `course`: the student's dates here were copied from `course` ("apply to my other
+    /// courses").
+    DatesCopiedFrom = "dates_copied_from",
     /// `monday`, `weeks`: week 1 fitted to the week of `monday` from the week numbers of
     /// materials posted over `weeks` different weeks.
     WeekLabelsFit = "week_labels_fit",
@@ -129,6 +137,12 @@ evidence_codes! {
     // ----- cross-checks between date sources -----
     /// `source`, `monday`: another source agrees on week 1.
     DatesAgree = "dates_agree",
+    /// `course`, `monday`, `days`: `course`, of the same session, starts week 1 on the week of
+    /// `monday`, `days` days from this course's own dates, which it keeps.
+    SameSessionDisagrees = "same_session_disagrees",
+    /// `session`: the courses of the session that could lend their dates disagree on week 1, so
+    /// none is used.
+    SameSessionSplit = "same_session_split",
     /// `source`, `monday`, `days`: another source puts week 1 `days` days away: the dates may
     /// be wrong, check them.
     DatesMayBeWrong = "dates_may_be_wrong",
@@ -339,6 +353,7 @@ fn source_name(source: &str) -> &'static str {
         "lms_term" => "the LMS term",
         "folder_config" => "the folder's dates",
         "institution_calendar" => "the school calendar",
+        "same_session" => "the dates of another course of the same session",
         "published_week_labels" => "the week numbers of posted materials",
         _ => "no source",
     }
@@ -412,6 +427,23 @@ fn english(item: &EvidenceItem) -> String {
             p("session"),
             span()
         ),
+        EvidenceCode::SameSessionAnchor if opt("basis").as_deref() == Some("module_unlocks") => {
+            format!(
+                "week 1 from the module unlocks of {}, same session {}: the week of {}. Set \
+                 this course's first day of classes to be sure",
+                p("course"),
+                p("session"),
+                p("monday")
+            )
+        }
+        EvidenceCode::SameSessionAnchor => format!(
+            "using the dates of {}, same session {} ({}): week 1 is the week of {}",
+            p("course"),
+            p("session"),
+            span(),
+            p("monday")
+        ),
+        EvidenceCode::DatesCopiedFrom => format!("your dates were copied from {}", p("course")),
         EvidenceCode::WeekLabelsFit => format!(
             "week 1 is the week of {}, fitted from the week numbers of materials posted over \
              {} weeks",
@@ -445,6 +477,18 @@ fn english(item: &EvidenceItem) -> String {
             "{} agree: week 1 is the week of {}",
             source_name(&p("source")),
             p("monday")
+        ),
+        EvidenceCode::SameSessionDisagrees => format!(
+            "{}, same session, starts week 1 on the week of {}, {} days from this course's own \
+             dates",
+            p("course"),
+            p("monday"),
+            p("days")
+        ),
+        EvidenceCode::SameSessionSplit => format!(
+            "the courses of session {} disagree on week 1, so none of their dates is used: set \
+             the first day of classes in one of them",
+            p("session")
         ),
         EvidenceCode::DatesMayBeWrong => format!(
             "{} put week 1 on the week of {}, {} days away: these dates may be wrong — check \

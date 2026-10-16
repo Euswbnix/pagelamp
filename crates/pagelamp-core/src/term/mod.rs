@@ -10,6 +10,7 @@ pub(crate) mod fit;
 pub mod institution;
 pub mod phase;
 mod resolve;
+pub mod same_session;
 pub mod session;
 
 pub use resolve::{
@@ -22,6 +23,11 @@ pub use resolve::{
 /// since: their `anchor_origin` is `Legacy`, and the v4 migration turns only those into
 /// `legacy` calendars.
 pub const CONFIRMED_DATES_KEY: &str = "course_dates.confirmed";
+
+/// Settings key: the courses whose student dates were copied from another course of the same
+/// session ("apply these dates to my other courses this term"), as {course id: the id of the
+/// course they came from}. Saving or clearing a course's own dates drops its entry.
+pub const COPIED_DATES_KEY: &str = "course_dates.copied_from";
 
 use chrono::NaiveDate;
 use schemars::JsonSchema;
@@ -74,6 +80,9 @@ pub enum TermAnchorSource {
     FolderConfig,
     /// Exact dates of the school's published calendar (from alpha.2).
     InstitutionCalendar,
+    /// Week 1 (and the stated ends) of another course of the same school session, section
+    /// group and campus, whose own dates are confirmed or well established (`same_session`).
+    SameSession,
     /// Week 1 fitted from the week numbers and publish dates of the professor's materials.
     PublishedWeekLabels,
     /// No usable dates ("none" in JSON; named so Swift's `.none` stays Optional's).
@@ -89,6 +98,7 @@ impl TermAnchorSource {
             TermAnchorSource::LmsTerm => "lms_term",
             TermAnchorSource::FolderConfig => "folder_config",
             TermAnchorSource::InstitutionCalendar => "institution_calendar",
+            TermAnchorSource::SameSession => "same_session",
             TermAnchorSource::PublishedWeekLabels => "published_week_labels",
             TermAnchorSource::NoAnchor => "none",
         }
@@ -317,6 +327,7 @@ mod tests {
             TermAnchorSource::LmsTerm,
             TermAnchorSource::FolderConfig,
             TermAnchorSource::InstitutionCalendar,
+            TermAnchorSource::SameSession,
             TermAnchorSource::PublishedWeekLabels,
             TermAnchorSource::NoAnchor,
         ] {
