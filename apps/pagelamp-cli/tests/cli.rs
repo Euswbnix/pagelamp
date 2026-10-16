@@ -686,7 +686,8 @@ fn a_finished_course_shows_its_lifecycle_not_a_week() {
     }
     let today = Local::now().date_naive();
     // Next year's winter session: its window (January to April) is always ahead.
-    let winter = format!("DEM210H5 S LEC0101 {}1", today.year() + 1);
+    // (Campus digit 7: no school calendar file holds it, so no shipped dates ever reach it.)
+    let winter = format!("DEM210H7 S LEC0101 {}1", today.year() + 1);
     // (source, external id, code, Canvas's facts, a week-numbered file and its age in days)
     let courses = [
         // No dates at all, nothing for two years.
@@ -764,7 +765,7 @@ fn a_finished_course_shows_its_lifecycle_not_a_week() {
     for (code, label) in [
         ("OLD909", "inactive"),
         ("DONE777", "ended"),
-        ("DEM210H5", "starts "),
+        ("DEM210H7", "starts "),
     ] {
         assert!(line(code).contains(label), "{}", line(code));
         assert!(!line(code).contains("week"), "{}", line(code));
