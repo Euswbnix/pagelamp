@@ -370,12 +370,19 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 .as_ref()
                 .and_then(|term| term.starting(anchor.start));
         }
-        evidence.push(anchor_item(lower, lms.term_name.as_deref()));
+        evidence.push(anchor_item(
+            lower,
+            lms.term_name.as_deref(),
+            session.as_ref(),
+        ));
     }
 
     // Cross-check the anchor against the lower sources.
     if let Some(anchor) = anchor.as_mut() {
-        evidence.insert(0, anchor_item(anchor, lms.term_name.as_deref()));
+        evidence.insert(
+            0,
+            anchor_item(anchor, lms.term_name.as_deref(), session.as_ref()),
+        );
         if anchor.origin == Some(CalendarOrigin::Legacy) {
             english.push(evidence[0].english());
         }
@@ -699,7 +706,11 @@ fn activity(input: &TermInput<'_>, tz: Option<Tz>) -> (Option<NaiveDate>, Option
 }
 
 /// The item naming the dates used.
-fn anchor_item(anchor: &Anchor, term_name: Option<&str>) -> EvidenceItem {
+fn anchor_item(
+    anchor: &Anchor,
+    term_name: Option<&str>,
+    session: Option<&SessionHint>,
+) -> EvidenceItem {
     let end = anchor.end;
     match anchor.source {
         TermAnchorSource::StudentConfirmed => {
@@ -725,11 +736,18 @@ fn anchor_item(anchor: &Anchor, term_name: Option<&str>) -> EvidenceItem {
                 "weeks",
                 i64::try_from(anchor.fit_weeks.unwrap_or_default()).unwrap_or_default(),
             ),
-        TermAnchorSource::FolderConfig
-        | TermAnchorSource::InstitutionCalendar
-        | TermAnchorSource::NoAnchor => EvidenceItem::new(EvidenceCode::FolderDates)
-            .date("start", anchor.start)
-            .opt_date("end", end),
+        // The school's own dates, named as such (not as a folder's).
+        TermAnchorSource::InstitutionCalendar => {
+            EvidenceItem::new(EvidenceCode::InstitutionCalendar)
+                .opt_text("session", session.map(|s| s.session.as_str()))
+                .date("start", anchor.start)
+                .opt_date("end", end)
+        }
+        TermAnchorSource::FolderConfig | TermAnchorSource::NoAnchor => {
+            EvidenceItem::new(EvidenceCode::FolderDates)
+                .date("start", anchor.start)
+                .opt_date("end", end)
+        }
     }
 }
 

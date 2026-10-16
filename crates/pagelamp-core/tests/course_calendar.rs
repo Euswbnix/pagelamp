@@ -83,6 +83,11 @@ fn material(id: &str, title: &str, published: &str) -> Material {
     }
 }
 
+/// A school calendar without any year.
+fn no_school() -> InstitutionCalendar {
+    InstitutionCalendar::parse("format = 1\ninstitution = \"uoft\"\nfixture = true\n").unwrap()
+}
+
 struct Case {
     course: Course,
     data: CourseTermData,
@@ -105,7 +110,9 @@ impl Case {
             modules: Vec::new(),
             events: Vec::new(),
             confirmed: false,
-            school: None,
+            // Never the shipped file: its dates would change these cases whenever a year is
+            // added. A case that wants school dates brings its own (`with_school`).
+            school: Some(no_school()),
         }
     }
 
@@ -876,8 +883,8 @@ fn deadlines_are_not_filtered_by_lifecycle() {
             id: id.clone(),
             source_id: UOFT.into(),
             external_id: "236".into(),
-            code: Some("DEM236H5 F LEC0101 20259".into()),
-            name: "DEM236H5 F LEC0101 20259 Demo".into(),
+            code: Some("DEM236H7 F LEC0101 20259".into()),
+            name: "DEM236H7 F LEC0101 20259 Demo".into(),
             term_start: Some(date("2025-05-05")),
             term_end: Some(date("2026-01-31")),
             url: None,
@@ -947,7 +954,7 @@ fn past_and_upcoming_courses_have_no_current_week() {
         // A summer section: its session window ended and nothing happened for months.
         (
             "111",
-            "DEM111H5 S LEC0101 20265",
+            "DEM111H7 S LEC0101 20265",
             "Week 1 slides",
             "2026-07-06T14:00:00Z",
         ),
@@ -961,7 +968,7 @@ fn past_and_upcoming_courses_have_no_current_week() {
         // A Winter section whose site still holds a file of an earlier year.
         (
             "210",
-            "DEM210H5 S LEC0101 20271",
+            "DEM210H7 S LEC0101 20271",
             "Week 12 review",
             "2026-04-02T14:00:00Z",
         ),
@@ -1786,6 +1793,9 @@ fn institution_calendar_dates() {
     assert_eq!(t.term.anchor, TermAnchorSource::InstitutionCalendar);
     assert_eq!(t.term.anchor_confidence, Confidence::Medium);
     assert_eq!(t.current_week, Some(4));
+    // Named as the school's dates, not as a folder's.
+    assert!(codes(&t).contains(&"institution_calendar"));
+    assert!(!codes(&t).contains(&"folder_dates"));
     let reading = case.timeline("2026-10-28");
     assert_eq!(reading.phase, CoursePhase::Break);
     assert_eq!(reading.current_break_kind, Some(BreakKind::ReadingWeek));
@@ -1812,10 +1822,10 @@ fn institution_calendar_dates() {
             "{code}"
         );
     }
-    // The shipped file has no years yet: no dates, and nothing to say about it.
-    let shipped = Case::new(dem332(), uoft_window_term()).timeline("2026-10-01");
-    assert_ne!(shipped.term.anchor, TermAnchorSource::InstitutionCalendar);
-    assert!(!codes(&shipped).contains(&"institution_calendar_missing"));
+    // A calendar without any year: no dates, and nothing to say about it.
+    let empty = Case::new(dem332(), uoft_window_term()).timeline("2026-10-01");
+    assert_ne!(empty.term.anchor, TermAnchorSource::InstitutionCalendar);
+    assert!(!codes(&empty).contains(&"institution_calendar_missing"));
 }
 
 /// CAL-7, alpha.2 version: the owner's shape (a v0.1 start of 09-08, no end anywhere) takes the
