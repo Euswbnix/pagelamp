@@ -80,6 +80,29 @@ describe("mock: the other courses of a session", () => {
     ]);
   });
 
+  it("knows unconfirmed dates by the confirmed list, a last day alone too, like the facade", async () => {
+    const api = mock();
+    // A 0.1 course with only a last day of classes: no anchor of its own says "legacy".
+    await api.restoreCourseDates([
+      { course_id: FITTED, start: null, end: "2026-12-04", legacy: true, copied_from: null },
+    ]);
+    const term = (await api.courseOverview(FITTED)).timeline.term;
+    expect(term).toMatchObject({ student_end: "2026-12-04", student_dates_confirmed: false });
+    expect(term.anchor_origin).not.toBe("legacy");
+    expect((await api.applyCourseDatesTo(FITTED, [UNLABELLED])).skipped).toEqual([
+      { course_id: UNLABELLED, reason: "dates_not_confirmed" },
+    ]);
+    // Confirmed ("These dates are right"), they go on.
+    await api.confirmCourseDates(FITTED);
+    expect((await api.courseOverview(FITTED)).timeline.term.student_dates_confirmed).toBe(true);
+    expect((await api.applyCourseDatesTo(FITTED, [UNLABELLED])).applied).toEqual([UNLABELLED]);
+    // Saved, a course's dates are confirmed, and a course with none has none to confirm.
+    await api.setCourseTerm(LEGACY, null, "2026-12-04");
+    expect((await api.courseOverview(LEGACY)).timeline.term.student_dates_confirmed).toBe(true);
+    await api.setCourseTerm(LEGACY, null, null);
+    expect((await api.courseOverview(LEGACY)).timeline.term.student_dates_confirmed).toBe(true);
+  });
+
   it("puts back where a course's dates had been copied from before", async () => {
     const api = mock();
     await api.setCourseTerm(FITTED, "2026-09-08", null);
@@ -104,6 +127,25 @@ describe("mock: the other courses of a session", () => {
     expect((await api.courseOverview(UNLABELLED)).timeline.term).toMatchObject({
       student_start: "2026-09-01",
       anchor_origin: "legacy",
+      student_dates_confirmed: false,
+    });
+  });
+
+  it("tells Undo of a last day kept alone from version 0.1, and puts it back unconfirmed", async () => {
+    const api = mock();
+    await api.restoreCourseDates([
+      { course_id: UNLABELLED, start: null, end: "2026-12-11", legacy: true, copied_from: null },
+    ]);
+    await api.setCourseTerm(FITTED, "2026-09-08", "2026-12-04");
+    const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    expect(report.replaced).toEqual([
+      { course_id: UNLABELLED, start: null, end: "2026-12-11", legacy: true, copied_from: null },
+    ]);
+    await api.restoreCourseDates(report.replaced);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term).toMatchObject({
+      student_start: null,
+      student_end: "2026-12-11",
+      student_dates_confirmed: false,
     });
   });
 
@@ -124,7 +166,11 @@ describe("mock: the other courses of a session", () => {
     ]);
     await api.restoreCourseDates(report.replaced);
     const legacy = (await api.courseOverview(LEGACY)).timeline.term;
-    expect(legacy).toMatchObject({ anchor_origin: "legacy", student_start: before.student_start });
+    expect(legacy).toMatchObject({
+      anchor_origin: "legacy",
+      student_start: before.student_start,
+      student_dates_confirmed: false,
+    });
     const unlabelled = (await api.courseOverview(UNLABELLED)).timeline.term;
     expect(unlabelled.student_start ?? null).toBeNull();
     expect(unlabelled.anchor).not.toBe("student_confirmed");

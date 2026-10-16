@@ -1125,7 +1125,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       const key = sessionKey(source.course.code ?? null);
       const dates = ownDates(source);
       // Dates from version 0.1 the student never confirmed aren't given on (like the facade).
-      const unconfirmed = source.timeline.term.anchor_origin === "legacy";
+      const unconfirmed = !source.timeline.term.student_dates_confirmed;
       const report: ApplyDatesReport = { applied: [], skipped: [], replaced: [] };
       // A course asked for twice is given the dates once.
       for (const courseId of [...new Set(to)]) {
@@ -1152,7 +1152,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
           course_id: courseId,
           start: before.start,
           end: before.end,
-          legacy: target.timeline.term.anchor_origin === "legacy",
+          legacy: !target.timeline.term.student_dates_confirmed,
           copied_from: copiedFrom.get(courseId) ?? null,
         });
         setStudentTerm(target, dates.start, dates.end);
@@ -1170,8 +1170,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         if (!c) continue;
         setStudentTerm(c, r.start ?? null, r.end ?? null);
         if (r.legacy && (r.start || r.end)) {
-          // Dates kept from version 0.1, still for the student to check.
-          c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "legacy" } };
+          // Dates kept from version 0.1, still for the student to check. Their anchor says so
+          // only with a start: a last day alone is no anchor of its own (like the facade).
+          const term = { ...c.timeline.term, student_dates_confirmed: false };
+          if (r.start) term.anchor_origin = "legacy";
+          c.timeline = { ...c.timeline, term };
         }
         // An earlier copy's mark comes back with its dates.
         if (r.copied_from) markCopied(c, r.copied_from);
@@ -1202,8 +1205,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     confirmCourseDates: async (courseId) => {
       await sleep(latency);
       const c = findCourse(courseId);
-      if (c.timeline.term.anchor_origin === "legacy") {
-        c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "user" } };
+      const { term } = c.timeline;
+      if (!term.student_dates_confirmed) {
+        const origin = term.anchor_origin === "legacy" ? "user" : term.anchor_origin;
+        c.timeline = {
+          ...c.timeline,
+          term: { ...term, student_dates_confirmed: true, anchor_origin: origin },
+        };
       }
     },
 

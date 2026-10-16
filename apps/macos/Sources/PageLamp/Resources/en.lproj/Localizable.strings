@@ -504,7 +504,6 @@
 "calendar.sameSession.legend" = "Also use these dates in";
 "calendar.sameSession.listFailed" = "The other courses of this term couldn't be listed, so these dates stay in this course.";
 "calendar.sameSession.ownDates" = "Has its own dates: they would be replaced.";
-"calendar.sameSession.skipped" = "Not used in %1$@";
 "calendar.sameSession.undo" = "Undo";
 "calendar.sameSession.undoFailed" = "The other courses couldn't be put back: they keep this course's dates.";
 "calendar.signal.dates" = "the course dates";

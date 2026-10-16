@@ -45,6 +45,76 @@
 			<string>已保存，并用于另外 %1$ld 门课</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.skipped.dates_not_confirmed</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：这里的日期尚未确认。请先保存，再试一次。</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.from_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：这些日期就来自这门课。</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.no_dates</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：这里没有你设置的日期可用。</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.not_same_session</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：已不是本学期的课。</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.unknown_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：已不在你的课程中。</string>
+		</dict>
+	</dict>
 	<key>calendar.sameSession.undone</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

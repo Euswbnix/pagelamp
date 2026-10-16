@@ -50,9 +50,9 @@ export function TermDatesForm({
   // The save here and the copy to the others, from the first to the last: one Save at a time.
   const [applyPending, setApplyPending] = useState(false);
   const busy = mutation.isPending || applyPending;
-  // Dates kept from version 0.1 that the student hasn't confirmed: given to the others only once
-  // saved here too, which confirms them here as any Save does.
-  const legacy = term.anchor_origin === "legacy";
+  // Dates kept from version 0.1 that the student hasn't confirmed (a last day alone too): given
+  // to the others only once saved here, which confirms them here as any Save does.
+  const unconfirmed = !term.student_dates_confirmed;
 
   // When the dates in force change (after saving or clearing), start again from them. Done
   // here instead of re-keying the form, so focus stays in the date field after Enter.
@@ -96,11 +96,14 @@ export function TermDatesForm({
 
   // Saved here, then given to the courses ticked; one toast says what happened to both.
   async function saveAndApply() {
-    const saving = changed || legacy;
+    const saving = changed || unconfirmed;
     setApplyPending(true);
     try {
       if (saving) await mutation.mutateAsync({ courseId: course.id, ...dates });
-      const applied = await applyToSession(session.ticked, { saved: saving });
+      const applied = await applyToSession(session.ticked, {
+        saved: saving,
+        afterUndo: session.offerAgain,
+      });
       if (applied) session.untick(applied);
       else setApplyFailed(true);
     } catch {
@@ -172,7 +175,7 @@ export function TermDatesForm({
         </Field>
       </div>
 
-      <SameSessionCourses choice={session} />
+      <SameSessionCourses choice={session} disabled={busy} />
 
       {errorKind ? (
         <FieldError id={ids.error}>

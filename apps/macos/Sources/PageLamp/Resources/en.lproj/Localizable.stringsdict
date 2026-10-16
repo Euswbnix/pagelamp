@@ -51,6 +51,86 @@
 			<string>Saved, and used in %1$ld other courses</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.skipped.dates_not_confirmed</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: the dates here aren't confirmed yet. Save them, then try again.</string>
+			<key>other</key>
+			<string>Not used in %1$@: the dates here aren't confirmed yet. Save them, then try again.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.from_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it's the course these dates are from.</string>
+			<key>other</key>
+			<string>Not used in %1$@: it's the course these dates are from.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.no_dates</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: there were no dates of yours here to give.</string>
+			<key>other</key>
+			<string>Not used in %1$@: there were no dates of yours here to give.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.not_same_session</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it isn't a course of this term any more.</string>
+			<key>other</key>
+			<string>Not used in %1$@: they aren't courses of this term any more.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.unknown_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it isn't among your courses any more.</string>
+			<key>other</key>
+			<string>Not used in %1$@: they aren't among your courses any more.</string>
+		</dict>
+	</dict>
 	<key>calendar.sameSession.undone</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

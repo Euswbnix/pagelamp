@@ -136,7 +136,18 @@
     "undone_other": "另外 {{count}} 门课已恢复原样",
     "undoFailed": "其他课没能恢复，它们仍是这门课的日期。",
     "failed": "日期已保存到这门课，其他课没有改动。",
-    "skipped": "未用于 {{courses}}",
+    "skipped": {
+      "not_same_session_one": "未用于 {{courses}}：已不是本学期的课。",
+      "not_same_session_other": "未用于 {{courses}}：已不是本学期的课。",
+      "no_dates_one": "未用于 {{courses}}：这里没有你设置的日期可用。",
+      "no_dates_other": "未用于 {{courses}}：这里没有你设置的日期可用。",
+      "unknown_course_one": "未用于 {{courses}}：已不在你的课程中。",
+      "unknown_course_other": "未用于 {{courses}}：已不在你的课程中。",
+      "from_course_one": "未用于 {{courses}}：这些日期就来自这门课。",
+      "from_course_other": "未用于 {{courses}}：这些日期就来自这门课。",
+      "dates_not_confirmed_one": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。",
+      "dates_not_confirmed_other": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。"
+    },
     "listFailed": "没能列出本学期的其他课，这些日期只用于这门课。"
   },
   "checkDates": {

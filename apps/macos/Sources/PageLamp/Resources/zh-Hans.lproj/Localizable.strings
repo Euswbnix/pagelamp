@@ -504,7 +504,6 @@
 "calendar.sameSession.legend" = "这些日期也用于";
 "calendar.sameSession.listFailed" = "没能列出本学期的其他课，这些日期只用于这门课。";
 "calendar.sameSession.ownDates" = "已有自己的日期，勾选后会被替换。";
-"calendar.sameSession.skipped" = "未用于 %1$@";
 "calendar.sameSession.undo" = "撤销";
 "calendar.sameSession.undoFailed" = "其他课没能恢复，它们仍是这门课的日期。";
 "calendar.signal.dates" = "课程日期";
