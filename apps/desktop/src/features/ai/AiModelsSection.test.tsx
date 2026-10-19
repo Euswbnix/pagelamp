@@ -183,10 +183,15 @@ describe("Settings → AI models", () => {
     expect(add).toHaveBeenCalledWith("custom", "http://localhost:8080/v1", null);
     // Its models may run anywhere: the note to read is the one of its cloud models.
     const sheet = await screen.findByRole("dialog", {
-      name: "Before PageLamp uses localhost:8080",
+      name: "Before PageLamp uses cloud models through localhost:8080",
     });
     expect(
-      within(sheet).getByText(/^localhost:8080 runs on this computer, but PageLamp can't confirm/),
+      within(sheet).getByText(
+        /^localhost:8080 runs on this computer, but PageLamp can't confirm that each of its models does/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(sheet).getByText(/^A model may run in the cloud through .+, not on this computer/),
     ).toBeInTheDocument();
     await user.click(
       within(sheet).getByRole("button", { name: "Allow cloud models through localhost:8080" }),
@@ -198,6 +203,19 @@ describe("Settings → AI models", () => {
     if (!row) throw new Error("no row");
     expect(within(row).queryByText(/key is missing/)).toBeNull();
     expect(within(row).getByText("Ready")).toBeInTheDocument();
+    // Only the note of its cloud models: nothing says what it gets stays here.
+    expect(
+      within(row).getByRole("button", { name: "What its cloud models get" }),
+    ).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "What's shared" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Review and turn on" })).toBeNull();
+    expect(within(row).queryByText(/Stays on this computer|doesn't leave/)).toBeNull();
+    expect(within(row).getByText(/may run in the cloud/)).toBeInTheDocument();
+    // A key can still be given later.
+    await user.click(within(row).getByRole("button", { name: "Add a key" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Add a key for localhost:8080" }),
+    ).toBeInTheDocument();
   });
 
   it("shows a server's note of its cloud models apart from its own, and turns them on", async () => {
@@ -213,13 +231,23 @@ describe("Settings → AI models", () => {
     const section = await aiSection();
     const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
     if (!row) throw new Error("no Ollama row");
-    // Its own note stays as read; the cloud models' one is asked for.
-    expect(within(row).getByRole("button", { name: "What's shared" })).toBeInTheDocument();
-    await user.click(within(row).getByRole("button", { name: "Allow its cloud models" }));
-    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    // Its own note stays as read; the cloud models' one is asked for, as the step to take.
+    expect(within(row).getByRole("button", { name: "What's shared" })).toHaveAttribute(
+      "data-variant",
+      "outline",
+    );
+    const allow = within(row).getByRole("button", { name: "Allow its cloud models" });
+    expect(allow).toHaveAttribute("data-variant", "default");
+    // A server that takes no key gets no key button.
+    expect(within(row).queryByRole("button", { name: /key/ })).toBeNull();
+    await user.click(allow);
+    const sheet = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses cloud models through Ollama",
+    });
     expect(
-      within(sheet).getByText(/^This model may run in the cloud through Ollama/),
+      within(sheet).getByText(/^A model may run in the cloud through Ollama/),
     ).toBeInTheDocument();
+    expect(within(sheet).queryByText(/this model/)).toBeNull();
     await user.click(
       within(sheet).getByRole("button", { name: "Allow cloud models through Ollama" }),
     );
@@ -256,6 +284,37 @@ describe("Settings → AI models", () => {
     await user.click(within(section).getByRole("button", { name: "Review and turn on" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Anthropic" });
     expect(within(sheet).getByText("This changed since you last read it.")).toBeInTheDocument();
+  });
+
+  it("says which note changed: the one of a server's cloud models apart from its own", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-local" });
+    const status = mock.aiStatus;
+    // Its cloud models' note was accepted in an older version; its own is current.
+    vi.spyOn(mock, "aiStatus").mockImplementation(async () => {
+      const s = await status();
+      return {
+        ...s,
+        backends: s.backends.map((b) =>
+          b.label === "Ollama" && b.cloud_disclosure
+            ? { ...b, cloud_disclosure_acknowledged: b.cloud_disclosure.version - 1 }
+            : b,
+        ),
+      };
+    });
+    const { user } = renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    await user.click(within(row).getByRole("button", { name: "What's shared" }));
+    const own = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(within(own).queryByText("This changed since you last read it.")).toBeNull();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(within(row).getByRole("button", { name: /cloud models/ }));
+    const cloud = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses cloud models through Ollama",
+    });
+    expect(within(cloud).getByText("This changed since you last read it.")).toBeInTheDocument();
   });
 
   it("chooses and tests a model per feature", async () => {

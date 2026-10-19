@@ -47,6 +47,7 @@
     "turnOn": "Review and turn on",
     "whatsShared": "What's shared",
     "replaceKey": "Replace key",
+    "addKey": "Add a key",
     "remove": "Remove",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "{{product}} deletes the key from your keychain and stops using {{name}} for every feature. Your usage history stays.",
@@ -77,12 +78,13 @@
       "api_billing": "billed to your API account",
       "plan_credits": "uses your ChatGPT plan (credits past its limit)",
       "free_on_device": "free",
-      "cloud_via_local": "runs in the cloud",
+      "cloud_via_local": "may run in the cloud",
       "self_hosted": "cost set by whoever runs the server"
     }
   },
   "disclosure": {
     "title": "Before {{product}} uses {{name}}",
+    "titleCloud": "Before {{product}} uses cloud models through {{name}}",
     "intro": "This is what happens when {{product}} uses this service. If any of it changes, {{product}} asks you again.",
     "changed": "This changed since you last read it.",
     "gai": {
@@ -97,7 +99,8 @@
       "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
       "terms": "Read {{name}}'s terms",
       "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings.",
-      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it."
+      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.",
+      "cloudModels": "{{name}} runs on this computer, but {{product}} can't confirm that each of its models does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it."
     },
     "training": {
       "heading": "Training and storage",
@@ -125,6 +128,7 @@
       "plan_credits": "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.",
       "free_on_device": "Runs on this computer are free. They use its memory and battery.",
       "cloud_via_local": "This model may run in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
+      "cloudModels": "A model may run in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
       "self_hosted": "Costs, if any, are set by whoever runs this server."
     },
     "age": {
@@ -172,8 +176,10 @@
   },
   "replaceKey": {
     "title": "Replace the key for {{name}}",
+    "addTitle": "Add a key for {{name}}",
     "submit": "Check and replace",
-    "done": "Key replaced"
+    "done": "Key replaced",
+    "added": "Key added"
   },
   "features": {
     "title": "Which model does what",

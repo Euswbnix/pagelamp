@@ -47,6 +47,18 @@ export function DisclosureDialog({
 }
 
 /**
+ * Whether a note changed since the student last accepted it: by the version accepted of that
+ * note (a server here keeps the one of its cloud models apart from its own).
+ */
+export function noteChanged(status: AiBackendStatus, facts: DisclosureFacts): boolean {
+  const accepted =
+    facts.cost === "cloud_via_local"
+      ? status.cloud_disclosure_acknowledged
+      : status.disclosure_acknowledged;
+  return accepted != null && accepted !== facts.version;
+}
+
+/**
  * The note of one model where it runs (`modelDisclosure`): for a model that a server on this
  * computer may run in the cloud, a note of its own, acknowledged apart from the server's; for
  * any other, the backend's own note under its own key.
@@ -61,6 +73,7 @@ export function ModelDisclosureDialog({
   changed = false,
   open,
   onOpenChange,
+  onAccepted,
   returnFocus,
 }: {
   backend: BackendRef;
@@ -71,10 +84,12 @@ export function ModelDisclosureDialog({
   kind: AiBackendStatus["kind"];
   /** The model a run is about to use; none from Settings (its cloud models in general). */
   model?: string;
-  /** The backend's own note changed since it was read. */
+  /** This note changed since it was last accepted (`noteChanged`). */
   changed?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Once accepted, before the sheet closes. */
+  onAccepted?: () => void;
   returnFocus?: () => HTMLElement | null;
 }) {
   const { t } = useTranslation("ai");
@@ -101,8 +116,9 @@ export function ModelDisclosureDialog({
         changed={changed}
         acceptLabel={acceptLabel}
         acceptedText={acceptedText}
+        cloudModels={cloud && !model}
         acknowledge={(version) =>
-          acknowledge.mutateAsync({ backend, runsHere, version }).then(() => undefined)
+          acknowledge.mutateAsync({ backend, runsHere, version }).then(() => onAccepted?.())
         }
         pending={acknowledge.isPending}
         error={acknowledge.error}
@@ -162,7 +178,7 @@ function BackendDisclosure({ status, onDone }: { status: AiBackendStatus; onDone
       name={status.label}
       kind={status.kind}
       acknowledged={status.disclosure_acknowledged === facts.version}
-      changed={status.problems.includes("disclosure_changed")}
+      changed={noteChanged(status, facts)}
       acknowledge={(version) =>
         acknowledge.mutateAsync({ backend: status.backend, version }).then(() => undefined)
       }
@@ -181,6 +197,7 @@ function DisclosureBody({
   changed,
   acceptLabel,
   acceptedText,
+  cloudModels = false,
   acknowledge,
   pending,
   error,
@@ -194,6 +211,8 @@ function DisclosureBody({
   /** The accept button and the toast after it (default: "Turn on {name}"). */
   acceptLabel?: string;
   acceptedText?: string;
+  /** The note of a server's cloud models in general (Settings), not of one model. */
+  cloudModels?: boolean;
   acknowledge: (version: number) => Promise<void>;
   pending: boolean;
   error: unknown;
@@ -223,7 +242,9 @@ function DisclosureBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{t("disclosure.title", { name })}</DialogTitle>
+        <DialogTitle>
+          {cloudModels ? t("disclosure.titleCloud", { name }) : t("disclosure.title", { name })}
+        </DialogTitle>
         <DialogDescription>{t("disclosure.intro")}</DialogDescription>
         {changed ? <p className="text-sm font-medium">{t("disclosure.changed")}</p> : null}
       </DialogHeader>
@@ -242,7 +263,9 @@ function DisclosureBody({
             {facts.on_device
               ? t("disclosure.sent.onDevice", { name: who })
               : facts.cost === "cloud_via_local"
-                ? t("disclosure.sent.cloudViaLocal", { name })
+                ? t(cloudModels ? "disclosure.sent.cloudModels" : "disclosure.sent.cloudViaLocal", {
+                    name,
+                  })
                 : kind === "codex"
                   ? t("disclosure.sent.codex", { name: who })
                   : t("disclosure.sent.cloud", { name: who })}
@@ -269,7 +292,11 @@ function DisclosureBody({
           </Item>
         ) : null}
         <Item heading={t("disclosure.cost.heading")}>
-          <p>{t(`disclosure.cost.${facts.cost}`, { name: who })}</p>
+          <p>
+            {cloudModels
+              ? t("disclosure.cost.cloudModels", { name: who })
+              : t(`disclosure.cost.${facts.cost}`, { name: who })}
+          </p>
         </Item>
         {facts.min_age ? (
           <Item heading={t("disclosure.age.heading")}>

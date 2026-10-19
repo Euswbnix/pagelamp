@@ -1,5 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useId, useRef, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import {
@@ -25,7 +34,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { paths } from "@/lib/routes";
-import { ModelDisclosureDialog } from "./DisclosureDialog";
+import { ModelDisclosureDialog, noteChanged } from "./DisclosureDialog";
 import { estimateAmount, formatTokens } from "./lib/money";
 import { useAiErrorText } from "./useAiErrorText";
 
@@ -48,6 +57,85 @@ function showsCost(block: BlockReason | null): boolean {
 const SETTINGS_BLOCKS = new Set(["no_model_chosen"]);
 
 /**
+ * Where the steps before Generate keep what outlives them: the note being read (its sheet stays
+ * open while the estimate moves on, and a branch above may swap Generate out), and a step just
+ * settled, so focus goes to what comes next rather than to the page. A screen that can swap
+ * Generate for something else wraps the swap in it, with a place for focus when Generate is gone;
+ * a GenerateButton without one makes its own.
+ */
+export function GenerateSteps({
+  children,
+  fallbackFocus,
+}: {
+  children: ReactNode;
+  /** Where focus goes when a step was settled and Generate is gone (e.g. the section heading). */
+  fallbackFocus?: () => HTMLElement | null;
+}) {
+  const [note, setNote] = useState<OpenNote | null>(null);
+  const [settled, setSettled] = useState<Settled | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const steps = useMemo<Steps>(
+    () => ({ root, openNote: setNote, settled, settle: setSettled }),
+    [settled],
+  );
+  // Settled, and Generate went away (the estimate asked again took this screen elsewhere).
+  useEffect(() => {
+    if (!settled || root.current?.querySelector("[data-generate]")) return;
+    setSettled(null);
+    fallbackFocus?.()?.focus();
+  });
+  return (
+    <StepsContext.Provider value={steps}>
+      <div ref={root} className="contents">
+        {children}
+      </div>
+      {note ? (
+        <ModelDisclosureDialog
+          backend={note.choice.backend}
+          runsHere={note.runsHere}
+          disclosure={note.disclosure}
+          name={note.name}
+          kind={note.kind}
+          model={note.choice.model}
+          changed={note.changed}
+          open
+          onOpenChange={(open) => {
+            if (!open) setNote(null);
+          }}
+          onAccepted={note.onSettled}
+          returnFocus={() => nextStep(root.current) ?? fallbackFocus?.() ?? null}
+        />
+      ) : null}
+    </StepsContext.Provider>
+  );
+}
+
+/** What GenerateSteps shares with the GenerateButton inside it. */
+interface Steps {
+  root: { current: HTMLElement | null };
+  openNote: (note: OpenNote) => void;
+  /** A step was settled; focus moves on once Generate shows the estimate asked again. */
+  settled: Settled | null;
+  settle: (settled: Settled | null) => void;
+}
+
+/** The estimate the facade gave after a step was settled (none if it wasn't kept). */
+interface Settled {
+  estimate: CostEstimate | undefined;
+}
+
+const StepsContext = createContext<Steps | null>(null);
+
+/** The next thing to do after a settled step: the next step's control, or Generate. */
+function nextStep(root: HTMLElement | null): HTMLElement | null {
+  return (
+    root?.querySelector<HTMLElement>("[data-next-step]") ??
+    root?.querySelector<HTMLElement>("[data-generate]") ??
+    null
+  );
+}
+
+/**
  * "≈ $x" and Generate (design §3.5, §7): the facade's upper-bound estimate for this request,
  * refreshed as the request changes, and the pre-flight blocks it reports (`would_block`). The
  * blocks the student can settle here are settled here, one after the other: the note of the
@@ -55,44 +143,62 @@ const SETTINGS_BLOCKS = new Set(["no_model_chosen"]);
  * then an unpriced model, acknowledged once; going over the budget is an explicit, per-run
  * choice. Everything else disables Generate with the reason. Nothing runs before each is done.
  */
-export function GenerateButton({
-  request,
-  onGenerate,
-  label,
-}: {
+export function GenerateButton(props: GenerateButtonProps) {
+  const steps = useContext(StepsContext);
+  const button = <Generate {...props} />;
+  return steps ? button : <GenerateSteps>{button}</GenerateSteps>;
+}
+
+interface GenerateButtonProps {
   /** null = the form isn't complete yet. */
   request: EstimateRequest | null;
   onGenerate: (options: { overrideBudget: boolean }) => void;
   label?: string;
-}) {
+}
+
+function Generate({ request, onGenerate, label }: GenerateButtonProps) {
   const { t, i18n } = useTranslation("ai");
+  const client = useQueryClient();
   const estimate = useCostEstimate(request);
   const status = useAiStatus();
   const errorText = useAiErrorText();
+  const steps = useContext(StepsContext) as Steps;
   const [overrideBudget, setOverrideBudget] = useState(false);
   const ids = { line: useId(), override: useId(), reason: useId() };
-  // The note being read: held here, so its sheet outlives the step it was opened from (the
-  // estimate moves on once it is read), and focus lands on what comes next.
-  const [note, setNote] = useState<OpenNote | null>(null);
-  const root = useRef<HTMLDivElement>(null);
-  const generateRef = useRef<HTMLButtonElement>(null);
 
   const data = estimate.data ?? null;
   const block = data?.would_block ?? null;
   const blocked = block !== null && !(block === "budget_reached" && overrideBudget);
   const disabled = request === null || !data || blocked || estimate.isFetching;
 
+  // A step was settled (its own call waited for the estimate asked again): once that estimate
+  // is the one shown, focus goes to what comes next.
+  const { settled, settle, root } = steps;
+  const shown = estimate.data;
+  const fetching = estimate.isFetching;
+  useEffect(() => {
+    if (!settled) return;
+    if (settled.estimate !== undefined ? shown !== settled.estimate : fetching) return;
+    settle(null);
+    nextStep(root.current)?.focus();
+  }, [settled, settle, root, shown, fetching]);
+  /** Called once a step's call and the estimate asked again after it are done. */
+  const onSettled = () =>
+    settle({ estimate: request ? client.getQueryData(aiKeys.estimate(request)) : undefined });
+
   return (
-    <div ref={root} className="space-y-2">
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
         <Button
-          ref={generateRef}
           type="button"
+          data-generate
           aria-disabled={disabled || undefined}
           aria-describedby={block ? `${ids.line} ${ids.reason}` : ids.line}
           className="aria-disabled:opacity-50"
           onClick={() => {
-            if (!disabled) onGenerate({ overrideBudget: block === "budget_reached" });
+            if (disabled) return;
+            settle(null);
+            onGenerate({ overrideBudget: block === "budget_reached" });
           }}
         >
           {label ?? t("estimate.generate")}
@@ -139,7 +245,8 @@ export function GenerateButton({
           status={status.data ?? null}
           feature={request.feature}
           hintId={ids.reason}
-          onOpen={setNote}
+          onOpen={steps.openNote}
+          onSettled={onSettled}
         />
       ) : null}
       {block === "price_unknown_not_acknowledged" && request ? (
@@ -147,6 +254,7 @@ export function GenerateButton({
           status={status.data ?? null}
           feature={request.feature}
           hintId={ids.reason}
+          onSettled={onSettled}
         />
       ) : null}
       {block &&
@@ -162,24 +270,6 @@ export function GenerateButton({
           ) : null}
         </p>
       ) : null}
-      {note ? (
-        <ModelDisclosureDialog
-          backend={note.choice.backend}
-          runsHere={note.runsHere}
-          disclosure={note.disclosure}
-          name={note.name}
-          kind={note.kind}
-          model={note.choice.model}
-          changed={note.changed}
-          open
-          onOpenChange={(open) => {
-            if (!open) setNote(null);
-          }}
-          returnFocus={() =>
-            root.current?.querySelector<HTMLElement>("[data-next-step]") ?? generateRef.current
-          }
-        />
-      ) : null}
     </div>
   );
 }
@@ -191,8 +281,10 @@ interface OpenNote {
   disclosure: ModelDisclosure;
   name: string;
   kind: AiBackendStatus["kind"];
-  /** The backend's own note changed since it was read (the cloud note can't tell). */
+  /** This note changed since the student last accepted it. */
   changed: boolean;
+  /** After it is accepted (and the estimate asked again). */
+  onSettled: () => void;
 }
 
 function CostLine({
@@ -245,18 +337,21 @@ function CodexCostLine() {
  * opened, so a model that the server may run in the cloud gets its own note, apart from the
  * server's. Once read, the estimate is asked again: the next block, if any, follows. Asking the
  * server can find the note already read (its list changed since the estimate): then only the
- * estimate is asked again. The ChatGPT plan, not set up yet, is set up in Settings first.
+ * estimate is asked again, and if it still asks for a note, Settings (which has every note of
+ * the backend) is where to read it. The ChatGPT plan, not set up yet, is set up in Settings first.
  */
 function ModelDisclosureStep({
   status,
   feature,
   hintId,
   onOpen,
+  onSettled,
 }: {
   status: AiStatus | null;
   feature: EstimateRequest["feature"];
   hintId: string;
   onOpen: (note: OpenNote) => void;
+  onSettled: () => void;
 }) {
   const { t } = useTranslation("ai");
   const api = useApi();
@@ -264,16 +359,18 @@ function ModelDisclosureStep({
   const errorText = useAiErrorText();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // The note was found read, and the estimate asked again still wants one.
+  const [inSettings, setInSettings] = useState(false);
   const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
   const backend = choice
     ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
     : undefined;
   if (!choice || !backend) return null;
-  if (backend.kind === "codex" && backend.state === "needs_setup") {
+  if (inSettings || (backend.kind === "codex" && backend.state === "needs_setup")) {
     return (
       <p id={hintId} className="text-sm">
         {t("blocked.disclosure_not_acknowledged")}{" "}
-        <Link to={paths.settings} className="underline underline-offset-4">
+        <Link to={paths.settings} data-next-step className="underline underline-offset-4">
           {t("settings.title")}
         </Link>
       </p>
@@ -290,6 +387,9 @@ function ModelDisclosureStep({
       const [facts, acknowledged] = disclosure;
       if (acknowledged) {
         await client.invalidateQueries({ queryKey: aiKeys.all });
+        // Shown only if this block is still there once the estimate is shown again.
+        setInSettings(true);
+        onSettled();
         return;
       }
       onOpen({
@@ -298,8 +398,8 @@ function ModelDisclosureStep({
         disclosure,
         name: backend.label,
         kind: backend.kind,
-        changed:
-          facts.cost !== "cloud_via_local" && backend.problems.includes("disclosure_changed"),
+        changed: noteChanged(backend, facts),
+        onSettled,
       });
     } catch (err) {
       // E.g. the server here can't be reached: nothing is shown and nothing runs.
@@ -338,16 +438,29 @@ function UnpricedAcknowledgement({
   status,
   feature,
   hintId,
+  onSettled,
 }: {
   status: AiStatus | null;
   feature: EstimateRequest["feature"];
   hintId: string;
+  onSettled: () => void;
 }) {
   const { t } = useTranslation("ai");
   const acknowledge = useAcknowledgeUnpricedModel();
   const errorText = useAiErrorText();
   const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
   if (!choice) return null;
+
+  async function use() {
+    if (!choice || acknowledge.isPending) return;
+    try {
+      // Resolves once the estimate was asked again.
+      await acknowledge.mutateAsync({ backend: choice.backend, model: choice.model });
+      onSettled();
+    } catch {
+      // Shown below (acknowledge.error).
+    }
+  }
   return (
     <div className="space-y-1.5">
       <p id={hintId} className="text-sm">
@@ -359,7 +472,7 @@ function UnpricedAcknowledgement({
         variant="outline"
         disabled={acknowledge.isPending}
         data-next-step
-        onClick={() => acknowledge.mutate({ backend: choice.backend, model: choice.model })}
+        onClick={() => void use()}
       >
         {t("estimate.useUnpriced")}
       </Button>

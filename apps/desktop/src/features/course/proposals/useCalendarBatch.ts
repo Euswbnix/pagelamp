@@ -20,14 +20,24 @@ export type BatchState =
   | { phase: "finished"; outcomes: CalendarRunOutcome[]; stopped: boolean }
   | { phase: "failed"; error: unknown };
 
+/** A course's one-time question (b) reminder (D37 option 2), said during a batch. */
+export interface CourseReminder {
+  courseId: string;
+  /** Where the course's text went. */
+  service: string;
+}
+
 /**
  * "Read syllabi for N courses" (calendar design §7.3): one course after another, each gated on
- * its own; progress per course, Stop for the rest, and every course's outcome at the end.
+ * its own; progress per course, Stop for the rest, and every course's outcome at the end. The
+ * reminders the courses said are kept apart from the batch (also after it failed, was stopped
+ * or was put away), each until it is answered or dismissed.
  */
 export function useCalendarBatch() {
   const api = useApi();
   const client = useQueryClient();
   const [state, setState] = useState<BatchState>({ phase: "idle" });
+  const [reminders, setReminders] = useState<CourseReminder[]>([]);
   const batchId = useRef<string | null>(null);
 
   const start = useCallback(
@@ -36,6 +46,8 @@ export function useCalendarBatch() {
       const id = crypto.randomUUID();
       batchId.current = id;
       const outcomes: CalendarRunOutcome[] = [];
+      // Where each course's run went, for its reminder.
+      const services = new Map<string, string>();
       setState({
         phase: "running",
         courseId: null,
@@ -58,9 +70,25 @@ export function useCalendarBatch() {
                   ? { ...s, courseId: course_id, index, total, stage: null }
                   : s,
               );
+            } else if (event.type === "gen" && event.event.type === "started") {
+              services.set(event.course_id, event.event.backend_label);
             } else if (event.type === "gen" && event.event.type === "stage") {
               const { stage } = event.event;
               setState((s) => (s.phase === "running" ? { ...s, stage } : s));
+            } else if (
+              event.type === "gen" &&
+              event.event.type === "notice" &&
+              event.event.code === "material_sharing_reminder"
+            ) {
+              // Said before the course's end, however its run ends.
+              const reminder = {
+                courseId: event.course_id,
+                service: services.get(event.course_id) ?? "",
+              };
+              setReminders((rs) => [
+                ...rs.filter((r) => r.courseId !== reminder.courseId),
+                reminder,
+              ]);
             } else if (event.type === "course_finished") {
               outcomes.push(event.outcome);
               setState((s) => (s.phase === "running" ? { ...s, outcomes: [...outcomes] } : s));
@@ -92,5 +120,11 @@ export function useCalendarBatch() {
 
   const reset = useCallback(() => setState({ phase: "idle" }), []);
 
-  return { state, start, stop, reset };
+  /** Close a course's reminder (answered or dismissed). */
+  const settle = useCallback(
+    (courseId: string) => setReminders((rs) => rs.filter((r) => r.courseId !== courseId)),
+    [],
+  );
+
+  return { state, reminders, start, stop, reset, settle };
 }

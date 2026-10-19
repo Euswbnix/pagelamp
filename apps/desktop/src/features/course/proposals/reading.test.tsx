@@ -91,9 +91,18 @@ describe("Read the syllabus with AI", () => {
   });
 
   const REMINDER = "Check whether your instructor allows sharing course materials with AI services";
-  /** A run that sends its text, says the reminder and then ends with `error` (the facade's order). */
-  function endingWith(api: ReturnType<typeof mockApi>, error: () => Promise<ApiError>) {
+  /**
+   * Runs that send their text and then end with `error`, in the facade's order: Started, a
+   * stage, the failure, the reminder (only when `notice` says the run said it), Finished.
+   */
+  function endingWith(
+    api: ReturnType<typeof mockApi>,
+    error: () => Promise<ApiError>,
+    notice: (run: number) => boolean = () => true,
+  ) {
+    let runs = 0;
     api.readCourseCalendar = vi.fn(async (_c, id, _o, onEvent: (e: GenEvent) => void) => {
+      const run = runs++;
       onEvent({
         type: "started",
         generation_id: id,
@@ -101,23 +110,24 @@ describe("Read the syllabus with AI", () => {
         model: "gpt-6-luna",
         on_device: false,
       });
-      onEvent({ type: "notice", code: "material_sharing_reminder" });
+      onEvent({ type: "stage", stage: "waiting_for_model" });
       const reason = await error();
+      if (notice(run)) onEvent({ type: "notice", code: "material_sharing_reminder" });
       onEvent({ type: "finished", ok: false });
       throw reason;
     });
   }
+  const badOutput = async () =>
+    new ApiError("model", "No dates it could check.", { model_error: "bad_output" });
 
   it("asks question (b) after a reading that failed once its text went out", async () => {
     const api = mockApi();
-    endingWith(
-      api,
-      async () => new ApiError("model", "No dates it could check.", { model_error: "bad_output" }),
-    );
+    endingWith(api, badOutput);
     const { user, section } = await openReading(UNLABELLED, api);
     await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
     expect(await within(section).findByRole("alert")).toBeInTheDocument();
     const reminder = within(section).getByRole("region", { name: REMINDER });
+    expect(within(reminder).getByText(/materials to OpenAI\./)).toBeInTheDocument();
     await user.click(within(reminder).getByRole("button", { name: "Not sure" }));
     await waitFor(() =>
       expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
@@ -126,7 +136,34 @@ describe("Read the syllabus with AI", () => {
     expect(within(section).getByRole("alert")).toBeInTheDocument();
   });
 
-  it("asks question (b) after a reading stopped once it started", async () => {
+  it("asks nothing after a failed or stopped reading that didn't say the reminder", async () => {
+    const api = mockApi();
+    let stop: () => void = () => {};
+    let fail = true;
+    endingWith(
+      api,
+      () =>
+        fail
+          ? badOutput()
+          : new Promise((resolve) => {
+              stop = () => resolve(new ApiError("cancelled", "Stopped"));
+            }),
+      () => false,
+    );
+    vi.spyOn(api, "cancelGeneration").mockImplementation(async () => stop());
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("alert")).toBeInTheDocument();
+    expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
+
+    fail = false;
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    await user.click(await within(section).findByRole("button", { name: "Stop" }));
+    expect(await within(section).findByText("Stopped. Nothing was changed.")).toBeInTheDocument();
+    expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
+  });
+
+  it("asks question (b) after a reading stopped once it started, until dismissed", async () => {
     const api = mockApi();
     let stop: () => void = () => {};
     endingWith(
@@ -141,6 +178,22 @@ describe("Read the syllabus with AI", () => {
     await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
     await user.click(await within(section).findByRole("button", { name: "Stop" }));
     expect(await within(section).findByText("Stopped. Nothing was changed.")).toBeInTheDocument();
+    const reminder = within(section).getByRole("region", { name: REMINDER });
+    await user.click(within(reminder).getByRole("button", { name: "Dismiss" }));
+    expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
+    expect(within(section).getByText("Stopped. Nothing was changed.")).toBeInTheDocument();
+  });
+
+  it("keeps question (b) through another reading until it is answered", async () => {
+    const api = mockApi();
+    // Said once (the facade claims it): the first run says it, the next one doesn't.
+    endingWith(api, badOutput, (run) => run === 0);
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("region", { name: REMINDER })).toBeInTheDocument();
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    await waitFor(() => expect(api.readCourseCalendar).toHaveBeenCalledTimes(2));
+    expect(await within(section).findByRole("alert")).toBeInTheDocument();
     expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
   });
 
@@ -167,6 +220,41 @@ describe("Read the syllabus with AI", () => {
     expect(await within(section).findByText(/^Dates read\./)).toBeInTheDocument();
     // It went to the cloud: the course's one-time question (b).
     expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
+  });
+
+  it("keeps the note open when the reading changes under it, and focus in the section", async () => {
+    const api = mockApi();
+    const ollama = { kind: "provider", provider_id: "ollama" } as const;
+    await api.addModelProvider("ollama", "http://127.0.0.1:11434", null);
+    const own = (await api.aiStatus()).backends.find((b) => b.label === "Ollama");
+    if (!own) throw new Error("no Ollama");
+    await api.acknowledgeAiDisclosure(ollama, own.disclosure.version);
+    await api.setFeatureModel("course_calendar", {
+      backend: ollama,
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const { user, section, queryClient } = await openReading(UNLABELLED, api);
+    await user.click(await within(section).findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+
+    // Asked again meanwhile, the estimate now refuses the course: Generate makes way.
+    const estimate = api.estimateGeneration;
+    vi.spyOn(api, "estimateGeneration").mockImplementation(async (request) => ({
+      ...(await estimate(request)),
+      would_block: "material_sharing_not_allowed",
+    }));
+    await act(() => queryClient.invalidateQueries());
+    expect(
+      await within(section).findByRole("region", { name: "Not sent to an AI service" }),
+    ).toBeInTheDocument();
+    expect(within(section).queryByRole("button", { name: "Read it now" })).toBeNull();
+    // The note is still there to finish, and focus then stays in the section.
+    await user.click(within(sheet).getByRole("button", { name: "Use gpt-oss:120b-cloud" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 3, name: "Read with AI" })).toHaveFocus(),
+    );
   });
 
   it("says why it can't run for a No AI course, and respects question (b)", async () => {
@@ -293,5 +381,67 @@ describe("Read syllabi for N courses", () => {
     await user.click(within(region).getByRole("button", { name: "Stop the rest" }));
     release();
     expect(await within(region).findByText(/^Stopped\. 0 courses have dates/)).toBeInTheDocument();
+  });
+
+  const REMINDER = "Check whether your instructor allows sharing course materials with AI services";
+
+  it("asks question (b) for each course whose text went out, also after Done", async () => {
+    const api = mockApi();
+    const { user } = renderRoute("/courses", { api });
+    const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    const read = await within(region).findByRole("button", { name: /^Read syllabi for/ });
+    await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
+    await user.click(read);
+    expect(await within(region).findByText(/^Done: /)).toBeInTheDocument();
+    // The courses with question (b) unanswered, each named once.
+    const reminders = within(region).getAllByRole("region", { name: REMINDER });
+    expect(reminders.length).toBeGreaterThan(1);
+    const named = reminders.map((r) => within(r).getByText(/sent text from/).textContent);
+    expect(new Set(named).size).toBe(named.length);
+
+    await user.click(within(reminders[0] as HTMLElement).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() =>
+      expect(within(region).getAllByRole("region", { name: REMINDER })).toHaveLength(
+        reminders.length - 1,
+      ),
+    );
+    // Putting the outcomes away keeps the questions still open.
+    await user.click(within(region).getByRole("button", { name: "Done" }));
+    expect(within(region).getAllByRole("region", { name: REMINDER })).toHaveLength(
+      reminders.length - 1,
+    );
+  });
+
+  it("asks question (b) for a course whose text went out before the batch failed", async () => {
+    const api = mockApi();
+    api.readCourseCalendars = vi.fn(async (ids, _batchId, _options, onEvent) => {
+      const course = ids[0] as string;
+      onEvent({ type: "course_started", course_id: course, index: 0, total: ids.length });
+      onEvent({
+        type: "gen",
+        course_id: course,
+        event: {
+          type: "started",
+          generation_id: "g",
+          backend_label: "OpenAI",
+          model: "gpt-6-luna",
+          on_device: false,
+        },
+      });
+      onEvent({
+        type: "gen",
+        course_id: course,
+        event: { type: "notice", code: "material_sharing_reminder" },
+      });
+      throw new ApiError("internal", "The store is busy.");
+    });
+    const { user } = renderRoute("/courses", { api });
+    const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    const read = await within(region).findByRole("button", { name: /^Read syllabi for/ });
+    await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
+    await user.click(read);
+    expect(await within(region).findByText("The syllabi couldn't be read")).toBeInTheDocument();
+    const reminder = within(region).getByRole("region", { name: REMINDER });
+    expect(within(reminder).getByText(/materials to OpenAI\./)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EstimateRequest } from "@/api/ai";
+import { type AiBackendStatus, backendKey, type EstimateRequest } from "@/api/ai";
 import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { DEMO101, DEMO205 } from "@/features/course/testing";
@@ -173,11 +173,14 @@ describe("a model that a server on this computer may run in the cloud", () => {
     // Then its unknown price, still before anything runs; focus is on it.
     const unpriced = await screen.findByRole("button", { name: "Use it anyway" });
     await vi.waitFor(() => expect(unpriced).toHaveFocus());
+    expect(screen.getByText("May run in the cloud; no cost estimate")).toBeInTheDocument();
     expect(generate()).toHaveAttribute("aria-disabled", "true");
     await user.click(generate());
     expect(onGenerate).not.toHaveBeenCalled();
     await user.click(unpriced);
     await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+    // Focus moves on to Generate, not to the page.
+    await vi.waitFor(() => expect(generate()).toHaveFocus());
     expect(onGenerate).not.toHaveBeenCalled();
     await user.click(generate());
     expect(onGenerate).toHaveBeenCalledTimes(1);
@@ -249,7 +252,23 @@ describe("a model that a server on this computer may run in the cloud", () => {
     expect(screen.queryByRole("button", { name: "Use it anyway" })).toBeNull();
   });
 
-  it("asks for the estimate again when the note turns out read already", async () => {
+  it("goes on to the next step when the note turns out read already", async () => {
+    const api = await cloudViaLocal();
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />,
+      { api },
+    );
+    const button = await screen.findByRole("button", { name: "Read it now" });
+    // Read meanwhile (e.g. in Settings, in another window).
+    const [facts] = await api.modelDisclosure(OLLAMA, false);
+    await api.acknowledgeModelDisclosure(OLLAMA, false, facts.version);
+    await user.click(button);
+    const unpriced = await screen.findByRole("button", { name: "Use it anyway" });
+    await vi.waitFor(() => expect(unpriced).toHaveFocus());
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("sends to Settings when the note is read but the estimate still asks for one", async () => {
     const api = await cloudViaLocal();
     const disclosure = api.modelDisclosure;
     vi.spyOn(api, "modelDisclosure").mockImplementation(async (backend, here) => {
@@ -264,8 +283,83 @@ describe("a model that a server on this computer may run in the cloud", () => {
     const button = await screen.findByRole("button", { name: "Read it now" });
     const before = estimate.mock.calls.length;
     await user.click(button);
-    await vi.waitFor(() => expect(estimate.mock.calls.length).toBeGreaterThan(before));
+    // Asked again, and still blocked: Settings has every note of the backend.
+    const settings = await screen.findByRole("link", { name: "AI models" });
+    expect(estimate.mock.calls.length).toBeGreaterThan(before);
+    expect(settings).toHaveAttribute("href", "/settings");
+    await vi.waitFor(() => expect(settings).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Read it now" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows a ChatGPT plan's note in place once the plan is set up", async () => {
+    const { user, api } = renderWithProviders(
+      <GenerateButton request={{ feature: "weekly_note" }} onGenerate={() => {}} />,
+      { scenario: "codex-edu" },
+    );
+    const note = vi.spyOn(api, "modelDisclosure");
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    expect(
+      await screen.findByRole("dialog", { name: /^Before PageLamp uses / }),
+    ).toBeInTheDocument();
+    expect(note).toHaveBeenCalledWith({ kind: "codex" }, false);
+    expect(screen.queryByRole("link", { name: "AI models" })).toBeNull();
+  });
+
+  /** ai_status with Ollama's accepted versions of its notes changed by `edit`. */
+  function withAccepted(
+    api: Awaited<ReturnType<typeof cloudViaLocal>>,
+    edit: (b: AiBackendStatus) => Partial<AiBackendStatus>,
+  ) {
+    const status = api.aiStatus;
+    vi.spyOn(api, "aiStatus").mockImplementation(async () => {
+      const s = await status();
+      return {
+        ...s,
+        backends: s.backends.map((b) =>
+          backendKey(b.backend) === backendKey(OLLAMA)
+            ? { ...b, ...edit(b), problems: [...b.problems, "disclosure_changed" as const] }
+            : b,
+        ),
+      };
+    });
+  }
+
+  it("says the note of its cloud models changed when that is the one read before", async () => {
+    const api = await cloudViaLocal();
+    withAccepted(api, (b) => ({
+      cloud_disclosure_acknowledged: (b.cloud_disclosure?.version ?? 1) - 1,
+    }));
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />,
+      { api },
+    );
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(within(sheet).getByText(/can't confirm that this model does/)).toBeInTheDocument();
+    expect(within(sheet).getByText("This changed since you last read it.")).toBeInTheDocument();
+  });
+
+  it("doesn't say a note never read changed because the other one did", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await api.addModelProvider("ollama", "http://127.0.0.1:11434", null);
+    await api.setFeatureModel("weekly_explanation", {
+      backend: OLLAMA,
+      model: "qwen3.5:9b",
+      effort: "lowest",
+    });
+    // Its cloud models' note was read in an older version; its own never.
+    withAccepted(api, (b) => ({
+      cloud_disclosure_acknowledged: (b.cloud_disclosure?.version ?? 1) - 1,
+    }));
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO205)} onGenerate={() => {}} />,
+      { api },
+    );
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(within(sheet).getByText(/doesn't leave it/)).toBeInTheDocument();
+    expect(within(sheet).queryByText("This changed since you last read it.")).toBeNull();
   });
 
   it("sends a ChatGPT plan that isn't set up to Settings, not to its note", async () => {

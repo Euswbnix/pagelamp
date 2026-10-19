@@ -229,10 +229,44 @@ describe("mock: a server on this computer that may run a model in the cloud", ()
     for (const m of await api.listModels(backend)) {
       expect(m).toMatchObject({ on_device: false, runs_in_cloud: true, price_known: false });
     }
-    // A new key is a key.
+    // A new key is a key, and one may be given later.
     await expect(api.updateModelProviderKey(here.provider_id, " ")).rejects.toMatchObject({
       kind: "invalid",
     });
+    expect(await api.updateModelProviderKey(here.provider_id, "demo-key-0000Ab12")).toMatchObject({
+      key_last4: "Ab12",
+    });
+  });
+
+  it("gives no key to a server that takes none, here or elsewhere", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-local" });
+    await expect(api.updateModelProviderKey("ollama", "demo-key-0000Ab12")).rejects.toMatchObject({
+      kind: "invalid",
+      message: "Ollama doesn't use a key.",
+    });
+  });
+
+  it("lists the models of a local app on another computer as running there, priced", async () => {
+    const api = createMockApi(fast);
+    const remote = await api.addModelProvider("ollama", "https://gpu.example.edu:11434", null);
+    expect(remote.on_device).toBe(false);
+    const models = await api.listModels({ kind: "provider", provider_id: remote.provider_id });
+    expect(models.length).toBeGreaterThan(0);
+    for (const m of models) expect(m).toMatchObject({ on_device: false, runs_in_cloud: false });
+  });
+
+  it("makes a provider off this computer ready once its note is read, also when routed", async () => {
+    const api = createMockApi(fast);
+    await api.addModelProvider("openai", null, "sk-demo-secret-value-9f3A");
+    await api.setFeatureModel("weekly_explanation", {
+      backend: openai,
+      model: "gpt-6-luna",
+      effort: "lowest",
+    });
+    const [facts] = await api.modelDisclosure(openai, false);
+    await api.acknowledgeModelDisclosure(openai, false, facts.version);
+    const status = (await api.aiStatus()).backends.find((b) => b.label === "OpenAI");
+    expect(status).toMatchObject({ state: "ready", cloud_disclosure: null });
   });
 
   it("answers where a model runs as the facade does, asked or not", async () => {

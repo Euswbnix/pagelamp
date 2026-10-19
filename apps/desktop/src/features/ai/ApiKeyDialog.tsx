@@ -179,6 +179,8 @@ function ReplaceKeyForm({
   const { t } = useTranslation("ai");
   const update = useUpdateModelProviderKey();
   const form = useKeyForm();
+  // A custom server here added without a key gets its first one.
+  const adding = !provider.key_last4;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -187,7 +189,7 @@ function ReplaceKeyForm({
     try {
       await update.mutateAsync({ providerId: provider.provider_id, apiKey: key });
       form.succeeded();
-      toast.success(t("replaceKey.done"));
+      toast.success(adding ? t("replaceKey.added") : t("replaceKey.done"));
       onDone();
     } catch (err) {
       form.failed(err);
@@ -199,12 +201,19 @@ function ReplaceKeyForm({
   return (
     <form onSubmit={submit} noValidate aria-busy={form.pending} className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>{t("replaceKey.title", { name: provider.label })}</DialogTitle>
+        <DialogTitle>
+          {adding
+            ? t("replaceKey.addTitle", { name: provider.label })
+            : t("replaceKey.title", { name: provider.label })}
+        </DialogTitle>
         <DialogDescription>{t("addKey.description")}</DialogDescription>
       </DialogHeader>
       <KeyField form={form} />
       <KeyFormError form={form} />
-      <Footer pending={form.pending} submit={t("replaceKey.submit")} />
+      <Footer
+        pending={form.pending}
+        submit={adding ? t("addKey.submit") : t("replaceKey.submit")}
+      />
     </form>
   );
 }

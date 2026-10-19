@@ -367,7 +367,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     for (const choice of features.values()) {
       if (choice?.backend.kind !== "provider") continue;
       if (choice.backend.provider_id !== provider.provider_id) continue;
-      if (runsHere(provider, choice.model)) needsHere = true;
+      // A routed model needs the cloud note only from a server that has one.
+      if (!cloud || runsHere(provider, choice.model)) needsHere = true;
       else needsCloud = true;
     }
     const notesOk =
@@ -519,7 +520,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     updateModelProviderKey: async (providerId, apiKey) => {
       await ctx.delay(600);
       const provider = findProvider(providerId);
-      // A key may be left out only when adding a custom server here; a new one is a key.
+      const preset = presetOf(provider.preset);
+      // Like the facade: a server that takes no key gets none (a custom server here may get one
+      // later); a key may be left out only when adding a custom server here.
+      if (!preset.needs_key) throw new ApiError("invalid", `${preset.label} doesn't use a key.`);
       if (!apiKey.trim()) throw new ApiError("invalid", "Enter the API key.");
       validateKey(presetOf(provider.preset), provider.base_url, apiKey);
       provider.key_last4 = last4(apiKey);
@@ -560,11 +564,16 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       // Like the facade: only Ollama and LM Studio say a model runs here; any other server here
       // may run its models anywhere.
       const says = provider.preset === "ollama" || provider.preset === "lm_studio";
-      return structuredClone(modelsOf(provider)).map((m) =>
-        provider.on_device && !says
-          ? { ...m, on_device: false, runs_in_cloud: true, price_known: false }
-          : m,
-      );
+      return structuredClone(modelsOf(provider)).map((m) => {
+        if (provider.on_device && !says) {
+          return { ...m, on_device: false, runs_in_cloud: true, price_known: false };
+        }
+        // A local app's server on another computer: nothing runs here, priced by the catalog.
+        if (!provider.on_device && presetOf(provider.preset).local) {
+          return { ...m, on_device: false, runs_in_cloud: false, price_known: m.id in MOCK_PRICES };
+        }
+        return m;
+      });
     },
 
     testModel: async (backend, model): Promise<ProbeReport> => {

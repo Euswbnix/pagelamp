@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { GenEvent } from "../ai";
 import { createMockApi } from ".";
 
 const NOW = new Date(2026, 8, 28, 10, 0); // Monday 2026-09-28
@@ -80,5 +81,38 @@ describe("mock calendar proposals", () => {
     const api = createMockApi({ ...fast, scenario: "uoft-fall" });
     // No outline in plain uoft-fall: nothing to scan.
     expect(await api.scanCourseCalendar(FITTED)).toBeNull();
+  });
+});
+
+describe("mock syllabus reading: the question (b) reminder", () => {
+  const options = { override_budget: false };
+  /** Each event's type, a notice by its code. */
+  const kinds = (events: GenEvent[]) => events.map((e) => (e.type === "notice" ? e.code : e.type));
+
+  it("says it before a stopped reading ends, and once a course", async () => {
+    // Steps long enough for the stop to land while the run goes.
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await api.cancelGeneration("gen-1");
+    await expect(run).rejects.toMatchObject({ kind: "cancelled" });
+    expect(kinds(events)[0]).toBe("started");
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+    expect(events.at(-1)).toEqual({ type: "finished", ok: false });
+
+    // Claimed by the stopped run: the next one doesn't say it again.
+    const again: GenEvent[] = [];
+    await api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
+    expect(kinds(again)).not.toContain("material_sharing_reminder");
+  });
+
+  it("says it in a batch inside the course's own events", async () => {
+    const api = createMockApi(fast);
+    const said: string[] = [];
+    await api.readCourseCalendars([UNLABELLED, FITTED], "batch-1", options, (e) => {
+      if (e.type === "gen" && e.event.type === "notice") said.push(e.course_id);
+    });
+    expect(said).toContain(UNLABELLED);
+    expect(new Set(said).size).toBe(said.length);
   });
 });

@@ -17,6 +17,7 @@
 "ai.aiLabel.prefix" = "AI-generated";
 "ai.aiLabel.tokens" = "%1$@ tokens";
 "ai.aiLabel.tokensApprox" = "≈ %1$@ tokens";
+"ai.backend.addKey" = "Add a key";
 "ai.backend.cloudShared" = "What its cloud models get";
 "ai.backend.keyEnds" = "Key ending in %1$@";
 "ai.backend.kind.api_key" = "API key";
@@ -156,6 +157,7 @@
 "ai.disclosure.close" = "Close";
 "ai.disclosure.confirmFirst" = "Tick the confirmation above to turn it on.";
 "ai.disclosure.cost.api_billing" = "Each run is billed to your API account. PageLamp shows an estimate before each run and keeps to a monthly budget you set.";
+"ai.disclosure.cost.cloudModels" = "A model may run in the cloud through %1$@, not on this computer. %1$@'s terms and limits apply.";
 "ai.disclosure.cost.cloud_via_local" = "This model may run in the cloud through %1$@, not on this computer. %1$@'s terms and limits apply.";
 "ai.disclosure.cost.free_on_device" = "Runs on this computer are free. They use its memory and battery.";
 "ai.disclosure.cost.heading" = "Cost";
@@ -174,6 +176,7 @@
 "ai.disclosure.retention.on_device" = "Nothing is stored outside this computer.";
 "ai.disclosure.retention.provider_terms" = "How long %1$@ keeps what's sent depends on its terms.";
 "ai.disclosure.sent.cloud" = "It goes to %1$@ and is handled under %1$@'s terms.";
+"ai.disclosure.sent.cloudModels" = "%1$@ runs on this computer, but PageLamp can't confirm that each of its models does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.";
 "ai.disclosure.sent.cloudViaLocal" = "%1$@ runs on this computer, but PageLamp can't confirm that this model does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.";
 "ai.disclosure.sent.codex" = "It goes to %1$@ through Codex, signed in with your ChatGPT account, and is handled under %1$@'s terms and your ChatGPT settings.";
 "ai.disclosure.sent.heading" = "What is sent, and to whom";
@@ -182,6 +185,7 @@
 "ai.disclosure.sent.structure" = "Course structure: titles, dates, deadlines and week numbers.";
 "ai.disclosure.sent.terms" = "Read %1$@'s terms";
 "ai.disclosure.title" = "Before PageLamp uses %1$@";
+"ai.disclosure.titleCloud" = "Before PageLamp uses cloud models through %1$@";
 "ai.disclosure.training.heading" = "Training and storage";
 "ai.disclosure.training.may_train" = "%1$@ may use what's sent to train its models, depending on your account setting.";
 "ai.disclosure.training.may_train_free_tier" = "On %1$@'s free tier, what's sent may be used to improve its products, and people may review it. A key with billing turned on avoids this.";
@@ -261,7 +265,7 @@
 "ai.policy.age" = "%1$@+";
 "ai.policy.ageGuardian" = "%1$@+ with a guardian's permission";
 "ai.policy.cost.api_billing" = "billed to your API account";
-"ai.policy.cost.cloud_via_local" = "runs in the cloud";
+"ai.policy.cost.cloud_via_local" = "may run in the cloud";
 "ai.policy.cost.free_on_device" = "free";
 "ai.policy.cost.plan_credits" = "uses your ChatGPT plan (credits past its limit)";
 "ai.policy.cost.self_hosted" = "cost set by whoever runs the server";
@@ -282,6 +286,8 @@
 "ai.removeAll.done" = "All AI data removed";
 "ai.removeAll.hint" = "Deletes your keys, model choices, usage history and what PageLamp's AI features wrote (a calendar you accepted stays, with its AI label).";
 "ai.removeAll.title" = "Remove all AI data?";
+"ai.replaceKey.addTitle" = "Add a key for %1$@";
+"ai.replaceKey.added" = "Key added";
 "ai.replaceKey.done" = "Key replaced";
 "ai.replaceKey.submit" = "Check and replace";
 "ai.replaceKey.title" = "Replace the key for %1$@";

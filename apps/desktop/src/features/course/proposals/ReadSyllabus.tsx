@@ -7,7 +7,7 @@ import { useCostEstimate } from "@/api/ai-queries";
 import { useCourseCalendar, useScanCourseCalendar } from "@/api/proposalQueries";
 import type { Course } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { GenerateButton } from "@/features/ai/GenerateButton";
+import { GenerateButton, GenerateSteps } from "@/features/ai/GenerateButton";
 import {
   MaterialSharingReminder,
   SharingNotAllowedNotice,
@@ -55,30 +55,32 @@ export function ReadSyllabus({ course }: { course: Course }) {
           </h3>
           <p className="text-sm text-muted-foreground">{t("reading.aiHint")}</p>
         </div>
-        {courseBlock ? (
-          <p className="text-sm">{blockText(courseBlock)}</p>
-        ) : sharingNotAllowed ? (
-          <SharingNotAllowedNotice courseId={course.id} courseName={name} />
-        ) : state.phase === "running" ? (
-          <ReadingProgress state={state} onStop={() => void reading.stop()} />
-        ) : noModel ? (
-          <Button asChild variant="outline">
-            <Link to={paths.settings}>{t("reading.setUp")}</Link>
-          </Button>
-        ) : (
-          <GenerateButton
-            request={request}
-            label={t("reading.readWithAi")}
-            onGenerate={({ overrideBudget }) => void reading.start(overrideBudget)}
-          />
-        )}
+        {/* The steps before Generate outlive a swap of it (e.g. a note still being read). */}
+        <GenerateSteps fallbackFocus={() => document.getElementById(READ_SYLLABUS_HEADING)}>
+          {courseBlock ? (
+            <p className="text-sm">{blockText(courseBlock)}</p>
+          ) : sharingNotAllowed ? (
+            <SharingNotAllowedNotice courseId={course.id} courseName={name} />
+          ) : state.phase === "running" ? (
+            <ReadingProgress state={state} onStop={() => void reading.stop()} />
+          ) : noModel ? (
+            <Button asChild variant="outline">
+              <Link to={paths.settings}>{t("reading.setUp")}</Link>
+            </Button>
+          ) : (
+            <GenerateButton
+              request={request}
+              label={t("reading.readWithAi")}
+              onGenerate={({ overrideBudget }) => void reading.start(overrideBudget)}
+            />
+          )}
+        </GenerateSteps>
         <ReadingOutcome state={state} />
-        {(state.phase === "done" || state.phase === "failed" || state.phase === "stopped") &&
-        state.reminder ? (
+        {reading.reminder ? (
           <MaterialSharingReminder
             courseId={course.id}
             courseName={name}
-            service={state.backend}
+            service={reading.reminder.service}
             onClose={reading.settle}
           />
         ) : null}

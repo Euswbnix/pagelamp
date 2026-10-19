@@ -10,7 +10,7 @@ import { ApiKeyDialog, type ApiKeyDialogMode } from "./ApiKeyDialog";
 import { type BackendNote, BackendRow, hasOwnNote } from "./BackendRow";
 import { BudgetField } from "./BudgetField";
 import { ChatGptCard } from "./codex/ChatGptCard";
-import { DisclosureDialog, ModelDisclosureDialog } from "./DisclosureDialog";
+import { DisclosureDialog, ModelDisclosureDialog, noteChanged } from "./DisclosureDialog";
 import { FeatureModels } from "./FeatureModels";
 import { LocalServers } from "./LocalServers";
 import { RemoveAllAiData } from "./RemoveAllAiData";
@@ -130,6 +130,7 @@ export function AiModelsSection() {
             ]}
             name={disclosed.label}
             kind={disclosed.kind}
+            changed={noteChanged(disclosed, disclosed.cloud_disclosure)}
             open
             onOpenChange={(open) => {
               if (!open) setDisclosureFor(null);

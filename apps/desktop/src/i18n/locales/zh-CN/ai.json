@@ -47,6 +47,7 @@
     "turnOn": "查看并启用",
     "whatsShared": "会发送哪些内容",
     "replaceKey": "更换密钥",
+    "addKey": "添加密钥",
     "remove": "移除",
     "removeTitle": "移除 {{name}}？",
     "removeBody": "{{product}} 会从钥匙串中删除这个密钥，所有功能都不再使用 {{name}}。使用记录会保留。",
@@ -77,12 +78,13 @@
       "api_billing": "费用计入你的 API 账户",
       "plan_credits": "使用你的 ChatGPT 订阅（超出额度后消耗点数）",
       "free_on_device": "免费",
-      "cloud_via_local": "在云端运行",
+      "cloud_via_local": "可能在云端运行",
       "self_hosted": "费用由运行该服务器的一方决定"
     }
   },
   "disclosure": {
     "title": "{{product}} 使用 {{name}} 之前",
+    "titleCloud": "{{product}} 通过 {{name}} 使用云端模型之前",
     "intro": "下面是 {{product}} 使用这个服务时会发生的事。其中任何一项有变化，{{product}} 都会再问你一次。",
     "changed": "自你上次查看以来，这里的内容有了变化。",
     "gai": {
@@ -97,7 +99,8 @@
       "onDevice": "这些内容会发给这台电脑上的 {{name}}，不会离开这台电脑。",
       "terms": "查看 {{name}} 的条款",
       "codex": "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 {{name}}，按 {{name}} 的条款和你的 ChatGPT 设置处理。",
-      "cloudViaLocal": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认这个模型也在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。"
+      "cloudViaLocal": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认这个模型也在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。",
+      "cloudModels": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认它的每个模型都在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。"
     },
     "training": {
       "heading": "训练与保存",
@@ -125,6 +128,7 @@
       "plan_credits": "每次运行都计入你 ChatGPT 订阅的用量限额；超出订阅额度后，运行可能会消耗你的 ChatGPT 额度点数。",
       "free_on_device": "在这台电脑上运行是免费的，但会占用它的内存和电量。",
       "cloud_via_local": "这个模型可能通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。",
+      "cloudModels": "模型可能通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。",
       "self_hosted": "如有费用，由运行这台服务器的一方决定。"
     },
     "age": {
@@ -172,8 +176,10 @@
   },
   "replaceKey": {
     "title": "更换 {{name}} 的密钥",
+    "addTitle": "为 {{name}} 添加密钥",
     "submit": "验证并更换",
-    "done": "密钥已更换"
+    "done": "密钥已更换",
+    "added": "密钥已添加"
   },
   "features": {
     "title": "各项功能用哪个模型",

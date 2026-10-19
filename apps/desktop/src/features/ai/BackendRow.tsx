@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/ai";
-import { useRemoveModelProvider } from "@/api/ai-queries";
+import { useModelProviderPresets, useRemoveModelProvider } from "@/api/ai-queries";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +38,10 @@ export function BackendRow({
 }) {
   const { t } = useTranslation("ai");
   const headingId = useId();
+  const presets = useModelProviderPresets();
+  // By the server's kind, wherever it is: a key for a service that takes one (a custom server
+  // here, added without one, may get one later); none for Ollama or LM Studio, even remote.
+  const takesKey = !!provider && !!presets.data?.find((p) => p.id === provider.preset)?.needs_key;
   const own = hasOwnNote(provider);
   const cloud = status.cloud_disclosure ?? null;
   const ownRead = status.disclosure_acknowledged === status.disclosure.version;
@@ -105,7 +109,7 @@ export function BackendRow({
             {needs && !cloudRead ? t("backend.turnOnCloud") : t("backend.cloudShared")}
           </Button>
         ) : null}
-        {provider && status.kind === "api_key" ? (
+        {provider && takesKey ? (
           <Button
             type="button"
             size="sm"
@@ -113,7 +117,7 @@ export function BackendRow({
             onClick={() => onReplaceKey(provider)}
             aria-describedby={headingId}
           >
-            {t("backend.replaceKey")}
+            {provider.key_last4 ? t("backend.replaceKey") : t("backend.addKey")}
           </Button>
         ) : null}
         {provider ? <RemoveBackendButton provider={provider} describedBy={headingId} /> : null}
