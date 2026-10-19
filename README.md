@@ -10,6 +10,8 @@
 > (on macOS, open PageLamp once), then quit your AI app completely and open it again. Known issues
 > in v0.1.0 — a wrong week for some Canvas terms, and old courses that keep syncing — have
 > workarounds in the [release notes](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0).
+> v0.1.0 also keeps access parameters (such as `verifier=`) in the link addresses it stores and
+> can pass them to your AI app; v0.3.0-alpha.1 removes them.
 >
 > **v0.3.0-alpha.1 is a pre-release for testers.** It isn't finished and it can have bugs. Get it
 > from its own [release page](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1):
@@ -335,7 +337,7 @@ Security issues: see [SECURITY.md](SECURITY.md).
 
 ## 中文说明
 
-> v0.1.0 是 PageLamp 目前最新的正式版本，还不会自动更新：有新版本时从 [Releases](https://github.com/Euswbnix/pagelamp/releases/latest) 下载安装（macOS 上先打开一次 PageLamp），然后完全退出并重新打开你的 AI 应用。v0.1.0 的已知问题（部分 Canvas 学期周数不对、往期课程仍被同步）及临时解决办法见[发布说明](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0)。
+> v0.1.0 是 PageLamp 目前最新的正式版本，还不会自动更新：有新版本时从 [Releases](https://github.com/Euswbnix/pagelamp/releases/latest) 下载安装（macOS 上先打开一次 PageLamp），然后完全退出并重新打开你的 AI 应用。v0.1.0 的已知问题（部分 Canvas 学期周数不对、往期课程仍被同步）及临时解决办法见[发布说明](https://github.com/Euswbnix/pagelamp/releases/tag/v0.1.0)。v0.1.0 还会把链接地址里的访问参数（例如 `verifier=`）存进数据库，并可能交给你的 AI 应用；v0.3.0-alpha.1 已去掉这些参数。
 >
 > v0.3.0-alpha.1 是给测试者用的预发布版本，还没有做完，可能有问题。请到它自己的[发布页](https://github.com/Euswbnix/pagelamp/releases/tag/v0.3.0-alpha.1)下载：本页的 Releases 链接指向 v0.1.0，v0.1.0 也不会提示你更新到它。安装前请先读它的发布说明：它会把你的数据改成 v0.1.0 打不开的格式，会自己同步，读取 Canvas 课程的范围也更大。下文标有（v0.3）的内容讲的是预发布版本。v0.1.0 读得更少：只读“页面”列表和模块里列出的页面，不跟随链接，没有“模块要求查看”的规则，不记录没读到的部分，也不会自己同步。
 
