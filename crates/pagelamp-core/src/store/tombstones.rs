@@ -12,7 +12,7 @@
 //!   then clears `files_pending`.
 //! - The tombstone matches `(source_id, external_id)`; a sync skips `pending` and `purged` ones.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use chrono::Duration;
 use rusqlite::{Row, params};
@@ -24,6 +24,7 @@ use crate::model::Timestamp;
 use crate::removal::{
     CourseSettings, PURGE_AFTER_DAYS, RemovalReason, Tombstone, TombstoneState, dates_only,
 };
+use crate::term::CONFIRMED_DATES_KEY;
 
 impl TextValue for RemovalReason {
     fn parse_text(text: &str) -> Option<Self> {
@@ -140,6 +141,9 @@ impl Store {
             hidden: course.hidden,
             user_term_start: data.user_term_start,
             user_term_end: data.user_term_end,
+            dates_confirmed: self
+                .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
+                .is_some_and(|ids| ids.contains(course_id)),
             keep_current_until: data.keep_current_until,
             calendar: self.accepted_calendar_json(course_id)?.map(dates_only),
             access_restricted: data.lms.access_restricted == Some(true),
@@ -328,6 +332,14 @@ impl Store {
                     opt_date_text(s.keep_current_until)
                 ],
             )?;
+            if s.dates_confirmed && (s.user_term_start.is_some() || s.user_term_end.is_some()) {
+                let mut confirmed = self
+                    .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
+                    .unwrap_or_default();
+                if confirmed.insert(course_id.to_string()) {
+                    self.set_setting(CONFIRMED_DATES_KEY, &confirmed)?;
+                }
+            }
             if let Some(calendar) = &s.calendar {
                 self.conn.execute(
                     "INSERT INTO course_calendars

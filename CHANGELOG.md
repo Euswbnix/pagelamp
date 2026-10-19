@@ -16,21 +16,25 @@ On the main branch for the next pre-release; in no release yet.
   add `--delete-backup`. A small record of the course (its name, code and your settings for it)
   stays so that a sync doesn't add it back (see [PRIVACY.md](PRIVACY.md)). `pagelamp course
   removed` lists removed courses. After a course's data is deleted, `pagelamp course restore
-  <id>` can bring it back by syncing it again, with your saved settings (not if Canvas no longer
-  lists it or restricts access to it, or while you're offline). A plain sync leaves a removed
+  <id>` can bring it back by syncing it again, with your saved settings; its files come back as
+  not downloaded (not if Canvas no longer lists it or restricts access to it, or while you're
+  offline). A plain sync leaves a removed
   course out; after `pagelamp course forget`, the next sync adds it back, without your saved
   settings. The app's screens for it come with the next pre-release.
-- Courses of one school session count the same weeks. A course without dates of its own, whose
-  term the school calendar (below) has no dates for (so far Summer 2027 and years other than
-  2026-27), takes week 1, and the last day of classes where that course states one, from another
-  course of its session (the dates you set there, its own dates that its materials bear out, or
-  the week its module unlocks pin down), and says which course they come from. When those courses
-  disagree, none of them lends its dates, and each says so. A course whose weeks come from its own
-  dates or the school calendar keeps them, and says when a course of its session puts week 1
-  elsewhere; to use one course's dates in the others, copy them (see the next item).
+- Courses of one school session count the same weeks. A course without dates of its own, whose term
+  the school calendar (below) has no dates for (so far Summer 2027 and years other than 2026-27),
+  takes week 1, and the last day of classes where that course states one, from another course of its
+  session (the dates you set there, its own dates that its materials bear out, or the week its
+  module unlocks pin down), unless its own week-numbered materials clearly put week 1 elsewhere, and
+  says which course they come from. When the courses that would lend disagree (dates you set come
+  before a course's own dates, and those before module unlocks), none of them lends its dates, and
+  each says so. A course whose weeks come from its own dates or the school calendar keeps them, and
+  says when a course of its session puts week 1 elsewhere; to use one course's dates in the others,
+  copy them (see the next item).
 - *Also use these dates in*, under *Course dates* on a course's *Timeline* tab, makes the dates
   you save for one course the dates of other courses of its session, with *Undo*. Courses without
-  dates of their own come ticked; a course that has its own dates says they would be replaced. On
+  dates you set come ticked, even when their weeks come from Canvas, their folder or the school
+  calendar; a course with dates you set says they would be replaced. On
   the command line: `pagelamp course copy-dates <from> [<to>…]` (or `--same-session` for all of
   them); without courses to copy to, it lists them.
 - The school calendar file has the 2026-27 Fall and Winter dates (first and last day of classes,
