@@ -345,6 +345,20 @@ describe("Settings → AI models", () => {
     ).toBeInTheDocument();
   });
 
+  it("says why a provider stays when the keychain keeps its key", async () => {
+    const { user } = renderRoute("/settings", { scenario: "ai-keychain-locked" });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "OpenAI" })).closest("li");
+    if (!row) throw new Error("no OpenAI row");
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove OpenAI?" });
+    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Technical details for OpenAI" }));
+    expect(within(dialog).getByText(/Nothing was removed/)).toBeInTheDocument();
+    expect(screen.queryByText("OpenAI removed")).toBeNull();
+  });
+
   it("chooses and tests a model per feature", async () => {
     const { user } = renderRoute("/settings", { scenario: "ai-key" });
     const section = await aiSection();

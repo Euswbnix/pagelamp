@@ -227,7 +227,8 @@ export function useRemoveAllAiData() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => api.removeAllAiData(),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    // Also when it fails: a key the keychain kept leaves its provider, the rest is gone.
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 

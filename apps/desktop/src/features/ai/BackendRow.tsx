@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/ai";
 import { useModelProviderPresets, useRemoveModelProvider } from "@/api/ai-queries";
+import { toApiError } from "@/api/errors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TechnicalDetails } from "@/features/sources/TechnicalDetails";
 import { firstKey } from "./ApiKeyDialog";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
@@ -181,9 +183,13 @@ function RemoveBackendButton({
           <AlertDialogDescription>{t("backend.removeBody", { name })}</AlertDialogDescription>
         </AlertDialogHeader>
         {remove.error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {errorText(remove.error)}
-          </p>
+          <div className="space-y-1">
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(remove.error)}
+            </p>
+            {/* Why, as the app said (e.g. a key the keychain kept: nothing was removed). */}
+            <TechnicalDetails lines={[toApiError(remove.error).message]} subject={name} />
+          </div>
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>

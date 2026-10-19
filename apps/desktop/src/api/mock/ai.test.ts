@@ -200,6 +200,31 @@ describe("mock AI setup", () => {
     expect((await api.usageSummary(null)).rows).toEqual([]);
   });
 
+  it("keeps a provider whose key the keychain won't delete, like the facade", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-keychain-locked" });
+    const before = await api.aiStatus();
+    // One removal: nothing changes.
+    await expect(api.removeModelProvider("openai")).rejects.toMatchObject({
+      kind: "internal",
+      message: expect.stringContaining("under `llm:openai`. Nothing was removed"),
+    });
+    expect(await api.aiStatus()).toEqual(before);
+    // Remove all: the rest goes, that provider and its key stay, and it says so.
+    await expect(api.removeAllAiData()).rejects.toMatchObject({
+      kind: "internal",
+      message:
+        "Removed 1 provider(s), 0 usage record(s) and 0 generated text(s), but the keychain didn't let PageLamp delete the API key of openai: it is still there (`llm:openai`), and so is that provider. Run this again when the keychain can be reached.",
+    });
+    const after = await api.aiStatus();
+    expect(after.providers.map((p) => p.provider_id)).toEqual(["openai"]);
+    expect(after.features.map((f) => f.choice)).toEqual([null, null, null, null]);
+    // Its settings went too: its note is to be read again.
+    expect(after.backends[0]).toMatchObject({
+      state: "needs_disclosure",
+      disclosure_acknowledged: null,
+    });
+  });
+
   it("removing a provider clears the features that used it", async () => {
     const api = createMockApi({ ...fast, scenario: "ai-key" });
     await api.removeModelProvider("openai");

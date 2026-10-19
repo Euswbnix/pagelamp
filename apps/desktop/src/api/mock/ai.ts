@@ -155,6 +155,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   const providers: ModelProviderRecord[] = [];
   const acknowledged = new Map<string, number>();
   const unpricedAcks = new Set<string>();
+  /** Providers whose API key the keychain won't let PageLamp delete ("ai-keychain-locked"). */
+  const lockedKeys = new Set<string>();
   const features = new Map<AiFeature, ModelChoice | null>(FEATURES.map((f) => [f, null]));
   let budget: number | null = DEFAULT_BUDGET_MICRO_USD;
   const codex = createMockCodex({
@@ -220,6 +222,15 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       // Acknowledged an older version of the facts: the sheet has to be read again.
       acknowledged.set("provider:anthropic", presetOf("anthropic").data_policy.version - 1);
       route("anthropic", "claude-haiku-4-5");
+      break;
+    case "ai-keychain-locked":
+      // Two keys; the keychain won't let PageLamp delete OpenAI's.
+      record("openai", "openai", "https://api.openai.com/v1", openaiKey);
+      acknowledged.set("provider:openai", presetOf("openai").data_policy.version);
+      record("anthropic", "anthropic", "https://api.anthropic.com", "sk-ant-demo-0000Hq8e");
+      acknowledged.set("provider:anthropic", presetOf("anthropic").data_policy.version);
+      route("openai", "gpt-6-luna");
+      lockedKeys.add("openai");
       break;
     case "ai-errors": {
       const url = "https://llm.demo.test/v1";
@@ -532,7 +543,14 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     removeModelProvider: async (providerId) => {
       await ctx.delay();
-      findProvider(providerId);
+      const provider = findProvider(providerId);
+      // Like the facade: the key goes first; a key the keychain keeps changes nothing.
+      if (provider.key_last4 && lockedKeys.has(providerId)) {
+        throw new ApiError(
+          "internal",
+          `The API key of ${provider.label} couldn't be deleted from the keychain (the keychain is locked): it is still there, under \`llm:${providerId}\`. Nothing was removed; try again when the keychain can be reached.`,
+        );
+      }
       providers.splice(
         providers.findIndex((p) => p.provider_id === providerId),
         1,
@@ -775,19 +793,29 @@ export function createMockAi(ctx: MockAiContext): AiApi {
 
     removeAllAiData: async () => {
       await ctx.delay(300);
+      // Like the facade: Codex's sign-in ends first; then the keys, and a provider whose key
+      // the keychain keeps stays (with its key); everything else goes, then it says so.
+      codex.forget();
+      const kept = providers.filter((p) => p.key_last4 && lockedKeys.has(p.provider_id));
       acknowledged.clear();
       unpricedAcks.clear();
       for (const feature of FEATURES) features.set(feature, null);
       budget = DEFAULT_BUDGET_MICRO_USD;
       const report = {
-        providers_removed: providers.length,
+        providers_removed: providers.length - kept.length,
         generations_removed: 0,
         usage_rows_removed: usage.length,
         backup_removed: false,
       };
-      providers.length = 0;
+      providers.splice(0, providers.length, ...kept);
       usage = [];
-      codex.forget();
+      if (kept.length > 0) {
+        const ids = kept.map((p) => p.provider_id);
+        throw new ApiError(
+          "internal",
+          `Removed ${report.providers_removed} provider(s), ${report.usage_rows_removed} usage record(s) and ${report.generations_removed} generated text(s), but the keychain didn't let PageLamp delete the API key of ${ids.join(", ")}: it is still there (${ids.map((id) => `\`llm:${id}\``).join(", ")}), and so is that provider. Run this again when the keychain can be reached.`,
+        );
+      }
       return report;
     },
 
