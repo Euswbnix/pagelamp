@@ -321,3 +321,77 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
     );
     assert_eq!(store.remove_all_ai_data().unwrap().providers, 0);
 }
+
+/// A restored course gets its calendar back as it was: the 0.1 calendar the student never
+/// checked stays `legacy` (unconfirmed, and still the migrated row), the confirmed one stays
+/// `user` and confirmed.
+#[test]
+fn a_restored_course_keeps_its_calendar_s_origin() {
+    use std::collections::BTreeSet;
+
+    use pagelamp_core::removal::RemovalReason;
+
+    let (_dir, path) = temp_db();
+    version_3_db(&path);
+    let store = Store::open(&path).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap();
+    for id in ["folder:demo/course/CONFIRMED", "folder:demo/course/LEGACY"] {
+        store
+            .remove_course(id, RemovalReason::Other, false, false, now)
+            .unwrap();
+        store.purge_course(id, now, false).unwrap();
+        // The sync a restore runs brings the course row back, then its settings.
+        store
+            .upsert_course(&CourseUpsert {
+                id: id.into(),
+                source_id: "folder:demo".into(),
+                external_id: id.into(),
+                code: Some(id.into()),
+                name: "Demo".into(),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+                lms: Default::default(),
+            })
+            .unwrap();
+        store.apply_restored_settings(id, now).unwrap();
+    }
+    let rows: Vec<(String, String, String)> = {
+        let mut statement = store
+            .conn()
+            .prepare(
+                "SELECT course_id, origin, fingerprint FROM course_calendars
+                 WHERE state = 'accepted' ORDER BY course_id",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "folder:demo/course/CONFIRMED".to_string(),
+                "user".to_string(),
+                "legacy".to_string()
+            ),
+            (
+                "folder:demo/course/LEGACY".to_string(),
+                "legacy".to_string(),
+                "legacy".to_string()
+            ),
+        ]
+    );
+    let confirmed: BTreeSet<String> = store
+        .setting(COURSE_DATES_CONFIRMED)
+        .unwrap()
+        .unwrap_or_default();
+    assert_eq!(
+        confirmed,
+        BTreeSet::from(["folder:demo/course/CONFIRMED".to_string()])
+    );
+}
