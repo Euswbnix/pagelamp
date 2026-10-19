@@ -156,6 +156,32 @@ describe("Settings → AI models", () => {
     ).toBeInTheDocument();
   });
 
+  it("adds a custom server on this computer without a key, and asks one of any other", async () => {
+    const { user, api } = renderRoute("/settings");
+    const add = vi.spyOn(api, "addModelProvider");
+    const section = await aiSection();
+    await user.click(await within(section).findByRole("button", { name: "Add an API key" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add an API key" });
+    await user.click(within(dialog).getByRole("combobox", { name: "Provider" }));
+    await user.click(await screen.findByRole("option", { name: "Custom (OpenAI-compatible)" }));
+    const address = within(dialog).getByLabelText("Address");
+    // Elsewhere, the key is needed.
+    await user.type(address, "https://llm.example.edu/v1");
+    await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
+    expect(within(dialog).getByLabelText("API key")).toHaveAttribute("aria-invalid", "true");
+    expect(add).not.toHaveBeenCalled();
+    // On this computer, it may be left out.
+    await user.clear(address);
+    await user.type(address, "http://localhost:8080/v1");
+    const key = within(dialog).getByLabelText("API key (optional)");
+    expect(key).toHaveAccessibleDescription(/may not need a key/);
+    await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
+    expect(add).toHaveBeenCalledWith("custom", "http://localhost:8080/v1", null);
+    expect(
+      await screen.findByRole("dialog", { name: "Before PageLamp uses localhost:8080" }),
+    ).toBeInTheDocument();
+  });
+
   it("adds a running Ollama in one click; nothing leaves this computer", async () => {
     const { user } = renderRoute("/settings");
     const section = await aiSection();

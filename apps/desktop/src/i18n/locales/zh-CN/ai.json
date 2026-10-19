@@ -158,6 +158,8 @@
     "baseUrlHint": "接口的基础地址，例如 https://llm.example.edu/v1",
     "key": "API 密钥",
     "keyHint": "保存之前，{{product}} 会向服务商发一个免费请求来验证它。",
+    "keyOptional": "API 密钥（可选）",
+    "keyOptionalHint": "这台电脑上的服务器可能不需要密钥。如果它要求提供，请填在这里。",
     "submit": "验证并添加",
     "checking": "正在验证…",
     "added": "已添加 {{name}}",

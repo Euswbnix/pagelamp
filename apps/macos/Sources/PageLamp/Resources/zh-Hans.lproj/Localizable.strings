@@ -8,6 +8,8 @@
 "ai.addKey.description" = "使用你自己从 AI 服务商获得的密钥。PageLamp 会把它保存在系统钥匙串中，界面上只显示最后 4 个字符。";
 "ai.addKey.key" = "API 密钥";
 "ai.addKey.keyHint" = "保存之前，PageLamp 会向服务商发一个免费请求来验证它。";
+"ai.addKey.keyOptional" = "API 密钥（可选）";
+"ai.addKey.keyOptionalHint" = "这台电脑上的服务器可能不需要密钥。如果它要求提供，请填在这里。";
 "ai.addKey.provider" = "服务商";
 "ai.addKey.submit" = "验证并添加";
 "ai.addKey.title" = "添加 API 密钥";

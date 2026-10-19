@@ -32,6 +32,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { describedBy } from "@/features/sources/add/AddErrorMessage";
 import { useReturnFocus } from "@/lib/focus";
+import { isLoopbackUrl } from "@/lib/url";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
 
@@ -92,17 +93,20 @@ function AddKeyForm({
   const [baseUrl, setBaseUrl] = useState("");
   const form = useKeyForm();
   const id = useId();
+  // A custom server on this computer may take no key (as the facade allows); every other
+  // provider needs its key.
+  const keyOptional = preset?.id === "custom" && isLoopbackUrl(baseUrl.trim());
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!preset) return;
-    const key = form.begin();
+    const key = form.begin(keyOptional);
     if (key === null) return;
     try {
       const record = await add.mutateAsync({
         preset: preset.id,
         baseUrl: preset.base_url_editable ? baseUrl.trim() || null : null,
-        apiKey: key,
+        apiKey: key || null,
       });
       form.succeeded();
       toast.success(t("addKey.added", { name: record.label }));
@@ -158,7 +162,7 @@ function AddKeyForm({
         </Field>
       ) : null}
 
-      <KeyField form={form} />
+      <KeyField form={form} optional={keyOptional} />
       <KeyFormError form={form} />
       <Footer pending={form.pending} submit={t("addKey.submit")} />
     </form>
@@ -229,12 +233,15 @@ function useKeyForm() {
     error,
     pending,
     ids,
-    /** The trimmed key to send, or null (nothing typed, or a call already running). */
-    begin(): string | null {
+    /**
+     * The trimmed key to send, or null (nothing typed, or a call already running). With
+     * `optional`, nothing typed is sent as no key ("").
+     */
+    begin(optional = false): string | null {
       if (pending) return null;
       const value = key.trim();
-      setMissing(value === "");
-      if (value === "") return null;
+      setMissing(value === "" && !optional);
+      if (value === "" && !optional) return null;
       setError(null);
       setPending(true);
       return value;
@@ -251,13 +258,15 @@ function useKeyForm() {
   };
 }
 
-function KeyField({ form }: { form: KeyForm }) {
+function KeyField({ form, optional = false }: { form: KeyForm; optional?: boolean }) {
   const { t } = useTranslation("ai");
   const { t: tc } = useTranslation();
   const invalid = form.missing || form.error ? true : undefined;
   return (
     <Field data-invalid={invalid}>
-      <FieldLabel htmlFor={form.ids.input}>{t("addKey.key")}</FieldLabel>
+      <FieldLabel htmlFor={form.ids.input}>
+        {optional ? t("addKey.keyOptional") : t("addKey.key")}
+      </FieldLabel>
       <SecretInput
         id={form.ids.input}
         value={form.key}
@@ -269,7 +278,9 @@ function KeyField({ form }: { form: KeyForm }) {
           form.error && form.ids.error,
         )}
       />
-      <FieldDescription id={form.ids.hint}>{t("addKey.keyHint")}</FieldDescription>
+      <FieldDescription id={form.ids.hint}>
+        {optional ? t("addKey.keyOptionalHint") : t("addKey.keyHint")}
+      </FieldDescription>
       {form.missing ? <FieldError id={form.ids.missing}>{tc("errors.invalid")}</FieldError> : null}
     </Field>
   );

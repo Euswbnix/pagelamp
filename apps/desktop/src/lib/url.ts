@@ -11,3 +11,17 @@ export function isHttpUrl(url: string | null | undefined): url is string {
     return false;
   }
 }
+
+/**
+ * Whether `url` addresses this computer, as the facade's `is_loopback` decides it: localhost,
+ * 127.0.0.0/8 or [::1]. False for anything that doesn't parse.
+ */
+export function isLoopbackUrl(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return host === "localhost" || host === "[::1]" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}

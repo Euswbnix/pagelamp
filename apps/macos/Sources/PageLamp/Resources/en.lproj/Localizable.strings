@@ -8,6 +8,8 @@
 "ai.addKey.description" = "Use your own key from an AI provider. PageLamp keeps it in your system's keychain and only ever shows its last 4 characters.";
 "ai.addKey.key" = "API key";
 "ai.addKey.keyHint" = "PageLamp checks it with a free call to the provider before saving it.";
+"ai.addKey.keyOptional" = "API key (optional)";
+"ai.addKey.keyOptionalHint" = "A server on this computer may not need a key. If it asks for one, enter it here.";
 "ai.addKey.provider" = "Provider";
 "ai.addKey.submit" = "Check and add";
 "ai.addKey.title" = "Add an API key";

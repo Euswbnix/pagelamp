@@ -158,6 +158,8 @@
     "baseUrlHint": "The endpoint's base address, like https://llm.example.edu/v1",
     "key": "API key",
     "keyHint": "{{product}} checks it with a free call to the provider before saving it.",
+    "keyOptional": "API key (optional)",
+    "keyOptionalHint": "A server on this computer may not need a key. If it asks for one, enter it here.",
     "submit": "Check and add",
     "checking": "Checking…",
     "added": "{{name}} added",

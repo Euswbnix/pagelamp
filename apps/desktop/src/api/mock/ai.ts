@@ -3,6 +3,7 @@
 // screens can be built and tested before the Rust side exists. Keys are validated and dropped:
 // only the last 4 characters are kept, as in the real facade.
 
+import { isLoopbackUrl } from "@/lib/url";
 import {
   type AiBackendStatus,
   type AiFeature,
@@ -104,7 +105,7 @@ function presetOf(id: string): ProviderPreset {
 }
 
 function isLoopback(url: URL): boolean {
-  return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  return isLoopbackUrl(url.href);
 }
 
 /** A short, stable id part for a custom endpoint (like the backend's `custom-<short-hash>`). */
@@ -315,13 +316,22 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       ? { facts: cloudViaLocalFacts(base, provider.preset), key: `${backendKey(backend)}:cloud` }
       : { facts: base, key: backendKey(backend) };
   }
+  /** Like the facade: a custom server on this computer may be added without a key. */
+  function needsKey(preset: ProviderPreset, baseUrl: string): boolean {
+    if (!preset.needs_key) return false;
+    try {
+      return !(preset.id === "custom" && isLoopback(new URL(baseUrl)));
+    } catch {
+      return true;
+    }
+  }
   function backendStatus(provider: ModelProviderRecord): AiBackendStatus {
     const backend: BackendRef = { kind: "provider", provider_id: provider.provider_id };
     const disclosure = disclosureOf(provider);
     const acked = acknowledged.get(backendKey(backend)) ?? null;
     const preset = presetOf(provider.preset);
     const problems: AiBackendStatus["problems"] = [];
-    if (preset.needs_key && !provider.key_last4) problems.push("key_missing");
+    if (needsKey(preset, provider.base_url) && !provider.key_last4) problems.push("key_missing");
     if (acked !== null && acked !== disclosure.version) problems.push("disclosure_changed");
     const state = problems.includes("key_missing")
       ? "needs_setup"
@@ -386,7 +396,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         { blocked: "coding_plan_key" },
       );
     }
-    if (preset.needs_key && !key?.trim()) throw new ApiError("invalid", "Enter the API key.");
+    if (needsKey(preset, baseUrl) && !key?.trim()) {
+      throw new ApiError("invalid", "Enter the API key.");
+    }
     if (key?.includes("bad")) {
       throw new ApiError("model", "The provider rejected this key.", {
         model_error: "auth_rejected",
@@ -441,13 +453,14 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       await ctx.delay(600);
       const preset = presetOf(presetId);
       const url = validateBaseUrl(preset, baseUrl);
+      const key = preset.needs_key && apiKey?.trim() ? apiKey : null;
       validateKey(preset, url, preset.needs_key ? apiKey : null);
       // Like the facade: one provider per preset (per address for custom endpoints).
       const id = preset.id === "custom" ? `custom-${shortHash(url)}` : preset.id;
       if (providers.some((p) => p.provider_id === id)) {
         throw new ApiError("invalid", `${preset.label} is already set up.`);
       }
-      const rec = record(preset.id, id, url, preset.needs_key ? apiKey : null);
+      const rec = record(preset.id, id, url, key);
       rec.created_at = now().toISOString();
       return structuredClone(rec);
     },

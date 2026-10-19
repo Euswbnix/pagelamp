@@ -20,6 +20,8 @@ nonisolated enum L10nKeys {
         "ai.addKey.description",
         "ai.addKey.key",
         "ai.addKey.keyHint",
+        "ai.addKey.keyOptional",
+        "ai.addKey.keyOptionalHint",
         "ai.addKey.provider",
         "ai.addKey.submit",
         "ai.addKey.title",
