@@ -35,9 +35,9 @@ use std::sync::{Arc, LazyLock};
 
 use pagelamp_app::diagnostics::{CrashReport, DoctorReport, ProcessKind};
 use pagelamp_app::{
-    Activity, App, AppError, AppStatus, LifecycleSummary, McpClientConfig, McpLaunch, Shell,
-    SourceSyncResult, StartupTasks, SyncEvent, SyncPrefs, SyncRequest, SyncSummary, UpdateChannel,
-    UpdateCheckRecord, UpdatePrefs,
+    Activity, App, AppError, AppStatus, ApplyDatesReport, LifecycleSummary, McpClientConfig,
+    McpLaunch, ReplacedDates, SessionCourses, Shell, SourceSyncResult, StartupTasks, SyncEvent,
+    SyncPrefs, SyncRequest, SyncSummary, UpdateChannel, UpdateCheckRecord, UpdatePrefs,
 };
 use pagelamp_core::lifecycle::SnoozeKind;
 use pagelamp_core::model::{
@@ -345,6 +345,29 @@ impl PageLamp {
     ) -> Result<()> {
         let app = self.app.clone();
         blocking(move || app.set_course_term(&course, start, end)).await
+    }
+
+    /// The other courses of the course's school session, for "apply these dates to my other
+    /// courses this term".
+    pub async fn session_courses(&self, course: String) -> Result<SessionCourses> {
+        let app = self.app.clone();
+        blocking(move || app.session_courses(&course)).await
+    }
+
+    /// Copies the course's own dates to the given courses of its session (undo:
+    /// `restore_course_dates` with the report's `replaced`).
+    pub async fn apply_course_dates_to(
+        &self,
+        from: String,
+        to: Vec<String>,
+    ) -> Result<ApplyDatesReport> {
+        let app = self.app.clone();
+        blocking(move || app.apply_course_dates_to(&from, to)).await
+    }
+
+    pub async fn restore_course_dates(&self, replaced: Vec<ReplacedDates>) -> Result<()> {
+        let app = self.app.clone();
+        blocking(move || app.restore_course_dates(replaced)).await
     }
 
     /// "Let my AI app read this course's materials".

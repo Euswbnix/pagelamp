@@ -739,6 +739,10 @@ fn calendar_signal(term: &TermResolution, week: u32, today: NaiveDate) -> WeekSi
             "week 1 is the week of {monday} (fitted from the week numbers of posted materials), \
              so {today} is calendar week {week}"
         ),
+        (TermAnchorSource::SameSession, _) => format!(
+            "week 1 is the week of {monday} (from another course of the same session), so \
+             {today} is calendar week {week}"
+        ),
         (_, Some(start)) => format!("term started {start}, so {today} is calendar week {week}"),
     };
     // A fit is made from the materials the weaker signals look at: they agree within a week
@@ -1077,6 +1081,8 @@ mod tests {
             events,
             today,
             institution: None,
+            same_session: None,
+            copied_from: None,
         })
     }
 

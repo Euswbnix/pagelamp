@@ -38,12 +38,13 @@ use pagelamp_app::diagnostics::{
     McpClientPresence, ProcessKind, UnreadableFiles,
 };
 use pagelamp_app::{
-    Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, AutoSync, AutoSyncTrigger,
-    BackupInfo, BreakInput, CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView,
-    CourseDatesInput, CourseLifecycleEntry, InstallKind, LifecycleSummary, LocalFileUse,
-    LostAfterPurge, McpClient, McpClientConfig, McpLaunch, McpNoteCode, PurgeReport,
-    ReadCalendarOptions, RemovalPreview, RemovalPreviewItem, RemovalReason, RemovalReport,
-    RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, SegmentInput, SourceSyncResult,
+    Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, ApplyDatesReport,
+    ApplySkipReason, AutoSync, AutoSyncTrigger, BackupInfo, BreakInput, CalendarBatchEvent,
+    CalendarRunOutcome, CourseCalendarView, CourseDatesInput, CourseLifecycleEntry, InstallKind,
+    LifecycleSummary, LocalFileUse, LostAfterPurge, McpClient, McpClientConfig, McpLaunch,
+    McpNoteCode, PurgeReport, ReadCalendarOptions, RemovalPreview, RemovalPreviewItem,
+    RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, ReplacedDates, RestoreFailure,
+    RestoreOutcome, SegmentInput, SessionCourse, SessionCourses, SkippedCourse, SourceSyncResult,
     StartupTasks, SyllabusOffer, SyncDue, SyncEvent, SyncPrefs, SyncRequest, SyncSummary,
     TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
     UpdatePrefs, WhatsNew, WhatsNewTopic,
@@ -363,6 +364,7 @@ pub enum TermAnchorSource {
     LmsTerm,
     FolderConfig,
     InstitutionCalendar,
+    SameSession,
     PublishedWeekLabels,
     NoAnchor,
 }
@@ -457,6 +459,8 @@ pub struct TermResolution {
     pub not_used: Vec<RejectedDates>,
     pub student_start: Option<IsoDate>,
     pub student_end: Option<IsoDate>,
+    #[uniffi(default = true)]
+    pub student_dates_confirmed: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -482,12 +486,17 @@ pub enum EvidenceCode {
     LmsTermDates,
     FolderDates,
     InstitutionCalendar,
+    SameSessionAnchor,
+    SameSessionUnlocks,
+    DatesCopiedFrom,
     WeekLabelsFit,
     NoCourseDates,
     TermLooksLikeEnrollmentWindow,
     DatesNotUsed,
     EndNotUsed,
     DatesAgree,
+    SameSessionDisagrees,
+    SameSessionSplit,
     DatesMayBeWrong,
     SessionWindow,
     InstitutionCalendarMissing,
@@ -1947,6 +1956,59 @@ pub enum LoginEvent {
 pub enum LocalFileUse {
     Open,
     Reveal,
+}
+
+// ----- the courses of one session ("apply these dates to my other courses") ------------------
+
+#[uniffi::remote(Record)]
+pub struct SessionCourses {
+    pub session: Option<String>,
+    pub campus: Option<u8>,
+    pub courses: Vec<SessionCourse>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SessionCourse {
+    pub course_id: String,
+    pub name: String,
+    pub code: Option<String>,
+    pub hidden: bool,
+    pub own_dates: bool,
+    pub student_start: Option<IsoDate>,
+    pub student_end: Option<IsoDate>,
+    pub week_one_monday: Option<IsoDate>,
+    pub anchor: TermAnchorSource,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ApplySkipReason {
+    NotSameSession,
+    FromCourse,
+    NoDates,
+    DatesNotConfirmed,
+    UnknownCourse,
+}
+
+#[uniffi::remote(Record)]
+pub struct SkippedCourse {
+    pub course_id: String,
+    pub reason: ApplySkipReason,
+}
+
+#[uniffi::remote(Record)]
+pub struct ReplacedDates {
+    pub course_id: String,
+    pub start: Option<IsoDate>,
+    pub end: Option<IsoDate>,
+    pub legacy: bool,
+    pub copied_from: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ApplyDatesReport {
+    pub applied: Vec<String>,
+    pub skipped: Vec<SkippedCourse>,
+    pub replaced: Vec<ReplacedDates>,
 }
 
 // ---------------------------------------------------------------------------------------------

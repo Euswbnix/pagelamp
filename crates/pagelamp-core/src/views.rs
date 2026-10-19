@@ -9,7 +9,7 @@
 //! `<course_material>` wrappers, the `guidance` string, output caps in characters) live in
 //! `pagelamp-mcp`.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::{DateTime, Local, NaiveDate, TimeDelta, Utc};
 use pagelamp_extract::FailureKind;
@@ -24,7 +24,11 @@ use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
 use crate::store::{MIGRATED_FINGERPRINT, Store};
 use crate::term::phase::teaching_week_on;
-use crate::term::{CONFIRMED_DATES_KEY, ResolvedTerm, TermInput, resolve_term};
+use crate::term::same_session::{self, Donor, DonorInput, Lend};
+use crate::term::session::{SessionKey, session_hint};
+use crate::term::{
+    CONFIRMED_DATES_KEY, COPIED_DATES_KEY, ResolvedTerm, TermInput, TermResolution, resolve_term,
+};
 use crate::timeline;
 use crate::{Error, Result};
 
@@ -399,15 +403,28 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     let upcoming = store.list_events(at.now, add_days(at.now, UPCOMING_DAYS), None)?;
     let mut term_data = store.all_course_term_data()?;
     let confirmed = confirmed_courses(store)?;
-    let mut summaries = Vec::new();
-    for course in store.list_courses(include_hidden)? {
+    let copied = copied_courses(store)?;
+    // Hidden courses lend their dates too, so all are loaded; the hidden ones are listed only
+    // when asked for.
+    let mut courses = Vec::new();
+    for course in store.list_courses(true)? {
         let data = CourseData::load_with(
             store,
             &course,
             term_data.remove(&course.id).unwrap_or_default(),
             &confirmed,
+            &copied,
         )?;
-        let (_, timeline, lifecycle) = data.state(&course, at);
+        courses.push((course, data));
+    }
+    let lends = SessionLends::of(&courses, at, include_hidden);
+    let mut summaries = Vec::new();
+    for (course, data) in courses {
+        if course.hidden && !include_hidden {
+            continue;
+        }
+        let lend = lends.for_course(&course);
+        let (_, timeline, lifecycle) = data.state(&course, at, lend.as_ref(), include_hidden);
         let ai_materials = course.ai_materials();
         let course_deadlines: Vec<&Event> = upcoming
             .iter()
@@ -448,10 +465,71 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
     Ok(summaries)
 }
 
+/// One course of a session, as `session_courses` lists it.
+#[derive(Clone, Debug)]
+pub struct SessionCourseView {
+    pub course: Course,
+    /// The student's own first and last day of classes as saved (0.1 dates included).
+    pub student_start: Option<NaiveDate>,
+    pub student_end: Option<NaiveDate>,
+    /// The dates that count its weeks now, lent ones included.
+    pub term: TermResolution,
+}
+
+/// A course's session and the other courses in it (`session_courses`).
+#[derive(Clone, Debug)]
+pub struct SessionCoursesView {
+    /// The session code its code or name ends in; `None` without one (or on another school's
+    /// host, where such codes mean nothing).
+    pub session: Option<String>,
+    /// The campus digit of its course code; without one there is no session key, so no other
+    /// course.
+    pub campus: Option<u8>,
+    /// The other courses of the session (removed ones left out, hidden ones in), each with the
+    /// dates it counts its weeks from now.
+    pub courses: Vec<SessionCourseView>,
+}
+
+/// The other courses of `course`'s session, for "apply these dates to my other courses this
+/// term" (`same_session`).
+pub fn session_courses(store: &Store, course: &Course, at: AsOf) -> Result<SessionCoursesView> {
+    let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
+    let hint = session_hint(course, term_data.institution.as_deref());
+    let mut view = SessionCoursesView {
+        session: hint.as_ref().map(|h| h.session.clone()),
+        campus: hint.as_ref().and_then(|h| h.campus),
+        courses: Vec::new(),
+    };
+    let Some(key) = hint.and_then(|h| h.key()) else {
+        return Ok(view);
+    };
+    let lends = SessionLends::load(store, at, true, Some(&key))?;
+    for id in lends.courses_of(&key) {
+        if *id == course.id {
+            continue;
+        }
+        let Some(other) = store.get_course(id)? else {
+            continue;
+        };
+        let data = CourseData::load(store, &other)?;
+        let lend = lends.for_course(&other);
+        let (resolved, _) = data.timeline(&other, at, lend.as_ref(), true);
+        view.courses.push(SessionCourseView {
+            student_start: data.term_data.user_term_start,
+            student_end: data.term_data.user_term_end,
+            term: resolved.resolution,
+            course: other,
+        });
+    }
+    Ok(view)
+}
+
 /// Timeline of one course: its resolved dates, phase and week (see `timeline`), without a
 /// week when the course's lifecycle leaves the week-based views (`CourseData::state`).
 pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<CourseTimeline> {
-    Ok(CourseData::load(store, course)?.state(course, at).1)
+    let data = CourseData::load(store, course)?;
+    let lend = data.session_lend(store, course, at, true)?;
+    Ok(data.state(course, at, lend.as_ref(), true).1)
 }
 
 /// "What's going on in this course right now". `course` is resolved with
@@ -465,7 +543,8 @@ pub fn course_overview(
 ) -> Result<CourseOverview> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (_, timeline, lifecycle) = data.state(&course, at);
+    let lend = data.session_lend(store, &course, at, include_hidden)?;
+    let (_, timeline, lifecycle) = data.state(&course, at, lend.as_ref(), include_hidden);
     let current_modules = data
         .modules
         .iter()
@@ -541,9 +620,26 @@ pub fn week_materials(
     include_hidden: bool,
     at: AsOf,
 ) -> Result<WeekMaterials> {
+    week_materials_with(store, course, week, include_hidden, at, None)
+}
+
+/// `week_materials`, with what the sessions lend worked out once by the caller (a loop over
+/// many courses), or `None` to work it out for this course's session alone.
+pub(crate) fn week_materials_with(
+    store: &Store,
+    course: &str,
+    week: Option<u32>,
+    include_hidden: bool,
+    at: AsOf,
+    lends: Option<&SessionLends>,
+) -> Result<WeekMaterials> {
     let course = store.resolve_course_with(course, include_hidden)?;
     let data = CourseData::load(store, &course)?;
-    let (resolved, timeline, lifecycle) = data.state(&course, at);
+    let lend = match lends {
+        Some(lends) => lends.for_course(&course),
+        None => data.session_lend(store, &course, at, include_hidden)?,
+    };
+    let (resolved, timeline, lifecycle) = data.state(&course, at, lend.as_ref(), include_hidden);
     let no_current_week = has_no_current_week(&timeline, &lifecycle);
     let content: Vec<&Material> = data
         .materials
@@ -1000,6 +1096,9 @@ pub(crate) struct CourseData {
     pub(crate) events: Vec<Event>,
     pub(crate) term_data: CourseTermData,
     dates_confirmed: bool,
+    /// The course the student's dates were copied from, while they are the copied ones
+    /// (`COPIED_DATES_KEY`): its code or name, and whether it is hidden.
+    copied_from: Option<(String, bool)>,
     module_names: HashMap<String, String>,
     module_weeks: HashMap<String, u32>,
     chunk_counts: HashMap<String, u32>,
@@ -1060,10 +1159,183 @@ fn confirmed_courses(store: &Store) -> Result<BTreeSet<String>> {
         .unwrap_or_default())
 }
 
+/// The courses whose student dates were copied from another course (`COPIED_DATES_KEY`): {course
+/// id: from course id}. A value that doesn't parse counts as none; a failed read is an error.
+fn copied_courses(store: &Store) -> Result<BTreeMap<String, String>> {
+    Ok(store
+        .setting_or_absent::<BTreeMap<String, String>>(COPIED_DATES_KEY)?
+        .unwrap_or_default())
+}
+
+/// The course's session key (`same_session`), when it has one.
+fn session_key(course: &Course, data: &CourseTermData) -> Option<SessionKey> {
+    session_hint(course, data.institution.as_deref())?.key()
+}
+
+/// What `course` lends the other courses of its session, from its own rows with nothing lent to
+/// it (`same_session::donor`; no chains).
+fn donor_of(
+    course: &Course,
+    term_data: &CourseTermData,
+    dates_confirmed: bool,
+    modules: &[Module],
+    materials: &[Material],
+    events: &[Event],
+    at: AsOf,
+) -> Option<Donor> {
+    let input = TermInput {
+        fallback_tz: at.tz,
+        course,
+        data: term_data,
+        dates_confirmed,
+        // Accepted calendars reach the views with schema v4's B6 (`CourseData::input`).
+        calendar: None,
+        modules,
+        materials,
+        events,
+        today: at.today,
+        institution: None,
+        same_session: None,
+        copied_from: None,
+    };
+    let resolved = resolve_term(&input);
+    same_session::donor(&DonorInput {
+        course,
+        data: term_data,
+        calendar: None,
+        resolved: &resolved,
+        modules,
+        today: at.today,
+    })
+}
+
+/// What the courses of each session lend, worked out once per call: every course whose session
+/// key it shares with another course, and what it can lend from its own evidence.
+pub(crate) struct SessionLends {
+    /// Course id → its key and what it can lend.
+    courses: HashMap<String, (SessionKey, Option<Donor>)>,
+    /// Key → its course ids, in the store's order.
+    by_key: HashMap<SessionKey, Vec<String>>,
+    /// The reader shows hidden courses: a hidden lender may be named.
+    show_hidden: bool,
+}
+
+impl SessionLends {
+    fn new(show_hidden: bool) -> SessionLends {
+        SessionLends {
+            courses: HashMap::new(),
+            by_key: HashMap::new(),
+            show_hidden,
+        }
+    }
+
+    fn add(&mut self, id: &str, key: SessionKey, donor: Option<Donor>) {
+        self.by_key
+            .entry(key.clone())
+            .or_default()
+            .push(id.to_string());
+        self.courses.insert(id.to_string(), (key, donor));
+    }
+
+    /// From courses already loaded in full (`list_courses`).
+    fn of(courses: &[(Course, CourseData)], at: AsOf, show_hidden: bool) -> SessionLends {
+        let keys: Vec<Option<SessionKey>> = courses
+            .iter()
+            .map(|(course, data)| session_key(course, &data.term_data))
+            .collect();
+        let mut sizes: HashMap<&SessionKey, usize> = HashMap::new();
+        for key in keys.iter().flatten() {
+            *sizes.entry(key).or_default() += 1;
+        }
+        let mut lends = SessionLends::new(show_hidden);
+        for ((course, data), key) in courses.iter().zip(&keys) {
+            if let Some(key) = key
+                && sizes.get(key).is_some_and(|n| *n > 1)
+            {
+                lends.add(&course.id, key.clone(), data.donor(course, at));
+            }
+        }
+        lends
+    }
+
+    /// From the store: every session (`only`: that one) of two or more courses, each course
+    /// loaded with what its offer needs (modules, materials and events; nothing else). Removed
+    /// courses neither lend nor borrow.
+    pub(crate) fn load(
+        store: &Store,
+        at: AsOf,
+        show_hidden: bool,
+        only: Option<&SessionKey>,
+    ) -> Result<SessionLends> {
+        let mut term_data = store.all_course_term_data()?;
+        let confirmed = confirmed_courses(store)?;
+        let mut keyed: Vec<(Course, CourseTermData, SessionKey)> = Vec::new();
+        for course in store.list_courses(true)? {
+            let data = term_data.remove(&course.id).unwrap_or_default();
+            if let Some(key) = session_key(&course, &data)
+                && only.is_none_or(|only| *only == key)
+            {
+                keyed.push((course, data, key));
+            }
+        }
+        let mut sizes: HashMap<SessionKey, usize> = HashMap::new();
+        for (_, _, key) in &keyed {
+            *sizes.entry(key.clone()).or_default() += 1;
+        }
+        let mut lends = SessionLends::new(show_hidden);
+        for (course, data, key) in keyed {
+            if sizes.get(&key).is_none_or(|n| *n < 2) {
+                continue;
+            }
+            let modules = store.list_modules(&course.id)?;
+            let materials = store.list_materials(&course.id)?;
+            let events = store.list_events(
+                DateTime::<Utc>::MIN_UTC,
+                DateTime::<Utc>::MAX_UTC,
+                Some(&course.id),
+            )?;
+            let donor = donor_of(
+                &course,
+                &data,
+                confirmed.contains(&course.id),
+                &modules,
+                &materials,
+                &events,
+                at,
+            );
+            lends.add(&course.id, key, donor);
+        }
+        Ok(lends)
+    }
+
+    /// What the other courses of `course`'s session lend it.
+    pub(crate) fn for_course(&self, course: &Course) -> Option<Lend> {
+        let (key, own) = self.courses.get(&course.id)?;
+        let others: Vec<Donor> = self
+            .courses_of(key)
+            .iter()
+            .filter(|id| **id != course.id)
+            .filter_map(|id| self.courses.get(id)?.1.clone())
+            .collect();
+        same_session::lend(&key.session, own.as_ref(), &others, self.show_hidden)
+    }
+
+    /// The ids of the courses with `key`, in the store's order.
+    fn courses_of(&self, key: &SessionKey) -> &[String] {
+        self.by_key.get(key).map_or(&[], Vec::as_slice)
+    }
+}
+
 impl CourseData {
     pub(crate) fn load(store: &Store, course: &Course) -> Result<Self> {
         let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
-        Self::load_with(store, course, term_data, &confirmed_courses(store)?)
+        Self::load_with(
+            store,
+            course,
+            term_data,
+            &confirmed_courses(store)?,
+            &copied_courses(store)?,
+        )
     }
 
     fn load_with(
@@ -1071,7 +1343,14 @@ impl CourseData {
         course: &Course,
         term_data: CourseTermData,
         confirmed: &BTreeSet<String>,
+        copied: &BTreeMap<String, String>,
     ) -> Result<Self> {
+        let copied_from = match copied.get(&course.id) {
+            Some(from) => store
+                .get_course(from)?
+                .map(|from| (same_session::course_label(&from), from.hidden)),
+            None => None,
+        };
         let modules = store.list_modules(&course.id)?;
         let module_names = modules
             .iter()
@@ -1092,6 +1371,7 @@ impl CourseData {
                 Some(&course.id),
             )?,
             dates_confirmed: confirmed.contains(&course.id),
+            copied_from,
             term_data,
             chunk_counts: store.material_chunk_counts(&course.id)?,
             modules,
@@ -1100,7 +1380,28 @@ impl CourseData {
         })
     }
 
-    fn input<'a>(&'a self, course: &'a Course, at: AsOf) -> TermInput<'a> {
+    /// What the other courses of this course's session lend it, read from the store for its
+    /// session alone. `show_hidden`: whether the reader may see a hidden lender's name.
+    pub(crate) fn session_lend(
+        &self,
+        store: &Store,
+        course: &Course,
+        at: AsOf,
+        show_hidden: bool,
+    ) -> Result<Option<Lend>> {
+        let Some(key) = session_key(course, &self.term_data) else {
+            return Ok(None);
+        };
+        Ok(SessionLends::load(store, at, show_hidden, Some(&key))?.for_course(course))
+    }
+
+    fn input<'a>(
+        &'a self,
+        course: &'a Course,
+        at: AsOf,
+        lend: Option<&'a Lend>,
+        show_hidden: bool,
+    ) -> TermInput<'a> {
         TermInput {
             fallback_tz: at.tz,
             course,
@@ -1112,21 +1413,31 @@ impl CourseData {
             events: &self.events,
             today: at.today,
             institution: None,
+            same_session: lend,
+            // A hidden course isn't named to a reader that never shows one.
+            copied_from: self
+                .copied_from
+                .as_ref()
+                .filter(|(_, hidden)| show_hidden || !hidden)
+                .map(|(label, _)| label.as_str()),
         }
     }
 
-    /// The resolved dates, the timeline and the lifecycle, as every view shows them. A course
-    /// that is over, inactive or hasn't started (by its lifecycle) has no current week, no
-    /// default week and no current modules, whatever the week signals say (design §8.2, D43):
-    /// without usable dates, the week number of a material posted years ago would otherwise
-    /// stay "the current week". The signals stay in the evidence, and "I'm still taking this"
-    /// (a Current lifecycle) brings the week back.
+    /// The resolved dates, the timeline and the lifecycle, as every view shows them, with what
+    /// the other courses of the session lend (`session_lend`, or `SessionLends` for many
+    /// courses). A course that is over, inactive or hasn't started (by its lifecycle) has no
+    /// current week, no default week and no current modules, whatever the week signals say
+    /// (design §8.2, D43): without usable dates, the week number of a material posted years ago
+    /// would otherwise stay "the current week". The signals stay in the evidence, and "I'm
+    /// still taking this" (a Current lifecycle) brings the week back.
     pub(crate) fn state(
         &self,
         course: &Course,
         at: AsOf,
+        lend: Option<&Lend>,
+        show_hidden: bool,
     ) -> (ResolvedTerm, CourseTimeline, CourseLifecycle) {
-        let (resolved, mut timeline) = self.timeline(course, at);
+        let (resolved, mut timeline) = self.timeline(course, at, lend, show_hidden);
         // The lifecycle reads the phase and the dates, never the week.
         let lifecycle = self.lifecycle(course, &resolved, &timeline, at);
         if has_no_current_week(&timeline, &lifecycle) {
@@ -1140,12 +1451,31 @@ impl CourseData {
 
     /// The resolved dates and the timeline (`term::resolve_term`, `timeline::infer_timeline`),
     /// before the lifecycle is applied: views use `state`.
-    pub(crate) fn timeline(&self, course: &Course, at: AsOf) -> (ResolvedTerm, CourseTimeline) {
-        let input = self.input(course, at);
+    pub(crate) fn timeline(
+        &self,
+        course: &Course,
+        at: AsOf,
+        lend: Option<&Lend>,
+        show_hidden: bool,
+    ) -> (ResolvedTerm, CourseTimeline) {
+        let input = self.input(course, at, lend, show_hidden);
         let resolved = resolve_term(&input);
         let mut timeline = timeline::infer_timeline(&input, &resolved);
         timeline.calendar = self.calendar_status;
         (resolved, timeline)
+    }
+
+    /// What this course lends the other courses of its session.
+    fn donor(&self, course: &Course, at: AsOf) -> Option<Donor> {
+        donor_of(
+            course,
+            &self.term_data,
+            self.dates_confirmed,
+            &self.modules,
+            &self.materials,
+            &self.events,
+            at,
+        )
     }
 
     pub(crate) fn chunks_of(&self, material_id: &str) -> u32 {

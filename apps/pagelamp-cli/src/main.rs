@@ -273,6 +273,17 @@ enum CourseCommand {
         /// The removed course's id (see `course removed`).
         removed_id: String,
     },
+    /// Use one course's dates (`course term`) for other courses of its school session too.
+    /// Without courses to copy to, list the session's courses.
+    CopyDates {
+        /// The course whose dates to copy: its code, name or id.
+        from: String,
+        /// The courses that get them (codes, names or ids). Their own dates are replaced.
+        to: Vec<String>,
+        /// Copy to every other course of the session.
+        #[arg(long, conflicts_with = "to")]
+        same_session: bool,
+    },
     /// "I'm still taking this": count the course as current (by default until its term ends).
     Keep {
         /// The course's code, name or id.
@@ -706,6 +717,11 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     };
                     return course::calendar(&app, &course, action, json).await;
                 }
+                CourseCommand::CopyDates {
+                    from,
+                    to,
+                    same_session,
+                } => return course::copy_dates(&app, &from, to, same_session, json),
                 CourseCommand::Remove {
                     courses,
                     dry_run,
