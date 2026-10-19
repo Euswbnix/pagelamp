@@ -81,18 +81,31 @@ interface SyncState {
   /** The student is in the capsule or its details: an automatic run's problem stays on screen. */
   watched: boolean;
   /**
+   * The automatic run in hand started with nobody at the window, under a dialog that was left
+   * open (useAutoSync). Whatever is open then watches nothing, the capsule's own details
+   * included: the run ends quietly whatever `watched` says. The mark is this run's: it ends
+   * with the run, or with the student's next real input in the window.
+   */
+  unwatched: boolean;
+  /**
    * Until when (ms) an answer to "what's due?" counts as attended: the student just acted. On
    * the wall clock; `attendedUntilSteady` is the same moment on the clock that only runs
    * forward. Read them through `studentKnownHere`: both must hold.
    */
   attendedUntil: number;
   attendedUntilSteady: number;
+  /**
+   * The number of the `startup_tasks` answer the automatic sync has looked at and starts
+   * nothing for (0: none yet). The app's other automatic work waits for it (`useAfterAutoSync`).
+   */
+  clearedAnswer: number;
   /** What the student did that those marks stand for: its kind, for the log. */
   attendedBy: StudentAction | null;
   begin: (
     total: number | null,
     downloadCourseId?: string | null,
     automatic?: AutoSyncTrigger | null,
+    unwatched?: boolean,
   ) => void;
   apply: (event: SyncEvent) => void;
   /**
@@ -199,6 +212,7 @@ const noRun = {
   stoppedByUser: false,
   automatic: null,
   started: false,
+  unwatched: false,
 } satisfies Partial<SyncState>;
 
 const idle = {
@@ -208,12 +222,13 @@ const idle = {
   watched: false,
   attendedUntil: 0,
   attendedUntilSteady: 0,
+  clearedAnswer: 0,
   attendedBy: null,
 } satisfies Partial<SyncState>;
 
 export const useSyncStore = create<SyncState>()((set) => ({
   ...idle,
-  begin: (total, downloadCourseId = null, automatic = null) =>
+  begin: (total, downloadCourseId = null, automatic = null, unwatched = false) =>
     set((state) =>
       automatic
         ? {
@@ -223,6 +238,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
             downloadCourseId,
             stopping: false,
             automatic,
+            unwatched,
             started: false,
             automaticProblem: false,
             noAutomaticBefore: holdFrom(Date.now(), automatic, state.noAutomaticBefore),
@@ -237,6 +253,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
             stopping: false,
             stoppedByUser: false,
             automatic: null,
+            unwatched: false,
             started: true,
             automaticProblem: false,
           },
@@ -313,14 +330,16 @@ export const useSyncStore = create<SyncState>()((set) => ({
           downloadCourseId: null,
           stopping: false,
           automatic: null,
+          unwatched: false,
           automaticProblem: recorded,
           noAutomaticBefore,
         };
       }
       // An automatic sync the student didn't ask for stays quiet when a source failed too.
       // Nothing of the run stays on screen; what the student must fix is on the source itself.
-      // Stopping it, or watching it in the capsule, makes it end like any other run.
-      if (state.automatic && !stoppedByUser && !state.watched) {
+      // Stopping it, or watching it in the capsule, makes it end like any other run (what was
+      // left open when it started watches nothing: `unwatched`).
+      if (state.automatic && !stoppedByUser && (!state.watched || state.unwatched)) {
         const sources = Object.values(state.bySource);
         const clean =
           !error &&
@@ -337,6 +356,7 @@ export const useSyncStore = create<SyncState>()((set) => ({
         runError: stoppedByUser ? null : error,
         stopping: false,
         stoppedByUser,
+        unwatched: false,
         noAutomaticBefore,
         // Sources that never reported back didn't run to the end: mark them stopped so no
         // spinner keeps going after the run is over.
@@ -449,7 +469,10 @@ export function useStartSync() {
   const queryClient = useQueryClient();
 
   return useCallback(
-    async (sourceId?: string, options?: { automatic?: AutoSyncTrigger }): Promise<boolean> => {
+    async (
+      sourceId?: string,
+      options?: { automatic?: AutoSyncTrigger; unwatched?: boolean },
+    ): Promise<boolean> => {
       const store = useSyncStore.getState();
       if (store.running) return false;
       const automatic = sourceId ? null : (options?.automatic ?? null);
@@ -466,7 +489,7 @@ export function useStartSync() {
           noted_ms_ago: noted?.msAgo ?? null,
         });
       }
-      store.begin(total, null, automatic);
+      store.begin(total, null, automatic, automatic !== null && options?.unwatched === true);
       // What an automatic run leaves on a source is the facade's decision, read from the status
       // afterwards (refreshed below), not guessed from the kinds of failure.
       const recorded = () => {

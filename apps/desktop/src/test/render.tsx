@@ -20,13 +20,17 @@ import { routes } from "@/app/router";
 export interface RenderRouteOptions extends MockOptions {
   /** Use this API instead of a new mock (e.g. a mock wrapped with vi.fn spies). */
   api?: PageLampApi;
+  /** Use this client instead of the tests' own (e.g. the app's, to test its defaults). */
+  queryClient?: QueryClient;
 }
 
 export function renderRoute(path: string, options: RenderRouteOptions = {}) {
   const api = options.api ?? createMockApi({ latencyMs: 0, syncStepMs: 0, ...options });
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
-  });
+  const queryClient =
+    options.queryClient ??
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Number.POSITIVE_INFINITY } },
+    });
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const user = userEvent.setup();
   const result = render(

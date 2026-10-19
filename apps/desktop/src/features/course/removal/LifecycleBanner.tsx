@@ -22,9 +22,11 @@ export function LifecycleBanner() {
   const [open, setOpen] = useState(false);
 
   const data = summary.data;
-  // After a removal the banner may go away with its dialog; the toast (global) stays.
-  if (!data?.show_banner) return null;
-  const candidates = data.courses.filter((c) => data.suggested.includes(c.course_id));
+  const shown = data?.show_banner === true;
+  // After a removal the banner goes away with its dialog; the toast (global) stays. But a
+  // dialog the student is in doesn't go because the banner would (the list changed under it).
+  if (!shown && !open) return null;
+  const candidates = (data?.courses ?? []).filter((c) => data?.suggested.includes(c.course_id));
 
   async function notNow() {
     if (snooze.isPending) return;
@@ -39,28 +41,32 @@ export function LifecycleBanner() {
   }
 
   return (
-    <section aria-label={t("banner.title", { count: candidates.length })}>
-      <Notice
-        icon={<Archive className="size-4 text-muted-foreground" aria-hidden />}
-        title={t("banner.title", { count: candidates.length })}
-        action={
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => setOpen(true)}>
-              {t("banner.review")}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              aria-disabled={snooze.isPending || undefined}
-              onClick={() => void notNow()}
-            >
-              {t("banner.notNow")}
-            </Button>
-          </div>
-        }
-      >
-        <p>{t("banner.body")}</p>
-      </Notice>
+    <>
+      {shown ? (
+        <section aria-label={t("banner.title", { count: candidates.length })}>
+          <Notice
+            icon={<Archive className="size-4 text-muted-foreground" aria-hidden />}
+            title={t("banner.title", { count: candidates.length })}
+            action={
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => setOpen(true)}>
+                  {t("banner.review")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-disabled={snooze.isPending || undefined}
+                  onClick={() => void notNow()}
+                >
+                  {t("banner.notNow")}
+                </Button>
+              </div>
+            }
+          >
+            <p>{t("banner.body")}</p>
+          </Notice>
+        </section>
+      ) : null}
       <RemoveCoursesDialog
         open={open}
         onOpenChange={setOpen}
@@ -68,6 +74,6 @@ export function LifecycleBanner() {
         candidates={candidates}
         initiallySelected={candidates.map((c) => c.course_id)}
       />
-    </section>
+    </>
   );
 }

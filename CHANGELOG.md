@@ -3,6 +3,14 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
+## [Unreleased]
+
+### Added
+- MCP: your AI app can propose a course's term dates. The `course_calendar` prompt has it read the
+  syllabus and call the new `propose_course_calendar` tool; PageLamp keeps only the dates the
+  material's own words state, and you accept or dismiss the proposal in the app. At most 3 per
+  course per day, and never for a course whose materials you don't share with AI.
+
 ## [0.3.0-alpha.1] — 2026-10-18
 
 The first pre-release of v0.3.

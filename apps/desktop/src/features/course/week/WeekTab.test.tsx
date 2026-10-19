@@ -284,6 +284,33 @@ describe("Downloading Canvas files", () => {
     expect(await screen.findByRole("button", { name: "Download files…" })).toBeInTheDocument();
   });
 
+  it("says in the dialog why Download waits when a sync starts under it", async () => {
+    // A sync PageLamp starts by itself, or another window's, can begin with the dialog open.
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const download = vi.spyOn(api, "downloadCourseFiles");
+    const { user } = await openCourse(DEMO205, { api, query: "tab=deadlines" });
+    await user.click(await screen.findByRole("button", { name: "Download files…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Download this course's files?",
+    });
+    const confirm = within(dialog).getByRole("button", { name: "Download" });
+    expect(confirm).not.toHaveAttribute("aria-disabled");
+
+    act(() => useSyncStore.setState({ running: true, downloadCourseId: null }));
+    // The reason is inside the dialog, and is what the button is described by.
+    expect(within(dialog).getByText("Available when the sync finishes")).toBeInTheDocument();
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+    expect(confirm).toHaveAccessibleDescription("Available when the sync finishes");
+    // Pressing it downloads nothing and leaves the dialog where it is.
+    await user.click(confirm);
+    expect(download).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
+
+    act(() => useSyncStore.setState({ running: false }));
+    expect(within(dialog).queryByText("Available when the sync finishes")).toBeNull();
+    expect(confirm).not.toHaveAttribute("aria-disabled");
+  });
+
   it("says 'Downloading…' only while this course's own files download", async () => {
     const { user } = await openCourse(DEMO205, { query: "tab=deadlines" });
     const button = await screen.findByRole("button", { name: "Download files…" });
