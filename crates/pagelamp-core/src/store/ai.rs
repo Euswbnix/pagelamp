@@ -8,8 +8,14 @@ use crate::Result;
 use crate::ai::{AiDataRemoved, MaterialSharing, ProviderRow, UsageRecord};
 use crate::model::Timestamp;
 
-/// How long usage rows are kept (design §3.5: 13 months).
-pub const USAGE_KEEP_DAYS: i64 = 13 * 31;
+/// How long usage rows are kept (design §3.5): 13 calendar months.
+pub const USAGE_KEEP_MONTHS: u32 = 13;
+
+/// The oldest moment a usage row is kept at `now`: 13 calendar months back.
+pub fn usage_cutoff(now: Timestamp) -> Timestamp {
+    now.checked_sub_months(chrono::Months::new(USAGE_KEEP_MONTHS))
+        .unwrap_or(now)
+}
 
 impl Store {
     // ----- providers ---------------------------------------------------------------------------
@@ -153,10 +159,13 @@ impl Store {
 
     // ----- remove all ---------------------------------------------------------------------------
 
-    /// Delete providers, generations and the usage ledger, and the students' plan provenance of
-    /// generated plans, in one transaction. (Keys, AI settings and the backup file are the
-    /// facade's part.) Must not be called inside `in_transaction`.
-    pub fn remove_all_ai_data(&self) -> Result<AiDataRemoved> {
+    /// Delete providers, generations and the usage ledger, the calendars PageLamp's AI read
+    /// that the student hasn't accepted (proposed, dismissed, superseded), and the links of
+    /// accepted calendars and generated plans to their runs, in one transaction. Those keep
+    /// their AI label. (Keys, AI settings and the backup file are the facade's part.) Must not
+    /// be called inside `in_transaction`. The providers in `keep` stay (the facade couldn't
+    /// delete their keys).
+    pub fn remove_all_ai_data(&self, keep: &[String]) -> Result<AiDataRemoved> {
         self.in_transaction(|store| {
             let count = |table: &str| -> Result<u32> {
                 let n: i64 =
@@ -165,19 +174,29 @@ impl Store {
                         .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))?;
                 Ok(u32::try_from(n).unwrap_or(u32::MAX))
             };
+            let ids: Vec<String> =
+                store.query_list("SELECT id FROM model_providers ORDER BY id", [], |row| {
+                    row.get(0)
+                })?;
             let removed = AiDataRemoved {
-                providers: count("model_providers")?,
+                providers: u32::try_from(ids.iter().filter(|id| !keep.contains(id)).count())
+                    .unwrap_or(u32::MAX),
                 generations: count("generations")?,
                 usage_rows: count("ai_usage")?,
             };
             store.conn.execute_batch(
-                "UPDATE course_calendars SET generation_id = NULL WHERE generation_id IS NOT NULL;
+                "DELETE FROM course_calendars WHERE origin = 'ai' AND state <> 'accepted';
+                 UPDATE course_calendars SET generation_id = NULL WHERE generation_id IS NOT NULL;
                  UPDATE study_plans SET generation_id = NULL WHERE generation_id IS NOT NULL;
                  DELETE FROM generations;
                  DELETE FROM ai_usage;
-                 DELETE FROM model_providers;
                  DELETE FROM reminders_shown WHERE id LIKE 'material_sharing:%';",
             )?;
+            for id in ids.iter().filter(|id| !keep.contains(id)) {
+                store
+                    .conn
+                    .execute("DELETE FROM model_providers WHERE id = ?1", [id])?;
+            }
             Ok(removed)
         })
     }

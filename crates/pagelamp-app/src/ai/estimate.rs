@@ -274,7 +274,8 @@ impl App {
     /// (never an estimate's answer carried over). It fails closed: the ChatGPT plan, a provider
     /// off this computer, a server here that can't say (any but LM Studio and Ollama), and an
     /// Ollama model its daemon doesn't list as local (a cloud model, a model it doesn't list at
-    /// all, or a list it can't give) all count as the cloud.
+    /// all, or an answer that isn't a usable list) all count as the cloud. A daemon that
+    /// doesn't answer (not running, too slow), or a cancel, is that error: nothing is sent.
     pub(crate) async fn run_destination(
         &self,
         choice: &ModelChoice,
@@ -530,6 +531,18 @@ mod tests {
         pagelamp_llm::profile::preset(preset)
             .unwrap()
             .with_base_url("http://127.0.0.1:11434".parse().unwrap())
+    }
+
+    /// Ollama names a model's default tag `latest`; any other tag, or another case, is another
+    /// model.
+    #[test]
+    fn only_the_latest_tag_names_the_same_ollama_model() {
+        assert!(same_ollama_model("llama3.2:latest", "llama3.2"));
+        assert!(same_ollama_model("llama3.2", "llama3.2:latest"));
+        assert!(same_ollama_model("llama3.2", "llama3.2"));
+        assert!(!same_ollama_model("llama3.2:1b", "llama3.2"));
+        assert!(!same_ollama_model("llama3.2", "llama3.2:1b"));
+        assert!(!same_ollama_model("Llama3.2", "llama3.2"));
     }
 
     /// Without asking anything, Ollama's cloud models by their tag, and any server here that

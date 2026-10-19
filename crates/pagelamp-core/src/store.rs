@@ -48,7 +48,7 @@ mod generations;
 mod migrate_v4;
 mod tombstones;
 
-pub use ai::USAGE_KEEP_DAYS;
+pub use ai::{USAGE_KEEP_MONTHS, usage_cutoff};
 pub use calendars::{
     CalendarChecks, CalendarProvenance, CalendarRow, CalendarState, KEEP_DISMISSED_DAYS,
     KEEP_SUPERSEDED, NewCalendarRow, Staleness,

@@ -252,6 +252,7 @@
     "same_session_disagrees": "{{course}}, a course of the same session, puts week 1 in the week of {{monday}}, {{days}} days from {{source}}",
     "same_session_disagrees_no_course": "Another course of the same session puts week 1 in the week of {{monday}}, {{days}} days from {{source}}",
     "same_session_split": "The courses of session {{session}} disagree on week 1, so none of their dates is used. Set the first day of classes in one of them.",
+    "same_session_unlent": "No course of session {{session}} lends its dates: the one that decides week 1 counts its weeks by a calendar two dates can't carry, and no other agrees with its week 1. Set the first day of classes in this course.",
     "dates_may_be_wrong": "According to {{source}}, week 1 is the week of {{monday}}, {{days}} days away. These dates may be wrong — check them.",
     "session_window": "Session {{session}} ({{section}}) runs within {{start}} – {{end}}",
     "institution_calendar_missing": "The school calendar in this version has no dates for session {{session}}: only its months bound the course",

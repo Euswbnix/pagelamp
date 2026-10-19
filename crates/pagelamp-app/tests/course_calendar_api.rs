@@ -10,13 +10,14 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, CostBasis, CostKind, EstimateRequest, GenEvent, ModelChoice, RetentionFact,
+    BackendRef, BackendState, CostBasis, CostKind, EstimateRequest, GenEvent, GenNoticeCode,
+    ModelChoice, RetentionFact,
 };
 use pagelamp_app::{
     ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
 };
 use pagelamp_core::ai::{
-    AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind, ProviderRow,
+    AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind, ProviderRow, UsageRecord,
 };
 use pagelamp_core::calendar::candidates::{CandidateLeftOut, CandidateReason};
 use pagelamp_core::model::*;
@@ -293,8 +294,8 @@ fn collect() -> (Arc<Mutex<Vec<GenEvent>>>, impl Fn(GenEvent) + Send + Sync) {
     (events, move |event| sink.lock().unwrap().push(event))
 }
 
-/// Wait until the mock model has been asked (the run is waiting for its answer).
-/// Until the model is asked (a run first asks the server here for its model list).
+/// Wait until the mock model has been asked (the run is waiting for its answer; a run first
+/// asks the server here for its model list).
 async fn wait_for_request(server: &MockServer) {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while server
@@ -1279,12 +1280,25 @@ async fn the_local_note_doesnt_cover_a_model_the_server_runs_in_the_cloud() {
         .unwrap_err();
     assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
     assert_eq!(chats(&server.received_requests().await.unwrap()), before);
+    // The status says so too: the model routed to it needs the cloud note (the reading kept
+    // the daemon's list, which marks it remote).
+    let status = |app: &App| {
+        app.ai_status()
+            .unwrap()
+            .backends
+            .into_iter()
+            .find(|b| b.backend == backend)
+            .unwrap()
+            .state
+    };
+    assert_eq!(status(&app), BackendState::NeedsDisclosure);
     let (facts, _) = app.model_disclosure(&backend, false).unwrap();
     assert_eq!(facts.cost, CostKind::CloudViaLocal);
     assert_eq!(facts.retention, RetentionFact::ProviderTerms);
     let (local, acknowledged) = app.model_disclosure(&backend, true).unwrap();
     assert!(acknowledged && local.on_device);
     acknowledge_cloud_note(&app, &backend).await;
+    assert_eq!(status(&app), BackendState::Ready);
     let err = app
         .read_course_calendar(
             "DEMO101",
@@ -1336,6 +1350,315 @@ async fn a_model_listed_with_the_latest_tag_runs_here() {
         .await
         .unwrap();
     assert!(proposal.ai_label.unwrap().on_device);
+}
+
+/// A model list that arrives after its provider was removed isn't kept: `ai remove` takes the
+/// list, and an answer still on its way doesn't write it back.
+#[tokio::test]
+async fn a_list_that_arrives_after_its_provider_went_isn_t_kept() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let slow = tags(json!([{ "name": "local-model" }])).set_delay(Duration::from_millis(1500));
+    let server = with_local_model_listing(&app, slow).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    let listing = {
+        let (app, backend) = (app.clone(), backend.clone());
+        tokio::spawn(async move { app.list_models(&backend).await })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider("ollama").unwrap();
+    listing.await.unwrap().unwrap();
+    let kept: Option<serde_json::Value> = Store::open(&app.db_path())
+        .unwrap()
+        .setting("ai.listed_models")
+        .unwrap();
+    assert!(
+        kept.as_ref()
+            .is_none_or(|lists| lists.get("provider:ollama").is_none()),
+        "{kept:?}"
+    );
+}
+
+/// The one reminder for a course whose sharing answer is open follows the first reading that
+/// sent its materials to the cloud, also one that failed or whose answer had no checkable
+/// dates: a later reading doesn't remind again.
+#[tokio::test]
+async fn a_cloud_reading_that_fails_after_sending_still_reminds() {
+    let unsupported = json!({
+        "stated_term": {"text": null, "quote": null, "source": null},
+        "claims": [claim("first_class", day(-6), "Classes begin whenever you like.", "c1")],
+        "weeks": [],
+        "not_found": []
+    });
+    let rejected = ResponseTemplate::new(401).set_body_json(json!({"error": "unauthorized"}));
+    for failure in [rejected, answer(&unsupported)] {
+        let temp = tempfile::tempdir().unwrap();
+        let app = app_with_courses(temp.path());
+        let cloud =
+            || tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+        let server = with_local_model_listing(&app, cloud()).await;
+        let backend = BackendRef::Provider {
+            provider_id: "ollama".into(),
+        };
+        acknowledge_cloud_note(&app, &backend).await;
+        app.acknowledge_unpriced_model(&backend, "local-model")
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(failure)
+            .mount(&server)
+            .await;
+        let (events, on_event) = collect();
+        app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+            .await
+            .unwrap_err();
+        assert!(events.lock().unwrap().iter().any(|e| matches!(
+            e,
+            GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder
+            }
+        )));
+
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/api/tags"))
+            .respond_with(cloud())
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(answer(&good_extraction()))
+            .mount(&server)
+            .await;
+        let proposal = app
+            .read_course_calendar("DEMO101", "gen-2", ReadCalendarOptions::default(), |_| {})
+            .await
+            .unwrap();
+        assert!(!proposal.sharing_reminder, "reminded once already");
+    }
+}
+
+/// Usage lines older than 13 months go when a run is recorded and at each sync, and so do
+/// proposals dismissed more than 30 days ago, with the runs that wrote them.
+#[tokio::test]
+async fn old_ai_records_go_at_a_run_and_at_a_sync() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    // Around 13 calendar months back: older lines go, newer ones stay.
+    let thirteen_months = Utc::now()
+        .checked_sub_months(chrono::Months::new(13))
+        .unwrap();
+    let line = |past: bool| UsageRecord {
+        at: thirteen_months + TimeDelta::days(if past { -2 } else { 2 }),
+        backend: "provider:ollama".into(),
+        model: "local-model".into(),
+        feature: AiFeature::CourseCalendar,
+        input_uncached: 900,
+        cache_read: 0,
+        cache_write: 0,
+        output: 80,
+        reasoning: None,
+        micro_usd: Some(0),
+        cost_basis: "free_on_device".into(),
+        estimated: false,
+        outcome: "ok".into(),
+    };
+    let lines = |store: &Store| {
+        store
+            .ai_usage_between(
+                Utc::now() - TimeDelta::days(1000),
+                Utc::now() + TimeDelta::days(1),
+            )
+            .unwrap()
+            .len()
+    };
+    let store = Store::open(&app.db_path()).unwrap();
+    store.record_ai_usage(&line(true)).unwrap();
+    store.record_ai_usage(&line(false)).unwrap();
+    let proposal = app
+        .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
+        .await
+        .unwrap();
+    // The line just inside 13 months and the run's own.
+    assert_eq!(lines(&store), 2);
+
+    store
+        .dismiss_calendar_proposal(proposal.id, Utc::now() - TimeDelta::days(40))
+        .unwrap();
+    store.record_ai_usage(&line(true)).unwrap();
+    let root = temp.path().join("Courses");
+    let course = root.join("DEMO909 Field Methods");
+    std::fs::create_dir_all(&course).unwrap();
+    std::fs::write(course.join("notes.md"), "# Notes\n\nSampling notes.\n").unwrap();
+    let source = app.add_folder_source(&root, None, None).unwrap();
+    app.sync_source(&source.id, pagelamp_app::SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert_eq!(lines(&store), 2);
+    assert!(store.calendar_row(proposal.id).unwrap().is_none());
+    assert!(store.generation("gen-1").unwrap().is_none());
+}
+
+/// "Remove all AI data" stops this process's readings, and a reading still on its way keeps
+/// nothing: no usage line, no run, no proposal.
+#[tokio::test]
+async fn removing_all_ai_data_stops_a_reading_and_keeps_nothing_of_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    // An answer that would take long: a stopped reading doesn't wait for it.
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_secs(10)))
+        .mount(&server)
+        .await;
+    let read = |app: &App, id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", id, ReadCalendarOptions::default(), |_| {})
+                .await
+        })
+    };
+    let kept = |app: &App, id: &str| {
+        let store = Store::open(&app.db_path()).unwrap();
+        let usage = store
+            .ai_usage_between(
+                Utc::now() - TimeDelta::days(1),
+                Utc::now() + TimeDelta::days(1),
+            )
+            .unwrap()
+            .len();
+        let run = store.generation(id).unwrap().is_some();
+        let proposals = app.course_calendar("DEMO101").unwrap().proposals.len();
+        (usage, run, proposals)
+    };
+
+    // In this process: the reading is stopped.
+    let reading = read(&app, "gen-here");
+    wait_for_request(&server).await;
+    let removed_at = std::time::Instant::now();
+    app.remove_all_ai_data().unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert!(
+        removed_at.elapsed() < Duration::from_secs(5),
+        "the reading wasn't stopped"
+    );
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert_eq!(kept(&app, "gen-here"), (0, false, 0));
+
+    // From another process (another App on the same data): the reading runs to its end and
+    // keeps nothing, as its provider is gone.
+    let app = app_with_courses_again(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let reading = read(&app, "gen-there");
+    wait_for_request(&server).await;
+    let other = App::open_at_with_secrets(temp.path().join("data"), Arc::new(MemorySecrets::new()))
+        .unwrap();
+    other.remove_all_ai_data().unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled, "{}", err.message);
+    assert_eq!(kept(&app, "gen-there"), (0, false, 0));
+}
+
+/// A cloud reading that sent a course's materials still gives the reminder when its provider
+/// is removed while it waits: the answer isn't kept, but the reminder isn't the provider's.
+#[tokio::test]
+async fn a_reading_whose_provider_went_still_reminds() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(&app, &backend).await;
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let (events, on_event) = collect();
+    let reading = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+                .await
+        })
+    };
+    wait_for_request(&server).await;
+    app.remove_model_provider("ollama").unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert!(err.message.contains("wasn't kept"), "{}", err.message);
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Notice {
+            code: GenNoticeCode::MaterialSharingReminder
+        }
+    )));
+    assert!(app.course_calendar("DEMO101").unwrap().proposals.is_empty());
+}
+
+/// The reminder follows the answer as it is when the reading ends: a student who answers
+/// "allowed" while the model reads isn't asked to answer again.
+#[tokio::test]
+async fn an_answer_given_during_a_reading_isn_t_asked_for_again() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(&app, &backend).await;
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let (events, on_event) = collect();
+    let reading = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+                .await
+        })
+    };
+    wait_for_request(&server).await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
+        .unwrap();
+    let proposal = reading.await.unwrap().unwrap();
+    assert!(!proposal.sharing_reminder);
+    assert!(!events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Notice {
+            code: GenNoticeCode::MaterialSharingReminder
+        }
+    )));
+}
+
+/// The same data folder opened again (its courses are there already).
+fn app_with_courses_again(dir: &Path) -> App {
+    App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap()
 }
 
 /// A run of a model that the server on this computer runs in the cloud says so: its start, its
