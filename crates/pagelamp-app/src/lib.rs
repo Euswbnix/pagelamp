@@ -769,9 +769,15 @@ impl App {
         }
         // Before the row goes: if this fails the source stays and removing can be retried.
         self.forget_light_sync(&store, source_id)?;
-        // What its courses' syncs noted as not read names those courses: it goes too.
-        pagelamp_core::coverage::remove_for_source(&store, source_id)?;
-        store.remove_source(source_id)?;
+        // What its courses' syncs noted as not read names those courses, and the dates records
+        // hold their ids (course ids start with the source's): they go with the source row, in
+        // one transaction.
+        let prefix = format!("{source_id}/");
+        store.in_transaction(|store| {
+            pagelamp_core::coverage::remove_for_source(store, source_id)?;
+            pagelamp_core::term::forget_dates_records(store, |id| id.starts_with(&prefix))?;
+            store.remove_source(source_id)
+        })?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;
         }

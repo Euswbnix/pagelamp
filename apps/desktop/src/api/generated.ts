@@ -226,7 +226,12 @@ export type SourceErrorKind =
  * via the `definition` "ApplySkipReason".
  */
 export type ApplySkipReason =
-  "not_same_session" | "from_course" | "no_dates" | "dates_not_confirmed" | "unknown_course";
+  | "not_same_session"
+  | "from_course"
+  | "no_dates"
+  | "dates_not_confirmed"
+  | "own_calendar"
+  | "unknown_course";
 /**
  * How often PageLamp syncs by itself while it runs.
  *
@@ -2355,6 +2360,12 @@ export interface TermResolution {
    */
   outer_frame?: DateSpan | null;
   /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
+  /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
    * `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
@@ -3208,13 +3219,19 @@ export interface SessionCourse {
   hidden: boolean;
   name: string;
   /**
+   * It counts its weeks from a calendar of its own (accepted from its syllabus or saved with
+   * the dates form): applying leaves it alone (`ApplySkipReason::OwnCalendar`).
+   */
+  own_calendar: boolean;
+  /**
    * The student set dates in that course (dates from PageLamp 0.1 included): applying
-   * replaces them.
+   * replaces them, unless the course has a calendar of its own (`own_calendar`).
    */
   own_dates: boolean;
   student_end?: string | null;
   /**
-   * Those dates as saved; both `None` without own dates.
+   * Those dates as saved; both `None` without own dates. With a calendar of its own, its
+   * span as mirrored there (the end can be the end of exams).
    */
   student_start?: string | null;
   /**
@@ -3598,6 +3615,12 @@ export interface TermResolution1 {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
   /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the

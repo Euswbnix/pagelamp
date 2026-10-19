@@ -25,9 +25,13 @@ pub(crate) const CODEX_SOURCE: &str = "ai.codex_source";
 pub(crate) const MODE_A_WEEKLY_CAP: &str = "ai.mode_a_weekly_cap";
 /// The last "requires a newer version of Codex" seen, and with which version.
 pub(crate) const CODEX_OUTDATED: &str = "ai.codex_outdated";
+/// From the last model list of a model server on this computer that may run models in the
+/// cloud (Ollama), by backend key: which models it runs here (`true`) and which it runs in the
+/// cloud (`false`). Estimates read it; a run asks the server again.
+pub(crate) const LISTED_MODELS: &str = "ai.listed_models";
 
 /// Every AI settings key ("Remove all AI data" deletes them).
-pub(crate) const ALL_KEYS: [&str; 7] = [
+pub(crate) const ALL_KEYS: [&str; 8] = [
     ROUTING,
     BUDGET,
     DISCLOSURES,
@@ -35,6 +39,7 @@ pub(crate) const ALL_KEYS: [&str; 7] = [
     CODEX_SOURCE,
     MODE_A_WEEKLY_CAP,
     CODEX_OUTDATED,
+    LISTED_MODELS,
 ];
 
 /// A stable key for a backend in settings maps.
@@ -44,6 +49,12 @@ pub(crate) fn backend_key(backend: &BackendRef) -> String {
         BackendRef::ClaudeCode => "claude_code".to_string(),
         BackendRef::Provider { provider_id } => format!("provider:{provider_id}"),
     }
+}
+
+/// The key of the disclosure for a model that a server on this computer may run in the cloud:
+/// acknowledged apart from the server's own ("nothing leaves this computer").
+pub(crate) fn cloud_key(backend: &BackendRef) -> String {
+    format!("{}:cloud", backend_key(backend))
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -94,6 +105,10 @@ pub(crate) fn unpriced(store: &Store) -> Result<BTreeMap<String, Vec<String>>> {
     Ok(store.setting(UNPRICED)?.unwrap_or_default())
 }
 
+pub(crate) fn listed_models(store: &Store) -> Result<BTreeMap<String, BTreeMap<String, bool>>> {
+    Ok(store.setting(LISTED_MODELS)?.unwrap_or_default())
+}
+
 /// Forget everything about a removed backend: its routing, acknowledgements.
 pub(crate) fn forget_backend(store: &Store, backend: &BackendRef) -> Result<()> {
     let key = backend_key(backend);
@@ -102,9 +117,14 @@ pub(crate) fn forget_backend(store: &Store, backend: &BackendRef) -> Result<()> 
     store.set_setting(ROUTING, &routes)?;
     let mut acks = disclosures(store)?;
     acks.remove(&key);
+    acks.remove(&cloud_key(backend));
     store.set_setting(DISCLOSURES, &acks)?;
     let mut models = unpriced(store)?;
     models.remove(&key);
     store.set_setting(UNPRICED, &models)?;
+    let mut listed = listed_models(store)?;
+    if listed.remove(&key).is_some() {
+        store.set_setting(LISTED_MODELS, &listed)?;
+    }
     Ok(())
 }

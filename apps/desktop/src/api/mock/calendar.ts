@@ -97,6 +97,7 @@ export function resolution(partial: Partial<TermResolution> = {}): TermResolutio
     student_start: null,
     student_end: null,
     student_dates_confirmed: true,
+    own_calendar: false,
     ...partial,
   };
 }

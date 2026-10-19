@@ -469,9 +469,13 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
 #[derive(Clone, Debug)]
 pub struct SessionCourseView {
     pub course: Course,
-    /// The student's own first and last day of classes as saved (0.1 dates included).
+    /// The student's own first and last day of classes as saved (0.1 dates included; with a
+    /// calendar in force, its span as mirrored there).
     pub student_start: Option<NaiveDate>,
     pub student_end: Option<NaiveDate>,
+    /// It counts its weeks from a calendar of its own (accepted from its syllabus or saved with
+    /// the dates form), not from `student_*`.
+    pub own_calendar: bool,
     /// The dates that count its weeks now, lent ones included.
     pub term: TermResolution,
 }
@@ -517,6 +521,7 @@ pub fn session_courses(store: &Store, course: &Course, at: AsOf) -> Result<Sessi
         view.courses.push(SessionCourseView {
             student_start: data.term_data.user_term_start,
             student_end: data.term_data.user_term_end,
+            own_calendar: data.calendar.is_some(),
             term: resolved.resolution,
             course: other,
         });
@@ -1108,6 +1113,13 @@ pub(crate) struct CourseData {
     calendar_status: CalendarStatus,
 }
 
+/// The course's calendar in force (accepted from its syllabus or saved with the dates form), as
+/// the resolver reads it: `None` without one, and for a 0.1 override the v4 data step carried
+/// over (`user_term_*` hold that one).
+pub fn calendar_of(store: &Store, course_id: &str) -> Result<Option<CalendarInForce>> {
+    Ok(calendar_in_force(store, course_id)?.0)
+}
+
 /// The course's calendar in force and its status (§7.8: stale when a quote is gone from a
 /// changed material; proposed when only proposals wait).
 fn calendar_in_force(
@@ -1174,10 +1186,12 @@ fn session_key(course: &Course, data: &CourseTermData) -> Option<SessionKey> {
 
 /// What `course` lends the other courses of its session, from its own rows with nothing lent to
 /// it (`same_session::donor`; no chains).
+#[allow(clippy::too_many_arguments)]
 fn donor_of(
     course: &Course,
     term_data: &CourseTermData,
     dates_confirmed: bool,
+    calendar: Option<&CalendarInForce>,
     modules: &[Module],
     materials: &[Material],
     events: &[Event],
@@ -1188,8 +1202,7 @@ fn donor_of(
         course,
         data: term_data,
         dates_confirmed,
-        // Accepted calendars reach the views with schema v4's B6 (`CourseData::input`).
-        calendar: None,
+        calendar,
         modules,
         materials,
         events,
@@ -1202,7 +1215,7 @@ fn donor_of(
     same_session::donor(&DonorInput {
         course,
         data: term_data,
-        calendar: None,
+        calendar,
         resolved: &resolved,
         modules,
         today: at.today,
@@ -1294,10 +1307,14 @@ impl SessionLends {
                 DateTime::<Utc>::MAX_UTC,
                 Some(&course.id),
             )?;
+            // A calendar in force lends its own classes and exams (`user_term_*` only mirror
+            // its span, the end of exams included).
+            let (calendar, _) = calendar_in_force(store, &course.id)?;
             let donor = donor_of(
                 &course,
                 &data,
                 confirmed.contains(&course.id),
+                calendar.as_ref(),
                 &modules,
                 &materials,
                 &events,
@@ -1471,6 +1488,7 @@ impl CourseData {
             course,
             &self.term_data,
             self.dates_confirmed,
+            self.calendar.as_ref(),
             &self.modules,
             &self.materials,
             &self.events,

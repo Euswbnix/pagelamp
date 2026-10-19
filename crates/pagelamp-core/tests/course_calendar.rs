@@ -2561,7 +2561,7 @@ fn module_unlocked(id: &str, name: &str, unlock: &str) -> Module {
 }
 
 /// The school calendar shipped with PageLamp gives the published 2026-27 dates: Fall and Winter
-/// on each campus (the Scarborough page's own exam ends), and nothing yet for Summer 2027.
+/// on each campus (one campus with its own page's exam ends), and nothing yet for Summer 2027.
 #[test]
 fn the_shipped_school_calendar_gives_its_published_dates() {
     let shipped = |code: &str| {

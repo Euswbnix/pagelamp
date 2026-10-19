@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::set_dates_confirmed;
-use crate::{App, Result};
+use crate::{App, AppError, AppErrorKind, Result};
 
 /// The other courses of a course's session.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -38,11 +38,15 @@ pub struct SessionCourse {
     pub code: Option<String>,
     pub hidden: bool,
     /// The student set dates in that course (dates from PageLamp 0.1 included): applying
-    /// replaces them.
+    /// replaces them, unless the course has a calendar of its own (`own_calendar`).
     pub own_dates: bool,
-    /// Those dates as saved; both `None` without own dates.
+    /// Those dates as saved; both `None` without own dates. With a calendar of its own, its
+    /// span as mirrored there (the end can be the end of exams).
     pub student_start: Option<NaiveDate>,
     pub student_end: Option<NaiveDate>,
+    /// It counts its weeks from a calendar of its own (accepted from its syllabus or saved with
+    /// the dates form): applying leaves it alone (`ApplySkipReason::OwnCalendar`).
+    pub own_calendar: bool,
     /// What counts the course's weeks now (lent dates included).
     pub week_one_monday: Option<NaiveDate>,
     pub anchor: TermAnchorSource,
@@ -61,6 +65,9 @@ pub enum ApplySkipReason {
     /// The course to copy from has dates from PageLamp 0.1 the student never confirmed: saving
     /// them confirms them first.
     DatesNotConfirmed,
+    /// It has a calendar of its own (accepted from its syllabus or saved with the dates form),
+    /// which counts its weeks whatever its term dates say: the student changes it there.
+    OwnCalendar,
     /// No such course, or it was removed.
     UnknownCourse,
 }
@@ -107,6 +114,7 @@ impl App {
             .into_iter()
             .map(|other| SessionCourse {
                 own_dates: other.student_start.is_some() || other.student_end.is_some(),
+                own_calendar: other.own_calendar,
                 course_id: other.course.id,
                 name: other.course.name,
                 code: other.course.code,
@@ -126,21 +134,46 @@ impl App {
 
     /// Copy the student's first and last day of classes of `from` to each course of `to` (codes,
     /// names or ids) of the same session, as that course's own confirmed dates, replacing any
-    /// it had. Only confirmed dates are copied (0.1 dates the student never confirmed are
-    /// refused: saving them first confirms them). A course named twice gets them once. Each copy
-    /// remembers where it came from until the course's own dates are saved again. One
-    /// transaction; the report says what was skipped and what was replaced (undo:
-    /// `restore_course_dates`).
+    /// it had. With a calendar in force, `from`'s dates are that calendar's first and last day
+    /// of classes. Only confirmed dates are copied (0.1 dates the student never confirmed are
+    /// refused: saving them first confirms them). A course with a calendar of its own is
+    /// skipped: its calendar counts its weeks whatever its term dates say. A course named twice
+    /// gets them once. Each copy remembers where it came from until the course's own dates are
+    /// saved again. One transaction; the report says what was skipped and what was replaced
+    /// (undo: `restore_course_dates`). A calendar in force with two parts or with a break its
+    /// weeks skip is refused: two dates can't carry it.
     pub fn apply_course_dates_to(&self, from: &str, to: Vec<String>) -> Result<ApplyDatesReport> {
         let store = self.write_store()?;
         let from = store.resolve_course_with(from, true)?;
-        let session: BTreeSet<String> = views::session_courses(&store, &from, AsOf::now_local())?
-            .courses
-            .into_iter()
-            .map(|o| o.course.id)
+        let others = views::session_courses(&store, &from, AsOf::now_local())?.courses;
+        let session: BTreeSet<String> = others.iter().map(|o| o.course.id.clone()).collect();
+        let own_calendars: BTreeSet<String> = others
+            .iter()
+            .filter(|o| o.own_calendar)
+            .map(|o| o.course.id.clone())
             .collect();
-        let dates = store.course_term_data(&from.id)?.unwrap_or_default();
-        let (start, end) = (dates.user_term_start, dates.user_term_end);
+        let source_calendar = views::calendar_of(&store, &from.id)?;
+        if source_calendar.as_ref().is_some_and(|in_force| {
+            in_force.calendar.segments.len() > 1
+                || in_force.calendar.breaks.iter().any(|b| !b.numbered)
+        }) {
+            return Err(AppError::new(
+                AppErrorKind::Invalid,
+                "This course's calendar has breaks or two parts; set the other courses' dates \
+                 on their own.",
+            ));
+        }
+        let (start, end) = match &source_calendar {
+            // `user_term_end` mirrors the calendar's end of exams when it has one.
+            Some(in_force) => (
+                in_force.calendar.segments.first().map(|s| s.first_class),
+                in_force.calendar.segments.last().and_then(|s| s.last_class),
+            ),
+            None => {
+                let dates = store.course_term_data(&from.id)?.unwrap_or_default();
+                (dates.user_term_start, dates.user_term_end)
+            }
+        };
         Ok(store.in_transaction(|store| {
             let confirmed = confirmed_courses(store)?;
             let mut copied = copied_courses(store)?;
@@ -167,8 +200,11 @@ impl App {
                     Some(ApplySkipReason::NotSameSession)
                 } else if start.is_none() && end.is_none() {
                     Some(ApplySkipReason::NoDates)
-                } else if !confirmed.contains(&from.id) {
+                } else if source_calendar.is_none() && !confirmed.contains(&from.id) {
+                    // An accepted or saved calendar is the student's own.
                     Some(ApplySkipReason::DatesNotConfirmed)
+                } else if own_calendars.contains(&target.id) {
+                    Some(ApplySkipReason::OwnCalendar)
                 } else {
                     None
                 };
@@ -202,7 +238,8 @@ impl App {
 
     /// Undo `apply_course_dates_to`: each course gets back the dates it had, confirmed or not as
     /// before, and where they had been copied from, if anywhere. A course removed since (gone,
-    /// or waiting to be purged) is left alone. One transaction.
+    /// or waiting to be purged) is left alone, and so is one with a calendar of its own since
+    /// (as applying leaves it alone): its term dates mirror that calendar. One transaction.
     pub fn restore_course_dates(&self, replaced: Vec<ReplacedDates>) -> Result<()> {
         let store = self.write_store()?;
         Ok(store.in_transaction(|store| {
@@ -210,15 +247,19 @@ impl App {
             for dates in &replaced {
                 if store.get_course(&dates.course_id)?.is_none()
                     || store.tombstone(&dates.course_id)?.is_some()
+                    || views::calendar_of(store, &dates.course_id)?.is_some()
                 {
                     continue;
                 }
                 store.set_course_term(&dates.course_id, dates.start, dates.end)?;
                 let has_dates = dates.start.is_some() || dates.end.is_some();
                 set_dates_confirmed(store, &dates.course_id, has_dates && !dates.legacy)?;
+                // The earlier "copied from", while that course is still there.
                 match &dates.copied_from {
-                    Some(from) => copied.insert(dates.course_id.clone(), from.clone()),
-                    None => copied.remove(&dates.course_id),
+                    Some(from) if store.get_course(from)?.is_some() => {
+                        copied.insert(dates.course_id.clone(), from.clone())
+                    }
+                    _ => copied.remove(&dates.course_id),
                 };
             }
             store.set_setting(COPIED_DATES_KEY, &copied)?;

@@ -218,6 +218,7 @@ impl App {
 
     /// The course dates form: `Some` puts the student's own calendar in force (the week
     /// numbering is computed here), `None` clears it and the student's term dates ("Undo").
+    /// Either way the course's dates are no longer ones copied from another course.
     pub fn set_course_dates(
         &self,
         course: &str,
@@ -229,13 +230,17 @@ impl App {
             .as_ref()
             .map(CourseDatesInput::to_calendar)
             .transpose()?;
-        store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
-        super::set_dates_confirmed(&store, &course.id, calendar.is_some())?;
+        store.in_transaction(|store| {
+            store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
+            super::session::forget_copied(store, &course.id)?;
+            super::set_dates_confirmed(store, &course.id, calendar.is_some())
+        })?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }
 
     /// Accept a proposal, optionally with the student's edits and conflict choices (as the
-    /// dates form). The calendar in force becomes superseded.
+    /// dates form). The calendar in force becomes superseded, and the course's dates are no
+    /// longer ones copied from another course.
     pub fn accept_calendar_proposal(
         &self,
         proposal_id: i64,
@@ -248,8 +253,12 @@ impl App {
             .map(CourseDatesInput::to_calendar)
             .transpose()?
             .map(|calendar| (calendar, row.dates.clone()));
-        let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
-        super::set_dates_confirmed(&store, &accepted.course_id, true)?;
+        let accepted = store.in_transaction(|store| {
+            let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
+            super::session::forget_copied(store, &accepted.course_id)?;
+            super::set_dates_confirmed(store, &accepted.course_id, true)?;
+            Ok(accepted)
+        })?;
         let course = store.resolve_course_with(&accepted.course_id, true)?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }
@@ -432,7 +441,7 @@ impl App {
         });
         let at = AsOf::now_local();
         // Everything read before the model call; the store isn't held across it.
-        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+        let (course, choice) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
             // From here a change to the course's AI settings stops this reading; the gate
@@ -446,7 +455,13 @@ impl App {
             let Some(choice) = feature_choice(&store, AiFeature::CourseCalendar)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let (_, destination) = self.estimate_profile(&choice)?;
+            (course, choice)
+        };
+        // Where the model runs, decided by this run now (a model server here is asked for its
+        // list), never an estimate's answer; question (b) is checked against it below.
+        let destination = self.run_destination(&choice, &cancel).await?;
+        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+            let store = self.read_store()?;
             // Before calendar_context reads question (b) (`stop_course_runs`, cloud only).
             self.run_reads_course(generation_id, &course.id, Some(destination));
             let signals = store.calendar_signals(&course.id)?;
@@ -466,6 +481,7 @@ impl App {
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
+                destination,
                 &prompt,
                 &output,
                 max_output,
@@ -494,6 +510,7 @@ impl App {
                     cancel: &cancel,
                     feature: AiFeature::CourseCalendar,
                     choice: &choice,
+                    destination,
                     prompt,
                     output,
                     max_output_tokens: max_output,
@@ -673,6 +690,7 @@ impl App {
         if let Some(reason) = self.run_blocks(
             store,
             &choice,
+            destination,
             &assemble(COURSE_CALENDAR, &GatedContext::empty(), None),
             &OutputSpec::Text,
             0,

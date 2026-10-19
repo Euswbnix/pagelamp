@@ -461,6 +461,8 @@ pub struct TermResolution {
     pub student_end: Option<IsoDate>,
     #[uniffi(default = true)]
     pub student_dates_confirmed: bool,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1976,6 +1978,8 @@ pub struct SessionCourse {
     pub own_dates: bool,
     pub student_start: Option<IsoDate>,
     pub student_end: Option<IsoDate>,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
     pub week_one_monday: Option<IsoDate>,
     pub anchor: TermAnchorSource,
 }
@@ -1986,6 +1990,7 @@ pub enum ApplySkipReason {
     FromCourse,
     NoDates,
     DatesNotConfirmed,
+    OwnCalendar,
     UnknownCourse,
 }
 

@@ -113,7 +113,14 @@ fn local_model_server() -> String {
             }
             let mut body = vec![0; length];
             let _ = reader.read_exact(&mut body);
-            let (content_type, reply) = if request_line.starts_with("GET /v1/models") {
+            let (content_type, reply) = if request_line.starts_with("GET /v1/api/tags") {
+                // As Ollama lists them: one model here, one it runs in the cloud.
+                (
+                    "application/json",
+                    r#"{"models":[{"name":"local-model"},{"name":"big-model","remote_host":"https://ollama.com:443"}]}"#
+                        .to_string(),
+                )
+            } else if request_line.starts_with("GET /v1/models") {
                 (
                     "application/json",
                     r#"{"object":"list","data":[{"id":"local-model","object":"model"}]}"#
@@ -374,4 +381,104 @@ fn codex_commands_refuse_when_the_plan_is_not_offered() {
         );
         assert!(!err.contains("Downloading"), "{args:?}: {err}");
     }
+}
+
+/// Choosing a model that Ollama on this computer runs in the cloud says so before anything is
+/// saved: not "nothing leaves it", and its price is unknown, so that is asked about too. A model
+/// Ollama runs here keeps the on-this-computer line.
+#[test]
+fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    synced_demo_course(&home, &temp.path().join("Courses"));
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model"],
+    ));
+    assert!(!shown.contains("nothing leaves it"), "{shown}");
+    assert!(
+        shown.contains("PageLamp can't confirm that this model does"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Courses you answered not-allowed for are never sent to it."),
+        "{shown}"
+    );
+    assert!(shown.contains("price"), "{shown}");
+    // Without asking the server, an Ollama model can't be confirmed either.
+    let unchecked = failed(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--no-check",
+        ],
+    ));
+    assert!(
+        unchecked.contains("PageLamp can't confirm that this model does"),
+        "{unchecked}"
+    );
+    // Unchecked, PageLamp doesn't know where it runs: the promise holds for the cloud case.
+    assert!(
+        unchecked.contains(
+            "If it runs this model in the cloud, courses you answered not-allowed for are never \
+             sent to it."
+        ),
+        "{unchecked}"
+    );
+
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    ));
+    assert!(
+        shown.contains("runs on this computer: nothing leaves it"),
+        "{shown}"
+    );
+
+    // Accepting the local model's note doesn't cover a model the server runs in the cloud.
+    ok(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--yes",
+        ],
+    ));
+    let next = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model"],
+    ));
+    assert!(
+        next.contains("PageLamp can't confirm that this model does"),
+        "{next}"
+    );
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model", "--yes"],
+    ));
+    // Each note is asked about once: both are accepted now.
+    let again = pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    );
+    ok(&again);
+    assert!(
+        !stderr(&again).contains("nothing leaves it"),
+        "{}",
+        stderr(&again)
+    );
 }

@@ -560,6 +560,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
 
     let student_dates_confirmed =
         input.dates_confirmed || (data.user_term_start.is_none() && data.user_term_end.is_none());
+    let own_calendar = input.calendar.is_some();
     let resolution = match (&anchor, input.calendar) {
         (Some(anchor), Some(in_force)) => TermResolution {
             week_one_monday: Some(week_one_monday(anchor.start)),
@@ -575,6 +576,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             student_start: data.user_term_start,
             student_end: data.user_term_end,
             student_dates_confirmed,
+            own_calendar,
         },
         (Some(anchor), None) => {
             // The school's segments, breaks and exam period when its calendar is the anchor or
@@ -610,6 +612,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 student_start: data.user_term_start,
                 student_end: data.user_term_end,
                 student_dates_confirmed,
+                own_calendar,
             }
         }
         (None, _) => TermResolution {
@@ -618,6 +621,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             student_start: data.user_term_start,
             student_end: data.user_term_end,
             student_dates_confirmed,
+            own_calendar,
             ..TermResolution::default()
         },
     };

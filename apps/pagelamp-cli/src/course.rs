@@ -6,8 +6,7 @@
 use chrono::NaiveDate;
 use pagelamp_app::ai::GenEvent;
 use pagelamp_app::{
-    App, ApplySkipReason, CourseCalendarView, ReadCalendarOptions, RemoveOptions, RestoreFailure,
-    TombstoneState,
+    App, CourseCalendarView, ReadCalendarOptions, RemoveOptions, RestoreFailure, TombstoneState,
 };
 use pagelamp_core::calendar::CourseCalendar;
 use pagelamp_core::calendar::assemble::DateKind;
@@ -606,6 +605,10 @@ pub fn copy_dates(
         println!("Courses of session {code} besides {from_name}:");
         for course in &session.courses {
             let own = match (course.student_start, course.student_end) {
+                _ if course.own_calendar => {
+                    " — counts its weeks from a calendar of its own, which a copy leaves alone"
+                        .to_string()
+                }
                 (None, None) => String::new(),
                 (start, end) => format!(
                     " — has its own dates ({} → {}), which would be replaced",
@@ -661,17 +664,10 @@ pub fn copy_dates(
         }
     }
     for skipped in &report.skipped {
-        let why = match skipped.reason {
-            ApplySkipReason::NotSameSession => "not a course of the same session",
-            ApplySkipReason::FromCourse => "it is the course to copy from",
-            ApplySkipReason::NoDates => "the course to copy from has no dates you set",
-            ApplySkipReason::DatesNotConfirmed => {
-                "the dates of the course to copy from were set in PageLamp 0.1 and never \
-                 confirmed: save them with `pagelamp course term` first"
-            }
-            ApplySkipReason::UnknownCourse => "no such course",
-        };
-        println!("  Skipped {}: {why}", label(&skipped.course_id));
+        println!(
+            "{}",
+            crate::text::copy_skipped(skipped.reason, &label(&skipped.course_id))
+        );
     }
     Ok(())
 }

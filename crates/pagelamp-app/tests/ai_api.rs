@@ -211,7 +211,7 @@ async fn bad_addresses_coding_plans_and_rejected_keys_are_refused_and_nothing_is
         .unwrap_err();
     assert_eq!(plan_key.blocked, Some(BlockReason::CodingPlanKey));
     let no_key = app
-        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .add_model_provider("custom", Some("https://llm.example.edu/v1"), None)
         .await
         .unwrap_err();
     assert_eq!(no_key.kind, AppErrorKind::Invalid);
@@ -389,6 +389,15 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
     let temp = tempfile::tempdir().unwrap();
     let (app, _) = app_in(temp.path());
     seed_course(&app);
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": [
+            {"name": "local-model"},
+            {"name": "big-model", "remote_host": "https://ollama.com:443"},
+        ]})))
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -396,7 +405,7 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
             preset: "ollama".into(),
             label: "Ollama".into(),
             wire: "ollama_native".into(),
-            base_url: "http://127.0.0.1:11434".into(),
+            base_url: server.uri(),
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         })
@@ -418,15 +427,92 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
     app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
         .unwrap();
     app.set_monthly_budget(Some(0)).unwrap();
-    let estimate = app
-        .estimate_generation(&EstimateRequest::WeeklyExplanation {
+    let estimate = || {
+        app.estimate_generation(&EstimateRequest::WeeklyExplanation {
             course: "DEMO101".into(),
             week: Some(3),
         })
+        .unwrap()
+    };
+    // Until Ollama has listed its models, nothing says this one runs here: its price is unknown.
+    let unlisted = estimate();
+    assert_eq!(unlisted.would_block, None, "{unlisted:?}");
+    assert_eq!(unlisted.micro_usd_upper, None);
+    app.list_models(&backend).await.unwrap();
+    let listed = estimate();
+    assert_eq!(listed.would_block, None, "{listed:?}");
+    assert_eq!(listed.micro_usd_upper, Some(0));
+    assert!(listed.input_tokens > 0);
+    // A model it listed as one it runs in the cloud, though its name has no cloud tag.
+    app.set_feature_model(
+        AiFeature::WeeklyExplanation,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "big-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let remote = estimate();
+    assert_eq!(
+        remote.would_block,
+        Some(BlockReason::MaterialSharingNotAllowed)
+    );
+    assert_eq!(remote.micro_usd_upper, None);
+}
+
+/// A `custom` server on this computer may take no key (many local servers don't): nothing goes
+/// to the keychain, no key counts as missing, and its models count as in the cloud.
+#[tokio::test]
+async fn a_custom_server_here_may_take_no_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some("  "))
+        .await
         .unwrap();
-    assert_eq!(estimate.would_block, None, "{estimate:?}");
-    assert_eq!(estimate.micro_usd_upper, Some(0));
-    assert!(estimate.input_tokens > 0);
+    assert_eq!(record.key_last4, None);
+    assert_eq!(
+        secrets.get(&format!("llm:{}", record.provider_id)).unwrap(),
+        None
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization"))
+    );
+    let backend = BackendRef::Provider {
+        provider_id: record.provider_id.clone(),
+    };
+    let status = app.ai_status().unwrap();
+    let row = status
+        .backends
+        .iter()
+        .find(|b| b.backend == backend)
+        .unwrap();
+    assert_eq!(row.state, BackendState::NeedsDisclosure);
+    assert!(!row.problems.contains(&BackendProblem::KeyMissing));
+    let doctor = app.doctor().unwrap();
+    assert_eq!(doctor.ai.providers[0].key_present, None);
+    let models = app.list_models(&backend).await.unwrap();
+    assert!(models[0].runs_in_cloud && !models[0].price_known);
+    // A key can still be added later.
+    let keyed = app
+        .update_model_provider_key(&record.provider_id, KEY)
+        .await
+        .unwrap();
+    assert_eq!(keyed.key_last4.as_deref(), Some("7731"));
+    assert_eq!(
+        app.doctor().unwrap().ai.providers[0].key_present,
+        Some(true)
+    );
 }
 
 #[tokio::test]
@@ -461,7 +547,8 @@ async fn models_and_a_test_come_from_the_provider() {
     };
     let models = app.list_models(&backend).await.unwrap();
     assert_eq!(models[0].id, "local-model");
-    assert!(models[0].on_device && models[0].price_known);
+    // A server here other than Ollama or LM Studio can't say where it runs a model.
+    assert!(!models[0].on_device && models[0].runs_in_cloud && !models[0].price_known);
 
     let good = app.test_model(&backend, "local-model").await.unwrap();
     assert!(good.ok, "{good:?}");

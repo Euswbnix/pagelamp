@@ -3,6 +3,60 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
+## [Unreleased]
+
+On the main branch for the next pre-release; in no release yet.
+
+### Added
+- Removing a course (`pagelamp course remove`): it leaves every list and your AI app at once and
+  stops syncing. For 7 days (not with `--now`) `pagelamp course restore` undoes it; after that the
+  course's data is deleted at the next sync (or now with `pagelamp course purge`), and the files
+  PageLamp downloaded for it go to the Trash unless you add `--keep-files`. If the pre-update
+  backup was made while the course was in PageLamp, it still holds the course's text unless you
+  add `--delete-backup`. A small record of the course (its name, code and your settings for it)
+  stays so that a sync doesn't add it back (see [PRIVACY.md](PRIVACY.md)). `pagelamp course
+  removed` lists removed courses. After a course's data is deleted, `pagelamp course restore
+  <id>` can bring it back by syncing it again, with your saved settings; its files come back as
+  not downloaded (not if Canvas no longer lists it or restricts access to it, or while you're
+  offline). A plain sync leaves a removed
+  course out; after `pagelamp course forget`, the next sync adds it back, without your saved
+  settings. The app's screens for it come with the next pre-release.
+- Courses of one school session count the same weeks. A course without dates of its own, whose term
+  the school calendar (below) has no dates for (so far Summer 2027 and years other than 2026-27),
+  takes week 1, and the last day of classes where that course states one, from another course of its
+  session (the dates you set there, its own dates that its materials bear out, or the week its
+  module unlocks pin down), unless its own week-numbered materials clearly put week 1 elsewhere, and
+  says which course they come from. When the courses that would lend disagree (dates you set come
+  before a course's own dates, and those before module unlocks), none of them lends its dates, and
+  each says so. A course whose weeks come from its own dates or the school calendar keeps them, and
+  says when a course of its session puts week 1 elsewhere; to use one course's dates in the others,
+  copy them (see the next item).
+- *Also use these dates in*, under *Course dates* on a course's *Timeline* tab, makes the dates
+  you save for one course the dates of other courses of its session, with *Undo*. Courses without
+  dates you set come ticked, even when their weeks come from Canvas, their folder or the school
+  calendar; a course with dates you set says they would be replaced. On
+  the command line: `pagelamp course copy-dates <from> [<to>…]` (or `--same-session` for all of
+  them); without courses to copy to, it lists them.
+- The school calendar file has the 2026-27 Fall and Winter dates (first and last day of classes,
+  reading week, exam period) of the school whose session codes PageLamp reads; its courses
+  without usable dates of their own count their weeks from them.
+- `pagelamp ai`: add model providers (with an API key, or a model server on this computer), list
+  their models, test one, choose the model each AI feature would use, and set a monthly budget.
+  `pagelamp course sharing` records whether a course's materials may be shared with AI
+  services. No feature uses a model yet, and the app's screens for it come later. Keys are kept
+  in the system keychain (see [PRIVACY.md](PRIVACY.md)).
+- `pagelamp doctor` and the diagnostic report also list the kinds of model provider you added,
+  whether their keys are in the keychain (never the keys), and whether model servers on this
+  computer answer; and, when there are any, how many courses have a Canvas term that looks like
+  an enrollment window (so it isn't used to count weeks) and how many removed courses are still
+  waiting for their purge or for their files to go to the Trash (counts only, never names).
+
+### Upgrading from 0.3.0-alpha.1
+- The first start of this version upgrades the database to format 4. It saves a copy as
+  `pagelamp.db.v3.bak` next to it first; if the copy can't be written, the upgrade still goes
+  ahead, and `pagelamp doctor` and the diagnostic report say there is no backup. v0.3.0-alpha.1
+  can't open the new format (its MCP server can still read it, but can't save a study plan).
+
 ## [0.3.0-alpha.1] — 2026-10-18
 
 The first pre-release of v0.3.
