@@ -3197,6 +3197,12 @@ export interface SessionCourses {
    */
   courses: SessionCourse[];
   /**
+   * The course itself counts its weeks from a calendar of its own (accepted from its
+   * syllabus or saved with the dates form): applying copies that calendar's first and last
+   * day of classes, whatever its term dates say.
+   */
+  own_calendar: boolean;
+  /**
    * The school's session code (e.g. "20269"); `None` when the course's code or name has
    * none, and then `courses` is empty.
    */

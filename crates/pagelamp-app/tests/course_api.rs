@@ -633,6 +633,9 @@ fn copies_read_a_calendar_in_force_and_leave_a_course_s_own_calendar_alone() {
     .unwrap();
 
     let listed = app.session_courses(&session_id("1")).unwrap();
+    // The course copied from has a calendar of its own: a copy takes that calendar's days.
+    assert!(listed.own_calendar);
+    assert!(!app.session_courses(&session_id("2")).unwrap().own_calendar);
     let own: Vec<(&str, bool)> = listed
         .courses
         .iter()

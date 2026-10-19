@@ -1287,4 +1287,21 @@ fn a_calendar_in_force_lends_its_own_ends_of_classes_and_exams() {
         .collect();
     assert!(own.contains(&(session_id("1").as_str(), true)), "{own:?}");
     assert!(own.contains(&(session_id("3").as_str(), false)), "{own:?}");
+    assert!(!others.own_calendar);
+    // The course with the calendar, asked about itself.
+    let one = store.get_course(&session_id("1")).unwrap().unwrap();
+    assert!(
+        views::session_courses(&store, &one, session_at())
+            .unwrap()
+            .own_calendar
+    );
+    // So is a course without a session key (another host): no session, no other course.
+    session_course(&store, SOURCE, "9", "DEM999H7 F LEC0101 20269");
+    store
+        .set_student_calendar(&cid("9"), Some(&calendar), ts("2026-09-20T12:00:00Z"))
+        .unwrap();
+    let nine = store.get_course(&cid("9")).unwrap().unwrap();
+    let alone = views::session_courses(&store, &nine, session_at()).unwrap();
+    assert_eq!((alone.session, alone.courses.len()), (None, 0));
+    assert!(alone.own_calendar);
 }

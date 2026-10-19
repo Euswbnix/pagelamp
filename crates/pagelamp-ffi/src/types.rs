@@ -1964,6 +1964,8 @@ pub enum LocalFileUse {
 pub struct SessionCourses {
     pub session: Option<String>,
     pub campus: Option<u8>,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
     pub courses: Vec<SessionCourse>,
 }
 

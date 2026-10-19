@@ -26,6 +26,10 @@ pub struct SessionCourses {
     /// The campus digit of the course's code; `None` when its code doesn't say (then no other
     /// course shares its session, and `courses` is empty).
     pub campus: Option<u8>,
+    /// The course itself counts its weeks from a calendar of its own (accepted from its
+    /// syllabus or saved with the dates form): applying copies that calendar's first and last
+    /// day of classes, whatever its term dates say.
+    pub own_calendar: bool,
     /// The other courses of the same session, section group and campus: removed ones left out,
     /// hidden ones in (`hidden`), the course itself not listed.
     pub courses: Vec<SessionCourse>,
@@ -128,6 +132,7 @@ impl App {
         Ok(SessionCourses {
             session: view.session,
             campus: view.campus,
+            own_calendar: view.own_calendar,
             courses,
         })
     }

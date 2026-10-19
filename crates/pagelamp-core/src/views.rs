@@ -489,6 +489,10 @@ pub struct SessionCoursesView {
     /// The campus digit of its course code; without one there is no session key, so no other
     /// course.
     pub campus: Option<u8>,
+    /// The course itself counts its weeks from a calendar of its own (accepted from its
+    /// syllabus or saved with the dates form; a migrated 0.1 row is none): a copy gives the
+    /// others that calendar's first and last day of classes, not its term dates.
+    pub own_calendar: bool,
     /// The other courses of the session (removed ones left out, hidden ones in), each with the
     /// dates it counts its weeks from now.
     pub courses: Vec<SessionCourseView>,
@@ -502,6 +506,7 @@ pub fn session_courses(store: &Store, course: &Course, at: AsOf) -> Result<Sessi
     let mut view = SessionCoursesView {
         session: hint.as_ref().map(|h| h.session.clone()),
         campus: hint.as_ref().and_then(|h| h.campus),
+        own_calendar: calendar_of(store, &course.id)?.is_some(),
         courses: Vec::new(),
     };
     let Some(key) = hint.and_then(|h| h.key()) else {
