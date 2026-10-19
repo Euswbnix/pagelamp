@@ -712,6 +712,7 @@ export type EvidenceCode =
   | "dates_agree"
   | "same_session_disagrees"
   | "same_session_split"
+  | "same_session_unlent"
   | "dates_may_be_wrong"
   | "session_window"
   | "institution_calendar_missing"

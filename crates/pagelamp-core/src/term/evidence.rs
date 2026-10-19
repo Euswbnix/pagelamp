@@ -143,9 +143,12 @@ evidence_codes! {
     /// week of `monday`, `days` days (at least 7) from this course's own week 1, which comes
     /// from `source` and stays.
     SameSessionDisagrees = "same_session_disagrees",
-    /// `session`: the courses of the session that could lend their dates disagree on week 1, so
-    /// none is used.
+    /// `session`: the courses of the session's strongest kind disagree on week 1 (a calendar
+    /// that can't lend included), so none of their dates is used.
     SameSessionSplit = "same_session_split",
+    /// `session`: the course that decides the session's week 1 has a calendar that can't be
+    /// lent, and no other course that agrees with it can lend: nothing is lent.
+    SameSessionUnlent = "same_session_unlent",
     /// `source`, `monday`, `days`: another source puts week 1 `days` days away: the dates may
     /// be wrong, check them.
     DatesMayBeWrong = "dates_may_be_wrong",
@@ -511,6 +514,12 @@ fn english(item: &EvidenceItem) -> String {
         EvidenceCode::SameSessionSplit => format!(
             "the courses of session {} disagree on week 1, so none of their dates is used: set \
              the first day of classes in one of them",
+            p("session")
+        ),
+        EvidenceCode::SameSessionUnlent => format!(
+            "no course of session {} lends its dates: the one that decides week 1 counts its \
+             weeks by a calendar two dates can't carry, and no other agrees with its week 1. Set \
+             the first day of classes in this course",
             p("session")
         ),
         EvidenceCode::DatesMayBeWrong => format!(

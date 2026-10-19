@@ -420,6 +420,7 @@
 "calendar.evidence.same_session_disagrees" = "同一学期的 %1$@ 把第 1 周定在 %2$@ 那一周，与%4$@相差 %3$@ 天";
 "calendar.evidence.same_session_disagrees_no_course" = "同一学期的另一门课把第 1 周定在 %1$@ 那一周，与%3$@相差 %2$@ 天";
 "calendar.evidence.same_session_split" = "%1$@ 学期的几门课对第 1 周的判断不一致，因此都没有采用。请在其中一门课里设置开课第一天。";
+"calendar.evidence.same_session_unlent" = "%1$@ 学期没有课能借出日期：决定第 1 周的那门课按自己的日历计算周数，这份日历无法用两个日期表示，其他课的第 1 周又与它不一致。请在这门课里设置开课第一天。";
 "calendar.evidence.same_session_unlocks" = "第 1 周根据同一学期（%2$@）另一门课 %1$@ 的模块开放时间推算：%3$@ 那一周。设置本课的开课第一天可以确保准确。";
 "calendar.evidence.same_session_unlocks_no_course" = "第 1 周根据同一学期（%1$@）另一门课的模块开放时间推算：%2$@ 那一周。设置本课的开课第一天可以确保准确。";
 "calendar.evidence.session_ended" = "%1$@ 学期已于 %2$@ 结束";

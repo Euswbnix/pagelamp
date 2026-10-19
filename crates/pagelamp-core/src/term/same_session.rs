@@ -20,10 +20,12 @@
 //!   old unlock dates: those lie outside the window and count for nothing. Week 1 only, lent at
 //!   Low.
 //!
-//! The strongest kind present decides. Its courses must agree on week 1, else nothing is lent
-//! (`Lend::Split`) and every course of the session says so: a course without dates of its own
-//! that nothing is lent, a course with its own (the disagreeing lenders among them) which
-//! lenders put week 1 elsewhere.
+//! The strongest kind present decides week 1. Its courses must agree on it, else nothing is
+//! lent (`Lend::Split`) and every course of the session says so: a course without dates of its
+//! own that nothing is lent, a course with its own (the disagreeing lenders among them) which
+//! lenders put week 1 elsewhere. Its courses whose weeks can be lent lend; when none can (a
+//! calendar of its own that two dates can't carry), the next kind's that agree with that week
+//! 1 do, and a course without dates of its own that gets nothing says so (`Lend::Unlent`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -121,13 +123,18 @@ pub enum Lend {
         session: String,
         lenders: Vec<LentDates>,
     },
+    /// The strongest kind agrees on week 1, but no other course that agrees with it can lend:
+    /// nothing is lent.
+    Unlent {
+        session: String,
+    },
 }
 
 impl Lend {
     pub fn dates(&self) -> Option<&LentDates> {
         match self {
             Lend::Dates(dates) => Some(dates),
-            Lend::Split { .. } => None,
+            Lend::Split { .. } | Lend::Unlent { .. } => None,
         }
     }
 }
@@ -135,11 +142,12 @@ impl Lend {
 /// What one course is lent. `own` is what the course could lend itself, `others` what the other
 /// courses of its session can. `show_hidden`: whether the reader may name a hidden lender.
 ///
-/// The strongest kind among all of them decides. If its courses disagree on week 1, it is a
+/// The strongest kind among all of them decides week 1. If its courses disagree on it, it is a
 /// split for every course of the session, the disagreeing lenders too. Otherwise the course
-/// borrows from the others of that kind whose weeks can be lent (`Donor::lends`); a course
-/// that is the only one of the strongest kind, or whose others of it can't lend, borrows
-/// nothing (its own evidence, or theirs, is the best there is).
+/// borrows from the others of that kind whose weeks can be lent (`Donor::lends`), or, when none
+/// can, from those of the next kind that can and agree with that week 1. A course of the
+/// strongest kind itself borrows nothing beyond that (its own evidence is the best there is);
+/// any other course that gets nothing is told so (`Lend::Unlent`).
 pub fn lend(
     session: &str,
     own: Option<&Donor>,
@@ -156,7 +164,7 @@ pub fn lend(
     let lent = |donor: &Donor| LentDates {
         course: (!donor.hidden || show_hidden).then(|| donor.course.clone()),
         session: session.to_string(),
-        kind: best,
+        kind: donor.kind,
         start: donor.start,
         end: donor.end,
         exams_end: donor.exams_end,
@@ -168,13 +176,24 @@ pub fn lend(
             lenders: lenders.into_iter().map(lent).collect(),
         });
     }
-    // They agree on week 1: the first, by name, that can lend and states an end lends it.
-    lenders.retain(|d| d.lends);
-    let donor = *lenders
-        .iter()
-        .find(|d| d.end.is_some())
-        .or(lenders.first())?;
-    Some(Lend::Dates(lent(donor)))
+    // They agree on week 1: of the strongest kind with a course that can lend it, the first by
+    // name that states an end lends.
+    let mut kinds: Vec<DonorKind> = others.iter().map(|d| d.kind).collect();
+    kinds.sort();
+    kinds.dedup();
+    for kind in kinds {
+        let mut lenders: Vec<&Donor> = others
+            .iter()
+            .filter(|d| d.kind == kind && d.lends && d.monday() == monday)
+            .collect();
+        lenders.sort_by(|a, b| a.course.cmp(&b.course).then(a.start.cmp(&b.start)));
+        if let Some(donor) = lenders.iter().find(|d| d.end.is_some()).or(lenders.first()) {
+            return Some(Lend::Dates(lent(donor)));
+        }
+    }
+    (own.is_none_or(|own| own.kind != best) && !others.is_empty()).then(|| Lend::Unlent {
+        session: session.to_string(),
+    })
 }
 
 /// One course's own result, worked out with nothing lent to it.

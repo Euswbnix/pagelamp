@@ -1616,6 +1616,46 @@ async fn a_reading_whose_provider_went_still_reminds() {
     assert!(app.course_calendar("DEMO101").unwrap().proposals.is_empty());
 }
 
+/// The reminder follows the answer as it is when the reading ends: a student who answers
+/// "allowed" while the model reads isn't asked to answer again.
+#[tokio::test]
+async fn an_answer_given_during_a_reading_isn_t_asked_for_again() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(&app, &backend).await;
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let (events, on_event) = collect();
+    let reading = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+                .await
+        })
+    };
+    wait_for_request(&server).await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
+        .unwrap();
+    let proposal = reading.await.unwrap().unwrap();
+    assert!(!proposal.sharing_reminder);
+    assert!(!events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Notice {
+            code: GenNoticeCode::MaterialSharingReminder
+        }
+    )));
+}
+
 /// The same data folder opened again (its courses are there already).
 fn app_with_courses_again(dir: &Path) -> App {
     App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap()

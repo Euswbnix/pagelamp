@@ -499,6 +499,7 @@ pub enum EvidenceCode {
     DatesAgree,
     SameSessionDisagrees,
     SameSessionSplit,
+    SameSessionUnlent,
     DatesMayBeWrong,
     SessionWindow,
     InstitutionCalendarMissing,

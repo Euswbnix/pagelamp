@@ -420,6 +420,7 @@
 "calendar.evidence.same_session_disagrees" = "%1$@, a course of the same session, puts week 1 in the week of %2$@, %3$@ days from %4$@";
 "calendar.evidence.same_session_disagrees_no_course" = "Another course of the same session puts week 1 in the week of %1$@, %2$@ days from %3$@";
 "calendar.evidence.same_session_split" = "The courses of session %1$@ disagree on week 1, so none of their dates is used. Set the first day of classes in one of them.";
+"calendar.evidence.same_session_unlent" = "No course of session %1$@ lends its dates: the one that decides week 1 counts its weeks by a calendar two dates can't carry, and no other agrees with its week 1. Set the first day of classes in this course.";
 "calendar.evidence.same_session_unlocks" = "Week 1 comes from the module unlocks of %1$@, another course of session %2$@: the week of %3$@. Set this course's first day of classes to be sure.";
 "calendar.evidence.same_session_unlocks_no_course" = "Week 1 comes from the module unlocks of another course of session %1$@: the week of %2$@. Set this course's first day of classes to be sure.";
 "calendar.evidence.session_ended" = "Session %1$@ ended %2$@";

@@ -499,8 +499,17 @@ impl App {
             }
         }
         let removed = store.remove_all_ai_data(&keys_left)?;
+        // A keyless provider it keeps stays keyless: its keychain entry is never read.
+        let still_keyless: std::collections::BTreeSet<&String> = keys_left
+            .iter()
+            .filter(|id| keyless.contains(*id))
+            .collect();
         for key in settings::ALL_KEYS {
-            store.remove_setting(key)?;
+            if key == settings::KEYLESS && !still_keyless.is_empty() {
+                store.set_setting(key, &still_keyless)?;
+            } else {
+                store.remove_setting(key)?;
+            }
         }
         drop(store);
         let backup_removed = pagelamp_core::store::database_backup(&self.db_path()).is_some();
