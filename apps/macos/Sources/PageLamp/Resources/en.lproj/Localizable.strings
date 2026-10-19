@@ -319,6 +319,7 @@
 "calendar.anchor.lms_term" = "the Canvas term dates";
 "calendar.anchor.none" = "no source";
 "calendar.anchor.published_week_labels" = "the week numbers in the professor's materials";
+"calendar.anchor.same_session" = "the dates of another course this term";
 "calendar.anchor.student_confirmed" = "your dates";
 "calendar.anchorTitle.folder_config" = "Course folder settings";
 "calendar.anchorTitle.institution_calendar" = "University calendar";
@@ -326,6 +327,7 @@
 "calendar.anchorTitle.lms_term" = "Canvas term dates";
 "calendar.anchorTitle.none" = "None";
 "calendar.anchorTitle.published_week_labels" = "Week numbers in the professor's materials";
+"calendar.anchorTitle.same_session" = "Another course this term";
 "calendar.anchorTitle.student_confirmed" = "Your dates";
 "calendar.breakKind.holiday" = "Holiday";
 "calendar.breakKind.other" = "Break";
@@ -343,6 +345,8 @@
 "calendar.evidence.calendar_disagrees_with_notes" = "Recent materials are for week %1$@, but the dates give week %2$@";
 "calendar.evidence.course_end_passed" = "The course ended %1$@, according to %2$@";
 "calendar.evidence.dates_agree" = "Agrees with %1$@: week 1 is the week of %2$@";
+"calendar.evidence.dates_copied_from" = "Your dates, copied from %1$@";
+"calendar.evidence.dates_copied_from_no_course" = "Your dates, copied from another course of the same session";
 "calendar.evidence.dates_ended" = "By the course dates, it ended %1$@";
 "calendar.evidence.dates_may_be_wrong" = "According to %1$@, week 1 is the week of %2$@, %3$@ days away. These dates may be wrong — check them.";
 "calendar.evidence.dates_not_used" = "Not used: %1$@, %2$@ → %3$@. %4$@";
@@ -386,6 +390,15 @@
 "calendar.evidence.recent_activity" = "Recent activity on %1$@";
 "calendar.evidence.removal_kept" = "You chose to keep this course";
 "calendar.evidence.removal_snoozed" = "Removal suggestions are paused until %1$@";
+"calendar.evidence.same_session_anchor" = "Week 1 comes from %1$@, another course of session %2$@: classes from %3$@ to %4$@, week 1 the week of %5$@";
+"calendar.evidence.same_session_anchor_no_course" = "Week 1 comes from another course of session %1$@: classes from %2$@ to %3$@, week 1 the week of %4$@";
+"calendar.evidence.same_session_anchor_no_course_no_end" = "Week 1 comes from another course of session %1$@: the week of %2$@";
+"calendar.evidence.same_session_anchor_no_end" = "Week 1 comes from %1$@, another course of session %2$@: the week of %3$@";
+"calendar.evidence.same_session_disagrees" = "%1$@, a course of the same session, puts week 1 in the week of %2$@, %3$@ days from %4$@";
+"calendar.evidence.same_session_disagrees_no_course" = "Another course of the same session puts week 1 in the week of %1$@, %2$@ days from %3$@";
+"calendar.evidence.same_session_split" = "The courses of session %1$@ disagree on week 1, so none of their dates is used. Set the first day of classes in one of them.";
+"calendar.evidence.same_session_unlocks" = "Week 1 comes from the module unlocks of %1$@, another course of session %2$@: the week of %3$@. Set this course's first day of classes to be sure.";
+"calendar.evidence.same_session_unlocks_no_course" = "Week 1 comes from the module unlocks of another course of session %1$@: the week of %2$@. Set this course's first day of classes to be sure.";
 "calendar.evidence.session_ended" = "Session %1$@ ended %2$@";
 "calendar.evidence.session_starts" = "Session %1$@ starts %2$@";
 "calendar.evidence.session_window" = "Session %1$@ (%2$@) runs within %3$@ – %4$@";

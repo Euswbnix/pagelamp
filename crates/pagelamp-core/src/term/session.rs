@@ -46,6 +46,53 @@ pub struct SessionHint {
     pub full_year: bool,
 }
 
+/// Which courses of one session share their dates (`SessionKey`), the way the school's calendar
+/// reads sections (`institution::InstitutionCalendar::term`): in Fall and Winter, F, S and no
+/// letter run the whole session; a full-year Y course has its own two segments; in Summer, the
+/// F, S and whole-session courses each have their own dates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SectionGroup {
+    /// A Fall or Winter course of the session (F, S or no section letter).
+    Term,
+    /// A Fall-Winter course (Y in a Fall session).
+    FullYear,
+    /// Summer F (the first half).
+    SummerFirst,
+    /// Summer S (the second half).
+    SummerSecond,
+    /// Summer Y or no section letter (the whole summer).
+    SummerWhole,
+}
+
+/// The courses that teach on the same days: one school session, section group and campus. Two
+/// courses with the same key lend each other their dates (`same_session`).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SessionKey {
+    pub session: String,
+    pub group: SectionGroup,
+    pub campus: u8,
+}
+
+impl SessionHint {
+    /// The course's key; `None` without a campus digit (nothing says which calendar it keeps).
+    pub fn key(&self) -> Option<SessionKey> {
+        let campus = self.campus?;
+        let summer = self.session.ends_with('5');
+        let group = match (summer, self.section) {
+            (false, Some('Y')) => SectionGroup::FullYear,
+            (false, _) => SectionGroup::Term,
+            (true, Some('F')) => SectionGroup::SummerFirst,
+            (true, Some('S')) => SectionGroup::SummerSecond,
+            (true, _) => SectionGroup::SummerWhole,
+        };
+        Some(SessionKey {
+            session: self.session.clone(),
+            group,
+            campus,
+        })
+    }
+}
+
 /// The session code at the very end: "… 20269".
 static SESSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:^|\s)((?:19|20)\d{2})([159])\s*$").expect("valid regex"));
@@ -212,6 +259,44 @@ mod tests {
         ] {
             assert_eq!(parse_uoft_session(Some(code), "Name"), None, "{code}");
         }
+    }
+
+    #[test]
+    fn courses_of_one_session_share_a_key() {
+        let key = |code: &str| parse_uoft_session(Some(code), "x").and_then(|h| h.key());
+        let fall = key("DEM332H5 F LEC0101 20269");
+        assert!(fall.is_some());
+        // F and no section letter run the whole Fall session: one group.
+        assert_eq!(key("DEM240H5 F LEC0102 20269"), fall);
+        assert_eq!(key("DEM205H5 LEC0101 20269"), fall);
+        // Another campus, another session, a full-year course: other keys.
+        assert_ne!(key("DEM332H1 F LEC0101 20269"), fall);
+        assert_ne!(key("DEM332H5 S LEC0101 20271"), fall);
+        assert_ne!(key("DEM137Y5 Y LEC0101 20269"), fall);
+        assert_eq!(
+            key("DEM137Y5 Y LEC0101 20269").unwrap().group,
+            SectionGroup::FullYear
+        );
+        // Summer F, S and whole-summer courses each keep their own dates.
+        let summer = [
+            "DEM101H5 F LEC0101 20265",
+            "DEM101H5 S LEC0101 20265",
+            "DEM101Y5 Y LEC0101 20265",
+        ]
+        .map(|code| key(code).unwrap().group);
+        assert_eq!(
+            summer,
+            [
+                SectionGroup::SummerFirst,
+                SectionGroup::SummerSecond,
+                SectionGroup::SummerWhole
+            ]
+        );
+        // Without a campus digit nothing says which calendar the course keeps.
+        assert_eq!(
+            parse_uoft_session(None, "Demo seminar 20269").map(|h| h.key()),
+            Some(None)
+        );
     }
 
     /// CAL-17 `session_hint_is_host_gated`: the same code on another host gives no hint.

@@ -45,6 +45,9 @@ pub use course::removal::{
     BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
     RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, TombstoneState,
 };
+pub use course::session::{
+    ApplyDatesReport, ApplySkipReason, ReplacedDates, SessionCourse, SessionCourses, SkippedCourse,
+};
 pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
 };
@@ -1014,6 +1017,8 @@ impl App {
         let course = store.resolve_course_with(course, true)?;
         store.in_transaction(|store| {
             store.set_course_term(&course.id, start, end)?;
+            // Saved (or cleared) by the student here: no longer dates copied from another course.
+            course::session::forget_copied(store, &course.id)?;
             course::set_dates_confirmed(store, &course.id, start.is_some() || end.is_some())
         })?;
         Ok(())
@@ -1336,6 +1341,10 @@ struct AppTypes {
     restore_outcome: RestoreOutcome,
     purge_report: PurgeReport,
     course_dates_input: CourseDatesInput,
+    // alpha.2: the courses of one session ("apply these dates to my other courses")
+    session_courses: SessionCourses,
+    apply_dates_report: ApplyDatesReport,
+    replaced_dates: ReplacedDates,
     // alpha.3 (F3: types first; AI reading and storage on the v4 line)
     course_calendar_view: CourseCalendarView,
     calendar_candidate: pagelamp_core::calendar::candidates::CalendarCandidate,
