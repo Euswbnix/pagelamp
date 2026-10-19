@@ -60,10 +60,10 @@ pub fn disclosure(facts: &DisclosureFacts, checked: bool) -> String {
              does: {name} may pass what {PRODUCT_NAME} sends it on to a cloud service (Ollama \
              does this for its cloud models). {}",
             if checked {
-                "Courses you answered not-allowed for are never sent to it."
+                "The materials of courses you answered not-allowed for are never sent to it."
             } else {
-                "If it runs this model in the cloud, courses you answered not-allowed for are \
-                 never sent to it."
+                "If it runs this model in the cloud, the materials of courses you answered \
+                 not-allowed for are never sent to it."
             }
         )
     } else if facts.on_device {
