@@ -1454,8 +1454,12 @@ async fn old_ai_records_go_at_a_run_and_at_a_sync() {
         .respond_with(answer(&good_extraction()))
         .mount(&server)
         .await;
-    let line = |days_ago: i64| UsageRecord {
-        at: Utc::now() - TimeDelta::days(days_ago),
+    // Around 13 calendar months back: older lines go, newer ones stay.
+    let thirteen_months = Utc::now()
+        .checked_sub_months(chrono::Months::new(13))
+        .unwrap();
+    let line = |past: bool| UsageRecord {
+        at: thirteen_months + TimeDelta::days(if past { -2 } else { 2 }),
         backend: "provider:ollama".into(),
         model: "local-model".into(),
         feature: AiFeature::CourseCalendar,
@@ -1479,19 +1483,19 @@ async fn old_ai_records_go_at_a_run_and_at_a_sync() {
             .len()
     };
     let store = Store::open(&app.db_path()).unwrap();
-    store.record_ai_usage(&line(420)).unwrap();
-    store.record_ai_usage(&line(300)).unwrap();
+    store.record_ai_usage(&line(true)).unwrap();
+    store.record_ai_usage(&line(false)).unwrap();
     let proposal = app
         .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
         .await
         .unwrap();
-    // The 300-day line and the run's own.
+    // The line just inside 13 months and the run's own.
     assert_eq!(lines(&store), 2);
 
     store
         .dismiss_calendar_proposal(proposal.id, Utc::now() - TimeDelta::days(40))
         .unwrap();
-    store.record_ai_usage(&line(420)).unwrap();
+    store.record_ai_usage(&line(true)).unwrap();
     let root = temp.path().join("Courses");
     let course = root.join("DEMO909 Field Methods");
     std::fs::create_dir_all(&course).unwrap();
@@ -1503,6 +1507,77 @@ async fn old_ai_records_go_at_a_run_and_at_a_sync() {
     assert_eq!(lines(&store), 2);
     assert!(store.calendar_row(proposal.id).unwrap().is_none());
     assert!(store.generation("gen-1").unwrap().is_none());
+}
+
+/// "Remove all AI data" stops this process's readings, and a reading still on its way keeps
+/// nothing: no usage line, no run, no proposal.
+#[tokio::test]
+async fn removing_all_ai_data_stops_a_reading_and_keeps_nothing_of_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    // An answer that would take long: a stopped reading doesn't wait for it.
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_secs(10)))
+        .mount(&server)
+        .await;
+    let read = |app: &App, id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", id, ReadCalendarOptions::default(), |_| {})
+                .await
+        })
+    };
+    let kept = |app: &App, id: &str| {
+        let store = Store::open(&app.db_path()).unwrap();
+        let usage = store
+            .ai_usage_between(
+                Utc::now() - TimeDelta::days(1),
+                Utc::now() + TimeDelta::days(1),
+            )
+            .unwrap()
+            .len();
+        let run = store.generation(id).unwrap().is_some();
+        let proposals = app.course_calendar("DEMO101").unwrap().proposals.len();
+        (usage, run, proposals)
+    };
+
+    // In this process: the reading is stopped.
+    let reading = read(&app, "gen-here");
+    wait_for_request(&server).await;
+    let removed_at = std::time::Instant::now();
+    app.remove_all_ai_data().unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert!(
+        removed_at.elapsed() < Duration::from_secs(5),
+        "the reading wasn't stopped"
+    );
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert_eq!(kept(&app, "gen-here"), (0, false, 0));
+
+    // From another process (another App on the same data): the reading runs to its end and
+    // keeps nothing, as its provider is gone.
+    let app = app_with_courses_again(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let reading = read(&app, "gen-there");
+    wait_for_request(&server).await;
+    let other = App::open_at_with_secrets(temp.path().join("data"), Arc::new(MemorySecrets::new()))
+        .unwrap();
+    other.remove_all_ai_data().unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled, "{}", err.message);
+    assert_eq!(kept(&app, "gen-there"), (0, false, 0));
+}
+
+/// The same data folder opened again (its courses are there already).
+fn app_with_courses_again(dir: &Path) -> App {
+    App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap()
 }
 
 /// A run of a model that the server on this computer runs in the cloud says so: its start, its

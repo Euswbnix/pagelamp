@@ -3141,6 +3141,12 @@ export interface RemoveAiDataReport {
    */
   backup_removed: boolean;
   generations_removed: number;
+  /**
+   * Providers whose API key couldn't be deleted from the keychain: they stay, with their
+   * keys (`llm:<id>`); the rest of the AI data is gone. Run it again when the keychain can
+   * be reached.
+   */
+  keys_left?: string[];
   providers_removed: number;
   usage_rows_removed: number;
 }
@@ -3207,8 +3213,9 @@ export interface SessionCourses {
    */
   campus?: number | null;
   /**
-   * The course's calendar in force can't be copied (two parts, a break its weeks skip, or
-   * a first week other than week 1): `apply_course_dates_to` refuses it.
+   * The course's calendar in force can't be copied (two parts, a first week other than
+   * week 1, no last day of classes, or a break that skips a week:
+   * `CourseCalendar::carried_by_two_dates`): `apply_course_dates_to` refuses it.
    */
   copy_refused?: boolean;
   /**

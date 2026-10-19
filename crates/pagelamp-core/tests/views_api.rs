@@ -1257,6 +1257,39 @@ fn a_calendar_in_force_lends_without_confirmed_dates() {
     assert_eq!(term.exams_end, Some(date("2026-12-22")));
 }
 
+/// A calendar two dates can't carry lends nothing, as it can't be copied: from "Week 0", the
+/// course without dates of its own would count one week more all term.
+#[test]
+fn a_calendar_from_week_zero_lends_nothing() {
+    use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};
+
+    let store = session_store();
+    let mut calendar = calendar_from_dates(&DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: None,
+        breaks: vec![],
+        second_segment: None,
+    })
+    .unwrap();
+    calendar.segments[0].first_week_number = 0;
+    store
+        .set_student_calendar(
+            &session_id("1"),
+            Some(&calendar),
+            ts("2026-09-20T12:00:00Z"),
+        )
+        .unwrap();
+    let borrower = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_ne!(borrower.timeline.term.anchor, TermAnchorSource::SameSession);
+    let listed = views::list_courses(&store, true, session_at())
+        .unwrap()
+        .into_iter()
+        .find(|s| s.course.id == session_id("2"))
+        .unwrap();
+    assert_ne!(listed.timeline.term.anchor, TermAnchorSource::SameSession);
+}
+
 /// A course whose dates come from a calendar in force (the dates form or an accepted proposal)
 /// lends that calendar's last day of classes and end of exams, not the span `user_term_*`
 /// mirror (which ends with the exams): the course without dates of its own is in its exam

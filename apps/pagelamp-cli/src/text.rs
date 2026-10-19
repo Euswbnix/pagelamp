@@ -276,6 +276,18 @@ pub fn sharing_reminder_after_failure_note() -> String {
     )
 }
 
+/// `ai remove --all` couldn't delete these providers' keys: they stay, keys and all.
+pub fn keys_left(ids: &[String]) -> String {
+    let entries: Vec<String> = ids.iter().map(|id| format!("`llm:{id}`")).collect();
+    format!(
+        "the keychain didn't let {PRODUCT_NAME} delete the API key of {}: it is still there \
+         ({}), and so is that provider. Run `{CLI_NAME} ai remove --all` again when the keychain \
+         can be reached.",
+        ids.join(", "),
+        entries.join(", ")
+    )
+}
+
 /// The automatic sync setting in words (`status`, `sync --auto`).
 pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
     use pagelamp_core::auto_sync::AutoSync;

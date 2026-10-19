@@ -29,8 +29,9 @@ pub struct SessionCourses {
     /// The other courses of the same session, section group and campus: removed ones left out,
     /// hidden ones in (`hidden`), the course itself not listed.
     pub courses: Vec<SessionCourse>,
-    /// The course's calendar in force can't be copied (two parts, a break its weeks skip, or
-    /// a first week other than week 1): `apply_course_dates_to` refuses it.
+    /// The course's calendar in force can't be copied (two parts, a first week other than
+    /// week 1, no last day of classes, or a break that skips a week:
+    /// `CourseCalendar::carried_by_two_dates`): `apply_course_dates_to` refuses it.
     #[serde(default)]
     pub copy_refused: bool,
 }
@@ -107,9 +108,9 @@ pub struct ApplyDatesReport {
 }
 
 /// Why a copy from a calendar that two dates can't carry is refused.
-const COPY_REFUSED: &str = "This course's calendar has two parts, a break its weeks skip, or a \
-    first week other than week 1, which a copy of its dates can't carry; set the other courses' \
-    dates on their own.";
+const COPY_REFUSED: &str = "Two dates can't carry this course's calendar (it has two parts, a \
+    first week other than week 1, no last day of classes, or a break that skips a week): set the \
+    other courses' dates on their own.";
 
 impl App {
     /// The other courses of `course`'s session (code, name or id), each with the dates it
@@ -153,8 +154,8 @@ impl App {
     /// gets them once. Each copy remembers where it came from until the course's own dates are
     /// saved again. One transaction; the report says what was skipped and what was replaced
     /// (undo: `restore_course_dates`). A calendar in force that two dates can't carry (two
-    /// parts, a break its weeks skip, or a first week other than week 1) is refused, and
-    /// nothing is written.
+    /// parts, a first week other than week 1, no last day of classes, or a break that skips a
+    /// week) is refused, and nothing is written.
     pub fn apply_course_dates_to(&self, from: &str, to: Vec<String>) -> Result<ApplyDatesReport> {
         let store = self.write_store()?;
         let from = store.resolve_course_with(from, true)?;

@@ -215,10 +215,10 @@
   },
   "removeAll": {
     "button": "Remove all AI data",
-    "hint": "Deletes your keys, model choices, usage history and everything {{product}} wrote with AI.",
+    "hint": "Deletes your keys, model choices, usage history and what {{product}}'s AI features wrote (a calendar you accepted stays, with its AI label).",
     "title": "Remove all AI data?",
-    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI. Your courses, their rules and your answers about sharing materials stay.",
-    "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI, and signs {{product}}'s Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.",
+    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
+    "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote, and signs {{product}}'s Codex out of ChatGPT. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
     "confirm": "Remove all",
     "done": "All AI data removed"
   },

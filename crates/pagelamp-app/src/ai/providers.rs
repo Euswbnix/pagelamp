@@ -104,14 +104,33 @@ impl App {
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         };
+        // A custom server here added without a key: none of its is ever in the keychain.
+        let keyless = profile.auth != Auth::None && last4.is_none();
         if let (Some(raw), true) = (
             raw_key.as_ref().filter(|raw| !raw.is_empty()),
             profile.auth != Auth::None,
         ) {
             self.secrets.set(&key_account(&provider_id), raw)?;
+        } else if keyless {
+            // An entry an earlier provider at this address left is never read for this one
+            // (`KEYLESS`); it goes now if the keychain lets it.
+            if let Err(err) = self.secrets.delete(&key_account(&provider_id)) {
+                tracing::warn!(target: "pagelamp::ai", "an earlier key for this address stays: {err}");
+            }
         }
-        if let Err(err) = self.write_store()?.insert_model_provider(&row) {
-            let _ = self.secrets.delete(&key_account(&provider_id));
+        let inserted = self.write_store()?.in_transaction(|store| {
+            store.insert_model_provider(&row)?;
+            if keyless {
+                let mut ids = super::settings::keyless(store)?;
+                ids.insert(provider_id.clone());
+                store.set_setting(super::settings::KEYLESS, &ids)?;
+            }
+            Ok(())
+        });
+        if let Err(err) = inserted {
+            if !keyless {
+                let _ = self.secrets.delete(&key_account(&provider_id));
+            }
             return Err(err.into());
         }
         Ok(record(&row, &profile, last4))
@@ -139,6 +158,11 @@ impl App {
         let last4 = key.last4();
         check_access(provider.profile.clone(), Some(key)).await?;
         self.secrets.set(&key_account(provider_id), trimmed)?;
+        let store = self.write_store()?;
+        let mut ids = super::settings::keyless(&store)?;
+        if ids.remove(provider_id) {
+            store.set_setting(super::settings::KEYLESS, &ids)?;
+        }
         Ok(record(&provider.row, &provider.profile, Some(last4)))
     }
 
@@ -148,8 +172,12 @@ impl App {
         let row = store
             .model_provider(provider_id)?
             .ok_or_else(|| unknown_provider(provider_id))?;
+        // The key first: if it can't be deleted, nothing changes and the removal can be tried
+        // again. A provider added without a key has none to delete.
+        if !super::settings::keyless(&store)?.contains(provider_id) {
+            forget_key(&*self.secrets, &row)?;
+        }
         store.delete_model_provider(provider_id)?;
-        forget_key(&*self.secrets, &row)?;
         super::settings::forget_backend(
             &store,
             &BackendRef::Provider {
@@ -162,7 +190,8 @@ impl App {
     /// A stored provider with its key (`NotFound` if there is none; the key may be missing).
     pub(crate) fn provider(&self, provider_id: &str) -> Result<Provider> {
         let row = self.provider_row(provider_id)?;
-        provider_from_row(row, &*self.secrets)
+        let keyless = super::settings::keyless(&self.read_store()?)?.contains(provider_id);
+        provider_from_row(row, &*self.secrets, keyless)
     }
 
     /// The provider behind `backend`, with its key: for calls that reach the provider
@@ -189,8 +218,10 @@ impl App {
         store: &Store,
     ) -> Result<Vec<(ModelProviderRecord, Provider)>> {
         let mut records = Vec::new();
+        let keyless = super::settings::keyless(store)?;
         for row in store.model_providers()? {
-            let provider = provider_from_row(row, &*self.secrets)?;
+            let keyless = keyless.contains(&row.id);
+            let provider = provider_from_row(row, &*self.secrets, keyless)?;
             let last4 = provider.key.as_ref().map(ApiKey::last4);
             records.push((record(&provider.row, &provider.profile, last4), provider));
         }
@@ -226,12 +257,14 @@ pub(crate) fn uses_key(row: &ProviderRow) -> bool {
     profile::preset(&row.preset).is_none_or(|preset| preset.auth != Auth::None)
 }
 
+/// `keyless`: added without a key and never given one (`KEYLESS`): the keychain isn't read.
 fn provider_from_row(
     row: ProviderRow,
     secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    keyless: bool,
 ) -> Result<Provider> {
     let profile = profile_from_row(&row)?;
-    let key = if profile.auth == Auth::None {
+    let key = if profile.auth == Auth::None || keyless {
         None
     } else {
         match secrets.get(&key_account(&row.id)) {
@@ -248,9 +281,9 @@ fn provider_from_row(
     Ok(Provider { row, profile, key })
 }
 
-/// Delete a removed provider's key. A custom server here may have none: where the keychain
-/// can't be reached, that is logged and the removal goes on, as it does for one that never had
-/// a key; any other provider's removal stops there.
+/// Delete a provider's key from the keychain (one that keeps keys; not a `KEYLESS` one). A
+/// failed delete counts only when the keychain then says there is no such entry; otherwise the
+/// error says the key is still there, and the caller changes nothing.
 pub(crate) fn forget_key(
     secrets: &dyn pagelamp_core::secrets::SecretBackend,
     row: &ProviderRow,
@@ -258,13 +291,20 @@ pub(crate) fn forget_key(
     if !uses_key(row) {
         return Ok(());
     }
-    match secrets.delete(&key_account(&row.id)) {
-        Err(err) if profile_from_row(row).is_ok_and(|p| key_optional(&p)) => {
-            tracing::warn!(target: "pagelamp::ai", "no keychain for a keyless server: {err}");
-            Ok(())
-        }
-        result => Ok(result?),
+    let account = key_account(&row.id);
+    let Err(err) = secrets.delete(&account) else {
+        return Ok(());
+    };
+    if matches!(secrets.get(&account), Ok(None)) {
+        return Ok(());
     }
+    let mut err: AppError = err.into();
+    err.message = format!(
+        "The API key of {} couldn't be deleted from the keychain ({}): it is still there, under \
+         `{account}`. Nothing was removed; try again when the keychain can be reached.",
+        row.label, err.message
+    );
+    Err(err)
 }
 
 /// Refuse coding-plan endpoints and keys, quoting the vendor (before any network call).

@@ -22,7 +22,7 @@ pub use types::*;
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use pagelamp_core::ai::{AiFeature, Destination, MaterialSharing, ProviderRow};
+use pagelamp_core::ai::{AiFeature, Destination, MaterialSharing};
 use pagelamp_core::ingest::sha256_hex;
 use pagelamp_llm::profile::{self, ProviderProfile, Retention, Training, Wire};
 use pagelamp_llm::{Backend, CancellationToken, HttpDriver};
@@ -158,25 +158,26 @@ impl App {
             let cloud_ok = cloud_disclosure
                 .as_ref()
                 .is_some_and(|facts| cloud_acknowledged == Some(facts.version));
-            // The notes its routed models need, placed as an estimate places them (a run asks
-            // the server again); with none routed, either note it has.
-            let (mut needs_here, mut needs_cloud) = (false, false);
+            // Each routed model needs the note a run checks for it (`disclosure_and_key`, as
+            // `other_blocks` does), placed as an estimate places it (a run asks the server
+            // again); with none routed, either note the backend has.
+            let mut routed = false;
+            let mut notes_ok = true;
             for choice in routing
                 .0
                 .values()
                 .filter(|choice| choice.backend == backend)
             {
-                if self.estimate_profile(choice)?.1 == Destination::OnDevice {
-                    needs_here = true;
-                } else {
-                    needs_cloud = true;
-                }
+                routed = true;
+                let runs_here = self.estimate_profile(choice)?.1 == Destination::OnDevice;
+                let (facts, key) = self.disclosure_and_key(&backend, runs_here)?;
+                notes_ok &= acks
+                    .get(&key)
+                    .is_some_and(|ack| ack.version == facts.version);
             }
-            let notes_ok = if needs_here || needs_cloud {
-                (!needs_here || here_ok) && (!needs_cloud || cloud_ok)
-            } else {
-                here_ok || cloud_ok
-            };
+            if !routed {
+                notes_ok = here_ok || cloud_ok;
+            }
             let mut problems = Vec::new();
             if provider.needs_key() && provider.key.is_none() {
                 problems.push(BackendProblem::KeyMissing);
@@ -481,16 +482,22 @@ impl App {
     pub fn remove_all_ai_data(&self) -> Result<RemoveAiDataReport> {
         // Codex first: its sign-in ends before its folder goes (Busy if Codex is running).
         self.forget_codex()?;
+        // This process's runs stop; a run elsewhere keeps nothing once its provider is gone.
+        self.state.runs.cancel_all();
         let store = self.write_store()?;
-        let keyed: Vec<ProviderRow> = store
-            .model_providers()?
-            .into_iter()
-            .filter(providers::uses_key)
-            .collect();
-        let removed = store.remove_all_ai_data()?;
-        for row in &keyed {
-            providers::forget_key(&*self.secrets, row)?;
+        // Keys first: a provider whose key can't be deleted stays, and is named.
+        let keyless = settings::keyless(&store)?;
+        let mut keys_left = Vec::new();
+        for row in store.model_providers()? {
+            if !providers::uses_key(&row) || keyless.contains(&row.id) {
+                continue;
+            }
+            if let Err(err) = providers::forget_key(&*self.secrets, &row) {
+                tracing::warn!(target: "pagelamp::ai", "{}", err.message);
+                keys_left.push(row.id);
+            }
         }
+        let removed = store.remove_all_ai_data(&keys_left)?;
         for key in settings::ALL_KEYS {
             store.remove_setting(key)?;
         }
@@ -509,6 +516,7 @@ impl App {
             generations_removed: removed.generations,
             usage_rows_removed: removed.usage_rows,
             backup_removed,
+            keys_left,
         })
     }
 
@@ -518,9 +526,7 @@ impl App {
     pub(crate) fn prune_ai_records_at_sync_start(&self) {
         let now = chrono::Utc::now();
         let result = self.write_store().and_then(|store| -> Result<()> {
-            store.prune_ai_usage(
-                now - chrono::TimeDelta::days(pagelamp_core::store::USAGE_KEEP_DAYS),
-            )?;
+            store.prune_ai_usage(pagelamp_core::store::usage_cutoff(now))?;
             store.prune_dismissed_calendars(now)?;
             Ok(())
         });

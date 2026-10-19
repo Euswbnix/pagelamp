@@ -322,7 +322,7 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
             )
             .unwrap();
     }
-    let removed = store.remove_all_ai_data().unwrap();
+    let removed = store.remove_all_ai_data(&[]).unwrap();
     assert_eq!(
         (removed.providers, removed.generations, removed.usage_rows),
         (1, 1, 1)
@@ -383,5 +383,5 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
         1,
         "course data stays"
     );
-    assert_eq!(store.remove_all_ai_data().unwrap().providers, 0);
+    assert_eq!(store.remove_all_ai_data(&[]).unwrap().providers, 0);
 }

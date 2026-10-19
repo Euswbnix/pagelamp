@@ -294,7 +294,7 @@ fn the_sharing_reminder_is_claimed_once_per_course() {
             .unwrap()
     );
     // Removing all AI data starts over.
-    store.remove_all_ai_data().unwrap();
+    store.remove_all_ai_data(&[]).unwrap();
     assert!(
         store
             .claim_sharing_reminder(COURSE, at("2026-09-26"))

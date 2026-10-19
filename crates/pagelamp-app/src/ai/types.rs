@@ -428,6 +428,11 @@ pub struct RemoveAiDataReport {
     pub usage_rows_removed: u32,
     /// The pre-update database backup was deleted too (it holds AI data from schema 4 on).
     pub backup_removed: bool,
+    /// Providers whose API key couldn't be deleted from the keychain: they stay, with their
+    /// keys (`llm:<id>`); the rest of the AI data is gone. Run it again when the keychain can
+    /// be reached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keys_left: Vec<String>,
 }
 
 // ----- generation (M3; the types exist from M1 for the FFI and UI stubs) -----------------------

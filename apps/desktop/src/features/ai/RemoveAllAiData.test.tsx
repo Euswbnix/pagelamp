@@ -19,14 +19,18 @@ describe("Remove all AI data", () => {
   it("names the ChatGPT sign-out when there is one to undo", async () => {
     const dialog = await openDialog("codex-plus");
     expect(within(dialog).getByText(/signs PageLamp's Codex out of ChatGPT/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/everything PageLamp wrote with AI/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/what PageLamp's AI features wrote/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/calendar you accepted .* stays, with its AI label/),
+    ).toBeInTheDocument();
   });
 
   it.each(["ai-key", "codex-signed-out"] as const)(
     "doesn't mention ChatGPT without a ChatGPT sign-in (%s)",
     async (scenario) => {
       const dialog = await openDialog(scenario);
-      expect(within(dialog).getByText(/everything PageLamp wrote with AI\./)).toBeInTheDocument();
+      expect(within(dialog).getByText(/what PageLamp's AI features wrote\./)).toBeInTheDocument();
+      expect(within(dialog).getByText(/stays, with its AI label/)).toBeInTheDocument();
       expect(within(dialog).queryByText(/ChatGPT|Codex/)).toBeNull();
       expect(within(dialog).queryByText(/every plan and explanation/)).toBeNull();
     },

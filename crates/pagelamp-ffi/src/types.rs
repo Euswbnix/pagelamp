@@ -1589,6 +1589,8 @@ pub struct RemoveAiDataReport {
     pub generations_removed: u32,
     pub usage_rows_removed: u32,
     pub backup_removed: bool,
+    #[uniffi(default = [])]
+    pub keys_left: Vec<String>,
 }
 
 #[uniffi::remote(Enum)]

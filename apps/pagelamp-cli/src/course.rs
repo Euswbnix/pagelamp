@@ -644,9 +644,9 @@ pub fn copy_dates(
         }
         if session.copy_refused {
             println!(
-                "{from_name}'s calendar has two parts, a break its weeks skip, or a first week \
-                 other than week 1, which a copy of its dates can't carry: set these courses' \
-                 dates on their own."
+                "Two dates can't carry {from_name}'s calendar (it has two parts, a first week \
+                 other than week 1, no last day of classes, or a break that skips a week): set \
+                 these courses' dates on their own."
             );
         } else {
             println!("Name the courses to copy to, or use --same-session for all of them.");

@@ -713,9 +713,9 @@ fn an_undo_leaves_alone_a_course_with_a_calendar_of_its_own_since() {
     assert_eq!(two.term.teaching[0].first_class, date("2026-09-15"));
 }
 
-/// Two dates can't carry a calendar with two parts, a break its weeks skip, or a first week
-/// other than week 1: a copy from one is refused, nothing changes, and the session's list says
-/// so beforehand.
+/// Two dates can't carry a calendar with two parts, a break that skips a week, no last day of
+/// classes, or a first week other than week 1: a copy from one is refused, nothing changes,
+/// and the session's list says so beforehand.
 #[test]
 fn a_calendar_two_dates_can_t_carry_isn_t_copied() {
     let temp = tempfile::tempdir().unwrap();
@@ -751,7 +751,12 @@ fn a_calendar_two_dates_can_t_carry_isn_t_copied() {
         .unwrap();
     week_zero.segments[0].first_week_number = 0;
     let refused = |app: &App| app.session_courses(&session_id("1")).unwrap().copy_refused;
-    for form in [Some(two_parts), Some(skipped_break), None] {
+    // No last day of classes: the target would take its end and breaks from the school.
+    let open_ended = pagelamp_app::CourseDatesInput {
+        last_class: None,
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    for form in [Some(two_parts), Some(skipped_break), Some(open_ended), None] {
         match form {
             Some(form) => {
                 app.set_course_dates(&session_id("1"), Some(form)).unwrap();
@@ -777,6 +782,27 @@ fn a_calendar_two_dates_can_t_carry_isn_t_copied() {
         assert_eq!((two.term.student_start, two.term.student_end), (None, None));
         assert!(copied(&app).is_empty());
     }
+    // A one-day holiday the weeks don't count skips no week: it is copied.
+    app.set_course_dates(
+        &session_id("1"),
+        Some(pagelamp_app::CourseDatesInput {
+            breaks: vec![pagelamp_app::BreakInput {
+                kind: BreakKind::Holiday,
+                start: date("2026-10-12"),
+                end: date("2026-10-12"),
+                numbered: false,
+                label: None,
+            }],
+            ..dates_form("2026-09-08", "2026-12-08", None)
+        }),
+    )
+    .unwrap();
+    assert!(!refused(&app));
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+    app.restore_course_dates(report.replaced).unwrap();
     // A break the weeks count keeps the weeks the same: it is copied, though on the target
     // that week isn't shown as a break.
     app.set_course_dates(

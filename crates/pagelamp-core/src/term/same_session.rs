@@ -188,6 +188,14 @@ pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
         TermAnchorSource::StudentConfirmed
             if term.anchor_origin != Some(CalendarOrigin::Legacy) =>
         {
+            // A calendar two dates can't carry (two parts, week 0, no end, a skipped week)
+            // lends nothing, as it can't be copied: the other course would count other weeks.
+            if input
+                .calendar
+                .is_some_and(|in_force| !in_force.calendar.carried_by_two_dates())
+            {
+                return None;
+            }
             let start = term.teaching.first()?.first_class;
             let (end, exams_end) = match input.calendar {
                 Some(in_force) => (

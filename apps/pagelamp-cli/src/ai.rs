@@ -252,27 +252,43 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                 confirm(text::REMOVE_ALL_AI_DATA, yes)?;
                 let report = app.remove_all_ai_data()?;
                 if json {
-                    return print_json(&report);
+                    print_json(&report)?;
+                } else {
+                    println!(
+                        "Removed {} provider(s), {} usage record(s) and {} generated text(s){}.",
+                        report.providers_removed,
+                        report.usage_rows_removed,
+                        report.generations_removed,
+                        if report.backup_removed {
+                            ", and the pre-update database backup"
+                        } else {
+                            ""
+                        }
+                    );
                 }
-                println!(
-                    "Removed {} provider(s), {} usage record(s) and {} generated text(s){}.",
-                    report.providers_removed,
-                    report.usage_rows_removed,
-                    report.generations_removed,
-                    if report.backup_removed {
-                        ", and the pre-update database backup"
-                    } else {
-                        ""
-                    }
-                );
+                if !report.keys_left.is_empty() {
+                    anyhow::bail!(text::keys_left(&report.keys_left));
+                }
                 return Ok(());
             }
             let provider = provider.unwrap_or_default();
+            // Whether it had a key to delete (a custom server here may have none); unknown when
+            // the status can't be read.
+            let had_key = app.ai_status().ok().is_none_or(|status| {
+                status
+                    .providers
+                    .iter()
+                    .any(|p| p.provider_id == provider && p.key_last4.is_some())
+            });
             app.remove_model_provider(&provider)?;
             if json {
                 return print_json(&serde_json::json!({ "removed": provider }));
             }
-            println!("Removed {provider} and its key.");
+            if had_key {
+                println!("Removed {provider} and its key.");
+            } else {
+                println!("Removed {provider}.");
+            }
             Ok(())
         }
         AiCommand::Models { provider } => {
