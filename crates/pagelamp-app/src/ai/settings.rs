@@ -90,7 +90,7 @@ pub(crate) struct OutdatedSeen {
     pub at: Timestamp,
 }
 
-pub(crate) fn routing(store: &Store) -> Result<Routing> {
+pub(crate) fn routing(store: &Store) -> pagelamp_core::Result<Routing> {
     Ok(store.setting(ROUTING)?.unwrap_or_default())
 }
 
@@ -102,18 +102,20 @@ pub(crate) fn monthly_budget(store: &Store) -> Result<Option<u64>> {
         }))
 }
 
-pub(crate) fn disclosures(store: &Store) -> Result<BTreeMap<String, Acknowledgement>> {
+pub(crate) fn disclosures(
+    store: &Store,
+) -> pagelamp_core::Result<BTreeMap<String, Acknowledgement>> {
     Ok(store.setting(DISCLOSURES)?.unwrap_or_default())
 }
 
-pub(crate) fn unpriced(store: &Store) -> Result<BTreeMap<String, Vec<String>>> {
+pub(crate) fn unpriced(store: &Store) -> pagelamp_core::Result<BTreeMap<String, Vec<String>>> {
     Ok(store.setting(UNPRICED)?.unwrap_or_default())
 }
 
 /// Ollama's last model lists: backend key → model id → it runs on this computer.
 pub(crate) type ListedModels = BTreeMap<String, BTreeMap<String, bool>>;
 
-pub(crate) fn listed_models(store: &Store) -> Result<ListedModels> {
+pub(crate) fn listed_models(store: &Store) -> pagelamp_core::Result<ListedModels> {
     Ok(store.setting(LISTED_MODELS)?.unwrap_or_default())
 }
 
@@ -123,7 +125,7 @@ pub(crate) fn keyless(store: &Store) -> pagelamp_core::Result<BTreeSet<String>> 
 }
 
 /// Forget everything about a removed backend: its routing, acknowledgements.
-pub(crate) fn forget_backend(store: &Store, backend: &BackendRef) -> Result<()> {
+pub(crate) fn forget_backend(store: &Store, backend: &BackendRef) -> pagelamp_core::Result<()> {
     let key = backend_key(backend);
     let mut routes = routing(store)?;
     routes.0.retain(|_, choice| &choice.backend != backend);

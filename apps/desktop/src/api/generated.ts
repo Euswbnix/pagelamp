@@ -3141,12 +3141,6 @@ export interface RemoveAiDataReport {
    */
   backup_removed: boolean;
   generations_removed: number;
-  /**
-   * Providers whose API key couldn't be deleted from the keychain: they stay, with their
-   * keys (`llm:<id>`); the rest of the AI data is gone. Run it again when the keychain can
-   * be reached.
-   */
-  keys_left?: string[];
   providers_removed: number;
   usage_rows_removed: number;
 }

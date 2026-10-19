@@ -242,7 +242,6 @@ fn last_teaching_week_before(
     None
 }
 
-/// The break that makes the week starting `monday` a break week, if any.
 /// Whether `b` makes some week a break week: it covers at least `BREAK_WEEKDAYS` weekdays of
 /// one Monday-to-Friday week. Only such a break, unnumbered, skips a week number; a shorter
 /// one changes neither the weeks nor the phase.
@@ -257,6 +256,7 @@ pub fn skips_a_week(b: &CalendarBreak) -> bool {
     false
 }
 
+/// The break that makes the week starting `monday` a break week, if any.
 fn break_of_week(breaks: &[CalendarBreak], monday: NaiveDate) -> Option<&CalendarBreak> {
     breaks.iter().find(|b| {
         (0..5)

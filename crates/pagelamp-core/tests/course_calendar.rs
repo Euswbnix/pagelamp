@@ -1950,6 +1950,7 @@ fn lent(kind: DonorKind, start: &str, end: Option<&str>, exams_end: Option<&str>
         start: date(start),
         end: end.map(date),
         exams_end: exams_end.map(date),
+        first_week: 1,
     })
 }
 

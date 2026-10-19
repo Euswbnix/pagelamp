@@ -27,7 +27,7 @@ use regex::Regex;
 use super::evidence::{EvidenceCode, EvidenceItem};
 use super::fit::{self, Observation};
 use super::institution::{self, InstitutionCalendar, InstitutionTerm};
-use super::same_session::{DonorKind, Lend, LentDates};
+use super::same_session::{DonorKind, Lend, LentDates, week_one_of};
 use super::session::{SessionHint, session_hint};
 use super::{
     CalendarOrigin, CalendarStatus, DateSpan, RejectReason, RejectedDates, TeachingSegment,
@@ -350,6 +350,15 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
     // this course's first activity: a course that posts late still keeps its session's weeks):
     // an implausible end lends the start alone, an implausible start nothing, either noted.
     let lent: Option<&LentDates> = input.same_session.and_then(Lend::dates);
+    // Where this course's own week 1 is: a calendar may number its first week otherwise.
+    let own_first_week = match (&student, input.calendar) {
+        (Some(_), Some(in_force)) => in_force
+            .calendar
+            .segments
+            .first()
+            .map_or(1, |s| s.first_week_number),
+        _ => 1,
+    };
     let own_dated = student.is_some()
         || plausible
             .iter()
@@ -368,7 +377,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 && (lent.kind == DonorKind::ModuleUnlocks || far(fit.start))
         });
         if own_dated || fit_beats {
-            if let Some(item) = own.and_then(|own| disagreement(own, lent)) {
+            if let Some(item) = own.and_then(|own| disagreement(own, own_first_week, lent)) {
                 english.push(item.english());
                 evidence.push(item);
             }
@@ -438,7 +447,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         let items: Vec<EvidenceItem> = match own {
             Some(own) => lenders
                 .iter()
-                .filter_map(|lent| disagreement(own, lent))
+                .filter_map(|lent| disagreement(own, own_first_week, lent))
                 .collect(),
             None => {
                 vec![EvidenceItem::new(EvidenceCode::SameSessionSplit).text("session", session)]
@@ -735,8 +744,8 @@ fn calendar_anchor(in_force: &CalendarInForce) -> Option<Anchor> {
 
 /// A course of the same session that puts week 1 a week or more from `own`'s, named with what
 /// this course's own week 1 comes from; `None` when they agree.
-fn disagreement(own: &Anchor, lent: &LentDates) -> Option<EvidenceItem> {
-    let days = days_between(week_one_monday(own.start), lent.monday()).abs();
+fn disagreement(own: &Anchor, own_first_week: u32, lent: &LentDates) -> Option<EvidenceItem> {
+    let days = days_between(week_one_of(own.start, own_first_week), lent.monday()).abs();
     (days >= DISAGREE_DAYS).then(|| {
         EvidenceItem::new(EvidenceCode::SameSessionDisagrees)
             .opt_text("course", lent.course.as_deref())

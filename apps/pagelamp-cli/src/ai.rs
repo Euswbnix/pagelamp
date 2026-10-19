@@ -266,9 +266,6 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                         }
                     );
                 }
-                if !report.keys_left.is_empty() {
-                    anyhow::bail!(text::keys_left(&report.keys_left));
-                }
                 return Ok(());
             }
             let provider = provider.unwrap_or_default();

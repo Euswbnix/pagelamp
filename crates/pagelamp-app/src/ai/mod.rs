@@ -485,16 +485,17 @@ impl App {
         // This process's runs stop; a run elsewhere keeps nothing once its provider is gone.
         self.state.runs.cancel_all();
         let store = self.write_store()?;
-        // Keys first: a provider whose key can't be deleted stays, and is named.
+        // Keys first: a provider whose key can't be deleted stays, with its key, and the
+        // removal ends as an error that names it (after removing everything else).
         let keyless = settings::keyless(&store)?;
         let mut keys_left = Vec::new();
+        let mut key_error = None;
         for row in store.model_providers()? {
-            if !providers::uses_key(&row) || keyless.contains(&row.id) {
-                continue;
-            }
-            if let Err(err) = providers::forget_key(&*self.secrets, &row) {
+            let row_keyless = keyless.contains(&row.id);
+            if let Err(err) = providers::forget_key(&*self.secrets, &row, row_keyless) {
                 tracing::warn!(target: "pagelamp::ai", "{}", err.message);
                 keys_left.push(row.id);
+                key_error.get_or_insert(err);
             }
         }
         let removed = store.remove_all_ai_data(&keys_left)?;
@@ -511,13 +512,36 @@ impl App {
                 )
             })?;
         }
-        Ok(RemoveAiDataReport {
+        let report = RemoveAiDataReport {
             providers_removed: removed.providers,
             generations_removed: removed.generations,
             usage_rows_removed: removed.usage_rows,
             backup_removed,
-            keys_left,
-        })
+        };
+        match key_error {
+            None => Ok(report),
+            Some(mut err) => {
+                let entries: Vec<String> =
+                    keys_left.iter().map(|id| format!("`llm:{id}`")).collect();
+                err.message = format!(
+                    "Removed {} provider(s), {} usage record(s) and {} generated text(s){}, but \
+                     the keychain didn't let PageLamp delete the API key of {}: it is still \
+                     there ({}), and so is that provider. Run this again when the keychain can be \
+                     reached.",
+                    report.providers_removed,
+                    report.usage_rows_removed,
+                    report.generations_removed,
+                    if report.backup_removed {
+                        ", and the pre-update database backup"
+                    } else {
+                        ""
+                    },
+                    keys_left.join(", "),
+                    entries.join(", ")
+                );
+                Err(err)
+            }
+        }
     }
 
     /// At a sync's start: usage lines older than the ledger's 13 months, and calendar
@@ -578,17 +602,21 @@ pub(crate) fn doctor_checks(
     let rows = store
         .and_then(|store| store.model_providers().ok())
         .unwrap_or_default();
+    let keyless = store
+        .and_then(|store| settings::keyless(store).ok())
+        .unwrap_or_default();
     let providers = rows
         .iter()
         .map(|row| {
             let profile = providers::profile_from_row(row).ok();
             let on_device = profile.as_ref().is_some_and(ProviderProfile::on_device);
-            // A server here that may go without a key has none missing.
+            // A server here that may go without a key has none missing; one added without a
+            // key uses none, and its keychain entry isn't read.
             let key_optional = profile.as_ref().is_some_and(providers::key_optional);
             AiProviderCheck {
                 preset: row.preset.clone(),
                 on_device,
-                key_present: providers::uses_key(row)
+                key_present: (providers::uses_key(row) && !keyless.contains(&row.id))
                     .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_))))
                     .filter(|present| *present || !key_optional),
                 reachable: profile

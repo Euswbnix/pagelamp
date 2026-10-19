@@ -1069,9 +1069,17 @@ async fn a_key_the_keychain_wont_delete_keeps_its_provider() {
     app.add_model_provider("custom", Some(&format!("{}/v1", keyless.uri())), None)
         .await
         .unwrap();
-    let report = app.remove_all_ai_data().unwrap();
-    assert_eq!(report.keys_left, vec![record.provider_id.clone()]);
-    assert_eq!(report.providers_removed, 1);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(
+        err.message.contains("Removed 1 provider(s)"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains(&format!("`{account}`")),
+        "{}",
+        err.message
+    );
     let left: Vec<String> = app
         .ai_status()
         .unwrap()
@@ -1143,4 +1151,144 @@ async fn an_old_key_at_the_same_address_doesn_t_come_back() {
     );
     app.remove_model_provider(&again.provider_id).unwrap();
     assert_eq!(secrets.get(&account).unwrap(), None);
+}
+
+/// The keychain entry of a custom server here added without a key, as the keychain holds it.
+async fn keyless_with_an_entry(app: &App, keychain: &StuckKeychain) -> (String, String) {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    let account = format!("llm:{}", record.provider_id);
+    // An entry that got there anyway (another tool, an old version): it is never read.
+    keychain.0.set(&account, KEY).unwrap();
+    (record.provider_id, account)
+}
+
+/// A provider added without a key is still looked for in the keychain when it goes: an entry
+/// the keychain holds and won't delete stops the removal (single and all), as for any other.
+#[tokio::test]
+async fn removing_a_keyless_provider_still_clears_its_keychain_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (id, account) = keyless_with_an_entry(&app, &keychain).await;
+    let err = app.remove_model_provider(&id).unwrap_err();
+    assert!(err.message.contains(&account), "{}", err.message);
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(err.message.contains(&account), "{}", err.message);
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    // Once the entry is gone, it goes.
+    keychain.0.delete(&account).unwrap();
+    app.remove_model_provider(&id).unwrap();
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// Adding a server here without a key where the keychain provably holds an earlier key for
+/// that address, and won't delete it, adds nothing and says so.
+#[tokio::test]
+async fn an_earlier_key_the_keychain_wont_delete_stops_a_keyless_add() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = mock_server().await;
+    let url = format!("{}/v1", server.uri());
+    let first = app
+        .add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap();
+    Store::open(&app.db_path())
+        .unwrap()
+        .delete_model_provider(&first.provider_id)
+        .unwrap();
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let err = app
+        .add_model_provider("custom", Some(&url), None)
+        .await
+        .unwrap_err();
+    assert!(
+        err.message.contains(&format!("llm:{}", first.provider_id)),
+        "{}",
+        err.message
+    );
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// Setting a key on a keyless provider: if the keychain doesn't take it, the provider stays
+/// keyless (it still works and goes without a keychain); adding a provider with a key at an
+/// address once keyless leaves no stale keyless mark.
+#[tokio::test]
+async fn the_keyless_mark_follows_the_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(NoKeychain)).unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    assert!(
+        app.update_model_provider_key(&record.provider_id, KEY)
+            .await
+            .is_err()
+    );
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    app.remove_model_provider(&record.provider_id).unwrap();
+
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let keyed = mock_server().await;
+    let url = format!("{}/v1", keyed.uri());
+    let id = app
+        .add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap()
+        .provider_id;
+    // A stale mark for this id (a removal that stopped halfway once could leave one).
+    let store = Store::open(&app.db_path()).unwrap();
+    store.delete_model_provider(&id).unwrap();
+    store
+        .set_setting(
+            "ai.keyless_providers",
+            &std::collections::BTreeSet::from([id.clone()]),
+        )
+        .unwrap();
+    app.add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap();
+    let marks: std::collections::BTreeSet<String> = store
+        .setting("ai.keyless_providers")
+        .unwrap()
+        .unwrap_or_default();
+    assert!(!marks.contains(&id), "{marks:?}");
+    assert_eq!(
+        app.ai_status().unwrap().providers[0].key_last4.as_deref(),
+        Some("7731")
+    );
+}
+
+/// The doctor doesn't read the keychain for a provider added without a key: no key is used,
+/// whatever an entry there holds.
+#[tokio::test]
+async fn the_doctor_reads_no_key_of_a_keyless_provider() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    keyless_with_an_entry(&app, &keychain).await;
+    assert_eq!(app.doctor().unwrap().ai.providers[0].key_present, None);
 }

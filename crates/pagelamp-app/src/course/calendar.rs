@@ -562,11 +562,8 @@ impl App {
         // send, its materials to the cloud, whatever came back), the run and the proposal.
         let store = self.write_store()?;
         let ending = store.in_transaction(|store| {
-            if let Some(id) = provider_id
-                && store.model_provider(id)?.is_none()
-            {
-                return Ok(Ending::Discarded);
-            }
+            // The materials went out (or were on their way) whatever became of the provider:
+            // the reminder isn't its data.
             let reminded = destination == Destination::Cloud
                 && sent
                 && matches!(
@@ -574,6 +571,11 @@ impl App {
                     MaterialSharing::Unanswered | MaterialSharing::NotSure
                 )
                 && store.claim_sharing_reminder(&course.id, Utc::now())?;
+            if let Some(id) = provider_id
+                && store.model_provider(id)?.is_none()
+            {
+                return Ok(Ending::Discarded { reminded });
+            }
             let run = match &run {
                 Ok(run) => run,
                 Err(err) => {
@@ -630,7 +632,8 @@ impl App {
             let id = store.insert_calendar_proposal(&row, Utc::now())?;
             Ok(Ending::Proposal { id, reminded })
         })?;
-        if let Ending::Failed { reminded: true }
+        if let Ending::Discarded { reminded: true }
+        | Ending::Failed { reminded: true }
         | Ending::BadOutput { reminded: true }
         | Ending::Proposal { reminded: true, .. } = ending
         {
@@ -639,10 +642,10 @@ impl App {
             });
         }
         match ending {
-            Ending::Discarded => Err(AppError::new(
+            Ending::Discarded { .. } => Err(AppError::new(
                 AppErrorKind::Cancelled,
-                "AI data was removed while the syllabus was read: nothing from this reading \
-                 was kept.",
+                "AI data was removed while the syllabus was read: the model's answer wasn't \
+                 kept.",
             )),
             Ending::Failed { .. } => match run {
                 Err(err) => Err(err),
@@ -840,8 +843,10 @@ fn pending(store: &Store, id: i64) -> Result<CalendarRow> {
 /// How a reading's store step ended (`read_one_calendar`); `reminded`: the course's sharing
 /// reminder was claimed by it.
 enum Ending {
-    /// The run's provider was removed meanwhile: nothing was kept.
-    Discarded,
+    /// The run's provider was removed meanwhile: its answer wasn't kept.
+    Discarded {
+        reminded: bool,
+    },
     Failed {
         reminded: bool,
     },

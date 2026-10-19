@@ -1575,6 +1575,47 @@ async fn removing_all_ai_data_stops_a_reading_and_keeps_nothing_of_it() {
     assert_eq!(kept(&app, "gen-there"), (0, false, 0));
 }
 
+/// A cloud reading that sent a course's materials still gives the reminder when its provider
+/// is removed while it waits: the answer isn't kept, but the reminder isn't the provider's.
+#[tokio::test]
+async fn a_reading_whose_provider_went_still_reminds() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(&app, &backend).await;
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()).set_delay(Duration::from_millis(1500)))
+        .mount(&server)
+        .await;
+    let (events, on_event) = collect();
+    let reading = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+                .await
+        })
+    };
+    wait_for_request(&server).await;
+    app.remove_model_provider("ollama").unwrap();
+    let err = reading.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert!(err.message.contains("wasn't kept"), "{}", err.message);
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Notice {
+            code: GenNoticeCode::MaterialSharingReminder
+        }
+    )));
+    assert!(app.course_calendar("DEMO101").unwrap().proposals.is_empty());
+}
+
 /// The same data folder opened again (its courses are there already).
 fn app_with_courses_again(dir: &Path) -> App {
     App::open_at_with_secrets(dir.join("data"), Arc::new(MemorySecrets::new())).unwrap()

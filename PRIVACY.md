@@ -23,7 +23,7 @@ who build PageLamp never receive your data.
 | **(next)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set (and that you confirmed them), that you are still taking it (and until when), and its calendar's dates without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you run `pagelamp course forget`, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
 | **(next)** The model providers you add (their kind, name and address, when you added them and the result of their last test), which model each of PageLamp's AI features would use and how hard it thinks, your monthly AI budget, for each provider which version of PageLamp's note on its use of your data you accepted, and when (a server on this computer has a second note, for models it may run in the cloud), the models without a known price you accepted, which servers on this computer you added without a key, and for Ollama on this computer the models it last listed and whether each runs on this computer | the same database | to use the providers you set up the way you chose |
 | **(next)** API keys for model providers | your operating system's keychain, like your Canvas token — never in the database, logs or AI output | to reach the provider on your behalf |
-| **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept, and a calendar proposal you dismissed for 30 days (it goes at the next reading, dismissal or sync after that) | so you can read it again and see where it came from |
+| **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept, and a calendar proposal you dismissed for 30 days (it goes at the next calendar proposal, dismissal or sync after that) | so you can read it again and see where it came from |
 | **(next)** One line per AI run: when, provider, model, feature, tokens and estimated cost | the same database, deleted once 13 months old (at the next AI run or sync) | to show your usage (`pagelamp ai usage`) and keep runs within your budget |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
@@ -82,10 +82,10 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
     and passes it on there. A course you answered `not-allowed` for never goes to such a model.
     Before each reading, PageLamp asks Ollama for its list of models: a model it marks as in the
     cloud or doesn't list, or an answer that isn't a usable list, counts as in the cloud. If
-    Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent. PageLamp trusts that the
-    LM Studio preset's address is LM Studio on this computer, which runs its models here. Any other
-    server on this computer (`custom`) can't tell PageLamp where it runs a model, so its models
-    count as in the cloud.
+    Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent.
+    PageLamp trusts that the LM Studio preset's address is LM Studio on this computer, which runs
+    its models here. Any other server on this computer (`custom`) can't tell PageLamp where it
+    runs a model, so its models count as in the cloud.
   - A syllabus reading sends the text of the course materials it reads. No model gets the materials
     of a course whose AI access you turned off or whose AI policy is "No AI", and a model in the
     cloud doesn't get them if you answered `not-allowed` with `pagelamp course sharing`. If you
@@ -181,8 +181,8 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   them). A course calendar you accepted from a syllabus reading stays, with its label saying which
   model read it; so do your courses and your answers about sharing. A key is deleted before
   anything else: if the keychain doesn't let PageLamp delete it, `ai remove <provider>` changes
-  nothing and says so, and `--all` keeps that provider and its key and names them, so you can run
-  it again.
+  nothing and says so, and `--all` removes the rest but keeps that provider and its key, and ends
+  with an error that names them, so you can run it again.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling

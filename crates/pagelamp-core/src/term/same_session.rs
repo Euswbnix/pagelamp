@@ -60,12 +60,22 @@ pub struct Donor {
     pub end: Option<NaiveDate>,
     /// The end of exams, when the donor's accepted calendar states it.
     pub exams_end: Option<NaiveDate>,
+    /// Its weeks can be lent (`CourseCalendar::lendable`): a calendar that can't still takes
+    /// part in the session's agreement on week 1, but lends nothing.
+    pub lends: bool,
+    /// The number of the week `start` falls in (a calendar's first week; else 1).
+    pub first_week: u32,
 }
 
 impl Donor {
     fn monday(&self) -> NaiveDate {
-        week_one_monday(self.start)
+        week_one_of(self.start, self.first_week)
     }
+}
+
+/// The Monday of week 1 for classes starting on `start` in week `first_week`.
+pub fn week_one_of(start: NaiveDate, first_week: u32) -> NaiveDate {
+    add_days(week_one_monday(start), 7 * (1 - i64::from(first_week)))
 }
 
 /// The dates a course borrows from the others of its session.
@@ -80,11 +90,14 @@ pub struct LentDates {
     pub start: NaiveDate,
     pub end: Option<NaiveDate>,
     pub exams_end: Option<NaiveDate>,
+    /// The number of the week `start` falls in at the lender (1 for dates it lends; a course
+    /// named in a split may count from another).
+    pub first_week: u32,
 }
 
 impl LentDates {
     pub fn monday(&self) -> NaiveDate {
-        week_one_monday(self.start)
+        week_one_of(self.start, self.first_week)
     }
 
     /// Medium, Low from module unlocks (never raised on the borrower's side: §6.7 rule 3 only
@@ -124,8 +137,9 @@ impl Lend {
 ///
 /// The strongest kind among all of them decides. If its courses disagree on week 1, it is a
 /// split for every course of the session, the disagreeing lenders too. Otherwise the course
-/// borrows from the others of that kind; a course that is the only one of the strongest kind
-/// borrows nothing (its own evidence is the best there is).
+/// borrows from the others of that kind whose weeks can be lent (`Donor::lends`); a course
+/// that is the only one of the strongest kind, or whose others of it can't lend, borrows
+/// nothing (its own evidence, or theirs, is the best there is).
 pub fn lend(
     session: &str,
     own: Option<&Donor>,
@@ -146,6 +160,7 @@ pub fn lend(
         start: donor.start,
         end: donor.end,
         exams_end: donor.exams_end,
+        first_week: donor.first_week,
     };
     if top.iter().any(|d| d.monday() != monday) {
         return Some(Lend::Split {
@@ -153,7 +168,8 @@ pub fn lend(
             lenders: lenders.into_iter().map(lent).collect(),
         });
     }
-    // They agree on week 1: the first, by name, that states an end lends it.
+    // They agree on week 1: the first, by name, that can lend and states an end lends it.
+    lenders.retain(|d| d.lends);
     let donor = *lenders
         .iter()
         .find(|d| d.end.is_some())
@@ -176,6 +192,14 @@ pub struct DonorInput<'a> {
 pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
     let resolved = input.resolved;
     let term = &resolved.resolution;
+    // A calendar's own week numbering, and whether its weeks can be lent at all.
+    let first_week = input
+        .calendar
+        .and_then(|in_force| in_force.calendar.segments.first())
+        .map_or(1, |s| s.first_week_number);
+    let lends = input
+        .calendar
+        .is_none_or(|in_force| in_force.calendar.lendable());
     let donor = |kind, start, end, exams_end| Donor {
         course: course_label(input.course),
         hidden: input.course.hidden,
@@ -183,19 +207,13 @@ pub fn donor(input: &DonorInput<'_>) -> Option<Donor> {
         start,
         end,
         exams_end,
+        lends,
+        first_week,
     };
     match term.anchor {
         TermAnchorSource::StudentConfirmed
             if term.anchor_origin != Some(CalendarOrigin::Legacy) =>
         {
-            // A calendar two dates can't carry (two parts, week 0, no end, a skipped week)
-            // lends nothing, as it can't be copied: the other course would count other weeks.
-            if input
-                .calendar
-                .is_some_and(|in_force| !in_force.calendar.carried_by_two_dates())
-            {
-                return None;
-            }
             let start = term.teaching.first()?.first_class;
             let (end, exams_end) = match input.calendar {
                 Some(in_force) => (
@@ -333,6 +351,8 @@ mod tests {
             start,
             end,
             exams_end: None,
+            lends: true,
+            first_week: 1,
         }
     }
 
@@ -402,6 +422,7 @@ mod tests {
                         start: d.start,
                         end: d.end,
                         exams_end: None,
+                        first_week: 1,
                     })
                     .collect(),
             })
