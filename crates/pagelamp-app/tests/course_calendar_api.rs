@@ -182,7 +182,23 @@ fn app_with_courses(dir: &Path) -> App {
 
 /// A model on this computer (an Ollama mock), chosen for syllabus reading and disclosed.
 async fn with_local_model(app: &App) -> MockServer {
+    with_local_model_listing(app, tags(json!([{ "name": "local-model" }]))).await
+}
+
+/// Ollama's model list (`/api/tags`), as its daemon gives it.
+fn tags(models: serde_json::Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({ "models": models }))
+}
+
+/// `with_local_model`, its daemon answering the model list with `list`: a run asks for it to
+/// learn where the model runs.
+async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServer {
     let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(list)
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -260,9 +276,16 @@ fn collect() -> (Arc<Mutex<Vec<GenEvent>>>, impl Fn(GenEvent) + Send + Sync) {
 }
 
 /// Wait until the mock model has been asked (the run is waiting for its answer).
+/// Until the model is asked (a run first asks the server here for its model list).
 async fn wait_for_request(server: &MockServer) {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while server.received_requests().await.unwrap().is_empty() {
+    while server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|r| r.url.path() == "/api/tags")
+    {
         assert!(
             std::time::Instant::now() < deadline,
             "the run never started"
@@ -526,8 +549,14 @@ async fn a_model_reads_the_syllabus_into_a_proposal_the_student_accepts() {
     assert_eq!(events.last(), Some(&GenEvent::Finished { ok: true }));
 
     // The prompt carried the candidates' text as data, and nothing of another course.
-    let sent =
-        String::from_utf8(server.received_requests().await.unwrap()[0].body.clone()).unwrap();
+    let chat = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.url.path() == "/api/chat")
+        .unwrap();
+    let sent = String::from_utf8(chat.body).unwrap();
     assert!(sent.contains("course_material") && sent.contains("Classes begin"));
     assert!(!sent.contains("Stomata"));
 
@@ -706,6 +735,11 @@ async fn changing_a_course_s_ai_settings_stops_its_reading() {
         let server = &server;
         async move {
             server.reset().await;
+            Mock::given(method("GET"))
+                .and(path("/api/tags"))
+                .respond_with(tags(json!([{ "name": "local-model" }])))
+                .mount(server)
+                .await;
             Mock::given(method("POST"))
                 .respond_with(answer(&good_extraction()).set_delay(delay))
                 .mount(server)
@@ -1080,4 +1114,83 @@ fn saving_or_accepting_a_calendar_ends_the_copied_mark() {
     app.accept_passing_proposals(vec![proposal.id]).unwrap();
     assert!(!marked());
     assert!(!says_copied(&app));
+}
+
+/// A model that the server on this computer runs in the cloud (Ollama's `remote_host`) never
+/// gets the material text of a course whose sharing answer is not-allowed: the run decides where
+/// the model runs from the server's own list, right before it builds the context, and says why
+/// it can't read. The same model run on this computer does read it.
+#[tokio::test]
+async fn a_cloud_model_through_a_local_server_never_gets_a_not_allowed_course() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+        .unwrap();
+    let err = app
+        .read_course_calendar(
+            "DEMO101",
+            "gen-cloud",
+            ReadCalendarOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::MaterialSharingNotAllowed));
+    let requests = server.received_requests().await.unwrap();
+    assert!(requests.iter().all(|r| r.url.path() != "/api/chat"));
+
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(tags(json!([{ "name": "local-model" }])))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    app.read_course_calendar(
+        "DEMO101",
+        "gen-local",
+        ReadCalendarOptions::default(),
+        |_| {},
+    )
+    .await
+    .unwrap();
+}
+
+/// It fails closed: when the server on this computer can't give its model list, or doesn't list
+/// the chosen model, the model counts as one in the cloud.
+#[tokio::test]
+async fn a_model_the_local_server_cant_vouch_for_counts_as_the_cloud() {
+    for list in [
+        ResponseTemplate::new(404),
+        tags(json!([{ "name": "another-model" }])),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let app = app_with_courses(temp.path());
+        let server = with_local_model_listing(&app, list).await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(answer(&good_extraction()))
+            .mount(&server)
+            .await;
+        app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+            .unwrap();
+        let err = app
+            .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(err.blocked, Some(BlockReason::MaterialSharingNotAllowed));
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests.iter().all(|r| r.url.path() != "/api/chat"));
+    }
 }

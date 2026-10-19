@@ -441,7 +441,7 @@ impl App {
         });
         let at = AsOf::now_local();
         // Everything read before the model call; the store isn't held across it.
-        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+        let (course, choice) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
             // From here a change to the course's AI settings stops this reading; the gate
@@ -455,7 +455,13 @@ impl App {
             let Some(choice) = feature_choice(&store, AiFeature::CourseCalendar)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let (_, destination) = self.estimate_profile(&choice)?;
+            (course, choice)
+        };
+        // Where the model runs, decided by this run now (a model server here is asked for its
+        // list), never an estimate's answer; question (b) is checked against it below.
+        let destination = self.run_destination(&choice).await?;
+        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+            let store = self.read_store()?;
             // Before calendar_context reads question (b) (`stop_course_runs`, cloud only).
             self.run_reads_course(generation_id, &course.id, Some(destination));
             let signals = store.calendar_signals(&course.id)?;

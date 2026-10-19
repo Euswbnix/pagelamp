@@ -218,12 +218,38 @@ impl App {
             return Ok((profile, Destination::Cloud));
         }
         let profile = self.provider_profile(&choice.backend)?;
-        let destination = if profile.on_device() {
-            Destination::OnDevice
-        } else {
-            Destination::Cloud
-        };
+        let destination = estimate_destination(&profile, &choice.model);
         Ok((profile, destination))
+    }
+
+    /// Where a run's model runs, decided by the run itself right before it builds its context
+    /// (never an estimate's answer carried over). It fails closed: the ChatGPT plan, a provider
+    /// off this computer, a server here that can't say (any but LM Studio and Ollama), and an
+    /// Ollama model its daemon doesn't list as local (a cloud model, a model it doesn't list at
+    /// all, or a list it can't give) all count as the cloud.
+    pub(crate) async fn run_destination(&self, choice: &ModelChoice) -> Result<Destination> {
+        if choice.backend == BackendRef::Codex {
+            return Ok(Destination::Cloud);
+        }
+        let profile = self.provider_profile(&choice.backend)?;
+        if !profile.on_device() {
+            return Ok(Destination::Cloud);
+        }
+        Ok(match profile.id.as_str() {
+            "lm_studio" => Destination::OnDevice,
+            // The list comes from the daemon on this computer: nothing leaves it.
+            "ollama" => match self.list_models(&choice.backend).await {
+                Ok(models)
+                    if models
+                        .iter()
+                        .any(|m| m.on_device && same_ollama_model(&m.id, &choice.model)) =>
+                {
+                    Destination::OnDevice
+                }
+                _ => Destination::Cloud,
+            },
+            _ => Destination::Cloud,
+        })
     }
 
     /// What stops a run of `choice` with this prompt besides the gate: the disclosure, then the
@@ -325,6 +351,28 @@ pub(crate) fn feature_choice(store: &Store, feature: AiFeature) -> Result<Option
 
 /// How much course text a syllabus reading may carry: ≈ 60k characters in the cloud, ≈ 24k on
 /// this computer (calendar design §7.3).
+/// Where a model runs, as far as PageLamp can tell without asking anything (estimates, and why
+/// a run can't start): a provider off this computer is the cloud; on this computer LM Studio
+/// runs its models here, Ollama does unless the model is one of its cloud models by its tag
+/// (`is_cloud_model_id`), and any other server can't say, so it counts as the cloud. A run
+/// decides again before it sends anything (`run_destination`).
+pub(crate) fn estimate_destination(profile: &ProviderProfile, model: &str) -> Destination {
+    if !profile.on_device() {
+        return Destination::Cloud;
+    }
+    match profile.id.as_str() {
+        "lm_studio" => Destination::OnDevice,
+        "ollama" if !pagelamp_llm::profile::is_cloud_model_id(model) => Destination::OnDevice,
+        _ => Destination::Cloud,
+    }
+}
+
+/// Ollama names a model's default tag `latest`: `llama3.2` and `llama3.2:latest` are one model.
+fn same_ollama_model(listed: &str, chosen: &str) -> bool {
+    let base = |id: &str| id.strip_suffix(":latest").unwrap_or(id).to_string();
+    base(listed) == base(chosen)
+}
+
 pub(crate) fn calendar_budget(destination: Destination) -> ContextBudget {
     ContextBudget {
         max_chars: match destination {
@@ -374,5 +422,46 @@ fn blocked_estimate(reason: BlockReason) -> CostEstimate {
         repair_possible: false,
         price_known: false,
         would_block: Some(reason),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn here(preset: &str) -> ProviderProfile {
+        pagelamp_llm::profile::preset(preset)
+            .unwrap()
+            .with_base_url("http://127.0.0.1:11434".parse().unwrap())
+    }
+
+    /// Without asking anything, Ollama's cloud models by their tag, and any server here that
+    /// can't say where its models run, count as the cloud; LM Studio's models run here.
+    #[test]
+    fn the_estimate_s_rule_for_where_a_model_runs() {
+        assert_eq!(
+            estimate_destination(&here("ollama"), "llama3.2"),
+            Destination::OnDevice
+        );
+        for cloud in [
+            "gpt-oss:120b-cloud",
+            "qwen3-coder:480b-cloud",
+            "kimi-k2:cloud",
+        ] {
+            assert_eq!(
+                estimate_destination(&here("ollama"), cloud),
+                Destination::Cloud
+            );
+        }
+        assert_eq!(
+            estimate_destination(&here("lm_studio"), "any-model"),
+            Destination::OnDevice
+        );
+        assert_eq!(
+            estimate_destination(&here("custom"), "any-model"),
+            Destination::Cloud
+        );
+        let openai = pagelamp_llm::profile::preset("openai").unwrap();
+        assert_eq!(estimate_destination(openai, "gpt-5"), Destination::Cloud);
     }
 }
