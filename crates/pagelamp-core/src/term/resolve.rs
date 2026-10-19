@@ -535,9 +535,21 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             .iter()
             .skip(lower_index)
             .filter(|lower| lower.source != anchor.source);
+        // Posted materials name week 1 itself, which a calendar may number from 0; the other
+        // sources give a first day of classes.
+        let anchor_week_one = if anchor.source == TermAnchorSource::StudentConfirmed {
+            week_one_of(anchor.start, own_first_week)
+        } else {
+            week_one_monday(anchor.start)
+        };
         for lower in lower {
             let monday = week_one_monday(lower.start);
-            let days = days_between(week_one_monday(anchor.start), monday).abs();
+            let compared = if lower.source == TermAnchorSource::PublishedWeekLabels {
+                anchor_week_one
+            } else {
+                week_one_monday(anchor.start)
+            };
+            let days = days_between(compared, monday).abs();
             let item = if days >= DISAGREE_DAYS {
                 disagreed = true;
                 EvidenceItem::new(EvidenceCode::DatesMayBeWrong)
@@ -579,7 +591,15 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
     let own_calendar = input.calendar.is_some();
     let resolution = match (&anchor, input.calendar) {
         (Some(anchor), Some(in_force)) => TermResolution {
-            week_one_monday: Some(week_one_monday(anchor.start)),
+            // Week 1, where the calendar numbers its first week otherwise ("Week 0").
+            week_one_monday: Some(week_one_of(
+                anchor.start,
+                in_force
+                    .calendar
+                    .segments
+                    .first()
+                    .map_or(1, |s| s.first_week_number),
+            )),
             teaching: in_force.calendar.segments.clone(),
             breaks: in_force.calendar.breaks.clone(),
             exams_end: in_force.calendar.exam_period.map(|period| period.end),

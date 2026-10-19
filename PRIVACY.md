@@ -182,7 +182,8 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   model read it; so do your courses and your answers about sharing. A key is deleted before
   anything else: if the keychain doesn't let PageLamp delete it, `ai remove <provider>` changes
   nothing and says so, and `--all` removes the rest but keeps that provider and its key, and ends
-  with an error that names them, so you can run it again.
+  with an error that names them, so you can run it again (as it does for a provider added while
+  it runs).
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling

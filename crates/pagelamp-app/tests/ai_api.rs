@@ -1295,3 +1295,114 @@ async fn the_doctor_reads_no_key_of_a_keyless_provider() {
     keyless_with_an_entry(&app, &keychain).await;
     assert_eq!(app.doctor().unwrap().ai.providers[0].key_present, None);
 }
+
+/// A keychain that, on its first delete, lets another process add a provider with its key (as
+/// `ai add` running next to "remove all" would).
+#[derive(Default)]
+struct AddsDuringRemoval {
+    keys: MemorySecrets,
+    db: std::sync::Mutex<Option<std::path::PathBuf>>,
+    added: std::sync::atomic::AtomicBool,
+}
+
+impl SecretBackend for AddsDuringRemoval {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.keys.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.keys.set(id, secret)
+    }
+    fn delete(&self, id: &str) -> pagelamp_core::Result<()> {
+        if !self.added.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let db = self.db.lock().unwrap().clone().unwrap();
+            self.keys.set("llm:anthropic", KEY)?;
+            Store::open(&db)
+                .unwrap()
+                .insert_model_provider(&ProviderRow {
+                    id: "anthropic".into(),
+                    preset: "anthropic".into(),
+                    label: "Anthropic".into(),
+                    wire: "anthropic_messages".into(),
+                    base_url: "https://api.anthropic.com".into(),
+                    created_at: Utc::now().trunc_subsecs(0),
+                    last_probe_json: None,
+                })?;
+        }
+        self.keys.delete(id)
+    }
+}
+
+/// A provider added while "remove all" runs isn't removed without its key: it stays, key and
+/// all, and the removal says so.
+#[tokio::test]
+async fn a_provider_added_during_remove_all_stays_with_its_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(AddsDuringRemoval::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    *keychain.db.lock().unwrap() = Some(app.db_path());
+    add_cloud_openai(&app, &keychain.keys);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(
+        err.message.contains("Removed 1 provider(s)"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains("anthropic was added while this ran"),
+        "{}",
+        err.message
+    );
+    let left: Vec<String> = app
+        .ai_status()
+        .unwrap()
+        .providers
+        .into_iter()
+        .map(|p| p.provider_id)
+        .collect();
+    assert_eq!(left, vec!["anthropic".to_string()]);
+    assert_eq!(
+        keychain.keys.get("llm:anthropic").unwrap().as_deref(),
+        Some(KEY)
+    );
+    assert_eq!(keychain.keys.get("llm:openai").unwrap(), None);
+}
+
+/// A provider removed while its new key is being checked takes that key with it: the update
+/// fails and no key is left behind.
+#[tokio::test]
+async fn a_key_set_while_its_provider_goes_doesn_t_stay() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = mock_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(models_body())
+                .set_delay(std::time::Duration::from_millis(1500)),
+        )
+        .mount(&server)
+        .await;
+    let update = {
+        let (app, id) = (app.clone(), record.provider_id.clone());
+        tokio::spawn(async move {
+            app.update_model_provider_key(&id, "sk-demo-new-key-0042")
+                .await
+        })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider(&record.provider_id).unwrap();
+    let err = update.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::NotFound);
+    assert_eq!(
+        secrets.get(&format!("llm:{}", record.provider_id)).unwrap(),
+        None
+    );
+}

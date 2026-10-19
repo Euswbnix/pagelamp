@@ -163,9 +163,10 @@ impl Store {
     /// that the student hasn't accepted (proposed, dismissed, superseded), and the links of
     /// accepted calendars and generated plans to their runs, in one transaction. Those keep
     /// their AI label. (Keys, AI settings and the backup file are the facade's part.) Must not
-    /// be called inside `in_transaction`. The providers in `keep` stay (the facade couldn't
-    /// delete their keys).
-    pub fn remove_all_ai_data(&self, keep: &[String]) -> Result<AiDataRemoved> {
+    /// be called inside `in_transaction`. Only the providers in `delete` go (the facade has
+    /// deleted their keys); any other stays: one whose key it couldn't delete, or one added
+    /// while it ran.
+    pub fn remove_all_ai_data(&self, delete: &[String]) -> Result<AiDataRemoved> {
         self.in_transaction(|store| {
             let count = |table: &str| -> Result<u32> {
                 let n: i64 =
@@ -179,7 +180,7 @@ impl Store {
                     row.get(0)
                 })?;
             let removed = AiDataRemoved {
-                providers: u32::try_from(ids.iter().filter(|id| !keep.contains(id)).count())
+                providers: u32::try_from(ids.iter().filter(|id| delete.contains(id)).count())
                     .unwrap_or(u32::MAX),
                 generations: count("generations")?,
                 usage_rows: count("ai_usage")?,
@@ -192,7 +193,7 @@ impl Store {
                  DELETE FROM ai_usage;
                  DELETE FROM reminders_shown WHERE id LIKE 'material_sharing:%';",
             )?;
-            for id in ids.iter().filter(|id| !keep.contains(id)) {
+            for id in ids.iter().filter(|id| delete.contains(id)) {
                 store
                     .conn
                     .execute("DELETE FROM model_providers WHERE id = ?1", [id])?;

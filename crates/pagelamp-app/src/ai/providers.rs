@@ -173,22 +173,31 @@ impl App {
         refuse_coding_plans(&provider.profile, Some(&key))?;
         let last4 = key.last4();
         check_access(provider.profile.clone(), Some(key)).await?;
-        // No longer keyless before the key is stored (so a removal always looks for it); put
-        // back if the keychain doesn't take the key.
-        let store = self.write_store()?;
-        let mut ids = super::settings::keyless(&store)?;
-        let was_keyless = ids.remove(provider_id);
-        if was_keyless {
-            store.set_setting(super::settings::KEYLESS, &ids)?;
-        }
-        if let Err(err) = self.secrets.set(&key_account(provider_id), trimmed) {
-            if was_keyless {
-                ids.insert(provider_id.to_string());
-                store.set_setting(super::settings::KEYLESS, &ids)?;
+        // The key, then (in one transaction) the provider still there and no longer keyless. A
+        // keychain that doesn't take the key changes nothing; a provider removed meanwhile
+        // (another process) takes the key with it again.
+        self.secrets.set(&key_account(provider_id), trimmed)?;
+        let kept = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                if store.model_provider(provider_id)?.is_none() {
+                    return Ok(false);
+                }
+                let mut ids = super::settings::keyless(store)?;
+                if ids.remove(provider_id) {
+                    store.set_setting(super::settings::KEYLESS, &ids)?;
+                }
+                Ok(true)
+            })?)
+        });
+        match kept {
+            Ok(true) => Ok(record(&provider.row, &provider.profile, Some(last4))),
+            Ok(false) => {
+                forget_key(&*self.secrets, &provider.row, false)?;
+                Err(unknown_provider(provider_id))
             }
-            return Err(err.into());
+            // The key stays: a keyless provider never reads it, and its removal deletes it.
+            Err(err) => Err(err),
         }
-        Ok(record(&provider.row, &provider.profile, Some(last4)))
     }
 
     /// Remove a provider: its row, its key and every setting that refers to it.
