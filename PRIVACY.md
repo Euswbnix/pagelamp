@@ -173,9 +173,10 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
 - **(next) Model providers** (the app's screens for them are still turned off): `pagelamp ai use`
   chooses the model each feature uses, and `pagelamp ai budget` sets a monthly budget. `pagelamp ai
   remove <provider>` deletes a provider, its API key in the keychain, the model choices that use
-  it, the notes and unpriced models you accepted for it, and its model list. `pagelamp ai remove --all` deletes every provider, every API key, every AI setting, the usage
-  history and everything PageLamp's AI features wrote, and the pre-update backup of the database
-  (which may hold them); your courses and your answers about sharing stay.
+  it, the notes and unpriced models you accepted for it, and its model list. `pagelamp ai remove
+  --all` deletes every provider, every API key, every AI setting, the usage history and everything
+  PageLamp's AI features wrote, and the pre-update backup of the database (which may hold them);
+  your courses and your answers about sharing stay.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling
