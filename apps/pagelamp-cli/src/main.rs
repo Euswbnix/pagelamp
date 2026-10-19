@@ -279,7 +279,8 @@ enum CourseCommand {
     CopyDates {
         /// The course whose dates to copy: its code, name or id.
         from: String,
-        /// The courses that get them (codes, names or ids). Their own dates are replaced.
+        /// The courses that get them (codes, names or ids). Their own dates are replaced,
+        /// except where a calendar you accepted counts their weeks.
         to: Vec<String>,
         /// Copy to every other course of the session.
         #[arg(long, conflicts_with = "to")]

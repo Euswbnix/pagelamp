@@ -1226,9 +1226,10 @@ fn courses_whose_dates_disagree_name_each_other() {
     assert!(!three.contains("same session, puts week 1"), "{three}");
 }
 
-/// A calendar in force lends whether or not the course's dates were ever confirmed with the
-/// form (an accepted proposal is not on that list): the lender reads its term from the
-/// calendar, never from the unconfirmed `user_term_*` it mirrors into.
+/// A calendar in force lends whether or not the course's dates are on the confirmed list
+/// (`course term --clear` drops a course from it and leaves its calendar in force; a restored
+/// course can be off it too): the lender reads its term from the calendar, never from the
+/// unconfirmed `user_term_*` it mirrors into.
 #[test]
 fn a_calendar_in_force_lends_without_confirmed_dates() {
     use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};

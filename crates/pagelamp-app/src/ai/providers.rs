@@ -149,9 +149,7 @@ impl App {
             .model_provider(provider_id)?
             .ok_or_else(|| unknown_provider(provider_id))?;
         store.delete_model_provider(provider_id)?;
-        if uses_key(&row) {
-            self.secrets.delete(&key_account(provider_id))?;
-        }
+        forget_key(&*self.secrets, &row)?;
         super::settings::forget_backend(
             &store,
             &BackendRef::Provider {
@@ -236,9 +234,37 @@ fn provider_from_row(
     let key = if profile.auth == Auth::None {
         None
     } else {
-        secrets.get(&key_account(&row.id))?.map(|k| ApiKey::new(&k))
+        match secrets.get(&key_account(&row.id)) {
+            Ok(key) => key.map(|k| ApiKey::new(&k)),
+            // A custom server here may take no key: where the keychain can't be read, it is
+            // used without one (a server that wants one says so).
+            Err(err) if key_optional(&profile) => {
+                tracing::warn!(target: "pagelamp::ai", "no keychain for a keyless server: {err}");
+                None
+            }
+            Err(err) => return Err(err.into()),
+        }
     };
     Ok(Provider { row, profile, key })
+}
+
+/// Delete a removed provider's key. A custom server here may have none: where the keychain
+/// can't be reached, that is logged and the removal goes on, as it does for one that never had
+/// a key; any other provider's removal stops there.
+pub(crate) fn forget_key(
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    row: &ProviderRow,
+) -> Result<()> {
+    if !uses_key(row) {
+        return Ok(());
+    }
+    match secrets.delete(&key_account(&row.id)) {
+        Err(err) if profile_from_row(row).is_ok_and(|p| key_optional(&p)) => {
+            tracing::warn!(target: "pagelamp::ai", "no keychain for a keyless server: {err}");
+            Ok(())
+        }
+        result => Ok(result?),
+    }
 }
 
 /// Refuse coding-plan endpoints and keys, quoting the vendor (before any network call).

@@ -29,6 +29,10 @@ pub struct SessionCourses {
     /// The other courses of the same session, section group and campus: removed ones left out,
     /// hidden ones in (`hidden`), the course itself not listed.
     pub courses: Vec<SessionCourse>,
+    /// The course's calendar in force can't be copied (two parts, a break its weeks skip, or
+    /// a first week other than week 1): `apply_course_dates_to` refuses it.
+    #[serde(default)]
+    pub copy_refused: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -102,6 +106,11 @@ pub struct ApplyDatesReport {
     pub replaced: Vec<ReplacedDates>,
 }
 
+/// Why a copy from a calendar that two dates can't carry is refused.
+const COPY_REFUSED: &str = "This course's calendar has two parts, a break its weeks skip, or a \
+    first week other than week 1, which a copy of its dates can't carry; set the other courses' \
+    dates on their own.";
+
 impl App {
     /// The other courses of `course`'s session (code, name or id), each with the dates it
     /// counts its weeks from now, for "apply these dates to my other courses this term".
@@ -125,10 +134,13 @@ impl App {
                 anchor: other.term.anchor,
             })
             .collect();
+        let copy_refused = views::calendar_of(&store, &course.id)?
+            .is_some_and(|in_force| !in_force.calendar.carried_by_two_dates());
         Ok(SessionCourses {
             session: view.session,
             campus: view.campus,
             courses,
+            copy_refused,
         })
     }
 
@@ -140,8 +152,9 @@ impl App {
     /// skipped: its calendar counts its weeks whatever its term dates say. A course named twice
     /// gets them once. Each copy remembers where it came from until the course's own dates are
     /// saved again. One transaction; the report says what was skipped and what was replaced
-    /// (undo: `restore_course_dates`). A calendar in force with two parts or with a break its
-    /// weeks skip is refused: two dates can't carry it.
+    /// (undo: `restore_course_dates`). A calendar in force that two dates can't carry (two
+    /// parts, a break its weeks skip, or a first week other than week 1) is refused, and
+    /// nothing is written.
     pub fn apply_course_dates_to(&self, from: &str, to: Vec<String>) -> Result<ApplyDatesReport> {
         let store = self.write_store()?;
         let from = store.resolve_course_with(from, true)?;
@@ -153,15 +166,11 @@ impl App {
             .map(|o| o.course.id.clone())
             .collect();
         let source_calendar = views::calendar_of(&store, &from.id)?;
-        if source_calendar.as_ref().is_some_and(|in_force| {
-            in_force.calendar.segments.len() > 1
-                || in_force.calendar.breaks.iter().any(|b| !b.numbered)
-        }) {
-            return Err(AppError::new(
-                AppErrorKind::Invalid,
-                "This course's calendar has breaks or two parts; set the other courses' dates \
-                 on their own.",
-            ));
+        if source_calendar
+            .as_ref()
+            .is_some_and(|in_force| !in_force.calendar.carried_by_two_dates())
+        {
+            return Err(AppError::new(AppErrorKind::Invalid, COPY_REFUSED));
         }
         let (start, end) = match &source_calendar {
             // `user_term_end` mirrors the calendar's end of exams when it has one.

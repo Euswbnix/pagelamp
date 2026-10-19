@@ -520,3 +520,95 @@ fn a_failed_cloud_reading_reminds_before_its_error() {
         .unwrap_or_else(|| panic!("{message}"));
     assert!(reminder < error, "{message}");
 }
+
+/// A custom server on this computer: added without a key, its models count as in the cloud,
+/// so `ai use … --yes` accepts the cloud note, and `ai status` then says it is ready.
+#[test]
+fn a_custom_server_here_is_ready_once_its_note_is_accepted() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "custom", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    let line = |status: &str| {
+        status
+            .lines()
+            .find(|line| line.trim_start().starts_with(id.as_str()))
+            .unwrap_or_else(|| panic!("{status}"))
+            .to_string()
+    };
+    assert!(line(&ok(&pagelamp(&home, &["ai"]))).contains("not accepted yet"));
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "local-model"],
+    ));
+    assert!(
+        shown.contains("can't confirm that this model does"),
+        "{shown}"
+    );
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "local-model", "--yes"],
+    ));
+    let ready = line(&ok(&pagelamp(&home, &["ai"])));
+    assert!(ready.contains("ready"), "{ready}");
+}
+
+/// Unchecked, an Ollama model may turn out to run here or in the cloud: `ai use --no-check`
+/// shows both notes and accepts both, so a reading passes wherever the daemon then puts it.
+#[test]
+fn an_unchecked_ollama_model_gets_both_notes() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    let chosen = pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--no-check",
+            "--yes",
+        ],
+    );
+    ok(&chosen);
+    let shown = stderr(&chosen);
+    assert!(
+        shown.contains("Both notes below are accepted now"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("runs on this computer: nothing leaves it"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("can't confirm that this model does"),
+        "{shown}"
+    );
+    let status = ok(&pagelamp(&home, &["ai"]));
+    assert!(
+        status.contains("accepted for models on this computer and in the cloud"),
+        "{status}"
+    );
+    // Checked now, the model runs here: nothing more to accept.
+    let checked = pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    );
+    ok(&checked);
+    assert!(
+        !stderr(&checked).contains("What PageLamp sends"),
+        "{}",
+        stderr(&checked)
+    );
+}

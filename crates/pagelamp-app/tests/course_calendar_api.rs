@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, CostBasis, CostKind, EstimateRequest, GenEvent, GenNoticeCode, ModelChoice,
-    RetentionFact,
+    BackendRef, BackendState, CostBasis, CostKind, EstimateRequest, GenEvent, GenNoticeCode,
+    ModelChoice, RetentionFact,
 };
 use pagelamp_app::{
     ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
@@ -1280,12 +1280,25 @@ async fn the_local_note_doesnt_cover_a_model_the_server_runs_in_the_cloud() {
         .unwrap_err();
     assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
     assert_eq!(chats(&server.received_requests().await.unwrap()), before);
+    // The status says so too: the model routed to it needs the cloud note (the reading kept
+    // the daemon's list, which marks it remote).
+    let status = |app: &App| {
+        app.ai_status()
+            .unwrap()
+            .backends
+            .into_iter()
+            .find(|b| b.backend == backend)
+            .unwrap()
+            .state
+    };
+    assert_eq!(status(&app), BackendState::NeedsDisclosure);
     let (facts, _) = app.model_disclosure(&backend, false).unwrap();
     assert_eq!(facts.cost, CostKind::CloudViaLocal);
     assert_eq!(facts.retention, RetentionFact::ProviderTerms);
     let (local, acknowledged) = app.model_disclosure(&backend, true).unwrap();
     assert!(acknowledged && local.on_device);
     acknowledge_cloud_note(&app, &backend).await;
+    assert_eq!(status(&app), BackendState::Ready);
     let err = app
         .read_course_calendar(
             "DEMO101",
@@ -1337,6 +1350,37 @@ async fn a_model_listed_with_the_latest_tag_runs_here() {
         .await
         .unwrap();
     assert!(proposal.ai_label.unwrap().on_device);
+}
+
+/// A model list that arrives after its provider was removed isn't kept: `ai remove` takes the
+/// list, and an answer still on its way doesn't write it back.
+#[tokio::test]
+async fn a_list_that_arrives_after_its_provider_went_isn_t_kept() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let slow = tags(json!([{ "name": "local-model" }])).set_delay(Duration::from_millis(1500));
+    let server = with_local_model_listing(&app, slow).await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    let listing = {
+        let (app, backend) = (app.clone(), backend.clone());
+        tokio::spawn(async move { app.list_models(&backend).await })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider("ollama").unwrap();
+    listing.await.unwrap().unwrap();
+    let kept: Option<serde_json::Value> = Store::open(&app.db_path())
+        .unwrap()
+        .setting("ai.listed_models")
+        .unwrap();
+    assert!(
+        kept.as_ref()
+            .is_none_or(|lists| lists.get("provider:ollama").is_none()),
+        "{kept:?}"
+    );
 }
 
 /// The one reminder for a course whose sharing answer is open follows the first reading that

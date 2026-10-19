@@ -81,7 +81,8 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
     server (such as Ollama) runs that model in the cloud (`pagelamp ai models` marks it "cloud")
     and passes it on there. A course you answered `not-allowed` for never goes to such a model.
     Before each reading, PageLamp asks Ollama for its list of models: a model it marks as in the
-    cloud, doesn't list, or a list it can't give counts as in the cloud. PageLamp trusts that the
+    cloud or doesn't list, or an answer that isn't a usable list, counts as in the cloud. If
+    Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent. PageLamp trusts that the
     LM Studio preset's address is LM Studio on this computer, which runs its models here. Any other
     server on this computer (`custom`) can't tell PageLamp where it runs a model, so its models
     count as in the cloud.

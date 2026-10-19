@@ -407,6 +407,14 @@ pub async fn calendar(
                     if reminded.load(std::sync::atomic::Ordering::Relaxed) {
                         eprintln!("{}", crate::text::sharing_reminder_after_failure_note());
                     }
+                    // A run that didn't start: why, with the command that changes it.
+                    if let Some(reason) = err.blocked {
+                        anyhow::bail!(
+                            "blocked: {} — {}",
+                            reason.as_str(),
+                            crate::text::block_reason(reason)
+                        );
+                    }
                     return Err(err.into());
                 }
             };
@@ -634,7 +642,15 @@ pub fn copy_dates(
                 if course.hidden { " (hidden)" } else { "" }
             );
         }
-        println!("Name the courses to copy to, or use --same-session for all of them.");
+        if session.copy_refused {
+            println!(
+                "{from_name}'s calendar has two parts, a break its weeks skip, or a first week \
+                 other than week 1, which a copy of its dates can't carry: set these courses' \
+                 dates on their own."
+            );
+        } else {
+            println!("Name the courses to copy to, or use --same-session for all of them.");
+        }
         return Ok(());
     }
     let to = if same_session {

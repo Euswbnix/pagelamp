@@ -22,7 +22,7 @@ pub use types::*;
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use pagelamp_core::ai::{AiFeature, MaterialSharing};
+use pagelamp_core::ai::{AiFeature, Destination, MaterialSharing, ProviderRow};
 use pagelamp_core::ingest::sha256_hex;
 use pagelamp_llm::profile::{self, ProviderProfile, Retention, Training, Wire};
 use pagelamp_llm::{Backend, CancellationToken, HttpDriver};
@@ -131,26 +131,66 @@ impl App {
                 problems,
                 disclosure,
                 disclosure_acknowledged: acknowledged,
+                cloud_disclosure: None,
+                cloud_disclosure_acknowledged: None,
             });
         }
         for (record, provider) in self.provider_records(&store)? {
             let backend = BackendRef::Provider {
                 provider_id: record.provider_id.clone(),
             };
-            let disclosure = disclosure_for(&provider.profile);
+            let profile = &provider.profile;
+            let disclosure = disclosure_for(profile);
             let acknowledged = acks
                 .get(&settings::backend_key(&backend))
                 .map(|a| a.version);
+            // A server here may run a model in the cloud (any but LM Studio): such a model has
+            // a note of its own. Only Ollama and LM Studio say a model runs here.
+            let here_note =
+                !profile.on_device() || matches!(profile.id.as_str(), "ollama" | "lm_studio");
+            let cloud_disclosure = (profile.on_device() && profile.id != "lm_studio")
+                .then(|| cloud_via_local_disclosure(profile));
+            let cloud_acknowledged = cloud_disclosure
+                .as_ref()
+                .and_then(|_| acks.get(&settings::cloud_key(&backend)))
+                .map(|a| a.version);
+            let here_ok = here_note && acknowledged == Some(disclosure.version);
+            let cloud_ok = cloud_disclosure
+                .as_ref()
+                .is_some_and(|facts| cloud_acknowledged == Some(facts.version));
+            // The notes its routed models need, placed as an estimate places them (a run asks
+            // the server again); with none routed, either note it has.
+            let (mut needs_here, mut needs_cloud) = (false, false);
+            for choice in routing
+                .0
+                .values()
+                .filter(|choice| choice.backend == backend)
+            {
+                if self.estimate_profile(choice)?.1 == Destination::OnDevice {
+                    needs_here = true;
+                } else {
+                    needs_cloud = true;
+                }
+            }
+            let notes_ok = if needs_here || needs_cloud {
+                (!needs_here || here_ok) && (!needs_cloud || cloud_ok)
+            } else {
+                here_ok || cloud_ok
+            };
             let mut problems = Vec::new();
             if provider.needs_key() && provider.key.is_none() {
                 problems.push(BackendProblem::KeyMissing);
             }
-            if acknowledged.is_some_and(|version| version != disclosure.version) {
+            if acknowledged.is_some_and(|version| version != disclosure.version)
+                || cloud_disclosure.as_ref().is_some_and(|facts| {
+                    cloud_acknowledged.is_some_and(|version| version != facts.version)
+                })
+            {
                 problems.push(BackendProblem::DisclosureChanged);
             }
             let state = if problems.contains(&BackendProblem::KeyMissing) {
                 BackendState::NeedsSetup
-            } else if acknowledged != Some(disclosure.version) {
+            } else if !notes_ok {
                 BackendState::NeedsDisclosure
             } else {
                 BackendState::Ready
@@ -167,6 +207,8 @@ impl App {
                 problems,
                 disclosure,
                 disclosure_acknowledged: acknowledged,
+                cloud_disclosure,
+                cloud_disclosure_acknowledged: cloud_acknowledged,
             });
             providers.push(record);
         }
@@ -232,6 +274,7 @@ impl App {
             return Ok(self.codex_models());
         }
         let provider = self.provider_for(backend)?;
+        let provider_id = provider.row.id.clone();
         let profile = provider.profile.clone();
         let local = profile.on_device();
         let says_where = matches!(profile.id.as_str(), "ollama" | "lm_studio");
@@ -255,15 +298,37 @@ impl App {
             })
             .collect();
         if local && profile.id == "ollama" {
-            let store = self.write_store()?;
-            let mut listed = settings::listed_models(&store)?;
+            // For estimates only: a run asks the daemon itself, so a failed write changes
+            // nothing but the next estimate.
+            if let Err(err) = self.keep_listed_models(&provider_id, backend, &models) {
+                tracing::warn!(target: "pagelamp::ai", "keeping the model list failed: {:?}", err.kind);
+            }
+        }
+        Ok(models)
+    }
+
+    /// Keep Ollama's list for estimates (`ai.listed_models`), in one transaction and only while
+    /// the provider is still there: a list that arrives after `ai remove` isn't written back.
+    fn keep_listed_models(
+        &self,
+        provider_id: &str,
+        backend: &BackendRef,
+        models: &[ModelInfo],
+    ) -> Result<()> {
+        let store = self.write_store()?;
+        store.in_transaction(|store| {
+            if store.model_provider(provider_id)?.is_none() {
+                return Ok(());
+            }
+            let mut listed: settings::ListedModels =
+                store.setting(settings::LISTED_MODELS)?.unwrap_or_default();
             listed.insert(
                 settings::backend_key(backend),
                 models.iter().map(|m| (m.id.clone(), m.on_device)).collect(),
             );
-            store.set_setting(settings::LISTED_MODELS, &listed)?;
-        }
-        Ok(models)
+            store.set_setting(settings::LISTED_MODELS, &listed)
+        })?;
+        Ok(())
     }
 
     /// "Test": a tiny request with no course data. A model that answers badly or refuses the
@@ -417,15 +482,14 @@ impl App {
         // Codex first: its sign-in ends before its folder goes (Busy if Codex is running).
         self.forget_codex()?;
         let store = self.write_store()?;
-        let keyed: Vec<String> = store
+        let keyed: Vec<ProviderRow> = store
             .model_providers()?
             .into_iter()
             .filter(providers::uses_key)
-            .map(|p| p.id)
             .collect();
         let removed = store.remove_all_ai_data()?;
-        for id in &keyed {
-            self.secrets.delete(&providers::key_account(id))?;
+        for row in &keyed {
+            providers::forget_key(&*self.secrets, row)?;
         }
         for key in settings::ALL_KEYS {
             store.remove_setting(key)?;

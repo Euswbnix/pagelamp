@@ -503,6 +503,39 @@ async fn a_custom_server_here_may_take_no_key() {
     assert_eq!(doctor.ai.providers[0].key_present, None);
     let models = app.list_models(&backend).await.unwrap();
     assert!(models[0].runs_in_cloud && !models[0].price_known);
+    // Its models count as in the cloud, so its note is the cloud one: accepted, it is ready
+    // (what `ai use … --yes` does).
+    app.set_feature_model(
+        AiFeature::CourseCalendar,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "local-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let state = |app: &App| {
+        app.ai_status()
+            .unwrap()
+            .backends
+            .into_iter()
+            .find(|b| b.backend == backend)
+            .unwrap()
+    };
+    let row = state(&app);
+    assert_eq!(row.state, BackendState::NeedsDisclosure);
+    let cloud = row
+        .cloud_disclosure
+        .expect("a server here has a cloud note");
+    assert!(!cloud.on_device);
+    let (facts, acknowledged) = app.model_disclosure(&backend, false).unwrap();
+    assert_eq!((facts.version, acknowledged), (cloud.version, false));
+    app.acknowledge_model_disclosure(&backend, false, facts.version)
+        .unwrap();
+    let row = state(&app);
+    assert_eq!(row.state, BackendState::Ready);
+    assert_eq!(row.cloud_disclosure_acknowledged, Some(cloud.version));
+    assert_eq!(row.disclosure_acknowledged, None);
     // A key can still be added later.
     let keyed = app
         .update_model_provider_key(&record.provider_id, KEY)
@@ -908,4 +941,62 @@ async fn doctor_says_which_keys_are_there_and_which_local_servers_answer_but_nev
     let json = serde_json::to_string(&doctor).unwrap();
     assert!(!json.contains("canary7731") && !json.contains(&format!(":{open_port}")));
     drop(listening);
+}
+
+/// A keychain that can't be reached (no Secret Service, no default keychain).
+struct NoKeychain;
+
+impl SecretBackend for NoKeychain {
+    fn get(&self, _: &str) -> pagelamp_core::Result<Option<String>> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+    fn set(&self, _: &str, _: &str) -> pagelamp_core::Result<()> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+    fn delete(&self, _: &str) -> pagelamp_core::Result<()> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+}
+
+/// Without a keychain, a custom server here works without a key and can be removed; a
+/// provider that needs a key still stops at the keychain.
+#[tokio::test]
+async fn a_keyless_server_here_needs_no_keychain() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(NoKeychain)).unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: record.provider_id.clone(),
+    };
+    assert_eq!(app.ai_status().unwrap().backends.len(), 1);
+    assert_eq!(
+        app.list_models(&backend).await.unwrap()[0].id,
+        "local-model"
+    );
+    app.remove_model_provider(&record.provider_id).unwrap();
+    assert!(app.ai_status().unwrap().providers.is_empty());
+
+    Store::open(&app.db_path())
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "openai".into(),
+            preset: "openai".into(),
+            label: "OpenAI".into(),
+            wire: "openai_responses".into(),
+            base_url: "https://api.openai.com/v1".into(),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    assert!(app.ai_status().is_err());
+    assert!(app.remove_model_provider("openai").is_err());
 }

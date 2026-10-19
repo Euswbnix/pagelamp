@@ -38,6 +38,21 @@ pub struct CourseCalendar {
     pub weeks: Vec<CalendarWeek>,
 }
 
+impl CourseCalendar {
+    /// Whether a first and a last day of classes carry this calendar's weeks to another course
+    /// (whose plain dates count week 1 from the first class, every week, with no breaks): not
+    /// with two parts, a break its weeks skip, or a first week other than week 1. A copy of
+    /// dates is refused otherwise.
+    pub fn carried_by_two_dates(&self) -> bool {
+        self.segments.len() <= 1
+            && self
+                .segments
+                .first()
+                .is_none_or(|s| s.first_week_number == 1)
+            && self.breaks.iter().all(|b| b.numbered)
+    }
+}
+
 /// One row of a schedule table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CalendarWeek {

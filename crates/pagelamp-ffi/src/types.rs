@@ -1355,6 +1355,10 @@ pub struct AiBackendStatus {
     pub problems: Vec<BackendProblem>,
     pub disclosure: DisclosureFacts,
     pub disclosure_acknowledged: Option<u32>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure: Option<DisclosureFacts>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure_acknowledged: Option<u32>,
 }
 
 #[uniffi::remote(Record)]
@@ -1967,6 +1971,8 @@ pub struct SessionCourses {
     pub session: Option<String>,
     pub campus: Option<u8>,
     pub courses: Vec<SessionCourse>,
+    #[uniffi(default = false)]
+    pub copy_refused: bool,
 }
 
 #[uniffi::remote(Record)]

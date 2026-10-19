@@ -105,7 +105,10 @@ pub(crate) fn unpriced(store: &Store) -> Result<BTreeMap<String, Vec<String>>> {
     Ok(store.setting(UNPRICED)?.unwrap_or_default())
 }
 
-pub(crate) fn listed_models(store: &Store) -> Result<BTreeMap<String, BTreeMap<String, bool>>> {
+/// Ollama's last model lists: backend key → model id → it runs on this computer.
+pub(crate) type ListedModels = BTreeMap<String, BTreeMap<String, bool>>;
+
+pub(crate) fn listed_models(store: &Store) -> Result<ListedModels> {
     Ok(store.setting(LISTED_MODELS)?.unwrap_or_default())
 }
 
