@@ -7,6 +7,7 @@ import {
   backendKey,
   type CostEstimate,
   type EstimateRequest,
+  type ModelDisclosure,
 } from "@/api/ai";
 import {
   useAcknowledgeUnpricedModel,
@@ -14,11 +15,13 @@ import {
   useCodexStatus,
   useCostEstimate,
 } from "@/api/ai-queries";
+import { useApi } from "@/api/context";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { paths } from "@/lib/routes";
+import { ModelDisclosureDialog } from "./DisclosureDialog";
 import { estimateAmount, formatTokens } from "./lib/money";
 import { useAiErrorText } from "./useAiErrorText";
 
@@ -38,14 +41,15 @@ function showsCost(block: BlockReason | null): boolean {
 }
 
 /** Blocks the student resolves in Settings → AI models. */
-const SETTINGS_BLOCKS = new Set(["no_model_chosen", "disclosure_not_acknowledged"]);
+const SETTINGS_BLOCKS = new Set(["no_model_chosen"]);
 
 /**
  * "≈ $x" and Generate (design §3.5, §7): the facade's upper-bound estimate for this request,
  * refreshed as the request changes, and the pre-flight blocks it reports (`would_block`). The
- * blocks the student can settle here are settled here: an unpriced model is acknowledged once,
- * and going over the budget is an explicit, per-run choice. Everything else disables Generate
- * with the reason.
+ * blocks the student can settle here are settled here, one after the other: the note of the
+ * model where it runs (a model that a server here may run in the cloud has one of its own),
+ * then an unpriced model, acknowledged once; going over the budget is an explicit, per-run
+ * choice. Everything else disables Generate with the reason. Nothing runs before each is done.
  */
 export function GenerateButton({
   request,
@@ -120,6 +124,13 @@ export function GenerateButton({
           </div>
         </div>
       ) : null}
+      {block === "disclosure_not_acknowledged" && request ? (
+        <ModelDisclosureStep
+          status={status.data ?? null}
+          feature={request.feature}
+          hintId={ids.reason}
+        />
+      ) : null}
       {block === "price_unknown_not_acknowledged" && request ? (
         <UnpricedAcknowledgement
           status={status.data ?? null}
@@ -127,7 +138,10 @@ export function GenerateButton({
           hintId={ids.reason}
         />
       ) : null}
-      {block && block !== "budget_reached" && block !== "price_unknown_not_acknowledged" ? (
+      {block &&
+      block !== "budget_reached" &&
+      block !== "price_unknown_not_acknowledged" &&
+      block !== "disclosure_not_acknowledged" ? (
         <p id={ids.reason} className="text-sm">
           {t(`blocked.${block}`)}{" "}
           {SETTINGS_BLOCKS.has(block) ? (
@@ -183,6 +197,87 @@ function CodexCostLine() {
     return <>{t("codex.costLineRuns", { runs: codex.data.runs_this_week, cap })}</>;
   }
   return <>{t("codex.costLine")}</>;
+}
+
+/**
+ * The note to read before this model runs, settled here: where the model runs is decided as the
+ * run decides it (a server on this computer is asked about the model), and that place's note is
+ * shown, so a model that the server may run in the cloud gets its own note, apart from the
+ * server's. Once read, the estimate is asked again: the next block, if any, follows.
+ */
+function ModelDisclosureStep({
+  status,
+  feature,
+  hintId,
+}: {
+  status: AiStatus | null;
+  feature: EstimateRequest["feature"];
+  hintId: string;
+}) {
+  const { t } = useTranslation("ai");
+  const api = useApi();
+  const errorText = useAiErrorText();
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [note, setNote] = useState<{ runsHere: boolean; disclosure: ModelDisclosure } | null>(null);
+  const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
+  const backend = choice
+    ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
+    : undefined;
+  if (!choice || !backend) return null;
+
+  async function read() {
+    if (!choice || checking) return;
+    setChecking(true);
+    setError(null);
+    try {
+      const runsHere = await api.modelRunsHere(choice, true);
+      const disclosure = await api.modelDisclosure(choice.backend, runsHere);
+      setNote({ runsHere, disclosure });
+    } catch (err) {
+      // E.g. the server here can't be reached: nothing is shown and nothing runs.
+      setError(err);
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <p id={hintId} className="text-sm">
+        {t("blocked.disclosure_not_acknowledged")}
+      </p>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        aria-disabled={checking || undefined}
+        className="aria-disabled:opacity-50"
+        onClick={() => void read()}
+      >
+        {checking ? t("estimate.checkingWhere") : t("estimate.readDisclosure")}
+      </Button>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {errorText(error)}
+        </p>
+      ) : null}
+      {note ? (
+        <ModelDisclosureDialog
+          backend={choice.backend}
+          runsHere={note.runsHere}
+          disclosure={note.disclosure}
+          name={backend.label}
+          kind={backend.kind}
+          model={choice.model}
+          open
+          onOpenChange={(open) => {
+            if (!open) setNote(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function UnpricedAcknowledgement({

@@ -164,6 +164,11 @@ export function createTauriApi(): PageLampApi {
     setFeatureModel: (feature, choice) => call("set_feature_model", { feature, choice }),
     acknowledgeAiDisclosure: (backend, version) =>
       call("acknowledge_ai_disclosure", { modelBackend: backend, version }),
+    modelRunsHere: (choice, ask) => call("model_runs_here", { choice, ask }),
+    modelDisclosure: (backend, runsHere) =>
+      call("model_disclosure", { modelBackend: backend, runsHere }),
+    acknowledgeModelDisclosure: (backend, runsHere, version) =>
+      call("acknowledge_model_disclosure", { modelBackend: backend, runsHere, version }),
     acknowledgeUnpricedModel: (backend, model) =>
       call("acknowledge_unpriced_model", { modelBackend: backend, model }),
     setMonthlyBudget: (microUsd) => call("set_monthly_budget", { microUsd }),

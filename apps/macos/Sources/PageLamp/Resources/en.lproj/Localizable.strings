@@ -136,7 +136,9 @@
 "ai.codex.system.useManaged" = "Use PageLamp's own Codex";
 "ai.codex.title" = "Use my ChatGPT plan (runs OpenAI Codex)";
 "ai.disclosure.accept" = "Turn on %1$@";
+"ai.disclosure.acceptModel" = "Use %1$@";
 "ai.disclosure.accepted" = "%1$@ is turned on";
+"ai.disclosure.acceptedModel" = "You can use %1$@ now";
 "ai.disclosure.admin.heading" = "Who else can see it";
 "ai.disclosure.admin.unknown" = "If your ChatGPT account is an Edu or workspace account, its administrators may be able to see what PageLamp sends through it, including text from your course materials.";
 "ai.disclosure.admin.yes" = "Your account is a school or workspace account: its administrators can see what PageLamp sends through it, including text from your course materials.";
@@ -148,7 +150,7 @@
 "ai.disclosure.close" = "Close";
 "ai.disclosure.confirmFirst" = "Tick the confirmation above to turn it on.";
 "ai.disclosure.cost.api_billing" = "Each run is billed to your API account. PageLamp shows an estimate before each run and keeps to a monthly budget you set.";
-"ai.disclosure.cost.cloud_via_local" = "This model runs in the cloud through %1$@, not on this computer. %1$@'s terms and limits apply.";
+"ai.disclosure.cost.cloud_via_local" = "This model may run in the cloud through %1$@, not on this computer. %1$@'s terms and limits apply.";
 "ai.disclosure.cost.free_on_device" = "Runs on this computer are free. They use its memory and battery.";
 "ai.disclosure.cost.heading" = "Cost";
 "ai.disclosure.cost.plan_credits" = "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.";
@@ -166,6 +168,7 @@
 "ai.disclosure.retention.on_device" = "Nothing is stored outside this computer.";
 "ai.disclosure.retention.provider_terms" = "How long %1$@ keeps what's sent depends on its terms.";
 "ai.disclosure.sent.cloud" = "It goes to %1$@ and is handled under %1$@'s terms.";
+"ai.disclosure.sent.cloudViaLocal" = "%1$@ runs on this computer, but PageLamp can't confirm that this model does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.";
 "ai.disclosure.sent.codex" = "It goes to %1$@ through Codex, signed in with your ChatGPT account, and is handled under %1$@'s terms and your ChatGPT settings.";
 "ai.disclosure.sent.heading" = "What is sent, and to whom";
 "ai.disclosure.sent.material_text" = "Text from your course materials (slides, notes), for explanations and course calendars, only from courses whose rules allow it.";
@@ -179,6 +182,7 @@
 "ai.disclosure.training.no_training" = "%1$@ doesn't use what PageLamp sends to train its models.";
 "ai.disclosure.training.turnOff" = "How to turn training off";
 "ai.disclosure.training.unknown" = "PageLamp doesn't know whether this service trains on what's sent. Check its terms before you continue.";
+"ai.estimate.checkingWhere" = "Checking where this model runs…";
 "ai.estimate.cloudNoPrice" = "Runs in the cloud; no cost estimate";
 "ai.estimate.details" = "Up to %1$@ tokens in and %2$@ out";
 "ai.estimate.free" = "Free, on this computer";
@@ -188,6 +192,7 @@
 "ai.estimate.noPrice" = "No price for this model";
 "ai.estimate.overBudget" = "This would go over this month's budget.";
 "ai.estimate.overrideBudget" = "Go over the budget this time";
+"ai.estimate.readDisclosure" = "Read it now";
 "ai.estimate.upTo" = "≈ %1$@ at most";
 "ai.estimate.useUnpriced" = "Use it anyway";
 "ai.estimate.useUnpricedHint" = "Your budget isn't enforced for this model. Its runs are still counted in tokens.";

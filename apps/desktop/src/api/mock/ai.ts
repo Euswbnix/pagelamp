@@ -33,11 +33,11 @@ import type { MockActivity } from "./activity";
 import {
   CODING_PLAN_HOSTS,
   CODING_PLAN_KEY_PREFIXES,
+  cloudViaLocalFacts,
   MOCK_MODELS,
   MOCK_PRESETS,
   MOCK_PRICES,
   mockUsage,
-  ollamaCloudFacts,
 } from "./ai-fixtures";
 import { createMockCodex } from "./codex";
 import type { MockCourse, MockScenario } from "./fixtures";
@@ -55,6 +55,9 @@ type AiApi = Pick<
   | "testModel"
   | "setFeatureModel"
   | "acknowledgeAiDisclosure"
+  | "modelRunsHere"
+  | "modelDisclosure"
+  | "acknowledgeModelDisclosure"
   | "acknowledgeUnpricedModel"
   | "setMonthlyBudget"
   | "estimateGeneration"
@@ -284,17 +287,33 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   function modelInfo(provider: ModelProviderRecord, model: string): ModelInfo | null {
     return modelsOf(provider).find((m) => m.id === model) ?? null;
   }
+  /** The provider's own note (the server's, for one on this computer). */
   function disclosureOf(provider: ModelProviderRecord): DisclosureFacts {
-    const base = presetOf(provider.preset).data_policy;
-    // An Ollama provider routed to a cloud model discloses the cloud facts.
-    const usesCloudModel = [...features.values()].some(
-      (c) =>
-        c?.backend.kind === "provider" &&
-        c.backend.provider_id === provider.provider_id &&
-        modelInfo(provider, c.model)?.on_device === false,
-    );
-    if (provider.preset === "ollama" && usesCloudModel) return ollamaCloudFacts(base);
-    return base;
+    return presetOf(provider.preset).data_policy;
+  }
+  /**
+   * Whether `model` runs on this computer, as a run decides it (the facade's run_destination):
+   * LM Studio runs every model here; Ollama, the models it lists as local; any other server
+   * here can't say, so it counts as the cloud; a provider off this computer is the cloud.
+   */
+  function runsHere(provider: ModelProviderRecord, model: string): boolean {
+    if (!provider.on_device) return false;
+    if (provider.preset === "lm_studio") return true;
+    if (provider.preset === "ollama") return modelInfo(provider, model)?.on_device === true;
+    return false;
+  }
+  /**
+   * The note to read before using a model of `backend` where it runs, and the key its
+   * acknowledgement is kept under (the facade's disclosure_and_key): a model a server here may
+   * run in the cloud has a note of its own.
+   */
+  function noteOf(backend: BackendRef, here: boolean): { facts: DisclosureFacts; key: string } {
+    if (backend.kind === "codex") return { facts: codexBackend().disclosure, key: "codex" };
+    const provider = providerOf(backend);
+    const base = disclosureOf(provider);
+    return provider.on_device && !here
+      ? { facts: cloudViaLocalFacts(base, provider.preset), key: `${backendKey(backend)}:cloud` }
+      : { facts: base, key: backendKey(backend) };
   }
   function backendStatus(provider: ModelProviderRecord): AiBackendStatus {
     const backend: BackendRef = { kind: "provider", provider_id: provider.provider_id };
@@ -449,6 +468,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         1,
       );
       acknowledged.delete(`provider:${providerId}`);
+      acknowledged.delete(`provider:${providerId}:cloud`);
       for (const [feature, choice] of features) {
         if (choice?.backend.kind === "provider" && choice.backend.provider_id === providerId) {
           features.set(feature, null);
@@ -523,6 +543,35 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       acknowledged.set(backendKey(backend), version);
     },
 
+    modelRunsHere: async (choice, ask) => {
+      await ctx.delay();
+      if (choice.backend.kind === "codex") return false;
+      const provider = providerOf(choice.backend);
+      // Asked, Ollama answers from its list; one that can't be reached fails, like the facade.
+      if (ask && provider.preset === "ollama" && provider.base_url.includes("offline")) {
+        throw new ApiError("model", "Couldn't reach Ollama.", { model_error: "network" });
+      }
+      return runsHere(provider, choice.model);
+    },
+
+    modelDisclosure: async (backend, here) => {
+      await ctx.delay();
+      const { facts, key } = noteOf(backend, here);
+      return [facts, acknowledged.get(key) === facts.version];
+    },
+
+    acknowledgeModelDisclosure: async (backend, here, version) => {
+      await ctx.delay();
+      const { facts, key } = noteOf(backend, here);
+      if (version !== facts.version) {
+        throw new ApiError(
+          "invalid",
+          "What this service does with your data changed; please read it again.",
+        );
+      }
+      acknowledged.set(key, version);
+    },
+
     acknowledgeUnpricedModel: async (backend, model) => {
       await ctx.delay();
       // Like the facade: the plan has no price to acknowledge.
@@ -563,7 +612,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
         return gateBlocked("backend_disabled_in_this_build");
       }
       const info = modelsFor(choice.backend).find((m) => m.id === choice.model) ?? null;
-      const onDevice = info?.on_device ?? false;
+      // Where the run would go, as the run decides it (a server here may run a model elsewhere).
+      const onDevice =
+        choice.backend.kind === "provider" && runsHere(providerOf(choice.backend), choice.model);
       const courses =
         req.feature === "weekly_explanation"
           ? [req.course]
@@ -591,12 +642,18 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       const priceKnown = upper !== null;
 
       let block: BlockReason | null = null;
-      if (status.state !== "ready") block = "disclosure_not_acknowledged";
+      // The note of where it runs: a model a server here may run in the cloud has its own.
+      const note = status.kind === "codex" ? null : noteOf(choice.backend, onDevice);
+      const read = note?.key.endsWith(":cloud")
+        ? acknowledged.get(note.key) === note.facts.version
+        : status.state === "ready";
+      if (!read) block = "disclosure_not_acknowledged";
       // Mode A has no money budget; PageLamp's runs per week are capped instead.
       if (!block && status.kind === "codex" && codex.capReached()) {
         block = "weekly_run_cap_reached";
       }
-      if (!block && status.kind === "api_key" && !priceKnown) {
+      // An unpriced cloud model, also one a server here runs in the cloud.
+      if (!block && status.kind !== "codex" && !onDevice && !priceKnown) {
         if (!unpricedAcks.has(`${backendKey(choice.backend)}/${choice.model}`)) {
           block = "price_unknown_not_acknowledged";
         }

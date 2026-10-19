@@ -659,6 +659,41 @@
     }
   },
   {
+    "cmd": "model_runs_here",
+    "args": {
+      "choice": {
+        "backend": {
+          "kind": "provider",
+          "provider_id": "contract-test-provider"
+        },
+        "model": "contract-test-model",
+        "effort": "lowest"
+      },
+      "ask": true
+    }
+  },
+  {
+    "cmd": "model_disclosure",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "runsHere": false
+    }
+  },
+  {
+    "cmd": "acknowledge_model_disclosure",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "runsHere": false,
+      "version": 1
+    }
+  },
+  {
     "cmd": "acknowledge_unpriced_model",
     "args": {
       "modelBackend": {

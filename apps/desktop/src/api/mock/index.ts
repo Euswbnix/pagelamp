@@ -479,7 +479,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       return {
         backend_label: backend.label,
         model: choice.model,
-        on_device: backend.kind === "local",
+        // Where the run goes, as it decides it (a server here may run the model elsewhere).
+        on_device: await ai.modelRunsHere(choice, true),
       };
     },
     applyCalendar: (c, input, origin, aiLabel) => {

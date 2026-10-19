@@ -136,7 +136,9 @@
 "ai.codex.system.useManaged" = "使用 PageLamp 自己的 Codex";
 "ai.codex.title" = "使用我的 ChatGPT 订阅（运行 OpenAI Codex）";
 "ai.disclosure.accept" = "启用 %1$@";
+"ai.disclosure.acceptModel" = "使用 %1$@";
 "ai.disclosure.accepted" = "已启用 %1$@";
+"ai.disclosure.acceptedModel" = "现在可以使用 %1$@";
 "ai.disclosure.admin.heading" = "还有谁能看到";
 "ai.disclosure.admin.unknown" = "如果你的 ChatGPT 账户属于 Edu 或工作区，它的管理员可能看得到 PageLamp 通过它发送的内容，包括课程资料中的文字。";
 "ai.disclosure.admin.yes" = "你的账户属于学校或工作区：它的管理员能看到 PageLamp 通过它发送的内容，包括课程资料中的文字。";
@@ -148,7 +150,7 @@
 "ai.disclosure.close" = "关闭";
 "ai.disclosure.confirmFirst" = "先勾选上面的确认项，才能启用。";
 "ai.disclosure.cost.api_billing" = "每次运行的费用都计入你的 API 账户。PageLamp 会在每次运行前显示预估费用，并遵守你设定的每月预算。";
-"ai.disclosure.cost.cloud_via_local" = "这个模型通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
+"ai.disclosure.cost.cloud_via_local" = "这个模型可能通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
 "ai.disclosure.cost.free_on_device" = "在这台电脑上运行是免费的，但会占用它的内存和电量。";
 "ai.disclosure.cost.heading" = "费用";
 "ai.disclosure.cost.plan_credits" = "每次运行都计入你 ChatGPT 订阅的用量限额；超出订阅额度后，运行可能会消耗你的 ChatGPT 额度点数。";
@@ -166,6 +168,7 @@
 "ai.disclosure.retention.on_device" = "不会有任何内容保存到这台电脑以外的地方。";
 "ai.disclosure.retention.provider_terms" = "%1$@ 保存发送内容的时长取决于它的条款。";
 "ai.disclosure.sent.cloud" = "这些内容会发给 %1$@，按 %1$@ 的条款处理。";
+"ai.disclosure.sent.cloudViaLocal" = "%1$@ 在这台电脑上运行，但 PageLamp 无法确认这个模型也在这里运行：%1$@ 可能把 PageLamp 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。";
 "ai.disclosure.sent.codex" = "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 %1$@，按 %1$@ 的条款和你的 ChatGPT 设置处理。";
 "ai.disclosure.sent.heading" = "发送什么，发给谁";
 "ai.disclosure.sent.material_text" = "课程资料（课件、笔记）中的文字，用于讲解和课程日历，而且只来自规则允许的课程。";
@@ -179,6 +182,7 @@
 "ai.disclosure.training.no_training" = "%1$@ 不会用 PageLamp 发送的内容来训练模型。";
 "ai.disclosure.training.turnOff" = "如何关闭训练";
 "ai.disclosure.training.unknown" = "PageLamp 不清楚这个服务是否会用发送的内容做训练。继续之前请先查看它的条款。";
+"ai.estimate.checkingWhere" = "正在确认这个模型在哪里运行…";
 "ai.estimate.cloudNoPrice" = "在云端运行，无法预估费用";
 "ai.estimate.details" = "最多输入 %1$@ 个 token，输出 %2$@ 个";
 "ai.estimate.free" = "免费，在这台电脑上运行";
@@ -188,6 +192,7 @@
 "ai.estimate.noPrice" = "这个模型没有价格";
 "ai.estimate.overBudget" = "这次运行会超出本月预算。";
 "ai.estimate.overrideBudget" = "这次允许超出预算";
+"ai.estimate.readDisclosure" = "现在查看";
 "ai.estimate.upTo" = "≈ 最多 %1$@";
 "ai.estimate.useUnpriced" = "仍然使用";
 "ai.estimate.useUnpricedHint" = "对这个模型不执行预算，但它的运行仍会按 token 计数。";

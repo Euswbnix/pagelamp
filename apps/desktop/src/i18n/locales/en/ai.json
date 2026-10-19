@@ -94,7 +94,8 @@
       "cloud": "It goes to {{name}} and is handled under {{name}}'s terms.",
       "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
       "terms": "Read {{name}}'s terms",
-      "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings."
+      "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings.",
+      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it."
     },
     "training": {
       "heading": "Training and storage",
@@ -121,7 +122,7 @@
       "api_billing": "Each run is billed to your API account. {{product}} shows an estimate before each run and keeps to a monthly budget you set.",
       "plan_credits": "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.",
       "free_on_device": "Runs on this computer are free. They use its memory and battery.",
-      "cloud_via_local": "This model runs in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
+      "cloud_via_local": "This model may run in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
       "self_hosted": "Costs, if any, are set by whoever runs this server."
     },
     "age": {
@@ -145,7 +146,9 @@
     "confirmFirst": "Tick the confirmation above to turn it on.",
     "later": "Not now",
     "close": "Close",
-    "accepted": "{{name}} is turned on"
+    "accepted": "{{name}} is turned on",
+    "acceptModel": "Use {{model}}",
+    "acceptedModel": "You can use {{model}} now"
   },
   "addKey": {
     "title": "Add an API key",
@@ -256,7 +259,9 @@
     "useUnpricedHint": "Your budget isn't enforced for this model. Its runs are still counted in tokens.",
     "overBudget": "This would go over this month's budget.",
     "overrideBudget": "Go over the budget this time",
-    "generate": "Generate"
+    "generate": "Generate",
+    "readDisclosure": "Read it now",
+    "checkingWhere": "Checking where this model runs…"
   },
   "blocked": {
     "course_policy_prohibited": "This course's rules say no AI, so {{product}} won't send anything from it.",

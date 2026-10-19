@@ -161,6 +161,12 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setFeatureModel("weekly_note", { backend: PROVIDER, model: "m", effort: "lowest" });
   await api.setFeatureModel("weekly_note", null);
   await api.acknowledgeAiDisclosure({ kind: "codex" }, 1);
+  await api.modelRunsHere(
+    { backend: PROVIDER, model: "contract-test-model", effort: "lowest" },
+    true,
+  );
+  await api.modelDisclosure(PROVIDER, false);
+  await api.acknowledgeModelDisclosure(PROVIDER, false, 1);
   await api.acknowledgeUnpricedModel(PROVIDER, "contract-test-model");
   await api.setMonthlyBudget(5_000_000);
   await api.setMonthlyBudget(null);
