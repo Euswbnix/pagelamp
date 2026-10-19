@@ -435,6 +435,7 @@
 "calendar.form.end" = "Last day of classes (optional)";
 "calendar.form.endHint" = "The three weeks after it count as the exam period.";
 "calendar.form.invalid" = "These dates don't work. Check that classes end after they start.";
+"calendar.form.ownCalendar" = "These dates come from this course's own calendar, which counts its weeks: they can't be changed here. Change that calendar with the %1$@ command.";
 "calendar.form.prefilled" = "Filled in with the dates PageLamp is using now.";
 "calendar.form.save" = "Save dates";
 "calendar.form.saved" = "Course dates saved";

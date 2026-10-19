@@ -811,6 +811,96 @@ describe("Timeline tab — also use these dates in", () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it("shows a course's own calendar read-only, with no Save, and says where it's changed", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await ownCalendar(api, FITTED);
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    const code = await screen.findByText("pagelamp course calendar", { selector: "code" });
+    expect(code.parentElement?.textContent).toBe(
+      "These dates come from this course's own calendar, which counts its weeks: they can't be changed here. Change that calendar with the pagelamp course calendar command.",
+    );
+    // The calendar's days of classes, not its mirrored span (which ends with the exams).
+    const start = screen.getByLabelText("First day of classes");
+    const end = screen.getByLabelText("Last day of classes (optional)");
+    expect(start).toHaveValue("2026-09-08");
+    expect(end).toHaveValue("2026-12-04");
+    expect(start).toHaveAttribute("readonly");
+    expect(end).toHaveAttribute("readonly");
+    expect(start).toHaveAccessibleDescription(expect.stringContaining("own calendar"));
+    expect(screen.queryByRole("button", { name: "Save dates" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear my dates" })).toBeNull();
+    // Nothing here says otherwise: no invitation to set dates, no three weeks of exams (the
+    // calendar has its own end of exams), also not read out with the field.
+    expect(screen.queryByText(/^If the week shown is wrong/)).toBeNull();
+    expect(screen.queryByText("The three weeks after it count as the exam period.")).toBeNull();
+    expect(end).not.toHaveAccessibleDescription(expect.stringContaining("three weeks"));
+    // Typing changes nothing.
+    const setTerm = vi.spyOn(api, "setCourseTerm");
+    await user.type(start, "2026-09-20");
+    expect(start).toHaveValue("2026-09-08");
+    expect(setTerm).not.toHaveBeenCalled();
+  });
+
+  it("drops what was typed and its message when the course turns to a calendar of its own", async () => {
+    const { user, api, start, end, queryClient } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    await untickOthers(user);
+    await user.clear(start);
+    await user.type(start, "2026-09-20");
+    await user.type(end, "2026-09-10");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    const invalid = "These dates don't work. Check that classes end after they start.";
+    expect(await screen.findByText(invalid)).toBeInTheDocument();
+    // Its calendar is saved elsewhere (the CLI), and the course is read again.
+    await ownCalendar(api, FITTED);
+    await act(() => queryClient.invalidateQueries());
+    await screen.findByText("pagelamp course calendar", { selector: "code" });
+    expect(screen.queryByText(invalid)).toBeNull();
+    expect(start).toHaveValue("2026-09-08");
+    expect(end).toHaveValue("2026-12-04");
+    expect(start).not.toHaveAttribute("aria-invalid");
+  });
+
+  it.each([
+    ["while the session listing is still read", () => new Promise<never>(() => {})],
+    ["when the session listing fails", () => Promise.reject(new Error("Synthetic failure"))],
+  ])("shows a course's own calendar read-only %s", async (_, listing) => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await ownCalendar(api, FITTED);
+    vi.spyOn(api, "sessionCourses").mockImplementation(listing);
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    await screen.findByText("pagelamp course calendar", { selector: "code" });
+    expect(screen.getByLabelText("First day of classes")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("Last day of classes (optional)")).toHaveValue("2026-12-04");
+    expect(screen.queryByRole("button", { name: "Save dates" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear my dates" })).toBeNull();
+  });
+
+  it("doesn't ask to check 0.1 dates on a course with a calendar of its own", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await ownCalendar(api, FITTED);
+    // Undo put back 0.1 dates the student never confirmed; the calendar still counts the weeks.
+    await api.restoreCourseDates([
+      { course_id: FITTED, start: "2026-09-01", end: null, legacy: true, copied_from: null },
+    ]);
+    expect((await api.courseOverview(FITTED)).timeline.term).toMatchObject({
+      student_dates_confirmed: false,
+      own_calendar: true,
+    });
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    await screen.findByText("pagelamp course calendar", { selector: "code" });
+    expect(screen.queryByText("Check this course's dates")).toBeNull();
+  });
+
+  it("shows the own calendar read-only in a course of no session too", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await ownCalendar(api, DEMO101);
+    await openCourse(DEMO101, { query: "tab=timeline", api });
+    await screen.findByText("pagelamp course calendar", { selector: "code" });
+    expect(screen.getByLabelText("First day of classes")).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: "Save dates" })).toBeNull();
+  });
+
   it("offers no list from a course with a calendar of its own, and says how to copy its dates", async () => {
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
     await ownCalendar(api, FITTED);

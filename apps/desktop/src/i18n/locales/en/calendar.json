@@ -167,6 +167,7 @@
     "description": "If the week shown is wrong, set the first and last day of classes. Your dates come before everything else.",
     "prefilled": "Filled in with the dates {{product}} is using now.",
     "breaksNote": "Reading weeks and exam dates can't be set here yet.",
+    "ownCalendar": "These dates come from this course's own calendar, which counts its weeks: they can't be changed here. Change that calendar with the {{command}} command.",
     "start": "First day of classes",
     "end": "Last day of classes (optional)",
     "endHint": "The three weeks after it count as the exam period.",

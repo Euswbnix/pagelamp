@@ -435,6 +435,7 @@
 "calendar.form.end" = "最后一天上课（可不填）";
 "calendar.form.endHint" = "之后的三周算作考试期。";
 "calendar.form.invalid" = "这些日期有问题。请确认最后一天上课在第一天之后。";
+"calendar.form.ownCalendar" = "这些日期来自这门课自己的日历，它决定这门课的周数，不能在这里修改。请用 %1$@ 命令修改该日历。";
 "calendar.form.prefilled" = "已填入 PageLamp 目前采用的日期。";
 "calendar.form.save" = "保存日期";
 "calendar.form.saved" = "课程日期已保存";
