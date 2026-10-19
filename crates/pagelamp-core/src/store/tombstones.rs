@@ -133,7 +133,7 @@ impl Store {
             .get_course(course_id)?
             .ok_or_else(|| crate::Error::NotFound(format!("course '{course_id}'")))?;
         let data = self.course_term_data(course_id)?.unwrap_or_default();
-        let accepted = self.accepted_calendar(course_id)?;
+        let accepted = self.accepted_calendar_snapshot(course_id)?;
         Ok(CourseSettings {
             ai_policy: Some(course.ai_policy),
             ai_policy_note: course.ai_policy_note,
@@ -165,9 +165,8 @@ impl Store {
         Ok(u32::try_from(n).unwrap_or(u32::MAX))
     }
 
-    /// The accepted calendar's `calendar_json`, if the course has one.
     /// The accepted calendar, with its origin and its fingerprint (a restore puts them back).
-    fn accepted_calendar(
+    fn accepted_calendar_snapshot(
         &self,
         course_id: &str,
     ) -> Result<Option<(CourseCalendar, Option<CalendarOrigin>, String)>> {
@@ -318,8 +317,9 @@ impl Store {
     }
 
     /// A restored course gets the student's settings back: AI policy and note, access, the
-    /// materials question, hidden, term dates, "I'm still taking this", and the calendar as a
-    /// `restored` calendar in force. Then the tombstone goes.
+    /// materials question, hidden, term dates (confirmed again if they were), "I'm still taking
+    /// this", and its calendar in force as it was, with its origin and fingerprint (a record
+    /// that kept neither brings it back as `restored`). Then the tombstone goes.
     pub fn apply_restored_settings(&self, course_id: &str, now: Timestamp) -> Result<()> {
         self.atomic(|| {
             let tombstone = self.require_tombstone(course_id)?;

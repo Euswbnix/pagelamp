@@ -395,3 +395,55 @@ fn a_restored_course_keeps_its_calendar_s_origin() {
         BTreeSet::from(["folder:demo/course/CONFIRMED".to_string()])
     );
 }
+
+/// A removal record written before the calendar's origin and fingerprint were kept brings the
+/// calendar back as `restored`.
+#[test]
+fn an_older_removal_record_restores_the_calendar_as_restored() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let (_dir, path) = temp_db();
+    version_3_db(&path);
+    let store = Store::open(&path).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap();
+    let id = "folder:demo/course/CONFIRMED";
+    store
+        .remove_course(id, RemovalReason::Other, false, false, now)
+        .unwrap();
+    store.purge_course(id, now, false).unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE course_tombstones
+             SET settings_json = json_remove(settings_json, '$.calendar_origin',
+                                             '$.calendar_fingerprint')
+             WHERE course_id = ?1",
+            [id],
+        )
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: id.into(),
+            source_id: "folder:demo".into(),
+            external_id: id.into(),
+            code: Some(id.into()),
+            name: "Demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store.apply_restored_settings(id, now).unwrap();
+    let row: (String, String) = store
+        .conn()
+        .query_row(
+            "SELECT origin, fingerprint FROM course_calendars
+             WHERE course_id = ?1 AND state = 'accepted'",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("restored".to_string(), "restored".to_string()));
+}
