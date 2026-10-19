@@ -2,7 +2,8 @@
 
 *Last updated: 2026-10-18 · applies to PageLamp v0.1.0 (the latest stable release) and to
 v0.3.0-alpha.1 (a pre-release). Items marked **(v0.3)** are true for the pre-release only; v0.1.0
-doesn't have them.*
+doesn't have them. Items marked **(next)** are on the main branch for the next pre-release and in
+no release yet.*
 
 PageLamp is a local app. There is no PageLamp server, account, analytics or telemetry. The people
 who build PageLamp never receive your data.
@@ -11,7 +12,7 @@ who build PageLamp never receive your data.
 
 | Data | Where | Why |
 |---|---|---|
-| Course list, syllabuses, modules, material titles and text, announcements, deadlines and other dated items from your Canvas planner (your own planner notes and calendar events included: title, date and link), your study plan, your per-course settings (AI policy, AI access, term dates, hidden, and **(v0.3)** that you are still taking a course PageLamp counts as past) | a SQLite database in your data folder (macOS `~/Library/Application Support/dev.PageLamp.PageLamp`, Windows `%APPDATA%\PageLamp\PageLamp\data`, Linux `$XDG_DATA_HOME/pagelamp`, or `PAGELAMP_HOME`) | so your AI app can answer questions about your courses |
+| Course list, syllabuses, modules, material titles and text, announcements, deadlines and other dated items from your Canvas planner (your own planner notes and calendar events included: title, date and link), your study plan, your per-course settings (AI policy, AI access, term dates, hidden; **(v0.3)** that you are still taking a course PageLamp counts as past; **(next)** your answer about whether the course's materials may be shared with AI services, and which course of the same session its dates were copied from) | a SQLite database in your data folder (macOS `~/Library/Application Support/dev.PageLamp.PageLamp`, Windows `%APPDATA%\PageLamp\PageLamp\data`, Linux `$XDG_DATA_HOME/pagelamp`, or `PAGELAMP_HOME`) | so your AI app can answer questions about your courses |
 | Your sources: the Canvas address and the name Canvas shows for your account, a course folder's full path, when each source last synced and its last error | the same database (and its backup); PageLamp doesn't give the name or the path to your AI app | to show "Connected as …" and each source's state |
 | Files you ask PageLamp to download from Canvas | the `files/` folder next to the database | so their text can be indexed |
 | Canvas access token, calendar-feed link | your operating system's keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) — never in the database, logs or AI output | to sync on your behalf |
@@ -19,7 +20,9 @@ who build PageLamp never receive your data.
 | **(v0.3)** Your automatic sync setting, and when PageLamp last synced or tried to | the same database | to know when the next sync is due |
 | **(v0.3)** For each Canvas course, a list of what PageLamp didn't read and why: the title Canvas shows for the item (a tab, a module item, a page or a file), its link and a reason; and which pages and files the texts it read link to (addresses only, never a link's words) | the same database; deleted when you remove the source | to tell you and your AI app what isn't in PageLamp, and to avoid reading a page again just to follow its links |
 | **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database (on macOS and Linux its permissions let only your account read it); only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
-| **(v0.3)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set, and its calendar's dates without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you choose *Forget*, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
+| **(next)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set, and its calendar's dates without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you choose *Forget*, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
+| **(next)** The model providers you add (their kind, name and address, when you added them and the result of their last test), which model each of PageLamp's AI features would use and how hard it thinks, your monthly AI budget, the providers' notes on your data that you have read, and the models without a known price you accepted | the same database | to use the providers you set up the way you chose |
+| **(next)** API keys for model providers | your operating system's keychain, like your Canvas token — never in the database, logs or AI output | to reach the provider on your behalf |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
 dates and links; **(v0.3)** an assignment or a quiz can also appear, by title and link, in the
@@ -80,6 +83,13 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   so contacts the server the feed names.
 - **Installing on Windows:** if your computer doesn't have Microsoft's WebView2 runtime (Windows
   11 comes with it), the installer is set to download it from Microsoft.
+- **(next) Model providers:** when you add a model provider (`pagelamp ai add`) or replace its
+  key, PageLamp asks the address given for it for its list of models, with its API key if it has
+  one, before it saves anything. `pagelamp ai models` asks for that list again, and so does `pagelamp ai use`
+  unless you add `--no-check`; `pagelamp ai test` sends the model one tiny request with no course
+  data. A provider on this computer (such as Ollama) is reached on this computer, unless you gave
+  it the address of another one. No PageLamp feature sends your course data to these providers
+  yet.
 - Nothing else. The PageLamp app, the `pagelamp` command and the MCP server contact no other
   server.
 
@@ -89,6 +99,12 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   policy as "No AI" — PageLamp then shares no material text for that course (deadlines, structure
   and your study plan remain available for planning). CLI: `pagelamp course ai-access <course> off`.
 - **Hide a course** to keep it out of your AI app entirely: `pagelamp course hide <course>`.
+  **(next)** Its dates can still set the weeks of the other courses of its school session; your AI
+  app is then told they come from "another course of the session", never which one.
+- **(next) Sharing a course's materials with AI services:** `pagelamp course sharing <course>
+  allowed|not-sure|not-allowed` records your answer, for example from the syllabus. With
+  *not-allowed*, models in the cloud that PageLamp itself runs never get that course's material
+  text; your own AI app isn't affected.
 - **(v0.3) Automatic sync:** *Sources & sync → Automatic sync* (Off, Once a day, Twice a day).
   With it off, PageLamp syncs only when you press Sync. CLI: `pagelamp sync --auto off`.
 - **(v0.3) Update checks:** *Settings → Updates → Check for updates automatically*. With it off,
@@ -98,7 +114,7 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   and Canvas), its deadlines and events (calendar feed), and for Canvas the course files you
   downloaded — plus its token or feed link in the keychain. Your own course folder and anything in
   Canvas or your LMS calendar are never changed.
-- **(v0.3) Remove a course** (*Remove from PageLamp…* on the course's *Settings* tab, or
+- **(next) Remove a course** (*Remove from PageLamp…* on the course's *Settings* tab, or
   `pagelamp course remove <course>`) takes it out of every list and your AI app at once and stops
   syncing it. Unless you choose *Delete now*, nothing is deleted for 7 days, and *Undo* (also in
   *Settings → Removed courses*, or `pagelamp course restore <id>`) puts it back. After that, at the
@@ -122,15 +138,22 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   saved settings back; it can't if Canvas no longer lists the course or restricts access to it, or
   while you're offline. Its files come back as not downloaded, and announcements older than 120 days
   don't come back.
+- **(next) Model providers:** `pagelamp ai remove <provider>` deletes a provider, its API key in the
+  keychain and the model choices that use it. `pagelamp ai remove --all` deletes every provider,
+  every API key and every AI setting, and the pre-update backup of the database (which may hold
+  them); your courses and your answers about sharing stay.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
-  keychain), then quit PageLamp and delete the data folder above. Uninstalling the app doesn't do
-  this. The database, downloaded files, the backup, the logs and the list of course names stay
-  until you delete the folder. Your Canvas token or feed link isn't in that folder: it stays in
-  your system's keychain, under the service name `dev.pagelamp`, until you remove the source in
-  PageLamp or delete the entry there yourself. The desktop app also keeps its display preferences
-  (such as theme, language, transparency and contrast, which lists are open, and that the
-  first-run setup is done) in its own app storage under `dev.pagelamp.desktop`; they contain no
-  course data.
+  keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
+  API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling
+  the app doesn't do this. The database, downloaded files, the backup, the logs and the list of
+  course names stay until you delete the folder. Your Canvas token or feed link isn't in that
+  folder: it stays in your system's keychain, under the service name `dev.pagelamp`, until you
+  remove the source in PageLamp or delete the entry there yourself. **(next)** So do your
+  providers' API keys (entries named `llm:` and the provider's id), until you remove the provider
+  in PageLamp or delete the entry yourself; removing a source doesn't delete them. The desktop app
+  also keeps its display preferences (such as theme, language, transparency and contrast, which
+  lists are open, and that the first-run setup is done) in its own app storage under
+  `dev.pagelamp.desktop`; they contain no course data.
 
 ## AI disclosure
 
@@ -153,8 +176,11 @@ diagnostic report (*Copy diagnostic report* in the app, or `pagelamp report`) is
 you ask for it, shows you its full content first, and replaces course names with "Course 1",
 "Course 2". From v0.3 it also lists the result of the last update check and of the last database
 update and backup, as codes only, whether the file reader can run, and how many files couldn't be
-read, by reason. Nothing is ever sent automatically — you decide whether to share a report, e.g.
-in a GitHub issue.
+read, by reason. **(next)** It also lists the kinds of model provider you added, whether each
+one's key is in the keychain (never the key), whether model servers on this computer answer, and
+how many course terms PageLamp doesn't count weeks from and how many removed courses are still
+waiting. Nothing is ever sent automatically — you decide whether to share a report, e.g. in a
+GitHub issue.
 
 To replace names of courses you have since renamed or removed, PageLamp keeps a small list of
 course names, codes and folder names in `course-aliases.json` in your data folder (on macOS and

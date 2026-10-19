@@ -3,6 +3,43 @@
 All notable changes are listed here. The project follows [Semantic Versioning](https://semver.org/)
 (0.x: anything may change between minor versions).
 
+## [Unreleased]
+
+On the main branch for the next pre-release; in no release yet.
+
+### Added
+- Removing a course (`pagelamp course remove`): it leaves every list and your AI app at once and
+  stops syncing. For 7 days `pagelamp course restore` undoes it; after that its local data is
+  deleted at the next sync (or now with `pagelamp course purge`), and the files PageLamp
+  downloaded for it go to the Trash unless you keep them. `pagelamp course removed` lists
+  removed courses; a deleted course can be restored by syncing it again, and `pagelamp course
+  forget` lets the next sync add it back. The app's screens for it come with the next
+  pre-release.
+- Courses of one school session count the same weeks: a course without dates of its own takes
+  week 1, and the ends of classes and exams, from another course of its session (the dates you
+  set there, its own dates that its materials bear out, or the week its module unlocks pin down),
+  and says which course they come from. When those courses disagree, none of them lends its
+  dates, and each says so.
+- `pagelamp course copy-dates <from> [<to>…]` (or `--same-session`) makes the dates you set for
+  one course the dates of other courses of its session; without courses to copy to, it lists
+  them.
+- The school calendar file has the 2026-27 Fall and Winter dates (first and last day of classes,
+  reading week, exam period) of the school whose session codes PageLamp reads; its courses
+  without usable dates of their own count their weeks from them.
+- `pagelamp ai`: add model providers (with an API key, or a model server on this computer), list
+  their models, test one, choose the model each AI feature would use, and set a monthly budget.
+  `pagelamp course sharing` records whether a course's materials may be shared with AI
+  services. No feature uses a model yet. Keys are kept in the system keychain (see
+  [PRIVACY.md](PRIVACY.md)).
+- `pagelamp doctor` and the diagnostic report also list the kinds of model provider you added,
+  whether their keys are in the keychain (never the keys), and whether model servers on this
+  computer answer.
+
+### Upgrading from 0.3.0-alpha.1
+- The database moves to format 4 the first time this version runs, after a copy of it is saved
+  as `pagelamp.db.v3.bak`. v0.3.0-alpha.1 can't open the new format (its MCP server can still
+  read it).
+
 ## [0.3.0-alpha.1] — 2026-10-18
 
 The first pre-release of v0.3.
