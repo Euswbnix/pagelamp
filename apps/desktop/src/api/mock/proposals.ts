@@ -484,16 +484,19 @@ export function createProposalsMock(deps: {
     const stopped = () =>
       cancelled.has(generationId) || (batchId !== null && cancelled.has(batchId));
     onEvent({ type: "started", generation_id: generationId, ...run });
-    // The course's first cloud run with question (b) unanswered or "not sure" (D37 option 2):
-    // claimed once it started, and said before the run ends however it ends (like the facade).
-    const answer = materialSharing(c.course);
-    const reminder =
-      !run.on_device &&
-      (answer === "unanswered" || answer === "not_sure") &&
-      !reminded.has(courseId);
-    if (reminder) reminded.add(courseId);
+    // The course's first cloud run with question (b) unanswered or "not sure" (D37 option 2),
+    // by the answer stored when the run ends (one given meanwhile counts): claimed then, and
+    // said before the run ends however it ends (like the facade).
+    let reminder = false;
     const remind = () => {
-      if (reminder) onEvent({ type: "notice", code: "material_sharing_reminder" });
+      const answer = materialSharing(c.course);
+      reminder =
+        !run.on_device &&
+        (answer === "unanswered" || answer === "not_sure") &&
+        !reminded.has(courseId);
+      if (!reminder) return;
+      reminded.add(courseId);
+      onEvent({ type: "notice", code: "material_sharing_reminder" });
     };
     // However it ends after this, the reminder is said before the end (the facade's order:
     // the failure, the notice, then Finished).

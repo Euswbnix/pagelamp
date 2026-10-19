@@ -124,6 +124,23 @@ describe("mock syllabus reading: the question (b) reminder", () => {
     expect((await api.courseCalendar(DEMO101)).proposals).toEqual([]);
   });
 
+  it("follows the answer stored when the reading ends, like the facade", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    // Answered "allowed" while the reading runs: nothing to remind of.
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await api.setCourseMaterialSharing(UNLABELLED, "allowed");
+    const proposal = await run;
+    expect(kinds(events)).not.toContain("material_sharing_reminder");
+    expect(proposal.sharing_reminder).toBe(false);
+    // Back to "not sure" while another runs: reminded then, once.
+    const again: GenEvent[] = [];
+    const second = api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
+    await api.setCourseMaterialSharing(UNLABELLED, "not_sure");
+    expect((await second).sharing_reminder).toBe(true);
+    expect(kinds(again)).toContain("material_sharing_reminder");
+  });
+
   it("says it in a batch inside the course's own events", async () => {
     const api = createMockApi(fast);
     const said: string[] = [];
