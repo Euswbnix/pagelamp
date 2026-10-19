@@ -13,6 +13,7 @@
 //!   downloaded yet.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, MaterialSharing, ModelErrorKind};
@@ -503,6 +504,14 @@ impl App {
         };
         let (_, output, max_output) = request_shape(AiFeature::CourseCalendar, &context);
         let started = Utc::now();
+        // Once the run has started, the material text went out or was on its way.
+        let sent = AtomicBool::new(false);
+        let forward = |event: GenEvent| {
+            if matches!(event, GenEvent::Started { .. }) {
+                sent.store(true, Ordering::Relaxed);
+            }
+            on_event(event);
+        };
         let run = self
             .run_model(
                 RunRequest {
@@ -515,9 +524,26 @@ impl App {
                     output,
                     max_output_tokens: max_output,
                 },
-                on_event,
+                &forward,
             )
             .await;
+        // The one reminder per course whose sharing answer is open, after the first reading
+        // that sent (or tried to send) its materials to the cloud, whatever came back.
+        let remind = |store: &Store| -> Result<bool> {
+            let claimed = destination == Destination::Cloud
+                && sent.load(Ordering::Relaxed)
+                && matches!(
+                    course.material_sharing,
+                    MaterialSharing::Unanswered | MaterialSharing::NotSure
+                )
+                && store.claim_sharing_reminder(&course.id, Utc::now())?;
+            if claimed {
+                on_event(GenEvent::Notice {
+                    code: GenNoticeCode::MaterialSharingReminder,
+                });
+            }
+            Ok(claimed)
+        };
         let generation = |status, output_json, error_kind: Option<&str>| GenerationRecord {
             id: generation_id.to_string(),
             feature: AiFeature::CourseCalendar,
@@ -546,8 +572,9 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                self.write_store()?
-                    .record_generation(&generation(status, None, kind))?;
+                let store = self.write_store()?;
+                store.record_generation(&generation(status, None, kind))?;
+                remind(&store)?;
                 return Err(err);
             }
         };
@@ -571,6 +598,7 @@ impl App {
                 None,
                 Some(ModelErrorKind::BadOutput.as_str()),
             ))?;
+            remind(&store)?;
             return Err(AppError {
                 model_error: Some(ModelErrorKind::BadOutput),
                 ..AppError::new(
@@ -585,17 +613,7 @@ impl App {
             serde_json::to_string(&extraction).ok(),
             None,
         ))?;
-        let sharing_reminder = destination == Destination::Cloud
-            && matches!(
-                course.material_sharing,
-                MaterialSharing::Unanswered | MaterialSharing::NotSure
-            )
-            && store.claim_sharing_reminder(&course.id, Utc::now())?;
-        if sharing_reminder {
-            on_event(GenEvent::Notice {
-                code: GenNoticeCode::MaterialSharingReminder,
-            });
-        }
+        let sharing_reminder = remind(&store)?;
         let row = NewCalendarRow {
             course_id: course.id.clone(),
             origin: CalendarOrigin::Ai,

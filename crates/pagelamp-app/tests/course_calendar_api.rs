@@ -10,13 +10,14 @@ use std::time::Duration;
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, CostBasis, CostKind, EstimateRequest, GenEvent, ModelChoice, RetentionFact,
+    BackendRef, CostBasis, CostKind, EstimateRequest, GenEvent, GenNoticeCode, ModelChoice,
+    RetentionFact,
 };
 use pagelamp_app::{
     ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
 };
 use pagelamp_core::ai::{
-    AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind, ProviderRow,
+    AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind, ProviderRow, UsageRecord,
 };
 use pagelamp_core::calendar::candidates::{CandidateLeftOut, CandidateReason};
 use pagelamp_core::model::*;
@@ -293,8 +294,8 @@ fn collect() -> (Arc<Mutex<Vec<GenEvent>>>, impl Fn(GenEvent) + Send + Sync) {
     (events, move |event| sink.lock().unwrap().push(event))
 }
 
-/// Wait until the mock model has been asked (the run is waiting for its answer).
-/// Until the model is asked (a run first asks the server here for its model list).
+/// Wait until the mock model has been asked (the run is waiting for its answer; a run first
+/// asks the server here for its model list).
 async fn wait_for_request(server: &MockServer) {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while server
@@ -1336,6 +1337,128 @@ async fn a_model_listed_with_the_latest_tag_runs_here() {
         .await
         .unwrap();
     assert!(proposal.ai_label.unwrap().on_device);
+}
+
+/// The one reminder for a course whose sharing answer is open follows the first reading that
+/// sent its materials to the cloud, also one that failed or whose answer had no checkable
+/// dates: a later reading doesn't remind again.
+#[tokio::test]
+async fn a_cloud_reading_that_fails_after_sending_still_reminds() {
+    let unsupported = json!({
+        "stated_term": {"text": null, "quote": null, "source": null},
+        "claims": [claim("first_class", day(-6), "Classes begin whenever you like.", "c1")],
+        "weeks": [],
+        "not_found": []
+    });
+    let rejected = ResponseTemplate::new(401).set_body_json(json!({"error": "unauthorized"}));
+    for failure in [rejected, answer(&unsupported)] {
+        let temp = tempfile::tempdir().unwrap();
+        let app = app_with_courses(temp.path());
+        let cloud =
+            || tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+        let server = with_local_model_listing(&app, cloud()).await;
+        let backend = BackendRef::Provider {
+            provider_id: "ollama".into(),
+        };
+        acknowledge_cloud_note(&app, &backend).await;
+        app.acknowledge_unpriced_model(&backend, "local-model")
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(failure)
+            .mount(&server)
+            .await;
+        let (events, on_event) = collect();
+        app.read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), on_event)
+            .await
+            .unwrap_err();
+        assert!(events.lock().unwrap().iter().any(|e| matches!(
+            e,
+            GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder
+            }
+        )));
+
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/api/tags"))
+            .respond_with(cloud())
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/chat"))
+            .respond_with(answer(&good_extraction()))
+            .mount(&server)
+            .await;
+        let proposal = app
+            .read_course_calendar("DEMO101", "gen-2", ReadCalendarOptions::default(), |_| {})
+            .await
+            .unwrap();
+        assert!(!proposal.sharing_reminder, "reminded once already");
+    }
+}
+
+/// Usage lines older than 13 months go when a run is recorded and at each sync, and so do
+/// proposals dismissed more than 30 days ago, with the runs that wrote them.
+#[tokio::test]
+async fn old_ai_records_go_at_a_run_and_at_a_sync() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server = with_local_model(&app).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    let line = |days_ago: i64| UsageRecord {
+        at: Utc::now() - TimeDelta::days(days_ago),
+        backend: "provider:ollama".into(),
+        model: "local-model".into(),
+        feature: AiFeature::CourseCalendar,
+        input_uncached: 900,
+        cache_read: 0,
+        cache_write: 0,
+        output: 80,
+        reasoning: None,
+        micro_usd: Some(0),
+        cost_basis: "free_on_device".into(),
+        estimated: false,
+        outcome: "ok".into(),
+    };
+    let lines = |store: &Store| {
+        store
+            .ai_usage_between(
+                Utc::now() - TimeDelta::days(1000),
+                Utc::now() + TimeDelta::days(1),
+            )
+            .unwrap()
+            .len()
+    };
+    let store = Store::open(&app.db_path()).unwrap();
+    store.record_ai_usage(&line(420)).unwrap();
+    store.record_ai_usage(&line(300)).unwrap();
+    let proposal = app
+        .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
+        .await
+        .unwrap();
+    // The 300-day line and the run's own.
+    assert_eq!(lines(&store), 2);
+
+    store
+        .dismiss_calendar_proposal(proposal.id, Utc::now() - TimeDelta::days(40))
+        .unwrap();
+    store.record_ai_usage(&line(420)).unwrap();
+    let root = temp.path().join("Courses");
+    let course = root.join("DEMO909 Field Methods");
+    std::fs::create_dir_all(&course).unwrap();
+    std::fs::write(course.join("notes.md"), "# Notes\n\nSampling notes.\n").unwrap();
+    let source = app.add_folder_source(&root, None, None).unwrap();
+    app.sync_source(&source.id, pagelamp_app::SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    assert_eq!(lines(&store), 2);
+    assert!(store.calendar_row(proposal.id).unwrap().is_none());
+    assert!(store.generation("gen-1").unwrap().is_none());
 }
 
 /// A run of a model that the server on this computer runs in the cloud says so: its start, its

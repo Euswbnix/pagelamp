@@ -482,3 +482,41 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
         stderr(&again)
     );
 }
+
+/// A syllabus reading that sent a course's materials to a model in the cloud and then failed
+/// still gives the one-time sharing reminder, before its error.
+#[test]
+fn a_failed_cloud_reading_reminds_before_its_error() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let root = temp.path().join("Courses");
+    let syllabus = root.join("DEMO101 Intro to Demo Studies/Syllabus.md");
+    std::fs::create_dir_all(syllabus.parent().unwrap()).unwrap();
+    std::fs::write(
+        &syllabus,
+        "# Syllabus\n\nClasses begin September 8, 2026. The last day of classes is December \
+         8, 2026.\n",
+    )
+    .unwrap();
+    synced_demo_course(&home, &root);
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "big-model", "--yes"],
+    ));
+    // The stand-in answers a chat in a format Ollama doesn't use: the reading fails.
+    let read = pagelamp(&home, &["course", "calendar", "DEMO101", "--read"]);
+    let message = failed(&read);
+    let reminder = message
+        .find("went to a cloud AI service, or was on its way")
+        .unwrap_or_else(|| panic!("{message}"));
+    let error = message
+        .find("error: ")
+        .unwrap_or_else(|| panic!("{message}"));
+    assert!(reminder < error, "{message}");
+}

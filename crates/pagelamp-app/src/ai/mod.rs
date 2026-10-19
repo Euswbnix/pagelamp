@@ -447,6 +447,23 @@ impl App {
             backup_removed,
         })
     }
+
+    /// At a sync's start: usage lines older than the ledger's 13 months, and calendar
+    /// proposals dismissed more than 30 days ago with the runs that wrote them, for a student
+    /// who no longer uses the AI features. Problems are logged; they never stop the sync.
+    pub(crate) fn prune_ai_records_at_sync_start(&self) {
+        let now = chrono::Utc::now();
+        let result = self.write_store().and_then(|store| -> Result<()> {
+            store.prune_ai_usage(
+                now - chrono::TimeDelta::days(pagelamp_core::store::USAGE_KEEP_DAYS),
+            )?;
+            store.prune_dismissed_calendars(now)?;
+            Ok(())
+        });
+        if let Err(err) = result {
+            tracing::warn!(target: "pagelamp::ai", "pruning AI records failed: {:?}", err.kind);
+        }
+    }
 }
 
 fn tier(tier: pagelamp_llm::request::JsonTier) -> StructuredOutputTier {

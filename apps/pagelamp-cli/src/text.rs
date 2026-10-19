@@ -254,6 +254,16 @@ pub fn sharing_reminder_note() -> String {
     )
 }
 
+/// The same, after a reading that sent the material text but stopped or failed.
+pub fn sharing_reminder_after_failure_note() -> String {
+    format!(
+        "This course's material text went to a cloud AI service, or was on its way when the \
+         reading stopped. Check whether your instructor allows that, then record it: `{} course \
+         sharing <course> allowed | not-sure | not-allowed`.",
+        pagelamp_core::brand::CLI_NAME
+    )
+}
+
 /// The automatic sync setting in words (`status`, `sync --auto`).
 pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
     use pagelamp_core::auto_sync::AutoSync;

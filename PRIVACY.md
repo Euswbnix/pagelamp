@@ -23,8 +23,8 @@ who build PageLamp never receive your data.
 | **(next)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set (and that you confirmed them), that you are still taking it (and until when), and its calendar's dates without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you run `pagelamp course forget`, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
 | **(next)** The model providers you add (their kind, name and address, when you added them and the result of their last test), which model each of PageLamp's AI features would use and how hard it thinks, your monthly AI budget, for each provider which version of PageLamp's note on its use of your data you accepted, and when (a server on this computer has a second note, for models it may run in the cloud), the models without a known price you accepted, and for Ollama on this computer the models it last listed and whether each runs on this computer | the same database | to use the providers you set up the way you chose |
 | **(next)** API keys for model providers | your operating system's keychain, like your Canvas token — never in the database, logs or AI output | to reach the provider on your behalf |
-| **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept | so you can read it again and see where it came from |
-| **(next)** One line per AI run: when, provider, model, feature, tokens and estimated cost | the same database, deleted after 13 months | to show your usage (`pagelamp ai usage`) and keep runs within your budget |
+| **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept, and a calendar proposal you dismissed for 30 days | so you can read it again and see where it came from |
+| **(next)** One line per AI run: when, provider, model, feature, tokens and estimated cost | the same database, deleted once 13 months old (at the next AI run or sync) | to show your usage (`pagelamp ai usage`) and keep runs within your budget |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
 dates and links; **(v0.3)** an assignment or a quiz can also appear, by title and link, in the
@@ -90,7 +90,7 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
     cloud doesn't get them if you answered `not-allowed` with `pagelamp course sharing`. If you
     haven't answered, or answered `not-sure`, PageLamp reminds you once per course (again after
     `pagelamp ai remove --all`), after the first reading that sent that course's materials to a
-    model in the cloud.
+    model in the cloud, or was sending them when it stopped or failed.
 - **(v0.3) Update check:** once a day PageLamp downloads a small file from GitHub to see whether
   there's a new version. GitHub sees your IP address and your PageLamp version, as with any
   download; nothing about your courses is sent. The request carries only `User-Agent:
@@ -174,9 +174,11 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   chooses the model each feature uses, and `pagelamp ai budget` sets a monthly budget. `pagelamp ai
   remove <provider>` deletes a provider, its API key in the keychain, the model choices that use
   it, the notes and unpriced models you accepted for it, and its model list. `pagelamp ai remove
-  --all` deletes every provider, every API key, every AI setting, the usage history and everything
-  PageLamp's AI features wrote, and the pre-update backup of the database (which may hold them);
-  your courses and your answers about sharing stay.
+  --all` deletes every provider, every API key, every AI setting, the usage history, what
+  PageLamp's AI features wrote (calendar proposals included, waiting or dismissed, and earlier
+  calendars they read, kept for undo), and the pre-update backup of the database (which may hold
+  them). A course calendar you accepted from a syllabus reading stays, with its label saying which
+  model read it; so do your courses and your answers about sharing.
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling

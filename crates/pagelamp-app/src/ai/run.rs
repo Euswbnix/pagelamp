@@ -19,9 +19,10 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use chrono::Utc;
+use chrono::{TimeDelta, Utc};
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, UsageRecord};
 use pagelamp_core::ai_gate::RenderedPrompt;
+use pagelamp_core::store::USAGE_KEEP_DAYS;
 use pagelamp_llm::estimate::{cjk_tenths, count_tokens_upper, usage_cost};
 use pagelamp_llm::request::Notice;
 use pagelamp_llm::{CancellationToken, GenerateRequest, LlmError, OutputSpec, StreamEvent, Usage};
@@ -377,8 +378,10 @@ impl App {
             Billing::Unpriced => (None, "unpriced"),
             Billing::Plan => (None, "plan"),
         };
-        self.write_store()?.record_ai_usage(&UsageRecord {
-            at: Utc::now(),
+        let store = self.write_store()?;
+        let now = Utc::now();
+        store.record_ai_usage(&UsageRecord {
+            at: now,
             backend: backend.to_string(),
             model: model.to_string(),
             feature,
@@ -392,6 +395,8 @@ impl App {
             estimated: usage.estimated,
             outcome: outcome.to_string(),
         })?;
+        // The ledger's 13 months: older lines go with each new one (and at each sync).
+        store.prune_ai_usage(now - TimeDelta::days(USAGE_KEEP_DAYS))?;
         Ok(TokenUsage {
             input_tokens: usage.input_uncached + usage.cache_read + usage.cache_write,
             cached_input_tokens: usage.cache_read,

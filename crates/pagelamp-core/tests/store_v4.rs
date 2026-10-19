@@ -299,10 +299,74 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
             [label],
         )
         .unwrap();
+    // Calendars: what the AI read and the student didn't accept goes; the accepted one stays
+    // with its label, and calendars of other origins stay.
+    for (origin, state) in [
+        ("ai", "accepted"),
+        ("ai", "proposed"),
+        ("ai", "dismissed"),
+        ("ai", "superseded"),
+        ("scan", "proposed"),
+        ("user", "superseded"),
+    ] {
+        store
+            .conn()
+            .execute(
+                "INSERT INTO course_calendars
+                     (course_id, origin, state, calendar_json, evidence_json, checks_json,
+                      manifest_json, fingerprint, generation_id, backend, model, created_at)
+                 VALUES ('folder:demo/course/DEMO101', ?1, ?2, '{}', '[]', '{}', '[]', 'f',
+                         CASE ?1 WHEN 'ai' THEN 'g1' END, CASE ?1 WHEN 'ai' THEN 'OpenAI' END,
+                         CASE ?1 WHEN 'ai' THEN 'gpt-6-luna' END, '2026-10-01T00:00:00Z')",
+                [origin, state],
+            )
+            .unwrap();
+    }
     let removed = store.remove_all_ai_data().unwrap();
     assert_eq!(
         (removed.providers, removed.generations, removed.usage_rows),
         (1, 1, 1)
+    );
+    let mut statement = store
+        .conn()
+        .prepare(
+            "SELECT origin, state, generation_id, backend, model FROM course_calendars
+             ORDER BY id",
+        )
+        .unwrap();
+    type CalendarRow = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    let calendars: Vec<CalendarRow> = statement
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(
+        calendars,
+        [
+            (
+                "ai".to_string(),
+                "accepted".to_string(),
+                None,
+                Some("OpenAI".to_string()),
+                Some("gpt-6-luna".to_string())
+            ),
+            ("scan".into(), "proposed".into(), None, None, None),
+            ("user".into(), "superseded".into(), None, None, None),
+        ]
     );
     let (generation_id, kept): (Option<String>, Option<String>) = store
         .conn()
