@@ -1007,18 +1007,24 @@ impl Store {
         )?;
         Ok(())
     }
-    /// Delete courses of `source_id` whose id is not in `keep` (course dropped/ended).
-    /// Returns the number of deleted courses (their modules/materials/chunks cascade).
+    /// Delete courses of `source_id` whose id is not in `keep` (course dropped/ended), with
+    /// their entries in the dates records (`term::forget_dates_records`). Returns the number of
+    /// deleted courses (their modules/materials/chunks cascade).
     pub fn prune_courses(&self, source_id: &str, keep: &[String]) -> Result<usize> {
         // `keep` is bound as ONE JSON array and expanded by `json_each` — no SQL is built
         // from ids, and any number of ids fits in a single parameter.
         let keep_json = serde_json::to_string(keep)?;
+        let prefix = format!("{source_id}/");
         self.atomic(|| {
-            Ok(self.conn.execute(
+            let deleted = self.conn.execute(
                 "DELETE FROM courses
                  WHERE source_id = ?1 AND id NOT IN (SELECT value FROM json_each(?2))",
                 params![source_id, keep_json],
-            )?)
+            )?;
+            crate::term::forget_dates_records(self, |id| {
+                id.starts_with(&prefix) && !keep.iter().any(|k| k == id)
+            })?;
+            Ok(deleted)
         })
     }
 
