@@ -214,6 +214,19 @@ impl App {
 
     /// The models a backend offers: its live list with PageLamp's price and capability data.
     pub async fn list_models(&self, backend: &BackendRef) -> Result<Vec<ModelInfo>> {
+        self.list_models_with(backend, &CancellationToken::new())
+            .await
+    }
+
+    /// `list_models`, stopped by `cancel`. A server on this computer says which models it runs
+    /// here only if it is LM Studio or Ollama (Ollama marks its cloud models); any other server
+    /// here can't say, so its models count as in the cloud, without a known price. Ollama's
+    /// list is kept for estimates (`settings::LISTED_MODELS`).
+    pub(crate) async fn list_models_with(
+        &self,
+        backend: &BackendRef,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ModelInfo>> {
         if *backend == BackendRef::Codex {
             self.require_chatgpt_plan()?;
             return Ok(self.codex_models());
@@ -221,19 +234,18 @@ impl App {
         let provider = self.provider_for(backend)?;
         let profile = provider.profile.clone();
         let local = profile.on_device();
-        let models = provider
-            .backend()?
-            .list_models(&CancellationToken::new())
-            .await?;
-        Ok(models
+        let says_where = matches!(profile.id.as_str(), "ollama" | "lm_studio");
+        let models = provider.backend()?.list_models(cancel).await?;
+        let models: Vec<ModelInfo> = models
             .into_iter()
             .map(|model| {
                 let quirks = profile.model_quirks(&model.id);
+                let here = model.on_device && (!local || says_where);
                 ModelInfo {
-                    price_known: model.on_device
+                    price_known: here
                         || pagelamp_llm::catalog::lookup(&profile.id, &model.id).is_some(),
-                    runs_in_cloud: local && !model.on_device,
-                    on_device: model.on_device,
+                    runs_in_cloud: local && !here,
+                    on_device: here,
                     context_window: model.context_window,
                     reasoning_always_on: quirks.thinking_always_on,
                     label: model.display_name,
@@ -241,7 +253,17 @@ impl App {
                     id: model.id,
                 }
             })
-            .collect())
+            .collect();
+        if local && profile.id == "ollama" {
+            let store = self.write_store()?;
+            let mut listed = settings::listed_models(&store)?;
+            listed.insert(
+                settings::backend_key(backend),
+                models.iter().map(|m| (m.id.clone(), m.on_device)).collect(),
+            );
+            store.set_setting(settings::LISTED_MODELS, &listed)?;
+        }
+        Ok(models)
     }
 
     /// "Test": a tiny request with no course data. A model that answers badly or refuses the
@@ -474,11 +496,14 @@ pub(crate) fn doctor_checks(
         .map(|row| {
             let profile = providers::profile_from_row(row).ok();
             let on_device = profile.as_ref().is_some_and(ProviderProfile::on_device);
+            // A server here that may go without a key has none missing.
+            let key_optional = profile.as_ref().is_some_and(providers::key_optional);
             AiProviderCheck {
                 preset: row.preset.clone(),
                 on_device,
                 key_present: providers::uses_key(row)
-                    .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_)))),
+                    .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_))))
+                    .filter(|present| *present || !key_optional),
                 reachable: profile
                     .and_then(|profile| profile.base_url)
                     .filter(|_| on_device)
@@ -526,6 +551,72 @@ fn accepts_connections(url: &url::Url) -> bool {
 }
 
 impl App {
+    /// The disclosure to read before using a model of `backend`, and whether its current
+    /// version is acknowledged. `runs_here`: the model runs on this computer, as a run decides
+    /// it (`model_runs_here`). A model that a server on this computer may run in the cloud has a
+    /// disclosure of its own, acknowledged apart from the server's ("nothing leaves it").
+    pub fn model_disclosure(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+    ) -> Result<(DisclosureFacts, bool)> {
+        let (facts, key) = self.disclosure_and_key(backend, runs_here)?;
+        let acknowledged = settings::disclosures(&self.read_store()?)?
+            .get(&key)
+            .is_some_and(|ack| ack.version == facts.version);
+        Ok((facts, acknowledged))
+    }
+
+    /// The student read `model_disclosure(backend, runs_here)`; `version` must be the one shown.
+    pub fn acknowledge_model_disclosure(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+        version: u32,
+    ) -> Result<()> {
+        let (facts, key) = self.disclosure_and_key(backend, runs_here)?;
+        if *backend == BackendRef::Codex {
+            self.require_chatgpt_plan()?;
+        }
+        if version != facts.version {
+            return Err(AppError::new(
+                AppErrorKind::Invalid,
+                "What this service does with your data changed; please read it again.",
+            ));
+        }
+        let store = self.write_store()?;
+        let mut acks = settings::disclosures(&store)?;
+        acks.insert(
+            key,
+            settings::Acknowledgement {
+                version,
+                at: chrono::Utc::now(),
+            },
+        );
+        store.set_setting(settings::DISCLOSURES, &acks)?;
+        Ok(())
+    }
+
+    /// The disclosure for a model of `backend` and the key its acknowledgement is kept under.
+    pub(crate) fn disclosure_and_key(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+    ) -> Result<(DisclosureFacts, String)> {
+        if *backend == BackendRef::Codex {
+            return Ok((self.disclosure(backend)?, settings::backend_key(backend)));
+        }
+        let profile = self.provider_profile(backend)?;
+        Ok(if profile.on_device() && !runs_here {
+            (
+                cloud_via_local_disclosure(&profile),
+                settings::cloud_key(backend),
+            )
+        } else {
+            (disclosure_for(&profile), settings::backend_key(backend))
+        })
+    }
+
     /// The disclosure facts of any backend (Codex: with the plan type as far as known).
     pub(crate) fn disclosure(&self, backend: &BackendRef) -> Result<DisclosureFacts> {
         match backend {
@@ -578,6 +669,17 @@ pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
         on_device,
         location: policy.location.clone(),
     };
+    with_version(facts)
+}
+
+/// The disclosure for a model that a server on this computer may run in the cloud: PageLamp can't
+/// confirm where it runs, what is kept or whether it is trained on, and doesn't know its price.
+pub(crate) fn cloud_via_local_disclosure(provider: &ProviderProfile) -> DisclosureFacts {
+    let mut facts = disclosure_for(provider);
+    facts.training = TrainingFact::Unknown;
+    facts.retention = RetentionFact::ProviderTerms;
+    facts.cost = CostKind::CloudViaLocal;
+    facts.on_device = false;
     with_version(facts)
 }
 

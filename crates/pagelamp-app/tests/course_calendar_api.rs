@@ -9,7 +9,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{Local, NaiveDate, SubsecRound, TimeDelta, Utc};
-use pagelamp_app::ai::{BackendRef, CostBasis, EstimateRequest, GenEvent, ModelChoice};
+use pagelamp_app::ai::{
+    BackendRef, CostBasis, CostKind, EstimateRequest, GenEvent, ModelChoice, RetentionFact,
+};
 use pagelamp_app::{
     ActivityItem, ActivityKind, App, AppErrorKind, CalendarBatchEvent, ReadCalendarOptions,
 };
@@ -209,6 +211,13 @@ async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServ
         .respond_with(list)
         .mount(&server)
         .await;
+    with_ollama_at(app, &server.uri());
+    server
+}
+
+/// Ollama at `base_url` (on this computer), its `local-model` chosen for syllabus reading and
+/// its note accepted.
+fn with_ollama_at(app: &App, base_url: &str) {
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -216,7 +225,7 @@ async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServ
             preset: "ollama".into(),
             label: "Ollama".into(),
             wire: "ollama_native".into(),
-            base_url: server.uri(),
+            base_url: base_url.into(),
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         })
@@ -243,7 +252,6 @@ async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServ
         .disclosure
         .version;
     app.acknowledge_ai_disclosure(&backend, version).unwrap();
-    server
 }
 
 /// Ollama's streamed answer carrying `answer` as the JSON text.
@@ -1183,6 +1191,7 @@ async fn a_cloud_model_through_a_local_server_never_gets_a_not_allowed_course() 
 async fn a_model_the_local_server_cant_vouch_for_counts_as_the_cloud() {
     for list in [
         ResponseTemplate::new(404),
+        ResponseTemplate::new(200).set_body_string("not a model list"),
         tags(json!([{ "name": "another-model" }])),
     ] {
         let temp = tempfile::tempdir().unwrap();
@@ -1205,6 +1214,130 @@ async fn a_model_the_local_server_cant_vouch_for_counts_as_the_cloud() {
     }
 }
 
+/// The note for a model that a server here may run in the cloud, accepted.
+async fn acknowledge_cloud_note(app: &App, backend: &BackendRef) {
+    let (facts, acknowledged) = app.model_disclosure(backend, false).unwrap();
+    assert!(!acknowledged && !facts.on_device);
+    app.acknowledge_model_disclosure(backend, false, facts.version)
+        .unwrap();
+    assert!(app.model_disclosure(backend, false).unwrap().1);
+}
+
+/// Accepting the note for a server here covers the models it runs here only: a model it runs
+/// in the cloud waits for its own note, whose facts aren't "on this computer" or free.
+#[tokio::test]
+async fn the_local_note_doesnt_cover_a_model_the_server_runs_in_the_cloud() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let list = tags(json!([
+        { "name": "local-model" },
+        { "name": "big-model", "remote_host": "https://ollama.com:443" },
+    ]));
+    let server = with_local_model_listing(&app, list).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
+        .unwrap();
+    app.read_course_calendar(
+        "DEMO101",
+        "gen-local",
+        ReadCalendarOptions::default(),
+        |_| {},
+    )
+    .await
+    .unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    app.set_feature_model(
+        AiFeature::CourseCalendar,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "big-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let chats = |requests: &[wiremock::Request]| {
+        requests
+            .iter()
+            .filter(|r| r.url.path() == "/api/chat")
+            .count()
+    };
+    let before = chats(&server.received_requests().await.unwrap());
+    let err = app
+        .read_course_calendar(
+            "DEMO101",
+            "gen-cloud",
+            ReadCalendarOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
+    assert_eq!(chats(&server.received_requests().await.unwrap()), before);
+    let (facts, _) = app.model_disclosure(&backend, false).unwrap();
+    assert_eq!(facts.cost, CostKind::CloudViaLocal);
+    assert_eq!(facts.retention, RetentionFact::ProviderTerms);
+    let (local, acknowledged) = app.model_disclosure(&backend, true).unwrap();
+    assert!(acknowledged && local.on_device);
+    acknowledge_cloud_note(&app, &backend).await;
+    let err = app
+        .read_course_calendar(
+            "DEMO101",
+            "gen-cloud",
+            ReadCalendarOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
+}
+
+/// A server here that isn't running (or doesn't answer in time) gives that error: the run
+/// doesn't go on as if the model were in the cloud, and nothing is sent.
+#[tokio::test]
+async fn a_local_server_that_isnt_running_says_so() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    with_ollama_at(&app, &address);
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+        .unwrap();
+    let err = app
+        .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, None);
+    assert_eq!(err.model_error, Some(ModelErrorKind::Network));
+}
+
+/// Ollama lists a model pulled without a tag as `name:latest`: the same model.
+#[tokio::test]
+async fn a_model_listed_with_the_latest_tag_runs_here() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let server =
+        with_local_model_listing(&app, tags(json!([{ "name": "local-model:latest" }]))).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
+        .unwrap();
+    let proposal = app
+        .read_course_calendar("DEMO101", "gen-1", ReadCalendarOptions::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(proposal.ai_label.unwrap().on_device);
+}
+
 /// A run of a model that the server on this computer runs in the cloud says so: its start, its
 /// saved label and its usage row aren't "on this computer" or free (the price list doesn't know
 /// such a model, so its cost is unknown).
@@ -1221,15 +1354,16 @@ async fn a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_clou
         .await;
     app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
         .unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(&app, &backend).await;
     // Its price is unknown, so the run waits for the student's acknowledgement first.
     let err = app
         .read_course_calendar("DEMO101", "gen-ack", ReadCalendarOptions::default(), |_| {})
         .await
         .unwrap_err();
     assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
-    let backend = BackendRef::Provider {
-        provider_id: "ollama".into(),
-    };
     app.acknowledge_unpriced_model(&backend, "local-model")
         .unwrap();
     let (events, on_event) = collect();

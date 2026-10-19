@@ -28,6 +28,7 @@ pub enum AiCommand {
         /// The kind of provider, e.g. openai, anthropic, ollama (see `ai presets`).
         preset: String,
         /// The provider's address: required for `custom`; for a local server on another port.
+        /// A `custom` server on this computer may take no key: press Enter at the prompt.
         #[arg(long)]
         base_url: Option<String>,
     },
@@ -210,8 +211,13 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                 .iter()
                 .find(|p| p.id == preset)
                 .map(|p| p.needs_key);
+            let prompt = if preset == "custom" {
+                "API key (press Enter if a server on this computer takes none): "
+            } else {
+                "API key: "
+            };
             let key = match needs_key {
-                Some(true) => Some(read_secret("API key: ")?),
+                Some(true) => Some(read_secret(prompt)?),
                 // Unknown presets fail in the facade, before anything is read or sent.
                 _ => None,
             };
@@ -770,15 +776,17 @@ async fn use_model(
         };
         Some(info.price_known || (info.on_device && !info.runs_in_cloud))
     };
-    // Where the model runs, as a run decides it: a server here may run it in the cloud.
+    // Where the model runs, as a run decides it: a server here may run it in the cloud, and
+    // such a model has a disclosure of its own, asked for even after the server's was read.
     let here = app.model_runs_here(&choice, !no_check).await?;
-    let disclose = backend.disclosure_acknowledged != Some(backend.disclosure.version);
+    let (facts, acknowledged) = app.model_disclosure(&choice.backend, here)?;
+    let disclose = !acknowledged;
     // The ChatGPT plan has no price to accept (a weekly run cap instead). A model that a server
     // here runs in the cloud has no price PageLamp knows.
     let unpriced =
         !here && (on_device || price_known != Some(true)) && choice.backend != BackendRef::Codex;
     if disclose {
-        eprintln!("{}\n", text::disclosure(&backend.disclosure, here));
+        eprintln!("{}\n", text::disclosure(&facts, !no_check));
     }
     if unpriced {
         eprintln!("{}\n", text::unpriced_model(price_known.is_none()));
@@ -788,7 +796,7 @@ async fn use_model(
     }
     app.set_feature_model(feature, Some(choice.clone()))?;
     if disclose {
-        app.acknowledge_ai_disclosure(&choice.backend, backend.disclosure.version)?;
+        app.acknowledge_model_disclosure(&choice.backend, here, facts.version)?;
     }
     if unpriced {
         app.acknowledge_unpriced_model(&choice.backend, &choice.model)?;

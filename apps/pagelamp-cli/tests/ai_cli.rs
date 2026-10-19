@@ -428,6 +428,14 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
         unchecked.contains("PageLamp can't confirm that this model does"),
         "{unchecked}"
     );
+    // Unchecked, PageLamp doesn't know where it runs: the promise holds for the cloud case.
+    assert!(
+        unchecked.contains(
+            "If it runs this model in the cloud, courses you answered not-allowed for are never \
+             sent to it."
+        ),
+        "{unchecked}"
+    );
 
     let shown = failed(&pagelamp(
         &home,
@@ -436,5 +444,41 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
     assert!(
         shown.contains("runs on this computer: nothing leaves it"),
         "{shown}"
+    );
+
+    // Accepting the local model's note doesn't cover a model the server runs in the cloud.
+    ok(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--yes",
+        ],
+    ));
+    let next = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model"],
+    ));
+    assert!(
+        next.contains("PageLamp can't confirm that this model does"),
+        "{next}"
+    );
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model", "--yes"],
+    ));
+    // Each note is asked about once: both are accepted now.
+    let again = pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    );
+    ok(&again);
+    assert!(
+        !stderr(&again).contains("nothing leaves it"),
+        "{}",
+        stderr(&again)
     );
 }

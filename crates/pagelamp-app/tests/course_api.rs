@@ -683,6 +683,91 @@ fn copies_read_a_calendar_in_force_and_leave_a_course_s_own_calendar_alone() {
     );
 }
 
+/// A course that has a calendar of its own since a copy keeps it through an undo, as a copy
+/// leaves it alone: its term dates mirror that calendar.
+#[test]
+fn an_undo_leaves_alone_a_course_with_a_calendar_of_its_own_since() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_term(
+        &session_id("1"),
+        Some(date("2026-09-08")),
+        Some(date("2026-12-08")),
+    )
+    .unwrap();
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    app.set_course_dates(
+        &session_id("2"),
+        Some(dates_form("2026-09-15", "2026-12-11", Some("2026-12-20"))),
+    )
+    .unwrap();
+    app.restore_course_dates(report.replaced).unwrap();
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert!(two.term.own_calendar);
+    assert_eq!(
+        (two.term.student_start, two.term.student_end),
+        (Some(date("2026-09-15")), Some(date("2026-12-20")))
+    );
+    assert_eq!(two.term.teaching[0].first_class, date("2026-09-15"));
+}
+
+/// Two dates can't carry a calendar with two parts or with a break its weeks skip: a copy from
+/// one is refused, and nothing changes.
+#[test]
+fn a_calendar_with_two_parts_or_a_skipped_break_isn_t_copied() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    let reading_week = |numbered| pagelamp_app::BreakInput {
+        kind: BreakKind::ReadingWeek,
+        start: date("2026-10-26"),
+        end: date("2026-10-30"),
+        numbered,
+        label: None,
+    };
+    let two_parts = pagelamp_app::CourseDatesInput {
+        second_segment: Some(pagelamp_app::SegmentInput {
+            first_class: date("2027-01-05"),
+            last_class: Some(date("2027-04-06")),
+            restart_numbering: false,
+        }),
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    let skipped_break = pagelamp_app::CourseDatesInput {
+        breaks: vec![reading_week(false)],
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    for form in [two_parts, skipped_break] {
+        app.set_course_dates(&session_id("1"), Some(form)).unwrap();
+        let err = app
+            .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Invalid);
+        assert!(
+            err.message.contains("breaks or two parts"),
+            "{}",
+            err.message
+        );
+        let two = app.course_timeline(&session_id("2")).unwrap();
+        assert_eq!((two.term.student_start, two.term.student_end), (None, None));
+        assert!(copied(&app).is_empty());
+    }
+    // A break the weeks count is no different from the plain dates: it is copied.
+    app.set_course_dates(
+        &session_id("1"),
+        Some(pagelamp_app::CourseDatesInput {
+            breaks: vec![reading_week(true)],
+            ..dates_form("2026-09-08", "2026-12-08", None)
+        }),
+    )
+    .unwrap();
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+}
+
 /// Undoing a copy puts back the course's earlier "copied from" only while that course is still
 /// there: a course gone meanwhile isn't written back into the record.
 #[test]

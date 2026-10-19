@@ -273,8 +273,9 @@ enum CourseCommand {
         /// The removed course's id (see `course removed`).
         removed_id: String,
     },
-    /// Use one course's dates (`course term`) for other courses of its school session too.
-    /// Without courses to copy to, list the session's courses.
+    /// Use one course's first and last day of classes for other courses of its school session
+    /// too: the dates you set for it, or those of a calendar you accepted for it. Without
+    /// courses to copy to, list the session's courses.
     CopyDates {
         /// The course whose dates to copy: its code, name or id.
         from: String,

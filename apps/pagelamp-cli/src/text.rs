@@ -1,6 +1,7 @@
 //! User-facing notices printed by the CLI (edit the wording here; the product and command
 //! names come from `pagelamp_core::brand`).
 
+use pagelamp_app::ApplySkipReason;
 use pagelamp_app::ai::{AdminVisibility, CostKind, DisclosureFacts, RetentionFact, TrainingFact};
 use pagelamp_core::ai::{BlockReason, ModelErrorKind};
 use pagelamp_core::brand::{CLI_NAME, PRODUCT_NAME};
@@ -44,9 +45,8 @@ pub fn try_prompt() -> String {
 
 /// What a backend is sent and what happens to it, before its first use (design §3.8): the
 /// facts from the facade plus the fixed limitations-and-risks and ownership paragraphs.
-/// `model_here`: the chosen model runs on this computer too (a server here may run a model in
-/// the cloud, as Ollama does for its cloud models).
-pub fn disclosure(facts: &DisclosureFacts, model_here: bool) -> String {
+/// `checked`: where the model runs was asked of the server (`ai use` without --no-check).
+pub fn disclosure(facts: &DisclosureFacts, checked: bool) -> String {
     let name = &facts.recipient.name;
     let mut lines = vec![format!("What {PRODUCT_NAME} sends to {name}:")];
     lines.push(
@@ -54,15 +54,20 @@ pub fn disclosure(facts: &DisclosureFacts, model_here: bool) -> String {
          calendars, also the text of course materials."
             .to_string(),
     );
-    lines.push(if facts.on_device && model_here {
-        format!("  • {name} runs on this computer: nothing leaves it.")
-    } else if facts.on_device {
+    lines.push(if facts.cost == CostKind::CloudViaLocal {
         format!(
             "  • {name} runs on this computer, but {PRODUCT_NAME} can't confirm that this model \
              does: {name} may pass what {PRODUCT_NAME} sends it on to a cloud service (Ollama \
-             does this for its cloud models). Courses you answered not-allowed for are never \
-             sent to it."
+             does this for its cloud models). {}",
+            if checked {
+                "Courses you answered not-allowed for are never sent to it."
+            } else {
+                "If it runs this model in the cloud, courses you answered not-allowed for are \
+                 never sent to it."
+            }
         )
+    } else if facts.on_device {
+        format!("  • {name} runs on this computer: nothing leaves it.")
     } else {
         let terms = facts
             .recipient
@@ -124,9 +129,10 @@ pub fn disclosure(facts: &DisclosureFacts, model_here: bool) -> String {
         ),
         CostKind::PlanCredits => "  • Cost: counts against your plan's usage limits.".into(),
         CostKind::FreeOnDevice => "  • Cost: free; it runs on this computer.".into(),
-        CostKind::CloudViaLocal => {
-            "  • It is served by an app on this computer but runs in the cloud.".into()
-        }
+        CostKind::CloudViaLocal => format!(
+            "  • Cost: unknown to {PRODUCT_NAME}; if {name} runs it in the cloud, that service \
+             may charge for it."
+        ),
         CostKind::SelfHosted => "  • Costs, if any, are set by whoever runs this server.".into(),
     });
     if let Some(location) = &facts.location {
@@ -282,11 +288,54 @@ pub fn coverage_line(course: &pagelamp_core::source::CourseSyncSummary) -> Optio
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
+/// `course copy-dates`: a course the dates weren't copied to (by its code), and why.
+pub fn copy_skipped(reason: ApplySkipReason, course: &str) -> String {
+    let why = match reason {
+        ApplySkipReason::NotSameSession => "not a course of the same session".to_string(),
+        ApplySkipReason::FromCourse => "it is the course to copy from".to_string(),
+        ApplySkipReason::NoDates => "the course to copy from has no dates you set".to_string(),
+        ApplySkipReason::DatesNotConfirmed => format!(
+            "the dates of the course to copy from were set in {PRODUCT_NAME} 0.1 and never \
+             confirmed: save them with `{CLI_NAME} course term` first"
+        ),
+        ApplySkipReason::OwnCalendar => {
+            // A code with spaces is one argument.
+            let arg = if course.contains(char::is_whitespace) {
+                format!("\"{course}\"")
+            } else {
+                course.to_string()
+            };
+            format!(
+                "its dates come from a calendar you accepted (`{CLI_NAME} course calendar \
+                 {arg}`), which a copy doesn't change."
+            )
+        }
+        ApplySkipReason::UnknownCourse => "no such course".to_string(),
+    };
+    format!("  Skipped {course}: {why}")
+}
+
 #[cfg(test)]
 mod tests {
+    use pagelamp_app::ApplySkipReason;
     use pagelamp_core::source::CourseSyncSummary;
 
-    use super::coverage_line;
+    use super::{copy_skipped, coverage_line};
+
+    #[test]
+    fn a_course_with_a_calendar_is_skipped_with_the_command_that_shows_it() {
+        assert_eq!(
+            copy_skipped(ApplySkipReason::OwnCalendar, "DEM240H7 F LEC0101 20289"),
+            "  Skipped DEM240H7 F LEC0101 20289: its dates come from a calendar you accepted \
+             (`pagelamp course calendar \"DEM240H7 F LEC0101 20289\"`), which a copy doesn't \
+             change."
+        );
+        assert_eq!(
+            copy_skipped(ApplySkipReason::OwnCalendar, "DEMO101"),
+            "  Skipped DEMO101: its dates come from a calendar you accepted (`pagelamp course \
+             calendar DEMO101`), which a copy doesn't change."
+        );
+    }
 
     #[test]
     fn the_coverage_line_says_only_what_there_is_to_say() {

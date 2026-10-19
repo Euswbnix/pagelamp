@@ -29,9 +29,16 @@ impl Provider {
         Ok(Backend::Http(HttpDriver::new(self.profile, self.key)?))
     }
 
+    /// Whether this provider can't be used without a key.
     pub fn needs_key(&self) -> bool {
-        self.profile.auth != Auth::None
+        self.profile.auth != Auth::None && !key_optional(&self.profile)
     }
+}
+
+/// A custom server on this computer may take no key (many local servers don't), so it isn't
+/// set up as a keyless preset that PageLamp trusts to run its models here.
+pub(crate) fn key_optional(profile: &ProviderProfile) -> bool {
+    profile.id == "custom" && profile.on_device()
 }
 
 impl App {
@@ -67,11 +74,11 @@ impl App {
         let key = if profile.auth == Auth::None {
             None
         } else {
-            let key = api_key
-                .map(str::trim)
-                .filter(|k| !k.is_empty())
-                .ok_or_else(|| AppError::new(AppErrorKind::Invalid, "Enter the API key."))?;
-            Some(ApiKey::new(key))
+            let key = api_key.map(str::trim).filter(|k| !k.is_empty());
+            if key.is_none() && !key_optional(&profile) {
+                return Err(AppError::new(AppErrorKind::Invalid, "Enter the API key."));
+            }
+            key.map(ApiKey::new)
         };
         refuse_coding_plans(&profile, key.as_ref())?;
         let provider_id = provider_id(preset_id, &url);
@@ -97,7 +104,10 @@ impl App {
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         };
-        if let (Some(raw), true) = (&raw_key, profile.auth != Auth::None) {
+        if let (Some(raw), true) = (
+            raw_key.as_ref().filter(|raw| !raw.is_empty()),
+            profile.auth != Auth::None,
+        ) {
             self.secrets.set(&key_account(&provider_id), raw)?;
         }
         if let Err(err) = self.write_store()?.insert_model_provider(&row) {
@@ -114,7 +124,7 @@ impl App {
         api_key: &str,
     ) -> Result<ModelProviderRecord> {
         let provider = self.provider(provider_id)?;
-        if !provider.needs_key() {
+        if provider.profile.auth == Auth::None {
             return Err(AppError::new(
                 AppErrorKind::Invalid,
                 format!("{} doesn't use a key.", provider.profile.display_name),

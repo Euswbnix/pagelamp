@@ -1226,6 +1226,36 @@ fn courses_whose_dates_disagree_name_each_other() {
     assert!(!three.contains("same session, puts week 1"), "{three}");
 }
 
+/// A calendar in force lends whether or not the course's dates were ever confirmed with the
+/// form (an accepted proposal is not on that list): the lender reads its term from the
+/// calendar, never from the unconfirmed `user_term_*` it mirrors into.
+#[test]
+fn a_calendar_in_force_lends_without_confirmed_dates() {
+    use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};
+
+    let store = session_store();
+    let calendar = calendar_from_dates(&DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: Some(date("2026-12-22")),
+        breaks: vec![],
+        second_segment: None,
+    })
+    .unwrap();
+    store
+        .set_student_calendar(
+            &session_id("1"),
+            Some(&calendar),
+            ts("2026-09-20T12:00:00Z"),
+        )
+        .unwrap();
+    let borrower = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    let term = &borrower.timeline.term;
+    assert_eq!(term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(term.exams_end, Some(date("2026-12-22")));
+}
+
 /// A course whose dates come from a calendar in force (the dates form or an accepted proposal)
 /// lends that calendar's last day of classes and end of exams, not the span `user_term_*`
 /// mirror (which ends with the exams): the course without dates of its own is in its exam

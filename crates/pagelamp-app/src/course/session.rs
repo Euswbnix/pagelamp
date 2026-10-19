@@ -15,7 +15,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::set_dates_confirmed;
-use crate::{App, Result};
+use crate::{App, AppError, AppErrorKind, Result};
 
 /// The other courses of a course's session.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -140,7 +140,8 @@ impl App {
     /// skipped: its calendar counts its weeks whatever its term dates say. A course named twice
     /// gets them once. Each copy remembers where it came from until the course's own dates are
     /// saved again. One transaction; the report says what was skipped and what was replaced
-    /// (undo: `restore_course_dates`).
+    /// (undo: `restore_course_dates`). A calendar in force with two parts or with a break its
+    /// weeks skip is refused: two dates can't carry it.
     pub fn apply_course_dates_to(&self, from: &str, to: Vec<String>) -> Result<ApplyDatesReport> {
         let store = self.write_store()?;
         let from = store.resolve_course_with(from, true)?;
@@ -152,6 +153,16 @@ impl App {
             .map(|o| o.course.id.clone())
             .collect();
         let source_calendar = views::calendar_of(&store, &from.id)?;
+        if source_calendar.as_ref().is_some_and(|in_force| {
+            in_force.calendar.segments.len() > 1
+                || in_force.calendar.breaks.iter().any(|b| !b.numbered)
+        }) {
+            return Err(AppError::new(
+                AppErrorKind::Invalid,
+                "This course's calendar has breaks or two parts; set the other courses' dates \
+                 on their own.",
+            ));
+        }
         let (start, end) = match &source_calendar {
             // `user_term_end` mirrors the calendar's end of exams when it has one.
             Some(in_force) => (
@@ -227,7 +238,8 @@ impl App {
 
     /// Undo `apply_course_dates_to`: each course gets back the dates it had, confirmed or not as
     /// before, and where they had been copied from, if anywhere. A course removed since (gone,
-    /// or waiting to be purged) is left alone. One transaction.
+    /// or waiting to be purged) is left alone, and so is one with a calendar of its own since
+    /// (as applying leaves it alone): its term dates mirror that calendar. One transaction.
     pub fn restore_course_dates(&self, replaced: Vec<ReplacedDates>) -> Result<()> {
         let store = self.write_store()?;
         Ok(store.in_transaction(|store| {
@@ -235,6 +247,7 @@ impl App {
             for dates in &replaced {
                 if store.get_course(&dates.course_id)?.is_none()
                     || store.tombstone(&dates.course_id)?.is_some()
+                    || views::calendar_of(store, &dates.course_id)?.is_some()
                 {
                     continue;
                 }

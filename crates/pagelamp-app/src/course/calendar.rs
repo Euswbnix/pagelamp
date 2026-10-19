@@ -459,7 +459,7 @@ impl App {
         };
         // Where the model runs, decided by this run now (a model server here is asked for its
         // list), never an estimate's answer; question (b) is checked against it below.
-        let destination = self.run_destination(&choice).await?;
+        let destination = self.run_destination(&choice, &cancel).await?;
         let (course, choice, destination, context, prompt, inputs, by_handle) = {
             let store = self.read_store()?;
             // Before calendar_context reads question (b) (`stop_course_runs`, cloud only).
