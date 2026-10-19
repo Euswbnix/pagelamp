@@ -259,7 +259,7 @@
     "lessThan": "≈ 不到 {{amount}}",
     "free": "免费，在这台电脑上运行",
     "noPrice": "这个模型没有价格",
-    "cloudNoPrice": "在云端运行，无法预估费用",
+    "cloudNoPrice": "可能在云端运行，无法预估费用",
     "details": "最多输入 {{input}} 个 token，输出 {{output}} 个",
     "useUnpriced": "仍然使用",
     "useUnpricedHint": "对这个模型不执行预算，但它的运行仍会按 token 计数。",

@@ -288,9 +288,30 @@ export function createMockAi(ctx: MockAiContext): AiApi {
   function modelInfo(provider: ModelProviderRecord, model: string): ModelInfo | null {
     return modelsOf(provider).find((m) => m.id === model) ?? null;
   }
-  /** The provider's own note (the server's, for one on this computer). */
+  /**
+   * The provider's own note (the server's, for one on this computer), by address like the
+   * facade's disclosure_for: a server here keeps what it's sent on this computer, for free; a
+   * local app's server on another computer is up to whoever runs it.
+   */
   function disclosureOf(provider: ModelProviderRecord): DisclosureFacts {
-    return presetOf(provider.preset).data_policy;
+    const preset = presetOf(provider.preset);
+    const base = preset.data_policy;
+    if (provider.on_device) {
+      return base.on_device
+        ? base
+        : { ...base, version: base.version + 7, cost: "free_on_device", on_device: true };
+    }
+    if (preset.local) {
+      return {
+        ...base,
+        version: base.version + 9,
+        training: { kind: "unknown" },
+        retention: { kind: "provider_terms" },
+        cost: "self_hosted",
+        on_device: false,
+      };
+    }
+    return base;
   }
   /**
    * Whether `model` runs on this computer, as a run decides it (the facade's run_destination):
@@ -313,7 +334,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     const provider = providerOf(backend);
     const base = disclosureOf(provider);
     return provider.on_device && !here
-      ? { facts: cloudViaLocalFacts(base, provider.preset), key: `${backendKey(backend)}:cloud` }
+      ? { facts: cloudViaLocalFacts(base), key: `${backendKey(backend)}:cloud` }
       : { facts: base, key: backendKey(backend) };
   }
   /** Like the facade: a custom server on this computer may be added without a key. */
@@ -337,9 +358,7 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     const preset = presetOf(provider.preset);
     const hereNote = !provider.on_device || ["ollama", "lm_studio"].includes(provider.preset);
     const cloud =
-      provider.on_device && provider.preset !== "lm_studio"
-        ? cloudViaLocalFacts(disclosure, provider.preset)
-        : null;
+      provider.on_device && provider.preset !== "lm_studio" ? cloudViaLocalFacts(disclosure) : null;
     const cloudAcked = cloud ? (acknowledged.get(`${backendKey(backend)}:cloud`) ?? null) : null;
     const hereOk = hereNote && acked === disclosure.version;
     const cloudOk = !!cloud && cloudAcked === cloud.version;
@@ -500,6 +519,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     updateModelProviderKey: async (providerId, apiKey) => {
       await ctx.delay(600);
       const provider = findProvider(providerId);
+      // A key may be left out only when adding a custom server here; a new one is a key.
+      if (!apiKey.trim()) throw new ApiError("invalid", "Enter the API key.");
       validateKey(presetOf(provider.preset), provider.base_url, apiKey);
       provider.key_last4 = last4(apiKey);
       return structuredClone(provider);
@@ -536,7 +557,14 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       if (scenario === "ai-errors") {
         throw new ApiError("model", "Couldn't reach llm.demo.test.", { model_error: "network" });
       }
-      return structuredClone(modelsOf(provider));
+      // Like the facade: only Ollama and LM Studio say a model runs here; any other server here
+      // may run its models anywhere.
+      const says = provider.preset === "ollama" || provider.preset === "lm_studio";
+      return structuredClone(modelsOf(provider)).map((m) =>
+        provider.on_device && !says
+          ? { ...m, on_device: false, runs_in_cloud: true, price_known: false }
+          : m,
+      );
     },
 
     testModel: async (backend, model): Promise<ProbeReport> => {
@@ -592,10 +620,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       await ctx.delay();
       if (choice.backend.kind === "codex") return false;
       const provider = providerOf(choice.backend);
-      // Asked, Ollama answers from its list; one that can't be reached fails, like the facade.
-      if (ask && provider.preset === "ollama" && provider.base_url.includes("offline")) {
-        throw new ApiError("model", "Couldn't reach Ollama.", { model_error: "network" });
-      }
+      // Like the facade: not asked, an Ollama model is unknown (only LM Studio says it runs here).
+      if (!ask && provider.preset === "ollama") return false;
       return runsHere(provider, choice.model);
     },
 
@@ -689,10 +715,11 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       let block: BlockReason | null = null;
       // The note of where it runs: a model a server here may run in the cloud has its own.
       const note = status.kind === "codex" ? null : noteOf(choice.backend, onDevice);
-      // This model's note only (the status asks for every routed model's).
+      // This model's note only (the status asks for every routed model's), by its version alone,
+      // like the facade: a sign-in or a key missing is the run's to say, not the note's.
       const read = note
-        ? status.state !== "needs_setup" && acknowledged.get(note.key) === note.facts.version
-        : status.state === "ready";
+        ? acknowledged.get(note.key) === note.facts.version
+        : acknowledged.get("codex") === statusOf(choice.backend).disclosure.version;
       if (!read) block = "disclosure_not_acknowledged";
       // Mode A has no money budget; PageLamp's runs per week are capped instead.
       if (!block && status.kind === "codex" && codex.capReached()) {

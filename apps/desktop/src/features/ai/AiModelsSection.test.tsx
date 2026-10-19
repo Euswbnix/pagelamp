@@ -176,6 +176,9 @@ describe("Settings → AI models", () => {
     await user.type(address, "http://localhost:8080/v1");
     const key = within(dialog).getByLabelText("API key (optional)");
     expect(key).toHaveAccessibleDescription(/may not need a key/);
+    // The key flagged as missing before isn't a mistake any more.
+    expect(key).not.toHaveAttribute("aria-invalid");
+    expect(within(dialog).queryByText("Please check what you entered.")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
     expect(add).toHaveBeenCalledWith("custom", "http://localhost:8080/v1", null);
     // Its models may run anywhere: the note to read is the one of its cloud models.
@@ -185,9 +188,16 @@ describe("Settings → AI models", () => {
     expect(
       within(sheet).getByText(/^localhost:8080 runs on this computer, but PageLamp can't confirm/),
     ).toBeInTheDocument();
-    expect(
+    await user.click(
       within(sheet).getByRole("button", { name: "Allow cloud models through localhost:8080" }),
-    ).toBeInTheDocument();
+    );
+    // Set up without a key, and nothing says one is missing.
+    const row = (await within(section).findByRole("heading", { name: "localhost:8080" })).closest(
+      "li",
+    );
+    if (!row) throw new Error("no row");
+    expect(within(row).queryByText(/key is missing/)).toBeNull();
+    expect(within(row).getByText("Ready")).toBeInTheDocument();
   });
 
   it("shows a server's note of its cloud models apart from its own, and turns them on", async () => {

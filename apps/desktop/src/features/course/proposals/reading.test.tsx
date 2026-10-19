@@ -144,6 +144,31 @@ describe("Read the syllabus with AI", () => {
     expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
   });
 
+  it("reads with a model a server here runs in the cloud: its note, its price, then the reminder", async () => {
+    const api = mockApi();
+    const ollama = { kind: "provider", provider_id: "ollama" } as const;
+    await api.addModelProvider("ollama", "http://127.0.0.1:11434", null);
+    const own = (await api.aiStatus()).backends.find((b) => b.label === "Ollama");
+    if (!own) throw new Error("no Ollama");
+    await api.acknowledgeAiDisclosure(ollama, own.disclosure.version);
+    await api.setFeatureModel("course_calendar", {
+      backend: ollama,
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(await within(section).findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    await user.click(within(sheet).getByRole("button", { name: "Use gpt-oss:120b-cloud" }));
+    await user.click(await within(section).findByRole("button", { name: "Use it anyway" }));
+    const read = await within(section).findByRole("button", { name: "Read the syllabus with AI" });
+    await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
+    await user.click(read);
+    expect(await within(section).findByText(/^Dates read\./)).toBeInTheDocument();
+    // It went to the cloud: the course's one-time question (b).
+    expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
+  });
+
   it("says why it can't run for a No AI course, and respects question (b)", async () => {
     const api = mockApi();
     await api.setCoursePolicy(FITTED, "prohibited", null);

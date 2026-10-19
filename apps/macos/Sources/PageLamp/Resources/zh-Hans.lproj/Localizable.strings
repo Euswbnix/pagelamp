@@ -189,7 +189,7 @@
 "ai.disclosure.training.turnOff" = "如何关闭训练";
 "ai.disclosure.training.unknown" = "PageLamp 不清楚这个服务是否会用发送的内容做训练。继续之前请先查看它的条款。";
 "ai.estimate.checkingWhere" = "正在确认这个模型在哪里运行…";
-"ai.estimate.cloudNoPrice" = "在云端运行，无法预估费用";
+"ai.estimate.cloudNoPrice" = "可能在云端运行，无法预估费用";
 "ai.estimate.details" = "最多输入 %1$@ 个 token，输出 %2$@ 个";
 "ai.estimate.free" = "免费，在这台电脑上运行";
 "ai.estimate.generate" = "生成";
@@ -1319,7 +1319,6 @@
 "proposals.sources.blocked.course_ai_turned_off" = "这门课的资料已关闭 AI 访问，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。";
 "proposals.sources.blocked.course_hidden" = "这门课已隐藏，所以 AI 不会读取它的教学大纲。";
 "proposals.sources.blocked.course_policy_prohibited" = "这门课标记为“禁止 AI”，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。";
-"proposals.sources.blocked.disclosure_not_acknowledged" = "请先在“设置 → AI 模型”中确认 AI 读取会发送什么、发给谁。";
 "proposals.sources.blocked.material_sharing_not_allowed" = "你说过这门课不允许把资料分享给云端 AI。本机上的模型、扫描和日期表单仍然可用。";
 "proposals.sources.blocked.no_model_chosen" = "请在“设置 → AI 模型”中设置用于读取教学大纲的 AI。";
 "proposals.sources.blocked.no_readable_materials" = "还没有可读取的课程大纲或课程安排。请下载大纲文件，或在下面勾选一份资料。";

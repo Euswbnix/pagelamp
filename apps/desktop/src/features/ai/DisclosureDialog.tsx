@@ -58,6 +58,7 @@ export function ModelDisclosureDialog({
   name,
   kind,
   model,
+  changed = false,
   open,
   onOpenChange,
   returnFocus,
@@ -70,6 +71,8 @@ export function ModelDisclosureDialog({
   kind: AiBackendStatus["kind"];
   /** The model a run is about to use; none from Settings (its cloud models in general). */
   model?: string;
+  /** The backend's own note changed since it was read. */
+  changed?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocus?: () => HTMLElement | null;
@@ -95,7 +98,7 @@ export function ModelDisclosureDialog({
         name={name}
         kind={kind}
         acknowledged={acknowledged}
-        changed={false}
+        changed={changed}
         acceptLabel={acceptLabel}
         acceptedText={acceptedText}
         acknowledge={(version) =>

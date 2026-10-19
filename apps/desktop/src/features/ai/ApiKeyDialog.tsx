@@ -261,7 +261,9 @@ function useKeyForm() {
 function KeyField({ form, optional = false }: { form: KeyForm; optional?: boolean }) {
   const { t } = useTranslation("ai");
   const { t: tc } = useTranslation();
-  const invalid = form.missing || form.error ? true : undefined;
+  // Optional, a key left out is no mistake (also one flagged before the address made it so).
+  const missing = form.missing && !optional;
+  const invalid = missing || form.error ? true : undefined;
   return (
     <Field data-invalid={invalid}>
       <FieldLabel htmlFor={form.ids.input}>
@@ -274,14 +276,14 @@ function KeyField({ form, optional = false }: { form: KeyForm; optional?: boolea
         aria-invalid={invalid}
         aria-describedby={describedBy(
           form.ids.hint,
-          form.missing && form.ids.missing,
+          missing && form.ids.missing,
           form.error && form.ids.error,
         )}
       />
       <FieldDescription id={form.ids.hint}>
         {optional ? t("addKey.keyOptionalHint") : t("addKey.keyHint")}
       </FieldDescription>
-      {form.missing ? <FieldError id={form.ids.missing}>{tc("errors.invalid")}</FieldError> : null}
+      {missing ? <FieldError id={form.ids.missing}>{tc("errors.invalid")}</FieldError> : null}
     </Field>
   );
 }

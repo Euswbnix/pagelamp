@@ -1364,7 +1364,6 @@ nonisolated enum L10nKeys {
         "proposals.sources.blocked.course_ai_turned_off",
         "proposals.sources.blocked.course_hidden",
         "proposals.sources.blocked.course_policy_prohibited",
-        "proposals.sources.blocked.disclosure_not_acknowledged",
         "proposals.sources.blocked.material_sharing_not_allowed",
         "proposals.sources.blocked.no_model_chosen",
         "proposals.sources.blocked.no_readable_materials",

@@ -151,6 +151,8 @@ describe("a model that a server on this computer may run in the cloud", () => {
       await screen.findByText("Read what this service receives, then turn it on."),
     ).toBeInTheDocument();
     expect(generate()).toHaveAttribute("aria-disabled", "true");
+    await user.click(generate());
+    expect(onGenerate).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Read it now" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
@@ -168,9 +170,12 @@ describe("a model that a server on this computer may run in the cloud", () => {
     await user.click(within(sheet).getByRole("button", { name: "Use gpt-oss:120b-cloud" }));
     expect(read).toHaveBeenCalledWith(OLLAMA, false, expect.any(Number));
 
-    // Then its unknown price, still before anything runs.
+    // Then its unknown price, still before anything runs; focus is on it.
     const unpriced = await screen.findByRole("button", { name: "Use it anyway" });
+    await vi.waitFor(() => expect(unpriced).toHaveFocus());
     expect(generate()).toHaveAttribute("aria-disabled", "true");
+    await user.click(generate());
+    expect(onGenerate).not.toHaveBeenCalled();
     await user.click(unpriced);
     await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
     expect(onGenerate).not.toHaveBeenCalled();
@@ -203,13 +208,77 @@ describe("a model that a server on this computer may run in the cloud", () => {
     const read = vi.spyOn(api, "acknowledgeModelDisclosure");
     await user.click(await screen.findByRole("button", { name: "Read it now" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Anthropic" });
-    for (const box of within(sheet).queryAllByRole("checkbox")) await user.click(box);
-    await user.click(within(sheet).getByRole("button", { name: "Turn on Anthropic" }));
+    // Read again because it changed, and with its age confirmation first, as in Settings.
+    expect(within(sheet).getByText("This changed since you last read it.")).toBeInTheDocument();
+    const accept = within(sheet).getByRole("button", { name: "Turn on Anthropic" });
+    expect(accept).toHaveAttribute("aria-disabled", "true");
+    const boxes = within(sheet).getAllByRole("checkbox");
+    expect(boxes).toHaveLength(1);
+    for (const box of boxes) await user.click(box);
+    await user.click(accept);
     expect(read).toHaveBeenCalledWith(
       { kind: "provider", provider_id: "anthropic" },
       false,
       expect.any(Number),
     );
     await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+  });
+
+  it("shows the server's own note for a model it runs here, and goes on to Generate", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await api.addModelProvider("ollama", "http://127.0.0.1:11434", null);
+    const local = { backend: OLLAMA, model: "qwen3.5:9b", effort: "lowest" } as const;
+    await api.setFeatureModel("weekly_explanation", local);
+    const note = vi.spyOn(api, "modelDisclosure");
+    const read = vi.spyOn(api, "acknowledgeModelDisclosure");
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO205)} onGenerate={() => {}} />,
+      { api },
+    );
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(note).toHaveBeenCalledWith(OLLAMA, true);
+    expect(
+      within(sheet).getByText("It goes to Ollama on this computer and doesn't leave it."),
+    ).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Turn on Ollama" }));
+    expect(read).toHaveBeenCalledWith(OLLAMA, true, expect.any(Number));
+    // Free here, so no price to acknowledge: Generate is next, with focus.
+    await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+    await vi.waitFor(() => expect(generate()).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "Use it anyway" })).toBeNull();
+  });
+
+  it("asks for the estimate again when the note turns out read already", async () => {
+    const api = await cloudViaLocal();
+    const disclosure = api.modelDisclosure;
+    vi.spyOn(api, "modelDisclosure").mockImplementation(async (backend, here) => {
+      const [facts] = await disclosure(backend, here);
+      return [facts, true];
+    });
+    const estimate = vi.spyOn(api, "estimateGeneration");
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />,
+      { api },
+    );
+    const button = await screen.findByRole("button", { name: "Read it now" });
+    const before = estimate.mock.calls.length;
+    await user.click(button);
+    await vi.waitFor(() => expect(estimate.mock.calls.length).toBeGreaterThan(before));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("sends a ChatGPT plan that isn't set up to Settings, not to its note", async () => {
+    renderWithProviders(
+      <GenerateButton request={{ feature: "weekly_note" }} onGenerate={() => {}} />,
+      {
+        scenario: "codex-free",
+      },
+    );
+    expect(
+      await screen.findByText(/^Read what this service receives, then turn it on\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AI models" })).toHaveAttribute("href", "/settings");
+    expect(screen.queryByRole("button", { name: "Read it now" })).toBeNull();
   });
 });

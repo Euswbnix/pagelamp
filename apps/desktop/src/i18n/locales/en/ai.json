@@ -259,7 +259,7 @@
     "lessThan": "≈ less than {{amount}}",
     "free": "Free, on this computer",
     "noPrice": "No price for this model",
-    "cloudNoPrice": "Runs in the cloud; no cost estimate",
+    "cloudNoPrice": "May run in the cloud; no cost estimate",
     "details": "Up to {{input}} tokens in and {{output}} out",
     "useUnpriced": "Use it anyway",
     "useUnpricedHint": "Your budget isn't enforced for this model. Its runs are still counted in tokens.",

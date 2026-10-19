@@ -154,14 +154,10 @@ export const MOCK_PRESETS: ProviderPreset[] = [
  * lists as remote, any model of a custom server here), like the facade's
  * `cloud_via_local_disclosure`: acknowledged apart from the server's own note.
  */
-export function cloudViaLocalFacts(base: DisclosureFacts, presetId: string): DisclosureFacts {
+export function cloudViaLocalFacts(base: DisclosureFacts): DisclosureFacts {
   return {
     ...base,
     version: base.version + 50,
-    recipient:
-      presetId === "ollama"
-        ? { name: "Ollama", terms_url: "https://ollama.demo.test/cloud-terms" }
-        : base.recipient,
     training: { kind: "unknown" },
     retention: { kind: "provider_terms" },
     cost: "cloud_via_local",

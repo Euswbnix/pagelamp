@@ -460,14 +460,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     step: () => sleep(syncStep),
     // The AI mock's estimate is the gate, as in the facade (created below; called later).
     aiGate: async (courseId, overrideBudget) => {
-      const estimate = await ai.estimateGeneration({
-        feature: "course_calendar",
-        courses: [courseId],
-      });
-      const block = estimate.would_block ?? null;
-      if (block && !(block === "budget_reached" && overrideBudget)) {
-        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
-      }
       const status = await ai.aiStatus();
       const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
       const backend = choice
@@ -476,12 +468,18 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (!choice || !backend) {
         throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
       }
-      return {
-        backend_label: backend.label,
-        model: choice.model,
-        // Where the run goes, as it decides it (a server here may run the model elsewhere).
-        on_device: await ai.modelRunsHere(choice, true),
-      };
+      // Where the run goes, decided first (a server that can't be asked fails the run here),
+      // as the facade's reading does; then its blocks.
+      const onDevice = await ai.modelRunsHere(choice, true);
+      const estimate = await ai.estimateGeneration({
+        feature: "course_calendar",
+        courses: [courseId],
+      });
+      const block = estimate.would_block ?? null;
+      if (block && !(block === "budget_reached" && overrideBudget)) {
+        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+      }
+      return { backend_label: backend.label, model: choice.model, on_device: onDevice };
     },
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));

@@ -1,15 +1,19 @@
-import { useId, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import {
+  type AiBackendStatus,
   type AiStatus,
   type BlockReason,
   backendKey,
   type CostEstimate,
   type EstimateRequest,
+  type ModelChoice,
   type ModelDisclosure,
 } from "@/api/ai";
 import {
+  aiKeys,
   useAcknowledgeUnpricedModel,
   useAiStatus,
   useCodexStatus,
@@ -67,6 +71,11 @@ export function GenerateButton({
   const errorText = useAiErrorText();
   const [overrideBudget, setOverrideBudget] = useState(false);
   const ids = { line: useId(), override: useId(), reason: useId() };
+  // The note being read: held here, so its sheet outlives the step it was opened from (the
+  // estimate moves on once it is read), and focus lands on what comes next.
+  const [note, setNote] = useState<OpenNote | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const generateRef = useRef<HTMLButtonElement>(null);
 
   const data = estimate.data ?? null;
   const block = data?.would_block ?? null;
@@ -74,9 +83,10 @@ export function GenerateButton({
   const disabled = request === null || !data || blocked || estimate.isFetching;
 
   return (
-    <div className="space-y-2">
+    <div ref={root} className="space-y-2">
       <div className="flex flex-wrap items-center gap-3">
         <Button
+          ref={generateRef}
           type="button"
           aria-disabled={disabled || undefined}
           aria-describedby={block ? `${ids.line} ${ids.reason}` : ids.line}
@@ -129,6 +139,7 @@ export function GenerateButton({
           status={status.data ?? null}
           feature={request.feature}
           hintId={ids.reason}
+          onOpen={setNote}
         />
       ) : null}
       {block === "price_unknown_not_acknowledged" && request ? (
@@ -151,8 +162,37 @@ export function GenerateButton({
           ) : null}
         </p>
       ) : null}
+      {note ? (
+        <ModelDisclosureDialog
+          backend={note.choice.backend}
+          runsHere={note.runsHere}
+          disclosure={note.disclosure}
+          name={note.name}
+          kind={note.kind}
+          model={note.choice.model}
+          changed={note.changed}
+          open
+          onOpenChange={(open) => {
+            if (!open) setNote(null);
+          }}
+          returnFocus={() =>
+            root.current?.querySelector<HTMLElement>("[data-next-step]") ?? generateRef.current
+          }
+        />
+      ) : null}
     </div>
   );
+}
+
+/** A model's note, opened from its block. */
+interface OpenNote {
+  choice: ModelChoice;
+  runsHere: boolean;
+  disclosure: ModelDisclosure;
+  name: string;
+  kind: AiBackendStatus["kind"];
+  /** The backend's own note changed since it was read (the cloud note can't tell). */
+  changed: boolean;
 }
 
 function CostLine({
@@ -202,38 +242,65 @@ function CodexCostLine() {
 /**
  * The note to read before this model runs, settled here: where the model runs is decided as the
  * run decides it (a server on this computer is asked about the model), and that place's note is
- * shown, so a model that the server may run in the cloud gets its own note, apart from the
- * server's. Once read, the estimate is asked again: the next block, if any, follows.
+ * opened, so a model that the server may run in the cloud gets its own note, apart from the
+ * server's. Once read, the estimate is asked again: the next block, if any, follows. Asking the
+ * server can find the note already read (its list changed since the estimate): then only the
+ * estimate is asked again. The ChatGPT plan, not set up yet, is set up in Settings first.
  */
 function ModelDisclosureStep({
   status,
   feature,
   hintId,
+  onOpen,
 }: {
   status: AiStatus | null;
   feature: EstimateRequest["feature"];
   hintId: string;
+  onOpen: (note: OpenNote) => void;
 }) {
   const { t } = useTranslation("ai");
   const api = useApi();
+  const client = useQueryClient();
   const errorText = useAiErrorText();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [note, setNote] = useState<{ runsHere: boolean; disclosure: ModelDisclosure } | null>(null);
   const choice = status?.features.find((f) => f.feature === feature)?.choice ?? null;
   const backend = choice
     ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
     : undefined;
   if (!choice || !backend) return null;
+  if (backend.kind === "codex" && backend.state === "needs_setup") {
+    return (
+      <p id={hintId} className="text-sm">
+        {t("blocked.disclosure_not_acknowledged")}{" "}
+        <Link to={paths.settings} className="underline underline-offset-4">
+          {t("settings.title")}
+        </Link>
+      </p>
+    );
+  }
 
   async function read() {
-    if (!choice || checking) return;
+    if (!choice || !backend || checking) return;
     setChecking(true);
     setError(null);
     try {
       const runsHere = await api.modelRunsHere(choice, true);
       const disclosure = await api.modelDisclosure(choice.backend, runsHere);
-      setNote({ runsHere, disclosure });
+      const [facts, acknowledged] = disclosure;
+      if (acknowledged) {
+        await client.invalidateQueries({ queryKey: aiKeys.all });
+        return;
+      }
+      onOpen({
+        choice,
+        runsHere,
+        disclosure,
+        name: backend.label,
+        kind: backend.kind,
+        changed:
+          facts.cost !== "cloud_via_local" && backend.problems.includes("disclosure_changed"),
+      });
     } catch (err) {
       // E.g. the server here can't be reached: nothing is shown and nothing runs.
       setError(err);
@@ -251,6 +318,7 @@ function ModelDisclosureStep({
         type="button"
         size="sm"
         variant="outline"
+        data-next-step
         aria-disabled={checking || undefined}
         className="aria-disabled:opacity-50"
         onClick={() => void read()}
@@ -261,20 +329,6 @@ function ModelDisclosureStep({
         <p role="alert" className="text-sm text-destructive">
           {errorText(error)}
         </p>
-      ) : null}
-      {note ? (
-        <ModelDisclosureDialog
-          backend={choice.backend}
-          runsHere={note.runsHere}
-          disclosure={note.disclosure}
-          name={backend.label}
-          kind={backend.kind}
-          model={choice.model}
-          open
-          onOpenChange={(open) => {
-            if (!open) setNote(null);
-          }}
-        />
       ) : null}
     </div>
   );
@@ -304,6 +358,7 @@ function UnpricedAcknowledgement({
         size="sm"
         variant="outline"
         disabled={acknowledge.isPending}
+        data-next-step
         onClick={() => acknowledge.mutate({ backend: choice.backend, model: choice.model })}
       >
         {t("estimate.useUnpriced")}

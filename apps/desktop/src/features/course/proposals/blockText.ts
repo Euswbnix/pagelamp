@@ -8,7 +8,6 @@ const CALENDAR_BLOCKS = [
   "course_hidden",
   "no_readable_materials",
   "material_sharing_not_allowed",
-  "disclosure_not_acknowledged",
   "no_model_chosen",
 ] as const satisfies readonly BlockReason[];
 type CalendarBlock = (typeof CALENDAR_BLOCKS)[number];
