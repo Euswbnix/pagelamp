@@ -26,11 +26,12 @@ export function TimelineTab({
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const startRef = useRef<HTMLInputElement>(null);
-  const legacy = timeline.term.anchor_origin === "legacy";
+  // Dates kept from version 0.1 the student never confirmed (also a last day of classes alone).
+  const unconfirmed = !timeline.term.student_dates_confirmed;
 
   return (
     <div className="max-w-2xl space-y-8">
-      {legacy ? (
+      {unconfirmed ? (
         <CheckDatesPrompt
           courseId={course.id}
           onEdit={() => startRef.current?.focus()}

@@ -1,6 +1,10 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { createMockApi } from "@/api/mock";
+import type { ApplySkipReason } from "@/api/types";
 import { todayIso } from "@/lib/format";
+import { paths } from "@/lib/routes";
 import { DEMO101, DEMO310, openCourse } from "../testing";
 
 // These tests cover the dates form a real alpha.1 build shows (v1: first and last day of
@@ -29,6 +33,25 @@ async function openTimeline(courseId: string, scenario?: "uoft-fall" | "phases")
     start: screen.getByLabelText("First day of classes"),
     end: screen.getByLabelText("Last day of classes (optional)"),
   };
+}
+
+/** "Also use these dates in", once the other courses of the session are listed. */
+const othersGroup = () => screen.findByRole("group", { name: "Also use these dates in" });
+
+/**
+ * "Not used in <courses>: <why>": each course by the start of its code (the rest of the code
+ * names the session, which depends on today's date).
+ */
+function notUsed(courses: string[], why: string): RegExp {
+  const escaped = why.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^Not used in ${courses.map((c) => `${c}[^,:]*`).join(", ")}: ${escaped}$`);
+}
+
+/** Only this course: every other course of the session unticked. */
+async function untickOthers(user: UserEvent) {
+  for (const box of within(await othersGroup()).getAllByRole("checkbox")) {
+    if (box.getAttribute("aria-checked") === "true") await user.click(box);
+  }
 }
 
 describe("Timeline tab — where this course is", () => {
@@ -80,6 +103,7 @@ describe("Timeline tab — where this course is", () => {
 describe("Timeline tab — course dates form", () => {
   it("saves only the field the student changed", async () => {
     const { user, api, end, start, overview } = await openTimeline(FITTED, "uoft-fall");
+    await untickOthers(user);
     const setTerm = vi.spyOn(api, "setCourseTerm");
     const monday = overview.timeline.term.week_one_monday ?? todayIso();
     const lastDay = shiftIso(monday, 12 * 7 + 4);
@@ -95,6 +119,7 @@ describe("Timeline tab — course dates form", () => {
 
   it("keeps the student's own untouched date when saving the other one", async () => {
     const { user, api, end, overview } = await openTimeline(LEGACY, "uoft-fall");
+    await untickOthers(user);
     const setTerm = vi.spyOn(api, "setCourseTerm");
     const own = overview.timeline.term.student_start;
     expect(own).toBeTruthy();
@@ -219,5 +244,529 @@ describe("Timeline tab — I'm still taking this", () => {
     await user.click(within(status).getByRole("button", { name: "Save date" }));
     expect(await within(status).findByText("Pick a date from today on.")).toBeInTheDocument();
     expect(until).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("Timeline tab — also use these dates in", () => {
+  const checkbox = (group: HTMLElement, name: RegExp) =>
+    within(group).getByRole("checkbox", { name });
+
+  it("lists the other courses of the session, ticked unless they have dates of their own", async () => {
+    await openTimeline(FITTED, "uoft-fall");
+    const group = await othersGroup();
+    // The two other courses of this Fall session, by code and name; not this one, and not the
+    // summer, last Fall or Winter courses.
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(2);
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    const withOwn = checkbox(group, /DEM205H5/);
+    expect(withOwn).toHaveAttribute("aria-checked", "false");
+    expect(withOwn).toHaveAccessibleDescription("Has its own dates: they would be replaced.");
+    expect(
+      within(group).queryByRole("checkbox", { name: /DEM332H5|DEM101H5|DEM236H5|DEM150H5/ }),
+    ).toBeNull();
+  });
+
+  it("says that a course is hidden, and offers it like the others", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.setCourseHidden(UNLABELLED, true);
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    const box = checkbox(await othersGroup(), /DEM240H5/);
+    expect(box).toHaveAccessibleName(/hidden$/);
+    expect(box).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("gives the dates saved here to the courses ticked, and says so once", async () => {
+    const { user, api, start, end } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.type(end, "2026-12-04");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+
+    expect(await screen.findByText("Saved, and used in 1 other course")).toBeInTheDocument();
+    expect(screen.queryByText("Course dates saved")).toBeNull();
+    expect(apply).toHaveBeenCalledWith(FITTED, [UNLABELLED]);
+    // There they are the student's own now; the course with dates of its own kept them.
+    const there = await api.courseOverview(UNLABELLED);
+    expect(there.timeline.term).toMatchObject({
+      anchor: "student_confirmed",
+      student_start: "2026-09-08",
+      student_end: "2026-12-04",
+    });
+    expect((await api.courseOverview(LEGACY)).timeline.term.student_start).not.toBe("2026-09-08");
+  });
+
+  it("gives them to no course the student unticked", async () => {
+    const { user, api, end, overview } = await openTimeline(FITTED, "uoft-fall");
+    await untickOthers(user);
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    const monday = overview.timeline.term.week_one_monday ?? todayIso();
+    await user.type(end, shiftIso(monday, 12 * 7 + 4));
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Course dates saved")).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("replaces a course's own dates only when ticked, and Undo puts every course back", async () => {
+    const { user, api, start, end } = await openTimeline(FITTED, "uoft-fall");
+    const before = (await api.courseOverview(LEGACY)).timeline.term;
+    await user.click(checkbox(await othersGroup(), /DEM205H5/));
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.type(end, "2026-12-04");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Saved, and used in 2 other courses");
+    expect((await api.courseOverview(LEGACY)).timeline.term.student_start).toBe("2026-09-08");
+
+    // The listing read again takes a while, as over IPC: the ticks wait for it.
+    const listing = api.sessionCourses;
+    vi.spyOn(api, "sessionCourses").mockImplementation(async (courseId) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return listing(courseId);
+    });
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText("The 2 other courses are back as they were"),
+    ).toBeInTheDocument();
+    // The one with dates of its own has them again; the one that had none has none.
+    const legacy = (await api.courseOverview(LEGACY)).timeline.term;
+    expect(legacy.student_start).toBe(before.student_start);
+    expect(legacy.student_end ?? null).toBe(before.student_end ?? null);
+    // Still dates from version 0.1 for the student to check, not confirmed by the Undo.
+    expect(legacy.anchor_origin).toBe("legacy");
+    const unlabelled = (await api.courseOverview(UNLABELLED)).timeline.term;
+    expect(unlabelled.student_start ?? null).toBeNull();
+    expect(unlabelled.anchor).not.toBe("student_confirmed");
+    // This course keeps what was saved here.
+    expect((await api.courseOverview(FITTED)).timeline.term.student_start).toBe("2026-09-08");
+    // The ticks come back by the same rule: ticked again with no dates of its own, the other one
+    // unticked with its dates back.
+    const group = await othersGroup();
+    await waitFor(() =>
+      expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "true"),
+    );
+    expect(checkbox(group, /DEM205H5/)).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("gives the student's own dates to the courses ticked without a change here", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.setCourseTerm(FITTED, "2026-09-08", "2026-12-04");
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    expect(checkbox(await othersGroup(), /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    const setTerm = vi.spyOn(api, "setCourseTerm");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Saved, and used in 1 other course")).toBeInTheDocument();
+    // Nothing to save here: the dates are already the student's.
+    expect(setTerm).not.toHaveBeenCalled();
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start).toBe("2026-09-08");
+  });
+
+  it("confirms dates kept from version 0.1 here before giving them to the others", async () => {
+    // Unconfirmed here, they would arrive confirmed there: Save confirms them here first.
+    const { user, api, overview } = await openTimeline(LEGACY, "uoft-fall");
+    await othersGroup();
+    const own = overview.timeline.term.student_start;
+    const setTerm = vi.spyOn(api, "setCourseTerm");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Saved, and used in 2 other courses")).toBeInTheDocument();
+    expect(setTerm).toHaveBeenCalledWith(LEGACY, own, null);
+    expect((await api.courseOverview(LEGACY)).timeline.term).toMatchObject({
+      anchor_origin: "user",
+      student_dates_confirmed: true,
+    });
+  });
+
+  it("confirms a last day of classes kept alone from version 0.1 before giving it on", async () => {
+    // No anchor of its own says "legacy" for an end alone: the term says it isn't confirmed.
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.restoreCourseDates([
+      { course_id: FITTED, start: null, end: "2026-12-04", legacy: true, copied_from: null },
+    ]);
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    expect(screen.getByText("Check this course's dates")).toBeInTheDocument();
+    expect(checkbox(await othersGroup(), /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    const setTerm = vi.spyOn(api, "setCourseTerm");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Saved, and used in 1 other course")).toBeInTheDocument();
+    expect(setTerm).toHaveBeenCalledWith(FITTED, null, "2026-12-04");
+    expect((await api.courseOverview(FITTED)).timeline.term.student_dates_confirmed).toBe(true);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_end).toBe("2026-12-04");
+    await waitFor(() => expect(screen.queryByText("Check this course's dates")).toBeNull());
+  });
+
+  it("takes one Save at a time, while the dates go to the other courses too", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    let finish: () => void = () => {};
+    const apply = vi.spyOn(api, "applyCourseDatesTo").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ applied: [], skipped: [], replaced: [] });
+        }),
+    );
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    const saving = await screen.findByRole("button", { name: "Saving…" });
+    expect(saving).toHaveAttribute("aria-disabled", "true");
+    await user.click(saving);
+    await user.keyboard("{Enter}");
+    expect(apply).toHaveBeenCalledTimes(1);
+    finish();
+    await screen.findByRole("button", { name: "Save dates" });
+  });
+
+  it("keeps the list as it is while a Save runs: the courses ticked then get the dates", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    const group = await othersGroup();
+    const setTerm = api.setCourseTerm;
+    let finish: () => void = () => {};
+    vi.spyOn(api, "setCourseTerm").mockImplementation(
+      (...args) =>
+        new Promise((resolve, reject) => {
+          finish = () => void setTerm(...args).then(resolve, reject);
+        }),
+    );
+    // The copy that follows takes a while too.
+    const applyTo = api.applyCourseDatesTo;
+    let finishCopy: () => void = () => {};
+    const apply = vi.spyOn(api, "applyCourseDatesTo").mockImplementation(
+      (...args) =>
+        new Promise((resolve, reject) => {
+          finishCopy = () => void applyTo(...args).then(resolve, reject);
+        }),
+    );
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByRole("button", { name: "Saving…" });
+    const box = checkbox(group, /DEM240H5/);
+    expect(box).toBeDisabled();
+    await user.click(box);
+    expect(box).toHaveAttribute("aria-checked", "true");
+    finish();
+    // Saved here; the copy runs: still no change to the list.
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(FITTED, [UNLABELLED]));
+    expect(checkbox(group, /DEM240H5/)).toBeDisabled();
+    await user.click(checkbox(group, /DEM240H5/));
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    finishCopy();
+    expect(await screen.findByText("Saved, and used in 1 other course")).toBeInTheDocument();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(checkbox(group, /DEM240H5/)).toBeEnabled();
+  });
+
+  it("gives the dates to no course when the listing fails while this course's are saved", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    // The save reads the listing again, and that fails.
+    const setTerm = api.setCourseTerm;
+    vi.spyOn(api, "setCourseTerm").mockImplementation(async (...args) => {
+      await setTerm(...args);
+      vi.spyOn(api, "sessionCourses").mockRejectedValue(new Error("Synthetic failure"));
+    });
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Course dates saved")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The other courses of this term couldn't be listed, so these dates stay in this course.",
+      ),
+    ).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start ?? null).toBeNull();
+  });
+
+  it("ticks a course by how it is now when the form is shown again, not as it was listed before", async () => {
+    const { user, router } = await openTimeline(FITTED, "uoft-fall");
+    expect(checkbox(await othersGroup(), /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    // In DEM240H5, the student sets its own dates (and gives them to no other course).
+    await act(() => router.navigate(`${paths.course(UNLABELLED)}?tab=timeline`));
+    await untickOthers(user);
+    await user.type(await screen.findByLabelText("Last day of classes (optional)"), "2026-12-04");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Course dates saved");
+    // Back in this course: DEM240H5 has dates of its own now, so it comes unticked.
+    await act(() => router.navigate(`${paths.course(FITTED)}?tab=timeline`));
+    await waitFor(() =>
+      expect(
+        checkbox(screen.getByRole("group", { name: "Also use these dates in" }), /DEM240H5/),
+      ).toHaveAccessibleDescription("Has its own dates: they would be replaced."),
+    );
+    expect(checkbox(await othersGroup(), /DEM240H5/)).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("ticks again a course Undo emptied when the form is shown again after the Undo", async () => {
+    const { user, router, start } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Saved, and used in 1 other course");
+    // The student goes elsewhere, and undoes it from there.
+    await act(() => router.navigate(paths.courses));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("1 other course is back as it was");
+    await act(() => router.navigate(`${paths.course(FITTED)}?tab=timeline`));
+    await waitFor(() =>
+      expect(
+        checkbox(screen.getByRole("group", { name: "Also use these dates in" }), /DEM240H5/),
+      ).toHaveAttribute("aria-checked", "true"),
+    );
+  });
+
+  it("ticks again a course Undo emptied once the listing can be read again", async () => {
+    const { user, api, start, queryClient } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Saved, and used in 1 other course");
+    // Undo, and the listing read again fails...
+    const listing = vi.spyOn(api, "sessionCourses").mockRejectedValue(new Error("Synthetic"));
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("1 other course is back as it was");
+    await screen.findByText(/couldn't be listed/);
+    // ...then works again.
+    listing.mockRestore();
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() =>
+      expect(
+        checkbox(screen.getByRole("group", { name: "Also use these dates in" }), /DEM240H5/),
+      ).toHaveAttribute("aria-checked", "true"),
+    );
+  });
+
+  it("unticks the courses the dates went to, not one they couldn't be used in", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    const group = await othersGroup();
+    await user.click(checkbox(group, /DEM205H5/));
+    // The facade gives the dates to DEM205H5 and skips DEM240H5.
+    const apply = api.applyCourseDatesTo;
+    vi.spyOn(api, "applyCourseDatesTo").mockImplementation(async (from, to) => {
+      const report = await apply(
+        from,
+        to.filter((id) => id !== UNLABELLED),
+      );
+      return {
+        ...report,
+        skipped: [...report.skipped, { course_id: UNLABELLED, reason: "not_same_session" }],
+      };
+    });
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Saved, and used in 1 other course");
+    await waitFor(() =>
+      expect(checkbox(group, /DEM205H5/)).toHaveAttribute("aria-checked", "false"),
+    );
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("unticks the courses the dates went to, and keeps what the student chose for the others", async () => {
+    const { user, start } = await openTimeline(FITTED, "uoft-fall");
+    const group = await othersGroup();
+    await user.click(checkbox(group, /DEM240H5/));
+    await user.click(checkbox(group, /DEM205H5/));
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    await screen.findByText("Saved, and used in 1 other course");
+    // The one that got them is unticked now; the one the student unticked stays so.
+    await waitFor(() =>
+      expect(checkbox(group, /DEM205H5/)).toHaveAttribute("aria-checked", "false"),
+    );
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "false");
+    // Nothing is left to give, and nothing was changed since: Save waits.
+    expect(screen.getByRole("button", { name: "Save dates" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("says when the other courses couldn't be listed", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    vi.spyOn(api, "sessionCourses").mockRejectedValue(new Error("Synthetic failure"));
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    expect(
+      await screen.findByText(
+        "The other courses of this term couldn't be listed, so these dates stay in this course.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
+  });
+
+  it("gives the dates to no course when the listing fails after a good one", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.setCourseTerm(FITTED, "2026-09-08", null);
+    const { user, queryClient } = await openCourse(FITTED, { query: "tab=timeline", api });
+    expect(checkbox(await othersGroup(), /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    vi.spyOn(api, "sessionCourses").mockRejectedValue(new Error("Synthetic failure"));
+    await act(() => queryClient.invalidateQueries());
+    await screen.findByText(
+      "The other courses of this term couldn't be listed, so these dates stay in this course.",
+    );
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    // Nothing changed here and nothing to give: Save waits.
+    const save = screen.getByRole("button", { name: "Save dates" });
+    expect(save).toHaveAttribute("aria-disabled", "true");
+    // With a change, it is saved here only.
+    await user.type(screen.getByLabelText("Last day of classes (optional)"), "2026-12-04");
+    await user.click(save);
+    expect(await screen.findByText("Course dates saved")).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start ?? null).toBeNull();
+  });
+
+  it("gives nothing when this course has no dates of the student's: a prefill isn't theirs", async () => {
+    const { user, api } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    const save = screen.getByRole("button", { name: "Save dates" });
+    expect(save).toHaveAttribute("aria-disabled", "true");
+    await user.click(save);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("clears only this course's dates", async () => {
+    const { user, api } = await openTimeline(LEGACY, "uoft-fall");
+    await othersGroup();
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    await user.click(screen.getByRole("button", { name: "Clear my dates" }));
+    await screen.findByText("Your dates were cleared");
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("says when the other courses weren't changed, with this course's dates saved", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    vi.spyOn(api, "applyCourseDatesTo").mockRejectedValue(new Error("Synthetic failure"));
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    const failed = "Your dates are saved for this course. The other courses weren't changed.";
+    expect(await screen.findByText(failed)).toBeInTheDocument();
+    expect((await api.courseOverview(FITTED)).timeline.term.student_start).toBe("2026-09-08");
+    // Clearing the dates here ends that message: it isn't true any more.
+    await user.click(screen.getByRole("button", { name: "Clear my dates" }));
+    await screen.findByText("Your dates were cleared");
+    expect(screen.queryByText(failed)).toBeNull();
+  });
+
+  // Every reason the facade can give, with what it says for one course: a reason added in Rust
+  // fails to compile until it is here.
+  const SKIP_REASONS: Record<ApplySkipReason, { one: string; other: string }> = {
+    not_same_session: {
+      one: "it isn't a course of this term any more.",
+      other: "they aren't courses of this term any more.",
+    },
+    no_dates: {
+      one: "there were no dates of yours here to give.",
+      other: "there were no dates of yours here to give.",
+    },
+    unknown_course: {
+      one: "it isn't among your courses any more.",
+      other: "they aren't among your courses any more.",
+    },
+    from_course: {
+      one: "it's the course these dates are from.",
+      other: "it's the course these dates are from.",
+    },
+    dates_not_confirmed: {
+      one: "the dates here aren't confirmed yet. Save them, then try again.",
+      other: "the dates here aren't confirmed yet. Save them, then try again.",
+    },
+  };
+
+  it.each(
+    (Object.keys(SKIP_REASONS) as ApplySkipReason[]).flatMap((reason) =>
+      (["one", "other"] as const).map((form) => [reason, form] as const),
+    ),
+  )("names the courses the dates couldn't be used in, and why (%s, %s)", async (reason, form) => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    const courses = form === "one" ? ["DEM240H5"] : ["DEM240H5", "DEM205H5"];
+    if (form === "other") await user.click(checkbox(await othersGroup(), /DEM205H5/));
+    else await othersGroup();
+    vi.spyOn(api, "applyCourseDatesTo").mockResolvedValue({
+      applied: [],
+      skipped: [UNLABELLED, LEGACY]
+        .slice(0, courses.length)
+        .map((course_id) => ({ course_id, reason })),
+      replaced: [],
+    });
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(
+      await screen.findByText(notUsed(courses, SKIP_REASONS[reason][form])),
+    ).toBeInTheDocument();
+    // This course's dates were saved all the same.
+    expect(screen.getByText("Course dates saved")).toBeInTheDocument();
+  });
+
+  it("says why for each reason in one message, the courses of one reason together", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    await user.click(checkbox(await othersGroup(), /DEM205H5/));
+    const skip = (reason: ApplySkipReason) => [
+      { course_id: UNLABELLED, reason },
+      { course_id: LEGACY, reason },
+    ];
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    apply.mockResolvedValueOnce({ applied: [], skipped: skip("not_same_session"), replaced: [] });
+    await user.clear(start);
+    await user.type(start, "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(
+      await screen.findByText(
+        notUsed(["DEM240H5", "DEM205H5"], "they aren't courses of this term any more."),
+      ),
+    ).toBeInTheDocument();
+
+    apply.mockResolvedValueOnce({
+      applied: [],
+      skipped: [
+        { course_id: LEGACY, reason: "unknown_course" },
+        { course_id: UNLABELLED, reason: "dates_not_confirmed" },
+      ],
+      replaced: [],
+    });
+    await user.clear(start);
+    await user.type(start, "2026-09-09");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    const first = await screen.findByText(
+      notUsed(["DEM205H5"], "it isn't among your courses any more."),
+    );
+    const second = screen.getByText(notUsed(["DEM240H5"], SKIP_REASONS.dates_not_confirmed.one));
+    // One message, a sentence per reason, in the order the facade gave them.
+    expect(first.parentElement).toBe(second.parentElement);
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says in the other course where its dates came from", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.setCourseTerm(FITTED, "2026-09-08", "2026-12-04");
+    await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    await openCourse(UNLABELLED, { query: "tab=timeline", api });
+    const card = screen.getByRole("region", { name: "Where this course is" });
+    expect(within(card).getByText(/^Your dates, copied from DEM332H5/)).toBeInTheDocument();
+  });
+
+  it("lists nothing for a course with no session", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    const listed = vi.spyOn(api, "sessionCourses");
+    await openCourse(DEMO101, { query: "tab=timeline", api });
+    // Once the listing is in (empty for this course), and the form has rendered it.
+    await waitFor(() => expect(listed).toHaveBeenCalled());
+    expect(await listed.mock.results[0]?.value).toEqual({
+      session: null,
+      campus: null,
+      courses: [],
+    });
+    await screen.findByLabelText("First day of classes");
+    expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
+    expect(screen.queryByText(/couldn't be listed/)).toBeNull();
   });
 });

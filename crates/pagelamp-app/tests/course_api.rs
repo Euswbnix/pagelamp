@@ -800,3 +800,72 @@ fn an_undo_doesn_t_bring_back_a_copied_from_course_that_is_gone() {
     app.restore_course_dates(second.replaced).unwrap();
     assert!(!copied(&app).contains_key(&session_id("2")));
 }
+
+/// A course with 0.1 dates the student never checked is restored as it was (its migrated
+/// `legacy` calendar stays one): after remove, purge and restore it still lends nothing, it
+/// has no calendar of its own, and its dates can't be copied before they are confirmed.
+#[test]
+fn a_restored_unchecked_0_1_course_lends_and_copies_nothing() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    let one = session_id("1");
+    let store = Store::open(&app.db_path()).unwrap();
+    // What the v4 data step leaves for 0.1 dates: the dates, unconfirmed, and a `legacy` row.
+    store
+        .set_course_term(&one, Some(date("2026-09-08")), Some(date("2026-12-08")))
+        .unwrap();
+    let calendar =
+        pagelamp_core::calendar::legacy_calendar(date("2026-09-08"), Some(date("2026-12-08")));
+    store
+        .conn()
+        .execute(
+            "INSERT INTO course_calendars
+                 (course_id, origin, state, calendar_json, evidence_json, checks_json,
+                  manifest_json, fingerprint, created_at, decided_at)
+             VALUES (?1, 'legacy', 'accepted', ?2, '[]', '{}', '[]', 'legacy',
+                     '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            [one.clone(), serde_json::to_string(&calendar).unwrap()],
+        )
+        .unwrap();
+    let now = chrono::Utc::now();
+    store
+        .remove_course(&one, RemovalReason::Other, false, false, now)
+        .unwrap();
+    store.purge_course(&one, now, false).unwrap();
+    // The sync a restore runs brings the course row back, then its settings.
+    store
+        .upsert_course(&CourseUpsert {
+            id: one.clone(),
+            source_id: SESSION_HOST.into(),
+            external_id: "1".into(),
+            code: Some("DEM240H7 F LEC0101 20269".into()),
+            name: "Demo course 1".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store.apply_restored_settings(&one, now).unwrap();
+    drop(store);
+
+    let restored = app.course_timeline(&one).unwrap();
+    assert!(!restored.term.own_calendar);
+    assert!(!restored.term.student_dates_confirmed);
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert_ne!(two.term.anchor, TermAnchorSource::SameSession);
+    let report = app
+        .apply_course_dates_to(&one, vec![session_id("2")])
+        .unwrap();
+    assert_eq!(
+        report.skipped,
+        vec![SkippedCourse {
+            course_id: session_id("2"),
+            reason: ApplySkipReason::DatesNotConfirmed,
+        }]
+    );
+    assert!(report.applied.is_empty());
+}
