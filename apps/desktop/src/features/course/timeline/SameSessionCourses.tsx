@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useApi } from "@/api/context";
 import { queryKeys, useApplyCourseDatesTo, useSessionCourses } from "@/api/queries";
 import type { ApplySkipReason, ReplacedDates, SessionCourse } from "@/api/types";
+import { CODE, SentenceWithCode } from "@/components/common/SentenceWithCode";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -13,10 +14,18 @@ import { Label } from "@/components/ui/label";
  * "Also use these dates in": the other courses of this course's session (one term, one week).
  * Courses with no dates of their own come ticked; one with dates of its own comes unticked and
  * says that ticking it replaces them. A hidden course is offered like the others (its dates say
- * nothing about it), and says that it is hidden. Every line can be ticked or unticked.
+ * nothing about it), and says that it is hidden. Every line can be ticked or unticked, except a
+ * course with a calendar of its own: its calendar counts its weeks whatever its term dates say,
+ * so a copy leaves it alone (the facade skips it), and its line says so, unticked.
  */
 export interface SameSessionChoice {
   courses: SessionCourse[];
+  /**
+   * This course counts its weeks from a calendar of its own (its timeline says so): what the
+   * facade would copy from it is that calendar's days of classes, not the dates in this form,
+   * so the form offers no list.
+   */
+  ownCalendar: boolean;
   /** The listing couldn't be had: the form says so instead of listing nothing. */
   failed: boolean;
   chosen: ReadonlySet<string>;
@@ -36,7 +45,10 @@ export interface SameSessionChoice {
   offerAgain: (courseIds: string[]) => void;
 }
 
-export function useSameSession(courseId: string): SameSessionChoice {
+export function useSameSession(
+  courseId: string,
+  { ownCalendar }: { ownCalendar: boolean },
+): SameSessionChoice {
   const listing = useSessionCourses(courseId);
   const courses = listing.data?.courses ?? [];
   // What the student chose stays when the listing is read again (after a save, a sync); a
@@ -48,7 +60,8 @@ export function useSameSession(courseId: string): SameSessionChoice {
   const settled = listing.isSuccess && !listing.isFetching;
   const unseen = settled ? courses.filter((c) => !state.seen.has(c.course_id)) : [];
   if (unseen.length > 0) {
-    chosen = new Set([...chosen, ...unseen.filter((c) => !c.own_dates).map((c) => c.course_id)]);
+    const ticked = unseen.filter((c) => !c.own_dates && !c.own_calendar);
+    chosen = new Set([...chosen, ...ticked.map((c) => c.course_id)]);
     setState({ seen: new Set([...state.seen, ...unseen.map((c) => c.course_id)]), chosen });
   }
   const change = (update: (next: Set<string>) => void) =>
@@ -59,9 +72,13 @@ export function useSameSession(courseId: string): SameSessionChoice {
     });
   return {
     courses,
+    ownCalendar,
     failed: listing.isError,
     chosen,
-    ticked: listing.isError ? [] : courses.filter((c) => chosen.has(c.course_id)),
+    ticked:
+      listing.isError || ownCalendar
+        ? []
+        : courses.filter((c) => chosen.has(c.course_id) && !c.own_calendar),
     setChosen: (id, on) =>
       change((next) => {
         if (on) next.add(id);
@@ -96,10 +113,24 @@ export function SameSessionCourses({
     return <p className="text-sm text-muted-foreground">{t("sameSession.listFailed")}</p>;
   }
   if (choice.courses.length === 0) return null;
+  if (choice.ownCalendar) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        <SentenceWithCode
+          text={t("sameSession.sourceCalendar", { command: CODE })}
+          code="pagelamp course copy-dates"
+        />
+      </p>
+    );
+  }
+  // Every one with a calendar of its own: nothing can be ticked, and the form says why.
+  const noneTickable = choice.courses.every((c) => c.own_calendar);
   return (
     <fieldset disabled={disabled} className="space-y-1">
       <legend className="text-sm font-medium">{t("sameSession.legend")}</legend>
-      <p className="text-sm text-muted-foreground">{t("sameSession.hint")}</p>
+      <p className="text-sm text-muted-foreground">
+        {noneTickable ? t("sameSession.allOwnCalendar") : t("sameSession.hint")}
+      </p>
       <ul className="divide-y">
         {choice.courses.map((course) => (
           <CourseRow
@@ -128,14 +159,19 @@ function CourseRow({
 }) {
   const { t } = useTranslation("calendar");
   const id = useId();
+  const note = course.own_calendar
+    ? t("sameSession.ownCalendar")
+    : course.own_dates
+      ? t("sameSession.ownDates")
+      : null;
   return (
     <li className="flex items-start gap-3 py-2">
       <Checkbox
         id={id}
-        checked={checked}
-        disabled={disabled}
+        checked={checked && !course.own_calendar}
+        disabled={disabled || course.own_calendar}
         onCheckedChange={(value) => onCheckedChange(value === true)}
-        aria-describedby={course.own_dates ? `${id}-own` : undefined}
+        aria-describedby={note ? `${id}-own` : undefined}
         className="mt-0.5"
       />
       <div className="min-w-0 flex-1">
@@ -146,9 +182,9 @@ function CourseRow({
           ) : null}
           {course.hidden ? <Badge variant="outline">{t("sameSession.hidden")}</Badge> : null}
         </Label>
-        {course.own_dates ? (
+        {note ? (
           <p id={`${id}-own`} className="text-xs text-muted-foreground">
-            {t("sameSession.ownDates")}
+            {note}
           </p>
         ) : null}
       </div>
@@ -171,6 +207,24 @@ export function useApplyToSession(courseId: string) {
   const api = useApi();
   const client = useQueryClient();
   const apply = useApplyCourseDatesTo();
+
+  /**
+   * Why `courses` didn't get the dates. A course with a calendar of its own is told where that
+   * calendar is changed: with the CLI, the one place there is while this form (v1) is the one
+   * shown (the dates form v2 changes it in the app, and gets this list after B6).
+   */
+  function skippedLine(reason: ApplySkipReason, courses: string[]): ReactNode {
+    const values = { count: courses.length, courses: courses.join(", ") };
+    if (reason !== "own_calendar") return t(`sameSession.skipped.${reason}`, values);
+    // The command in code style: the sentence stays text, so nothing in a course's name or
+    // code is ever read as markup.
+    return (
+      <SentenceWithCode
+        text={t("sameSession.skipped.own_calendar", { ...values, command: CODE })}
+        code="pagelamp course calendar"
+      />
+    );
+  }
 
   async function undo(replaced: ReplacedDates[], afterUndo: (courseIds: string[]) => void) {
     try {
@@ -216,15 +270,16 @@ export function useApplyToSession(courseId: string) {
       const name = names.get(course_id);
       if (name) skipped.set(reason, [...(skipped.get(reason) ?? []), name]);
     }
-    const lines = [...skipped].map(([reason, courses]) =>
-      t(`sameSession.skipped.${reason}`, { count: courses.length, courses: courses.join(", ") }),
-    );
-    if (lines.length === 1) toast.warning(lines[0]);
+    const lines = [...skipped].map(([reason, courses]) => ({
+      reason,
+      line: skippedLine(reason, courses),
+    }));
+    if (lines.length === 1) toast.warning(lines[0]?.line);
     else if (lines.length > 1) {
       toast.warning(
         <div className="space-y-1">
-          {lines.map((line) => (
-            <p key={line}>{line}</p>
+          {lines.map(({ reason, line }) => (
+            <p key={reason}>{line}</p>
           ))}
         </div>,
       );

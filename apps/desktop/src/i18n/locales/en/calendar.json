@@ -128,6 +128,8 @@
     "legend": "Also use these dates in",
     "hint": "Other courses of this term. Untick any you want to leave as they are.",
     "ownDates": "Has its own dates: they would be replaced.",
+    "ownCalendar": "Counts its weeks from a calendar of its own: a copy leaves it alone.",
+    "allOwnCalendar": "The other courses of this term count their weeks from calendars of their own, so these dates stay in this course.",
     "hidden": "hidden",
     "saved_one": "Saved, and used in {{count}} other course",
     "saved_other": "Saved, and used in {{count}} other courses",
@@ -146,9 +148,12 @@
       "from_course_one": "Not used in {{courses}}: it's the course these dates are from.",
       "from_course_other": "Not used in {{courses}}: it's the course these dates are from.",
       "dates_not_confirmed_one": "Not used in {{courses}}: the dates here aren't confirmed yet. Save them, then try again.",
-      "dates_not_confirmed_other": "Not used in {{courses}}: the dates here aren't confirmed yet. Save them, then try again."
+      "dates_not_confirmed_other": "Not used in {{courses}}: the dates here aren't confirmed yet. Save them, then try again.",
+      "own_calendar_one": "Not used in {{courses}}: it counts its weeks from a calendar of its own. Change that calendar with the {{command}} command.",
+      "own_calendar_other": "Not used in {{courses}}: they count their weeks from calendars of their own. Change those calendars with the {{command}} command."
     },
-    "listFailed": "The other courses of this term couldn't be listed, so these dates stay in this course."
+    "listFailed": "The other courses of this term couldn't be listed, so these dates stay in this course.",
+    "sourceCalendar": "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the {{command}} command."
   },
   "checkDates": {
     "title": "Check this course's dates",

@@ -128,6 +128,8 @@
     "legend": "这些日期也用于",
     "hint": "本学期的其他课。不想改动的课请取消勾选。",
     "ownDates": "已有自己的日期，勾选后会被替换。",
+    "ownCalendar": "按自己的日历计算周数，复制不会改动它。",
+    "allOwnCalendar": "本学期的其他课都按自己的日历计算周数，这些日期只用于这门课。",
     "hidden": "已隐藏",
     "saved_one": "已保存，并用于另外 {{count}} 门课",
     "saved_other": "已保存，并用于另外 {{count}} 门课",
@@ -146,9 +148,12 @@
       "from_course_one": "未用于 {{courses}}：这些日期就来自这门课。",
       "from_course_other": "未用于 {{courses}}：这些日期就来自这门课。",
       "dates_not_confirmed_one": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。",
-      "dates_not_confirmed_other": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。"
+      "dates_not_confirmed_other": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。",
+      "own_calendar_one": "未用于 {{courses}}：按自己的日历计算周数。请用 {{command}} 命令修改相应课程的日历。",
+      "own_calendar_other": "未用于 {{courses}}：按自己的日历计算周数。请用 {{command}} 命令修改相应课程的日历。"
     },
-    "listFailed": "没能列出本学期的其他课，这些日期只用于这门课。"
+    "listFailed": "没能列出本学期的其他课，这些日期只用于这门课。",
+    "sourceCalendar": "这门课按自己的日历计算周数，不能在这里把日期用于其他课。请用 {{command}} 命令复制。"
   },
   "checkDates": {
     "title": "检查这门课的日期",

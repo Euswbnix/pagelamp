@@ -47,6 +47,14 @@ function notUsed(courses: string[], why: string): RegExp {
   return new RegExp(`^Not used in ${courses.map((c) => `${c}[^,:]*`).join(", ")}: ${escaped}$`);
 }
 
+/** The innermost element whose whole text matches `re` (a sentence may hold a code element). */
+function sentence(re: RegExp) {
+  return (_: string, element: Element | null) =>
+    !!element &&
+    re.test(element.textContent ?? "") &&
+    ![...element.children].some((child) => re.test(child.textContent ?? ""));
+}
+
 /** Only this course: every other course of the session unticked. */
 async function untickOthers(user: UserEvent) {
   for (const box of within(await othersGroup()).getAllByRole("checkbox")) {
@@ -679,6 +687,11 @@ describe("Timeline tab — also use these dates in", () => {
       one: "the dates here aren't confirmed yet. Save them, then try again.",
       other: "the dates here aren't confirmed yet. Save them, then try again.",
     },
+    own_calendar: {
+      one: "it counts its weeks from a calendar of its own. Change that calendar with the pagelamp course calendar command.",
+      other:
+        "they count their weeks from calendars of their own. Change those calendars with the pagelamp course calendar command.",
+    },
   };
 
   it.each(
@@ -701,7 +714,7 @@ describe("Timeline tab — also use these dates in", () => {
     await user.type(start, "2026-09-08");
     await user.click(screen.getByRole("button", { name: "Save dates" }));
     expect(
-      await screen.findByText(notUsed(courses, SKIP_REASONS[reason][form])),
+      await screen.findByText(sentence(notUsed(courses, SKIP_REASONS[reason][form]))),
     ).toBeInTheDocument();
     // This course's dates were saved all the same.
     expect(screen.getByText("Course dates saved")).toBeInTheDocument();
@@ -743,6 +756,167 @@ describe("Timeline tab — also use these dates in", () => {
     // One message, a sentence per reason, in the order the facade gave them.
     expect(first.parentElement).toBe(second.parentElement);
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  /** A calendar of its own for `courseId`, saved with the dates form v2 (exams after classes). */
+  const ownCalendar = (api: ReturnType<typeof createMockApi>, courseId: string) =>
+    api.setCourseDates(courseId, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      exams_end: "2026-12-22",
+      breaks: [],
+    });
+
+  it("offers a course with a calendar of its own unticked and fixed, and gives it nothing", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await ownCalendar(api, UNLABELLED);
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    const group = await othersGroup();
+    const box = checkbox(group, /DEM240H5/);
+    expect(box).toHaveAttribute("aria-checked", "false");
+    expect(box).toBeDisabled();
+    expect(box).toHaveAccessibleDescription(
+      "Counts its weeks from a calendar of its own: a copy leaves it alone.",
+    );
+    // The usual hint: another course can still get the dates.
+    expect(
+      within(group).getByText(
+        "Other courses of this term. Untick any you want to leave as they are.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(checkbox(group, /DEM205H5/));
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    await user.clear(screen.getByLabelText("First day of classes"));
+    await user.type(screen.getByLabelText("First day of classes"), "2026-09-09");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Saved, and used in 1 other course")).toBeInTheDocument();
+    expect(apply).toHaveBeenCalledWith(FITTED, [LEGACY]);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start).toBe("2026-09-08");
+  });
+
+  it("unticks a course that gets a calendar of its own while the form is open", async () => {
+    const { user, api, start, queryClient } = await openTimeline(FITTED, "uoft-fall");
+    const group = await othersGroup();
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "true");
+    // Its calendar is accepted elsewhere (the CLI), and the listing is read again.
+    await ownCalendar(api, UNLABELLED);
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() => expect(checkbox(group, /DEM240H5/)).toBeDisabled());
+    expect(checkbox(group, /DEM240H5/)).toHaveAttribute("aria-checked", "false");
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    await user.clear(start);
+    await user.type(start, "2026-09-09");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText("Course dates saved")).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("offers no list from a course with a calendar of its own, and says how to copy its dates", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await ownCalendar(api, FITTED);
+    const listed = vi.spyOn(api, "sessionCourses");
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    const code = await screen.findByText("pagelamp course copy-dates", { selector: "code" });
+    expect(code.parentElement?.textContent).toBe(
+      "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the pagelamp course copy-dates command.",
+    );
+    expect(listed).toHaveBeenCalled();
+    expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
+  });
+
+  it("says so when every other course has a calendar of its own, and copies to none", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    // Calendars of their own and no term dates of their own: only own_calendar keeps them out.
+    for (const id of [UNLABELLED, LEGACY]) {
+      await ownCalendar(api, id);
+      await api.setCourseTerm(id, null, null);
+    }
+    // Dates of the student's here, which the courses ticked would get.
+    await api.setCourseTerm(FITTED, "2026-09-08", null);
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    const group = await othersGroup();
+    expect(
+      within(group).getByText(
+        "The other courses of this term count their weeks from calendars of their own, so these dates stay in this course.",
+      ),
+    ).toBeInTheDocument();
+    for (const box of within(group).getAllByRole("checkbox")) expect(box).toBeDisabled();
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    // Nothing to give and nothing changed: Save waits; with a change, it saves here only.
+    const save = screen.getByRole("button", { name: "Save dates" });
+    expect(save).toHaveAttribute("aria-disabled", "true");
+    await user.type(screen.getByLabelText("Last day of classes (optional)"), "2026-12-04");
+    await user.click(save);
+    expect(await screen.findByText("Course dates saved")).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("shows the command a course's own calendar is changed with in code style", async () => {
+    const { user, api, start } = await openTimeline(FITTED, "uoft-fall");
+    await user.click(checkbox(await othersGroup(), /DEM205H5/));
+    const apply = vi.spyOn(api, "applyCourseDatesTo");
+    for (const skipped of [[UNLABELLED], [UNLABELLED, LEGACY]]) {
+      apply.mockResolvedValueOnce({
+        applied: [],
+        skipped: skipped.map((course_id) => ({ course_id, reason: "own_calendar" })),
+        replaced: [],
+      });
+      await user.clear(start);
+      await user.type(start, skipped.length === 1 ? "2026-09-08" : "2026-09-09");
+      await user.click(screen.getByRole("button", { name: "Save dates" }));
+    }
+    // Both messages, the second one too.
+    await waitFor(() =>
+      expect(screen.getAllByText("pagelamp course calendar", { selector: "code" })).toHaveLength(2),
+    );
+    const commands = screen.getAllByText("pagelamp course calendar", { selector: "code" });
+    // Newest first: each sentence is looked for on its own.
+    const texts = commands.map((code) => code.parentElement?.textContent ?? "");
+    const one = notUsed(
+      ["DEM240H5"],
+      "it counts its weeks from a calendar of its own. Change that calendar with the pagelamp course calendar command.",
+    );
+    const other = notUsed(
+      ["DEM240H5", "DEM205H5"],
+      "they count their weeks from calendars of their own. Change those calendars with the pagelamp course calendar command.",
+    );
+    expect(texts.filter((text) => one.test(text))).toHaveLength(1);
+    expect(texts.filter((text) => other.test(text))).toHaveLength(1);
+  });
+
+  it("keeps a course's name as text in that sentence, whatever it holds", async () => {
+    // A code from the LMS with placeholders, nesting, markup and the sentence's own marker.
+    const hostile =
+      'Lab {{command}} {{courses}} $t(common:errors.internal) <p>x</p> <code style="color:red">X</code> \u0000 end';
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    const listing = api.sessionCourses;
+    vi.spyOn(api, "sessionCourses").mockImplementation(async (courseId) => {
+      const listed = await listing(courseId);
+      return {
+        ...listed,
+        courses: listed.courses.map((c) =>
+          c.course_id === UNLABELLED ? { ...c, code: hostile } : c,
+        ),
+      };
+    });
+    vi.spyOn(api, "applyCourseDatesTo").mockResolvedValue({
+      applied: [],
+      skipped: [{ course_id: UNLABELLED, reason: "own_calendar" }],
+      replaced: [],
+    });
+    const { user } = await openCourse(FITTED, { query: "tab=timeline", api });
+    await othersGroup();
+    await user.clear(screen.getByLabelText("First day of classes"));
+    await user.type(screen.getByLabelText("First day of classes"), "2026-09-08");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    const code = await screen.findByText("pagelamp course calendar", { selector: "code" });
+    const sentence = code.parentElement?.textContent ?? "";
+    expect(sentence).toBe(
+      `Not used in ${hostile.replace("\u0000", "\uFFFD")}: it counts its weeks from a calendar of its own. Change that calendar with the pagelamp course calendar command.`,
+    );
+    // Its markup stayed text: one code element (the command's), no paragraph made from it.
+    expect(code.parentElement?.querySelectorAll("code")).toHaveLength(1);
+    expect(code.parentElement?.querySelector("p")).toBeNull();
   });
 
   it("says in the other course where its dates came from", async () => {

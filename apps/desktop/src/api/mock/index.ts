@@ -443,9 +443,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
    * or not started has no current week, default week or current modules.
    */
   function timelineOf(c: MockCourse): CourseTimeline {
-    if (inWeekViews(c)) return c.timeline;
-    return {
+    // Whether the course counts its weeks from a calendar of its own, as the facade says it.
+    const timeline = {
       ...c.timeline,
+      term: { ...c.timeline.term, own_calendar: hasOwnCalendar(c) },
+    };
+    if (inWeekViews(c)) return timeline;
+    return {
+      ...timeline,
       current_week: null,
       default_week: null,
       current_module_ids: [],
@@ -486,6 +491,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       };
     },
     applyCalendar: (c, input, origin, aiLabel) => {
+      // Accepted: the course's own calendar, and its dates no longer the copied ones.
+      ownCalendars.add(c.course.id);
+      copiedFrom.delete(c.course.id);
       const next = withCourseDates(c.timeline, input, isoOf(now()));
       c.timeline = {
         ...next.timeline,
@@ -752,6 +760,50 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
   /** Which course a course's dates were copied from ("also use these dates in"), by id. */
   const copiedFrom = new Map<string, string>();
+
+  /** Courses whose dates the student saved with the dates form v2 or accepted, by id. */
+  const ownCalendars = new Set<string>();
+
+  /**
+   * The course counts its weeks from a calendar of its own (the facade's calendar in force):
+   * one saved with the dates form v2, one accepted here, or one the scenario starts with
+   * (accepted, fresh or stale). A copy leaves such a course alone, and from it copies the
+   * calendar's own days of classes.
+   */
+  function hasOwnCalendar(c: MockCourse): boolean {
+    const status = c.timeline.calendar;
+    return ownCalendars.has(c.course.id) || status === "accepted" || status === "accepted_stale";
+  }
+
+  /**
+   * The student's term dates for a course, as set_course_term and restore_course_dates write
+   * them: with a calendar of its own only the dates change (the calendar still counts the
+   * weeks, like the facade); else the timeline follows them.
+   */
+  function setTermDates(c: MockCourse, start: string | null, end: string | null) {
+    if (!hasOwnCalendar(c)) {
+      setStudentTerm(c, start, end);
+      return;
+    }
+    c.timeline = {
+      ...c.timeline,
+      term: {
+        ...c.timeline.term,
+        student_start: start,
+        student_end: end,
+        student_dates_confirmed: true,
+      },
+    };
+  }
+
+  /** A calendar's first and last day of classes: its first part's first, its last part's last. */
+  function calendarDates(c: MockCourse): { start: string | null; end: string | null } {
+    const { teaching } = c.timeline.term;
+    return {
+      start: teaching[0]?.first_class ?? null,
+      end: teaching.at(-1)?.last_class ?? null,
+    };
+  }
 
   /** The course's dates came from `fromId`: remembered, and said in its evidence. */
   function markCopied(c: MockCourse, fromId: string) {
@@ -1122,7 +1174,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (start && end && end < start) {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
-      setStudentTerm(findCourse(courseId), start, end);
+      setTermDates(findCourse(courseId), start, end);
       // The student's own dates now: no longer the ones copied from another course.
       copiedFrom.delete(courseId);
     },
@@ -1144,6 +1196,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             own_dates: own.start !== null || own.end !== null,
             student_start: own.start,
             student_end: own.end,
+            own_calendar: hasOwnCalendar(o),
             week_one_monday: o.timeline.term.week_one_monday ?? null,
             anchor: o.timeline.term.anchor,
           };
@@ -1155,9 +1208,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       await sleep(latency);
       const source = findCourse(from);
       const key = sessionKey(source.course.code ?? null);
-      const dates = ownDates(source);
-      // Dates from version 0.1 the student never confirmed aren't given on (like the facade).
-      const unconfirmed = !source.timeline.term.student_dates_confirmed;
+      // With a calendar of its own, that calendar's first and last day of classes (like the
+      // facade: the term dates there can end with the exams).
+      const calendar = hasOwnCalendar(source);
+      const dates = calendar ? calendarDates(source) : ownDates(source);
+      // Dates from version 0.1 the student never confirmed aren't given on (like the facade);
+      // a calendar accepted or saved is the student's own.
+      const unconfirmed = !calendar && !source.timeline.term.student_dates_confirmed;
       const report: ApplyDatesReport = { applied: [], skipped: [], replaced: [] };
       // A course asked for twice is given the dates once.
       for (const courseId of [...new Set(to)]) {
@@ -1172,7 +1229,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
                 ? "no_dates"
                 : unconfirmed
                   ? "dates_not_confirmed"
-                  : null;
+                  : hasOwnCalendar(target)
+                    ? "own_calendar"
+                    : null;
         if (reason || !target) {
           report.skipped.push({ course_id: courseId, reason: reason ?? "unknown_course" });
           continue;
@@ -1200,12 +1259,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       for (const r of replaced) {
         const c = db.courses.find((course) => course.course.id === r.course_id);
         if (!c) continue;
-        setStudentTerm(c, r.start ?? null, r.end ?? null);
+        const calendar = hasOwnCalendar(c);
+        setTermDates(c, r.start ?? null, r.end ?? null);
         if (r.legacy && (r.start || r.end)) {
           // Dates kept from version 0.1, still for the student to check. Their anchor says so
-          // only with a start: a last day alone is no anchor of its own (like the facade).
+          // only with a start: a last day alone is no anchor of its own (like the facade), and
+          // a calendar of its own stays the anchor.
           const term = { ...c.timeline.term, student_dates_confirmed: false };
-          if (r.start) term.anchor_origin = "legacy";
+          if (r.start && !calendar) term.anchor_origin = "legacy";
           c.timeline = { ...c.timeline, term };
         }
         // An earlier copy's mark comes back with its dates.
@@ -1250,7 +1311,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     setCourseDates: async (courseId, dates) => {
       await sleep(latency);
       const c = findCourse(courseId);
+      // Saved or cleared, the course's dates are its own, no longer the copied ones (like the
+      // facade, with the write: dates refused below keep the mark).
       if (dates === null) {
+        copiedFrom.delete(courseId);
+        ownCalendars.delete(courseId);
         clearStudentDates(c);
         return courseProposals.api.courseCalendar(courseId);
       }
@@ -1271,6 +1336,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       ) {
         throw new ApiError("invalid", "These dates are out of order.");
       }
+      copiedFrom.delete(courseId);
+      ownCalendars.add(courseId);
       const next = withCourseDates(c.timeline, dates, isoOf(now()));
       c.course.term_start = dates.first_class ?? c.synced.termStart;
       c.course.term_end =

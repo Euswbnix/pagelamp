@@ -338,6 +338,8 @@ export function withCourseDates(
       breaks,
       exams_end: input.exams_end ?? null,
       anchor_origin: "user",
+      // The span the facade mirrors in the term dates: it ends with the exams when they're set.
+      student_end: input.exams_end ?? lastDay,
     },
   };
   let life = next.lifecycle;

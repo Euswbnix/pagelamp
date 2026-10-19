@@ -44,7 +44,8 @@ export function TermDatesForm({
   const [end, setEnd] = useState(initial.end);
   const mutation = useSetCourseTerm();
   const saveRef = useRef<HTMLButtonElement>(null);
-  const session = useSameSession(course.id);
+  // From the course's own timeline: the list offers nothing from a calendar of its own.
+  const session = useSameSession(course.id, { ownCalendar: term.own_calendar });
   const applyToSession = useApplyToSession(course.id);
   const [applyFailed, setApplyFailed] = useState(false);
   // The save here and the copy to the others, from the first to the last: one Save at a time.

@@ -101,6 +101,20 @@
 			<string>未用于 %1$@：已不是本学期的课。</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.skipped.own_calendar</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%3$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>未用于 %1$@：按自己的日历计算周数。请用 %2$@ 命令修改相应课程的日历。</string>
+		</dict>
+	</dict>
 	<key>calendar.sameSession.skipped.unknown_course</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
