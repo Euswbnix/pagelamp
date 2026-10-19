@@ -60,6 +60,7 @@ export function ModelDisclosureDialog({
   model,
   open,
   onOpenChange,
+  returnFocus,
 }: {
   backend: BackendRef;
   runsHere: boolean;
@@ -67,24 +68,36 @@ export function ModelDisclosureDialog({
   /** The backend as the student set it up (the server's label for a cloud note). */
   name: string;
   kind: AiBackendStatus["kind"];
-  model: string;
+  /** The model a run is about to use; none from Settings (its cloud models in general). */
+  model?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocus?: () => HTMLElement | null;
 }) {
   const { t } = useTranslation("ai");
   const acknowledge = useAcknowledgeModelDisclosure();
   const [facts, acknowledged] = disclosure;
   const cloud = facts.cost === "cloud_via_local";
+  const acceptLabel = !cloud
+    ? undefined
+    : model
+      ? t("disclosure.acceptModel", { model })
+      : t("disclosure.acceptCloud", { name });
+  const acceptedText = !cloud
+    ? undefined
+    : model
+      ? t("disclosure.acceptedModel", { model })
+      : t("disclosure.acceptedCloud", { name });
   return (
-    <DisclosureShell open={open} onOpenChange={onOpenChange}>
+    <DisclosureShell open={open} onOpenChange={onOpenChange} returnFocus={returnFocus}>
       <DisclosureBody
         facts={facts}
         name={name}
         kind={kind}
         acknowledged={acknowledged}
         changed={false}
-        acceptLabel={cloud ? t("disclosure.acceptModel", { model }) : undefined}
-        acceptedText={cloud ? t("disclosure.acceptedModel", { model }) : undefined}
+        acceptLabel={acceptLabel}
+        acceptedText={acceptedText}
         acknowledge={(version) =>
           acknowledge.mutateAsync({ backend, runsHere, version }).then(() => undefined)
         }

@@ -17,6 +17,7 @@
 "ai.aiLabel.prefix" = "AI 生成";
 "ai.aiLabel.tokens" = "%1$@ 个 token";
 "ai.aiLabel.tokensApprox" = "≈ %1$@ 个 token";
+"ai.backend.cloudShared" = "它的云端模型会收到什么";
 "ai.backend.keyEnds" = "密钥末尾为 %1$@";
 "ai.backend.kind.api_key" = "API 密钥";
 "ai.backend.kind.claude_code" = "Claude 订阅";
@@ -38,6 +39,7 @@
 "ai.backend.state.ready" = "可以使用";
 "ai.backend.state.unavailable" = "不可用";
 "ai.backend.turnOn" = "查看并启用";
+"ai.backend.turnOnCloud" = "允许它的云端模型";
 "ai.backend.whatsShared" = "会发送哪些内容";
 "ai.blocked.backend_disabled_in_this_build" = "这个版本的 PageLamp 不提供这个服务。";
 "ai.blocked.budget_reached" = "这次运行会超出本月预算。";
@@ -138,8 +140,10 @@
 "ai.codex.system.useManaged" = "使用 PageLamp 自己的 Codex";
 "ai.codex.title" = "使用我的 ChatGPT 订阅（运行 OpenAI Codex）";
 "ai.disclosure.accept" = "启用 %1$@";
+"ai.disclosure.acceptCloud" = "允许通过 %1$@ 使用云端模型";
 "ai.disclosure.acceptModel" = "使用 %1$@";
 "ai.disclosure.accepted" = "已启用 %1$@";
+"ai.disclosure.acceptedCloud" = "已允许通过 %1$@ 使用云端模型";
 "ai.disclosure.acceptedModel" = "现在可以使用 %1$@";
 "ai.disclosure.admin.heading" = "还有谁能看到";
 "ai.disclosure.admin.unknown" = "如果你的 ChatGPT 账户属于 Edu 或工作区，它的管理员可能看得到 PageLamp 通过它发送的内容，包括课程资料中的文字。";

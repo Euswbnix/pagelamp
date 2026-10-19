@@ -17,6 +17,7 @@
 "ai.aiLabel.prefix" = "AI-generated";
 "ai.aiLabel.tokens" = "%1$@ tokens";
 "ai.aiLabel.tokensApprox" = "≈ %1$@ tokens";
+"ai.backend.cloudShared" = "What its cloud models get";
 "ai.backend.keyEnds" = "Key ending in %1$@";
 "ai.backend.kind.api_key" = "API key";
 "ai.backend.kind.claude_code" = "Claude plan";
@@ -38,6 +39,7 @@
 "ai.backend.state.ready" = "Ready";
 "ai.backend.state.unavailable" = "Unavailable";
 "ai.backend.turnOn" = "Review and turn on";
+"ai.backend.turnOnCloud" = "Allow its cloud models";
 "ai.backend.whatsShared" = "What's shared";
 "ai.blocked.backend_disabled_in_this_build" = "This service isn't available in this version of PageLamp.";
 "ai.blocked.budget_reached" = "This would go over this month's budget.";
@@ -138,8 +140,10 @@
 "ai.codex.system.useManaged" = "Use PageLamp's own Codex";
 "ai.codex.title" = "Use my ChatGPT plan (runs OpenAI Codex)";
 "ai.disclosure.accept" = "Turn on %1$@";
+"ai.disclosure.acceptCloud" = "Allow cloud models through %1$@";
 "ai.disclosure.acceptModel" = "Use %1$@";
 "ai.disclosure.accepted" = "%1$@ is turned on";
+"ai.disclosure.acceptedCloud" = "Cloud models through %1$@ are allowed";
 "ai.disclosure.acceptedModel" = "You can use %1$@ now";
 "ai.disclosure.admin.heading" = "Who else can see it";
 "ai.disclosure.admin.unknown" = "If your ChatGPT account is an Edu or workspace account, its administrators may be able to see what PageLamp sends through it, including text from your course materials.";

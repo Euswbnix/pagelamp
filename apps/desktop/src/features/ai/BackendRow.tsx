@@ -32,11 +32,17 @@ export function BackendRow({
   status: AiBackendStatus;
   /** The record behind an API-key or local backend (ai_status lists them apart). */
   provider: ModelProviderRecord | null;
-  onShowDisclosure: () => void;
+  /** Open a note: the backend's own, or (a server here) the one of its cloud models. */
+  onShowDisclosure: (note: BackendNote) => void;
   onReplaceKey: (provider: ModelProviderRecord) => void;
 }) {
   const { t } = useTranslation("ai");
   const headingId = useId();
+  const own = hasOwnNote(provider);
+  const cloud = status.cloud_disclosure ?? null;
+  const ownRead = status.disclosure_acknowledged === status.disclosure.version;
+  const cloudRead = !!cloud && status.cloud_disclosure_acknowledged === cloud.version;
+  const needs = status.state === "needs_disclosure";
   const StateIcon =
     status.state === "ready"
       ? CircleCheck
@@ -65,7 +71,10 @@ export function BackendRow({
           {t("backend.keyEnds", { last4: provider.key_last4 })}
         </p>
       ) : null}
-      <DataPolicyLine facts={status.disclosure} name={status.label} />
+      <DataPolicyLine
+        facts={own ? status.disclosure : (cloud ?? status.disclosure)}
+        name={status.label}
+      />
       {status.problems.length > 0 ? (
         <ul className="space-y-1 text-sm">
           {status.problems.map((problem) => (
@@ -74,21 +83,28 @@ export function BackendRow({
         </ul>
       ) : null}
       <div className="flex flex-wrap gap-2 pt-1">
-        {status.state === "needs_disclosure" ? (
-          <Button type="button" size="sm" onClick={onShowDisclosure} aria-describedby={headingId}>
-            {t("backend.turnOn")}
-          </Button>
-        ) : (
+        {own ? (
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            onClick={onShowDisclosure}
+            variant={needs && !ownRead ? "default" : "outline"}
+            onClick={() => onShowDisclosure("own")}
             aria-describedby={headingId}
           >
-            {t("backend.whatsShared")}
+            {needs && !ownRead ? t("backend.turnOn") : t("backend.whatsShared")}
           </Button>
-        )}
+        ) : null}
+        {cloud ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={needs && !cloudRead ? "default" : "outline"}
+            onClick={() => onShowDisclosure("cloud")}
+            aria-describedby={headingId}
+          >
+            {needs && !cloudRead ? t("backend.turnOnCloud") : t("backend.cloudShared")}
+          </Button>
+        ) : null}
         {provider && status.kind === "api_key" ? (
           <Button
             type="button"
@@ -104,6 +120,19 @@ export function BackendRow({
       </div>
     </li>
   );
+}
+
+/** Which of a backend's notes: its own, or the one of a model its server here runs in the cloud. */
+export type BackendNote = "own" | "cloud";
+
+/**
+ * Whether the backend's own note can apply: always off this computer and for the ChatGPT plan;
+ * on it, only for a server that says where a model runs (Ollama, LM Studio). A custom server
+ * here only ever needs the note of its cloud models (as the facade decides it).
+ */
+export function hasOwnNote(provider: ModelProviderRecord | null): boolean {
+  if (!provider?.on_device) return true;
+  return provider.preset === "ollama" || provider.preset === "lm_studio";
 }
 
 function RemoveBackendButton({

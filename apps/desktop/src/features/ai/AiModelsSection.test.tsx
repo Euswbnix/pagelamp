@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMockApi } from "@/api/mock";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/updates";
@@ -177,8 +178,48 @@ describe("Settings → AI models", () => {
     expect(key).toHaveAccessibleDescription(/may not need a key/);
     await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
     expect(add).toHaveBeenCalledWith("custom", "http://localhost:8080/v1", null);
+    // Its models may run anywhere: the note to read is the one of its cloud models.
+    const sheet = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses localhost:8080",
+    });
     expect(
-      await screen.findByRole("dialog", { name: "Before PageLamp uses localhost:8080" }),
+      within(sheet).getByText(/^localhost:8080 runs on this computer, but PageLamp can't confirm/),
+    ).toBeInTheDocument();
+    expect(
+      within(sheet).getByRole("button", { name: "Allow cloud models through localhost:8080" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a server's note of its cloud models apart from its own, and turns them on", async () => {
+    // Ollama's own note is read; one feature now uses a model it runs in the cloud.
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-local" });
+    await mock.setFeatureModel("weekly_explanation", {
+      backend: { kind: "provider", provider_id: "ollama" },
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const { user, api } = renderRoute("/settings", { api: mock });
+    const read = vi.spyOn(api, "acknowledgeModelDisclosure");
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    // Its own note stays as read; the cloud models' one is asked for.
+    expect(within(row).getByRole("button", { name: "What's shared" })).toBeInTheDocument();
+    await user.click(within(row).getByRole("button", { name: "Allow its cloud models" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(
+      within(sheet).getByText(/^This model may run in the cloud through Ollama/),
+    ).toBeInTheDocument();
+    await user.click(
+      within(sheet).getByRole("button", { name: "Allow cloud models through Ollama" }),
+    );
+    expect(read).toHaveBeenCalledWith(
+      { kind: "provider", provider_id: "ollama" },
+      false,
+      expect.any(Number),
+    );
+    expect(
+      await within(row).findByRole("button", { name: "What its cloud models get" }),
     ).toBeInTheDocument();
   });
 

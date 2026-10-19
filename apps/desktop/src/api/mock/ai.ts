@@ -325,19 +325,49 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       return true;
     }
   }
+  /**
+   * Like the facade's ai_status: the server's own note, and for a server here that may run a
+   * model in the cloud (any but LM Studio) the cloud note too. Ready once each routed model's
+   * note is read (placed as an estimate places it), or either note with none routed there.
+   */
   function backendStatus(provider: ModelProviderRecord): AiBackendStatus {
     const backend: BackendRef = { kind: "provider", provider_id: provider.provider_id };
     const disclosure = disclosureOf(provider);
     const acked = acknowledged.get(backendKey(backend)) ?? null;
     const preset = presetOf(provider.preset);
+    const hereNote = !provider.on_device || ["ollama", "lm_studio"].includes(provider.preset);
+    const cloud =
+      provider.on_device && provider.preset !== "lm_studio"
+        ? cloudViaLocalFacts(disclosure, provider.preset)
+        : null;
+    const cloudAcked = cloud ? (acknowledged.get(`${backendKey(backend)}:cloud`) ?? null) : null;
+    const hereOk = hereNote && acked === disclosure.version;
+    const cloudOk = !!cloud && cloudAcked === cloud.version;
+    let needsHere = false;
+    let needsCloud = false;
+    for (const choice of features.values()) {
+      if (choice?.backend.kind !== "provider") continue;
+      if (choice.backend.provider_id !== provider.provider_id) continue;
+      if (runsHere(provider, choice.model)) needsHere = true;
+      else needsCloud = true;
+    }
+    const notesOk =
+      needsHere || needsCloud
+        ? (!needsHere || hereOk) && (!needsCloud || cloudOk)
+        : hereOk || cloudOk;
     const problems: AiBackendStatus["problems"] = [];
     if (needsKey(preset, provider.base_url) && !provider.key_last4) problems.push("key_missing");
-    if (acked !== null && acked !== disclosure.version) problems.push("disclosure_changed");
+    if (
+      (acked !== null && acked !== disclosure.version) ||
+      (cloud && cloudAcked !== null && cloudAcked !== cloud.version)
+    ) {
+      problems.push("disclosure_changed");
+    }
     const state = problems.includes("key_missing")
       ? "needs_setup"
-      : acked !== disclosure.version
-        ? "needs_disclosure"
-        : "ready";
+      : notesOk
+        ? "ready"
+        : "needs_disclosure";
     return {
       backend,
       label: provider.label,
@@ -346,6 +376,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       problems,
       disclosure,
       disclosure_acknowledged: acked,
+      cloud_disclosure: cloud,
+      cloud_disclosure_acknowledged: cloudAcked,
     };
   }
   function monthOffset(month: string | null): number {
@@ -657,8 +689,9 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       let block: BlockReason | null = null;
       // The note of where it runs: a model a server here may run in the cloud has its own.
       const note = status.kind === "codex" ? null : noteOf(choice.backend, onDevice);
-      const read = note?.key.endsWith(":cloud")
-        ? acknowledged.get(note.key) === note.facts.version
+      // This model's note only (the status asks for every routed model's).
+      const read = note
+        ? status.state !== "needs_setup" && acknowledged.get(note.key) === note.facts.version
         : status.state === "ready";
       if (!read) block = "disclosure_not_acknowledged";
       // Mode A has no money budget; PageLamp's runs per week are capped instead.

@@ -50,7 +50,9 @@
     "remove": "移除",
     "removeTitle": "移除 {{name}}？",
     "removeBody": "{{product}} 会从钥匙串中删除这个密钥，所有功能都不再使用 {{name}}。使用记录会保留。",
-    "removed": "已移除 {{name}}"
+    "removed": "已移除 {{name}}",
+    "turnOnCloud": "允许它的云端模型",
+    "cloudShared": "它的云端模型会收到什么"
   },
   "policy": {
     "label": "数据政策",
@@ -148,7 +150,9 @@
     "close": "关闭",
     "accepted": "已启用 {{name}}",
     "acceptModel": "使用 {{model}}",
-    "acceptedModel": "现在可以使用 {{model}}"
+    "acceptedModel": "现在可以使用 {{model}}",
+    "acceptCloud": "允许通过 {{name}} 使用云端模型",
+    "acceptedCloud": "已允许通过 {{name}} 使用云端模型"
   },
   "addKey": {
     "title": "添加 API 密钥",

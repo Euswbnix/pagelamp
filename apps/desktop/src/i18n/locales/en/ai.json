@@ -50,7 +50,9 @@
     "remove": "Remove",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "{{product}} deletes the key from your keychain and stops using {{name}} for every feature. Your usage history stays.",
-    "removed": "{{name}} removed"
+    "removed": "{{name}} removed",
+    "turnOnCloud": "Allow its cloud models",
+    "cloudShared": "What its cloud models get"
   },
   "policy": {
     "label": "Data policy",
@@ -148,7 +150,9 @@
     "close": "Close",
     "accepted": "{{name}} is turned on",
     "acceptModel": "Use {{model}}",
-    "acceptedModel": "You can use {{model}} now"
+    "acceptedModel": "You can use {{model}} now",
+    "acceptCloud": "Allow cloud models through {{name}}",
+    "acceptedCloud": "Cloud models through {{name}} are allowed"
   },
   "addKey": {
     "title": "Add an API key",

@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SettingsSection } from "@/features/settings/SettingsSection";
 import { ApiKeyDialog, type ApiKeyDialogMode } from "./ApiKeyDialog";
-import { BackendRow } from "./BackendRow";
+import { type BackendNote, BackendRow, hasOwnNote } from "./BackendRow";
 import { BudgetField } from "./BudgetField";
 import { ChatGptCard } from "./codex/ChatGptCard";
-import { DisclosureDialog } from "./DisclosureDialog";
+import { DisclosureDialog, ModelDisclosureDialog } from "./DisclosureDialog";
 import { FeatureModels } from "./FeatureModels";
 import { LocalServers } from "./LocalServers";
 import { RemoveAllAiData } from "./RemoveAllAiData";
@@ -31,6 +31,8 @@ export function AiModelsSection() {
   const [disclosureFor, setDisclosureFor] = useState<{
     backend: BackendRef;
     added: boolean;
+    /** null: the note that applies (its cloud models' for a custom server here). */
+    note: BackendNote | null;
   } | null>(null);
   const container = useRef<HTMLDivElement>(null);
 
@@ -42,8 +44,8 @@ export function AiModelsSection() {
   const disclosed = disclosureFor
     ? backends.find((b) => backendKey(b.backend) === backendKey(disclosureFor.backend))
     : undefined;
-  const showDisclosure = (backend: BackendRef, added = false) =>
-    setDisclosureFor({ backend, added });
+  const showDisclosure = (backend: BackendRef, added = false, note: BackendNote | null = null) =>
+    setDisclosureFor({ backend, added, note });
   const showAdded = (providerId: string) =>
     showDisclosure({ kind: "provider", provider_id: providerId }, true);
   /** The row (or card) of a backend, e.g. to put focus on one just added. */
@@ -83,7 +85,7 @@ export function AiModelsSection() {
                   key={backendKey(backend.backend)}
                   status={backend}
                   provider={providerOf(status.data, backend)}
-                  onShowDisclosure={() => showDisclosure(backend.backend)}
+                  onShowDisclosure={(note) => showDisclosure(backend.backend, false, note)}
                   onReplaceKey={(provider) => setKeyDialog({ kind: "replace", provider })}
                 />
               ))}
@@ -115,14 +117,35 @@ export function AiModelsSection() {
         onAdded={(record) => showAdded(record.provider_id)}
       />
       {disclosed ? (
-        <DisclosureDialog
-          status={disclosed}
-          open
-          onOpenChange={(open) => {
-            if (!open) setDisclosureFor(null);
-          }}
-          returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
-        />
+        (disclosureFor?.note ??
+          (hasOwnNote(status.data ? providerOf(status.data, disclosed) : null)
+            ? "own"
+            : "cloud")) === "cloud" && disclosed.cloud_disclosure ? (
+          <ModelDisclosureDialog
+            backend={disclosed.backend}
+            runsHere={false}
+            disclosure={[
+              disclosed.cloud_disclosure,
+              disclosed.cloud_disclosure_acknowledged === disclosed.cloud_disclosure.version,
+            ]}
+            name={disclosed.label}
+            kind={disclosed.kind}
+            open
+            onOpenChange={(open) => {
+              if (!open) setDisclosureFor(null);
+            }}
+            returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
+          />
+        ) : (
+          <DisclosureDialog
+            status={disclosed}
+            open
+            onOpenChange={(open) => {
+              if (!open) setDisclosureFor(null);
+            }}
+            returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
+          />
+        )
       ) : null}
     </SettingsSection>
   );
