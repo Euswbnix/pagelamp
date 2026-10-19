@@ -3622,7 +3622,7 @@ checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
 
 [[package]]
 name = "pagelamp-app"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3649,7 +3649,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-canvas"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3670,7 +3670,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-cli"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3691,7 +3691,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-core"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-desktop"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "chrono",
  "pagelamp-app",
@@ -3738,7 +3738,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-extract"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "flate2",
  "html2text",
@@ -3757,7 +3757,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-ffi"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "chrono",
  "pagelamp-app",
@@ -3772,7 +3772,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-llm"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "jsonschema",
  "pagelamp-core",
@@ -3792,7 +3792,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-local"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3816,7 +3816,7 @@ dependencies = [
 
 [[package]]
 name = "pagelamp-mcp"
-version = "0.3.0-alpha.0.5"
+version = "0.3.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4581,9 +4581,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -5752,7 +5752,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
