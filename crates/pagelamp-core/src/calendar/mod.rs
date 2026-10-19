@@ -38,6 +38,34 @@ pub struct CourseCalendar {
     pub weeks: Vec<CalendarWeek>,
 }
 
+impl CourseCalendar {
+    /// Whether a first day of classes carries this calendar's weeks to another course, which
+    /// counts week 1 from it, every week, with no breaks: not with two parts, a first week
+    /// other than week 1, or a break that skips a week (`phase::skips_a_week`; a shorter one
+    /// changes no week). Such a calendar lends its dates to the courses of its session
+    /// (`same_session::donor`); any other takes part in their agreement on week 1 but lends
+    /// nothing.
+    pub fn lendable(&self) -> bool {
+        self.segments.len() <= 1
+            && self
+                .segments
+                .first()
+                .is_none_or(|s| s.first_week_number == 1)
+            && self
+                .breaks
+                .iter()
+                .all(|b| b.numbered || !crate::term::phase::skips_a_week(b))
+    }
+
+    /// Whether a first and a last day of classes carry this calendar's weeks to another course:
+    /// `lendable`, and with a last day of classes (copied without one, the other course would
+    /// take its end and its breaks from the school's calendar). A copy of dates is refused
+    /// otherwise.
+    pub fn carried_by_two_dates(&self) -> bool {
+        self.lendable() && self.segments.last().is_none_or(|s| s.last_class.is_some())
+    }
+}
+
 /// One row of a schedule table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CalendarWeek {

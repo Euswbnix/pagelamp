@@ -264,12 +264,12 @@
 "ai.policy.training.may_train_free_tier" = "免费档：可能用于训练";
 "ai.policy.training.no_training" = "不用于训练";
 "ai.policy.training.unknown" = "是否用于训练未知：请查看服务商条款";
-"ai.removeAll.body" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 用 AI 写出的所有内容。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
-"ai.removeAll.bodyCodex" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 用 AI 写出的所有内容，还会让 PageLamp 的 Codex 退出 ChatGPT 登录。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
+"ai.removeAll.body" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 的 AI 功能写出的内容。你从课程大纲读出并接受的课程日历会保留，并带着 AI 标签。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
+"ai.removeAll.bodyCodex" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 的 AI 功能写出的内容，还会让 PageLamp 的 Codex 退出 ChatGPT 登录。你从课程大纲读出并接受的课程日历会保留，并带着 AI 标签。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
 "ai.removeAll.button" = "删除所有 AI 数据";
 "ai.removeAll.confirm" = "全部删除";
 "ai.removeAll.done" = "已删除所有 AI 数据";
-"ai.removeAll.hint" = "删除你的密钥、模型选择、使用记录，以及 PageLamp 用 AI 写出的所有内容。";
+"ai.removeAll.hint" = "删除你的密钥、模型选择、使用记录，以及 PageLamp 的 AI 功能写出的内容（你接受过的课程日历会保留，并带着 AI 标签）。";
 "ai.removeAll.title" = "删除所有 AI 数据？";
 "ai.replaceKey.done" = "密钥已更换";
 "ai.replaceKey.submit" = "验证并更换";
@@ -402,6 +402,7 @@
 "calendar.evidence.same_session_disagrees" = "同一学期的 %1$@ 把第 1 周定在 %2$@ 那一周，与%4$@相差 %3$@ 天";
 "calendar.evidence.same_session_disagrees_no_course" = "同一学期的另一门课把第 1 周定在 %1$@ 那一周，与%3$@相差 %2$@ 天";
 "calendar.evidence.same_session_split" = "%1$@ 学期的几门课对第 1 周的判断不一致，因此都没有采用。请在其中一门课里设置开课第一天。";
+"calendar.evidence.same_session_unlent" = "%1$@ 学期没有课能借出日期：决定第 1 周的那门课按自己的日历计算周数，这份日历无法用两个日期表示，其他课的第 1 周又与它不一致。请在这门课里设置开课第一天。";
 "calendar.evidence.same_session_unlocks" = "第 1 周根据同一学期（%2$@）另一门课 %1$@ 的模块开放时间推算：%3$@ 那一周。设置本课的开课第一天可以确保准确。";
 "calendar.evidence.same_session_unlocks_no_course" = "第 1 周根据同一学期（%1$@）另一门课的模块开放时间推算：%2$@ 那一周。设置本课的开课第一天可以确保准确。";
 "calendar.evidence.session_ended" = "%1$@ 学期已于 %2$@ 结束";

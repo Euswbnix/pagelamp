@@ -1226,9 +1226,10 @@ fn courses_whose_dates_disagree_name_each_other() {
     assert!(!three.contains("same session, puts week 1"), "{three}");
 }
 
-/// A calendar in force lends whether or not the course's dates were ever confirmed with the
-/// form (an accepted proposal is not on that list): the lender reads its term from the
-/// calendar, never from the unconfirmed `user_term_*` it mirrors into.
+/// A calendar in force lends whether or not the course's dates are on the confirmed list
+/// (`course term --clear` drops a course from it and leaves its calendar in force; a restored
+/// course can be off it too): the lender reads its term from the calendar, never from the
+/// unconfirmed `user_term_*` it mirrors into.
 #[test]
 fn a_calendar_in_force_lends_without_confirmed_dates() {
     use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};
@@ -1254,6 +1255,200 @@ fn a_calendar_in_force_lends_without_confirmed_dates() {
     assert_eq!(term.anchor, TermAnchorSource::SameSession);
     assert_eq!(term.week_one_monday, Some(date("2026-09-07")));
     assert_eq!(term.exams_end, Some(date("2026-12-22")));
+}
+
+/// A calendar whose weeks can't be lent lends nothing: from "Week 0", the course without
+/// dates of its own would count one week more all term.
+#[test]
+fn a_calendar_from_week_zero_lends_nothing() {
+    use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};
+
+    let store = session_store();
+    let mut calendar = calendar_from_dates(&DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: None,
+        breaks: vec![],
+        second_segment: None,
+    })
+    .unwrap();
+    calendar.segments[0].first_week_number = 0;
+    store
+        .set_student_calendar(
+            &session_id("1"),
+            Some(&calendar),
+            ts("2026-09-20T12:00:00Z"),
+        )
+        .unwrap();
+    let borrower = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_ne!(borrower.timeline.term.anchor, TermAnchorSource::SameSession);
+    let listed = views::list_courses(&store, true, session_at())
+        .unwrap()
+        .into_iter()
+        .find(|s| s.course.id == session_id("2"))
+        .unwrap();
+    assert_ne!(listed.timeline.term.anchor, TermAnchorSource::SameSession);
+}
+
+/// A calendar of the session's (first_class, last_class, week numbering) set through the store.
+fn session_calendar(
+    store: &Store,
+    external: &str,
+    last_class: Option<&str>,
+    breaks: Vec<CalendarBreak>,
+    first_week: u32,
+) {
+    let mut calendar =
+        pagelamp_core::calendar::calendar_from_dates(&pagelamp_core::calendar::DatesDraft {
+            first_class: date("2026-09-08"),
+            last_class: last_class.map(date),
+            exams_end: None,
+            breaks,
+            second_segment: None,
+        })
+        .unwrap();
+    calendar.segments[0].first_week_number = first_week;
+    store
+        .set_student_calendar(
+            &session_id(external),
+            Some(&calendar),
+            ts("2026-09-20T12:00:00Z"),
+        )
+        .unwrap();
+}
+
+/// Course 3's dates, confirmed: first class `start`.
+fn confirmed_term(store: &Store, start: &str) {
+    store
+        .set_course_term(
+            &session_id("3"),
+            Some(date(start)),
+            Some(date("2026-12-11")),
+        )
+        .unwrap();
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([session_id("3")]))
+        .unwrap();
+}
+
+/// A calendar whose weeks can't be lent still takes part in the session's agreement on week
+/// 1: when it disagrees with another course of the student's dates, nothing is lent.
+#[test]
+fn a_calendar_that_can_t_lend_still_takes_part_in_the_agreement() {
+    let store = session_store();
+    let reading_week = CalendarBreak {
+        kind: BreakKind::ReadingWeek,
+        span: DateSpan {
+            start: date("2026-10-26"),
+            end: date("2026-10-30"),
+        },
+        numbered: false,
+        label: String::new(),
+    };
+    session_calendar(&store, "1", Some("2026-12-08"), vec![reading_week], 1);
+    confirmed_term(&store, "2026-09-15");
+    let borrower = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_ne!(borrower.timeline.term.anchor, TermAnchorSource::SameSession);
+    let evidence = borrower.timeline.evidence.join("\n");
+    assert!(
+        evidence.contains("the courses of session 20269 disagree on week 1"),
+        "{evidence}"
+    );
+}
+
+/// A calendar from "Week 0" has its week 1 a week after its first class: a course whose week 1
+/// is that week agrees with it (no "puts week 1" line), and lends to the course without dates
+/// of its own, which the calendar can't.
+#[test]
+fn a_week_zero_calendar_agrees_with_the_same_week_one() {
+    let store = session_store();
+    session_calendar(&store, "1", Some("2026-12-08"), vec![], 0);
+    confirmed_term(&store, "2026-09-14");
+    let one = views::course_overview(&store, &session_id("1"), true, session_at()).unwrap();
+    let evidence = one.timeline.evidence.join("\n");
+    assert!(!evidence.contains("puts week 1"), "{evidence}");
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_eq!(two.timeline.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(two.timeline.term.week_one_monday, Some(date("2026-09-14")));
+}
+
+/// Course 3's module unlocks, which put its week 1 in the week of `monday` (week 4 unlocks
+/// three weeks later, week 5 four).
+fn session_unlocks(store: &Store, monday: &str) {
+    let week = |n: i64| {
+        let day = date(monday) + chrono::TimeDelta::days(7 * (n - 1));
+        Module {
+            id: format!("{SESSION_HOST}/module/w{n}"),
+            course_id: session_id("3"),
+            name: format!("Week {n}"),
+            position: None,
+            unlock_at: Some(ts(&format!("{day}T13:00:00Z"))),
+            week_hint: Some(u32::try_from(n).unwrap()),
+        }
+    };
+    store
+        .replace_modules(&session_id("3"), &[week(4), week(5)])
+        .unwrap();
+}
+
+/// When the strongest kind's only course can't lend (a calendar whose reading week skips a
+/// week), a weaker kind that agrees with its week 1 lends: here course 3's module unlocks.
+#[test]
+fn a_weaker_course_that_agrees_lends_when_the_strongest_can_t() {
+    let store = session_store();
+    let reading_week = CalendarBreak {
+        kind: BreakKind::ReadingWeek,
+        span: DateSpan {
+            start: date("2026-10-26"),
+            end: date("2026-10-30"),
+        },
+        numbered: false,
+        label: String::new(),
+    };
+    session_calendar(&store, "1", Some("2026-12-08"), vec![reading_week], 1);
+    session_unlocks(&store, "2026-09-07");
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_eq!(two.timeline.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(two.timeline.term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(two.timeline.term.anchor_confidence, Confidence::Low);
+}
+
+/// A weaker course that puts week 1 elsewhere than the course that decides it lends nothing,
+/// and the course without dates of its own is told why.
+#[test]
+fn a_course_that_gets_nothing_lent_is_told_why() {
+    let store = session_store();
+    let reading_week = CalendarBreak {
+        kind: BreakKind::ReadingWeek,
+        span: DateSpan {
+            start: date("2026-10-26"),
+            end: date("2026-10-30"),
+        },
+        numbered: false,
+        label: String::new(),
+    };
+    session_calendar(&store, "1", Some("2026-12-08"), vec![reading_week], 1);
+    session_unlocks(&store, "2026-09-14");
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_ne!(two.timeline.term.anchor, TermAnchorSource::SameSession);
+    let evidence = two.timeline.evidence.join("\n");
+    assert!(
+        evidence.contains("no course of session 20269 lends its dates"),
+        "{evidence}"
+    );
+}
+
+/// A calendar without a last day of classes still lends: the course without dates of its own
+/// counts the same open weeks from the same first class.
+#[test]
+fn an_open_ended_calendar_lends() {
+    let store = session_store();
+    session_calendar(&store, "1", None, vec![], 1);
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    let term = &two.timeline.term;
+    assert_eq!(term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(term.teaching[0].last_class, None);
 }
 
 /// A course whose dates come from a calendar in force (the dates form or an accepted proposal)

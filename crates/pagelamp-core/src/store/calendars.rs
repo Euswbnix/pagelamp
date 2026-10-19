@@ -369,6 +369,7 @@ impl Store {
                  WHERE course_id = ?1 AND origin = ?2 AND state = 'proposed'",
                 params![row.course_id, row.origin.as_str()],
             )?;
+            self.prune_dismissed_calendars(now)?;
             self.insert_calendar_row(row, CalendarState::Proposed, now, None)
         })
     }
@@ -521,12 +522,16 @@ impl Store {
 
     /// Dismiss proposal `id` (kept 30 days, so its materials aren't proposed again).
     pub fn dismiss_calendar_proposal(&self, id: i64, now: Timestamp) -> Result<()> {
-        let changed = self.conn.execute(
-            "UPDATE course_calendars SET state = 'dismissed', decided_at = ?2
-             WHERE id = ?1 AND state = 'proposed'",
-            params![id, ts_text(now)],
-        )?;
-        expect_changed(changed, "calendar proposal", &id.to_string())
+        self.atomic(|| {
+            let changed = self.conn.execute(
+                "UPDATE course_calendars SET state = 'dismissed', decided_at = ?2
+                 WHERE id = ?1 AND state = 'proposed'",
+                params![id, ts_text(now)],
+            )?;
+            expect_changed(changed, "calendar proposal", &id.to_string())?;
+            self.prune_dismissed_calendars(now)?;
+            Ok(())
+        })
     }
 
     /// Whether the student dismissed a proposal of `origin` made from these materials
@@ -546,12 +551,25 @@ impl Store {
         Ok(n > 0)
     }
 
-    /// Delete dismissed rows older than 30 days.
+    /// Delete dismissed rows older than 30 days, and the runs that wrote them (unless another
+    /// row still points to one). Runs when a proposal is made or dismissed, and at each sync.
     pub fn prune_dismissed_calendars(&self, now: Timestamp) -> Result<usize> {
-        Ok(self.conn.execute(
-            "DELETE FROM course_calendars WHERE state = 'dismissed' AND decided_at < ?1",
-            [ts_text(now - Duration::days(KEEP_DISMISSED_DAYS))],
-        )?)
+        let cutoff = ts_text(now - Duration::days(KEEP_DISMISSED_DAYS));
+        self.atomic(|| {
+            self.conn.execute(
+                "DELETE FROM generations
+                 WHERE id IN (SELECT generation_id FROM course_calendars
+                              WHERE state = 'dismissed' AND decided_at < ?1)
+                   AND id NOT IN (SELECT generation_id FROM course_calendars
+                                  WHERE generation_id IS NOT NULL
+                                    AND NOT (state = 'dismissed' AND decided_at < ?1))",
+                [&cutoff],
+            )?;
+            Ok(self.conn.execute(
+                "DELETE FROM course_calendars WHERE state = 'dismissed' AND decided_at < ?1",
+                [&cutoff],
+            )?)
+        })
     }
 
     /// The calendar in force becomes superseded.
@@ -899,6 +917,68 @@ mod tests {
             .collect();
         // The one in force and the latest 3 before it.
         assert_eq!(kept, ids[2..]);
+    }
+
+    /// A dismissed proposal goes 30 days on, with the run that wrote it, when a proposal is
+    /// made or dismissed later (the facade also prunes at each sync).
+    #[test]
+    fn a_dismissed_ai_proposal_goes_with_its_run_after_thirty_days() {
+        let store = demo_store();
+        let run = |id: &str| {
+            store
+                .conn()
+                .execute(
+                    "INSERT INTO generations (id, feature, course_id, backend, model, status,
+                                              created_at, prompt_version)
+                     VALUES (?1, 'course_calendar', ?2, 'provider:openai', 'gpt-6-luna',
+                             'accepted', '2026-09-20T00:00:00Z', 1)",
+                    params![id, COURSE],
+                )
+                .unwrap();
+        };
+        let read = |generation: &str, fingerprint: &str| {
+            let mut row = proposal(CalendarOrigin::Ai, "2026-09-08", fingerprint);
+            row.provenance.as_mut().unwrap().generation_id = Some(generation.into());
+            row
+        };
+        let runs = || -> Vec<String> {
+            let mut statement = store
+                .conn()
+                .prepare("SELECT id FROM generations ORDER BY id")
+                .unwrap();
+            statement
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<std::result::Result<_, _>>()
+                .unwrap()
+        };
+        run("g1");
+        let first = store
+            .insert_calendar_proposal(&read("g1", "f1"), at("2026-09-20"))
+            .unwrap();
+        store
+            .dismiss_calendar_proposal(first, at("2026-09-21"))
+            .unwrap();
+        // Within 30 days a new proposal leaves the dismissed one and its run.
+        run("g2");
+        let second = store
+            .insert_calendar_proposal(&read("g2", "f2"), at("2026-10-20"))
+            .unwrap();
+        assert!(store.calendar_row(first).unwrap().is_some());
+        assert_eq!(runs(), ["g1", "g2"]);
+        // A dismissal after that takes them.
+        store
+            .dismiss_calendar_proposal(second, at("2026-10-22"))
+            .unwrap();
+        assert!(store.calendar_row(first).unwrap().is_none());
+        assert_eq!(runs(), ["g2"]);
+        // And so does a proposal.
+        run("g3");
+        store
+            .insert_calendar_proposal(&read("g3", "f3"), at("2026-11-23"))
+            .unwrap();
+        assert!(store.calendar_row(second).unwrap().is_none());
+        assert_eq!(runs(), ["g3"]);
     }
 
     #[test]
