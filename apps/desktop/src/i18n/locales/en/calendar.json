@@ -124,6 +124,32 @@
     "cleared": "{{product}} works out this course's status again",
     "invalid": "Pick a date from today on."
   },
+  "sameSession": {
+    "legend": "Also use these dates in",
+    "hint": "Other courses of this term. Untick any you want to leave as they are.",
+    "ownDates": "Has its own dates: they would be replaced.",
+    "hidden": "hidden",
+    "saved_one": "Saved, and used in {{count}} other course",
+    "saved_other": "Saved, and used in {{count}} other courses",
+    "undo": "Undo",
+    "undone_one": "{{count}} other course is back as it was",
+    "undone_other": "The {{count}} other courses are back as they were",
+    "undoFailed": "The other courses couldn't be put back: they keep this course's dates.",
+    "failed": "Your dates are saved for this course. The other courses weren't changed.",
+    "skipped": {
+      "not_same_session_one": "Not used in {{courses}}: it isn't a course of this term any more.",
+      "not_same_session_other": "Not used in {{courses}}: they aren't courses of this term any more.",
+      "no_dates_one": "Not used in {{courses}}: there were no dates of yours here to give.",
+      "no_dates_other": "Not used in {{courses}}: there were no dates of yours here to give.",
+      "unknown_course_one": "Not used in {{courses}}: it isn't among your courses any more.",
+      "unknown_course_other": "Not used in {{courses}}: they aren't among your courses any more.",
+      "from_course_one": "Not used in {{courses}}: it's the course these dates are from.",
+      "from_course_other": "Not used in {{courses}}: it's the course these dates are from.",
+      "dates_not_confirmed_one": "Not used in {{courses}}: the dates here aren't confirmed yet. Save them, then try again.",
+      "dates_not_confirmed_other": "Not used in {{courses}}: the dates here aren't confirmed yet. Save them, then try again."
+    },
+    "listFailed": "The other courses of this term couldn't be listed, so these dates stay in this course."
+  },
   "checkDates": {
     "title": "Check this course's dates",
     "body": "You set these dates in an earlier version of {{product}}, which counted weeks differently. Check that the week shown is still right.",

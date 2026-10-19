@@ -20,6 +20,7 @@ use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
+use pagelamp_app::{ApplyDatesReport, ReplacedDates, SessionCourses};
 use pagelamp_app::{
     CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput, LifecycleSummary,
     ReadCalendarOptions, SyllabusOffer,
@@ -333,6 +334,40 @@ pub async fn set_course_dates(
 ) -> CmdResult<CourseCalendarView> {
     backend
         .blocking(move |app| app.set_course_dates(&course, dates))
+        .await
+}
+
+/// The other courses of `course`'s session ("also use these dates in", in the dates form).
+#[tauri::command]
+pub async fn session_courses(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<SessionCourses> {
+    backend
+        .blocking(move |app| app.session_courses(&course))
+        .await
+}
+
+/// Copies `from`'s own dates to each course of `to` (one transaction).
+#[tauri::command]
+pub async fn apply_course_dates_to(
+    backend: State<'_, Backend>,
+    from: String,
+    to: Vec<String>,
+) -> CmdResult<ApplyDatesReport> {
+    backend
+        .blocking(move |app| app.apply_course_dates_to(&from, to))
+        .await
+}
+
+/// Undo for `apply_course_dates_to`: puts each course back exactly as it was.
+#[tauri::command]
+pub async fn restore_course_dates(
+    backend: State<'_, Backend>,
+    replaced: Vec<ReplacedDates>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.restore_course_dates(replaced))
         .await
 }
 
