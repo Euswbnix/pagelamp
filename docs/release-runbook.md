@@ -126,7 +126,7 @@ back (a red `deny` still marks the run failed). Nothing is created or changed in
    | `.deb`, `.rpm` | Linux packages (download link in the app, D7) |
    | `pagelamp-<tag>-<target>.tar.gz` / `.zip` + `.sha256` | the CLI alone (4 targets) |
    | `latest.json` | the update manifest |
-   | `SHA256SUMS` | every file above (and attested) |
+   | `SHA256SUMS` | every installer, archive and updater file above, not the `.sha256` files or itself (the files it lists are attested) |
 
    With the updater off the same list without the `.app.tar.gz`, the `.sig` files and
    `latest.json`. Nothing else can be there: `checksums` refuses to write `SHA256SUMS` (and

@@ -11,7 +11,7 @@ use chrono::Duration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{AsOf, Deadline, deadlines, list_courses, week_materials};
+use super::{AsOf, Deadline, SessionLends, deadlines, list_courses, week_materials_with};
 use crate::Result;
 use crate::lifecycle::is_active;
 use crate::model::{BreakKind, Confidence, CoursePhase, StudyPlanItem, Timestamp};
@@ -65,6 +65,8 @@ pub struct DigestPlan {
 /// The digest for `at` (visible, not removed courses only).
 pub fn weekly_digest(store: &Store, at: AsOf) -> Result<WeeklyDigest> {
     let mut courses = Vec::new();
+    // What the sessions lend, worked out once for every course.
+    let lends = SessionLends::load(store, at, false, None)?;
     for summary in list_courses(store, false, at)? {
         let course = &summary.course;
         let upcoming = deadlines(store, Some(&course.id), DIGEST_DEADLINE_DAYS, 0, false, at)?;
@@ -87,7 +89,7 @@ pub fn weekly_digest(store: &Store, at: AsOf) -> Result<WeeklyDigest> {
             deadlines: upcoming,
         };
         if active {
-            let week = week_materials(store, &course.id, None, false, at)?;
+            let week = week_materials_with(store, &course.id, None, false, at, Some(&lends))?;
             entry.week = week.week;
             entry.confidence = week.timeline.confidence;
             entry.material_count = u32::try_from(week.materials.len()).unwrap_or(u32::MAX);

@@ -6,8 +6,8 @@
 use chrono::NaiveDate;
 use pagelamp_app::ai::GenEvent;
 use pagelamp_app::{
-    App, CourseCalendarView, PurgeTargets, ReadCalendarOptions, RemovalPreview, RemoveOptions,
-    RestoreFailure, TombstoneState,
+    App, ApplySkipReason, CourseCalendarView, PurgeTargets, ReadCalendarOptions, RemovalPreview,
+    RemoveOptions, RestoreFailure, TombstoneState,
 };
 use pagelamp_core::ai::AiFeature;
 use pagelamp_core::calendar::CourseCalendar;
@@ -15,8 +15,9 @@ use pagelamp_core::calendar::assemble::DateKind;
 use pagelamp_core::calendar::candidates::CandidateLeftOut;
 use pagelamp_core::model::{
     AiLabel, CalendarOrigin, Confidence, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline,
-    EvidenceItem, LifecycleState, TermAnchorSource,
+    EvidenceCode, EvidenceItem, LifecycleState, TermAnchorSource,
 };
+use pagelamp_core::term::session::parse_uoft_session;
 use pagelamp_core::views::CourseSummary;
 
 use crate::{ai_materials, confidence, confirm, print_json};
@@ -284,12 +285,30 @@ fn dates_used(timeline: &CourseTimeline) -> String {
         Some(CalendarOrigin::Legacy) => " — set in PageLamp 0.1, check them",
         _ => "",
     };
-    format!(
-        "{} → {end} from {} ({}){origin}",
-        first.first_class,
-        source_name(term.anchor),
-        confidence(term.anchor_confidence)
-    )
+    let confidence = confidence(term.anchor_confidence);
+    let source = match lender(timeline) {
+        // "from DEM240H5 … (same session, medium)": one bracket, like the other sources.
+        Some(course) => format!("{course} (same session, {confidence})"),
+        None => format!("{} ({confidence})", source_name(term.anchor)),
+    };
+    format!("{} → {end} from {source}{origin}", first.first_class)
+}
+
+/// The course that lent the dates, when they are another course's of the same session.
+fn lender(timeline: &CourseTimeline) -> Option<&str> {
+    if timeline.term.anchor != TermAnchorSource::SameSession {
+        return None;
+    }
+    timeline
+        .evidence_items
+        .iter()
+        .find(|item| {
+            matches!(
+                item.evidence_code(),
+                Some(EvidenceCode::SameSessionAnchor | EvidenceCode::SameSessionUnlocks)
+            )
+        })
+        .and_then(|item| item.param("course"))
 }
 
 fn source_name(source: TermAnchorSource) -> &'static str {
@@ -299,6 +318,7 @@ fn source_name(source: TermAnchorSource) -> &'static str {
         TermAnchorSource::LmsTerm => "the LMS term",
         TermAnchorSource::FolderConfig => "the folder's dates",
         TermAnchorSource::InstitutionCalendar => "the school calendar",
+        TermAnchorSource::SameSession => "another course of the same session",
         TermAnchorSource::PublishedWeekLabels => "the week numbers of posted materials",
         TermAnchorSource::NoAnchor => "nothing",
     }
@@ -542,6 +562,120 @@ fn phase_word(phase: CoursePhase) -> &'static str {
         CoursePhase::Ended => "ended",
         CoursePhase::Unknown => "phase unknown",
     }
+}
+
+/// `pagelamp course copy-dates <from> [<to>…] [--same-session]`: the student's dates of one
+/// course become the dates of other courses of its session. Without courses to copy to, it
+/// lists the session's courses.
+pub fn copy_dates(
+    app: &App,
+    from: &str,
+    to: Vec<String>,
+    same_session: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let from_course = app.course_overview(from)?.course;
+    let from_name = from_course.display_name();
+    let session = app.session_courses(&from_course.id)?;
+    let Some(code) = &session.session else {
+        // The code may end in a session code all the same: then its school (its LMS host, or
+        // a folder course's `institution`) isn't one whose sessions PageLamp reads.
+        if parse_uoft_session(from_course.code.as_deref(), &from_course.name).is_some() {
+            anyhow::bail!(
+                "{from_name}'s school isn't one PageLamp reads session codes for, so no other \
+                 course shares its dates."
+            );
+        }
+        anyhow::bail!(
+            "{from_name} has no session code at the end of its code or name, so no other course \
+             shares its dates."
+        );
+    };
+    if session.campus.is_none() {
+        anyhow::bail!(
+            "{from_name}'s code doesn't say its campus (the digit after the course number), so \
+             PageLamp can't tell which courses of session {code} share its dates."
+        );
+    }
+    if to.is_empty() && !same_session {
+        if json {
+            return print_json(&session);
+        }
+        if session.courses.is_empty() {
+            println!("{from_name} is the only course of session {code}.");
+            return Ok(());
+        }
+        println!("Courses of session {code} besides {from_name}:");
+        for course in &session.courses {
+            let own = match (course.student_start, course.student_end) {
+                (None, None) => String::new(),
+                (start, end) => format!(
+                    " — has its own dates ({} → {}), which would be replaced",
+                    start.map_or_else(|| "?".to_string(), |d| d.to_string()),
+                    end.map_or_else(|| "?".to_string(), |d| d.to_string())
+                ),
+            };
+            println!(
+                "  {}{}{own}",
+                course.code.as_deref().unwrap_or(&course.name),
+                if course.hidden { " (hidden)" } else { "" }
+            );
+        }
+        println!("Name the courses to copy to, or use --same-session for all of them.");
+        return Ok(());
+    }
+    let to = if same_session {
+        session
+            .courses
+            .iter()
+            .map(|c| c.course_id.clone())
+            .collect()
+    } else {
+        to
+    };
+    let report = app.apply_course_dates_to(&from_course.id, to)?;
+    if json {
+        return print_json(&report);
+    }
+    // A course by its code (or its name without one); anything else as it was given.
+    let label = |id: &str| -> String {
+        let course = session
+            .courses
+            .iter()
+            .find(|c| c.course_id == id)
+            .map(|c| (c.code.clone(), c.name.clone()))
+            .or_else(|| {
+                app.course_overview(id)
+                    .ok()
+                    .map(|o| (o.course.code, o.course.name))
+            });
+        match course {
+            Some((code, name)) => code.unwrap_or(name),
+            None => id.to_string(),
+        }
+    };
+    if report.applied.is_empty() {
+        println!("No course got the dates of {from_name}.");
+    } else {
+        println!("The dates of {from_name} are now also the dates of:");
+        for id in &report.applied {
+            println!("  {}", label(id));
+        }
+    }
+    for skipped in &report.skipped {
+        let why = match skipped.reason {
+            ApplySkipReason::NotSameSession => "not a course of the same session",
+            ApplySkipReason::FromCourse => "it is the course to copy from",
+            ApplySkipReason::NoDates => "the course to copy from has no dates you set",
+            ApplySkipReason::DatesNotConfirmed => {
+                "the dates of the course to copy from were set in PageLamp 0.1 and never \
+                 confirmed: save them with `pagelamp course term` first"
+            }
+            ApplySkipReason::UnknownCourse => "no such course",
+        };
+        println!("  Skipped {}: {why}", label(&skipped.course_id));
+    }
+    Ok(())
 }
 
 /// `pagelamp course remove <courses…> [--dry-run] [--now] [--keep-files] [--delete-backup]
