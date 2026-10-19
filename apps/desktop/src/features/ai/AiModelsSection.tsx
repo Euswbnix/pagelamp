@@ -58,12 +58,19 @@ export function AiModelsSection() {
     <SettingsSection title={t("settings.title")} description={t("settings.description")}>
       {status.isPending ? (
         <Skeleton className="h-24 w-full" />
-      ) : status.isError ? (
+      ) : status.data === undefined ? (
         <p role="alert" className="text-sm text-destructive">
           {t("settings.loadFailed")} {errorText(status.error)}
         </p>
       ) : (
+        // Read before: what was read stays (and an open dialog with it, e.g. Remove all's
+        // error), and a failed reading again is said above it.
         <div ref={container} className="space-y-5">
+          {status.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {t("settings.loadFailed")} {errorText(status.error)}
+            </p>
+          ) : null}
           {/* Only where this build offers the ChatGPT plan (OpenAI's written confirmation). */}
           {offered ? (
             <ChatGptCard

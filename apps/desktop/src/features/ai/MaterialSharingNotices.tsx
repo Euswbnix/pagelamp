@@ -30,6 +30,8 @@ export function MaterialSharingReminder({
   const save = useSetCourseMaterialSharing();
   const errorText = useAiErrorText();
   const headingId = useId();
+  const courseLabelId = useId();
+  const dismissId = useId();
 
   async function answer(value: (typeof SHARING_ANSWERS)[number]) {
     if (save.isPending) return;
@@ -43,7 +45,14 @@ export function MaterialSharingReminder({
   }
 
   return (
-    <section aria-labelledby={headingId} className="pl-callout flex gap-3 p-4 text-sm">
+    // Named by its course too (a batch shows one per course), and so is its Dismiss.
+    <section
+      aria-labelledby={`${headingId} ${courseLabelId}`}
+      className="pl-callout flex gap-3 p-4 text-sm"
+    >
+      <span id={courseLabelId} className="sr-only">
+        {courseName}
+      </span>
       <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
       <div className="min-w-0 space-y-2">
         <h3 id={headingId} className="font-medium">
@@ -72,7 +81,14 @@ export function MaterialSharingReminder({
             ))}
           </div>
         </fieldset>
-        <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+        <Button
+          id={dismissId}
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-labelledby={`${dismissId} ${courseLabelId}`}
+          onClick={onClose}
+        >
           {t("sharing.reminder.dismiss")}
         </Button>
         {save.error ? (

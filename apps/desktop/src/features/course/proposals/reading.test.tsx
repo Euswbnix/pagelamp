@@ -44,7 +44,7 @@ describe("Read the syllabus with AI", () => {
     ).toBeInTheDocument();
     // The course's first cloud run with question (b) unanswered: the one-time reminder.
     const reminder = within(section).getByRole("region", {
-      name: "Check whether your instructor allows sharing course materials with AI services",
+      name: /^Check whether your instructor allows sharing course materials with AI services /,
     });
     await user.click(within(reminder).getByRole("button", { name: "Not sure" }));
     await waitFor(() => expect(within(section).queryByRole("region")).toBeNull());
@@ -91,7 +91,9 @@ describe("Read the syllabus with AI", () => {
     ).toBeVisible();
   });
 
-  const REMINDER = "Check whether your instructor allows sharing course materials with AI services";
+  // Named by its title and its course.
+  const REMINDER =
+    /^Check whether your instructor allows sharing course materials with AI services /;
   /**
    * Runs that send their text and then end with `error`, in the facade's order: Started, a
    * stage, the failure, the reminder (only when `notice` says the run said it), Finished.
@@ -194,7 +196,7 @@ describe("Read the syllabus with AI", () => {
     expect(
       within(reminder).getByRole("group", { name: /^Is sharing DEM240.*'s materials allowed\?$/ }),
     ).toBeInTheDocument();
-    await user.click(within(reminder).getByRole("button", { name: "Dismiss" }));
+    await user.click(within(reminder).getByRole("button", { name: /^Dismiss / }));
     expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
     expect(within(section).getByText("Stopped. Nothing was changed.")).toBeInTheDocument();
     // Focus goes back to the section, not to the page.
@@ -215,6 +217,11 @@ describe("Read the syllabus with AI", () => {
     await waitFor(() =>
       expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
     );
+    // Done with, not just hidden: a later "not sure" doesn't bring it back.
+    await api.setCourseMaterialSharing(UNLABELLED, "not_sure");
+    await act(() => queryClient.invalidateQueries());
+    await screen.findByRole("tablist", { name: "Course sections" });
+    expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
   });
 
   it("keeps question (b) through another reading until it is answered", async () => {
@@ -446,7 +453,9 @@ describe("Read syllabi for N courses", () => {
     expect(await within(region).findByText(/^Stopped\. 0 courses have dates/)).toBeInTheDocument();
   });
 
-  const REMINDER = "Check whether your instructor allows sharing course materials with AI services";
+  // Named by its title and its course.
+  const REMINDER =
+    /^Check whether your instructor allows sharing course materials with AI services /;
 
   it("asks question (b) for each course whose text went out, also after Done", async () => {
     const api = mockApi();
@@ -463,8 +472,16 @@ describe("Read syllabi for N courses", () => {
     expect(new Set(named).size).toBe(named.length);
     const groups = reminders.map((r) => within(r).getByRole("group").textContent);
     expect(new Set(groups).size).toBe(groups.length);
+    // Each region and its Dismiss say its course.
+    for (const group of groups) {
+      const code = /^Is sharing (.+)'s materials allowed\?/.exec(group ?? "")?.[1] ?? "";
+      const reminder = within(region).getByRole("region", { name: new RegExp(` ${code}$`) });
+      expect(within(reminder).getByRole("button", { name: `Dismiss ${code}` })).toBeInTheDocument();
+    }
 
-    await user.click(within(reminders[0] as HTMLElement).getByRole("button", { name: "Dismiss" }));
+    await user.click(
+      within(reminders[0] as HTMLElement).getByRole("button", { name: /^Dismiss / }),
+    );
     await waitFor(() =>
       expect(within(region).getAllByRole("region", { name: REMINDER })).toHaveLength(
         reminders.length - 1,
@@ -490,6 +507,53 @@ describe("Read syllabi for N courses", () => {
         reminders.length - 2,
       ),
     );
+  });
+
+  it("keeps a course's reminder from a batch for its page, answered there once", async () => {
+    const api = mockApi();
+    const { user, router } = renderRoute("/courses", { api });
+    const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    const read = await within(region).findByRole("button", { name: /^Read syllabi for/ });
+    await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
+    await user.click(read);
+    expect(await within(region).findByText(/^Done: /)).toBeInTheDocument();
+    const before = within(region).getAllByRole("region", { name: REMINDER }).length;
+    // Off to the course's page through its outcome's link: the reminder is there.
+    await user.click(within(region).getByRole("link", { name: /^DEM240/ }));
+    const section = await screen.findByRole("region", { name: "Read with AI" });
+    const reminder = await within(section).findByRole("region", { name: REMINDER });
+    await user.click(within(reminder).getByRole("button", { name: "Yes, it's allowed" }));
+    await waitFor(() =>
+      expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
+    );
+    // Back on the Courses page: that one is done there too.
+    await act(() => router.navigate("/courses"));
+    const again = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    await waitFor(() =>
+      expect(within(again).getAllByRole("region", { name: REMINDER })).toHaveLength(before - 1),
+    );
+  });
+
+  it("puts focus on the page when the last reminder goes and the card with it", async () => {
+    const api = mockApi();
+    const offers = api.syllabusReadingOffers;
+    let read = false;
+    // Once read, no course is offered any more: the reminders alone keep the card.
+    vi.spyOn(api, "syllabusReadingOffers").mockImplementation(async () => (read ? [] : offers()));
+    const { user } = renderRoute("/courses", { api });
+    const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    const button = await within(region).findByRole("button", { name: /^Read syllabi for/ });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    read = true;
+    await user.click(button);
+    await user.click(await within(region).findByRole("button", { name: "Done" }));
+    for (const reminder of within(region).getAllByRole("region", { name: REMINDER })) {
+      await user.click(within(reminder).getByRole("button", { name: /^Dismiss / }));
+    }
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Read syllabi with AI" })).toBeNull(),
+    );
+    await waitFor(() => expect(screen.getByRole("main")).toHaveFocus());
   });
 
   it("asks question (b) for a course whose text went out before the batch failed", async () => {

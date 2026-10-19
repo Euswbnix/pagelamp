@@ -99,8 +99,8 @@
       "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
       "terms": "Read {{name}}'s terms",
       "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings.",
-      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.",
-      "cloudModels": "{{name}} runs on this computer, but {{product}} can't confirm that each of its models does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it."
+      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it.",
+      "cloudModels": "{{name}} runs on this computer, but {{product}} can't confirm that each of its models does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it."
     },
     "training": {
       "heading": "Training and storage",

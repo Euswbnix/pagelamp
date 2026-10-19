@@ -99,8 +99,8 @@
       "onDevice": "这些内容会发给这台电脑上的 {{name}}，不会离开这台电脑。",
       "terms": "查看 {{name}} 的条款",
       "codex": "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 {{name}}，按 {{name}} 的条款和你的 ChatGPT 设置处理。",
-      "cloudViaLocal": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认这个模型也在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。",
-      "cloudModels": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认它的每个模型都在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其内容永远不会发给它。"
+      "cloudViaLocal": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认这个模型也在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。",
+      "cloudModels": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认它的每个模型都在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。"
     },
     "training": {
       "heading": "训练与保存",

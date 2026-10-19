@@ -5,6 +5,7 @@ import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
 import type { CalendarProposal } from "@/api/types";
+import { useSharingReminders } from "@/stores/sharingReminders";
 
 export type ReadingState =
   | { phase: "idle" }
@@ -22,15 +23,6 @@ export type ReadingState =
   | { phase: "failed"; error: unknown };
 
 /**
- * The one-time question (b) reminder (D37 option 2) a run said, however it ended: kept apart
- * from the run, so a new run doesn't drop it before it was answered or dismissed.
- */
-export interface SharingReminder {
-  /** Where the text went. */
-  service: string;
-}
-
-/**
  * One "Read the syllabus with AI" run (calendar design §7.3): its GenEvents as state, Stop
  * (cancel_generation), and a refresh of everything afterwards (the proposal, usage, the cap).
  */
@@ -38,7 +30,11 @@ export function useCalendarReading(courseId: string) {
   const api = useApi();
   const client = useQueryClient();
   const [state, setState] = useState<ReadingState>({ phase: "idle" });
-  const [reminder, setReminder] = useState<SharingReminder | null>(null);
+  // The one-time question (b) reminder (D37 option 2) a run said, however it ended: kept apart
+  // from the run (a new run doesn't drop it) and from this screen (it is said only once).
+  const reminder = useSharingReminders((s) => s.pending[courseId] ?? null);
+  const addReminder = useSharingReminders((s) => s.add);
+  const settleReminder = useSharingReminders((s) => s.settle);
   const runId = useRef<string | null>(null);
 
   const start = useCallback(
@@ -79,13 +75,14 @@ export function useCalendarReading(courseId: string) {
           },
         );
         if (reminded || proposal.sharing_reminder) {
-          setReminder({ service: backend ?? proposal.ai_label?.backend_label ?? "" });
+          const service = backend ?? proposal.ai_label?.backend_label ?? "";
+          addReminder(courseId, { service, batch: false });
         }
         setState({ phase: "done", proposal });
       } catch (error) {
         // The facade claims the reminder once the text went out, also on a run that then fails
         // or is stopped (the notice comes before it ends): it is shown then too.
-        if (reminded) setReminder({ service: backend ?? "" });
+        if (reminded) addReminder(courseId, { service: backend ?? "", batch: false });
         setState(
           toApiError(error).kind === "cancelled"
             ? { phase: "stopped" }
@@ -96,7 +93,7 @@ export function useCalendarReading(courseId: string) {
         await client.invalidateQueries({ queryKey: queryKeys.all });
       }
     },
-    [api, client, courseId],
+    [api, client, courseId, addReminder],
   );
 
   const stop = useCallback(async () => {
@@ -107,7 +104,7 @@ export function useCalendarReading(courseId: string) {
   }, [api]);
 
   /** Close the reminder (answered or dismissed). */
-  const settle = useCallback(() => setReminder(null), []);
+  const settle = useCallback(() => settleReminder(courseId), [settleReminder, courseId]);
 
   return { state, reminder, start, stop, settle };
 }

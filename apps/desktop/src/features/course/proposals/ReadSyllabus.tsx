@@ -1,5 +1,5 @@
 import { ScanSearch } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { type EstimateRequest, materialSharing } from "@/api/ai";
@@ -42,14 +42,12 @@ export function ReadSyllabus({ course }: { course: Course }) {
   const sharingNotAllowed = estimate.data?.would_block === "material_sharing_not_allowed";
   // §7.12: without a model the button says so and leads to Settings, nothing more.
   const noModel = estimate.data?.would_block === "no_model_chosen";
-  const { state } = reading;
-  // Question (b) still open (as the facade asks it): an answer given meanwhile, in the Policy
-  // tab, closes the reminder.
-  const reminder =
-    reading.reminder &&
-    (materialSharing(course) === "unanswered" || materialSharing(course) === "not_sure")
-      ? reading.reminder
-      : null;
+  const { state, reminder, settle } = reading;
+  // Question (b) answered meanwhile (in the Policy tab, or elsewhere): the reminder is done.
+  const sharing = materialSharing(course);
+  useEffect(() => {
+    if (reminder && (sharing === "allowed" || sharing === "not_allowed")) settle();
+  }, [reminder, sharing, settle]);
 
   return (
     <div className="space-y-6">
@@ -89,7 +87,7 @@ export function ReadSyllabus({ course }: { course: Course }) {
             courseName={name}
             service={reminder.service}
             onClose={() => {
-              reading.settle();
+              settle();
               // Not to the page: back to the section.
               requestAnimationFrame(() => document.getElementById(READ_SYLLABUS_HEADING)?.focus());
             }}

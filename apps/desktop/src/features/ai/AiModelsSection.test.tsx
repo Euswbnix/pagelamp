@@ -357,6 +357,23 @@ describe("Settings → AI models", () => {
     await user.click(within(dialog).getByRole("button", { name: "Technical details for OpenAI" }));
     expect(within(dialog).getByText(/Nothing was removed/)).toBeInTheDocument();
     expect(screen.queryByText("OpenAI removed")).toBeNull();
+    // A new try starts without the earlier error.
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    const again = await screen.findByRole("alertdialog", { name: "Remove OpenAI?" });
+    expect(within(again).queryByRole("alert")).toBeNull();
+  });
+
+  it("offers no key for Ollama on another computer", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await mock.addModelProvider("ollama", "https://gpu.example.edu:11434", null);
+    renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    // Its row lists its actions (Remove at least) once the presets are in.
+    await within(row).findByRole("button", { name: "Remove" });
+    await waitFor(() => expect(within(row).queryByRole("button", { name: /key/ })).toBeNull());
   });
 
   it("chooses and tests a model per feature", async () => {

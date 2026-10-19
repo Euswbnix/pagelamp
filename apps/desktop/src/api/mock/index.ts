@@ -743,6 +743,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     stepMs: syncStep,
     courses: () => db.courses,
     findCourse,
+    forgetAiRecords: () => courseProposals.forgetAi(),
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */

@@ -176,8 +176,8 @@
 "ai.disclosure.retention.on_device" = "Nothing is stored outside this computer.";
 "ai.disclosure.retention.provider_terms" = "How long %1$@ keeps what's sent depends on its terms.";
 "ai.disclosure.sent.cloud" = "It goes to %1$@ and is handled under %1$@'s terms.";
-"ai.disclosure.sent.cloudModels" = "%1$@ runs on this computer, but PageLamp can't confirm that each of its models does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.";
-"ai.disclosure.sent.cloudViaLocal" = "%1$@ runs on this computer, but PageLamp can't confirm that this model does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). Courses you answered “No, it's not allowed” for are never sent to it.";
+"ai.disclosure.sent.cloudModels" = "%1$@ runs on this computer, but PageLamp can't confirm that each of its models does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it.";
+"ai.disclosure.sent.cloudViaLocal" = "%1$@ runs on this computer, but PageLamp can't confirm that this model does: %1$@ may pass what PageLamp sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it.";
 "ai.disclosure.sent.codex" = "It goes to %1$@ through Codex, signed in with your ChatGPT account, and is handled under %1$@'s terms and your ChatGPT settings.";
 "ai.disclosure.sent.heading" = "What is sent, and to whom";
 "ai.disclosure.sent.material_text" = "Text from your course materials (slides, notes), for explanations and course calendars, only from courses whose rules allow it.";

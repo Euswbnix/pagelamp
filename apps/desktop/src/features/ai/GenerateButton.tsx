@@ -83,11 +83,15 @@ export function GenerateSteps({
       openNote: setNote,
       // The query client tells the page of new data in its next notification, after the call
       // that asked for it returned: this goes in the same queue, after it, so the page then
-      // shows the estimate asked again (and whatever took Generate's place).
+      // shows the estimate asked again (and whatever took Generate's place). Not if the student
+      // has gone elsewhere meanwhile, or the steps are gone.
       moveOn: () =>
-        notifyManager.schedule(() =>
-          (nextStep(root.current) ?? fallback.current?.() ?? null)?.focus(),
-        ),
+        notifyManager.schedule(() => {
+          const host = root.current;
+          const focused = document.activeElement;
+          if (!host || (focused && focused !== document.body && !host.contains(focused))) return;
+          (nextStep(host) ?? fallback.current?.() ?? null)?.focus();
+        }),
     }),
     [],
   );
@@ -110,9 +114,13 @@ export function GenerateSteps({
           onOpenChange={(open) => {
             if (!open) setNote(null);
           }}
+          // Also when the sheet was closed before its accept was done.
+          onAccepted={steps.moveOn}
           // Radix returns focus a task after the sheet goes, by when the estimate asked again on
           // accepting it is shown.
-          returnFocus={() => nextStep(root.current) ?? fallback.current?.() ?? null}
+          returnFocus={() =>
+            root.current ? (nextStep(root.current) ?? fallback.current?.() ?? null) : null
+          }
         />
       ) : null}
     </StepsContext.Provider>
@@ -348,8 +356,14 @@ function ModelDisclosureStep({
   const backend = choice
     ? status?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
     : undefined;
-  if (!choice || !backend) return null;
-  if (inSettings || (backend.kind === "codex" && backend.state === "needs_setup")) {
+  // Without the status (not read yet, or it failed), or for the plan not set up, or a note
+  // found read while the block stays: the reason, and Settings, where every note is.
+  if (
+    !choice ||
+    !backend ||
+    inSettings ||
+    (backend.kind === "codex" && backend.state === "needs_setup")
+  ) {
     return (
       <p id={hintId} className="text-sm">
         <span id={reasonId}>{t("blocked.disclosure_not_acknowledged")}</span>{" "}
@@ -406,6 +420,7 @@ function ModelDisclosureStep({
         size="sm"
         variant="outline"
         data-next-step
+        aria-describedby={hintId}
         aria-disabled={checking || undefined}
         className="aria-disabled:opacity-50"
         onClick={() => void read()}
@@ -459,6 +474,7 @@ function UnpricedAcknowledgement({
         variant="outline"
         disabled={acknowledge.isPending}
         data-next-step
+        aria-describedby={hintId}
         onClick={() => void use()}
       >
         {t("estimate.useUnpriced")}

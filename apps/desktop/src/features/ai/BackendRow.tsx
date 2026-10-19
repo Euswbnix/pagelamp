@@ -172,7 +172,11 @@ function RemoveBackendButton({
         type="button"
         size="sm"
         variant="ghost"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // A new try: an earlier one's error isn't this one's.
+          remove.reset();
+          setOpen(true);
+        }}
         aria-describedby={describedBy}
       >
         {t("backend.remove")}

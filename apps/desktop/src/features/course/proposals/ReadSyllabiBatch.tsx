@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, CircleMinus, FileSearch } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { type EstimateRequest, materialSharing } from "@/api/ai";
@@ -32,14 +32,16 @@ export function ReadSyllabiBatch() {
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
-  // Question (b) still open for the course (as the facade asks it): an answer given meanwhile,
-  // on the course's page, closes its reminder.
-  const reminders = batch.reminders.filter((r) => {
-    const course = byId.get(r.courseId)?.course;
-    const answer = course ? materialSharing(course) : "unanswered";
-    return answer === "unanswered" || answer === "not_sure";
+  const { state, reminders, settle } = batch;
+  // Question (b) answered meanwhile for a course (from outside, as the courses are read
+  // again): its reminder is done. A course not listed yet is still open.
+  useEffect(() => {
+    for (const r of reminders) {
+      const course = byId.get(r.courseId)?.course;
+      const answer = course ? materialSharing(course) : "unanswered";
+      if (answer === "allowed" || answer === "not_allowed") settle(r.courseId);
+    }
   });
-  const { state } = batch;
 
   const ids = offers.data?.map((o) => o.course_id) ?? [];
   const request: EstimateRequest | null =
@@ -65,6 +67,9 @@ export function ReadSyllabiBatch() {
         ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* First: while idle it is only its (out of flow) status line, so the steps' box below
+            is the last one and adds no gap under Generate. */}
+        <BatchProgress state={state} byId={byId} onStop={() => void batch.stop()} />
         <GenerateSteps fallbackFocus={() => heading.current}>
           {state.phase === "idle" && ids.length > 0 ? (
             <GenerateButton
@@ -74,7 +79,6 @@ export function ReadSyllabiBatch() {
             />
           ) : null}
         </GenerateSteps>
-        <BatchProgress state={state} byId={byId} onStop={() => void batch.stop()} />
         {state.phase === "finished" ? (
           <BatchResults
             outcomes={state.outcomes}
@@ -91,9 +95,12 @@ export function ReadSyllabiBatch() {
             courseName={courseLabel(byId, r.courseId)}
             service={r.service}
             onClose={() => {
-              batch.settle(r.courseId);
-              // Not to the page: back to the card, from where the next one is a Tab away.
-              requestAnimationFrame(() => heading.current?.focus());
+              settle(r.courseId);
+              // Not to the page: back to the card, from where the next one is a Tab away; to the
+              // page's main region when the card went with it.
+              requestAnimationFrame(() =>
+                (heading.current ?? document.getElementById("main"))?.focus(),
+              );
             }}
           />
         ))}

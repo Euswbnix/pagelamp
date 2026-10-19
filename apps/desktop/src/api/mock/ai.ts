@@ -86,6 +86,11 @@ export interface MockAiContext {
   stepMs: number;
   courses: () => MockCourse[];
   findCourse: (courseId: string) => MockCourse;
+  /**
+   * "Remove all AI data"'s part outside AI setup: the AI calendars not accepted and the
+   * reminders' claims go (the proposals mock). Returns how many calendars went.
+   */
+  forgetAiRecords: () => number;
 }
 
 /** D18: US$5 soft cap, warn at 80%. */
@@ -797,13 +802,14 @@ export function createMockAi(ctx: MockAiContext): AiApi {
       // the keychain keeps stays (with its key); everything else goes, then it says so.
       codex.forget();
       const kept = providers.filter((p) => p.key_last4 && lockedKeys.has(p.provider_id));
+      const generations = ctx.forgetAiRecords();
       acknowledged.clear();
       unpricedAcks.clear();
       for (const feature of FEATURES) features.set(feature, null);
       budget = DEFAULT_BUDGET_MICRO_USD;
       const report = {
         providers_removed: providers.length - kept.length,
-        generations_removed: 0,
+        generations_removed: generations,
         usage_rows_removed: usage.length,
         backup_removed: false,
       };

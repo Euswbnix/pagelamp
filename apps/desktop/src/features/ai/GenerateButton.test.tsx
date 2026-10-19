@@ -171,8 +171,17 @@ describe("a model that a server on this computer may run in the cloud", () => {
     await user.click(generate());
     expect(onGenerate).not.toHaveBeenCalled();
 
+    expect(screen.getByRole("button", { name: "Read it now" })).toHaveAccessibleDescription(
+      "Read what this service receives, then turn it on.",
+    );
     await user.click(screen.getByRole("button", { name: "Read it now" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    // Only their materials are withheld: what it promises, no more.
+    expect(
+      within(sheet).getByText(
+        /The materials of courses you answered “No, it's not allowed” for are never sent to it\.$/,
+      ),
+    ).toBeInTheDocument();
     // Never read before: nothing changed (the server's own note was read, in its own version).
     expect(within(sheet).queryByText("This changed since you last read it.")).toBeNull();
     // Where it runs is decided as the run decides it: the server is asked.
@@ -192,6 +201,9 @@ describe("a model that a server on this computer may run in the cloud", () => {
     // Then its unknown price, still before anything runs; focus is on it.
     const unpriced = await screen.findByRole("button", { name: "Use it anyway" });
     await vi.waitFor(() => expect(unpriced).toHaveFocus());
+    expect(unpriced).toHaveAccessibleDescription(
+      "Your budget isn't enforced for this model. Its runs are still counted in tokens.",
+    );
     expect(screen.getByText("May run in the cloud; no cost estimate")).toBeInTheDocument();
     expect(generate()).toHaveAttribute("aria-disabled", "true");
     await user.click(generate());
@@ -382,6 +394,68 @@ describe("a model that a server on this computer may run in the cloud", () => {
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
     expect(within(sheet).getByText(/doesn't leave it/)).toBeInTheDocument();
     expect(within(sheet).queryByText("This changed since you last read it.")).toBeNull();
+  });
+
+  it("still says why and where to go when the AI status can't be read", async () => {
+    const api = await cloudViaLocal();
+    vi.spyOn(api, "aiStatus").mockRejectedValue(new ApiError("internal", "Synthetic failure"));
+    renderWithProviders(<GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />, {
+      api,
+    });
+    expect(
+      await screen.findByText("Read what this service receives, then turn it on."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AI models" })).toHaveAttribute("href", "/settings");
+    expect(generate()).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("leaves focus where the student put it while a step was settling", async () => {
+    let release = () => {};
+    const { user, api } = renderWithProviders(
+      <>
+        <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />
+        <input aria-label="Elsewhere" />
+      </>,
+      { scenario: "ai-unpriced" },
+    );
+    const acknowledge = api.acknowledgeUnpricedModel;
+    vi.spyOn(api, "acknowledgeUnpricedModel").mockImplementation(async (backend, model) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return acknowledge(backend, model);
+    });
+    await user.click(await screen.findByRole("button", { name: "Use it anyway" }));
+    const elsewhere = screen.getByRole("textbox", { name: "Elsewhere" });
+    await user.click(elsewhere);
+    release();
+    await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(elsewhere).toHaveFocus();
+  });
+
+  it("moves on to the next step when the sheet was closed before its accept was done", async () => {
+    const api = await cloudViaLocal();
+    let release = () => {};
+    const read = api.acknowledgeModelDisclosure;
+    vi.spyOn(api, "acknowledgeModelDisclosure").mockImplementation(async (...args) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return read(...args);
+    });
+    const { user } = renderWithProviders(
+      <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />,
+      { api },
+    );
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    await user.click(within(sheet).getByRole("button", { name: "Use gpt-oss:120b-cloud" }));
+    await user.keyboard("{Escape}");
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    release();
+    const unpriced = await screen.findByRole("button", { name: "Use it anyway" });
+    await vi.waitFor(() => expect(unpriced).toHaveFocus());
   });
 
   it("sends a ChatGPT plan that isn't set up to Settings, not to its note", async () => {

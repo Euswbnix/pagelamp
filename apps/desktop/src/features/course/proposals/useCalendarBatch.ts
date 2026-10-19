@@ -5,6 +5,7 @@ import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
 import type { CalendarRunOutcome } from "@/api/types";
+import { useSharingReminders } from "@/stores/sharingReminders";
 
 export type BatchState =
   | { phase: "idle" }
@@ -37,7 +38,13 @@ export function useCalendarBatch() {
   const api = useApi();
   const client = useQueryClient();
   const [state, setState] = useState<BatchState>({ phase: "idle" });
-  const [reminders, setReminders] = useState<CourseReminder[]>([]);
+  const pending = useSharingReminders((s) => s.pending);
+  const addReminder = useSharingReminders((s) => s.add);
+  const settleReminder = useSharingReminders((s) => s.settle);
+  // The batches' reminders still to answer, in the order said (on the course's page too).
+  const reminders: CourseReminder[] = Object.entries(pending)
+    .filter(([, r]) => r.batch)
+    .map(([courseId, r]) => ({ courseId, service: r.service }));
   const batchId = useRef<string | null>(null);
 
   const start = useCallback(
@@ -81,14 +88,8 @@ export function useCalendarBatch() {
               event.event.code === "material_sharing_reminder"
             ) {
               // Said before the course's end, however its run ends.
-              const reminder = {
-                courseId: event.course_id,
-                service: services.get(event.course_id) ?? "",
-              };
-              setReminders((rs) => [
-                ...rs.filter((r) => r.courseId !== reminder.courseId),
-                reminder,
-              ]);
+              const service = services.get(event.course_id) ?? "";
+              addReminder(event.course_id, { service, batch: true });
             } else if (event.type === "course_finished") {
               outcomes.push(event.outcome);
               setState((s) => (s.phase === "running" ? { ...s, outcomes: [...outcomes] } : s));
@@ -108,7 +109,7 @@ export function useCalendarBatch() {
         await client.invalidateQueries({ queryKey: queryKeys.all });
       }
     },
-    [api, client],
+    [api, client, addReminder],
   );
 
   const stop = useCallback(async () => {
@@ -120,11 +121,8 @@ export function useCalendarBatch() {
 
   const reset = useCallback(() => setState({ phase: "idle" }), []);
 
-  /** Close a course's reminder (answered or dismissed). */
-  const settle = useCallback(
-    (courseId: string) => setReminders((rs) => rs.filter((r) => r.courseId !== courseId)),
-    [],
-  );
+  /** Close a course's reminder (answered or dismissed), here and on its page. */
+  const settle = settleReminder;
 
   return { state, reminders, start, stop, reset, settle };
 }
