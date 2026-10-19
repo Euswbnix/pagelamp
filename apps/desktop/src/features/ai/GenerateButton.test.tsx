@@ -1,3 +1,4 @@
+import { defaultScheduler, notifyManager } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { type AiBackendStatus, backendKey, type EstimateRequest } from "@/api/ai";
@@ -57,6 +58,22 @@ describe("≈ $x before Generate", () => {
       "gpt-6-preview-0929",
     );
     await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+  });
+
+  it("moves focus on only once the estimate asked again is shown", async () => {
+    // The page hears of new query data a while after the call that asked for it returned.
+    notifyManager.setScheduler((cb) => setTimeout(cb, 40));
+    try {
+      const { user } = renderWithProviders(
+        <GenerateButton request={explain(DEMO101)} onGenerate={() => {}} />,
+        { scenario: "ai-unpriced" },
+      );
+      await user.click(await screen.findByRole("button", { name: "Use it anyway" }));
+      await vi.waitFor(() => expect(generate()).not.toHaveAttribute("aria-disabled"));
+      await vi.waitFor(() => expect(generate()).toHaveFocus());
+    } finally {
+      notifyManager.setScheduler(defaultScheduler);
+    }
   });
 
   it("is free on this computer", async () => {
@@ -156,6 +173,8 @@ describe("a model that a server on this computer may run in the cloud", () => {
 
     await user.click(screen.getByRole("button", { name: "Read it now" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    // Never read before: nothing changed (the server's own note was read, in its own version).
+    expect(within(sheet).queryByText("This changed since you last read it.")).toBeNull();
     // Where it runs is decided as the run decides it: the server is asked.
     expect(runsHere).toHaveBeenCalledWith(CLOUD, true);
     expect(note).toHaveBeenCalledWith(OLLAMA, false);
@@ -287,6 +306,9 @@ describe("a model that a server on this computer may run in the cloud", () => {
     const settings = await screen.findByRole("link", { name: "AI models" });
     expect(estimate.mock.calls.length).toBeGreaterThan(before);
     expect(settings).toHaveAttribute("href", "/settings");
+    expect(settings).toHaveAccessibleDescription(
+      "Read what this service receives, then turn it on.",
+    );
     await vi.waitFor(() => expect(settings).toHaveFocus());
     expect(screen.queryByRole("button", { name: "Read it now" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();

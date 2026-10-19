@@ -73,7 +73,6 @@ export function ModelDisclosureDialog({
   changed = false,
   open,
   onOpenChange,
-  onAccepted,
   returnFocus,
 }: {
   backend: BackendRef;
@@ -88,8 +87,6 @@ export function ModelDisclosureDialog({
   changed?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Once accepted, before the sheet closes. */
-  onAccepted?: () => void;
   returnFocus?: () => HTMLElement | null;
 }) {
   const { t } = useTranslation("ai");
@@ -118,7 +115,7 @@ export function ModelDisclosureDialog({
         acceptedText={acceptedText}
         cloudModels={cloud && !model}
         acknowledge={(version) =>
-          acknowledge.mutateAsync({ backend, runsHere, version }).then(() => onAccepted?.())
+          acknowledge.mutateAsync({ backend, runsHere, version }).then(() => undefined)
         }
         pending={acknowledge.isPending}
         error={acknowledge.error}

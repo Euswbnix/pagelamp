@@ -206,11 +206,11 @@
 "ai.estimate.upTo" = "≈ 最多 %1$@";
 "ai.estimate.useUnpriced" = "仍然使用";
 "ai.estimate.useUnpricedHint" = "对这个模型不执行预算，但它的运行仍会按 token 计数。";
-"ai.features.badge.cloud" = "在云端运行";
+"ai.features.badge.cloud" = "可能在云端运行";
 "ai.features.badge.noPrice" = "无价格";
 "ai.features.badge.onDevice" = "在这台电脑上";
 "ai.features.badge.suggested" = "推荐";
-"ai.features.cloudNote" = "%1$@ 在云端运行，而不是在这台电脑上。";
+"ai.features.cloudNote" = "%1$@ 可能在云端运行，而不是在这台电脑上。";
 "ai.features.effort" = "%1$@的思考强度";
 "ai.features.effortName.high" = "高";
 "ai.features.effortName.low" = "低";
@@ -311,6 +311,7 @@
 "ai.sharing.optionHint.not_sure" = "PageLamp 仍会发送资料文字，每个结果都会注明发给了谁。";
 "ai.sharing.question" = "这门课的资料（课件、笔记）可以分享给 AI 服务吗？";
 "ai.sharing.reminder.answer" = "这门课的资料可以分享吗？";
+"ai.sharing.reminder.answerCourse" = "%1$@ 的资料可以分享吗？";
 "ai.sharing.reminder.body" = "PageLamp 已把 %1$@ 资料中的文字发送给 %2$@。如果你不确定是否允许，请查看课程大纲或询问任课老师。";
 "ai.sharing.reminder.dismiss" = "知道了";
 "ai.sharing.reminder.title" = "请确认任课老师是否允许把课程资料分享给 AI 服务";

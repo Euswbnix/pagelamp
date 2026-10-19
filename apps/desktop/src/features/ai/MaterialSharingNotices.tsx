@@ -53,7 +53,10 @@ export function MaterialSharingReminder({
           {t("sharing.reminder.body", { course: courseName, service })}
         </p>
         <fieldset className="space-y-2">
-          <legend className="mb-2">{t("sharing.reminder.answer")}</legend>
+          {/* The course by name: a batch shows one reminder per course. */}
+          <legend className="mb-2">
+            {t("sharing.reminder.answerCourse", { course: courseName })}
+          </legend>
           <div className="flex flex-wrap gap-2">
             {SHARING_ANSWERS.map((value) => (
               <Button

@@ -201,13 +201,13 @@
     },
     "badge": {
       "onDevice": "在这台电脑上",
-      "cloud": "在云端运行",
+      "cloud": "可能在云端运行",
       "noPrice": "无价格",
       "suggested": "推荐"
     },
     "noPriceNote": "{{product}} 没有 {{model}} 的价格，所以无法对它执行预算。第一次使用它之前会请你确认。",
     "thinkingNote": "{{model}} 每次回答前都会先思考，费用会更高。",
-    "cloudNote": "{{model}} 在云端运行，而不是在这台电脑上。",
+    "cloudNote": "{{model}} 可能在云端运行，而不是在这台电脑上。",
     "turnOnFirst": "先在上面启用一个模型，才能在这里选择。",
     "test": "测试",
     "testing": "正在测试…",
@@ -330,6 +330,7 @@
       "title": "请确认任课老师是否允许把课程资料分享给 AI 服务",
       "body": "{{product}} 已把 {{course}} 资料中的文字发送给 {{service}}。如果你不确定是否允许，请查看课程大纲或询问任课老师。",
       "answer": "这门课的资料可以分享吗？",
+      "answerCourse": "{{course}} 的资料可以分享吗？",
       "dismiss": "知道了"
     },
     "notAllowed": {

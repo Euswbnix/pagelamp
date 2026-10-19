@@ -479,7 +479,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (block && !(block === "budget_reached" && overrideBudget)) {
         throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
       }
-      return { backend_label: backend.label, model: choice.model, on_device: onDevice };
+      // The "ai-errors" endpoint fails every request it gets, a reading's too.
+      const failure =
+        scenario === "ai-errors"
+          ? new ApiError("model", "The provider is limiting requests.", {
+              model_error: "rate_limited",
+            })
+          : null;
+      return { backend_label: backend.label, model: choice.model, on_device: onDevice, failure };
     },
     applyCalendar: (c, input, origin, aiLabel) => {
       const next = withCourseDates(c.timeline, input, isoOf(now()));

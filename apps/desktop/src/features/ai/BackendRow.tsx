@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { firstKey } from "./ApiKeyDialog";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
 
@@ -117,7 +118,7 @@ export function BackendRow({
             onClick={() => onReplaceKey(provider)}
             aria-describedby={headingId}
           >
-            {provider.key_last4 ? t("backend.replaceKey") : t("backend.addKey")}
+            {firstKey(provider) ? t("backend.addKey") : t("backend.replaceKey")}
           </Button>
         ) : null}
         {provider ? <RemoveBackendButton provider={provider} describedBy={headingId} /> : null}

@@ -36,6 +36,14 @@ import { isLoopbackUrl } from "@/lib/url";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
 
+/**
+ * Whether the provider's key would be its first: a custom server on this computer added without
+ * one (the only provider that may have none; a key missing from the keychain is replaced).
+ */
+export function firstKey(provider: ModelProviderRecord): boolean {
+  return provider.preset === "custom" && provider.on_device && !provider.key_last4;
+}
+
 export type ApiKeyDialogMode = { kind: "add" } | { kind: "replace"; provider: ModelProviderRecord };
 
 /**
@@ -179,8 +187,7 @@ function ReplaceKeyForm({
   const { t } = useTranslation("ai");
   const update = useUpdateModelProviderKey();
   const form = useKeyForm();
-  // A custom server here added without a key gets its first one.
-  const adding = !provider.key_last4;
+  const adding = firstKey(provider);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

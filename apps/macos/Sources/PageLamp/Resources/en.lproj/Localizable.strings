@@ -206,11 +206,11 @@
 "ai.estimate.upTo" = "≈ %1$@ at most";
 "ai.estimate.useUnpriced" = "Use it anyway";
 "ai.estimate.useUnpricedHint" = "Your budget isn't enforced for this model. Its runs are still counted in tokens.";
-"ai.features.badge.cloud" = "runs in the cloud";
+"ai.features.badge.cloud" = "may run in the cloud";
 "ai.features.badge.noPrice" = "no price";
 "ai.features.badge.onDevice" = "on this computer";
 "ai.features.badge.suggested" = "suggested";
-"ai.features.cloudNote" = "%1$@ runs in the cloud, not on this computer.";
+"ai.features.cloudNote" = "%1$@ may run in the cloud, not on this computer.";
 "ai.features.effort" = "Effort for %1$@";
 "ai.features.effortName.high" = "High";
 "ai.features.effortName.low" = "Low";
@@ -311,6 +311,7 @@
 "ai.sharing.optionHint.not_sure" = "PageLamp still sends material text; each result notes where it went.";
 "ai.sharing.question" = "Can this course's materials (slides, notes) be shared with an AI service?";
 "ai.sharing.reminder.answer" = "Is sharing this course's materials allowed?";
+"ai.sharing.reminder.answerCourse" = "Is sharing %1$@'s materials allowed?";
 "ai.sharing.reminder.body" = "PageLamp sent text from %1$@'s materials to %2$@. If you're not sure it's allowed, check the syllabus or ask your instructor.";
 "ai.sharing.reminder.dismiss" = "Dismiss";
 "ai.sharing.reminder.title" = "Check whether your instructor allows sharing course materials with AI services";

@@ -231,6 +231,12 @@ describe("Settings → AI models", () => {
     const section = await aiSection();
     const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
     if (!row) throw new Error("no Ollama row");
+    // The model picked may run in the cloud: said so, never as a fact.
+    expect(
+      await within(section).findByText(
+        "gpt-oss:120b-cloud may run in the cloud, not on this computer.",
+      ),
+    ).toBeInTheDocument();
     // Its own note stays as read; the cloud models' one is asked for, as the step to take.
     expect(within(row).getByRole("button", { name: "What's shared" })).toHaveAttribute(
       "data-variant",
@@ -315,6 +321,28 @@ describe("Settings → AI models", () => {
       name: "Before PageLamp uses cloud models through Ollama",
     });
     expect(within(cloud).getByText("This changed since you last read it.")).toBeInTheDocument();
+  });
+
+  it("offers to replace a key missing from the keychain, not to add a first one", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-key" });
+    const status = mock.aiStatus;
+    vi.spyOn(mock, "aiStatus").mockImplementation(async () => {
+      const s = await status();
+      return {
+        ...s,
+        providers: s.providers.map((p) => ({ ...p, key_last4: null })),
+        backends: s.backends.map((b) => ({ ...b, problems: ["key_missing" as const] })),
+      };
+    });
+    const { user } = renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "OpenAI" })).closest("li");
+    if (!row) throw new Error("no OpenAI row");
+    await user.click(await within(row).findByRole("button", { name: "Replace key" }));
+    expect(within(row).queryByRole("button", { name: "Add a key" })).toBeNull();
+    expect(
+      await screen.findByRole("dialog", { name: "Replace the key for OpenAI" }),
+    ).toBeInTheDocument();
   });
 
   it("chooses and tests a model per feature", async () => {

@@ -2,7 +2,7 @@ import { CircleAlert, CircleCheck, CircleMinus, FileSearch } from "lucide-react"
 import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import type { EstimateRequest } from "@/api/ai";
+import { type EstimateRequest, materialSharing } from "@/api/ai";
 import { useCostEstimate } from "@/api/ai-queries";
 import { useAcceptPassingProposals, useSyllabusReadingOffers } from "@/api/proposalQueries";
 import { useCourses } from "@/api/queries";
@@ -31,7 +31,15 @@ export function ReadSyllabiBatch() {
   const batch = useCalendarBatch();
   const headingId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  const { state, reminders } = batch;
+  const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
+  // Question (b) still open for the course (as the facade asks it): an answer given meanwhile,
+  // on the course's page, closes its reminder.
+  const reminders = batch.reminders.filter((r) => {
+    const course = byId.get(r.courseId)?.course;
+    const answer = course ? materialSharing(course) : "unanswered";
+    return answer === "unanswered" || answer === "not_sure";
+  });
+  const { state } = batch;
 
   const ids = offers.data?.map((o) => o.course_id) ?? [];
   const request: EstimateRequest | null =
@@ -42,7 +50,6 @@ export function ReadSyllabiBatch() {
   if (quiet && ids.length === 0) return null;
   // §7.12: no model, no nagging on the home screen (each Timeline tab says how to set it up).
   if (quiet && estimate.data?.would_block === "no_model_chosen") return null;
-  const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
 
   return (
     <Card aria-labelledby={headingId} role="region">
@@ -83,7 +90,11 @@ export function ReadSyllabiBatch() {
             courseId={r.courseId}
             courseName={courseLabel(byId, r.courseId)}
             service={r.service}
-            onClose={() => batch.settle(r.courseId)}
+            onClose={() => {
+              batch.settle(r.courseId);
+              // Not to the page: back to the card, from where the next one is a Tab away.
+              requestAnimationFrame(() => heading.current?.focus());
+            }}
           />
         ))}
       </CardContent>

@@ -12,6 +12,7 @@ import { openCourse } from "../testing";
 const FITTED = "canvas:canvas.demo.test/course/332"; // AI proposal already; outline readable
 const UNLABELLED = "canvas:canvas.demo.test/course/240"; // scan proposal already
 const LEGACY = "canvas:canvas.demo.test/course/205"; // accepted calendar gone stale
+const DEMO101 = "folder:demo-courses/course/DEMO101"; // demo: a course syllabus
 
 beforeEach(() => {
   toast.dismiss();
@@ -136,6 +137,17 @@ describe("Read the syllabus with AI", () => {
     expect(within(section).getByRole("alert")).toBeInTheDocument();
   });
 
+  it("asks question (b) when the provider fails the reading (the mock's own failure)", async () => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-errors" });
+    const { user, section } = await openReading(DEMO101, api);
+    await user.click(await within(section).findByRole("button", { name: "Use it anyway" }));
+    const read = within(section).getByRole("button", { name: "Read the syllabus with AI" });
+    await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
+    await user.click(read);
+    expect(await within(section).findByRole("alert")).toHaveTextContent(/limiting requests/);
+    expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
+  });
+
   it("asks nothing after a failed or stopped reading that didn't say the reminder", async () => {
     const api = mockApi();
     let stop: () => void = () => {};
@@ -179,9 +191,30 @@ describe("Read the syllabus with AI", () => {
     await user.click(await within(section).findByRole("button", { name: "Stop" }));
     expect(await within(section).findByText("Stopped. Nothing was changed.")).toBeInTheDocument();
     const reminder = within(section).getByRole("region", { name: REMINDER });
+    expect(
+      within(reminder).getByRole("group", { name: /^Is sharing DEM240.*'s materials allowed\?$/ }),
+    ).toBeInTheDocument();
     await user.click(within(reminder).getByRole("button", { name: "Dismiss" }));
     expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
     expect(within(section).getByText("Stopped. Nothing was changed.")).toBeInTheDocument();
+    // Focus goes back to the section, not to the page.
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 3, name: "Read with AI" })).toHaveFocus(),
+    );
+  });
+
+  it("closes question (b) once it is answered elsewhere", async () => {
+    const api = mockApi();
+    endingWith(api, badOutput);
+    const { user, section, queryClient } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("region", { name: REMINDER })).toBeInTheDocument();
+    // Answered in the course's Policy tab.
+    await api.setCourseMaterialSharing(UNLABELLED, "allowed");
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() =>
+      expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
+    );
   });
 
   it("keeps question (b) through another reading until it is answered", async () => {
@@ -252,6 +285,36 @@ describe("Read the syllabus with AI", () => {
     // The note is still there to finish, and focus then stays in the section.
     await user.click(within(sheet).getByRole("button", { name: "Use gpt-oss:120b-cloud" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 3, name: "Read with AI" })).toHaveFocus(),
+    );
+  });
+
+  it("keeps focus in the section when Generate goes after a step settled there", async () => {
+    const api = mockApi();
+    const openai = { kind: "provider", provider_id: "openai" } as const;
+    await api.setFeatureModel("course_calendar", {
+      backend: openai,
+      model: "gpt-6-preview-0929",
+      effort: "lowest",
+    });
+    // Once the price is accepted, the estimate asked again refuses the course.
+    const estimate = api.estimateGeneration;
+    let accepted = false;
+    const acknowledge = api.acknowledgeUnpricedModel;
+    vi.spyOn(api, "acknowledgeUnpricedModel").mockImplementation(async (backend, model) => {
+      await acknowledge(backend, model);
+      accepted = true;
+    });
+    vi.spyOn(api, "estimateGeneration").mockImplementation(async (request) => {
+      const real = await estimate(request);
+      return accepted ? { ...real, would_block: "material_sharing_not_allowed" } : real;
+    });
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(await within(section).findByRole("button", { name: "Use it anyway" }));
+    expect(
+      await within(section).findByRole("region", { name: "Not sent to an AI service" }),
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("heading", { level: 3, name: "Read with AI" })).toHaveFocus(),
     );
@@ -387,17 +450,19 @@ describe("Read syllabi for N courses", () => {
 
   it("asks question (b) for each course whose text went out, also after Done", async () => {
     const api = mockApi();
-    const { user } = renderRoute("/courses", { api });
+    const { user, queryClient } = renderRoute("/courses", { api });
     const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
     const read = await within(region).findByRole("button", { name: /^Read syllabi for/ });
     await waitFor(() => expect(read).not.toHaveAttribute("aria-disabled"));
     await user.click(read);
     expect(await within(region).findByText(/^Done: /)).toBeInTheDocument();
-    // The courses with question (b) unanswered, each named once.
+    // The courses with question (b) unanswered, each named once, its answers named by it too.
     const reminders = within(region).getAllByRole("region", { name: REMINDER });
     expect(reminders.length).toBeGreaterThan(1);
     const named = reminders.map((r) => within(r).getByText(/sent text from/).textContent);
     expect(new Set(named).size).toBe(named.length);
+    const groups = reminders.map((r) => within(r).getByRole("group").textContent);
+    expect(new Set(groups).size).toBe(groups.length);
 
     await user.click(within(reminders[0] as HTMLElement).getByRole("button", { name: "Dismiss" }));
     await waitFor(() =>
@@ -405,10 +470,25 @@ describe("Read syllabi for N courses", () => {
         reminders.length - 1,
       ),
     );
+    // Focus goes back to the card, from where the next one is a Tab away.
+    await waitFor(() =>
+      expect(within(region).getByRole("heading", { name: "Read syllabi with AI" })).toHaveFocus(),
+    );
     // Putting the outcomes away keeps the questions still open.
     await user.click(within(region).getByRole("button", { name: "Done" }));
-    expect(within(region).getAllByRole("region", { name: REMINDER })).toHaveLength(
-      reminders.length - 1,
+    const left = within(region).getAllByRole("region", { name: REMINDER });
+    expect(left).toHaveLength(reminders.length - 1);
+    // An answer given on a course's page closes its reminder here too.
+    const legend = within(left[0] as HTMLElement).getByRole("group").textContent ?? "";
+    const code = /^Is sharing (.+)'s materials allowed\?/.exec(legend)?.[1];
+    const course = (await api.listCourses()).find((c) => (c.course.code ?? c.course.name) === code);
+    if (!course) throw new Error(`no course ${code}`);
+    await api.setCourseMaterialSharing(course.course.id, "not_allowed");
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() =>
+      expect(within(region).queryAllByRole("region", { name: REMINDER })).toHaveLength(
+        reminders.length - 2,
+      ),
     );
   });
 

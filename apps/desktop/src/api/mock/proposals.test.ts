@@ -7,6 +7,7 @@ const fast = { latencyMs: 0, syncStepMs: 0, now: () => NOW, scenario: "proposals
 const FITTED = "canvas:canvas.demo.test/course/332";
 const UNLABELLED = "canvas:canvas.demo.test/course/240";
 const LEGACY = "canvas:canvas.demo.test/course/205";
+const DEMO101 = "folder:demo-courses/course/DEMO101";
 
 describe("mock calendar proposals", () => {
   it("shows an AI proposal with a conflict and alternatives, and the candidates", async () => {
@@ -104,6 +105,23 @@ describe("mock syllabus reading: the question (b) reminder", () => {
     const again: GenEvent[] = [];
     await api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
     expect(kinds(again)).not.toContain("material_sharing_reminder");
+  });
+
+  it("says it after a reading the provider failed, before it ends", async () => {
+    // The "ai-errors" endpoint fails every request, a reading's too, once it started.
+    const api = createMockApi({ ...fast, scenario: "ai-errors" });
+    // Its model has no price: accepted first, so the run starts.
+    const choice = (await api.aiStatus()).features.find((f) => f.feature === "course_calendar");
+    if (!choice?.choice) throw new Error("no model for reading calendars");
+    await api.acknowledgeUnpricedModel(choice.choice.backend, choice.choice.model);
+    const events: GenEvent[] = [];
+    await expect(
+      api.readCourseCalendar(DEMO101, "gen-1", options, (e) => events.push(e)),
+    ).rejects.toMatchObject({ kind: "model", model_error: "rate_limited" });
+    expect(kinds(events)[0]).toBe("started");
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+    expect(events.at(-1)).toEqual({ type: "finished", ok: false });
+    expect((await api.courseCalendar(DEMO101)).proposals).toEqual([]);
   });
 
   it("says it in a batch inside the course's own events", async () => {

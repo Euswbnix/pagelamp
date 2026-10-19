@@ -2,7 +2,7 @@ import { ScanSearch } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import type { EstimateRequest } from "@/api/ai";
+import { type EstimateRequest, materialSharing } from "@/api/ai";
 import { useCostEstimate } from "@/api/ai-queries";
 import { useCourseCalendar, useScanCourseCalendar } from "@/api/proposalQueries";
 import type { Course } from "@/api/types";
@@ -43,6 +43,13 @@ export function ReadSyllabus({ course }: { course: Course }) {
   // §7.12: without a model the button says so and leads to Settings, nothing more.
   const noModel = estimate.data?.would_block === "no_model_chosen";
   const { state } = reading;
+  // Question (b) still open (as the facade asks it): an answer given meanwhile, in the Policy
+  // tab, closes the reminder.
+  const reminder =
+    reading.reminder &&
+    (materialSharing(course) === "unanswered" || materialSharing(course) === "not_sure")
+      ? reading.reminder
+      : null;
 
   return (
     <div className="space-y-6">
@@ -76,12 +83,16 @@ export function ReadSyllabus({ course }: { course: Course }) {
           )}
         </GenerateSteps>
         <ReadingOutcome state={state} />
-        {reading.reminder ? (
+        {reminder ? (
           <MaterialSharingReminder
             courseId={course.id}
             courseName={name}
-            service={reading.reminder.service}
-            onClose={reading.settle}
+            service={reminder.service}
+            onClose={() => {
+              reading.settle();
+              // Not to the page: back to the section.
+              requestAnimationFrame(() => document.getElementById(READ_SYLLABUS_HEADING)?.focus());
+            }}
           />
         ) : null}
       </section>

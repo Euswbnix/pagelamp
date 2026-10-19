@@ -201,13 +201,13 @@
     },
     "badge": {
       "onDevice": "on this computer",
-      "cloud": "runs in the cloud",
+      "cloud": "may run in the cloud",
       "noPrice": "no price",
       "suggested": "suggested"
     },
     "noPriceNote": "{{product}} has no price for {{model}}, so your budget can't be enforced for it. You'll be asked to confirm before its first run.",
     "thinkingNote": "{{model}} always thinks before it answers, which costs more.",
-    "cloudNote": "{{model}} runs in the cloud, not on this computer.",
+    "cloudNote": "{{model}} may run in the cloud, not on this computer.",
     "turnOnFirst": "Turn on a model above to choose it here.",
     "test": "Test",
     "testing": "Testing…",
@@ -330,6 +330,7 @@
       "title": "Check whether your instructor allows sharing course materials with AI services",
       "body": "{{product}} sent text from {{course}}'s materials to {{service}}. If you're not sure it's allowed, check the syllabus or ask your instructor.",
       "answer": "Is sharing this course's materials allowed?",
+      "answerCourse": "Is sharing {{course}}'s materials allowed?",
       "dismiss": "Dismiss"
     },
     "notAllowed": {

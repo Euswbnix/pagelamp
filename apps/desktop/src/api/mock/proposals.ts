@@ -47,6 +47,8 @@ export interface MockAiRun {
   backend_label: string;
   model: string;
   on_device: boolean;
+  /** The provider fails the request once the run started (e.g. the "ai-errors" endpoint). */
+  failure: ApiError | null;
 }
 
 interface CourseState {
@@ -478,7 +480,7 @@ export function createProposalsMock(deps: {
     const course = blockedOf(c, candidatesOf(c));
     if (course)
       throw new ApiError("blocked", "AI reading can't run for this course.", { blocked: course });
-    const run = await deps.aiGate(courseId, overrideBudget);
+    const { failure, ...run } = await deps.aiGate(courseId, overrideBudget);
     const stopped = () =>
       cancelled.has(generationId) || (batchId !== null && cancelled.has(batchId));
     onEvent({ type: "started", generation_id: generationId, ...run });
@@ -493,26 +495,29 @@ export function createProposalsMock(deps: {
     const remind = () => {
       if (reminder) onEvent({ type: "notice", code: "material_sharing_reminder" });
     };
+    // However it ends after this, the reminder is said before the end (the facade's order:
+    // the failure, the notice, then Finished).
+    function fail(error: ApiError): never {
+      remind();
+      onEvent({ type: "finished", ok: false });
+      throw error;
+    }
     for (const stage of ["building_context", "waiting_for_model", "validating"] as const) {
       onEvent({ type: "stage", stage });
       await deps.step();
-      if (stopped()) {
-        remind();
-        onEvent({ type: "finished", ok: false });
-        throw new ApiError("cancelled", "The reading was stopped.");
-      }
+      if (stopped()) fail(new ApiError("cancelled", "The reading was stopped."));
+      if (stage === "waiting_for_model" && failure) fail(failure);
     }
+    const source = candidatesOf(c).find((x) => x.included);
+    const m = c.materials.find((x) => x.id === source?.material_id);
+    if (!m)
+      fail(new ApiError("blocked", "No readable outline.", { blocked: "no_readable_materials" }));
     remind();
     onEvent({
       type: "usage",
       usage: { input_tokens: 14_200, cached_input_tokens: 0, output_tokens: 900 },
     });
     onEvent({ type: "finished", ok: true });
-
-    const source = candidatesOf(c).find((x) => x.included);
-    const m = c.materials.find((x) => x.id === source?.material_id);
-    if (!m)
-      throw new ApiError("blocked", "No readable outline.", { blocked: "no_readable_materials" });
     const state = stateOf(courseId);
     const made = proposal(c, "ai", m, {
       ai_label: {
