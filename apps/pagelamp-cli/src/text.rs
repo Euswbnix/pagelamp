@@ -152,6 +152,15 @@ pub fn disclosure(facts: &DisclosureFacts, checked: bool) -> String {
     lines.join("\n")
 }
 
+/// Before both notes of an Ollama model chosen with `--no-check`.
+pub fn either_place(name: &str) -> String {
+    format!(
+        "{PRODUCT_NAME} asks {name} where it runs this model before each reading. Both notes \
+         below are accepted now: the first applies if it runs the model on this computer, the \
+         second if it runs it in the cloud."
+    )
+}
+
 /// Before the first use of a model without a known price (`unchecked`: the model list wasn't
 /// asked, so it may well have one).
 pub fn unpriced_model(unchecked: bool) -> String {
@@ -167,7 +176,9 @@ pub fn unpriced_model(unchecked: bool) -> String {
 }
 
 pub const REMOVE_ALL_AI_DATA: &str = "Remove all AI data: providers and their keys, model \
-    choices, acknowledgements, usage records, generated texts and the pre-update database backup?";
+    choices, acknowledgements, usage records, generated texts, the calendar proposals AI read \
+    that you haven't accepted, and the pre-update database backup? A calendar you accepted keeps \
+    its AI label.";
 
 /// Why a run wouldn't start (`BlockReason`), with the command that changes it.
 pub fn block_reason(reason: BlockReason) -> String {
@@ -192,9 +203,10 @@ pub fn block_reason(reason: BlockReason) -> String {
         BlockReason::CodingPlanKey => {
             "coding-plan keys may only be used in the vendor's own coding tools.".to_string()
         }
-        BlockReason::DisclosureNotAcknowledged => {
-            format!("you haven't accepted what this provider is sent yet (`{CLI_NAME} ai use …`).")
-        }
+        BlockReason::DisclosureNotAcknowledged => format!(
+            "you haven't accepted what this model is sent where it runs (`{CLI_NAME} ai use \
+             <feature> <provider> <model>`, without --no-check, shows it)."
+        ),
         BlockReason::NoModelChosen => format!(
             "no model is chosen for this feature (`{CLI_NAME} ai use <feature> <provider> <model>`)."
         ),
@@ -254,6 +266,16 @@ pub fn sharing_reminder_note() -> String {
     )
 }
 
+/// The same, after a reading that sent the material text but stopped or failed.
+pub fn sharing_reminder_after_failure_note() -> String {
+    format!(
+        "This course's material text went to a cloud AI service, or was on its way when the \
+         reading stopped. Check whether your instructor allows that, then record it: `{} course \
+         sharing <course> allowed | not-sure | not-allowed`.",
+        pagelamp_core::brand::CLI_NAME
+    )
+}
+
 /// The automatic sync setting in words (`status`, `sync --auto`).
 pub fn auto_sync(setting: pagelamp_core::auto_sync::AutoSync) -> &'static str {
     use pagelamp_core::auto_sync::AutoSync;
@@ -288,6 +310,20 @@ pub fn coverage_line(course: &pagelamp_core::source::CourseSyncSummary) -> Optio
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
+/// `text` as one shell argument: bare when it is plain, in double quotes when nothing in it
+/// means anything there (bash, zsh, PowerShell and cmd read them alike), else in single quotes
+/// (POSIX shells).
+fn shell_arg(text: &str) -> String {
+    let plain = |c: char| c.is_ascii_alphanumeric() || "-_./:@+,=".contains(c);
+    if !text.is_empty() && text.chars().all(plain) {
+        text.to_string()
+    } else if !text.contains(['"', '$', '`', '\\', '!', '%']) {
+        format!("\"{text}\"")
+    } else {
+        format!("'{}'", text.replace('\'', "'\\''"))
+    }
+}
+
 /// `course copy-dates`: a course the dates weren't copied to (by its code), and why.
 pub fn copy_skipped(reason: ApplySkipReason, course: &str) -> String {
     let why = match reason {
@@ -299,12 +335,7 @@ pub fn copy_skipped(reason: ApplySkipReason, course: &str) -> String {
              confirmed: save them with `{CLI_NAME} course term` first"
         ),
         ApplySkipReason::OwnCalendar => {
-            // A code with spaces is one argument.
-            let arg = if course.contains(char::is_whitespace) {
-                format!("\"{course}\"")
-            } else {
-                course.to_string()
-            };
+            let arg = shell_arg(course);
             format!(
                 "its dates come from a calendar you accepted (`{CLI_NAME} course calendar \
                  {arg}`), which a copy doesn't change."
@@ -330,6 +361,11 @@ mod tests {
              (`pagelamp course calendar \"DEM240H7 F LEC0101 20289\"`), which a copy doesn't \
              change."
         );
+        assert_eq!(
+            super::shell_arg("Demo & Co's $HOME"),
+            r#"'Demo & Co'\''s $HOME'"#
+        );
+        assert_eq!(super::shell_arg("Field (Lab)"), r#""Field (Lab)""#);
         assert_eq!(
             copy_skipped(ApplySkipReason::OwnCalendar, "DEMO101"),
             "  Skipped DEMO101: its dates come from a calendar you accepted (`pagelamp course \

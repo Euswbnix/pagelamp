@@ -4,7 +4,7 @@
 //! grouping comes from the facade; this module only renders.
 
 use chrono::NaiveDate;
-use pagelamp_app::ai::GenEvent;
+use pagelamp_app::ai::{GenEvent, GenNoticeCode};
 use pagelamp_app::{
     App, CourseCalendarView, ReadCalendarOptions, RemoveOptions, RestoreFailure, TombstoneState,
 };
@@ -386,18 +386,38 @@ pub async fn calendar(
             let options = ReadCalendarOptions {
                 override_budget: over_budget,
             };
-            let proposal = app
-                .read_course_calendar(course, &generation_id, options, |event| {
-                    if let GenEvent::Started {
+            let reminded = std::sync::atomic::AtomicBool::new(false);
+            let read = app
+                .read_course_calendar(course, &generation_id, options, |event| match event {
+                    GenEvent::Started {
                         backend_label,
                         model,
                         ..
-                    } = event
-                    {
-                        eprintln!("Reading with {backend_label} · {model}…");
-                    }
+                    } => eprintln!("Reading with {backend_label} · {model}…"),
+                    GenEvent::Notice {
+                        code: GenNoticeCode::MaterialSharingReminder,
+                    } => reminded.store(true, std::sync::atomic::Ordering::Relaxed),
+                    _ => {}
                 })
-                .await?;
+                .await;
+            // A reading that failed after sending still reminds, before its error.
+            let proposal = match read {
+                Ok(proposal) => proposal,
+                Err(err) => {
+                    if reminded.load(std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("{}", crate::text::sharing_reminder_after_failure_note());
+                    }
+                    // A run that didn't start: why, with the command that changes it.
+                    if let Some(reason) = err.blocked {
+                        anyhow::bail!(
+                            "blocked: {} — {}",
+                            reason.as_str(),
+                            crate::text::block_reason(reason)
+                        );
+                    }
+                    return Err(err.into());
+                }
+            };
             if !json {
                 println!("Proposal #{} read by AI.", proposal.id);
                 if proposal.sharing_reminder {
@@ -622,7 +642,15 @@ pub fn copy_dates(
                 if course.hidden { " (hidden)" } else { "" }
             );
         }
-        println!("Name the courses to copy to, or use --same-session for all of them.");
+        if session.copy_refused {
+            println!(
+                "Two dates can't carry {from_name}'s calendar (it has two parts, a first week \
+                 other than week 1, no last day of classes, or a break that skips a week): set \
+                 these courses' dates on their own."
+            );
+        } else {
+            println!("Name the courses to copy to, or use --same-session for all of them.");
+        }
         return Ok(());
     }
     let to = if same_session {

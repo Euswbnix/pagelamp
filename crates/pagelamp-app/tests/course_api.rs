@@ -713,10 +713,11 @@ fn an_undo_leaves_alone_a_course_with_a_calendar_of_its_own_since() {
     assert_eq!(two.term.teaching[0].first_class, date("2026-09-15"));
 }
 
-/// Two dates can't carry a calendar with two parts or with a break its weeks skip: a copy from
-/// one is refused, and nothing changes.
+/// Two dates can't carry a calendar with two parts, a break that skips a week, no last day of
+/// classes, or a first week other than week 1: a copy from one is refused, nothing changes,
+/// and the session's list says so beforehand.
 #[test]
-fn a_calendar_with_two_parts_or_a_skipped_break_isn_t_copied() {
+fn a_calendar_two_dates_can_t_carry_isn_t_copied() {
     let temp = tempfile::tempdir().unwrap();
     let app = app_with_session(temp.path());
     let reading_week = |numbered| pagelamp_app::BreakInput {
@@ -738,14 +739,42 @@ fn a_calendar_with_two_parts_or_a_skipped_break_isn_t_copied() {
         breaks: vec![reading_week(false)],
         ..dates_form("2026-09-08", "2026-12-08", None)
     };
-    for form in [two_parts, skipped_break] {
-        app.set_course_dates(&session_id("1"), Some(form)).unwrap();
+    // A schedule from "Week 0", as a scan or a reading can propose it.
+    let mut week_zero =
+        pagelamp_core::calendar::calendar_from_dates(&pagelamp_core::calendar::DatesDraft {
+            first_class: date("2026-09-08"),
+            last_class: Some(date("2026-12-08")),
+            exams_end: None,
+            breaks: vec![],
+            second_segment: None,
+        })
+        .unwrap();
+    week_zero.segments[0].first_week_number = 0;
+    let refused = |app: &App| app.session_courses(&session_id("1")).unwrap().copy_refused;
+    // No last day of classes: the target would take its end and breaks from the school.
+    let open_ended = pagelamp_app::CourseDatesInput {
+        last_class: None,
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    for form in [Some(two_parts), Some(skipped_break), Some(open_ended), None] {
+        match form {
+            Some(form) => {
+                app.set_course_dates(&session_id("1"), Some(form)).unwrap();
+            }
+            None => {
+                Store::open(&app.db_path())
+                    .unwrap()
+                    .set_student_calendar(&session_id("1"), Some(&week_zero), chrono::Utc::now())
+                    .unwrap();
+            }
+        }
+        assert!(refused(&app));
         let err = app
             .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
             .unwrap_err();
         assert_eq!(err.kind, AppErrorKind::Invalid);
         assert!(
-            err.message.contains("breaks or two parts"),
+            err.message.contains("a first week other than week 1"),
             "{}",
             err.message
         );
@@ -753,7 +782,29 @@ fn a_calendar_with_two_parts_or_a_skipped_break_isn_t_copied() {
         assert_eq!((two.term.student_start, two.term.student_end), (None, None));
         assert!(copied(&app).is_empty());
     }
-    // A break the weeks count is no different from the plain dates: it is copied.
+    // A one-day holiday the weeks don't count skips no week: it is copied.
+    app.set_course_dates(
+        &session_id("1"),
+        Some(pagelamp_app::CourseDatesInput {
+            breaks: vec![pagelamp_app::BreakInput {
+                kind: BreakKind::Holiday,
+                start: date("2026-10-12"),
+                end: date("2026-10-12"),
+                numbered: false,
+                label: None,
+            }],
+            ..dates_form("2026-09-08", "2026-12-08", None)
+        }),
+    )
+    .unwrap();
+    assert!(!refused(&app));
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+    app.restore_course_dates(report.replaced).unwrap();
+    // A break the weeks count keeps the weeks the same: it is copied, though on the target
+    // that week isn't shown as a break.
     app.set_course_dates(
         &session_id("1"),
         Some(pagelamp_app::CourseDatesInput {
@@ -762,6 +813,7 @@ fn a_calendar_with_two_parts_or_a_skipped_break_isn_t_copied() {
         }),
     )
     .unwrap();
+    assert!(!refused(&app));
     let report = app
         .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
         .unwrap();

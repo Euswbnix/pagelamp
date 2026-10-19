@@ -712,6 +712,7 @@ export type EvidenceCode =
   | "dates_agree"
   | "same_session_disagrees"
   | "same_session_split"
+  | "same_session_unlent"
   | "dates_may_be_wrong"
   | "session_window"
   | "institution_calendar_missing"
@@ -1182,6 +1183,15 @@ export interface ActivityItem {
  */
 export interface AiBackendStatus {
   backend: BackendRef;
+  /**
+   * For a server on this computer that may run a model in the cloud (any but LM Studio;
+   * every model of a server other than Ollama): the note for such a model, acknowledged
+   * apart (`acknowledge_model_disclosure(backend, false, …)`); `disclosure` is then the one
+   * for the models it runs here. `state` counts the note each routed model needs, or either
+   * note when none is routed to it.
+   */
+  cloud_disclosure?: DisclosureFacts | null;
+  cloud_disclosure_acknowledged?: number | null;
   disclosure: DisclosureFacts;
   /**
    * The disclosure version the student acknowledged, if any.
@@ -3197,6 +3207,12 @@ export interface SessionCourses {
    * course shares its session, and `courses` is empty).
    */
   campus?: number | null;
+  /**
+   * The course's calendar in force can't be copied (two parts, a first week other than
+   * week 1, no last day of classes, or a break that skips a week:
+   * `CourseCalendar::carried_by_two_dates`): `apply_course_dates_to` refuses it.
+   */
+  copy_refused?: boolean;
   /**
    * The other courses of the same session, section group and campus: removed ones left out,
    * hidden ones in (`hidden`), the course itself not listed.

@@ -22,6 +22,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, UsageRecord};
 use pagelamp_core::ai_gate::RenderedPrompt;
+use pagelamp_core::store::usage_cutoff;
 use pagelamp_llm::estimate::{cjk_tenths, count_tokens_upper, usage_cost};
 use pagelamp_llm::request::Notice;
 use pagelamp_llm::{CancellationToken, GenerateRequest, LlmError, OutputSpec, StreamEvent, Usage};
@@ -92,6 +93,12 @@ impl Runs {
             }
             None => false,
         }
+    }
+
+    /// Stop every run of this process ("Remove all AI data"); returns how many.
+    pub(crate) fn cancel_all(&self) -> usize {
+        let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        running.values().inspect(|run| run.cancel.cancel()).count()
     }
 
     /// Run `id` reads `course_id`'s materials (for `destination`, when known).
@@ -358,7 +365,8 @@ impl App {
         }
     }
 
-    /// Write a run's `ai_usage` row and return its counts as the facade shows them.
+    /// Write a run's `ai_usage` row and return its counts as the facade shows them. A run of a
+    /// provider removed meanwhile (`ai remove`, from this or another process) writes nothing.
     pub(crate) fn record_run_usage(
         &self,
         backend: &str,
@@ -377,8 +385,10 @@ impl App {
             Billing::Unpriced => (None, "unpriced"),
             Billing::Plan => (None, "plan"),
         };
-        self.write_store()?.record_ai_usage(&UsageRecord {
-            at: Utc::now(),
+        let store = self.write_store()?;
+        let now = Utc::now();
+        let record = UsageRecord {
+            at: now,
             backend: backend.to_string(),
             model: model.to_string(),
             feature,
@@ -391,7 +401,20 @@ impl App {
             cost_basis: cost_basis.to_string(),
             estimated: usage.estimated,
             outcome: outcome.to_string(),
+        };
+        store.in_transaction(|store| {
+            if let Some(provider_id) = backend.strip_prefix("provider:")
+                && store.model_provider(provider_id)?.is_none()
+            {
+                return Ok(());
+            }
+            store.record_ai_usage(&record)
         })?;
+        // The ledger's 13 months: older lines go with each new one (and at each sync). Never
+        // an error for a run that ended.
+        if let Err(err) = store.prune_ai_usage(usage_cutoff(now)) {
+            tracing::warn!(target: "pagelamp::ai", "pruning the usage ledger failed: {err}");
+        }
         Ok(TokenUsage {
             input_tokens: usage.input_uncached + usage.cache_read + usage.cache_write,
             cached_input_tokens: usage.cache_read,
