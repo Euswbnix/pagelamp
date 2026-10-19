@@ -1009,3 +1009,75 @@ fn the_model_answers_in_the_design_s_output_schema() {
     });
     assert_eq!(contract(&schema), contract(&design));
 }
+
+/// Dates copied from another course stay "copied" only until the course's own dates are saved
+/// again: the dates form (saving or clearing it) and accepting a proposal end the mark and its
+/// evidence line, like `set_course_term`.
+#[test]
+fn saving_or_accepting_a_calendar_ends_the_copied_mark() {
+    use std::collections::BTreeMap;
+
+    use pagelamp_core::term::COPIED_DATES_KEY;
+
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let store = Store::open(&app.db_path()).unwrap();
+    let mark = || {
+        store
+            .set_setting(
+                COPIED_DATES_KEY,
+                &BTreeMap::from([(course_id("101"), course_id("202"))]),
+            )
+            .unwrap();
+    };
+    let marked = || {
+        store
+            .setting::<BTreeMap<String, String>>(COPIED_DATES_KEY)
+            .unwrap()
+            .unwrap_or_default()
+            .contains_key(&course_id("101"))
+    };
+    let says_copied = |app: &App| {
+        app.course_timeline("DEMO101")
+            .unwrap()
+            .evidence_items
+            .iter()
+            .any(|item| item.code == "dates_copied_from")
+    };
+    let form = pagelamp_app::CourseDatesInput {
+        first_class: Some(day(-13)),
+        last_class: Some(day(70)),
+        exams_end: None,
+        breaks: vec![],
+        second_segment: None,
+    };
+
+    mark();
+    app.set_course_dates("DEMO101", Some(form.clone())).unwrap();
+    assert!(!marked());
+    assert!(!says_copied(&app));
+
+    mark();
+    app.set_course_dates("DEMO101", None).unwrap();
+    assert!(!marked());
+
+    // Dates as a copy leaves them (the store's write, confirmed, marked): the line shows.
+    store
+        .set_course_term(&course_id("101"), Some(day(-13)), Some(day(70)))
+        .unwrap();
+    store
+        .set_setting(
+            pagelamp_core::term::CONFIRMED_DATES_KEY,
+            &std::collections::BTreeSet::from([course_id("101")]),
+        )
+        .unwrap();
+    mark();
+    assert!(says_copied(&app));
+    let proposal = app
+        .scan_course_calendar("DEMO101")
+        .unwrap()
+        .expect("dates in the syllabus");
+    app.accept_passing_proposals(vec![proposal.id]).unwrap();
+    assert!(!marked());
+    assert!(!says_copied(&app));
+}

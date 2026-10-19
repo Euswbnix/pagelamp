@@ -1225,3 +1225,66 @@ fn courses_whose_dates_disagree_name_each_other() {
     );
     assert!(!three.contains("same session, puts week 1"), "{three}");
 }
+
+/// A course whose dates come from a calendar in force (the dates form or an accepted proposal)
+/// lends that calendar's last day of classes and end of exams, not the span `user_term_*`
+/// mirror (which ends with the exams): the course without dates of its own is in its exam
+/// period when the lender is, in a single course's view and in the list alike.
+#[test]
+fn a_calendar_in_force_lends_its_own_ends_of_classes_and_exams() {
+    use pagelamp_core::calendar::{DatesDraft, calendar_from_dates};
+
+    let store = session_store();
+    let calendar = calendar_from_dates(&DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: Some(date("2026-12-22")),
+        breaks: vec![],
+        second_segment: None,
+    })
+    .unwrap();
+    store
+        .set_student_calendar(
+            &session_id("1"),
+            Some(&calendar),
+            ts("2026-09-20T12:00:00Z"),
+        )
+        .unwrap();
+    store
+        .set_setting(CONFIRMED_DATES_KEY, &BTreeSet::from([session_id("1")]))
+        .unwrap();
+    // What the dates form leaves in the term dates: its span, to the end of exams.
+    let mirrored = store.course_term_data(&session_id("1")).unwrap().unwrap();
+    assert_eq!(mirrored.user_term_end, Some(date("2026-12-22")));
+
+    let borrower = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    let term = &borrower.timeline.term;
+    assert_eq!(term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(term.teaching[0].last_class, Some(date("2026-12-08")));
+    assert_eq!(term.exams_end, Some(date("2026-12-22")));
+    let in_exams = AsOf {
+        now: ts("2026-12-15T12:00:00Z"),
+        today: date("2026-12-15"),
+        tz: None,
+    };
+    let overview = views::course_overview(&store, &session_id("2"), true, in_exams).unwrap();
+    assert_eq!(overview.timeline.phase, CoursePhase::ExamPeriod);
+    let listed = views::list_courses(&store, true, in_exams)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.course.id == session_id("2"))
+        .unwrap();
+    assert_eq!(listed.timeline.phase, CoursePhase::ExamPeriod);
+    assert_eq!(listed.timeline.term.exams_end, Some(date("2026-12-22")));
+
+    // The session's list says which course has a calendar of its own.
+    let two = store.get_course(&session_id("2")).unwrap().unwrap();
+    let others = views::session_courses(&store, &two, session_at()).unwrap();
+    let own: Vec<(&str, bool)> = others
+        .courses
+        .iter()
+        .map(|o| (o.course.id.as_str(), o.own_calendar))
+        .collect();
+    assert!(own.contains(&(session_id("1").as_str(), true)), "{own:?}");
+    assert!(own.contains(&(session_id("3").as_str(), false)), "{own:?}");
+}

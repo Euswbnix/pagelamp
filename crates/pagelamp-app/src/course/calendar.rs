@@ -218,6 +218,7 @@ impl App {
 
     /// The course dates form: `Some` puts the student's own calendar in force (the week
     /// numbering is computed here), `None` clears it and the student's term dates ("Undo").
+    /// Either way the course's dates are no longer ones copied from another course.
     pub fn set_course_dates(
         &self,
         course: &str,
@@ -229,13 +230,17 @@ impl App {
             .as_ref()
             .map(CourseDatesInput::to_calendar)
             .transpose()?;
-        store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
-        super::set_dates_confirmed(&store, &course.id, calendar.is_some())?;
+        store.in_transaction(|store| {
+            store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
+            super::session::forget_copied(store, &course.id)?;
+            super::set_dates_confirmed(store, &course.id, calendar.is_some())
+        })?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }
 
     /// Accept a proposal, optionally with the student's edits and conflict choices (as the
-    /// dates form). The calendar in force becomes superseded.
+    /// dates form). The calendar in force becomes superseded, and the course's dates are no
+    /// longer ones copied from another course.
     pub fn accept_calendar_proposal(
         &self,
         proposal_id: i64,
@@ -248,8 +253,12 @@ impl App {
             .map(CourseDatesInput::to_calendar)
             .transpose()?
             .map(|calendar| (calendar, row.dates.clone()));
-        let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
-        super::set_dates_confirmed(&store, &accepted.course_id, true)?;
+        let accepted = store.in_transaction(|store| {
+            let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
+            super::session::forget_copied(store, &accepted.course_id)?;
+            super::set_dates_confirmed(store, &accepted.course_id, true)?;
+            Ok(accepted)
+        })?;
         let course = store.resolve_course_with(&accepted.course_id, true)?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }

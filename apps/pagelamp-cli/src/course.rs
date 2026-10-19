@@ -606,6 +606,10 @@ pub fn copy_dates(
         println!("Courses of session {code} besides {from_name}:");
         for course in &session.courses {
             let own = match (course.student_start, course.student_end) {
+                _ if course.own_calendar => {
+                    " — counts its weeks from a calendar of its own, which a copy leaves alone"
+                        .to_string()
+                }
                 (None, None) => String::new(),
                 (start, end) => format!(
                     " — has its own dates ({} → {}), which would be replaced",
@@ -668,6 +672,10 @@ pub fn copy_dates(
             ApplySkipReason::DatesNotConfirmed => {
                 "the dates of the course to copy from were set in PageLamp 0.1 and never \
                  confirmed: save them with `pagelamp course term` first"
+            }
+            ApplySkipReason::OwnCalendar => {
+                "it counts its weeks from a calendar of its own, which a copy doesn't change. \
+                 Change its dates in that calendar."
             }
             ApplySkipReason::UnknownCourse => "no such course",
         };

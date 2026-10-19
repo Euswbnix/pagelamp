@@ -600,3 +600,72 @@ fn saving_a_course_s_own_dates_ends_their_copied_from_line() {
         .unwrap();
     assert!(!copied_line(&app));
 }
+
+/// The dates form's calendar of course 1, with an exam period: what `user_term_*` mirror ends
+/// with the exams.
+fn dates_form(first: &str, last: &str, exams_end: Option<&str>) -> pagelamp_app::CourseDatesInput {
+    pagelamp_app::CourseDatesInput {
+        first_class: Some(date(first)),
+        last_class: Some(date(last)),
+        exams_end: exams_end.map(date),
+        breaks: vec![],
+        second_segment: None,
+    }
+}
+
+/// A copy from a course with a calendar in force gives the others its first and last day of
+/// classes (not the end of its exams). A course with a calendar of its own is skipped: its
+/// calendar counts its weeks whatever its term dates say, so nothing is copied there and it
+/// doesn't say its dates were copied.
+#[test]
+fn copies_read_a_calendar_in_force_and_leave_a_course_s_own_calendar_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_dates(
+        &session_id("1"),
+        Some(dates_form("2026-09-08", "2026-12-08", Some("2026-12-22"))),
+    )
+    .unwrap();
+    app.set_course_dates(
+        &session_id("5"),
+        Some(dates_form("2026-09-15", "2026-12-11", None)),
+    )
+    .unwrap();
+
+    let listed = app.session_courses(&session_id("1")).unwrap();
+    let own: Vec<(&str, bool)> = listed
+        .courses
+        .iter()
+        .map(|c| (c.course_id.as_str(), c.own_calendar))
+        .collect();
+    assert!(own.contains(&(session_id("5").as_str(), true)), "{own:?}");
+    assert!(own.contains(&(session_id("2").as_str(), false)), "{own:?}");
+
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2"), session_id("5")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+    assert_eq!(
+        report.skipped,
+        vec![SkippedCourse {
+            course_id: session_id("5"),
+            reason: ApplySkipReason::OwnCalendar,
+        }]
+    );
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert_eq!(
+        (two.term.student_start, two.term.student_end),
+        (Some(date("2026-09-08")), Some(date("2026-12-08")))
+    );
+    assert_eq!(
+        copied(&app),
+        BTreeMap::from([(session_id("2"), session_id("1"))])
+    );
+    let five = app.course_timeline(&session_id("5")).unwrap();
+    assert_eq!(five.term.teaching[0].first_class, date("2026-09-15"));
+    assert!(
+        five.evidence_items
+            .iter()
+            .all(|item| item.code != "dates_copied_from")
+    );
+}
