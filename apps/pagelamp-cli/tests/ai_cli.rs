@@ -404,10 +404,30 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
     ));
     assert!(!shown.contains("nothing leaves it"), "{shown}");
     assert!(
-        shown.contains("this model doesn't run there as far as PageLamp can tell"),
+        shown.contains("PageLamp can't confirm that this model does"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("Courses you answered not-allowed for are never sent to it."),
         "{shown}"
     );
     assert!(shown.contains("price"), "{shown}");
+    // Without asking the server, an Ollama model can't be confirmed either.
+    let unchecked = failed(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--no-check",
+        ],
+    ));
+    assert!(
+        unchecked.contains("PageLamp can't confirm that this model does"),
+        "{unchecked}"
+    );
 
     let shown = failed(&pagelamp(
         &home,

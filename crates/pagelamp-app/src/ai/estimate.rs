@@ -223,14 +223,14 @@ impl App {
     }
 
     /// Whether `choice`'s model runs on this computer, decided as a run decides it (a model
-    /// server here is asked for its list), or with `ask = false` by the estimate's rule alone.
+    /// server here is asked for its list). With `ask = false` nothing is asked: then only a
+    /// server that runs every model here can confirm it (LM Studio); an Ollama model is unknown.
     pub async fn model_runs_here(&self, choice: &ModelChoice, ask: bool) -> Result<bool> {
-        let destination = if ask {
-            self.run_destination(choice).await?
-        } else {
-            self.estimate_profile(choice)?.1
-        };
-        Ok(destination == Destination::OnDevice)
+        if ask {
+            return Ok(self.run_destination(choice).await? == Destination::OnDevice);
+        }
+        let (profile, destination) = self.estimate_profile(choice)?;
+        Ok(destination == Destination::OnDevice && profile.id != "ollama")
     }
 
     /// Where a run's model runs, decided by the run itself right before it builds its context

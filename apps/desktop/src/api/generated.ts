@@ -2360,6 +2360,12 @@ export interface TermResolution {
    */
   outer_frame?: DateSpan | null;
   /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
+  /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
    * `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
@@ -3197,12 +3203,6 @@ export interface SessionCourses {
    */
   courses: SessionCourse[];
   /**
-   * The course itself counts its weeks from a calendar of its own (accepted from its
-   * syllabus or saved with the dates form): applying copies that calendar's first and last
-   * day of classes, whatever its term dates say.
-   */
-  own_calendar: boolean;
-  /**
    * The school's session code (e.g. "20269"); `None` when the course's code or name has
    * none, and then `courses` is empty.
    */
@@ -3615,6 +3615,12 @@ export interface TermResolution1 {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
   /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the

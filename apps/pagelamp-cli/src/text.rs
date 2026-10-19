@@ -58,9 +58,10 @@ pub fn disclosure(facts: &DisclosureFacts, model_here: bool) -> String {
         format!("  • {name} runs on this computer: nothing leaves it.")
     } else if facts.on_device {
         format!(
-            "  • {name} runs on this computer, but this model doesn't run there as far as \
-             {PRODUCT_NAME} can tell: {name} may pass what {PRODUCT_NAME} sends on to a cloud \
-             service (Ollama does for its cloud models)."
+            "  • {name} runs on this computer, but {PRODUCT_NAME} can't confirm that this model \
+             does: {name} may pass what {PRODUCT_NAME} sends it on to a cloud service (Ollama \
+             does this for its cloud models). Courses you answered not-allowed for are never \
+             sent to it."
         )
     } else {
         let terms = facts

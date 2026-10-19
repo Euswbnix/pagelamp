@@ -461,6 +461,8 @@ pub struct TermResolution {
     pub student_end: Option<IsoDate>,
     #[uniffi(default = true)]
     pub student_dates_confirmed: bool,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1964,8 +1966,6 @@ pub enum LocalFileUse {
 pub struct SessionCourses {
     pub session: Option<String>,
     pub campus: Option<u8>,
-    #[uniffi(default = false)]
-    pub own_calendar: bool,
     pub courses: Vec<SessionCourse>,
 }
 
