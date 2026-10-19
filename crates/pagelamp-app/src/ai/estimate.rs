@@ -98,21 +98,23 @@ impl App {
                 would_block: self.codex_blocks(&store)?,
             });
         }
+        let (upper, price_known) = priced(&estimate, &profile, destination);
         let would_block = self.other_blocks(
             &store,
             &choice.backend,
             &choice.model,
             &profile,
-            estimate.micro_usd_upper,
-            estimate.price_known,
+            destination,
+            upper,
+            price_known,
         )?;
         Ok(CostEstimate {
-            micro_usd_upper: estimate.micro_usd_upper,
+            micro_usd_upper: upper,
             input_tokens: estimate.input_tokens,
             max_output_tokens: estimate.max_output_tokens,
             reasoning_allowance: estimate.reasoning_allowance,
             repair_possible: estimate.repair_possible,
-            price_known: estimate.price_known,
+            price_known,
             would_block,
         })
     }
@@ -177,6 +179,7 @@ impl App {
             ));
         };
         let codex = choice.backend == BackendRef::Codex;
+        let (upper, price_known) = priced(&estimate, &profile, destination);
         let would_block = if codex {
             self.codex_blocks(&store)?
         } else {
@@ -185,21 +188,18 @@ impl App {
                 &choice.backend,
                 &choice.model,
                 &profile,
-                estimate.micro_usd_upper,
-                estimate.price_known,
+                destination,
+                upper,
+                price_known,
             )?
         };
         Ok(CostEstimate {
-            micro_usd_upper: if codex {
-                None
-            } else {
-                estimate.micro_usd_upper
-            },
+            micro_usd_upper: if codex { None } else { upper },
             input_tokens: estimate.input_tokens,
             max_output_tokens: estimate.max_output_tokens,
             reasoning_allowance: estimate.reasoning_allowance,
             repair_possible: estimate.repair_possible,
-            price_known: !codex && estimate.price_known,
+            price_known: !codex && price_known,
             would_block,
         })
     }
@@ -220,6 +220,17 @@ impl App {
         let profile = self.provider_profile(&choice.backend)?;
         let destination = estimate_destination(&profile, &choice.model);
         Ok((profile, destination))
+    }
+
+    /// Whether `choice`'s model runs on this computer, decided as a run decides it (a model
+    /// server here is asked for its list), or with `ask = false` by the estimate's rule alone.
+    pub async fn model_runs_here(&self, choice: &ModelChoice, ask: bool) -> Result<bool> {
+        let destination = if ask {
+            self.run_destination(choice).await?
+        } else {
+            self.estimate_profile(choice)?.1
+        };
+        Ok(destination == Destination::OnDevice)
     }
 
     /// Where a run's model runs, decided by the run itself right before it builds its context
@@ -254,11 +265,14 @@ impl App {
 
     /// What stops a run of `choice` with this prompt besides the gate: the disclosure, then the
     /// ChatGPT plan's weekly cap, or an unpriced model and the monthly budget (which the
-    /// student may go past for this run with `override_budget`).
+    /// student may go past for this run with `override_budget`). `destination`: where the
+    /// model runs (a run's own `run_destination`; else the estimate's).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn run_blocks(
         &self,
         store: &Store,
         choice: &ModelChoice,
+        destination: Destination,
         prompt: &RenderedPrompt,
         output: &OutputSpec,
         max_output: u32,
@@ -276,13 +290,15 @@ impl App {
             choice.effort,
             max_output,
         );
+        let (upper, price_known) = priced(&estimate, &profile, destination);
         let block = self.other_blocks(
             store,
             &choice.backend,
             &choice.model,
             &profile,
-            estimate.micro_usd_upper,
-            estimate.price_known,
+            destination,
+            upper,
+            price_known,
         )?;
         Ok(block.filter(|reason| !(override_budget && *reason == BlockReason::BudgetReached)))
     }
@@ -306,13 +322,16 @@ impl App {
         Ok(None)
     }
 
-    /// The disclosure, an unpriced model and the budget, in that order.
+    /// The disclosure, an unpriced model and the budget, in that order. A model that runs on
+    /// this computer (`destination`) is free: no price, no budget.
+    #[allow(clippy::too_many_arguments)]
     fn other_blocks(
         &self,
         store: &Store,
         backend: &super::BackendRef,
         model: &str,
         profile: &ProviderProfile,
+        destination: Destination,
         upper: Option<u64>,
         price_known: bool,
     ) -> Result<Option<BlockReason>> {
@@ -324,7 +343,7 @@ impl App {
         if !acknowledged {
             return Ok(Some(BlockReason::DisclosureNotAcknowledged));
         }
-        if profile.on_device() {
+        if destination == Destination::OnDevice {
             return Ok(None); // free: no price, no budget
         }
         if !price_known
@@ -364,6 +383,20 @@ pub(crate) fn estimate_destination(profile: &ProviderProfile, model: &str) -> De
         "lm_studio" => Destination::OnDevice,
         "ollama" if !pagelamp_llm::profile::is_cloud_model_id(model) => Destination::OnDevice,
         _ => Destination::Cloud,
+    }
+}
+
+/// The price list's estimate for a model at `destination`. It counts every server on this
+/// computer as free, but a model such a server runs in the cloud has no known price.
+fn priced(
+    estimate: &pagelamp_llm::estimate::Estimate,
+    profile: &ProviderProfile,
+    destination: Destination,
+) -> (Option<u64>, bool) {
+    if destination == Destination::Cloud && profile.on_device() {
+        (None, false)
+    } else {
+        (estimate.micro_usd_upper, estimate.price_known)
     }
 }
 

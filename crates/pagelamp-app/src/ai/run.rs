@@ -145,6 +145,10 @@ pub(crate) struct RunRequest<'a> {
     pub cancel: &'a CancellationToken,
     pub feature: AiFeature,
     pub choice: &'a ModelChoice,
+    /// Where the model runs, as the run decided it before building its context
+    /// (`App::run_destination`): the run's "on this computer" label and its billing follow it,
+    /// never the provider's address alone.
+    pub destination: Destination,
     pub prompt: RenderedPrompt,
     pub output: OutputSpec,
     pub max_output_tokens: u32,
@@ -168,6 +172,9 @@ pub(crate) enum Billing<'a> {
     Priced(&'a pagelamp_llm::ProviderProfile),
     /// A model on this computer.
     OnDevice,
+    /// A model that a server on this computer runs in the cloud: the price list doesn't know it
+    /// (it would count the server as free).
+    Unpriced,
     /// A run of the ChatGPT plan (its weekly cap counts it).
     Plan,
 }
@@ -249,7 +256,7 @@ impl App {
         let provider = self.provider_for(&request.choice.backend)?;
         let backend_label = provider.row.label.clone();
         let profile = provider.profile.clone();
-        let on_device = profile.on_device();
+        let on_device = request.destination == Destination::OnDevice;
         let backend = provider.backend()?;
         let model = request.choice.model.clone();
         on_event(GenEvent::Started {
@@ -297,6 +304,8 @@ impl App {
             .await;
         let billing = if on_device {
             Billing::OnDevice
+        } else if profile.on_device() {
+            Billing::Unpriced
         } else {
             Billing::Priced(&profile)
         };
@@ -365,6 +374,7 @@ impl App {
                 None => (None, "unpriced"),
             },
             Billing::OnDevice => (Some(0), "free_on_device"),
+            Billing::Unpriced => (None, "unpriced"),
             Billing::Plan => (None, "plan"),
         };
         self.write_store()?.record_ai_usage(&UsageRecord {

@@ -770,11 +770,15 @@ async fn use_model(
         };
         Some(info.price_known || (info.on_device && !info.runs_in_cloud))
     };
+    // Where the model runs, as a run decides it: a server here may run it in the cloud.
+    let here = app.model_runs_here(&choice, !no_check).await?;
     let disclose = backend.disclosure_acknowledged != Some(backend.disclosure.version);
-    // The ChatGPT plan has no price to accept (a weekly run cap instead).
-    let unpriced = !on_device && price_known != Some(true) && choice.backend != BackendRef::Codex;
+    // The ChatGPT plan has no price to accept (a weekly run cap instead). A model that a server
+    // here runs in the cloud has no price PageLamp knows.
+    let unpriced =
+        !here && (on_device || price_known != Some(true)) && choice.backend != BackendRef::Codex;
     if disclose {
-        eprintln!("{}\n", text::disclosure(&backend.disclosure));
+        eprintln!("{}\n", text::disclosure(&backend.disclosure, here));
     }
     if unpriced {
         eprintln!("{}\n", text::unpriced_model(price_known.is_none()));

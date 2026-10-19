@@ -185,6 +185,16 @@ async fn with_local_model(app: &App) -> MockServer {
     with_local_model_listing(app, tags(json!([{ "name": "local-model" }]))).await
 }
 
+/// The mock daemon emptied, still listing its model (a run asks for the list first).
+async fn reset_listing(server: &MockServer) {
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(tags(json!([{ "name": "local-model" }])))
+        .mount(server)
+        .await;
+}
+
 /// Ollama's model list (`/api/tags`), as its daemon gives it.
 fn tags(models: serde_json::Value) -> ResponseTemplate {
     ResponseTemplate::new(200).set_body_json(json!({ "models": models }))
@@ -653,7 +663,7 @@ async fn activity_lists_a_generation_until_it_ends() {
     assert!(app.activity().items.is_empty());
 
     // Failed: the answer is checked (and fails) before the run ends.
-    server.reset().await;
+    reset_listing(&server).await;
     let invented = json!({
         "stated_term": {"text": null, "quote": null, "source": null},
         "claims": [claim("first_class", day(-6), "Classes begin whenever you like.", "c1")],
@@ -685,7 +695,7 @@ async fn activity_lists_a_generation_until_it_ends() {
     assert!(app.activity().items.is_empty());
 
     // Cancelled: a second reading with the same id is busy, and the stop ends the run.
-    server.reset().await;
+    reset_listing(&server).await;
     Mock::given(method("POST"))
         .respond_with(answer(&good_extraction()).set_delay(Duration::from_secs(30)))
         .mount(&server)
@@ -1193,4 +1203,54 @@ async fn a_model_the_local_server_cant_vouch_for_counts_as_the_cloud() {
         let requests = server.received_requests().await.unwrap();
         assert!(requests.iter().all(|r| r.url.path() != "/api/chat"));
     }
+}
+
+/// A run of a model that the server on this computer runs in the cloud says so: its start, its
+/// saved label and its usage row aren't "on this computer" or free (the price list doesn't know
+/// such a model, so its cost is unknown).
+#[tokio::test]
+async fn a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_cloud() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&good_extraction()))
+        .mount(&server)
+        .await;
+    app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
+        .unwrap();
+    // Its price is unknown, so the run waits for the student's acknowledgement first.
+    let err = app
+        .read_course_calendar("DEMO101", "gen-ack", ReadCalendarOptions::default(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    let (events, on_event) = collect();
+    let proposal = app
+        .read_course_calendar(
+            "DEMO101",
+            "gen-cloud",
+            ReadCalendarOptions::default(),
+            on_event,
+        )
+        .await
+        .unwrap();
+    let events = events.lock().unwrap();
+    assert!(events.iter().any(|e| matches!(
+        e,
+        GenEvent::Started {
+            on_device: false,
+            ..
+        }
+    )));
+    assert!(!proposal.ai_label.unwrap().on_device);
+    let usage = app.usage_summary(None).unwrap();
+    assert_eq!(usage.rows[0].cost_basis, CostBasis::Unpriced);
 }

@@ -481,6 +481,7 @@ impl App {
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
+                destination,
                 &prompt,
                 &output,
                 max_output,
@@ -509,6 +510,7 @@ impl App {
                     cancel: &cancel,
                     feature: AiFeature::CourseCalendar,
                     choice: &choice,
+                    destination,
                     prompt,
                     output,
                     max_output_tokens: max_output,
@@ -688,6 +690,7 @@ impl App {
         if let Some(reason) = self.run_blocks(
             store,
             &choice,
+            destination,
             &assemble(COURSE_CALENDAR, &GatedContext::empty(), None),
             &OutputSpec::Text,
             0,

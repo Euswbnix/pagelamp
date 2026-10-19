@@ -44,7 +44,9 @@ pub fn try_prompt() -> String {
 
 /// What a backend is sent and what happens to it, before its first use (design §3.8): the
 /// facts from the facade plus the fixed limitations-and-risks and ownership paragraphs.
-pub fn disclosure(facts: &DisclosureFacts) -> String {
+/// `model_here`: the chosen model runs on this computer too (a server here may run a model in
+/// the cloud, as Ollama does for its cloud models).
+pub fn disclosure(facts: &DisclosureFacts, model_here: bool) -> String {
     let name = &facts.recipient.name;
     let mut lines = vec![format!("What {PRODUCT_NAME} sends to {name}:")];
     lines.push(
@@ -52,8 +54,14 @@ pub fn disclosure(facts: &DisclosureFacts) -> String {
          calendars, also the text of course materials."
             .to_string(),
     );
-    lines.push(if facts.on_device {
+    lines.push(if facts.on_device && model_here {
         format!("  • {name} runs on this computer: nothing leaves it.")
+    } else if facts.on_device {
+        format!(
+            "  • {name} runs on this computer, but this model doesn't run there as far as \
+             {PRODUCT_NAME} can tell: {name} may pass what {PRODUCT_NAME} sends on to a cloud \
+             service (Ollama does for its cloud models)."
+        )
     } else {
         let terms = facts
             .recipient
