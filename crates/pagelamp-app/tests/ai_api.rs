@@ -1184,7 +1184,10 @@ async fn removing_a_keyless_provider_still_clears_its_keychain_entry() {
     assert_eq!(app.ai_status().unwrap().providers.len(), 1);
     let err = app.remove_all_ai_data().unwrap_err();
     assert!(err.message.contains(&account), "{}", err.message);
-    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    // Kept, it stays keyless: the entry it never used still isn't read.
+    let kept = app.ai_status().unwrap().providers;
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].key_last4, None);
     // Once the entry is gone, it goes.
     keychain.0.delete(&account).unwrap();
     app.remove_model_provider(&id).unwrap();

@@ -436,6 +436,13 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 lent_exams_end = lent.exams_end.filter(|_| !end_changed && end.is_some());
             }
         }
+    } else if let Some(Lend::Unlent { session }) = input.same_session {
+        // A course without dates of its own hears why nothing is lent.
+        if !own_dated {
+            let item = EvidenceItem::new(EvidenceCode::SameSessionUnlent).text("session", session);
+            english.push(item.english());
+            evidence.push(item);
+        }
     } else if let Some(Lend::Split { session, lenders }) = input.same_session {
         // Every course of the session hears it: a course with dates of its own (the
         // disagreeing lenders among them) by the lenders that put week 1 elsewhere, any other

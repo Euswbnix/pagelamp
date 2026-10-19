@@ -1372,6 +1372,72 @@ fn a_week_zero_calendar_agrees_with_the_same_week_one() {
     assert_eq!(two.timeline.term.week_one_monday, Some(date("2026-09-14")));
 }
 
+/// Course 3's module unlocks, which put its week 1 in the week of `monday` (week 4 unlocks
+/// three weeks later, week 5 four).
+fn session_unlocks(store: &Store, monday: &str) {
+    let week = |n: i64| {
+        let day = date(monday) + chrono::TimeDelta::days(7 * (n - 1));
+        Module {
+            id: format!("{SESSION_HOST}/module/w{n}"),
+            course_id: session_id("3"),
+            name: format!("Week {n}"),
+            position: None,
+            unlock_at: Some(ts(&format!("{day}T13:00:00Z"))),
+            week_hint: Some(u32::try_from(n).unwrap()),
+        }
+    };
+    store
+        .replace_modules(&session_id("3"), &[week(4), week(5)])
+        .unwrap();
+}
+
+/// When the strongest kind's only course can't lend (a calendar whose reading week skips a
+/// week), a weaker kind that agrees with its week 1 lends: here course 3's module unlocks.
+#[test]
+fn a_weaker_course_that_agrees_lends_when_the_strongest_can_t() {
+    let store = session_store();
+    let reading_week = CalendarBreak {
+        kind: BreakKind::ReadingWeek,
+        span: DateSpan {
+            start: date("2026-10-26"),
+            end: date("2026-10-30"),
+        },
+        numbered: false,
+        label: String::new(),
+    };
+    session_calendar(&store, "1", Some("2026-12-08"), vec![reading_week], 1);
+    session_unlocks(&store, "2026-09-07");
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_eq!(two.timeline.term.anchor, TermAnchorSource::SameSession);
+    assert_eq!(two.timeline.term.week_one_monday, Some(date("2026-09-07")));
+    assert_eq!(two.timeline.term.anchor_confidence, Confidence::Low);
+}
+
+/// A weaker course that puts week 1 elsewhere than the course that decides it lends nothing,
+/// and the course without dates of its own is told why.
+#[test]
+fn a_course_that_gets_nothing_lent_is_told_why() {
+    let store = session_store();
+    let reading_week = CalendarBreak {
+        kind: BreakKind::ReadingWeek,
+        span: DateSpan {
+            start: date("2026-10-26"),
+            end: date("2026-10-30"),
+        },
+        numbered: false,
+        label: String::new(),
+    };
+    session_calendar(&store, "1", Some("2026-12-08"), vec![reading_week], 1);
+    session_unlocks(&store, "2026-09-14");
+    let two = views::course_overview(&store, &session_id("2"), true, session_at()).unwrap();
+    assert_ne!(two.timeline.term.anchor, TermAnchorSource::SameSession);
+    let evidence = two.timeline.evidence.join("\n");
+    assert!(
+        evidence.contains("no course of session 20269 lends its dates"),
+        "{evidence}"
+    );
+}
+
 /// A calendar without a last day of classes still lends: the course without dates of its own
 /// counts the same open weeks from the same first class.
 #[test]

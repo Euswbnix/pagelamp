@@ -563,11 +563,15 @@ impl App {
         let store = self.write_store()?;
         let ending = store.in_transaction(|store| {
             // The materials went out (or were on their way) whatever became of the provider:
-            // the reminder isn't its data.
+            // the reminder isn't its data. It follows the answer as it is now (the student may
+            // have answered while the model read).
+            let sharing = store
+                .get_course(&course.id)?
+                .map_or(course.material_sharing, |now| now.material_sharing);
             let reminded = destination == Destination::Cloud
                 && sent
                 && matches!(
-                    course.material_sharing,
+                    sharing,
                     MaterialSharing::Unanswered | MaterialSharing::NotSure
                 )
                 && store.claim_sharing_reminder(&course.id, Utc::now())?;
