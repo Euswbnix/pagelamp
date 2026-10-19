@@ -498,6 +498,14 @@
 "calendar.reject.starts_after_end" = "Ends before it starts.";
 "calendar.reject.starts_before_session_window" = "Starts well before this session begins.";
 "calendar.reject.starts_long_before_activity" = "Starts more than four weeks before anything was posted in the course.";
+"calendar.sameSession.failed" = "Your dates are saved for this course. The other courses weren't changed.";
+"calendar.sameSession.hidden" = "hidden";
+"calendar.sameSession.hint" = "Other courses of this term. Untick any you want to leave as they are.";
+"calendar.sameSession.legend" = "Also use these dates in";
+"calendar.sameSession.listFailed" = "The other courses of this term couldn't be listed, so these dates stay in this course.";
+"calendar.sameSession.ownDates" = "Has its own dates: they would be replaced.";
+"calendar.sameSession.undo" = "Undo";
+"calendar.sameSession.undoFailed" = "The other courses couldn't be put back: they keep this course's dates.";
 "calendar.signal.dates" = "the course dates";
 "calendar.signal.latest_material" = "the latest material";
 "calendar.signal.module_unlock" = "the latest unlocked module";

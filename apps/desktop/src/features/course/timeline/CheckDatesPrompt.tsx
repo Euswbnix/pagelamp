@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 
 /**
- * One-time "Check this course's dates" for dates kept from version 0.1 (anchor origin
- * `legacy`; calendar design §3.2, §7.13). "These dates are right" confirms them; "Edit dates"
+ * One-time "Check this course's dates" for dates kept from version 0.1 the student never
+ * confirmed (`student_dates_confirmed` false; calendar design §3.2, §7.13). "These dates are right" confirms them; "Edit dates"
  * goes to the form. Saving or clearing the form also ends it (the facade drops the mark).
  */
 export function CheckDatesPrompt({

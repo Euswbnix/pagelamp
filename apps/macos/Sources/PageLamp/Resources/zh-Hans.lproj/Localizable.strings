@@ -498,6 +498,14 @@
 "calendar.reject.starts_after_end" = "结束日期早于开始日期。";
 "calendar.reject.starts_before_session_window" = "开始日期比本学期开始早了很多。";
 "calendar.reject.starts_long_before_activity" = "开始日期比课程里第一次发布内容早了四周以上。";
+"calendar.sameSession.failed" = "日期已保存到这门课，其他课没有改动。";
+"calendar.sameSession.hidden" = "已隐藏";
+"calendar.sameSession.hint" = "本学期的其他课。不想改动的课请取消勾选。";
+"calendar.sameSession.legend" = "这些日期也用于";
+"calendar.sameSession.listFailed" = "没能列出本学期的其他课，这些日期只用于这门课。";
+"calendar.sameSession.ownDates" = "已有自己的日期，勾选后会被替换。";
+"calendar.sameSession.undo" = "撤销";
+"calendar.sameSession.undoFailed" = "其他课没能恢复，它们仍是这门课的日期。";
 "calendar.signal.dates" = "课程日期";
 "calendar.signal.latest_material" = "最新的资料";
 "calendar.signal.module_unlock" = "最近解锁的模块";
