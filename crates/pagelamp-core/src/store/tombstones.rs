@@ -17,6 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use chrono::Duration;
 use rusqlite::{Row, params};
 
+use super::migrate_v4::MIGRATED_FINGERPRINT;
 use super::{Store, TextValue, expect_changed, get_opt_value, get_value, opt_date_text, ts_text};
 use crate::Result;
 use crate::calendar::CourseCalendar;
@@ -354,9 +355,20 @@ impl Store {
                 }
             }
             if let Some(calendar) = &s.calendar {
-                // As it was: a 0.1 calendar the student never checked stays `legacy`.
+                // As it was: a 0.1 calendar the student never checked stays `legacy`. Only a
+                // calendar the record holds in full keeps its fingerprint (the v4 data step's
+                // `legacy`, and the student's own). One a reader proposed comes back without
+                // its labels and evidence, so it is `restored`: the same materials may then be
+                // proposed again in full.
                 let origin = s.calendar_origin.unwrap_or(CalendarOrigin::Restored);
-                let fingerprint = s.calendar_fingerprint.as_deref().unwrap_or("restored");
+                let fingerprint = match s.calendar_fingerprint.as_deref() {
+                    Some(kept)
+                        if kept == MIGRATED_FINGERPRINT || origin == CalendarOrigin::User =>
+                    {
+                        kept
+                    }
+                    _ => "restored",
+                };
                 self.conn.execute(
                     "INSERT INTO course_calendars
                          (course_id, origin, state, calendar_json, evidence_json, checks_json,
