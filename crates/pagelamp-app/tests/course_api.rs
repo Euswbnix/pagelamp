@@ -672,3 +672,36 @@ fn copies_read_a_calendar_in_force_and_leave_a_course_s_own_calendar_alone() {
             .all(|item| item.code != "dates_copied_from")
     );
 }
+
+/// Undoing a copy puts back the course's earlier "copied from" only while that course is still
+/// there: a course gone meanwhile isn't written back into the record.
+#[test]
+fn an_undo_doesn_t_bring_back_a_copied_from_course_that_is_gone() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    for external in ["1", "5"] {
+        app.set_course_term(
+            &session_id(external),
+            Some(date("2026-09-08")),
+            Some(date("2026-12-08")),
+        )
+        .unwrap();
+    }
+    app.apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    let second = app
+        .apply_course_dates_to(&session_id("5"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(
+        second.replaced[0].copied_from.as_deref(),
+        Some(session_id("1").as_str())
+    );
+    // Course 1 goes (its source no longer lists it) before the undo.
+    let keep: Vec<String> = ["2", "3", "4", "5"].into_iter().map(session_id).collect();
+    Store::open(&app.db_path())
+        .unwrap()
+        .prune_courses(SESSION_HOST, &keep)
+        .unwrap();
+    app.restore_course_dates(second.replaced).unwrap();
+    assert!(!copied(&app).contains_key(&session_id("2")));
+}

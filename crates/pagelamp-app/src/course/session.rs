@@ -246,9 +246,12 @@ impl App {
                 store.set_course_term(&dates.course_id, dates.start, dates.end)?;
                 let has_dates = dates.start.is_some() || dates.end.is_some();
                 set_dates_confirmed(store, &dates.course_id, has_dates && !dates.legacy)?;
+                // The earlier "copied from", while that course is still there.
                 match &dates.copied_from {
-                    Some(from) => copied.insert(dates.course_id.clone(), from.clone()),
-                    None => copied.remove(&dates.course_id),
+                    Some(from) if store.get_course(from)?.is_some() => {
+                        copied.insert(dates.course_id.clone(), from.clone())
+                    }
+                    _ => copied.remove(&dates.course_id),
                 };
             }
             store.set_setting(COPIED_DATES_KEY, &copied)?;

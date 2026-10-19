@@ -93,6 +93,9 @@ pub struct CourseSettings {
     pub hidden: bool,
     pub user_term_start: Option<NaiveDate>,
     pub user_term_end: Option<NaiveDate>,
+    /// Those dates were confirmed (`CONFIRMED_DATES_KEY`, which a purge leaves): a restore
+    /// confirms them again, so they don't come back as unchecked 0.1 dates.
+    pub dates_confirmed: bool,
     pub keep_current_until: Option<NaiveDate>,
     /// The calendar in force, without labels or topics (material text).
     pub calendar: Option<CourseCalendar>,
