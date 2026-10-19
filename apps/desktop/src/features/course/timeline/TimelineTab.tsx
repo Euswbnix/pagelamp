@@ -4,7 +4,7 @@ import { Separator } from "@/components/ui/separator";
 import { CALENDAR_UI } from "../proposals/availability";
 import { ProposalsSection } from "../proposals/ProposalsSection";
 import { SyllabusSection } from "../proposals/SyllabusSection";
-import { REMOVAL_UI } from "../removal/availability";
+import { DATES_V2_UI } from "./availability";
 import { CheckDatesPrompt } from "./CheckDatesPrompt";
 import { CourseDatesForm } from "./CourseDatesForm";
 import { TermDatesForm } from "./TermDatesForm";
@@ -26,11 +26,12 @@ export function TimelineTab({
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const startRef = useRef<HTMLInputElement>(null);
-  const legacy = timeline.term.anchor_origin === "legacy";
+  // Dates kept from version 0.1 the student never confirmed (also a last day of classes alone).
+  const unconfirmed = !timeline.term.student_dates_confirmed;
 
   return (
     <div className="max-w-2xl space-y-8">
-      {legacy ? (
+      {unconfirmed ? (
         <CheckDatesPrompt
           courseId={course.id}
           onEdit={() => startRef.current?.focus()}
@@ -63,7 +64,7 @@ export function TimelineTab({
       <Separator />
 
       {/* Form v2 (breaks, exams, second part) needs set_course_dates (alpha.2). */}
-      {REMOVAL_UI ? (
+      {DATES_V2_UI ? (
         <CourseDatesForm course={course} timeline={timeline} startRef={startRef} />
       ) : (
         <TermDatesForm course={course} timeline={timeline} startRef={startRef} />

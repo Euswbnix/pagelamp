@@ -4,6 +4,8 @@
 //!   never cached: a policy change between two runs is always honoured.
 //! - Text comes only from `chunks` of courses that are `readable` at that moment;
 //!   `withheld_by_policy` and `turned_off` courses give structure only, hidden courses nothing.
+//! - Question (b): a course answered `not_allowed` gives no text to a cloud model (a model on
+//!   this computer still gets it). Structure is not material text and is unaffected.
 //! - Structure = titles, kinds, dates, week numbers, deadlines (rule 8). Titles are course
 //!   content too, so structure is wrapped as data like material text.
 //! - Left out of an explanation by default (listed in the summary): materials that look like
@@ -18,10 +20,10 @@ use super::{
     Block, CitationTarget, ContextCourse, GatedContext, LeftOutMaterial, LeftOutReason,
     ManifestEntry,
 };
-use crate::ai::BlockReason;
+use crate::ai::{BlockReason, Destination};
 use crate::model::{AiMaterialsState, Course, MaterialKind, TextStatus};
 use crate::store::Store;
-use crate::views::{self, AsOf, MaterialView};
+use crate::views::{self, AsOf, MaterialView, SessionLends};
 
 /// Words that mark a title as an assessment (whole words, any case) [tunable; open item].
 const ASSESSMENT_WORDS: [&str; 10] = [
@@ -83,9 +85,11 @@ pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedC
     store
         .in_read_transaction(|store| {
             let courses = scoped_courses(store, &scope.courses)?;
+            let lends = SessionLends::load(store, at, false, None)?;
             let mut context = GatedContext::empty();
             for course in &courses {
-                let text = course_structure(store, course, at, scope.horizon_days, &mut context)?;
+                let text =
+                    course_structure(store, course, at, &lends, scope.horizon_days, &mut context)?;
                 context.blocks.push(Block::Structure(text));
             }
             Ok(context)
@@ -99,9 +103,10 @@ pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> 
     store
         .in_read_transaction(|store| {
             let courses = scoped_courses(store, &[])?;
+            let lends = SessionLends::load(store, at, false, None)?;
             let mut context = GatedContext::empty();
             for course in &courses {
-                let text = course_structure(store, course, at, 7, &mut context)?;
+                let text = course_structure(store, course, at, &lends, 7, &mut context)?;
                 context.blocks.push(Block::Structure(text));
             }
             if let Some(plan) = store.latest_study_plan()? {
@@ -142,12 +147,14 @@ pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> 
 }
 
 /// Material text of one course week, for an explanation: blocked unless the course is visible,
-/// `readable` and has readable materials that week (`week`: default the current week).
+/// `readable`, its question-(b) answer allows `destination`, and it has readable materials that
+/// week (`week`: default the current week).
 pub fn week_context(
     store: &Store,
     course: &str,
     week: Option<u32>,
     at: AsOf,
+    destination: Destination,
     budget: ContextBudget,
 ) -> Result<GatedContext, GateError> {
     let result = store.in_read_transaction(|store| {
@@ -161,6 +168,9 @@ pub fn week_context(
             AiMaterialsState::WithheldByPolicy => {
                 return Ok(Err(BlockReason::CoursePolicyProhibited));
             }
+        }
+        if !course.material_sharing.allows(destination) {
+            return Ok(Err(BlockReason::MaterialSharingNotAllowed));
         }
         let listed = views::week_materials(store, &course.id, week, true, at)?;
         let mut context = GatedContext::empty();
@@ -276,6 +286,7 @@ fn course_structure(
     store: &Store,
     course: &Course,
     at: AsOf,
+    lends: &SessionLends,
     days: u32,
     context: &mut GatedContext,
 ) -> crate::Result<String> {
@@ -295,7 +306,7 @@ fn course_structure(
             AiMaterialsState::WithheldByPolicy => "no (the course does not allow AI use)",
         }
     );
-    let this_week = views::week_materials(store, &course.id, None, true, at)?;
+    let this_week = views::week_materials_with(store, &course.id, None, true, at, Some(lends))?;
     match this_week.week {
         Some(n) => {
             let _ = writeln!(text, "Current week: {n}");
@@ -305,7 +316,8 @@ fn course_structure(
                 &this_week.materials,
                 context,
             );
-            let next = views::week_materials(store, &course.id, Some(n + 1), true, at)?;
+            let next =
+                views::week_materials_with(store, &course.id, Some(n + 1), true, at, Some(lends))?;
             list_materials(
                 &mut text,
                 &format!("Week {} materials", n + 1),

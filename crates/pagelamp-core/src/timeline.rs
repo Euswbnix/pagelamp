@@ -739,6 +739,10 @@ fn calendar_signal(term: &TermResolution, week: u32, today: NaiveDate) -> WeekSi
             "week 1 is the week of {monday} (fitted from the week numbers of posted materials), \
              so {today} is calendar week {week}"
         ),
+        (TermAnchorSource::SameSession, _) => format!(
+            "week 1 is the week of {monday} (from another course of the same session), so \
+             {today} is calendar week {week}"
+        ),
         (_, Some(start)) => format!("term started {start}, so {today} is calendar week {week}"),
     };
     // A fit is made from the materials the weaker signals look at: they agree within a week
@@ -983,6 +987,7 @@ mod tests {
             ai_policy: AiPolicy::Unknown,
             ai_policy_note: None,
             ai_access: true,
+            material_sharing: Default::default(),
             enrollment_active: true,
             hidden: false,
             updated_at: noon(date(2026, 9, 1)),
@@ -1075,6 +1080,9 @@ mod tests {
             materials,
             events,
             today,
+            institution: None,
+            same_session: None,
+            copied_from: None,
         })
     }
 

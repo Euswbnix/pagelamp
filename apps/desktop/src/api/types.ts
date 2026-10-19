@@ -19,6 +19,8 @@ export type {
   AlternativeDate,
   AppError,
   AppErrorKind,
+  ApplyDatesReport,
+  ApplySkipReason,
   AppStatus,
   AutoSync,
   AutoSyncTrigger,
@@ -99,10 +101,14 @@ export type {
   RemovalReport,
   RemovedCourse,
   RemoveOptions,
+  ReplacedDates,
   RestoreFailure,
   RestoreOutcome,
   SearchHit,
   SegmentInput,
+  SessionCourse,
+  SessionCourses,
+  SkippedCourse,
   SnoozeKind,
   SourceErrorKind,
   SourceKind,
@@ -140,8 +146,6 @@ export type {
   WhatsNewTopic,
 } from "./generated";
 
-// StoreCounts.removed_courses until B5 adds it (the augmentation lives there).
-import "./provisional/courseRemoval";
 // AiLabel.on_device until feat/course-ai merges (the augmentation lives there).
 import "./provisional/courseAi";
 

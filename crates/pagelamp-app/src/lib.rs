@@ -32,6 +32,7 @@ pub mod diagnostics;
 mod lock;
 mod mcp_config;
 mod sync;
+pub mod trash;
 mod updates;
 
 pub use activity::{Activity, ActivityItem, ActivityKind};
@@ -43,6 +44,9 @@ pub use course::dates::{BreakInput, CourseDatesInput, SegmentInput};
 pub use course::removal::{
     BackupInfo, LostAfterPurge, PurgeReport, RemovalPreview, RemovalPreviewItem, RemovalReason,
     RemovalReport, RemoveOptions, RemovedCourse, RestoreFailure, RestoreOutcome, TombstoneState,
+};
+pub use course::session::{
+    ApplyDatesReport, ApplySkipReason, ReplacedDates, SessionCourse, SessionCourses, SkippedCourse,
 };
 pub use course::{
     CourseLifecycleEntry, KEEP_CURRENT_DAYS, LifecycleSummary, NOT_NOW_DAYS, keep_forever,
@@ -474,6 +478,8 @@ pub(crate) struct AppState {
     /// pre-migration backup), for the launch classification (`updates`): read at open, since
     /// the first-run screens add a source before the shell asks for its startup tasks.
     used_before_at_open: bool,
+    /// Where removed courses' downloaded files go (`trash`).
+    pub(crate) trash: trash::TrashSlot,
 }
 
 impl std::fmt::Debug for App {
@@ -551,6 +557,7 @@ impl App {
         };
         // Courses synced by an older version are in its logs but not remembered yet.
         app.remember_course_names();
+        app.settle_restores_at_open();
         Ok(app)
     }
 
@@ -755,9 +762,15 @@ impl App {
         }
         // Before the row goes: if this fails the source stays and removing can be retried.
         self.forget_light_sync(&store, source_id)?;
-        // What its courses' syncs noted as not read names those courses: it goes too.
-        pagelamp_core::coverage::remove_for_source(&store, source_id)?;
-        store.remove_source(source_id)?;
+        // What its courses' syncs noted as not read names those courses, and the dates records
+        // hold their ids (course ids start with the source's): they go with the source row, in
+        // one transaction.
+        let prefix = format!("{source_id}/");
+        store.in_transaction(|store| {
+            pagelamp_core::coverage::remove_for_source(store, source_id)?;
+            pagelamp_core::term::forget_dates_records(store, |id| id.starts_with(&prefix))?;
+            store.remove_source(source_id)
+        })?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;
         }
@@ -801,10 +814,9 @@ impl App {
                 let parent = material
                     .local_path
                     .as_deref()
-                    .and_then(|p| Path::new(p).parent())
-                    .filter(|parent| parent.parent() == Some(files_dir.as_path()));
+                    .and_then(|p| download_dir_of(&files_dir, Path::new(p)));
                 if let Some(parent) = parent {
-                    dirs.push(parent.to_path_buf());
+                    dirs.push(parent);
                 }
             }
             Ok(dirs)
@@ -815,7 +827,7 @@ impl App {
         let mut own_suffixes = std::collections::HashSet::new();
         let mut kept = std::collections::HashSet::new();
         let mut other_suffixes = std::collections::HashSet::new();
-        for course in store.list_courses(true)? {
+        for course in store.list_all_courses()? {
             let dirs = dirs_of(&course)?;
             if course.source_id == source_id {
                 own.extend(dirs);
@@ -840,7 +852,10 @@ impl App {
         }
         own.sort();
         own.dedup();
-        for dir in own.iter().filter(|dir| !kept.contains(&dir_key(dir))) {
+        for dir in own
+            .iter()
+            .filter(|dir| !kept.contains(&dir_key(dir)) && is_download_dir(&files_dir, dir))
+        {
             remove_download_dir(dir).map_err(|err| {
                 AppError::new(
                     AppErrorKind::Internal,
@@ -1008,6 +1023,8 @@ impl App {
         let course = store.resolve_course_with(course, true)?;
         store.in_transaction(|store| {
             store.set_course_term(&course.id, start, end)?;
+            // Saved (or cleared) by the student here: no longer dates copied from another course.
+            course::session::forget_copied(store, &course.id)?;
             course::set_dates_confirmed(store, &course.id, start.is_some() || end.is_some())
         })?;
         Ok(())
@@ -1107,22 +1124,38 @@ impl App {
 
 // ----- facade helpers ---------------------------------------------------------------------------
 
+/// Whether `dir` can be a download directory: a direct child of `files_dir` whose name is a
+/// plain name (never `..` or `.`, which would reach `files_dir` itself or the data folder).
+pub(crate) fn is_download_dir(files_dir: &Path, dir: &Path) -> bool {
+    dir.parent() == Some(files_dir)
+        && matches!(
+            dir.components().next_back(),
+            Some(std::path::Component::Normal(_))
+        )
+}
+
+/// The download directory a material's local copy is in (see `is_download_dir`).
+pub(crate) fn download_dir_of(files_dir: &Path, local_path: &Path) -> Option<PathBuf> {
+    let dir = local_path.parent()?;
+    is_download_dir(files_dir, dir).then(|| dir.to_path_buf())
+}
+
 /// A download directory's name as the file system compares it: case-insensitive, NFC.
-fn dir_key(dir: &Path) -> String {
+pub(crate) fn dir_key(dir: &Path) -> String {
     dir.file_name()
         .map(|name| fold_name(&name.to_string_lossy()))
         .unwrap_or_default()
 }
 
 /// `name` in NFC and lower case.
-fn fold_name(name: &str) -> String {
+pub(crate) fn fold_name(name: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
     name.nfc().collect::<String>().to_lowercase()
 }
 
 /// Remove one download directory: a directory with everything in it, a symbolic link itself
 /// (never what it points to); anything else (a stray file) is left alone.
-fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn remove_download_dir(dir: &Path) -> std::io::Result<()> {
     let metadata = match std::fs::symlink_metadata(dir) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1314,6 +1347,10 @@ struct AppTypes {
     restore_outcome: RestoreOutcome,
     purge_report: PurgeReport,
     course_dates_input: CourseDatesInput,
+    // alpha.2: the courses of one session ("apply these dates to my other courses")
+    session_courses: SessionCourses,
+    apply_dates_report: ApplyDatesReport,
+    replaced_dates: ReplacedDates,
     // alpha.3 (F3: types first; AI reading and storage on the v4 line)
     course_calendar_view: CourseCalendarView,
     calendar_candidate: pagelamp_core::calendar::candidates::CalendarCandidate,

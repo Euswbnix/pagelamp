@@ -20,6 +20,7 @@ import { sameBackend } from "../ai";
 import type { AvailableUpdate, PageLampApi } from "../client";
 import { ApiError } from "../errors";
 import {
+  type ApplyDatesReport,
   type AppStatus,
   type AutoSync,
   aiMaterialsState,
@@ -44,6 +45,7 @@ import {
 import { createMockAi } from "./ai";
 import {
   defaultKeepUntil,
+  ev,
   isoOf,
   withCourseDates,
   withoutStudentDates,
@@ -65,6 +67,8 @@ import {
 } from "./fixtures";
 import { createProposalsMock } from "./proposals";
 import { createLifecycleMock } from "./removal";
+import { sessionKey } from "./sessions";
+import { whatsNewSince } from "./whatsNew";
 
 export { MOCK_SCENARIOS, type MockScenario } from "./fixtures";
 
@@ -728,6 +732,47 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return !open || m.text_status !== "unsupported";
   }
 
+  /** Which course a course's dates were copied from ("also use these dates in"), by id. */
+  const copiedFrom = new Map<string, string>();
+
+  /** The course's dates came from `fromId`: remembered, and said in its evidence. */
+  function markCopied(c: MockCourse, fromId: string) {
+    copiedFrom.set(c.course.id, fromId);
+    const from = db.courses.find((o) => o.course.id === fromId);
+    c.timeline = {
+      ...c.timeline,
+      evidence_items: [
+        from
+          ? ev("dates_copied_from", { course: from.course.code ?? from.course.name })
+          : ev("dates_copied_from"),
+        ...c.timeline.evidence_items,
+      ],
+    };
+  }
+
+  /** The student's dates for a course, as the dates form saves them (null, null: clear them). */
+  function setStudentTerm(c: MockCourse, start: string | null, end: string | null) {
+    if (start === null && end === null) {
+      clearStudentDates(c);
+      return;
+    }
+    // COALESCE(user, synced), per field; the student's end is the last day of classes.
+    c.course.term_start = start ?? c.synced.termStart;
+    c.course.term_end = end ?? c.synced.termEnd;
+    c.course.term_source = "user";
+    const next = withStudentDates(c.timeline, start, end, isoOf(now()));
+    c.timeline = next.timeline;
+    c.lifecycle = next.lifecycle;
+  }
+
+  /** The dates the student set in a course (also ones kept from version 0.1). */
+  function ownDates(c: MockCourse): { start: string | null; end: string | null } {
+    return {
+      start: c.timeline.term.student_start ?? null,
+      end: c.timeline.term.student_end ?? null,
+    };
+  }
+
   /** The student's dates cleared: back to what the source reported (like the facade). */
   function clearStudentDates(c: MockCourse) {
     c.course.term_start = c.synced.termStart;
@@ -1045,19 +1090,96 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (start && end && end < start) {
         throw new ApiError("invalid", "The term can't end before it starts.");
       }
+      setStudentTerm(findCourse(courseId), start, end);
+      // The student's own dates now: no longer the ones copied from another course.
+      copiedFrom.delete(courseId);
+    },
+
+    sessionCourses: async (courseId) => {
+      await sleep(latency);
       const c = findCourse(courseId);
-      const today = isoOf(now());
-      if (start === null && end === null) {
-        clearStudentDates(c);
-        return;
+      const key = sessionKey(c.course.code ?? null);
+      if (!key) return { session: null, campus: null, courses: [] };
+      const courses = db.courses
+        .filter((o) => o !== c && sessionKey(o.course.code ?? null)?.id === key.id)
+        .map((o) => {
+          const own = ownDates(o);
+          return {
+            course_id: o.course.id,
+            name: o.course.name,
+            code: o.course.code ?? null,
+            hidden: o.course.hidden,
+            own_dates: own.start !== null || own.end !== null,
+            student_start: own.start,
+            student_end: own.end,
+            week_one_monday: o.timeline.term.week_one_monday ?? null,
+            anchor: o.timeline.term.anchor,
+          };
+        });
+      return { session: key.session, campus: key.campus, courses };
+    },
+
+    applyCourseDatesTo: async (from, to) => {
+      await sleep(latency);
+      const source = findCourse(from);
+      const key = sessionKey(source.course.code ?? null);
+      const dates = ownDates(source);
+      // Dates from version 0.1 the student never confirmed aren't given on (like the facade).
+      const unconfirmed = !source.timeline.term.student_dates_confirmed;
+      const report: ApplyDatesReport = { applied: [], skipped: [], replaced: [] };
+      // A course asked for twice is given the dates once.
+      for (const courseId of [...new Set(to)]) {
+        const target = db.courses.find((c) => c.course.id === courseId);
+        const reason = !target
+          ? "unknown_course"
+          : target === source
+            ? "from_course"
+            : !key || sessionKey(target.course.code ?? null)?.id !== key.id
+              ? "not_same_session"
+              : dates.start === null && dates.end === null
+                ? "no_dates"
+                : unconfirmed
+                  ? "dates_not_confirmed"
+                  : null;
+        if (reason || !target) {
+          report.skipped.push({ course_id: courseId, reason: reason ?? "unknown_course" });
+          continue;
+        }
+        // They become that course's own dates, as if the student had typed them there. What it
+        // had is kept for Undo, exactly (dates from version 0.1 stay unconfirmed).
+        const before = ownDates(target);
+        report.replaced.push({
+          course_id: courseId,
+          start: before.start,
+          end: before.end,
+          legacy: !target.timeline.term.student_dates_confirmed,
+          copied_from: copiedFrom.get(courseId) ?? null,
+        });
+        setStudentTerm(target, dates.start, dates.end);
+        markCopied(target, source.course.id);
+        report.applied.push(courseId);
       }
-      // COALESCE(user, synced), per field; the student's end is the last day of classes.
-      c.course.term_start = start ?? c.synced.termStart;
-      c.course.term_end = end ?? c.synced.termEnd;
-      c.course.term_source = "user";
-      const next = withStudentDates(c.timeline, start, end, today);
-      c.timeline = next.timeline;
-      c.lifecycle = next.lifecycle;
+      return report;
+    },
+
+    restoreCourseDates: async (replaced) => {
+      await sleep(latency);
+      // From what the apply reported, like the facade: a course removed since is left alone.
+      for (const r of replaced) {
+        const c = db.courses.find((course) => course.course.id === r.course_id);
+        if (!c) continue;
+        setStudentTerm(c, r.start ?? null, r.end ?? null);
+        if (r.legacy && (r.start || r.end)) {
+          // Dates kept from version 0.1, still for the student to check. Their anchor says so
+          // only with a start: a last day alone is no anchor of its own (like the facade).
+          const term = { ...c.timeline.term, student_dates_confirmed: false };
+          if (r.start) term.anchor_origin = "legacy";
+          c.timeline = { ...c.timeline, term };
+        }
+        // An earlier copy's mark comes back with its dates.
+        if (r.copied_from) markCopied(c, r.copied_from);
+        else copiedFrom.delete(r.course_id);
+      }
     },
 
     setCourseHidden: async (courseId, hidden) => {
@@ -1083,8 +1205,13 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     confirmCourseDates: async (courseId) => {
       await sleep(latency);
       const c = findCourse(courseId);
-      if (c.timeline.term.anchor_origin === "legacy") {
-        c.timeline = { ...c.timeline, term: { ...c.timeline.term, anchor_origin: "user" } };
+      const { term } = c.timeline;
+      if (!term.student_dates_confirmed) {
+        const origin = term.anchor_origin === "legacy" ? "user" : term.anchor_origin;
+        c.timeline = {
+          ...c.timeline,
+          term: { ...term, student_dates_confirmed: true, anchor_origin: origin },
+        };
       }
     },
 
@@ -1144,18 +1271,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       respond(() => {
         const last = updates.lastCheck ? Date.parse(updates.lastCheck.at) : null;
         return {
+          // 0.1 never recorded its version, so upgraders from it have none.
           whats_new: updates.whatsNewSeen
             ? null
-            : {
-                // 0.1 never recorded its version, so upgraders from it have none.
-                since: scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null,
-                topics: [
-                  "update_check" as const,
-                  "course_weeks" as const,
-                  "auto_sync" as const,
-                  "canvas_coverage" as const,
-                ],
-              },
+            : whatsNewSince(scenario === "upgrader" ? MOCK_PREVIOUS_VERSION : null),
           update_check_due:
             updates.prefs.auto_check &&
             updates.disclosureSeen &&
@@ -1213,6 +1332,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
                 { kind: "timed_out" as const, count: 1 },
               ]
             : [],
+          enrollment_window_terms: 0,
+          removals_waiting: 0,
         };
       }),
     lastCrash: () => respond(() => db.lastCrash),

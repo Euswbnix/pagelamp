@@ -220,6 +220,34 @@
     }
   },
   {
+    "cmd": "session_courses",
+    "args": {
+      "course": "folder:contract-test/course/DEMO101"
+    }
+  },
+  {
+    "cmd": "apply_course_dates_to",
+    "args": {
+      "from": "folder:contract-test/course/DEMO101",
+      "to": [
+        "folder:contract-test/course/DEMO102"
+      ]
+    }
+  },
+  {
+    "cmd": "restore_course_dates",
+    "args": {
+      "replaced": [
+        {
+          "course_id": "folder:contract-test/course/DEMO102",
+          "start": "2026-09-08",
+          "end": null,
+          "legacy": false
+        }
+      ]
+    }
+  },
+  {
     "cmd": "lifecycle_summary",
     "args": {}
   },
@@ -242,6 +270,60 @@
       "courses": [
         "folder:contract-test/course/DEMO101"
       ]
+    }
+  },
+  {
+    "cmd": "removal_preview",
+    "args": {
+      "courses": [
+        "folder:contract-test/course/DEMO101"
+      ]
+    }
+  },
+  {
+    "cmd": "remove_courses",
+    "args": {
+      "courses": [
+        "folder:contract-test/course/DEMO101"
+      ],
+      "options": {
+        "reason": null,
+        "keep_downloaded_files": false,
+        "purge_now": false,
+        "delete_pre_update_backup": false
+      }
+    }
+  },
+  {
+    "cmd": "removed_courses",
+    "args": {}
+  },
+  {
+    "cmd": "restore_course",
+    "args": {
+      "removedId": "contract-test-removed"
+    }
+  },
+  {
+    "cmd": "purge_removed_courses",
+    "args": {
+      "removedIds": [
+        "contract-test-removed"
+      ],
+      "permanentIfNoTrash": false
+    }
+  },
+  {
+    "cmd": "purge_removed_courses",
+    "args": {
+      "removedIds": null,
+      "permanentIfNoTrash": false
+    }
+  },
+  {
+    "cmd": "forget_removed_course",
+    "args": {
+      "removedId": "contract-test-removed"
     }
   },
   {

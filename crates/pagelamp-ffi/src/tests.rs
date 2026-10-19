@@ -188,6 +188,8 @@ const MIRRORED: &[&str] = &[
     "ExtractWorkerStatus",
     "ExtractWorkerCheck",
     "UnreadableFiles",
+    "AiDoctor",
+    "AiProviderCheck",
     "UpdateChannel",
     "UpdatePrefs",
     "AutoSync",
@@ -274,6 +276,13 @@ const MIRRORED: &[&str] = &[
     "CourseDatesInput",
     "BreakInput",
     "SegmentInput",
+    // The courses of one session (alpha.2)
+    "SessionCourses",
+    "SessionCourse",
+    "ApplySkipReason",
+    "SkippedCourse",
+    "ReplacedDates",
+    "ApplyDatesReport",
     // Course calendar proposals (v0.3 F3)
     "CourseCalendar",
     "CalendarWeek",

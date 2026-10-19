@@ -1,13 +1,14 @@
-//! `pagelamp courses`, `course timeline` and `course keep`: course weeks, phases and the
-//! Past group (docs/design/v0.3-course-calendar.md §7.13). Every default and grouping comes
+//! `pagelamp courses`, `course timeline`, `course keep` and removing courses (`course remove`,
+//! `removed`, `restore`, `purge`, `forget`): course weeks, phases, the Past group and removal (docs/design/v0.3-course-calendar.md §7.13). Every default and grouping comes
 //! from the facade; this module only renders.
 
 use chrono::NaiveDate;
-use pagelamp_app::App;
+use pagelamp_app::{App, ApplySkipReason, RemoveOptions, RestoreFailure, TombstoneState};
 use pagelamp_core::model::{
     CalendarOrigin, Confidence, CourseGroup, CourseLifecycle, CoursePhase, CourseTimeline,
-    EvidenceItem, LifecycleState, TermAnchorSource,
+    EvidenceCode, EvidenceItem, LifecycleState, TermAnchorSource,
 };
+use pagelamp_core::term::session::parse_uoft_session;
 use pagelamp_core::views::CourseSummary;
 
 use crate::{ai_materials, confidence, print_json};
@@ -206,11 +207,15 @@ pub fn timeline(app: &App, course: &str, json: bool) -> anyhow::Result<()> {
         week_label(timeline, lifecycle),
         confidence(timeline.phase_confidence)
     );
-    // No removal hint: this version can't remove a course (`--json` keeps `suggest_removal`).
     println!(
-        "  Lifecycle: {} ({})",
+        "  Lifecycle: {} ({}){}",
         lifecycle.state.as_str(),
-        confidence(lifecycle.confidence)
+        confidence(lifecycle.confidence),
+        if lifecycle.suggest_removal {
+            " — suggested for removal"
+        } else {
+            ""
+        }
     );
     println!("  Dates:     {}", dates_used(timeline));
     if let Some(label) = &timeline.term.ai_label {
@@ -260,12 +265,30 @@ fn dates_used(timeline: &CourseTimeline) -> String {
         Some(CalendarOrigin::Legacy) => " — set in PageLamp 0.1, check them",
         _ => "",
     };
-    format!(
-        "{} → {end} from {} ({}){origin}",
-        first.first_class,
-        source_name(term.anchor),
-        confidence(term.anchor_confidence)
-    )
+    let confidence = confidence(term.anchor_confidence);
+    let source = match lender(timeline) {
+        // "from DEM240H5 … (same session, medium)": one bracket, like the other sources.
+        Some(course) => format!("{course} (same session, {confidence})"),
+        None => format!("{} ({confidence})", source_name(term.anchor)),
+    };
+    format!("{} → {end} from {source}{origin}", first.first_class)
+}
+
+/// The course that lent the dates, when they are another course's of the same session.
+fn lender(timeline: &CourseTimeline) -> Option<&str> {
+    if timeline.term.anchor != TermAnchorSource::SameSession {
+        return None;
+    }
+    timeline
+        .evidence_items
+        .iter()
+        .find(|item| {
+            matches!(
+                item.evidence_code(),
+                Some(EvidenceCode::SameSessionAnchor | EvidenceCode::SameSessionUnlocks)
+            )
+        })
+        .and_then(|item| item.param("course"))
 }
 
 fn source_name(source: TermAnchorSource) -> &'static str {
@@ -275,6 +298,7 @@ fn source_name(source: TermAnchorSource) -> &'static str {
         TermAnchorSource::LmsTerm => "the LMS term",
         TermAnchorSource::FolderConfig => "the folder's dates",
         TermAnchorSource::InstitutionCalendar => "the school calendar",
+        TermAnchorSource::SameSession => "another course of the same session",
         TermAnchorSource::PublishedWeekLabels => "the week numbers of posted materials",
         TermAnchorSource::NoAnchor => "nothing",
     }
@@ -308,6 +332,270 @@ pub fn keep(
             course.display_name(),
             lifecycle.state.as_str()
         ),
+    }
+    Ok(())
+}
+
+/// `pagelamp course copy-dates <from> [<to>…] [--same-session]`: the student's dates of one
+/// course become the dates of other courses of its session. Without courses to copy to, it
+/// lists the session's courses.
+pub fn copy_dates(
+    app: &App,
+    from: &str,
+    to: Vec<String>,
+    same_session: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let from_course = app.course_overview(from)?.course;
+    let from_name = from_course.display_name();
+    let session = app.session_courses(&from_course.id)?;
+    let Some(code) = &session.session else {
+        // The code may end in a session code all the same: then its school (its LMS host, or
+        // a folder course's `institution`) isn't one whose sessions PageLamp reads.
+        if parse_uoft_session(from_course.code.as_deref(), &from_course.name).is_some() {
+            anyhow::bail!(
+                "{from_name}'s school isn't one PageLamp reads session codes for, so no other \
+                 course shares its dates."
+            );
+        }
+        anyhow::bail!(
+            "{from_name} has no session code at the end of its code or name, so no other course \
+             shares its dates."
+        );
+    };
+    if session.campus.is_none() {
+        anyhow::bail!(
+            "{from_name}'s code doesn't say its campus (the digit after the course number), so \
+             PageLamp can't tell which courses of session {code} share its dates."
+        );
+    }
+    if to.is_empty() && !same_session {
+        if json {
+            return print_json(&session);
+        }
+        if session.courses.is_empty() {
+            println!("{from_name} is the only course of session {code}.");
+            return Ok(());
+        }
+        println!("Courses of session {code} besides {from_name}:");
+        for course in &session.courses {
+            let own = match (course.student_start, course.student_end) {
+                (None, None) => String::new(),
+                (start, end) => format!(
+                    " — has its own dates ({} → {}), which would be replaced",
+                    start.map_or_else(|| "?".to_string(), |d| d.to_string()),
+                    end.map_or_else(|| "?".to_string(), |d| d.to_string())
+                ),
+            };
+            println!(
+                "  {}{}{own}",
+                course.code.as_deref().unwrap_or(&course.name),
+                if course.hidden { " (hidden)" } else { "" }
+            );
+        }
+        println!("Name the courses to copy to, or use --same-session for all of them.");
+        return Ok(());
+    }
+    let to = if same_session {
+        session
+            .courses
+            .iter()
+            .map(|c| c.course_id.clone())
+            .collect()
+    } else {
+        to
+    };
+    let report = app.apply_course_dates_to(&from_course.id, to)?;
+    if json {
+        return print_json(&report);
+    }
+    // A course by its code (or its name without one); anything else as it was given.
+    let label = |id: &str| -> String {
+        let course = session
+            .courses
+            .iter()
+            .find(|c| c.course_id == id)
+            .map(|c| (c.code.clone(), c.name.clone()))
+            .or_else(|| {
+                app.course_overview(id)
+                    .ok()
+                    .map(|o| (o.course.code, o.course.name))
+            });
+        match course {
+            Some((code, name)) => code.unwrap_or(name),
+            None => id.to_string(),
+        }
+    };
+    if report.applied.is_empty() {
+        println!("No course got the dates of {from_name}.");
+    } else {
+        println!("The dates of {from_name} are now also the dates of:");
+        for id in &report.applied {
+            println!("  {}", label(id));
+        }
+    }
+    for skipped in &report.skipped {
+        let why = match skipped.reason {
+            ApplySkipReason::NotSameSession => "not a course of the same session",
+            ApplySkipReason::FromCourse => "it is the course to copy from",
+            ApplySkipReason::NoDates => "the course to copy from has no dates you set",
+            ApplySkipReason::DatesNotConfirmed => {
+                "the dates of the course to copy from were set in PageLamp 0.1 and never \
+                 confirmed: save them with `pagelamp course term` first"
+            }
+            ApplySkipReason::UnknownCourse => "no such course",
+        };
+        println!("  Skipped {}: {why}", label(&skipped.course_id));
+    }
+    Ok(())
+}
+
+/// `pagelamp course remove <courses…> [--dry-run] [--now] [--keep-files] [--delete-backup]`
+pub async fn remove(
+    app: &App,
+    courses: Vec<String>,
+    dry_run: bool,
+    options: RemoveOptions,
+    json: bool,
+) -> anyhow::Result<()> {
+    if dry_run {
+        let preview = app.removal_preview(courses)?;
+        if json {
+            return print_json(&preview);
+        }
+        for item in &preview.items {
+            let label = item.code.as_deref().unwrap_or(&item.name);
+            println!(
+                "{label} — {} materials, {} deadlines",
+                item.materials, item.deadlines
+            );
+            if item.downloaded_files > 0 {
+                println!(
+                    "  {} downloaded files ({} KB) go to the Trash (--keep-files keeps them)",
+                    item.downloaded_files,
+                    item.downloaded_bytes.div_ceil(1024)
+                );
+            }
+            if item.own_folder_untouched {
+                println!("  Your folder isn't changed; PageLamp stops reading it.");
+            }
+            if item.custom_settings {
+                println!("  Your settings for it are kept for a restore.");
+            }
+            if item.cannot_sync_again {
+                println!("  Canvas restricts this course: it can't be synced again.");
+            }
+        }
+        if let Some(backup) = &preview.backup {
+            println!(
+                "The pre-update backup ({} days old) still holds their text{}.",
+                backup.age_days,
+                if backup.delete_by_default {
+                    "; consider --delete-backup"
+                } else {
+                    ": keep it until you know the update works"
+                }
+            );
+        }
+        return Ok(());
+    }
+    let report = app.remove_courses(courses, options).await?;
+    if json {
+        return print_json(&report);
+    }
+    for removed in &report.removed {
+        let label = removed.code.as_deref().unwrap_or(&removed.name);
+        match removed.purge_in_days {
+            Some(days) if !report.purged_now => println!(
+                "Removed {label}. Its data is deleted in {days} days; undo with `{} course restore \"{}\"`.",
+                pagelamp_core::brand::CLI_NAME,
+                removed.removed_id
+            ),
+            _ => println!("Deleted {label}. Restoring it means syncing it again."),
+        }
+        if removed.files_pending {
+            println!("  Its downloaded files couldn't be moved to the Trash; they are kept.");
+        }
+    }
+    if report.backup_deleted {
+        println!("The pre-update backup was deleted.");
+    } else if report.backup_failed {
+        println!("The pre-update backup couldn't be deleted; it is still in the data folder.");
+    }
+    Ok(())
+}
+
+/// `pagelamp course removed`
+pub fn removed(app: &App, json: bool) -> anyhow::Result<()> {
+    let removed = app.removed_courses()?;
+    if json {
+        return print_json(&removed);
+    }
+    if removed.is_empty() {
+        println!("No removed courses.");
+    }
+    for course in &removed {
+        let label = course.code.as_deref().unwrap_or(&course.name);
+        let state = match (course.state, course.purge_in_days) {
+            (TombstoneState::Pending, Some(days)) => {
+                format!("deleted in {days} days (undo possible)")
+            }
+            (TombstoneState::Restoring, _) => "being restored".to_string(),
+            _ => "deleted; restoring means syncing again".to_string(),
+        };
+        let files = if course.files_pending {
+            "; downloaded files wait for the Trash"
+        } else {
+            ""
+        };
+        println!("{label} — {state}{files}  [{}]", course.removed_id);
+    }
+    Ok(())
+}
+
+/// `pagelamp course restore <removed id>`
+pub async fn restore(app: &App, removed_id: &str, json: bool) -> anyhow::Result<()> {
+    let outcome = app.restore_course(removed_id).await?;
+    if json {
+        return print_json(&outcome);
+    }
+    match (outcome.restored, outcome.failure) {
+        (true, _) => println!("Restored."),
+        (false, Some(RestoreFailure::Offline)) => println!("Not restored: you seem to be offline."),
+        (false, Some(RestoreFailure::AccessRestricted)) => {
+            println!("Not restored: Canvas restricts access to this course.")
+        }
+        (false, Some(RestoreFailure::NotListed)) => {
+            println!("Not restored: Canvas no longer lists this course.")
+        }
+        (false, _) => println!("Not restored: the sync didn't bring it back."),
+    }
+    Ok(())
+}
+
+/// `pagelamp course purge [<removed ids…>] [--permanent]`
+pub async fn purge(
+    app: &App,
+    removed_ids: Vec<String>,
+    permanent: bool,
+    json: bool,
+) -> anyhow::Result<()> {
+    let ids = (!removed_ids.is_empty()).then_some(removed_ids);
+    let report = app.purge_removed_courses(ids, permanent).await?;
+    if json {
+        return print_json(&report);
+    }
+    println!("Deleted {} course(s).", report.purged.len());
+    if !report.files_pending.is_empty() {
+        println!(
+            "{} course(s)' downloaded files couldn't be moved to the Trash and are kept (--permanent deletes them).",
+            report.files_pending.len()
+        );
+    }
+    if report.backup_deleted {
+        println!("The pre-update backup was deleted.");
+    } else if report.backup_failed {
+        println!("The pre-update backup couldn't be deleted; it is still in the data folder.");
     }
     Ok(())
 }

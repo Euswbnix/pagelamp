@@ -7,8 +7,10 @@
 
 pub mod evidence;
 pub(crate) mod fit;
+pub mod institution;
 pub mod phase;
 mod resolve;
+pub mod same_session;
 pub mod session;
 
 pub use resolve::{
@@ -22,11 +24,43 @@ pub use resolve::{
 /// `legacy` calendars.
 pub const CONFIRMED_DATES_KEY: &str = "course_dates.confirmed";
 
+/// Settings key: the courses whose student dates were copied from another course of the same
+/// session ("apply these dates to my other courses this term"), as {course id: the id of the
+/// course they came from}. Saving or clearing a course's own dates drops its entry.
+pub const COPIED_DATES_KEY: &str = "course_dates.copied_from";
+
+use std::collections::{BTreeMap, BTreeSet};
+
 use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Confidence, Timestamp};
+use crate::store::Store;
+
+/// Drop the courses `gone` picks (their data was deleted, or their source removed) from the
+/// dates records kept in settings: the confirmed list (`CONFIRMED_DATES_KEY`) and the
+/// copied-from map (`COPIED_DATES_KEY`), where a copy goes when either of its two courses
+/// does. Both hold course ids, which name the source and the course there.
+pub fn forget_dates_records(store: &Store, gone: impl Fn(&str) -> bool) -> crate::Result<()> {
+    if let Some(mut confirmed) = store.setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)? {
+        let before = confirmed.len();
+        confirmed.retain(|id| !gone(id));
+        if confirmed.len() != before {
+            store.set_setting(CONFIRMED_DATES_KEY, &confirmed)?;
+        }
+    }
+    if let Some(mut copied) =
+        store.setting_or_absent::<BTreeMap<String, String>>(COPIED_DATES_KEY)?
+    {
+        let before = copied.len();
+        copied.retain(|to, from| !gone(to) && !gone(from));
+        if copied.len() != before {
+            store.set_setting(COPIED_DATES_KEY, &copied)?;
+        }
+    }
+    Ok(())
+}
 
 /// Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
 /// (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
@@ -73,6 +107,9 @@ pub enum TermAnchorSource {
     FolderConfig,
     /// Exact dates of the school's published calendar (from alpha.2).
     InstitutionCalendar,
+    /// Week 1 (and the stated ends) of another course of the same school session, section
+    /// group and campus, whose own dates are confirmed or well established (`same_session`).
+    SameSession,
     /// Week 1 fitted from the week numbers and publish dates of the professor's materials.
     PublishedWeekLabels,
     /// No usable dates ("none" in JSON; named so Swift's `.none` stays Optional's).
@@ -88,6 +125,7 @@ impl TermAnchorSource {
             TermAnchorSource::LmsTerm => "lms_term",
             TermAnchorSource::FolderConfig => "folder_config",
             TermAnchorSource::InstitutionCalendar => "institution_calendar",
+            TermAnchorSource::SameSession => "same_session",
             TermAnchorSource::PublishedWeekLabels => "published_week_labels",
             TermAnchorSource::NoAnchor => "none",
         }
@@ -136,6 +174,15 @@ pub struct RejectedDates {
     pub reason: RejectReason,
     /// True when only the end was not used (the start still counts weeks).
     pub end_only: bool,
+}
+
+impl RejectedDates {
+    /// An LMS term too long to be a teaching term: an enrollment window like UofT's May–January
+    /// "Fall 2026" (calendar design §6.3), never used to count weeks.
+    pub fn is_enrollment_window(&self) -> bool {
+        self.source == TermAnchorSource::LmsTerm
+            && self.reason == RejectReason::LongerThanTeachingTerm
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -274,6 +321,11 @@ pub struct TermResolution {
     /// the fields the student didn't edit.
     pub student_start: Option<NaiveDate>,
     pub student_end: Option<NaiveDate>,
+    /// False exactly when the course has dates of the student's (`student_start` or
+    /// `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
+    /// `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
+    /// copied to the other courses of the session.
+    pub student_dates_confirmed: bool,
 }
 
 impl Default for TermResolution {
@@ -291,6 +343,7 @@ impl Default for TermResolution {
             not_used: Vec::new(),
             student_start: None,
             student_end: None,
+            student_dates_confirmed: true,
         }
     }
 }
@@ -307,6 +360,7 @@ mod tests {
             TermAnchorSource::LmsTerm,
             TermAnchorSource::FolderConfig,
             TermAnchorSource::InstitutionCalendar,
+            TermAnchorSource::SameSession,
             TermAnchorSource::PublishedWeekLabels,
             TermAnchorSource::NoAnchor,
         ] {

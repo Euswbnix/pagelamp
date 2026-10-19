@@ -18,9 +18,13 @@ use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
 use pagelamp_app::{
     AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest, SyncSummary,
 };
+use pagelamp_app::{ApplyDatesReport, ReplacedDates, SessionCourses};
 use pagelamp_app::{
     CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput, LifecycleSummary,
     ReadCalendarOptions, SyllabusOffer,
+};
+use pagelamp_app::{
+    PurgeReport, RemovalPreview, RemovalReport, RemoveOptions, RemovedCourse, RestoreOutcome,
 };
 use pagelamp_app::{StartupTasks, UpdateChannel, UpdateCheckRecord, UpdatePrefs};
 use pagelamp_core::ai::{AiFeature, MaterialSharing};
@@ -331,6 +335,40 @@ pub async fn set_course_dates(
         .await
 }
 
+/// The other courses of `course`'s session ("also use these dates in", in the dates form).
+#[tauri::command]
+pub async fn session_courses(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<SessionCourses> {
+    backend
+        .blocking(move |app| app.session_courses(&course))
+        .await
+}
+
+/// Copies `from`'s own dates to each course of `to` (one transaction).
+#[tauri::command]
+pub async fn apply_course_dates_to(
+    backend: State<'_, Backend>,
+    from: String,
+    to: Vec<String>,
+) -> CmdResult<ApplyDatesReport> {
+    backend
+        .blocking(move |app| app.apply_course_dates_to(&from, to))
+        .await
+}
+
+/// Undo for `apply_course_dates_to`: puts each course back exactly as it was.
+#[tauri::command]
+pub async fn restore_course_dates(
+    backend: State<'_, Backend>,
+    replaced: Vec<ReplacedDates>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.restore_course_dates(replaced))
+        .await
+}
+
 // ----- course lifecycle (calendar design §8) --------------------------------------------------------
 
 #[tauri::command]
@@ -361,6 +399,75 @@ pub async fn clear_removal_snooze(
 ) -> CmdResult<()> {
     backend
         .blocking(move |app| app.clear_removal_snooze(courses))
+        .await
+}
+
+// ----- course removal (calendar design §8.3–§8.7; F2) ----------------------------------------------
+// Removing, purging and restoring take the sync lock in the facade: `Busy` while a sync runs.
+
+/// What removing `courses` would delete and keep (the removal dialog).
+#[tauri::command]
+pub async fn removal_preview(
+    backend: State<'_, Backend>,
+    courses: Vec<String>,
+) -> CmdResult<RemovalPreview> {
+    backend
+        .blocking(move |app| app.removal_preview(courses))
+        .await
+}
+
+/// Stage 1: hidden at once, deleted after the purge window (7 days), or now with `purge_now`.
+#[tauri::command]
+pub async fn remove_courses(
+    backend: State<'_, Backend>,
+    courses: Vec<String>,
+    options: RemoveOptions,
+) -> CmdResult<RemovalReport> {
+    backend
+        .spawn_work(|app| async move { app.remove_courses(courses, options).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn removed_courses(backend: State<'_, Backend>) -> CmdResult<Vec<RemovedCourse>> {
+    backend.blocking(|app| app.removed_courses()).await
+}
+
+/// Undo a pending removal, or sync a purged course back.
+#[tauri::command]
+pub async fn restore_course(
+    backend: State<'_, Backend>,
+    removed_id: String,
+) -> CmdResult<RestoreOutcome> {
+    backend
+        .spawn_work(|app| async move { app.restore_course(&removed_id).await })
+        .await
+}
+
+/// Stage 2 now: `removed_ids`, or every due purge (`None`). `permanent_if_no_trash` is only
+/// ever true when the student chose "Delete permanently" after the Trash failed.
+#[tauri::command]
+pub async fn purge_removed_courses(
+    backend: State<'_, Backend>,
+    removed_ids: Option<Vec<String>>,
+    permanent_if_no_trash: bool,
+) -> CmdResult<PurgeReport> {
+    backend
+        .spawn_work(|app| async move {
+            app.purge_removed_courses(removed_ids, permanent_if_no_trash)
+                .await
+        })
+        .await
+}
+
+/// A purged course only; the next sync brings it back.
+#[tauri::command]
+pub async fn forget_removed_course(
+    backend: State<'_, Backend>,
+    removed_id: String,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.forget_removed_course(&removed_id))
         .await
 }
 

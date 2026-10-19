@@ -81,10 +81,34 @@ it("sends the commands and arguments the Rust side expects", async () => {
     second_segment: null,
   });
   await api.setCourseDates(COURSE, null);
+  await api.sessionCourses(COURSE);
+  await api.applyCourseDatesTo(COURSE, ["folder:contract-test/course/DEMO102"]);
+  await api.restoreCourseDates([
+    {
+      course_id: "folder:contract-test/course/DEMO102",
+      start: "2026-09-08",
+      end: null,
+      legacy: false,
+    },
+  ]);
   await api.lifecycleSummary();
   await api.snoozeLifecycleBanner();
   await api.snoozeRemovalSuggestions([COURSE], "not_now");
   await api.clearRemovalSnooze([COURSE]);
+  // Removal: the course and removed ids are made up, so the facade answers not_found (nothing is
+  // removed or moved to the Trash); purging every due removal finds none in the empty data dir.
+  await api.removalPreview([COURSE]);
+  await api.removeCourses([COURSE], {
+    reason: null,
+    keep_downloaded_files: false,
+    purge_now: false,
+    delete_pre_update_backup: false,
+  });
+  await api.removedCourses();
+  await api.restoreCourse("contract-test-removed");
+  await api.purgeRemovedCourses(["contract-test-removed"], false);
+  await api.purgeRemovedCourses(null, false);
+  await api.forgetRemovedCourse("contract-test-removed");
   // Calendar: made-up material and proposal ids, which the facade refuses before any network.
   await api.courseCalendar(COURSE);
   await api.setCalendarSources(COURSE, ["contract-test-material"], []);

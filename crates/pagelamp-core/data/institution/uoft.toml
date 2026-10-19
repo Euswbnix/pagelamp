@@ -1,0 +1,111 @@
+# The University of Toronto's published sessional dates, per academic year and campus, for the
+# school's calendar anchor (docs/design/v0.3-course-calendar.md §6.4, anchor 5; owner action A15).
+#
+# Only dates checked against UofT's published sessional dates go in this file: never estimated
+# or made-up ones (test data lives with the tests). Until a year is added, its courses fall back
+# to the session window (§6.3). Each year lists all three campuses (1 St. George, 3 Scarborough,
+# 5 Mississauga), or names the ones it lacks in `missing_campuses`.
+#
+# Dates are quoted: "2026-09-08". One [[years]] table per academic year:
+#
+# [[years]]
+# year = "2026-27"
+# source = "UofT sessional dates 2026-27, checked on …"
+# missing_campuses = []
+# [[years.sessions]]
+# session = "20269"          # Fall 2026 (20271 Winter 2027, 20275 Summer 2027)
+# campus = 5
+# section = "F"              # Summer only: "F" or "S"; leave out for the whole session
+# first_class = "…"
+# last_class = "…"
+# exams_start = "…"
+# exams_end = "…"
+# breaks = [{ kind = "reading_week", start = "…", end = "…" }]
+
+format = 1
+institution = "uoft"
+
+# 2026-27: Fall 2026 and Winter 2027 for all three campuses. Summer 2027 (20275) isn't published
+# yet on any of the three pages: its courses keep the session window until it is added.
+# St. George (1) follows the Faculty of Arts & Science. The Faculty of Applied Science &
+# Engineering differs in Winter only: its last day of classes is 2027-04-13, its Makeup Friday
+# 2027-04-14, and its exams run 2027-04-15 to 2027-04-29.
+[[years]]
+year = "2026-27"
+source = "UTM Office of the Registrar (Future Sessional Dates; Important Dates), UTSC Office of the Registrar (Fall 2026 - Winter 2027 Academic Dates; Future Sessional Dates), Faculty of Arts & Science (Academic Dates & Deadlines): every date checked against these pages twice on 2026-10-16"
+missing_campuses = []
+
+# Mississauga (UTM)
+[[years.sessions]]
+session = "20269"
+campus = 5
+first_class = "2026-09-08"
+last_class = "2026-12-08"
+exams_start = "2026-12-10"
+exams_end = "2026-12-22"
+breaks = [
+    { kind = "holiday", start = "2026-10-12", end = "2026-10-12" },
+    { kind = "reading_week", start = "2026-10-26", end = "2026-10-30" },
+]
+
+[[years.sessions]]
+session = "20271"
+campus = 5
+first_class = "2027-01-11"
+last_class = "2027-04-12"
+exams_start = "2027-04-14"
+exams_end = "2027-04-29"
+breaks = [
+    { kind = "reading_week", start = "2027-02-15", end = "2027-02-19" },
+    { kind = "holiday", start = "2027-03-26", end = "2027-03-26" },
+]
+
+# Scarborough (UTSC)
+[[years.sessions]]
+session = "20269"
+campus = 3
+first_class = "2026-09-08"
+last_class = "2026-12-08"
+exams_start = "2026-12-10"
+exams_end = "2026-12-22"
+breaks = [
+    { kind = "holiday", start = "2026-10-12", end = "2026-10-12" },
+    { kind = "reading_week", start = "2026-10-26", end = "2026-10-30" },
+]
+
+[[years.sessions]]
+session = "20271"
+campus = 3
+first_class = "2027-01-11"
+last_class = "2027-04-12"
+exams_start = "2027-04-14"
+exams_end = "2027-04-28"
+breaks = [
+    { kind = "reading_week", start = "2027-02-15", end = "2027-02-19" },
+    { kind = "holiday", start = "2027-03-26", end = "2027-03-26" },
+]
+
+# St. George (Faculty of Arts & Science)
+[[years.sessions]]
+session = "20269"
+campus = 1
+first_class = "2026-09-08"
+last_class = "2026-12-08"
+exams_start = "2026-12-10"
+exams_end = "2026-12-22"
+breaks = [
+    { kind = "holiday", start = "2026-10-12", end = "2026-10-12" },
+    { kind = "reading_week", start = "2026-10-26", end = "2026-10-30" },
+]
+
+[[years.sessions]]
+session = "20271"
+campus = 1
+first_class = "2027-01-11"
+last_class = "2027-04-12"
+exams_start = "2027-04-14"
+exams_end = "2027-04-29"
+breaks = [
+    { kind = "reading_week", start = "2027-02-15", end = "2027-02-19" },
+    { kind = "holiday", start = "2027-03-26", end = "2027-03-26" },
+]

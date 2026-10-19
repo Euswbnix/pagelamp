@@ -14,7 +14,7 @@ packages it belongs to.
 PART 1. WHAT IS INCLUDED
 ==============================================================================
 
-Rust crates (588)
+Rust crates (595)
 
   adler2 2.0.1 | 0BSD OR MIT OR Apache-2.0 | https://github.com/oyvindln/adler2
   adobe-cmap-parser 0.4.1 | MIT | https://github.com/jrmuizel/adobe-cmap-parser
@@ -504,6 +504,7 @@ Rust crates (588)
   tracing-core 0.1.36 | MIT | https://github.com/tokio-rs/tracing
   tracing-log 0.2.0 | MIT | https://github.com/tokio-rs/tracing
   tracing-subscriber 0.3.23 | MIT | https://github.com/tokio-rs/tracing
+  trash 5.2.9 | MIT | https://github.com/ArturKovacs/trash
   tray-icon 0.24.2 | MIT OR Apache-2.0 | https://github.com/tauri-apps/tray-icon
   try-lock 0.2.5 | MIT | https://github.com/seanmonstar/try-lock
   ttf-parser 0.25.1 | MIT OR Apache-2.0 | https://github.com/harfbuzz/ttf-parser
@@ -526,6 +527,7 @@ Rust crates (588)
   unicode-width 0.2.2 | MIT OR Apache-2.0 | https://github.com/unicode-rs/unicode-width
   untrusted 0.9.0 | ISC | https://github.com/briansmith/untrusted
   url 2.5.8 | MIT OR Apache-2.0 | https://github.com/servo/rust-url
+  urlencoding 2.1.3 | MIT | https://github.com/kornelski/rust_urlencoding
   urlpattern 0.3.0 | MIT | https://github.com/denoland/rust-urlpattern
   utf8_iter 1.0.4 | Apache-2.0 OR MIT | https://github.com/hsivonen/utf8_iter
   utf8parse 0.2.2 | Apache-2.0 OR MIT | https://github.com/alacritty/vte
@@ -549,16 +551,20 @@ Rust crates (588)
   winapi-util 0.1.11 | Unlicense OR MIT | https://github.com/BurntSushi/winapi-util
   window-vibrancy 0.6.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri-plugin-vibrancy
   windows 0.61.3 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
+  windows 0.62.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-collections 0.2.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
+  windows-collections 0.3.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-core 0.61.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-core 0.62.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-future 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
+  windows-future 0.3.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-implement 0.60.2 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-interface 0.59.3 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-link 0.1.3 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-link 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-native-keyring-store 1.1.0 | MIT OR Apache-2.0 | https://github.com/open-source-cooperative/windows-native-keyring-store.git
   windows-numerics 0.2.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
+  windows-numerics 0.3.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-registry 0.6.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-result 0.3.4 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-result 0.4.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
@@ -570,6 +576,7 @@ Rust crates (588)
   windows-targets 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-targets 0.53.5 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-threading 0.1.0 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
+  windows-threading 0.2.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows-version 0.1.7 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows_x86_64_msvc 0.52.6 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
   windows_x86_64_msvc 0.53.1 | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs
@@ -18445,6 +18452,28 @@ DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
 [299] Belongs to:
+  trash 5.2.9 (LICENSE.txt)
+------------------------------------------------------------------------------
+
+Copyright 2019 Artúr Barnabás Kovács
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT
+OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+[300] Belongs to:
   tray-icon 0.24.2 (LICENSE.spdx)
 ------------------------------------------------------------------------------
 
@@ -18469,7 +18498,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tray-icon.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-[300] Belongs to:
+[301] Belongs to:
   try-lock 0.2.5 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -18495,7 +18524,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[301] Belongs to:
+[302] Belongs to:
   tslib 2.8.1 (LICENSE.txt)
 ------------------------------------------------------------------------------
 
@@ -18513,7 +18542,7 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------------
-[302] Belongs to:
+[303] Belongs to:
   tw-animate-css 1.4.0 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -18540,14 +18569,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[303] Belongs to:
+[304] Belongs to:
   typenum 1.20.1 (LICENSE)
 ------------------------------------------------------------------------------
 
 MIT OR Apache-2.0
 
 ------------------------------------------------------------------------------
-[304] Belongs to:
+[305] Belongs to:
   typenum 1.20.1 (LICENSE-APACHE)
 ------------------------------------------------------------------------------
 
@@ -18754,7 +18783,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ------------------------------------------------------------------------------
-[305] Belongs to:
+[306] Belongs to:
   typenum 1.20.1 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -18781,7 +18810,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[306] Belongs to 5 packages:
+[307] Belongs to 5 packages:
   unic-char-property 0.9.0 (the standard text of MIT; the package carries no licence file)
   unic-char-range 0.9.0 (the standard text of MIT; the package carries no licence file)
   unic-common 0.9.0 (the standard text of MIT; the package carries no licence file)
@@ -18812,7 +18841,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[307] Belongs to:
+[308] Belongs to:
   unicode-bidi 0.3.18 (COPYRIGHT)
 ------------------------------------------------------------------------------
 
@@ -18826,7 +18855,7 @@ carrying such notice may not be copied, modified, or distributed except
 according to those terms.
 
 ------------------------------------------------------------------------------
-[308] Belongs to:
+[309] Belongs to:
   unicode-ident 1.0.26 (LICENSE-UNICODE)
 ------------------------------------------------------------------------------
 
@@ -18871,7 +18900,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ------------------------------------------------------------------------------
-[309] Belongs to:
+[310] Belongs to:
   untrusted 0.9.0 (LICENSE.txt)
 ------------------------------------------------------------------------------
 
@@ -18890,7 +18919,33 @@ authorization of the copyright holder.
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------------
-[310] Belongs to:
+[311] Belongs to:
+  urlencoding 2.1.3 (LICENSE)
+------------------------------------------------------------------------------
+
+© 2016 Bertram Truong
+© 2021 Kornel Lesiński
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+------------------------------------------------------------------------------
+[312] Belongs to:
   urlpattern 0.3.0 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -18917,7 +18972,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[311] Belongs to:
+[313] Belongs to:
   utf8_iter 1.0.4 (COPYRIGHT)
 ------------------------------------------------------------------------------
 
@@ -18965,7 +19020,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 
 ------------------------------------------------------------------------------
-[312] Belongs to:
+[314] Belongs to:
   utf8parse 0.2.2 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -18996,7 +19051,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[313] Belongs to:
+[315] Belongs to:
   uuid 1.26.1 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19028,7 +19083,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[314] Belongs to:
+[316] Belongs to:
   uuid-simd 0.8.0 (the standard text of MIT; the package carries no licence file)
 ------------------------------------------------------------------------------
 
@@ -19055,7 +19110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[315] Belongs to:
+[317] Belongs to:
   vcpkg 0.2.15 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19086,7 +19141,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[316] Belongs to:
+[318] Belongs to:
   version-compare 0.2.1 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19111,7 +19166,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[317] Belongs to:
+[319] Belongs to:
   version_check 0.9.5 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19136,7 +19191,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[318] Belongs to:
+[320] Belongs to:
   vsimd 0.8.0 (the standard text of MIT; the package carries no licence file)
 ------------------------------------------------------------------------------
 
@@ -19163,7 +19218,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[319] Belongs to 2 packages:
+[321] Belongs to 2 packages:
   vswhom 0.1.0 (LICENSE)
   vswhom-sys 0.1.3 (LICENSE)
 ------------------------------------------------------------------------------
@@ -19191,7 +19246,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[320] Belongs to:
+[322] Belongs to:
   want 0.3.1 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19216,7 +19271,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[321] Belongs to:
+[323] Belongs to:
   webkit2gtk 2.0.2 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19242,7 +19297,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[322] Belongs to:
+[324] Belongs to:
   webkit2gtk-sys 2.0.2 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19266,7 +19321,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[323] Belongs to:
+[325] Belongs to:
   webview2-com 0.38.2 (the standard text of MIT; the package carries no licence file)
 ------------------------------------------------------------------------------
 
@@ -19293,7 +19348,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[324] Belongs to:
+[326] Belongs to:
   webview2-com-macros 0.8.1 (the standard text of MIT; the package carries no licence file)
 ------------------------------------------------------------------------------
 
@@ -19320,7 +19375,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[325] Belongs to:
+[327] Belongs to:
   webview2-com-sys 0.38.2 (the standard text of MIT; the package carries no licence file)
 ------------------------------------------------------------------------------
 
@@ -19347,7 +19402,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[326] Belongs to:
+[328] Belongs to:
   weezl 0.1.12 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19374,7 +19429,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[327] Belongs to:
+[329] Belongs to:
   window-vibrancy 0.6.0 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19401,7 +19456,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[328] Belongs to:
+[330] Belongs to:
   window-vibrancy 0.6.0 (LICENSE.spdx)
 ------------------------------------------------------------------------------
 
@@ -19426,17 +19481,21 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-[329] Belongs to 24 packages:
+[331] Belongs to 29 packages:
   windows 0.61.3 (license-apache-2.0)
+  windows 0.62.2 (license-apache-2.0)
   windows-collections 0.2.0 (license-apache-2.0)
+  windows-collections 0.3.2 (license-apache-2.0)
   windows-core 0.61.2 (license-apache-2.0)
   windows-core 0.62.2 (license-apache-2.0)
   windows-future 0.2.1 (license-apache-2.0)
+  windows-future 0.3.2 (license-apache-2.0)
   windows-implement 0.60.2 (license-apache-2.0)
   windows-interface 0.59.3 (license-apache-2.0)
   windows-link 0.1.3 (license-apache-2.0)
   windows-link 0.2.1 (license-apache-2.0)
   windows-numerics 0.2.0 (license-apache-2.0)
+  windows-numerics 0.3.1 (license-apache-2.0)
   windows-registry 0.6.1 (license-apache-2.0)
   windows-result 0.3.4 (license-apache-2.0)
   windows-result 0.4.1 (license-apache-2.0)
@@ -19448,6 +19507,7 @@ Creator: Person: Daniel Thompson-Yvetot
   windows-targets 0.52.6 (license-apache-2.0)
   windows-targets 0.53.5 (license-apache-2.0)
   windows-threading 0.1.0 (license-apache-2.0)
+  windows-threading 0.2.1 (license-apache-2.0)
   windows-version 0.1.7 (license-apache-2.0)
   windows_x86_64_msvc 0.52.6 (license-apache-2.0)
   windows_x86_64_msvc 0.53.1 (license-apache-2.0)
@@ -19656,17 +19716,21 @@ Creator: Person: Daniel Thompson-Yvetot
    limitations under the License.
 
 ------------------------------------------------------------------------------
-[330] Belongs to 24 packages:
+[332] Belongs to 29 packages:
   windows 0.61.3 (license-mit)
+  windows 0.62.2 (license-mit)
   windows-collections 0.2.0 (license-mit)
+  windows-collections 0.3.2 (license-mit)
   windows-core 0.61.2 (license-mit)
   windows-core 0.62.2 (license-mit)
   windows-future 0.2.1 (license-mit)
+  windows-future 0.3.2 (license-mit)
   windows-implement 0.60.2 (license-mit)
   windows-interface 0.59.3 (license-mit)
   windows-link 0.1.3 (license-mit)
   windows-link 0.2.1 (license-mit)
   windows-numerics 0.2.0 (license-mit)
+  windows-numerics 0.3.1 (license-mit)
   windows-registry 0.6.1 (license-mit)
   windows-result 0.3.4 (license-mit)
   windows-result 0.4.1 (license-mit)
@@ -19678,6 +19742,7 @@ Creator: Person: Daniel Thompson-Yvetot
   windows-targets 0.52.6 (license-mit)
   windows-targets 0.53.5 (license-mit)
   windows-threading 0.1.0 (license-mit)
+  windows-threading 0.2.1 (license-mit)
   windows-version 0.1.7 (license-mit)
   windows_x86_64_msvc 0.52.6 (license-mit)
   windows_x86_64_msvc 0.53.1 (license-mit)
@@ -19706,7 +19771,7 @@ Creator: Person: Daniel Thompson-Yvetot
     SOFTWARE
 
 ------------------------------------------------------------------------------
-[331] Belongs to:
+[333] Belongs to:
   winreg 0.55.0 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19731,7 +19796,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[332] Belongs to:
+[334] Belongs to:
   wry 0.55.1 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -19758,7 +19823,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[333] Belongs to:
+[335] Belongs to:
   wry 0.55.1 (LICENSE.spdx)
 ------------------------------------------------------------------------------
 
@@ -19784,7 +19849,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-[334] Belongs to 5 packages:
+[336] Belongs to 5 packages:
   zbus 5.19.0 (LICENSE)
   zbus_macros 5.19.0 (LICENSE)
   zbus_names 4.3.4 (LICENSE)
@@ -19819,7 +19884,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[335] Belongs to:
+[337] Belongs to:
   zcheapstr 1.1.0 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -19850,7 +19915,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[336] Belongs to:
+[338] Belongs to:
   zerocopy 0.8.59 (LICENSE-APACHE)
 ------------------------------------------------------------------------------
 
@@ -20057,7 +20122,7 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 
 ------------------------------------------------------------------------------
-[337] Belongs to:
+[339] Belongs to:
   zerocopy 0.8.59 (LICENSE-BSD)
 ------------------------------------------------------------------------------
 
@@ -20087,7 +20152,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------------
-[338] Belongs to:
+[340] Belongs to:
   zerocopy 0.8.59 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -20118,7 +20183,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[339] Belongs to:
+[341] Belongs to:
   zeroize 1.9.0 (LICENSE-MIT)
 ------------------------------------------------------------------------------
 
@@ -20149,7 +20214,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-[340] Belongs to:
+[342] Belongs to:
   zip 4.6.1 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -20179,7 +20244,7 @@ Some files in the "tests/data" subdirectory of this repository are under other
 licences; see files named LICENSE.*.txt for details.
 
 ------------------------------------------------------------------------------
-[341] Belongs to:
+[343] Belongs to:
   zip 8.6.0 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -20206,7 +20271,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-[342] Belongs to:
+[344] Belongs to:
   zlib-rs 0.6.8 (LICENSE)
 ------------------------------------------------------------------------------
 
@@ -20231,7 +20296,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ------------------------------------------------------------------------------
-[343] Belongs to:
+[345] Belongs to:
   zopfli 0.8.3 (COPYING)
 ------------------------------------------------------------------------------
 
@@ -20438,7 +20503,7 @@ freely, subject to the following restrictions:
    limitations under the License.
 
 ------------------------------------------------------------------------------
-[344] Belongs to:
+[346] Belongs to:
   zustand 5.0.15 (LICENSE)
 ------------------------------------------------------------------------------
 
