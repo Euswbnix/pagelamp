@@ -764,6 +764,9 @@ impl App {
         self.forget_light_sync(&store, source_id)?;
         // What its courses' syncs noted as not read names those courses: it goes too.
         pagelamp_core::coverage::remove_for_source(&store, source_id)?;
+        // And its courses' entries in the dates records (course ids start with the source's).
+        let prefix = format!("{source_id}/");
+        pagelamp_core::term::forget_dates_records(&store, |id| id.starts_with(&prefix))?;
         store.remove_source(source_id)?;
         if source.kind != SourceKind::Folder {
             self.secrets.delete(source_id)?;

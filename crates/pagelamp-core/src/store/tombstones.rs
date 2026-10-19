@@ -246,6 +246,8 @@ impl Store {
             // What the last sync noted about the course (titles and addresses of what it
             // read and didn't) is kept in the settings table: it goes with the course.
             crate::coverage::remove(self, course_id)?;
+            // So do its entries in the dates records (confirmed, copied from or to it).
+            crate::term::forget_dates_records(self, |id| id == course_id)?;
             // The delete triggers only add FTS5 delete keys; merge the segments so the old
             // terms go.
             self.conn

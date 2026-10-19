@@ -1032,3 +1032,58 @@ async fn a_restore_is_listed_as_a_sync_of_its_source_while_it_runs() {
     restoring.await.unwrap().unwrap();
     assert!(app.activity().items.is_empty());
 }
+
+/// The dates records kept in settings go with a course's data and with its source: a purged
+/// course leaves the confirmed list and every copy it was part of (from or to), and removing a
+/// source does the same for all its courses. Other courses' entries stay.
+#[tokio::test]
+async fn a_purge_and_a_removed_source_take_their_courses_dates_records() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use pagelamp_core::term::{CONFIRMED_DATES_KEY, COPIED_DATES_KEY};
+
+    let f = fixture().await;
+    let store = Store::open(&f.app.db_path()).unwrap();
+    let canvas = store.resolve_course_with("DEMO303", true).unwrap().id;
+    let folder = store.resolve_course_with("DEMO101", true).unwrap().id;
+    let other = "canvas:other.example.edu/course/9".to_string();
+    store
+        .set_setting(
+            CONFIRMED_DATES_KEY,
+            &BTreeSet::from([canvas.clone(), folder.clone(), other.clone()]),
+        )
+        .unwrap();
+    store
+        .set_setting(
+            COPIED_DATES_KEY,
+            &BTreeMap::from([
+                (canvas.clone(), other.clone()),
+                (other.clone(), canvas.clone()),
+                (folder.clone(), other.clone()),
+            ]),
+        )
+        .unwrap();
+    let confirmed = || {
+        store
+            .setting::<BTreeSet<String>>(CONFIRMED_DATES_KEY)
+            .unwrap()
+            .unwrap_or_default()
+    };
+    let copied = || {
+        store
+            .setting::<BTreeMap<String, String>>(COPIED_DATES_KEY)
+            .unwrap()
+            .unwrap_or_default()
+    };
+
+    f.app
+        .remove_courses(vec!["DEMO303".into()], purge_now())
+        .await
+        .unwrap();
+    assert_eq!(confirmed(), BTreeSet::from([folder.clone(), other.clone()]));
+    assert_eq!(copied(), BTreeMap::from([(folder.clone(), other.clone())]));
+
+    f.app.remove_source(&f.folder_source).unwrap();
+    assert_eq!(confirmed(), BTreeSet::from([other.clone()]));
+    assert!(copied().is_empty());
+}

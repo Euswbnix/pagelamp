@@ -29,11 +29,38 @@ pub const CONFIRMED_DATES_KEY: &str = "course_dates.confirmed";
 /// course they came from}. Saving or clearing a course's own dates drops its entry.
 pub const COPIED_DATES_KEY: &str = "course_dates.copied_from";
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use chrono::NaiveDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Confidence, Timestamp};
+use crate::store::Store;
+
+/// Drop the courses `gone` picks (their data was deleted, or their source removed) from the
+/// dates records kept in settings: the confirmed list (`CONFIRMED_DATES_KEY`) and the
+/// copied-from map (`COPIED_DATES_KEY`), where a copy goes when either of its two courses
+/// does. Both hold course ids, which name the source and the course there.
+pub fn forget_dates_records(store: &Store, gone: impl Fn(&str) -> bool) -> crate::Result<()> {
+    if let Some(mut confirmed) = store.setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)? {
+        let before = confirmed.len();
+        confirmed.retain(|id| !gone(id));
+        if confirmed.len() != before {
+            store.set_setting(CONFIRMED_DATES_KEY, &confirmed)?;
+        }
+    }
+    if let Some(mut copied) =
+        store.setting_or_absent::<BTreeMap<String, String>>(COPIED_DATES_KEY)?
+    {
+        let before = copied.len();
+        copied.retain(|to, from| !gone(to) && !gone(from));
+        if copied.len() != before {
+            store.set_setting(COPIED_DATES_KEY, &copied)?;
+        }
+    }
+    Ok(())
+}
 
 /// Where a course is in its term (design §6.6). Every exclusion rule uses the lifecycle
 /// (`CourseLifecycle`), never the phase: the phase only drives labels and the week.
