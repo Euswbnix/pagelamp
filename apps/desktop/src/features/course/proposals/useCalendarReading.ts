@@ -25,8 +25,9 @@ export type ReadingState =
       /** The course's first cloud run: show the one-time reminder (D37 option 2). */
       reminder: boolean;
     }
-  | { phase: "stopped" }
-  | { phase: "failed"; error: unknown };
+  /** Stopped or failed after it started: the reminder, if the run sent the notice, still shows. */
+  | { phase: "stopped"; backend: string; reminder: boolean }
+  | { phase: "failed"; error: unknown; backend: string; reminder: boolean };
 
 /**
  * One "Read the syllabus with AI" run (calendar design §7.3): its GenEvents as state, Stop
@@ -82,10 +83,13 @@ export function useCalendarReading(courseId: string) {
           reminder: reminder || proposal.sharing_reminder,
         });
       } catch (error) {
+        // The facade claims the reminder once the text went out, also on a run that then fails
+        // or is stopped (the notice comes before it ends): it is shown here too.
+        const after = { backend: backend ?? "", reminder };
         setState(
           toApiError(error).kind === "cancelled"
-            ? { phase: "stopped" }
-            : { phase: "failed", error },
+            ? { phase: "stopped", ...after }
+            : { phase: "failed", error, ...after },
         );
       } finally {
         runId.current = null;
@@ -102,9 +106,13 @@ export function useCalendarReading(courseId: string) {
     await api.cancelGeneration(id);
   }, [api]);
 
-  /** Close the result (after the reminder was answered or dismissed). */
+  /** Close the reminder (answered or dismissed), whatever the run's end. */
   const settle = useCallback(() => {
-    setState((s) => (s.phase === "done" ? { ...s, reminder: false } : s));
+    setState((s) =>
+      s.phase === "done" || s.phase === "failed" || s.phase === "stopped"
+        ? { ...s, reminder: false }
+        : s,
+    );
   }, []);
 
   return { state, start, stop, settle };

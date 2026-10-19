@@ -90,6 +90,60 @@ describe("Read the syllabus with AI", () => {
     ).toBeVisible();
   });
 
+  const REMINDER = "Check whether your instructor allows sharing course materials with AI services";
+  /** A run that sends its text, says the reminder and then ends with `error` (the facade's order). */
+  function endingWith(api: ReturnType<typeof mockApi>, error: () => Promise<ApiError>) {
+    api.readCourseCalendar = vi.fn(async (_c, id, _o, onEvent: (e: GenEvent) => void) => {
+      onEvent({
+        type: "started",
+        generation_id: id,
+        backend_label: "OpenAI",
+        model: "gpt-6-luna",
+        on_device: false,
+      });
+      onEvent({ type: "notice", code: "material_sharing_reminder" });
+      const reason = await error();
+      onEvent({ type: "finished", ok: false });
+      throw reason;
+    });
+  }
+
+  it("asks question (b) after a reading that failed once its text went out", async () => {
+    const api = mockApi();
+    endingWith(
+      api,
+      async () => new ApiError("model", "No dates it could check.", { model_error: "bad_output" }),
+    );
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("alert")).toBeInTheDocument();
+    const reminder = within(section).getByRole("region", { name: REMINDER });
+    await user.click(within(reminder).getByRole("button", { name: "Not sure" }));
+    await waitFor(() =>
+      expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
+    );
+    // The failure stays said.
+    expect(within(section).getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("asks question (b) after a reading stopped once it started", async () => {
+    const api = mockApi();
+    let stop: () => void = () => {};
+    endingWith(
+      api,
+      () =>
+        new Promise((resolve) => {
+          stop = () => resolve(new ApiError("cancelled", "Stopped"));
+        }),
+    );
+    vi.spyOn(api, "cancelGeneration").mockImplementation(async () => stop());
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    await user.click(await within(section).findByRole("button", { name: "Stop" }));
+    expect(await within(section).findByText("Stopped. Nothing was changed.")).toBeInTheDocument();
+    expect(within(section).getByRole("region", { name: REMINDER })).toBeInTheDocument();
+  });
+
   it("says why it can't run for a No AI course, and respects question (b)", async () => {
     const api = mockApi();
     await api.setCoursePolicy(FITTED, "prohibited", null);

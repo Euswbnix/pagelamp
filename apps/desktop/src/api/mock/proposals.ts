@@ -482,24 +482,27 @@ export function createProposalsMock(deps: {
     const stopped = () =>
       cancelled.has(generationId) || (batchId !== null && cancelled.has(batchId));
     onEvent({ type: "started", generation_id: generationId, ...run });
-    for (const stage of ["building_context", "waiting_for_model", "validating"] as const) {
-      onEvent({ type: "stage", stage });
-      await deps.step();
-      if (stopped()) {
-        onEvent({ type: "finished", ok: false });
-        throw new ApiError("cancelled", "The reading was stopped.");
-      }
-    }
-    // The course's first cloud run with question (b) unanswered or "not sure" (D37 option 2).
+    // The course's first cloud run with question (b) unanswered or "not sure" (D37 option 2):
+    // claimed once it started, and said before the run ends however it ends (like the facade).
     const answer = materialSharing(c.course);
     const reminder =
       !run.on_device &&
       (answer === "unanswered" || answer === "not_sure") &&
       !reminded.has(courseId);
-    if (reminder) {
-      reminded.add(courseId);
-      onEvent({ type: "notice", code: "material_sharing_reminder" });
+    if (reminder) reminded.add(courseId);
+    const remind = () => {
+      if (reminder) onEvent({ type: "notice", code: "material_sharing_reminder" });
+    };
+    for (const stage of ["building_context", "waiting_for_model", "validating"] as const) {
+      onEvent({ type: "stage", stage });
+      await deps.step();
+      if (stopped()) {
+        remind();
+        onEvent({ type: "finished", ok: false });
+        throw new ApiError("cancelled", "The reading was stopped.");
+      }
     }
+    remind();
     onEvent({
       type: "usage",
       usage: { input_tokens: 14_200, cached_input_tokens: 0, output_tokens: 900 },

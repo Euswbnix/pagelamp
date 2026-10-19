@@ -73,7 +73,8 @@ export function ReadSyllabus({ course }: { course: Course }) {
           />
         )}
         <ReadingOutcome state={state} />
-        {state.phase === "done" && state.reminder ? (
+        {(state.phase === "done" || state.phase === "failed" || state.phase === "stopped") &&
+        state.reminder ? (
           <MaterialSharingReminder
             courseId={course.id}
             courseName={name}
