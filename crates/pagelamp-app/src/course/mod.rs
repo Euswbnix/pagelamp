@@ -8,11 +8,13 @@
 //! | key                               | value                                             |
 //! |-----------------------------------|---------------------------------------------------|
 //! | `course_dates.confirmed`          | ids of courses whose student dates are confirmed  |
+//! | `course_dates.copied_from`        | {course id: the course its dates were copied from} |
 //! | `lifecycle.banner_snoozed`        | `BannerSnooze`: until when, for which courses     |
 
 pub(crate) mod calendar;
 pub(crate) mod dates;
 pub(crate) mod removal;
+pub(crate) mod session;
 
 use std::collections::BTreeSet;
 

@@ -89,8 +89,9 @@ pub(crate) fn observations(
         .collect()
 }
 
-/// Step 2: Friday evening and the weekend count for the next Monday.
-fn posting_day(local: chrono::NaiveDateTime) -> NaiveDate {
+/// Step 2: Friday evening and the weekend count for the next Monday. (Also the day a module
+/// unlock counts for when another course of the session borrows its week 1: one rule.)
+pub(crate) fn posting_day(local: chrono::NaiveDateTime) -> NaiveDate {
     let date = local.date();
     match date.weekday() {
         Weekday::Fri if local.hour() >= FRIDAY_EVENING_HOUR => add_days(date, 3),

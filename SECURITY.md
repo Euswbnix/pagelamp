@@ -10,8 +10,9 @@ security reports seriously.
 Include steps to reproduce with **synthetic** data only — never real tokens, calendar links or
 course materials.
 
-We aim to acknowledge reports within 7 days. Only the latest release is supported during the 0.x
-series.
+We aim to acknowledge reports within 7 days. During the 0.x series we fix security problems in
+the latest stable release (now v0.1.0) and in the latest pre-release (now v0.3.0-alpha.1). Tell us
+which one you use.
 
 ## In scope
 
@@ -19,6 +20,11 @@ series.
 - Any way for course content (e.g. a malicious page or PDF) to make PageLamp write to Canvas, run
   commands, reach the network from the MCP server, or escape the `<course_material>` wrapper.
 - Material text reaching an AI app for a course whose AI access is off or policy is "No AI".
+- From v0.3: a link address in stored text, or in anything PageLamp gives an AI app, that still
+  carries a parameter which, as far as we can tell, opens a file (`verifier`, `sf_verifier`,
+  `access_token`). v0.1.0 keeps such addresses; that is known (see PRIVACY.md), and v0.3 removes
+  them.
+- Any way for an MCP client to start, request or schedule a sync.
 - Crashes or resource exhaustion from malformed files during sync.
 
 ## Out of scope
@@ -29,8 +35,9 @@ third-party AI apps.
 ## Verifying downloads
 
 Every release on the [releases page](https://github.com/Euswbnix/pagelamp/releases) has a
-`SHA256SUMS` file listing every file in it. From v0.3 on, GitHub also **attests** each file in that
-list: a signed statement that this repository's Release workflow built it. v0.1.0 has checksums
+`SHA256SUMS` file listing every installer, archive and updater file in it. From v0.3.0-alpha.1 on,
+GitHub also **attests** each file in that list: a signed statement that this repository's Release
+workflow built it. v0.1.0 has checksums
 and code signatures, but no attestations. If a check below fails for a file from our releases
 page, don't run it, and tell us privately (see above).
 
@@ -52,7 +59,8 @@ gh attestation verify PageLamp_<version>_universal.dmg --repo Euswbnix/pagelamp 
 ```
 
 This works for every file listed in `SHA256SUMS`, including the Linux packages, which aren't
-code-signed.
+code-signed. In a v0.3 pre-release the installers' names say `0.3.0` (for example
+`PageLamp_0.3.0_universal.dmg`); the command-line archives carry the full tag.
 
 **macOS.** The app, the `.dmg` and the command-line `pagelamp` are signed with a Developer ID of
 team `CBU69BX7M8` and notarized by Apple; the ticket is stapled to the app and the `.dmg`.
@@ -66,6 +74,9 @@ xcrun stapler validate /Applications/PageLamp.app                  # needs the X
 codesign --verify --strict --verbose=2 ./pagelamp                  # the command-line tool
 codesign --display --verbose=2 ./pagelamp 2>&1 | grep TeamIdentifier
 ```
+
+v0.1.0 has one `.dmg` per chip (`aarch64` for Apple silicon, `x64` for Intel) and no `universal`
+one: in the `spctl` line, use the name of the file you downloaded.
 
 A bare command-line binary can't carry a stapled ticket; macOS looks its notarization up online
 the first time it runs.
@@ -87,7 +98,9 @@ The certificate chains to Microsoft's "Microsoft Identity Verification Root Cert
 against the updater public key built into the app, whichever channel it came from; a changed or
 swapped file is refused. The stable and beta channels (`updates/stable.json` and
 `updates/beta.json` on this repository's `gh-pages` branch, which the app reads from
-`raw.githubusercontent.com`) point only at files of this repository's releases, and each update
-file is also in that release's `SHA256SUMS` and attestation. `updates/test.json` on the same
-branch serves rehearsal builds from `updates/test/`, which belong to no release and have no
-`SHA256SUMS` or attestation; only rehearsal builds read it, never a released app.
+`raw.githubusercontent.com`; when the stable file can't be fetched, the app asks `github.com` for
+the `latest.json` of this repository's latest release) point only at files of this repository's
+releases, and each update file is also in that release's `SHA256SUMS` and attestation.
+`updates/test.json` on the same branch serves rehearsal builds from `updates/test/`, which belong
+to no release and have no `SHA256SUMS` or attestation; only rehearsal builds read it, never a
+released app.

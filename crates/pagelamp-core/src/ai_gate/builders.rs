@@ -29,7 +29,7 @@ use crate::lifecycle::is_active;
 use crate::model::{AiMaterialsState, Chunk, Course, EventKind, MaterialKind, Module, TextStatus};
 use crate::store::Store;
 use crate::term::ResolvedTerm;
-use crate::views::{self, AsOf, CourseData, MaterialView};
+use crate::views::{self, AsOf, CourseData, MaterialView, SessionLends};
 
 /// Words that mark a title as an assessment (whole words, any case) [tunable; open item].
 const ASSESSMENT_WORDS: [&str; 10] = [
@@ -103,9 +103,11 @@ pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedC
             } else {
                 scoped_courses(store, &scope.courses)?
             };
+            let lends = SessionLends::load(store, at, false, None)?;
             let mut context = GatedContext::empty();
             for course in &courses {
-                let text = course_structure(store, course, at, scope.horizon_days, &mut context)?;
+                let text =
+                    course_structure(store, course, at, &lends, scope.horizon_days, &mut context)?;
                 context.blocks.push(Block::Structure(text));
             }
             Ok(context)
@@ -123,6 +125,7 @@ pub fn plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedC
 pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> {
     store
         .in_read_transaction(|store| {
+            let lends = SessionLends::load(store, at, false, None)?;
             let mut context = GatedContext::empty();
             for summary in views::list_courses(store, false, at)? {
                 if !is_active(&summary.lifecycle, at.today) {
@@ -152,8 +155,14 @@ pub fn note_context(store: &Store, at: AsOf) -> Result<GatedContext, GateError> 
                     context.blocks.push(Block::Structure(text));
                     continue;
                 }
-                let mut text =
-                    course_structure(store, &summary.course, at, NOTE_DEADLINE_DAYS, &mut context)?;
+                let mut text = course_structure(
+                    store,
+                    &summary.course,
+                    at,
+                    &lends,
+                    NOTE_DEADLINE_DAYS,
+                    &mut context,
+                )?;
                 let timeline = &summary.timeline;
                 let _ = write!(
                     text,
@@ -393,6 +402,7 @@ fn course_structure(
     store: &Store,
     course: &Course,
     at: AsOf,
+    lends: &SessionLends,
     days: u32,
     context: &mut GatedContext,
 ) -> crate::Result<String> {
@@ -412,7 +422,7 @@ fn course_structure(
             AiMaterialsState::WithheldByPolicy => "no (the course does not allow AI use)",
         }
     );
-    let this_week = views::week_materials(store, &course.id, None, true, at)?;
+    let this_week = views::week_materials_with(store, &course.id, None, true, at, Some(lends))?;
     match this_week.week {
         Some(n) => {
             let _ = writeln!(text, "Current week: {n}");
@@ -422,7 +432,8 @@ fn course_structure(
                 &this_week.materials,
                 context,
             );
-            let next = views::week_materials(store, &course.id, Some(n + 1), true, at)?;
+            let next =
+                views::week_materials_with(store, &course.id, Some(n + 1), true, at, Some(lends))?;
             list_materials(
                 &mut text,
                 &format!("Week {} materials", n + 1),
@@ -567,7 +578,9 @@ pub fn calendar_context(
             return Ok(Err(BlockReason::MaterialSharingNotAllowed));
         }
         let data = CourseData::load(store, &course)?;
-        let (resolved, _) = data.timeline(&course, at);
+        // As `course_candidates` works them out (a model never learns a hidden lender's name).
+        let lend = data.session_lend(store, &course, at, false)?;
+        let (resolved, _) = data.timeline(&course, at, lend.as_ref(), false);
         let candidates = candidates_in(store, &data, &resolved, signals)?;
         let mut context = GatedContext::empty();
         let mut read = Vec::new();
