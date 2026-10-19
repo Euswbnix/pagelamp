@@ -489,12 +489,16 @@ impl App {
         // removal ends as an error that names it (after removing everything else).
         let keyless = settings::keyless(&store)?;
         let mut handled = Vec::new();
+        let mut handled_rows = Vec::new();
         let mut keys_left = Vec::new();
         let mut key_error = None;
         for row in store.model_providers()? {
             let row_keyless = keyless.contains(&row.id);
             match providers::forget_key(&*self.secrets, &row, row_keyless) {
-                Ok(()) => handled.push(row.id),
+                Ok(()) => {
+                    handled.push(row.id.clone());
+                    handled_rows.push((row, row_keyless));
+                }
                 Err(err) => {
                     tracing::warn!(target: "pagelamp::ai", "{}", err.message);
                     keys_left.push(row.id);
@@ -529,6 +533,14 @@ impl App {
                 .collect::<Vec<String>>())
         })?;
         drop(store);
+        // Once more, now that the rows are gone: a key an update stored meanwhile goes too.
+        let keys_orphaned: Vec<(String, &'static str)> = handled_rows
+            .iter()
+            .filter_map(|(row, row_keyless)| {
+                providers::forget_key_after(&*self.secrets, row, *row_keyless)
+                    .map(|left| (row.id.clone(), left.where_))
+            })
+            .collect();
         let backup_removed = pagelamp_core::store::database_backup(&self.db_path()).is_some();
         if backup_removed {
             pagelamp_core::store::delete_database_backups(&self.db_path()).map_err(|err| {
@@ -544,7 +556,7 @@ impl App {
             usage_rows_removed: removed.usage_rows,
             backup_removed,
         };
-        if key_error.is_none() && added_meanwhile.is_empty() {
+        if key_error.is_none() && added_meanwhile.is_empty() && keys_orphaned.is_empty() {
             return Ok(report);
         }
         let mut message = format!(
@@ -578,12 +590,32 @@ impl App {
                 added_meanwhile.join(", ")
             ));
         }
-        message.push_str(if keys_left.is_empty() {
+        for (id, where_) in &keys_orphaned {
+            message.push_str(&format!(
+                "{} an API key stored for {id} while this ran couldn't be deleted from the \
+                 keychain: it {where_} under `llm:{id}`, so delete it there",
+                if keys_left.is_empty() && added_meanwhile.is_empty() {
+                    ", but"
+                } else {
+                    "; and"
+                },
+            ));
+        }
+        message.push_str(if !keys_left.is_empty() {
+            ". Run this again when the keychain can be reached."
+        } else if !added_meanwhile.is_empty() {
             ". Run this again to remove it."
         } else {
-            ". Run this again when the keychain can be reached."
+            "."
         });
-        let mut err = key_error.unwrap_or_else(|| AppError::new(AppErrorKind::Busy, String::new()));
+        let mut err = key_error.unwrap_or_else(|| {
+            let kind = if keys_orphaned.is_empty() {
+                AppErrorKind::Busy
+            } else {
+                AppErrorKind::Internal
+            };
+            AppError::new(kind, String::new())
+        });
         err.message = message;
         Err(err)
     }

@@ -176,7 +176,9 @@ impl App {
         // The key, then (in one transaction) the provider still there and no longer keyless. A
         // keychain that doesn't take the key changes nothing; a provider removed meanwhile
         // (another process) takes the key with it again.
-        self.secrets.set(&key_account(provider_id), trimmed)?;
+        let was_keyless = super::settings::keyless(&self.read_store()?)?.contains(provider_id);
+        let account = key_account(provider_id);
+        self.secrets.set(&account, trimmed)?;
         let kept = self.write_store().and_then(|store| {
             Ok(store.in_transaction(|store| {
                 if store.model_provider(provider_id)?.is_none() {
@@ -191,12 +193,30 @@ impl App {
         });
         match kept {
             Ok(true) => Ok(record(&provider.row, &provider.profile, Some(last4))),
-            Ok(false) => {
-                forget_key(&*self.secrets, &provider.row, false)?;
-                Err(unknown_provider(provider_id))
-            }
+            Ok(false) => match forget_key_after(&*self.secrets, &provider.row, false) {
+                None => Err(unknown_provider(provider_id)),
+                Some(left) => Err(AppError::new(
+                    AppErrorKind::Internal,
+                    format!(
+                        "{} was removed while the new key was being checked, and the new key \
+                         couldn't be deleted from the keychain ({}): it {} under `{account}`. \
+                         Delete it in your keychain.",
+                        provider.row.label, left.reason, left.where_
+                    ),
+                )),
+            },
             // The key stays: a keyless provider never reads it, and its removal deletes it.
-            Err(err) => Err(err),
+            // Any other provider already uses it: say so.
+            Err(mut err) => {
+                if !was_keyless {
+                    err.message = format!(
+                        "The new API key is stored in the keychain under `{account}` and replaces \
+                         the old one, so {} will use it, but PageLamp couldn't finish the update: {}",
+                        provider.row.label, err.message
+                    );
+                }
+                Err(err)
+            }
         }
     }
 
@@ -219,6 +239,20 @@ impl App {
                 },
             )
         })?;
+        // Once more, now that the row is gone: a key an update stored meanwhile goes too.
+        if let Some(left) = forget_key_after(&*self.secrets, &row, keyless) {
+            return Err(AppError::new(
+                AppErrorKind::Internal,
+                format!(
+                    "{} was removed, but an API key stored for it meanwhile couldn't be deleted \
+                     from the keychain ({}): it {} under `{}`. Delete it in your keychain.",
+                    row.label,
+                    left.reason,
+                    left.where_,
+                    key_account(&row.id)
+                ),
+            ));
+        }
         Ok(())
     }
 
@@ -344,6 +378,39 @@ pub(crate) fn forget_key(
         row.label, err.message
     );
     Err(err)
+}
+
+/// A key that may be left behind after its provider went (`forget_key_after`).
+pub(crate) struct KeyLeft {
+    /// The keychain's reason.
+    pub reason: String,
+    /// "is still", or "may still be" when the keychain can't say.
+    pub where_: &'static str,
+}
+
+/// Delete a provider's key once more after its row went (a key an update stored meanwhile
+/// goes too). No entry counts as done, and so, for a keyless provider, does a keychain that
+/// can't be reached at all; otherwise what may be left.
+pub(crate) fn forget_key_after(
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    row: &ProviderRow,
+    keyless: bool,
+) -> Option<KeyLeft> {
+    if !uses_key(row) {
+        return None;
+    }
+    let account = key_account(&row.id);
+    let err = secrets.delete(&account).err()?;
+    let where_ = match secrets.get(&account) {
+        Ok(None) => return None,
+        Err(_) if keyless => return None,
+        Ok(Some(_)) => "is still",
+        Err(_) => "may still be",
+    };
+    Some(KeyLeft {
+        reason: AppError::from(err).message,
+        where_,
+    })
 }
 
 /// Refuse coding-plan endpoints and keys, quoting the vendor (before any network call).
