@@ -514,6 +514,7 @@
 "calendar.sameSession.ownCalendar" = "按自己的日历计算周数，复制不会改动它。";
 "calendar.sameSession.ownDates" = "已有自己的日期，勾选后会被替换。";
 "calendar.sameSession.sourceCalendar" = "这门课按自己的日历计算周数，不能在这里把日期用于其他课。请用 %1$@ 命令复制。";
+"calendar.sameSession.sourceCalendarRefused" = "这门课按自己的日历计算周数，而这份日历无法只用两个日期带给其他课（它分为两部分、第一周不是第 1 周、没有最后一天上课，或有跳过一周的假期）。请分别设置其他课的日期。";
 "calendar.sameSession.undo" = "撤销";
 "calendar.sameSession.undoFailed" = "其他课没能恢复，它们仍是这门课的日期。";
 "calendar.signal.dates" = "课程日期";

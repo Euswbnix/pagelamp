@@ -514,6 +514,7 @@
 "calendar.sameSession.ownCalendar" = "Counts its weeks from a calendar of its own: a copy leaves it alone.";
 "calendar.sameSession.ownDates" = "Has its own dates: they would be replaced.";
 "calendar.sameSession.sourceCalendar" = "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the %1$@ command.";
+"calendar.sameSession.sourceCalendarRefused" = "This course counts its weeks from a calendar of its own, which two dates can't carry to other courses (it has two parts, a first week other than week 1, no last day of classes, or a break that skips a week). Set the other courses' dates on their own.";
 "calendar.sameSession.undo" = "Undo";
 "calendar.sameSession.undoFailed" = "The other courses couldn't be put back: they keep this course's dates.";
 "calendar.signal.dates" = "the course dates";

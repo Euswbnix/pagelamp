@@ -535,6 +535,7 @@ nonisolated enum L10nKeys {
         "calendar.sameSession.skipped.own_calendar",
         "calendar.sameSession.skipped.unknown_course",
         "calendar.sameSession.sourceCalendar",
+        "calendar.sameSession.sourceCalendarRefused",
         "calendar.sameSession.undo",
         "calendar.sameSession.undoFailed",
         "calendar.sameSession.undone",

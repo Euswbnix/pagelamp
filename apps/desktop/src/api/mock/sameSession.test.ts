@@ -33,7 +33,36 @@ describe("mock: the other courses of a session", () => {
       session: null,
       campus: null,
       courses: [],
+      copy_refused: false,
     });
+  });
+
+  it("says when the course's calendar can't be copied, like the facade", async () => {
+    const api = mock();
+    const refused = async () => (await api.sessionCourses(FITTED)).copy_refused;
+    expect(await refused()).toBe(false);
+    await ownCalendar(api, FITTED);
+    expect(await refused()).toBe(false);
+    await api.setCourseDates(FITTED, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      exams_end: "2026-12-22",
+      breaks: [
+        {
+          kind: "reading_week",
+          label: "Reading week",
+          start: "2026-11-09",
+          end: "2026-11-13",
+          numbered: false,
+        },
+      ],
+    });
+    expect(await refused()).toBe(true);
+    // And for a course of no session too.
+    const plain = createMockApi({ latencyMs: 0 });
+    const folder = "folder:demo-courses/course/DEMO101";
+    await plain.setCourseDates(folder, { first_class: "2026-09-08", breaks: [] });
+    expect((await plain.sessionCourses(folder)).copy_refused).toBe(true);
   });
 
   it("copies a course's own dates to the courses chosen, and skips what it can't", async () => {

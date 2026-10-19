@@ -153,7 +153,8 @@
       "own_calendar_other": "Not used in {{courses}}: they count their weeks from calendars of their own. Change those calendars with the {{command}} command."
     },
     "listFailed": "The other courses of this term couldn't be listed, so these dates stay in this course.",
-    "sourceCalendar": "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the {{command}} command."
+    "sourceCalendar": "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the {{command}} command.",
+    "sourceCalendarRefused": "This course counts its weeks from a calendar of its own, which two dates can't carry to other courses (it has two parts, a first week other than week 1, no last day of classes, or a break that skips a week). Set the other courses' dates on their own."
   },
   "checkDates": {
     "title": "Check this course's dates",

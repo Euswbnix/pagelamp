@@ -1213,7 +1213,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       await sleep(latency);
       const c = findCourse(courseId);
       const key = sessionKey(c.course.code ?? null);
-      if (!key) return { session: null, campus: null, courses: [] };
+      // Like the facade: a calendar in force that two dates can't carry can't be copied.
+      const copy_refused = hasOwnCalendar(c) && !carriedByTwoDates(c);
+      if (!key) return { session: null, campus: null, courses: [], copy_refused };
       const courses = db.courses
         .filter((o) => o !== c && sessionKey(o.course.code ?? null)?.id === key.id)
         .map((o) => {
@@ -1231,7 +1233,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             anchor: o.timeline.term.anchor,
           };
         });
-      return { session: key.session, campus: key.campus, courses };
+      return { session: key.session, campus: key.campus, courses, copy_refused };
     },
 
     applyCourseDatesTo: async (from, to) => {

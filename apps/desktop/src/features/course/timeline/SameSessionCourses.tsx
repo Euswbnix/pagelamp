@@ -26,6 +26,11 @@ export interface SameSessionChoice {
    * so the form offers no list.
    */
   ownCalendar: boolean;
+  /**
+   * That calendar can't be copied (the facade's `copy_refused`: two dates can't carry it), so
+   * no command is offered for it either.
+   */
+  copyRefused: boolean;
   /** The listing couldn't be had: the form says so instead of listing nothing. */
   failed: boolean;
   chosen: ReadonlySet<string>;
@@ -73,6 +78,7 @@ export function useSameSession(
   return {
     courses,
     ownCalendar,
+    copyRefused: listing.data?.copy_refused ?? false,
     failed: listing.isError,
     chosen,
     ticked:
@@ -117,6 +123,11 @@ export function SameSessionCourses({
   }
   if (choice.courses.length === 0) return null;
   if (choice.ownCalendar) {
+    if (choice.copyRefused) {
+      return (
+        <p className="text-sm text-muted-foreground">{t("sameSession.sourceCalendarRefused")}</p>
+      );
+    }
     return (
       <p className="text-sm text-muted-foreground">
         <SentenceWithCode

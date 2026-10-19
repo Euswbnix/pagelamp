@@ -966,6 +966,51 @@ describe("Timeline tab — also use these dates in", () => {
     expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
   });
 
+  it.each([
+    [
+      "two parts",
+      {
+        second_segment: {
+          first_class: "2027-01-06",
+          last_class: "2027-04-02",
+          restart_numbering: false,
+        },
+        exams_end: "2027-04-30",
+        breaks: [],
+      },
+    ],
+    [
+      "a break its weeks skip",
+      {
+        exams_end: "2026-12-22",
+        breaks: [
+          {
+            kind: "reading_week" as const,
+            label: "Reading week",
+            start: "2026-11-09",
+            end: "2026-11-13",
+            numbered: false,
+          },
+        ],
+      },
+    ],
+  ])("offers no command for a calendar of its own that can't be copied (%s)", async (_, rest) => {
+    const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
+    await api.setCourseDates(FITTED, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      ...rest,
+    });
+    await openCourse(FITTED, { query: "tab=timeline", api });
+    expect(
+      await screen.findByText(
+        "This course counts its weeks from a calendar of its own, which two dates can't carry to other courses (it has two parts, a first week other than week 1, no last day of classes, or a break that skips a week). Set the other courses' dates on their own.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("pagelamp course copy-dates", { selector: "code" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
+  });
+
   it("says so when every other course has a calendar of its own, and copies to none", async () => {
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
     // Calendars of their own and no term dates of their own: only own_calendar keeps them out.
@@ -1080,6 +1125,7 @@ describe("Timeline tab — also use these dates in", () => {
       session: null,
       campus: null,
       courses: [],
+      copy_refused: false,
     });
     await screen.findByLabelText("First day of classes");
     expect(screen.queryByRole("group", { name: "Also use these dates in" })).toBeNull();
