@@ -2,8 +2,8 @@ import { WHEN } from "./SentenceWithTime";
 
 /**
  * Pass this as the code's value to t(); <SentenceWithCode> swaps it for a <code> element. The
- * same marker as <SentenceWithTime>'s: the interpolation lets it through as a whole value only,
- * never inside one (i18n/safeValues.ts), so nothing a value holds can stand in for it.
+ * same marker as <SentenceWithTime>'s: only the marker itself puts its character in the sentence
+ * (i18n/safeValues.ts), so nothing a value holds can stand in for it.
  */
 export const CODE = WHEN;
 
@@ -14,7 +14,7 @@ export const CODE = WHEN;
  *   <SentenceWithCode text={t("sameSession.sourceCalendar", { command: CODE })} code="pagelamp course copy-dates" />
  */
 export function SentenceWithCode({ text, code }: { text: string; code: string }) {
-  const [before, ...after] = text.split(CODE);
+  const [before, ...after] = text.split(CODE.char);
   return (
     <>
       {before}

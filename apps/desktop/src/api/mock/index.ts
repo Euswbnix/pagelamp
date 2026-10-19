@@ -49,6 +49,7 @@ import {
   defaultKeepUntil,
   ev,
   isoOf,
+  skipsAWeek,
   withCourseDates,
   withoutStudentDates,
   withStudentDates,
@@ -89,6 +90,12 @@ export interface MockOptions {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** The facade's refusal of a copy from a calendar two dates can't carry (session.rs). */
+const COPY_REFUSED =
+  "Two dates can't carry this course's calendar (it has two parts, a first week other than " +
+  "week 1, no last day of classes, or a break that skips a week): set the other courses' " +
+  "dates on their own.";
 
 function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
@@ -457,6 +464,15 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       confidence: "low",
     };
   }
+  /** Which course a course's dates were copied from ("also use these dates in"), by id. */
+  const copiedFrom = new Map<string, string>();
+
+  /**
+   * Courses whose dates the student saved with the dates form v2 or accepted, by id (before the
+   * proposals mock: its scenario accepts one).
+   */
+  const ownCalendars = new Set<string>();
+
   // Calendar proposals, candidates and syllabus reading (proposals.ts).
   const courseProposals = createProposalsMock({
     db,
@@ -495,11 +511,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       ownCalendars.add(c.course.id);
       copiedFrom.delete(c.course.id);
       const next = withCourseDates(c.timeline, input, isoOf(now()));
+      // What accepting doesn't change, like the facade: the notes' week comes from the
+      // materials, the last activity from the course's activity.
       c.timeline = {
         ...next.timeline,
+        notes_week: c.timeline.notes_week,
         term: { ...next.timeline.term, anchor_origin: origin, ai_label: aiLabel },
       };
-      c.lifecycle = next.lifecycle;
+      c.lifecycle = { ...next.lifecycle, last_activity: c.lifecycle.last_activity };
       c.course.term_start = input.first_class ?? c.course.term_start;
       c.course.term_source = "user";
     },
@@ -758,12 +777,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     return !open || m.text_status !== "unsupported";
   }
 
-  /** Which course a course's dates were copied from ("also use these dates in"), by id. */
-  const copiedFrom = new Map<string, string>();
-
-  /** Courses whose dates the student saved with the dates form v2 or accepted, by id. */
-  const ownCalendars = new Set<string>();
-
   /**
    * The course counts its weeks from a calendar of its own (the facade's calendar in force):
    * one saved with the dates form v2, one accepted here, or one the scenario starts with
@@ -776,9 +789,9 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
   }
 
   /**
-   * The student's term dates for a course, as set_course_term and restore_course_dates write
-   * them: with a calendar of its own only the dates change (the calendar still counts the
-   * weeks, like the facade); else the timeline follows them.
+   * The student's term dates for a course, as set_course_term writes them: with a calendar of
+   * its own only the dates change (the calendar still counts the weeks, like the facade); else
+   * the timeline follows them.
    */
   function setTermDates(c: MockCourse, start: string | null, end: string | null) {
     if (!hasOwnCalendar(c)) {
@@ -794,6 +807,23 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
         student_dates_confirmed: true,
       },
     };
+  }
+
+  /**
+   * Whether two dates carry the course's calendar to another course, like the facade's
+   * CourseCalendar::carried_by_two_dates: not with two parts, a first week other than week 1,
+   * no last day of classes, or an unnumbered break that skips a week. A copy from such a
+   * calendar is refused.
+   */
+  function carriedByTwoDates(c: MockCourse): boolean {
+    const { teaching, breaks } = c.timeline.term;
+    const last = teaching.at(-1);
+    return (
+      teaching.length <= 1 &&
+      (teaching[0]?.first_week_number ?? 1) === 1 &&
+      (!last || !!last.last_class) &&
+      breaks.every((b) => b.numbered || !skipsAWeek(b.span))
+    );
   }
 
   /** A calendar's first and last day of classes: its first part's first, its last part's last. */
@@ -1211,6 +1241,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       // With a calendar of its own, that calendar's first and last day of classes (like the
       // facade: the term dates there can end with the exams).
       const calendar = hasOwnCalendar(source);
+      if (calendar && !carriedByTwoDates(source)) throw new ApiError("invalid", COPY_REFUSED);
       const dates = calendar ? calendarDates(source) : ownDates(source);
       // Dates from version 0.1 the student never confirmed aren't given on (like the facade);
       // a calendar accepted or saved is the student's own.
@@ -1255,18 +1286,17 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
 
     restoreCourseDates: async (replaced) => {
       await sleep(latency);
-      // From what the apply reported, like the facade: a course removed since is left alone.
+      // From what the apply reported, like the facade: a course removed since is left alone,
+      // and so is one with a calendar of its own since (as applying leaves it alone).
       for (const r of replaced) {
         const c = db.courses.find((course) => course.course.id === r.course_id);
-        if (!c) continue;
-        const calendar = hasOwnCalendar(c);
-        setTermDates(c, r.start ?? null, r.end ?? null);
+        if (!c || hasOwnCalendar(c)) continue;
+        setStudentTerm(c, r.start ?? null, r.end ?? null);
         if (r.legacy && (r.start || r.end)) {
           // Dates kept from version 0.1, still for the student to check. Their anchor says so
-          // only with a start: a last day alone is no anchor of its own (like the facade), and
-          // a calendar of its own stays the anchor.
+          // only with a start: a last day alone is no anchor of its own (like the facade).
           const term = { ...c.timeline.term, student_dates_confirmed: false };
-          if (r.start && !calendar) term.anchor_origin = "legacy";
+          if (r.start) term.anchor_origin = "legacy";
           c.timeline = { ...c.timeline, term };
         }
         // An earlier copy's mark comes back with its dates.

@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { ApplySkipReason } from "@/api/types";
 import { todayIso } from "@/lib/format";
@@ -861,6 +862,52 @@ describe("Timeline tab — also use these dates in", () => {
     expect(start).not.toHaveAttribute("aria-invalid");
   });
 
+  it("starts clean when the course turns back from a calendar of its own", async () => {
+    const { user, api, start, end, queryClient } = await openTimeline(FITTED, "uoft-fall");
+    await othersGroup();
+    await untickOthers(user);
+    const invalid = "These dates don't work. Check that classes end after they start.";
+    /** Its calendar saved elsewhere (the CLI), then cleared there, and the course read again. */
+    async function thereAndBack() {
+      await ownCalendar(api, FITTED);
+      await act(() => queryClient.invalidateQueries());
+      await screen.findByText("pagelamp course calendar", { selector: "code" });
+      await api.setCourseDates(FITTED, null);
+      await act(() => queryClient.invalidateQueries());
+      await screen.findByRole("button", { name: "Save dates" });
+    }
+    // The form's own check of the dates.
+    await user.clear(start);
+    await user.type(start, "2026-09-20");
+    await user.type(end, "2026-09-10");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText(invalid)).toBeInTheDocument();
+    await thereAndBack();
+    expect(screen.queryByText(invalid)).toBeNull();
+    expect(start).not.toHaveAttribute("aria-invalid");
+    // A save the facade refused.
+    vi.spyOn(api, "setCourseTerm").mockRejectedValueOnce(
+      new ApiError("invalid", "These dates are out of order."),
+    );
+    await user.clear(start);
+    await user.type(start, "2026-09-15");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText(invalid)).toBeInTheDocument();
+    await thereAndBack();
+    expect(screen.queryByText(invalid)).toBeNull();
+    expect(start).not.toHaveAttribute("aria-invalid");
+    // A copy to the others that failed (the ticks chosen stay through the flips).
+    const failed = "Your dates are saved for this course. The other courses weren't changed.";
+    await user.click(within(await othersGroup()).getByRole("checkbox", { name: /DEM240H5/ }));
+    vi.spyOn(api, "applyCourseDatesTo").mockRejectedValueOnce(new Error("Synthetic failure"));
+    await user.clear(start);
+    await user.type(start, "2026-09-16");
+    await user.click(screen.getByRole("button", { name: "Save dates" }));
+    expect(await screen.findByText(failed)).toBeInTheDocument();
+    await thereAndBack();
+    expect(screen.queryByText(failed)).toBeNull();
+  });
+
   it.each([
     ["while the session listing is still read", () => new Promise<never>(() => {})],
     ["when the session listing fails", () => Promise.reject(new Error("Synthetic failure"))],
@@ -874,18 +921,23 @@ describe("Timeline tab — also use these dates in", () => {
     expect(screen.getByLabelText("Last day of classes (optional)")).toHaveValue("2026-12-04");
     expect(screen.queryByRole("button", { name: "Save dates" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Clear my dates" })).toBeNull();
+    // Nothing about the other courses: nothing goes to them from here, listed or not.
+    expect(screen.queryByText(/couldn't be listed/)).toBeNull();
+    expect(screen.queryByText("pagelamp course copy-dates", { selector: "code" })).toBeNull();
   });
 
   it("doesn't ask to check 0.1 dates on a course with a calendar of its own", async () => {
     const api = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "uoft-fall" });
     await ownCalendar(api, FITTED);
-    // Undo put back 0.1 dates the student never confirmed; the calendar still counts the weeks.
-    await api.restoreCourseDates([
-      { course_id: FITTED, start: "2026-09-01", end: null, legacy: true, copied_from: null },
-    ]);
-    expect((await api.courseOverview(FITTED)).timeline.term).toMatchObject({
-      student_dates_confirmed: false,
-      own_calendar: true,
+    // Not a state the facade makes (a calendar accepted or saved confirms its dates, and Undo
+    // leaves such a course alone); should unconfirmed dates sit under one, its weeks still come
+    // from the calendar, and the form there is read-only.
+    const overview = api.courseOverview;
+    vi.spyOn(api, "courseOverview").mockImplementation(async (id) => {
+      const real = await overview(id);
+      if (id !== FITTED) return real;
+      const term = { ...real.timeline.term, student_dates_confirmed: false };
+      return { ...real, timeline: { ...real.timeline, term } };
     });
     await openCourse(FITTED, { query: "tab=timeline", api });
     await screen.findByText("pagelamp course calendar", { selector: "code" });

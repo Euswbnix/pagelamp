@@ -110,6 +110,9 @@ export function SameSessionCourses({
 }) {
   const { t } = useTranslation("calendar");
   if (choice.failed) {
+    // A course with a calendar of its own gives nothing to the others from here, listed or not;
+    // and unlisted, there may be no other course to speak of.
+    if (choice.ownCalendar) return null;
     return <p className="text-sm text-muted-foreground">{t("sameSession.listFailed")}</p>;
   }
   if (choice.courses.length === 0) return null;

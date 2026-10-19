@@ -1,4 +1,4 @@
-import { type FormEvent, type Ref, useId, useRef, useState } from "react";
+import { type FormEvent, type Ref, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { toApiError } from "@/api/errors";
@@ -96,6 +96,15 @@ export function TermDatesForm({
     setStart(initial.start);
     setEnd(initial.end);
   }
+
+  // An earlier save's error goes with the flip too (the mutation's state, reset outside render).
+  const resetSave = mutation.reset;
+  const shownOwn = useRef(ownCalendar);
+  useEffect(() => {
+    if (shownOwn.current === ownCalendar) return;
+    shownOwn.current = ownCalendar;
+    resetSave();
+  }, [ownCalendar, resetSave]);
 
   const changed = start !== initial.start || end !== initial.end;
   // Each field as it is saved: a changed one as typed, an untouched one as the student had it.
