@@ -1382,8 +1382,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       c.course.term_end =
         dates.exams_end ?? segment?.last_class ?? dates.last_class ?? c.synced.termEnd;
       c.course.term_source = "user";
-      c.timeline = next.timeline;
-      c.lifecycle = next.lifecycle;
+      // What saving dates doesn't change, like the facade (and applyCalendar): the notes' week
+      // comes from the materials, the last activity from the course's activity.
+      c.timeline = { ...next.timeline, notes_week: c.timeline.notes_week };
+      c.lifecycle = { ...next.lifecycle, last_activity: c.lifecycle.last_activity };
       return courseProposals.api.courseCalendar(courseId);
     },
 

@@ -34,6 +34,9 @@ describe("mock calendar proposals", () => {
       anchor_origin: "ai",
       anchor_confidence: "medium",
     });
+    // Stale, so its week and phase are trusted at medium at most, like the facade.
+    expect(legacy.timeline.confidence).toBe("medium");
+    expect(legacy.timeline.phase_confidence).toBe("medium");
     expect(legacy.timeline.notes_week).toBe(4);
     expect(legacy.lifecycle.last_activity).toBeTruthy();
     // Accepting another: what the materials and the activity say stays.
@@ -43,6 +46,21 @@ describe("mock calendar proposals", () => {
     await api.acceptCalendarProposal(proposal.id, null);
     const after = await api.courseOverview(FITTED);
     expect(after.timeline.notes_week).toBe(before.timeline.notes_week);
+    expect(after.lifecycle.last_activity).toBe(before.lifecycle.last_activity);
+  });
+
+  it("keeps the notes' week and the last activity when dates are saved with the form", async () => {
+    const api = createMockApi(fast);
+    const before = await api.courseOverview(LEGACY);
+    expect(before.timeline.notes_week).toBe(4);
+    await api.setCourseDates(LEGACY, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      breaks: [],
+    });
+    const after = await api.courseOverview(LEGACY);
+    expect(after.timeline.term.own_calendar).toBe(true);
+    expect(after.timeline.notes_week).toBe(4);
     expect(after.lifecycle.last_activity).toBe(before.lifecycle.last_activity);
   });
 
