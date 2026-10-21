@@ -116,8 +116,7 @@ impl Dialect for OllamaNative {
                     .filter_map(|model| {
                         let id = model["name"].as_str().or(model["model"].as_str())?;
                         let remote = model.get("remote_host").is_some_and(|h| !h.is_null())
-                            || id.ends_with("-cloud")
-                            || id.ends_with(":cloud");
+                            || crate::profile::is_cloud_model_id(id);
                         Some(super::ListedModel {
                             id: id.to_string(),
                             display_name: None,

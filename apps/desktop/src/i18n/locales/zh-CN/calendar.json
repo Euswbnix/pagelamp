@@ -128,6 +128,8 @@
     "legend": "这些日期也用于",
     "hint": "本学期的其他课。不想改动的课请取消勾选。",
     "ownDates": "已有自己的日期，勾选后会被替换。",
+    "ownCalendar": "按自己的日历计算周数，复制不会改动它。",
+    "allOwnCalendar": "本学期的其他课都按自己的日历计算周数，这些日期只用于这门课。",
     "hidden": "已隐藏",
     "saved_one": "已保存，并用于另外 {{count}} 门课",
     "saved_other": "已保存，并用于另外 {{count}} 门课",
@@ -146,9 +148,13 @@
       "from_course_one": "未用于 {{courses}}：这些日期就来自这门课。",
       "from_course_other": "未用于 {{courses}}：这些日期就来自这门课。",
       "dates_not_confirmed_one": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。",
-      "dates_not_confirmed_other": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。"
+      "dates_not_confirmed_other": "未用于 {{courses}}：这里的日期尚未确认。请先保存，再试一次。",
+      "own_calendar_one": "未用于 {{courses}}：按自己的日历计算周数。请用 {{command}} 命令修改相应课程的日历。",
+      "own_calendar_other": "未用于 {{courses}}：按自己的日历计算周数。请用 {{command}} 命令修改相应课程的日历。"
     },
-    "listFailed": "没能列出本学期的其他课，这些日期只用于这门课。"
+    "listFailed": "没能列出本学期的其他课，这些日期只用于这门课。",
+    "sourceCalendar": "这门课按自己的日历计算周数，不能在这里把日期用于其他课。请用 {{command}} 命令复制。",
+    "sourceCalendarRefused": "这门课按自己的日历计算周数，而这份日历无法只用两个日期带给其他课（它分为两部分、第一周不是第 1 周、没有最后一天上课，或有跳过一周的假期）。请分别设置其他课的日期。"
   },
   "checkDates": {
     "title": "检查这门课的日期",
@@ -162,6 +168,7 @@
     "description": "如果显示的周数不对，请设置第一天和最后一天上课的日期。你设置的日期优先于其他一切来源。",
     "prefilled": "已填入 {{product}} 目前采用的日期。",
     "breaksNote": "阅读周和考试日期暂时还不能在这里设置。",
+    "ownCalendar": "这些日期来自这门课自己的日历，它决定这门课的周数，不能在这里修改。请用 {{command}} 命令修改该日历。",
     "start": "第一天上课",
     "end": "最后一天上课（可不填）",
     "endHint": "之后的三周算作考试期。",
@@ -246,6 +253,7 @@
     "same_session_disagrees": "同一学期的 {{course}} 把第 1 周定在 {{monday}} 那一周，与{{source}}相差 {{days}} 天",
     "same_session_disagrees_no_course": "同一学期的另一门课把第 1 周定在 {{monday}} 那一周，与{{source}}相差 {{days}} 天",
     "same_session_split": "{{session}} 学期的几门课对第 1 周的判断不一致，因此都没有采用。请在其中一门课里设置开课第一天。",
+    "same_session_unlent": "{{session}} 学期没有课能借出日期：决定第 1 周的那门课按自己的日历计算周数，这份日历无法用两个日期表示，其他课的第 1 周又与它不一致。请在这门课里设置开课第一天。",
     "dates_may_be_wrong": "根据{{source}}，第 1 周是 {{monday}} 那一周，相差 {{days}} 天。这些日期可能有误，请检查。",
     "session_window": "{{session}} 学期（{{section}}）在 {{start}} – {{end}} 之间",
     "institution_calendar_missing": "此版本的校历里没有 {{session}} 学期的日期：只用学期月份来界定课程范围",

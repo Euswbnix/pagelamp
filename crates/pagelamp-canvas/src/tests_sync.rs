@@ -90,6 +90,7 @@ impl Fixture {
             max_file_bytes: 1024,
             files_dir: self.files.clone(),
             only_courses: Vec::new(),
+            only_files: None,
             extractor: Default::default(),
             automatic: false,
             user_level_only: false,
@@ -449,6 +450,154 @@ async fn downloads_follow_redirects_without_leaking_the_token() {
         material(&materials, "/file/501").text_status,
         TextStatus::Ok
     );
+}
+
+#[tokio::test]
+async fn only_the_files_the_student_chose_are_downloaded() {
+    let f = Fixture::new().await;
+    f.standard().await;
+    f.downloads().await;
+    let chosen = |id: &str| SyncOptions {
+        only_files: Some([format!("{}/file/{id}", f.source)].into()),
+        ..f.options(true)
+    };
+    let warnings = Mutex::new(Vec::new());
+    let report = sync_with(&f.api(), &f.db, &f.source, &chosen("501"), &|p| {
+        if let SyncProgress::Warning(w) = p {
+            warnings.lock().unwrap().push(w);
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(report.files_downloaded, 1);
+    // A file nobody asked for isn't "skipped": it just isn't downloaded.
+    assert!(
+        warnings
+            .into_inner()
+            .unwrap()
+            .iter()
+            .all(|w| !w.contains("huge.txt"))
+    );
+    let course = format!("{}/course/101", f.source);
+    let materials = f.store().list_materials(&course).unwrap();
+    assert_eq!(
+        material(&materials, "/file/501").text_status,
+        TextStatus::Ok
+    );
+    assert_eq!(
+        material(&materials, "/file/502").text_status,
+        TextStatus::NotDownloaded
+    );
+    // The next choice downloads that one and keeps the first (each blob is fetched once).
+    let report = f.sync(&chosen("502")).await.unwrap();
+    assert_eq!(report.files_downloaded, 1);
+    let materials = f.store().list_materials(&course).unwrap();
+    assert_eq!(
+        material(&materials, "/file/501").text_status,
+        TextStatus::Ok
+    );
+    assert_eq!(
+        material(&materials, "/file/502").text_status,
+        TextStatus::Ok
+    );
+}
+
+#[tokio::test]
+async fn the_syllabus_links_and_the_front_page_mark_calendar_candidates() {
+    let f = Fixture::new().await;
+    // The first sync sees a syllabus linking two files (one of another course, one unknown)
+    // and a pages list naming the front page; later syncs see the standard fixture.
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101",
+             "syllabus_body": "<p>See the <a href=\"/courses/101/files/502/download?wrap=1\">outline</a>, \
+                 <a href=\"/courses/999/files/777\">last year</a> and \
+                 <a data-api-endpoint=\"https://lms.example.edu/api/v1/courses/101/files/888\">a gone file</a>.</p>"}
+        ])))
+        .with_priority(1)
+        .up_to_n_times(1)
+        .mount(&f.canvas)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/courses/101/pages"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"page_id": 601, "url": "week-1-overview", "title": "Overview",
+             "updated_at": "2026-09-08T10:00:00Z", "front_page": true}
+        ])))
+        .with_priority(1)
+        .up_to_n_times(1)
+        .mount(&f.canvas)
+        .await;
+    f.standard().await;
+    f.sync(&f.options(false)).await.unwrap();
+    let course = format!("{}/course/101", f.source);
+    let signals = f.store().calendar_signals(&course).unwrap();
+    assert_eq!(
+        signals.linked_from_syllabus,
+        [format!("{}/file/502", f.source)].into()
+    );
+    assert_eq!(
+        signals.front_page,
+        [format!("{}/page/601", f.source)].into()
+    );
+
+    // The standard fixture: a syllabus without links clears them; a pages list that doesn't
+    // say which page is the front page leaves the flag as it was.
+    f.sync(&f.options(false)).await.unwrap();
+    let signals = f.store().calendar_signals(&course).unwrap();
+    assert!(signals.linked_from_syllabus.is_empty());
+    assert_eq!(
+        signals.front_page,
+        [format!("{}/page/601", f.source)].into()
+    );
+}
+
+/// A file the syllabus links to, in a course that doesn't show its Files list, is found
+/// through that link. It stays a calendar candidate in a sync that doesn't ask about it again
+/// (it was asked about less than a week ago, and the coverage record keeps it).
+#[tokio::test]
+async fn a_file_the_syllabus_links_to_stays_marked_when_it_is_not_asked_about_again() {
+    let f = Fixture::new().await;
+    f.get("/users/self", json!({"id": 1, "name": "Demo Student"}))
+        .await;
+    f.get(
+        "/courses",
+        json!([{"id": 101, "name": "Intro to Demo Studies", "course_code": "DEMO101",
+                "default_view": "modules",
+                "syllabus_body": "<p>The <a href=\"/courses/101/files/701/download?wrap=1\">course outline</a>.</p>"}]),
+    )
+    .await;
+    f.get(
+        "/courses/101/tabs",
+        json!([{"id": "home"}, {"id": "modules"}]),
+    )
+    .await;
+    f.get("/courses/101/modules", json!([])).await;
+    f.get("/courses/101/assignments", json!([])).await;
+    f.get("/announcements", json!([])).await;
+    f.get("/planner/items", json!([])).await;
+    f.get("/courses/101/files/701", f.file(701, "outline.txt", 20))
+        .await;
+    let course = format!("{}/course/101", f.source);
+    for sync in 1..=2 {
+        f.sync(&f.options(false)).await.unwrap();
+        let asked = f
+            .canvas
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.url.path() == "/api/v1/courses/101/files/701")
+            .count();
+        assert_eq!(asked, 1, "sync {sync}: asked about once");
+        let signals = f.store().calendar_signals(&course).unwrap();
+        assert_eq!(
+            signals.linked_from_syllabus,
+            [format!("{}/file/701", f.source)].into(),
+            "sync {sync}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -1499,6 +1648,7 @@ fn sync_future_is_send() {
         max_file_bytes: 1,
         files_dir: PathBuf::from("/demo"),
         only_courses: Vec::new(),
+        only_files: None,
         extractor: Default::default(),
         automatic: false,
         user_level_only: false,

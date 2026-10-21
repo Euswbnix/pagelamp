@@ -1,8 +1,8 @@
 import { type ReactNode, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import type { AiBackendStatus, DisclosureFacts } from "@/api/ai";
-import { useAcknowledgeAiDisclosure } from "@/api/ai-queries";
+import type { AiBackendStatus, BackendRef, DisclosureFacts, ModelDisclosure } from "@/api/ai";
+import { useAcknowledgeAiDisclosure, useAcknowledgeModelDisclosure } from "@/api/ai-queries";
 import { ExternalLink } from "@/components/common/ExternalLink";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +39,106 @@ export function DisclosureDialog({
    */
   returnFocus?: () => HTMLElement | null;
 }) {
+  return (
+    <DisclosureShell open={open} onOpenChange={onOpenChange} returnFocus={returnFocus}>
+      <BackendDisclosure status={status} onDone={() => onOpenChange(false)} />
+    </DisclosureShell>
+  );
+}
+
+/**
+ * Whether a note changed since the student last accepted it: by the version accepted of that
+ * note (a server here keeps the one of its cloud models apart from its own).
+ */
+export function noteChanged(status: AiBackendStatus, facts: DisclosureFacts): boolean {
+  const accepted =
+    facts.cost === "cloud_via_local"
+      ? status.cloud_disclosure_acknowledged
+      : status.disclosure_acknowledged;
+  return accepted != null && accepted !== facts.version;
+}
+
+/**
+ * The note of one model where it runs (`modelDisclosure`): for a model that a server on this
+ * computer may run in the cloud, a note of its own, acknowledged apart from the server's; for
+ * any other, the backend's own note under its own key.
+ */
+export function ModelDisclosureDialog({
+  backend,
+  runsHere,
+  disclosure,
+  name,
+  kind,
+  model,
+  changed = false,
+  open,
+  onOpenChange,
+  onAccepted,
+  returnFocus,
+}: {
+  backend: BackendRef;
+  runsHere: boolean;
+  disclosure: ModelDisclosure;
+  /** The backend as the student set it up (the server's label for a cloud note). */
+  name: string;
+  kind: AiBackendStatus["kind"];
+  /** The model a run is about to use; none from Settings (its cloud models in general). */
+  model?: string;
+  /** This note changed since it was last accepted (`noteChanged`). */
+  changed?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Once accepted, whether or not the sheet is still open. */
+  onAccepted?: () => void;
+  returnFocus?: () => HTMLElement | null;
+}) {
+  const { t } = useTranslation("ai");
+  const acknowledge = useAcknowledgeModelDisclosure();
+  const [facts, acknowledged] = disclosure;
+  const cloud = facts.cost === "cloud_via_local";
+  const acceptLabel = !cloud
+    ? undefined
+    : model
+      ? t("disclosure.acceptModel", { model })
+      : t("disclosure.acceptCloud", { name });
+  const acceptedText = !cloud
+    ? undefined
+    : model
+      ? t("disclosure.acceptedModel", { model })
+      : t("disclosure.acceptedCloud", { name });
+  return (
+    <DisclosureShell open={open} onOpenChange={onOpenChange} returnFocus={returnFocus}>
+      <DisclosureBody
+        facts={facts}
+        name={name}
+        kind={kind}
+        acknowledged={acknowledged}
+        changed={changed}
+        acceptLabel={acceptLabel}
+        acceptedText={acceptedText}
+        cloudModels={cloud && !model}
+        acknowledge={(version) =>
+          acknowledge.mutateAsync({ backend, runsHere, version }).then(() => onAccepted?.())
+        }
+        pending={acknowledge.isPending}
+        error={acknowledge.error}
+        onDone={() => onOpenChange(false)}
+      />
+    </DisclosureShell>
+  );
+}
+
+function DisclosureShell({
+  open,
+  onOpenChange,
+  returnFocus,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  returnFocus?: () => HTMLElement | null;
+  children: ReactNode;
+}) {
   const content = useRef<HTMLDivElement>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,45 +160,91 @@ export function DisclosureDialog({
         }}
       >
         {/* Remounts on open, so the confirmations start unticked every time. */}
-        <DisclosureBody status={status} onDone={() => onOpenChange(false)} />
+        {children}
       </DialogContent>
     </Dialog>
   );
 }
 
-function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: () => void }) {
-  const { t } = useTranslation("ai");
-  const errorText = useAiErrorText();
+/** A backend's own note, as Settings shows it. */
+function BackendDisclosure({ status, onDone }: { status: AiBackendStatus; onDone: () => void }) {
   const acknowledge = useAcknowledgeAiDisclosure();
   const facts = status.disclosure;
-  // The title and button name the backend as the student set it up; the facts name who
-  // receives the data (e.g. "OpenAI" for the ChatGPT plan through Codex).
-  const name = status.label;
+  return (
+    <DisclosureBody
+      facts={facts}
+      // The title and button name the backend as the student set it up; the facts name who
+      // receives the data (e.g. "OpenAI" for the ChatGPT plan through Codex).
+      name={status.label}
+      kind={status.kind}
+      acknowledged={status.disclosure_acknowledged === facts.version}
+      changed={noteChanged(status, facts)}
+      acknowledge={(version) =>
+        acknowledge.mutateAsync({ backend: status.backend, version }).then(() => undefined)
+      }
+      pending={acknowledge.isPending}
+      error={acknowledge.error}
+      onDone={onDone}
+    />
+  );
+}
+
+function DisclosureBody({
+  facts,
+  name,
+  kind,
+  acknowledged,
+  changed,
+  acceptLabel,
+  acceptedText,
+  cloudModels = false,
+  acknowledge,
+  pending,
+  error,
+  onDone,
+}: {
+  facts: DisclosureFacts;
+  name: string;
+  kind: AiBackendStatus["kind"];
+  acknowledged: boolean;
+  changed: boolean;
+  /** The accept button and the toast after it (default: "Turn on {name}"). */
+  acceptLabel?: string;
+  acceptedText?: string;
+  /** The note of a server's cloud models in general (Settings), not of one model. */
+  cloudModels?: boolean;
+  acknowledge: (version: number) => Promise<void>;
+  pending: boolean;
+  error: unknown;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation("ai");
+  const errorText = useAiErrorText();
   const who = facts.recipient.name;
   const needsAge = !!facts.min_age;
   const needsFreeTier = facts.training.kind === "may_train_free_tier";
   const [ageOk, setAgeOk] = useState(false);
   const [freeTierOk, setFreeTierOk] = useState(false);
-  const acknowledged = status.disclosure_acknowledged === facts.version;
-  const changed = status.problems.includes("disclosure_changed");
   const canAccept = (!needsAge || ageOk) && (!needsFreeTier || freeTierOk);
   const ids = { age: useId(), freeTier: useId(), confirmFirst: useId() };
 
   async function accept() {
-    if (!canAccept || acknowledge.isPending) return;
+    if (!canAccept || pending) return;
     try {
-      await acknowledge.mutateAsync({ backend: status.backend, version: facts.version });
-      toast.success(t("disclosure.accepted", { name }));
+      await acknowledge(facts.version);
+      toast.success(acceptedText ?? t("disclosure.accepted", { name }));
       onDone();
     } catch {
-      // Shown below (acknowledge.error).
+      // Shown below (error).
     }
   }
 
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{t("disclosure.title", { name })}</DialogTitle>
+        <DialogTitle>
+          {cloudModels ? t("disclosure.titleCloud", { name }) : t("disclosure.title", { name })}
+        </DialogTitle>
         <DialogDescription>{t("disclosure.intro")}</DialogDescription>
         {changed ? <p className="text-sm font-medium">{t("disclosure.changed")}</p> : null}
       </DialogHeader>
@@ -116,9 +262,13 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
           <p>
             {facts.on_device
               ? t("disclosure.sent.onDevice", { name: who })
-              : status.kind === "codex"
-                ? t("disclosure.sent.codex", { name: who })
-                : t("disclosure.sent.cloud", { name: who })}
+              : facts.cost === "cloud_via_local"
+                ? t(cloudModels ? "disclosure.sent.cloudModels" : "disclosure.sent.cloudViaLocal", {
+                    name,
+                  })
+                : kind === "codex"
+                  ? t("disclosure.sent.codex", { name: who })
+                  : t("disclosure.sent.cloud", { name: who })}
           </p>
           {facts.recipient.terms_url ? (
             <p>
@@ -142,7 +292,11 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
           </Item>
         ) : null}
         <Item heading={t("disclosure.cost.heading")}>
-          <p>{t(`disclosure.cost.${facts.cost}`, { name: who })}</p>
+          <p>
+            {cloudModels
+              ? t("disclosure.cost.cloudModels", { name: who })
+              : t(`disclosure.cost.${facts.cost}`, { name: who })}
+          </p>
         </Item>
         {facts.min_age ? (
           <Item heading={t("disclosure.age.heading")}>
@@ -192,9 +346,9 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
               {t("disclosure.confirmFirst")}
             </p>
           )}
-          {acknowledge.error ? (
+          {error ? (
             <p role="alert" className="text-sm text-destructive">
-              {errorText(acknowledge.error)}
+              {errorText(error)}
             </p>
           ) : null}
         </div>
@@ -207,12 +361,12 @@ function DisclosureBody({ status, onDone }: { status: AiBackendStatus; onDone: (
         {acknowledged ? null : (
           <Button
             type="button"
-            aria-disabled={!canAccept || acknowledge.isPending || undefined}
+            aria-disabled={!canAccept || pending || undefined}
             aria-describedby={canAccept ? undefined : ids.confirmFirst}
             className="aria-disabled:opacity-50"
             onClick={() => void accept()}
           >
-            {t("disclosure.accept", { name })}
+            {acceptLabel ?? t("disclosure.accept", { name })}
           </Button>
         )}
       </DialogFooter>

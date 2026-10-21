@@ -27,7 +27,7 @@ use regex::Regex;
 use super::evidence::{EvidenceCode, EvidenceItem};
 use super::fit::{self, Observation};
 use super::institution::{self, InstitutionCalendar, InstitutionTerm};
-use super::same_session::{DonorKind, Lend, LentDates};
+use super::same_session::{DonorKind, Lend, LentDates, week_one_of};
 use super::session::{SessionHint, session_hint};
 use super::{
     CalendarOrigin, CalendarStatus, DateSpan, RejectReason, RejectedDates, TeachingSegment,
@@ -350,6 +350,15 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
     // this course's first activity: a course that posts late still keeps its session's weeks):
     // an implausible end lends the start alone, an implausible start nothing, either noted.
     let lent: Option<&LentDates> = input.same_session.and_then(Lend::dates);
+    // Where this course's own week 1 is: a calendar may number its first week otherwise.
+    let own_first_week = match (&student, input.calendar) {
+        (Some(_), Some(in_force)) => in_force
+            .calendar
+            .segments
+            .first()
+            .map_or(1, |s| s.first_week_number),
+        _ => 1,
+    };
     let own_dated = student.is_some()
         || plausible
             .iter()
@@ -368,7 +377,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 && (lent.kind == DonorKind::ModuleUnlocks || far(fit.start))
         });
         if own_dated || fit_beats {
-            if let Some(item) = own.and_then(|own| disagreement(own, lent)) {
+            if let Some(item) = own.and_then(|own| disagreement(own, own_first_week, lent)) {
                 english.push(item.english());
                 evidence.push(item);
             }
@@ -427,6 +436,13 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 lent_exams_end = lent.exams_end.filter(|_| !end_changed && end.is_some());
             }
         }
+    } else if let Some(Lend::Unlent { session }) = input.same_session {
+        // A course without dates of its own hears why nothing is lent.
+        if !own_dated {
+            let item = EvidenceItem::new(EvidenceCode::SameSessionUnlent).text("session", session);
+            english.push(item.english());
+            evidence.push(item);
+        }
     } else if let Some(Lend::Split { session, lenders }) = input.same_session {
         // Every course of the session hears it: a course with dates of its own (the
         // disagreeing lenders among them) by the lenders that put week 1 elsewhere, any other
@@ -438,7 +454,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
         let items: Vec<EvidenceItem> = match own {
             Some(own) => lenders
                 .iter()
-                .filter_map(|lent| disagreement(own, lent))
+                .filter_map(|lent| disagreement(own, own_first_week, lent))
                 .collect(),
             None => {
                 vec![EvidenceItem::new(EvidenceCode::SameSessionSplit).text("session", session)]
@@ -519,9 +535,21 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             .iter()
             .skip(lower_index)
             .filter(|lower| lower.source != anchor.source);
+        // Posted materials name week 1 itself, which a calendar may number from 0; the other
+        // sources give a first day of classes.
+        let anchor_week_one = if anchor.source == TermAnchorSource::StudentConfirmed {
+            week_one_of(anchor.start, own_first_week)
+        } else {
+            week_one_monday(anchor.start)
+        };
         for lower in lower {
             let monday = week_one_monday(lower.start);
-            let days = days_between(week_one_monday(anchor.start), monday).abs();
+            let compared = if lower.source == TermAnchorSource::PublishedWeekLabels {
+                anchor_week_one
+            } else {
+                week_one_monday(anchor.start)
+            };
+            let days = days_between(compared, monday).abs();
             let item = if days >= DISAGREE_DAYS {
                 disagreed = true;
                 EvidenceItem::new(EvidenceCode::DatesMayBeWrong)
@@ -560,9 +588,18 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
 
     let student_dates_confirmed =
         input.dates_confirmed || (data.user_term_start.is_none() && data.user_term_end.is_none());
+    let own_calendar = input.calendar.is_some();
     let resolution = match (&anchor, input.calendar) {
         (Some(anchor), Some(in_force)) => TermResolution {
-            week_one_monday: Some(week_one_monday(anchor.start)),
+            // Week 1, where the calendar numbers its first week otherwise ("Week 0").
+            week_one_monday: Some(week_one_of(
+                anchor.start,
+                in_force
+                    .calendar
+                    .segments
+                    .first()
+                    .map_or(1, |s| s.first_week_number),
+            )),
             teaching: in_force.calendar.segments.clone(),
             breaks: in_force.calendar.breaks.clone(),
             exams_end: in_force.calendar.exam_period.map(|period| period.end),
@@ -575,6 +612,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             student_start: data.user_term_start,
             student_end: data.user_term_end,
             student_dates_confirmed,
+            own_calendar,
         },
         (Some(anchor), None) => {
             // The school's segments, breaks and exam period when its calendar is the anchor or
@@ -610,6 +648,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
                 student_start: data.user_term_start,
                 student_end: data.user_term_end,
                 student_dates_confirmed,
+                own_calendar,
             }
         }
         (None, _) => TermResolution {
@@ -618,6 +657,7 @@ pub fn resolve_term(input: &TermInput<'_>) -> ResolvedTerm {
             student_start: data.user_term_start,
             student_end: data.user_term_end,
             student_dates_confirmed,
+            own_calendar,
             ..TermResolution::default()
         },
     };
@@ -717,8 +757,8 @@ fn calendar_anchor(in_force: &CalendarInForce) -> Option<Anchor> {
         start: first.first_class,
         end: segments.last().and_then(|s| s.last_class),
         // The student confirmed it, whoever read the dates (a scan too); V8 disagreement at
-        // acceptance caps it at Medium.
-        confidence: if in_force.disagrees_with_notes {
+        // acceptance, or a quote gone from a changed material since, caps it at Medium.
+        confidence: if in_force.disagrees_with_notes || in_force.stale {
             Confidence::Medium
         } else {
             Confidence::High
@@ -731,8 +771,8 @@ fn calendar_anchor(in_force: &CalendarInForce) -> Option<Anchor> {
 
 /// A course of the same session that puts week 1 a week or more from `own`'s, named with what
 /// this course's own week 1 comes from; `None` when they agree.
-fn disagreement(own: &Anchor, lent: &LentDates) -> Option<EvidenceItem> {
-    let days = days_between(week_one_monday(own.start), lent.monday()).abs();
+fn disagreement(own: &Anchor, own_first_week: u32, lent: &LentDates) -> Option<EvidenceItem> {
+    let days = days_between(week_one_of(own.start, own_first_week), lent.monday()).abs();
     (days >= DISAGREE_DAYS).then(|| {
         EvidenceItem::new(EvidenceCode::SameSessionDisagrees)
             .opt_text("course", lent.course.as_deref())

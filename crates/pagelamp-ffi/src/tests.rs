@@ -288,6 +288,7 @@ const MIRRORED: &[&str] = &[
     "RestoreOutcome",
     "PurgeReport",
     "CourseDatesInput",
+    "LocalFileUse",
     "BreakInput",
     "SegmentInput",
     // The courses of one session (alpha.2)

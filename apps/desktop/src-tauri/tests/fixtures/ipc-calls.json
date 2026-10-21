@@ -4,6 +4,10 @@
     "args": {}
   },
   {
+    "cmd": "activity",
+    "args": {}
+  },
+  {
     "cmd": "list_sources",
     "args": {}
   },
@@ -414,6 +418,18 @@
     }
   },
   {
+    "cmd": "open_material",
+    "args": {
+      "materialId": "contract-test-material"
+    }
+  },
+  {
+    "cmd": "reveal_material",
+    "args": {
+      "materialId": "contract-test-material"
+    }
+  },
+  {
     "cmd": "clear_keep_course_current",
     "args": {
       "course": "folder:contract-test/course/DEMO101"
@@ -667,6 +683,41 @@
       "modelBackend": {
         "kind": "codex"
       },
+      "version": 1
+    }
+  },
+  {
+    "cmd": "model_runs_here",
+    "args": {
+      "choice": {
+        "backend": {
+          "kind": "provider",
+          "provider_id": "contract-test-provider"
+        },
+        "model": "contract-test-model",
+        "effort": "lowest"
+      },
+      "ask": true
+    }
+  },
+  {
+    "cmd": "model_disclosure",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "runsHere": false
+    }
+  },
+  {
+    "cmd": "acknowledge_model_disclosure",
+    "args": {
+      "modelBackend": {
+        "kind": "provider",
+        "provider_id": "contract-test-provider"
+      },
+      "runsHere": false,
       "version": 1
     }
   },

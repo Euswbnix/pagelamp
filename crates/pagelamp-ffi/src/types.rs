@@ -41,13 +41,13 @@ use pagelamp_app::{
     Activity, ActivityItem, ActivityKind, AppErrorKind, AppStatus, ApplyDatesReport,
     ApplySkipReason, AutoSync, AutoSyncTrigger, BackupInfo, BreakInput, CalendarBatchEvent,
     CalendarRunOutcome, CourseCalendarView, CourseDatesInput, CourseLifecycleEntry, InstallKind,
-    LifecycleSummary, LostAfterPurge, McpClient, McpClientConfig, McpLaunch, McpNoteCode,
-    PurgeReport, ReadCalendarOptions, RemovalPreview, RemovalPreviewItem, RemovalReason,
-    RemovalReport, RemoveOptions, RemovedCourse, ReplacedDates, RestoreFailure, RestoreOutcome,
-    SegmentInput, SessionCourse, SessionCourses, SkippedCourse, SourceSyncResult, StartupTasks,
-    SyllabusOffer, SyncDue, SyncEvent, SyncPrefs, SyncRequest, SyncSummary, TemporaryLocation,
-    TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord, UpdatePrefs, WhatsNew,
-    WhatsNewTopic,
+    LifecycleSummary, LocalFileUse, LostAfterPurge, McpClient, McpClientConfig, McpLaunch,
+    McpNoteCode, PurgeReport, ReadCalendarOptions, RemovalPreview, RemovalPreviewItem,
+    RemovalReason, RemovalReport, RemoveOptions, RemovedCourse, ReplacedDates, RestoreFailure,
+    RestoreOutcome, SegmentInput, SessionCourse, SessionCourses, SkippedCourse, SourceSyncResult,
+    StartupTasks, SyllabusOffer, SyncDue, SyncEvent, SyncPrefs, SyncRequest, SyncSummary,
+    TemporaryLocation, TombstoneState, UpdateChannel, UpdateCheckOutcome, UpdateCheckRecord,
+    UpdatePrefs, WhatsNew, WhatsNewTopic,
 };
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, MaterialSharing, ModelErrorKind};
 use pagelamp_core::ai_gate::{ContextCourse, ContextSummary, LeftOutMaterial, LeftOutReason};
@@ -412,6 +412,8 @@ pub struct AiLabel {
     pub backend_label: String,
     pub model: String,
     pub created_at: Timestamp,
+    #[uniffi(default)]
+    pub on_device: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -459,6 +461,8 @@ pub struct TermResolution {
     pub student_end: Option<IsoDate>,
     #[uniffi(default = true)]
     pub student_dates_confirmed: bool,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -495,6 +499,7 @@ pub enum EvidenceCode {
     DatesAgree,
     SameSessionDisagrees,
     SameSessionSplit,
+    SameSessionUnlent,
     DatesMayBeWrong,
     SessionWindow,
     InstitutionCalendarMissing,
@@ -1176,6 +1181,7 @@ pub enum WhatsNewTopic {
     AutoSync,
     CanvasCoverage,
     CourseRemoval,
+    SyllabusReading,
 }
 
 #[uniffi::remote(Record)]
@@ -1211,12 +1217,15 @@ pub enum ActivityKind {
     Sync,
     Download,
     CodexInstall,
+    Generation,
 }
 
 #[uniffi::remote(Record)]
 pub struct ActivityItem {
     pub kind: ActivityKind,
     pub source_id: Option<String>,
+    #[uniffi(default)]
+    pub generation_id: Option<String>,
     pub started_at: Timestamp,
 }
 
@@ -1347,6 +1356,10 @@ pub struct AiBackendStatus {
     pub problems: Vec<BackendProblem>,
     pub disclosure: DisclosureFacts,
     pub disclosure_acknowledged: Option<u32>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure: Option<DisclosureFacts>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure_acknowledged: Option<u32>,
 }
 
 #[uniffi::remote(Record)]
@@ -1945,6 +1958,13 @@ pub enum LoginEvent {
     Done,
 }
 
+/// What a shell will do with a material's local file (`material_local_file`).
+#[uniffi::remote(Enum)]
+pub enum LocalFileUse {
+    Open,
+    Reveal,
+}
+
 // ----- the courses of one session ("apply these dates to my other courses") ------------------
 
 #[uniffi::remote(Record)]
@@ -1952,6 +1972,8 @@ pub struct SessionCourses {
     pub session: Option<String>,
     pub campus: Option<u8>,
     pub courses: Vec<SessionCourse>,
+    #[uniffi(default = false)]
+    pub copy_refused: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -1963,6 +1985,8 @@ pub struct SessionCourse {
     pub own_dates: bool,
     pub student_start: Option<IsoDate>,
     pub student_end: Option<IsoDate>,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
     pub week_one_monday: Option<IsoDate>,
     pub anchor: TermAnchorSource,
 }
@@ -1973,6 +1997,7 @@ pub enum ApplySkipReason {
     FromCourse,
     NoDates,
     DatesNotConfirmed,
+    OwnCalendar,
     UnknownCourse,
 }
 

@@ -29,9 +29,16 @@ impl Provider {
         Ok(Backend::Http(HttpDriver::new(self.profile, self.key)?))
     }
 
+    /// Whether this provider can't be used without a key.
     pub fn needs_key(&self) -> bool {
-        self.profile.auth != Auth::None
+        self.profile.auth != Auth::None && !key_optional(&self.profile)
     }
+}
+
+/// A custom server on this computer may take no key (many local servers don't), so it isn't
+/// set up as a keyless preset that PageLamp trusts to run its models here.
+pub(crate) fn key_optional(profile: &ProviderProfile) -> bool {
+    profile.id == "custom" && profile.on_device()
 }
 
 impl App {
@@ -67,11 +74,11 @@ impl App {
         let key = if profile.auth == Auth::None {
             None
         } else {
-            let key = api_key
-                .map(str::trim)
-                .filter(|k| !k.is_empty())
-                .ok_or_else(|| AppError::new(AppErrorKind::Invalid, "Enter the API key."))?;
-            Some(ApiKey::new(key))
+            let key = api_key.map(str::trim).filter(|k| !k.is_empty());
+            if key.is_none() && !key_optional(&profile) {
+                return Err(AppError::new(AppErrorKind::Invalid, "Enter the API key."));
+            }
+            key.map(ApiKey::new)
         };
         refuse_coding_plans(&profile, key.as_ref())?;
         let provider_id = provider_id(preset_id, &url);
@@ -97,11 +104,49 @@ impl App {
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         };
-        if let (Some(raw), true) = (&raw_key, profile.auth != Auth::None) {
+        // A custom server here added without a key: none of its is ever in the keychain.
+        let keyless = profile.auth != Auth::None && last4.is_none();
+        if let (Some(raw), true) = (
+            raw_key.as_ref().filter(|raw| !raw.is_empty()),
+            profile.auth != Auth::None,
+        ) {
             self.secrets.set(&key_account(&provider_id), raw)?;
+        } else if keyless {
+            // An entry an earlier provider at this address left is never read for this one
+            // (`KEYLESS`), but it goes now: only a keychain that can't be reached at all may
+            // keep it; one that holds it and won't delete it stops the add.
+            let account = key_account(&provider_id);
+            if let Err(err) = self.secrets.delete(&account)
+                && matches!(self.secrets.get(&account), Ok(Some(_)))
+            {
+                let mut err: AppError = err.into();
+                err.message = format!(
+                    "An earlier API key for this address is in the keychain, under \
+                     `{account}`, and couldn't be deleted ({}). Nothing was added; delete it \
+                     there, or try again when the keychain can be reached.",
+                    err.message
+                );
+                return Err(err);
+            }
         }
-        if let Err(err) = self.write_store()?.insert_model_provider(&row) {
-            let _ = self.secrets.delete(&key_account(&provider_id));
+        // The provider and whether it is keyless, together.
+        let inserted = self.write_store()?.in_transaction(|store| {
+            store.insert_model_provider(&row)?;
+            let mut ids = super::settings::keyless(store)?;
+            let changed = if keyless {
+                ids.insert(provider_id.clone())
+            } else {
+                ids.remove(&provider_id)
+            };
+            if changed {
+                store.set_setting(super::settings::KEYLESS, &ids)?;
+            }
+            Ok(())
+        });
+        if let Err(err) = inserted {
+            if !keyless {
+                let _ = self.secrets.delete(&key_account(&provider_id));
+            }
             return Err(err.into());
         }
         Ok(record(&row, &profile, last4))
@@ -114,7 +159,7 @@ impl App {
         api_key: &str,
     ) -> Result<ModelProviderRecord> {
         let provider = self.provider(provider_id)?;
-        if !provider.needs_key() {
+        if provider.profile.auth == Auth::None {
             return Err(AppError::new(
                 AppErrorKind::Invalid,
                 format!("{} doesn't use a key.", provider.profile.display_name),
@@ -128,8 +173,51 @@ impl App {
         refuse_coding_plans(&provider.profile, Some(&key))?;
         let last4 = key.last4();
         check_access(provider.profile.clone(), Some(key)).await?;
-        self.secrets.set(&key_account(provider_id), trimmed)?;
-        Ok(record(&provider.row, &provider.profile, Some(last4)))
+        // The key, then (in one transaction) the provider still there and no longer keyless. A
+        // keychain that doesn't take the key changes nothing; a provider removed meanwhile
+        // (another process) takes the key with it again.
+        let was_keyless = super::settings::keyless(&self.read_store()?)?.contains(provider_id);
+        let account = key_account(provider_id);
+        self.secrets.set(&account, trimmed)?;
+        let kept = self.write_store().and_then(|store| {
+            Ok(store.in_transaction(|store| {
+                if store.model_provider(provider_id)?.is_none() {
+                    return Ok(false);
+                }
+                let mut ids = super::settings::keyless(store)?;
+                if ids.remove(provider_id) {
+                    store.set_setting(super::settings::KEYLESS, &ids)?;
+                }
+                Ok(true)
+            })?)
+        });
+        match kept {
+            Ok(true) => Ok(record(&provider.row, &provider.profile, Some(last4))),
+            Ok(false) => match forget_key_after(&*self.secrets, &provider.row, false) {
+                None => Err(unknown_provider(provider_id)),
+                Some(left) => Err(AppError::new(
+                    AppErrorKind::Internal,
+                    format!(
+                        "{} was removed while the new key was being checked, and the new key \
+                         couldn't be deleted from the keychain ({}): it {} under `{account}`. \
+                         Delete it in your keychain.",
+                        provider.row.label, left.reason, left.where_
+                    ),
+                )),
+            },
+            // The key stays: a keyless provider never reads it, and its removal deletes it.
+            // Any other provider already uses it: say so.
+            Err(mut err) => {
+                if !was_keyless {
+                    err.message = format!(
+                        "The new API key is stored in the keychain under `{account}` and replaces \
+                         the old one, so {} will use it, but PageLamp couldn't finish the update: {}",
+                        provider.row.label, err.message
+                    );
+                }
+                Err(err)
+            }
+        }
     }
 
     /// Remove a provider: its row, its key and every setting that refers to it.
@@ -138,23 +226,41 @@ impl App {
         let row = store
             .model_provider(provider_id)?
             .ok_or_else(|| unknown_provider(provider_id))?;
-        store.delete_model_provider(provider_id)?;
-        if uses_key(&row) {
-            self.secrets.delete(&key_account(provider_id))?;
+        // The key first: if it can't be deleted, nothing changes and the removal can be tried
+        // again. Then the row and every setting that refers to it, together.
+        let keyless = super::settings::keyless(&store)?.contains(provider_id);
+        forget_key(&*self.secrets, &row, keyless)?;
+        store.in_transaction(|store| {
+            store.delete_model_provider(provider_id)?;
+            super::settings::forget_backend(
+                store,
+                &BackendRef::Provider {
+                    provider_id: provider_id.to_string(),
+                },
+            )
+        })?;
+        // Once more, now that the row is gone: a key an update stored meanwhile goes too.
+        if let Some(left) = forget_key_after(&*self.secrets, &row, keyless) {
+            return Err(AppError::new(
+                AppErrorKind::Internal,
+                format!(
+                    "{} was removed, but an API key stored for it meanwhile couldn't be deleted \
+                     from the keychain ({}): it {} under `{}`. Delete it in your keychain.",
+                    row.label,
+                    left.reason,
+                    left.where_,
+                    key_account(&row.id)
+                ),
+            ));
         }
-        super::settings::forget_backend(
-            &store,
-            &BackendRef::Provider {
-                provider_id: provider_id.to_string(),
-            },
-        )?;
         Ok(())
     }
 
     /// A stored provider with its key (`NotFound` if there is none; the key may be missing).
     pub(crate) fn provider(&self, provider_id: &str) -> Result<Provider> {
         let row = self.provider_row(provider_id)?;
-        provider_from_row(row, &*self.secrets)
+        let keyless = super::settings::keyless(&self.read_store()?)?.contains(provider_id);
+        provider_from_row(row, &*self.secrets, keyless)
     }
 
     /// The provider behind `backend`, with its key: for calls that reach the provider
@@ -181,8 +287,10 @@ impl App {
         store: &Store,
     ) -> Result<Vec<(ModelProviderRecord, Provider)>> {
         let mut records = Vec::new();
+        let keyless = super::settings::keyless(store)?;
         for row in store.model_providers()? {
-            let provider = provider_from_row(row, &*self.secrets)?;
+            let keyless = keyless.contains(&row.id);
+            let provider = provider_from_row(row, &*self.secrets, keyless)?;
             let last4 = provider.key.as_ref().map(ApiKey::last4);
             records.push((record(&provider.row, &provider.profile, last4), provider));
         }
@@ -218,17 +326,91 @@ pub(crate) fn uses_key(row: &ProviderRow) -> bool {
     profile::preset(&row.preset).is_none_or(|preset| preset.auth != Auth::None)
 }
 
+/// `keyless`: added without a key and never given one (`KEYLESS`): the keychain isn't read.
 fn provider_from_row(
     row: ProviderRow,
     secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    keyless: bool,
 ) -> Result<Provider> {
     let profile = profile_from_row(&row)?;
-    let key = if profile.auth == Auth::None {
+    let key = if profile.auth == Auth::None || keyless {
         None
     } else {
-        secrets.get(&key_account(&row.id))?.map(|k| ApiKey::new(&k))
+        match secrets.get(&key_account(&row.id)) {
+            Ok(key) => key.map(|k| ApiKey::new(&k)),
+            // A custom server here may take no key: where the keychain can't be read, it is
+            // used without one (a server that wants one says so).
+            Err(err) if key_optional(&profile) => {
+                tracing::warn!(target: "pagelamp::ai", "no keychain for a keyless server: {err}");
+                None
+            }
+            Err(err) => return Err(err.into()),
+        }
     };
     Ok(Provider { row, profile, key })
+}
+
+/// Delete a provider's key from the keychain. A failed delete counts only when no key is
+/// provably left: the keychain then says there is no such entry, or, for a provider added
+/// without a key (`keyless`), the keychain can't be reached at all. Otherwise the error says
+/// the key is still there, and the caller changes nothing.
+pub(crate) fn forget_key(
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    row: &ProviderRow,
+    keyless: bool,
+) -> Result<()> {
+    if !uses_key(row) {
+        return Ok(());
+    }
+    let account = key_account(&row.id);
+    let Err(err) = secrets.delete(&account) else {
+        return Ok(());
+    };
+    match secrets.get(&account) {
+        Ok(None) => return Ok(()),
+        Err(_) if keyless => return Ok(()),
+        _ => {}
+    }
+    let mut err: AppError = err.into();
+    err.message = format!(
+        "The API key of {} couldn't be deleted from the keychain ({}): it is still there, under \
+         `{account}`. Nothing was removed; try again when the keychain can be reached.",
+        row.label, err.message
+    );
+    Err(err)
+}
+
+/// A key that may be left behind after its provider went (`forget_key_after`).
+pub(crate) struct KeyLeft {
+    /// The keychain's reason.
+    pub reason: String,
+    /// "is still", or "may still be" when the keychain can't say.
+    pub where_: &'static str,
+}
+
+/// Delete a provider's key once more after its row went (a key an update stored meanwhile
+/// goes too). No entry counts as done, and so, for a keyless provider, does a keychain that
+/// can't be reached at all; otherwise what may be left.
+pub(crate) fn forget_key_after(
+    secrets: &dyn pagelamp_core::secrets::SecretBackend,
+    row: &ProviderRow,
+    keyless: bool,
+) -> Option<KeyLeft> {
+    if !uses_key(row) {
+        return None;
+    }
+    let account = key_account(&row.id);
+    let err = secrets.delete(&account).err()?;
+    let where_ = match secrets.get(&account) {
+        Ok(None) => return None,
+        Err(_) if keyless => return None,
+        Ok(Some(_)) => "is still",
+        Err(_) => "may still be",
+    };
+    Some(KeyLeft {
+        reason: AppError::from(err).message,
+        where_,
+    })
 }
 
 /// Refuse coding-plan endpoints and keys, quoting the vendor (before any network call).

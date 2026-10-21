@@ -6,7 +6,7 @@
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "ActivityKind".
  */
-export type ActivityKind = "sync" | "download" | "codex_install";
+export type ActivityKind = "sync" | "download" | "codex_install" | "generation";
 /**
  * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
  * via the `definition` "AdminVisibility".
@@ -226,7 +226,12 @@ export type SourceErrorKind =
  * via the `definition` "ApplySkipReason".
  */
 export type ApplySkipReason =
-  "not_same_session" | "from_course" | "no_dates" | "dates_not_confirmed" | "unknown_course";
+  | "not_same_session"
+  | "from_course"
+  | "no_dates"
+  | "dates_not_confirmed"
+  | "own_calendar"
+  | "unknown_course";
 /**
  * How often PageLamp syncs by itself while it runs.
  *
@@ -707,6 +712,7 @@ export type EvidenceCode =
   | "dates_agree"
   | "same_session_disagrees"
   | "same_session_split"
+  | "same_session_unlent"
   | "dates_may_be_wrong"
   | "session_window"
   | "institution_calendar_missing"
@@ -762,6 +768,13 @@ export type EvidenceSignal = ("module_unlock" | "recent_materials" | "latest_mat
  * via the `definition` "LeftOutReason".
  */
 export type LeftOutReason = ("external_link" | "no_text") | "looks_like_assessment" | "over_budget";
+/**
+ * What a shell will do with a material's local file.
+ *
+ * This interface was referenced by `PageLampAppTypes`'s JSON-Schema
+ * via the `definition` "LocalFileUse".
+ */
+export type LocalFileUse = "open" | "reveal";
 /**
  * `codex_login` progress.
  *
@@ -904,7 +917,12 @@ export type SnoozeKind = "not_now" | "keep";
  * via the `definition` "WhatsNewTopic".
  */
 export type WhatsNewTopic =
-  "update_check" | "course_weeks" | "auto_sync" | "canvas_coverage" | "course_removal";
+  | "update_check"
+  | "course_weeks"
+  | "auto_sync"
+  | "canvas_coverage"
+  | "course_removal"
+  | "syllabus_reading";
 /**
  * Progress stream of a sync run (desktop forwards these through a `tauri::ipc::Channel`).
  *
@@ -1070,6 +1088,7 @@ export interface PageLampAppTypes {
   gen_stage: GenStage;
   generation_meta: GenerationMeta;
   lifecycle_summary: LifecycleSummary;
+  local_file_use: LocalFileUse;
   local_server: LocalServer;
   local_server_kind: LocalServerKind;
   login_event: LoginEvent;
@@ -1147,9 +1166,13 @@ export interface Activity {
  * via the `definition` "ActivityItem".
  */
 export interface ActivityItem {
+  /**
+   * A generation's id (a batch's for a batch): `cancel_generation` stops it.
+   */
+  generation_id?: string | null;
   kind: ActivityKind;
   /**
-   * The one source it works on; `None` for `sync_all`.
+   * The one source it works on; `None` for `sync_all` and a generation.
    */
   source_id?: string | null;
   started_at: string;
@@ -1160,6 +1183,15 @@ export interface ActivityItem {
  */
 export interface AiBackendStatus {
   backend: BackendRef;
+  /**
+   * For a server on this computer that may run a model in the cloud (any but LM Studio;
+   * every model of a server other than Ollama): the note for such a model, acknowledged
+   * apart (`acknowledge_model_disclosure(backend, false, …)`); `disclosure` is then the one
+   * for the models it runs here. `state` counts the note each routed model needs, or either
+   * note when none is routed to it.
+   */
+  cloud_disclosure?: DisclosureFacts | null;
+  cloud_disclosure_acknowledged?: number | null;
   disclosure: DisclosureFacts;
   /**
    * The disclosure version the student acknowledged, if any.
@@ -1589,6 +1621,10 @@ export interface AiLabel {
   backend_label: string;
   created_at: string;
   model: string;
+  /**
+   * The model ran on this computer ("on-device model — check the dates", §7.12).
+   */
+  on_device?: boolean;
 }
 /**
  * An accepted or proposed course calendar (built by core, stored as `calendar_json`).
@@ -2333,6 +2369,12 @@ export interface TermResolution {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
   /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the
@@ -3166,6 +3208,12 @@ export interface SessionCourses {
    */
   campus?: number | null;
   /**
+   * The course's calendar in force can't be copied (two parts, a first week other than
+   * week 1, no last day of classes, or a break that skips a week:
+   * `CourseCalendar::carried_by_two_dates`): `apply_course_dates_to` refuses it.
+   */
+  copy_refused?: boolean;
+  /**
    * The other courses of the same session, section group and campus: removed ones left out,
    * hidden ones in (`hidden`), the course itself not listed.
    */
@@ -3187,13 +3235,19 @@ export interface SessionCourse {
   hidden: boolean;
   name: string;
   /**
+   * It counts its weeks from a calendar of its own (accepted from its syllabus or saved with
+   * the dates form): applying leaves it alone (`ApplySkipReason::OwnCalendar`).
+   */
+  own_calendar: boolean;
+  /**
    * The student set dates in that course (dates from PageLamp 0.1 included): applying
-   * replaces them.
+   * replaces them, unless the course has a calendar of its own (`own_calendar`).
    */
   own_dates: boolean;
   student_end?: string | null;
   /**
-   * Those dates as saved; both `None` without own dates.
+   * Those dates as saved; both `None` without own dates. With a calendar of its own, its
+   * span as mirrored there (the end can be the end of exams).
    */
   student_start?: string | null;
   /**
@@ -3577,6 +3631,12 @@ export interface TermResolution1 {
    * Never used to count weeks.
    */
   outer_frame?: DateSpan | null;
+  /**
+   * The course counts its weeks from a calendar of its own in force (accepted from its
+   * syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+   * only mirror that calendar's span, and saving them changes nothing.
+   */
+  own_calendar: boolean;
   /**
    * False exactly when the course has dates of the student's (`student_start` or
    * `student_end`) that the student never confirmed: dates from PageLamp 0.1, not in the

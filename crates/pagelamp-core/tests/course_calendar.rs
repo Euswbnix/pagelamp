@@ -1203,7 +1203,45 @@ fn user_calendar(draft: &DatesDraft) -> CalendarInForce {
         origin: CalendarOrigin::User,
         ai_label: None,
         disagrees_with_notes: false,
+        stale: false,
     }
+}
+
+/// A calendar from "Week 0" (first class 09-08) has week 1 in the week of 09-14: materials that
+/// number week 1 from that week agree with it, an LMS term from the first class agrees too, and
+/// the course's week 1 is that week's Monday.
+#[test]
+fn a_week_zero_calendar_agrees_with_materials_that_number_week_one() {
+    let mut case = Case::new(
+        dem332(),
+        canvas_term("Fall 2026", "2026-09-08", "2026-12-08"),
+    );
+    let mut calendar = user_calendar(&DatesDraft {
+        first_class: date("2026-09-08"),
+        last_class: Some(date("2026-12-08")),
+        exams_end: None,
+        breaks: vec![],
+        second_segment: None,
+    });
+    calendar.calendar.segments[0].first_week_number = 0;
+    case.calendar = Some(calendar);
+    case.materials = (1..=4i64)
+        .map(|w| {
+            let day = date("2026-09-15") + chrono::TimeDelta::days(7 * (w - 1));
+            material(
+                &format!("w{w}"),
+                &format!("Week {w} slides"),
+                &format!("{day}T12:00:00Z"),
+            )
+        })
+        .collect();
+    let t = case.timeline("2026-10-16");
+    assert_eq!(t.term.week_one_monday, Some(date("2026-09-14")));
+    assert!(
+        !t.evidence.iter().any(|line| line.contains("may be wrong")),
+        "{:?}",
+        t.evidence
+    );
 }
 
 /// The fall course of CAL-20: classes 09-08 (Tuesday) to 12-08, reading week 10-26..10-30,
@@ -1252,6 +1290,14 @@ fn reading_week_from_confirmed_calendar() {
     assert_eq!(
         (disputed.current_week, disputed.confidence),
         (Some(8), Confidence::Medium)
+    );
+    // So does one whose quoted syllabus changed and lost a quote (§7.8).
+    let mut stale = user_calendar(&fall_draft(false));
+    stale.stale = true;
+    case.calendar = Some(stale);
+    assert_eq!(
+        case.timeline("2026-11-02").term.anchor_confidence,
+        Confidence::Medium
     );
     case.calendar = Some(user_calendar(&fall_draft(false)));
     assert!(
@@ -1941,6 +1987,7 @@ fn lent(kind: DonorKind, start: &str, end: Option<&str>, exams_end: Option<&str>
         start: date(start),
         end: end.map(date),
         exams_end: exams_end.map(date),
+        first_week: 1,
     })
 }
 

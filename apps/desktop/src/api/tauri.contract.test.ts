@@ -45,6 +45,7 @@ it("sends the commands and arguments the Rust side expects", async () => {
   const onEvent = () => {};
 
   await api.status();
+  await api.activity();
   await api.listSources();
   await api.addCanvasSource(OFFLINE_CANVAS_URL, "contract-test-token");
   await api.addFolderSource("/tmp/contract-test-courses", "2026-09-08", "Courses");
@@ -131,6 +132,8 @@ it("sends the commands and arguments the Rust side expects", async () => {
     () => {},
   );
   await api.cancelGeneration("contract-test-generation");
+  await api.openMaterial("contract-test-material");
+  await api.revealMaterial("contract-test-material");
   await api.clearKeepCourseCurrent(COURSE);
   await api.confirmCourseDates(COURSE);
   await api.mcpClientConfigs();
@@ -168,6 +171,12 @@ it("sends the commands and arguments the Rust side expects", async () => {
   await api.setFeatureModel("weekly_note", { backend: PROVIDER, model: "m", effort: "lowest" });
   await api.setFeatureModel("weekly_note", null);
   await api.acknowledgeAiDisclosure({ kind: "codex" }, 1);
+  await api.modelRunsHere(
+    { backend: PROVIDER, model: "contract-test-model", effort: "lowest" },
+    true,
+  );
+  await api.modelDisclosure(PROVIDER, false);
+  await api.acknowledgeModelDisclosure(PROVIDER, false, 1);
   await api.acknowledgeUnpricedModel(PROVIDER, "contract-test-model");
   await api.setMonthlyBudget(5_000_000);
   await api.setMonthlyBudget(null);

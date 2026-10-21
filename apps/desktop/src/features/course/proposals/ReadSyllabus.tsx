@@ -2,12 +2,12 @@ import { ScanSearch } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import type { EstimateRequest } from "@/api/ai";
+import { type EstimateRequest, materialSharing } from "@/api/ai";
 import { useCostEstimate } from "@/api/ai-queries";
 import { useCourseCalendar, useScanCourseCalendar } from "@/api/proposalQueries";
 import type { Course } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { GenerateButton } from "@/features/ai/GenerateButton";
+import { GenerateButton, GenerateSteps } from "@/features/ai/GenerateButton";
 import {
   MaterialSharingReminder,
   SharingNotAllowedNotice,
@@ -17,7 +17,11 @@ import { paths } from "@/lib/routes";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { translateWithText } from "../timeline/evidence";
 import { COURSE_BLOCKS, useBlockText } from "./blockText";
-import { type ReadingState, useCalendarReading } from "./useCalendarReading";
+import {
+  type ReadingState,
+  useCalendarReading,
+  useCloseAnsweredReminders,
+} from "./useCalendarReading";
 
 /** The "Read with AI" heading: where the stale banner's "Read the syllabus again" goes. */
 export const READ_SYLLABUS_HEADING = "read-syllabus-heading";
@@ -42,7 +46,9 @@ export function ReadSyllabus({ course }: { course: Course }) {
   const sharingNotAllowed = estimate.data?.would_block === "material_sharing_not_allowed";
   // §7.12: without a model the button says so and leads to Settings, nothing more.
   const noModel = estimate.data?.would_block === "no_model_chosen";
-  const { state } = reading;
+  const { state, reminder, settle } = reading;
+  // Question (b) answered outside the app meanwhile: the reminder is done.
+  useCloseAnsweredReminders(new Map([[course.id, materialSharing(course)]]));
 
   return (
     <div className="space-y-6">
@@ -55,30 +61,37 @@ export function ReadSyllabus({ course }: { course: Course }) {
           </h3>
           <p className="text-sm text-muted-foreground">{t("reading.aiHint")}</p>
         </div>
-        {courseBlock ? (
-          <p className="text-sm">{blockText(courseBlock)}</p>
-        ) : sharingNotAllowed ? (
-          <SharingNotAllowedNotice courseId={course.id} courseName={name} />
-        ) : state.phase === "running" ? (
-          <ReadingProgress state={state} onStop={() => void reading.stop()} />
-        ) : noModel ? (
-          <Button asChild variant="outline">
-            <Link to={paths.settings}>{t("reading.setUp")}</Link>
-          </Button>
-        ) : (
-          <GenerateButton
-            request={request}
-            label={t("reading.readWithAi")}
-            onGenerate={({ overrideBudget }) => void reading.start(overrideBudget)}
-          />
-        )}
+        {/* The steps before Generate outlive a swap of it (e.g. a note still being read). */}
+        <GenerateSteps fallbackFocus={() => document.getElementById(READ_SYLLABUS_HEADING)}>
+          {courseBlock ? (
+            <p className="text-sm">{blockText(courseBlock)}</p>
+          ) : sharingNotAllowed ? (
+            <SharingNotAllowedNotice courseId={course.id} courseName={name} />
+          ) : state.phase === "running" ? (
+            <ReadingProgress state={state} onStop={() => void reading.stop()} />
+          ) : noModel ? (
+            <Button asChild variant="outline">
+              <Link to={paths.settings}>{t("reading.setUp")}</Link>
+            </Button>
+          ) : (
+            <GenerateButton
+              request={request}
+              label={t("reading.readWithAi")}
+              onGenerate={({ overrideBudget }) => void reading.start(overrideBudget)}
+            />
+          )}
+        </GenerateSteps>
         <ReadingOutcome state={state} />
-        {state.phase === "done" && state.reminder ? (
+        {reminder ? (
           <MaterialSharingReminder
             courseId={course.id}
             courseName={name}
-            service={state.backend}
-            onClose={reading.settle}
+            service={reminder.service}
+            onClose={() => {
+              settle();
+              // Not to the page: back to the section.
+              requestAnimationFrame(() => document.getElementById(READ_SYLLABUS_HEADING)?.focus());
+            }}
           />
         ) : null}
       </section>

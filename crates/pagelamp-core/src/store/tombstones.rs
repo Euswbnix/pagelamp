@@ -17,6 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use chrono::Duration;
 use rusqlite::{Row, params};
 
+use super::migrate_v4::MIGRATED_FINGERPRINT;
 use super::{Store, TextValue, expect_changed, get_opt_value, get_value, opt_date_text, ts_text};
 use crate::Result;
 use crate::calendar::CourseCalendar;
@@ -361,7 +362,11 @@ impl Store {
                 // proposed again in full.
                 let origin = s.calendar_origin.unwrap_or(CalendarOrigin::Restored);
                 let fingerprint = match s.calendar_fingerprint.as_deref() {
-                    Some(kept) if kept == "legacy" || origin == CalendarOrigin::User => kept,
+                    Some(kept)
+                        if kept == MIGRATED_FINGERPRINT || origin == CalendarOrigin::User =>
+                    {
+                        kept
+                    }
                     _ => "restored",
                 };
                 self.conn.execute(

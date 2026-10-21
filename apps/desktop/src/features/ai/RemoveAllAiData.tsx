@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCodexStatus, useRemoveAllAiData } from "@/api/ai-queries";
+import { toApiError } from "@/api/errors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { TechnicalDetails } from "@/features/sources/TechnicalDetails";
 import { useAiErrorText } from "./useAiErrorText";
 
 /**
@@ -43,7 +45,15 @@ export function RemoveAllAiData() {
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t pt-4">
       <p className="min-w-0 flex-1 basis-64 text-sm text-muted-foreground">{t("removeAll.hint")}</p>
       <AlertDialog open={open} onOpenChange={setOpen}>
-        <Button type="button" variant="destructive" onClick={() => setOpen(true)}>
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={() => {
+            // A new try: an earlier one's error isn't this one's.
+            remove.reset();
+            setOpen(true);
+          }}
+        >
           {t("removeAll.button")}
         </Button>
         <AlertDialogContent>
@@ -54,9 +64,22 @@ export function RemoveAllAiData() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {remove.error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {errorText(remove.error)}
-            </p>
+            <div className="space-y-1">
+              <p role="alert" className="text-sm text-destructive">
+                {/* Busy here is something still in use (a provider added meanwhile, Codex
+                    running), not a sync: said as such. */}
+                {toApiError(remove.error).kind === "busy"
+                  ? signedInToChatGpt
+                    ? t("removeAll.busyCodex")
+                    : t("removeAll.busy")
+                  : errorText(remove.error)}
+              </p>
+              {/* What was removed and what stayed (a key the keychain kept), as the app said. */}
+              <TechnicalDetails
+                lines={[toApiError(remove.error).message]}
+                subject={t("removeAll.button")}
+              />
+            </div>
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>

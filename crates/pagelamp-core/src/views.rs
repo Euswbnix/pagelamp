@@ -17,11 +17,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auto_sync::{self, AutoSync, LightSync};
+use crate::calendar::CalendarInForce;
 use crate::coverage::{self, CoverageReason, CoverageView};
 use crate::dates::{Tz, course_date, time_zone};
 use crate::lifecycle::{self, LifecycleInput};
 use crate::model::*;
-use crate::store::Store;
+use crate::store::{MIGRATED_FINGERPRINT, Store};
 use crate::term::phase::teaching_week_on;
 use crate::term::same_session::{self, Donor, DonorInput, Lend};
 use crate::term::session::{SessionKey, session_hint};
@@ -468,9 +469,13 @@ pub fn list_courses(store: &Store, include_hidden: bool, at: AsOf) -> Result<Vec
 #[derive(Clone, Debug)]
 pub struct SessionCourseView {
     pub course: Course,
-    /// The student's own first and last day of classes as saved (0.1 dates included).
+    /// The student's own first and last day of classes as saved (0.1 dates included; with a
+    /// calendar in force, its span as mirrored there).
     pub student_start: Option<NaiveDate>,
     pub student_end: Option<NaiveDate>,
+    /// It counts its weeks from a calendar of its own (accepted from its syllabus or saved with
+    /// the dates form), not from `student_*`.
+    pub own_calendar: bool,
     /// The dates that count its weeks now, lent ones included.
     pub term: TermResolution,
 }
@@ -516,6 +521,7 @@ pub fn session_courses(store: &Store, course: &Course, at: AsOf) -> Result<Sessi
         view.courses.push(SessionCourseView {
             student_start: data.term_data.user_term_start,
             student_end: data.term_data.user_term_end,
+            own_calendar: data.calendar.is_some(),
             term: resolved.resolution,
             course: other,
         });
@@ -1101,6 +1107,60 @@ pub(crate) struct CourseData {
     module_names: HashMap<String, String>,
     module_weeks: HashMap<String, u32>,
     chunk_counts: HashMap<String, u32>,
+    /// The course's accepted calendar (schema v4), the resolver's first anchor.
+    calendar: Option<CalendarInForce>,
+    /// What the Timeline tab says about calendars: in force (stale or not), proposed, none.
+    calendar_status: CalendarStatus,
+}
+
+/// The course's calendar in force (accepted from its syllabus or saved with the dates form), as
+/// the resolver reads it: `None` without one, and for a 0.1 override the v4 data step carried
+/// over (`user_term_*` hold that one).
+pub fn calendar_of(store: &Store, course_id: &str) -> Result<Option<CalendarInForce>> {
+    Ok(calendar_in_force(store, course_id)?.0)
+}
+
+/// The course's calendar in force and its status (§7.8: stale when a quote is gone from a
+/// changed material; proposed when only proposals wait).
+fn calendar_in_force(
+    store: &Store,
+    course_id: &str,
+) -> Result<(Option<CalendarInForce>, CalendarStatus)> {
+    let Some(row) = store.accepted_calendar(course_id)? else {
+        let status = if store.calendar_proposals(course_id)?.is_empty() {
+            CalendarStatus::NoCalendar
+        } else {
+            CalendarStatus::Proposed
+        };
+        return Ok((None, status));
+    };
+    // A 0.1 override carried over by the v4 data step: `user_term_*` still hold it, and the
+    // resolver reads them as before (plausibility checks, a borrowed end).
+    if row.fingerprint == MIGRATED_FINGERPRINT {
+        return Ok((None, CalendarStatus::Accepted));
+    }
+    let stale = store.calendar_staleness(&row)?.stale;
+    let ai_label = row.provenance.as_ref().map(|p| AiLabel {
+        backend_label: p.backend_label.clone(),
+        model: p.model.clone(),
+        created_at: row.created_at,
+        on_device: p.on_device,
+    });
+    let status = if stale {
+        CalendarStatus::AcceptedStale
+    } else {
+        CalendarStatus::Accepted
+    };
+    Ok((
+        Some(CalendarInForce {
+            calendar: row.calendar,
+            origin: row.origin,
+            ai_label,
+            disagrees_with_notes: row.checks.disagrees_with_notes,
+            stale,
+        }),
+        status,
+    ))
 }
 
 /// The courses whose student dates are confirmed (`CONFIRMED_DATES_KEY`). A value that
@@ -1126,10 +1186,12 @@ fn session_key(course: &Course, data: &CourseTermData) -> Option<SessionKey> {
 
 /// What `course` lends the other courses of its session, from its own rows with nothing lent to
 /// it (`same_session::donor`; no chains).
+#[allow(clippy::too_many_arguments)]
 fn donor_of(
     course: &Course,
     term_data: &CourseTermData,
     dates_confirmed: bool,
+    calendar: Option<&CalendarInForce>,
     modules: &[Module],
     materials: &[Material],
     events: &[Event],
@@ -1140,8 +1202,7 @@ fn donor_of(
         course,
         data: term_data,
         dates_confirmed,
-        // Accepted calendars reach the views with schema v4's B6 (`CourseData::input`).
-        calendar: None,
+        calendar,
         modules,
         materials,
         events,
@@ -1154,7 +1215,7 @@ fn donor_of(
     same_session::donor(&DonorInput {
         course,
         data: term_data,
-        calendar: None,
+        calendar,
         resolved: &resolved,
         modules,
         today: at.today,
@@ -1246,10 +1307,14 @@ impl SessionLends {
                 DateTime::<Utc>::MAX_UTC,
                 Some(&course.id),
             )?;
+            // A calendar in force lends its own classes and exams (`user_term_*` only mirror
+            // its span, the end of exams included).
+            let (calendar, _) = calendar_in_force(store, &course.id)?;
             let donor = donor_of(
                 &course,
                 &data,
                 confirmed.contains(&course.id),
+                calendar.as_ref(),
                 &modules,
                 &materials,
                 &events,
@@ -1312,7 +1377,10 @@ impl CourseData {
             .iter()
             .filter_map(|m| Some((m.id.clone(), m.week_hint?)))
             .collect();
+        let (calendar, calendar_status) = calendar_in_force(store, &course.id)?;
         Ok(CourseData {
+            calendar,
+            calendar_status,
             materials: store.list_materials(&course.id)?,
             events: store.list_events(
                 DateTime::<Utc>::MIN_UTC,
@@ -1356,8 +1424,7 @@ impl CourseData {
             course,
             data: &self.term_data,
             dates_confirmed: self.dates_confirmed,
-            // Accepted calendars live in schema v4 (alpha.2); none before that.
-            calendar: None,
+            calendar: self.calendar.as_ref(),
             modules: &self.modules,
             materials: &self.materials,
             events: &self.events,
@@ -1410,7 +1477,8 @@ impl CourseData {
     ) -> (ResolvedTerm, CourseTimeline) {
         let input = self.input(course, at, lend, show_hidden);
         let resolved = resolve_term(&input);
-        let timeline = timeline::infer_timeline(&input, &resolved);
+        let mut timeline = timeline::infer_timeline(&input, &resolved);
+        timeline.calendar = self.calendar_status;
         (resolved, timeline)
     }
 
@@ -1420,6 +1488,7 @@ impl CourseData {
             course,
             &self.term_data,
             self.dates_confirmed,
+            self.calendar.as_ref(),
             &self.modules,
             &self.materials,
             &self.events,

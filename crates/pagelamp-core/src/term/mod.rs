@@ -238,6 +238,9 @@ pub struct AiLabel {
     pub backend_label: String,
     pub model: String,
     pub created_at: Timestamp,
+    /// The model ran on this computer ("on-device model — check the dates", §7.12).
+    #[serde(default)]
+    pub on_device: bool,
 }
 
 /// One stretch of teaching: one for a one-term course, two for a full-year course.
@@ -326,6 +329,10 @@ pub struct TermResolution {
     /// `CONFIRMED_DATES_KEY` list. Saving them confirms them; only confirmed dates can be
     /// copied to the other courses of the session.
     pub student_dates_confirmed: bool,
+    /// The course counts its weeks from a calendar of its own in force (accepted from its
+    /// syllabus or saved with the dates form; a migrated 0.1 override is none): its term dates
+    /// only mirror that calendar's span, and saving them changes nothing.
+    pub own_calendar: bool,
 }
 
 impl Default for TermResolution {
@@ -344,6 +351,7 @@ impl Default for TermResolution {
             student_start: None,
             student_end: None,
             student_dates_confirmed: true,
+            own_calendar: false,
         }
     }
 }

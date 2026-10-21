@@ -149,12 +149,16 @@ export const MOCK_PRESETS: ProviderPreset[] = [
   },
 ];
 
-/** The facts of an Ollama cloud model: served through the local daemon, not on this computer. */
-export function ollamaCloudFacts(base: DisclosureFacts): DisclosureFacts {
+/**
+ * The note of a model that a server on this computer may run in the cloud (an Ollama model it
+ * lists as remote, any model of a custom server here), like the facade's
+ * `cloud_via_local_disclosure`: acknowledged apart from the server's own note.
+ */
+export function cloudViaLocalFacts(base: DisclosureFacts): DisclosureFacts {
   return {
     ...base,
     version: base.version + 50,
-    recipient: { name: "Ollama", terms_url: "https://ollama.demo.test/cloud-terms" },
+    training: { kind: "unknown" },
     retention: { kind: "provider_terms" },
     cost: "cloud_via_local",
     on_device: false,

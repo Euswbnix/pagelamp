@@ -78,6 +78,7 @@ const WHATS_NEW: &[(WhatsNewTopic, &str)] = &[
     (WhatsNewTopic::AutoSync, "0.3.0-alpha.1"),
     (WhatsNewTopic::CanvasCoverage, "0.3.0-alpha.1"),
     (WhatsNewTopic::CourseRemoval, "0.3.0-alpha.2"),
+    (WhatsNewTopic::SyllabusReading, "0.3.0-alpha.3"),
 ];
 
 /// Where updates come from.
@@ -122,6 +123,9 @@ pub enum WhatsNewTopic {
     CanvasCoverage,
     /// Removing finished courses: 7 days to undo, the student's own folders untouched.
     CourseRemoval,
+    /// AI reads a syllabus into cited date proposals; setting up a model (including the
+    /// ChatGPT plan) comes with it.
+    SyllabusReading,
 }
 
 /// What's new since `since` (`None`: an update from 0.1, which didn't record its version).
@@ -425,18 +429,26 @@ mod tests {
             AutoSync,
             CanvasCoverage,
             CourseRemoval,
+            SyllabusReading,
         ];
         assert_eq!(topics_since(None), all);
         assert_eq!(topics_since(Some("0.1.0")), all);
-        assert_eq!(topics_since(Some("0.3.0-alpha.1")), [CourseRemoval]);
-        assert!(topics_since(Some("0.3.0-alpha.2")).is_empty());
+        assert_eq!(
+            topics_since(Some("0.3.0-alpha.1")),
+            [CourseRemoval, SyllabusReading]
+        );
+        assert_eq!(topics_since(Some("0.3.0-alpha.2")), [SyllabusReading]);
+        assert!(topics_since(Some("0.3.0-alpha.3")).is_empty());
         assert!(topics_since(Some("0.3.0")).is_empty());
         // A test build before alpha.1 (0.3.0-alpha.0.x) sorts before it: its students see
         // the rows too.
         assert_eq!(topics_since(Some("0.3.0-alpha.0.4")), all);
         // The Mac app's list leaves out the rows that only the desktop app has.
         assert_eq!(topics_for(Shell::Desktop, None), all);
-        assert_eq!(topics_for(Shell::Mac, None), [CourseWeeks, CourseRemoval]);
+        assert_eq!(
+            topics_for(Shell::Mac, None),
+            [CourseWeeks, CourseRemoval, SyllabusReading]
+        );
     }
 
     /// Every topic has a row (the version that introduced it) and desktop copy in both

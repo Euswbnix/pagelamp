@@ -32,8 +32,17 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { describedBy } from "@/features/sources/add/AddErrorMessage";
 import { useReturnFocus } from "@/lib/focus";
+import { isLoopbackUrl } from "@/lib/url";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
+
+/**
+ * Whether the provider's key would be its first: a custom server on this computer added without
+ * one (the only provider that may have none; a key missing from the keychain is replaced).
+ */
+export function firstKey(provider: ModelProviderRecord): boolean {
+  return provider.preset === "custom" && provider.on_device && !provider.key_last4;
+}
 
 export type ApiKeyDialogMode = { kind: "add" } | { kind: "replace"; provider: ModelProviderRecord };
 
@@ -92,17 +101,20 @@ function AddKeyForm({
   const [baseUrl, setBaseUrl] = useState("");
   const form = useKeyForm();
   const id = useId();
+  // A custom server on this computer may take no key (as the facade allows); every other
+  // provider needs its key.
+  const keyOptional = preset?.id === "custom" && isLoopbackUrl(baseUrl.trim());
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!preset) return;
-    const key = form.begin();
+    const key = form.begin(keyOptional);
     if (key === null) return;
     try {
       const record = await add.mutateAsync({
         preset: preset.id,
         baseUrl: preset.base_url_editable ? baseUrl.trim() || null : null,
-        apiKey: key,
+        apiKey: key || null,
       });
       form.succeeded();
       toast.success(t("addKey.added", { name: record.label }));
@@ -158,7 +170,7 @@ function AddKeyForm({
         </Field>
       ) : null}
 
-      <KeyField form={form} />
+      <KeyField form={form} optional={keyOptional} />
       <KeyFormError form={form} />
       <Footer pending={form.pending} submit={t("addKey.submit")} />
     </form>
@@ -175,6 +187,7 @@ function ReplaceKeyForm({
   const { t } = useTranslation("ai");
   const update = useUpdateModelProviderKey();
   const form = useKeyForm();
+  const adding = firstKey(provider);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -183,7 +196,7 @@ function ReplaceKeyForm({
     try {
       await update.mutateAsync({ providerId: provider.provider_id, apiKey: key });
       form.succeeded();
-      toast.success(t("replaceKey.done"));
+      toast.success(adding ? t("replaceKey.added") : t("replaceKey.done"));
       onDone();
     } catch (err) {
       form.failed(err);
@@ -195,12 +208,19 @@ function ReplaceKeyForm({
   return (
     <form onSubmit={submit} noValidate aria-busy={form.pending} className="grid gap-4">
       <DialogHeader>
-        <DialogTitle>{t("replaceKey.title", { name: provider.label })}</DialogTitle>
+        <DialogTitle>
+          {adding
+            ? t("replaceKey.addTitle", { name: provider.label })
+            : t("replaceKey.title", { name: provider.label })}
+        </DialogTitle>
         <DialogDescription>{t("addKey.description")}</DialogDescription>
       </DialogHeader>
       <KeyField form={form} />
       <KeyFormError form={form} />
-      <Footer pending={form.pending} submit={t("replaceKey.submit")} />
+      <Footer
+        pending={form.pending}
+        submit={adding ? t("addKey.submit") : t("replaceKey.submit")}
+      />
     </form>
   );
 }
@@ -229,12 +249,15 @@ function useKeyForm() {
     error,
     pending,
     ids,
-    /** The trimmed key to send, or null (nothing typed, or a call already running). */
-    begin(): string | null {
+    /**
+     * The trimmed key to send, or null (nothing typed, or a call already running). With
+     * `optional`, nothing typed is sent as no key ("").
+     */
+    begin(optional = false): string | null {
       if (pending) return null;
       const value = key.trim();
-      setMissing(value === "");
-      if (value === "") return null;
+      setMissing(value === "" && !optional);
+      if (value === "" && !optional) return null;
       setError(null);
       setPending(true);
       return value;
@@ -251,13 +274,17 @@ function useKeyForm() {
   };
 }
 
-function KeyField({ form }: { form: KeyForm }) {
+function KeyField({ form, optional = false }: { form: KeyForm; optional?: boolean }) {
   const { t } = useTranslation("ai");
   const { t: tc } = useTranslation();
-  const invalid = form.missing || form.error ? true : undefined;
+  // Optional, a key left out is no mistake (also one flagged before the address made it so).
+  const missing = form.missing && !optional;
+  const invalid = missing || form.error ? true : undefined;
   return (
     <Field data-invalid={invalid}>
-      <FieldLabel htmlFor={form.ids.input}>{t("addKey.key")}</FieldLabel>
+      <FieldLabel htmlFor={form.ids.input}>
+        {optional ? t("addKey.keyOptional") : t("addKey.key")}
+      </FieldLabel>
       <SecretInput
         id={form.ids.input}
         value={form.key}
@@ -265,12 +292,14 @@ function KeyField({ form }: { form: KeyForm }) {
         aria-invalid={invalid}
         aria-describedby={describedBy(
           form.ids.hint,
-          form.missing && form.ids.missing,
+          missing && form.ids.missing,
           form.error && form.ids.error,
         )}
       />
-      <FieldDescription id={form.ids.hint}>{t("addKey.keyHint")}</FieldDescription>
-      {form.missing ? <FieldError id={form.ids.missing}>{tc("errors.invalid")}</FieldError> : null}
+      <FieldDescription id={form.ids.hint}>
+        {optional ? t("addKey.keyOptionalHint") : t("addKey.keyHint")}
+      </FieldDescription>
+      {missing ? <FieldError id={form.ids.missing}>{tc("errors.invalid")}</FieldError> : null}
     </Field>
   );
 }

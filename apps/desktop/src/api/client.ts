@@ -13,6 +13,7 @@ import type {
   LoginEvent,
   MaterialSharing,
   ModelChoice,
+  ModelDisclosure,
   ModelInfo,
   ModelProviderRecord,
   ProbeReport,
@@ -22,6 +23,7 @@ import type {
   UsageSummary,
 } from "./ai";
 import type {
+  Activity,
   AiPolicy,
   ApplyDatesReport,
   AppStatus,
@@ -142,6 +144,8 @@ export type UpdateEvent =
 export interface PageLampApi {
   // ----- status & sources ------------------------------------------------------------------
   status(): Promise<AppStatus>;
+  /** What the app is doing now; "Install and restart" waits for all of it. */
+  activity(): Promise<Activity>;
   listSources(): Promise<SourceRecord[]>;
   /** Validates the token. The token is passed through and never stored by the UI. */
   addCanvasSource(baseUrl: string, token: string): Promise<SourceRecord>;
@@ -319,6 +323,23 @@ export interface PageLampApi {
   setFeatureModel(feature: AiFeature, choice: ModelChoice | null): Promise<void>;
   /** The student read the disclosure sheet for this backend; `version` is the facts' hash. */
   acknowledgeAiDisclosure(backend: BackendRef, version: number): Promise<void>;
+  /**
+   * Whether `choice`'s model runs on this computer, decided as a run decides it. With `ask`, a
+   * model server here is asked for its list (Ollama), and it fails when it can't be reached.
+   */
+  modelRunsHere(choice: ModelChoice, ask: boolean): Promise<boolean>;
+  /**
+   * The note to read before using a model of `backend` where it runs (`runsHere`, from
+   * modelRunsHere): a model that a server on this computer may run in the cloud has a note of
+   * its own, acknowledged apart from the server's.
+   */
+  modelDisclosure(backend: BackendRef, runsHere: boolean): Promise<ModelDisclosure>;
+  /** The student read modelDisclosure(backend, runsHere); `version` is the one shown. */
+  acknowledgeModelDisclosure(
+    backend: BackendRef,
+    runsHere: boolean,
+    version: number,
+  ): Promise<void>;
   /** "The budget is not enforced for this model" (no price in the catalog). */
   acknowledgeUnpricedModel(backend: BackendRef, model: string): Promise<void>;
   /** The soft monthly cap for API keys, in micro-USD; null = no cap. */

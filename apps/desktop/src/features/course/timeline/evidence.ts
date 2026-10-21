@@ -8,6 +8,7 @@
 import type { TFunction } from "i18next";
 import type { EvidenceCode, EvidenceItem } from "@/api/types";
 import en from "@/i18n/locales/en/calendar.json";
+import { SlotMarker } from "@/i18n/safeValues";
 import { formatIsoDate } from "@/lib/format";
 
 // Compile-time half of CAL-53: every code the facade can send has English text (and the i18n
@@ -43,8 +44,9 @@ export function templateFor(code: EvidenceCode, present: Set<string>) {
   return Object.hasOwn(TEMPLATES, variant) ? { key: variant, missing: [] } : { key: code, missing };
 }
 
-// Marks where a plain-text param goes. The translations contain no control characters, and the
-// swap is one pass over the translated sentence, so the text itself is never scanned again.
+// Marks where a plain-text param goes: a slot marker, so only it puts its characters in the
+// sentence (i18n/safeValues.ts). The translations contain no control characters, and the swap
+// is one pass over the translated sentence, so the text itself is never scanned again.
 const MARK = "\u0001";
 const MARKS = new RegExp(`${MARK}(\\d+)${MARK}`, "g");
 
@@ -61,9 +63,9 @@ export function translateWithText(
   texts: Record<string, string> = {},
 ): string {
   const values: string[] = [];
-  const all: Record<string, string | number> = { ...params };
+  const all: Record<string, string | number | SlotMarker> = { ...params };
   for (const [name, value] of Object.entries(texts)) {
-    all[name] = `${MARK}${values.length}${MARK}`;
+    all[name] = new SlotMarker(`${MARK}${values.length}${MARK}`);
     values.push(value);
   }
   const translate = t as unknown as (key: string, options: object) => string;

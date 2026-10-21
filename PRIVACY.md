@@ -21,8 +21,10 @@ who build PageLamp never receive your data.
 | **(v0.3)** For each Canvas course, a list of what PageLamp didn't read and why: the title Canvas shows for the item (a tab, a module item, a page or a file), its link and a reason; and which pages and files the texts it read link to (addresses only, never a link's words) | the same database; deleted when you remove the source | to tell you and your AI app what isn't in PageLamp, and to avoid reading a page again just to follow its links |
 | **(v0.3)** A backup of the database, made before an update changes its format | `pagelamp.db.v<N>.bak` next to the database (on macOS and Linux its permissions let only your account read it); only the newest is kept, and it is deleted when you remove your last source | so a failed update can be undone. It holds the same course data as the database |
 | **(next)** For each course you removed: its name and code, its ID at its source (the Canvas course ID or the folder's name) and which source it came from, why and when you removed it, when its data is to be or was deleted, your choices for deleting it, whether its downloaded files still wait for the Trash, whether Canvas restricts access to it by date, and your settings for it (AI policy and its note, AI access, your answer about sharing its materials with AI services, whether it was hidden, the dates you set (and that you confirmed them), that you are still taking it (and until when), and its calendar's dates (and where they came from) without break labels or week topics); no material text | the same database, until you undo the removal, a restore brings the course back, you run `pagelamp course forget`, or you remove its source | so a sync doesn't add the course back, and restoring it brings your settings back |
-| **(next)** The model providers you add (their kind, name and address, when you added them and the result of their last test), which model each of PageLamp's AI features would use and how hard it thinks, your monthly AI budget, for each provider which version of PageLamp's note on its use of your data you accepted, and when, and the models without a known price you accepted | the same database | to use the providers you set up the way you chose |
+| **(next)** The model providers you add (their kind, name and address, when you added them and the result of their last test), which model each of PageLamp's AI features would use and how hard it thinks, your monthly AI budget, for each provider which version of PageLamp's note on its use of your data you accepted, and when (a server on this computer has a second note, for models it may run in the cloud), the models without a known price you accepted, which servers on this computer you added without a key, and for Ollama on this computer the models it last listed and whether each runs on this computer | the same database | to use the providers you set up the way you chose |
 | **(next)** API keys for model providers | your operating system's keychain, like your Canvas token — never in the database, logs or AI output | to reach the provider on your behalf |
+| **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept, and a calendar proposal you dismissed for 30 days (it goes at the next calendar proposal, dismissal or sync after that) | so you can read it again and see where it came from |
+| **(next)** One line per AI run: when, provider, model, feature, tokens and estimated cost | the same database, deleted once 13 months old (at the next AI run or sync) | to show your usage (`pagelamp ai usage`) and keep runs within your budget |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
 dates and links; **(v0.3)** an assignment or a quiz can also appear, by title and link, in the
@@ -67,6 +69,29 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   information it needs from PageLamp on your computer and sends it to that AI provider **under your
   own account and that provider's terms**. What the provider stores or uses for training depends on
   your account settings with them — check them.
+- **(next) When you use PageLamp's own AI features** (for now reading a syllabus for the
+  course's dates, `pagelamp course calendar <course> --read`; the app's screens for it are still
+  turned off): PageLamp sends the model you chose the course information that feature needs, only
+  when you start it, and only after you have read what that model receives.
+  - With an API key, it goes to that provider (for example OpenAI or Anthropic) under your API
+    account and that provider's terms. What the provider keeps or uses for training depends on those
+    terms and your settings with them.
+  - With a model on this computer (for example Ollama or LM Studio), it stays on your computer —
+    unless you set the model's address to another computer, which then receives it, or the model
+    server (such as Ollama) runs that model in the cloud (`pagelamp ai models` marks it "cloud")
+    and passes it on there. The materials of a course you answered `not-allowed` for never go to
+    such a model. Before each reading, PageLamp asks Ollama for its list of models: a model it
+    marks as in the cloud or doesn't list, or an answer that isn't a usable list, counts as in the
+    cloud. If Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent.
+    PageLamp trusts that the LM Studio preset's address is LM Studio on this computer, which runs
+    its models here. Any other server on this computer (`custom`) can't tell PageLamp where it
+    runs a model, so its models count as in the cloud.
+  - A syllabus reading sends the text of the course materials it reads. No model gets the materials
+    of a course whose AI access you turned off or whose AI policy is "No AI", and a model in the
+    cloud doesn't get them if you answered `not-allowed` with `pagelamp course sharing`. If you
+    haven't answered, or answered `not-sure`, PageLamp reminds you once per course (again after
+    `pagelamp ai remove --all`), after the first reading that sent that course's materials to a
+    model in the cloud, or was sending them when it stopped or failed.
 - **(v0.3) Update check:** once a day PageLamp downloads a small file from GitHub to see whether
   there's a new version. GitHub sees your IP address and your PageLamp version, as with any
   download; nothing about your courses is sent. The request carries only `User-Agent:
@@ -86,13 +111,15 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
 - **(next) Model providers:** when you add a model provider (`pagelamp ai add`) or replace its
   key, PageLamp asks the address given for it for its list of models, with its API key if it has
   one, before it saves anything. (The app has no screens for model providers yet.) `pagelamp ai
-  models` asks for that list again, and so does `pagelamp ai use` unless you add `--no-check`.
+  models` asks for that list again, and so does `pagelamp ai use` unless you add `--no-check`;
+  before a syllabus reading with a model of Ollama on this computer, PageLamp asks Ollama for it
+  too (on this computer).
   `pagelamp ai test` sends the model a tiny test request with no course data; PageLamp may send it
   again if the call fails, with a simpler answer format, or once to ask for a corrected answer. A
   provider on this computer (such as Ollama) is reached on this computer, unless you gave it the
   address of another one; if it runs the model in the cloud (`pagelamp ai models` marks it
-  "cloud"), it passes the test request on to its cloud service. No PageLamp feature sends your
-  course data to these providers yet.
+  "cloud"), it passes the test request on to its cloud service. Course data goes to these providers
+  only through PageLamp's own AI features (see above).
 - Nothing else. The PageLamp app, the `pagelamp` command and the MCP server contact no other
   server.
 
@@ -144,11 +171,19 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   syncing it again, and puts your saved settings back; it can't if Canvas no longer lists the
   course or restricts access to it, or while you're offline. Its files come back as not
   downloaded, and announcements older than 120 days don't come back.
-- **(next) Model providers:** `pagelamp ai remove <provider>` (the app's screens for it are still
-  turned off) deletes a provider, its API key in the keychain and the model choices that use it.
-  `pagelamp ai remove --all` deletes every provider, every API key and every AI setting, and the
-  pre-update backup of the database (which may hold them); your courses and your answers about
-  sharing stay.
+- **(next) Model providers** (the app's screens for them are still turned off): `pagelamp ai use`
+  chooses the model each feature uses, and `pagelamp ai budget` sets a monthly budget. `pagelamp ai
+  remove <provider>` deletes a provider, its API key in the keychain, the model choices that use
+  it, the notes and unpriced models you accepted for it, and its model list. `pagelamp ai remove
+  --all` deletes every provider, every API key, every AI setting, the usage history, what
+  PageLamp's AI features wrote (calendar proposals included, waiting or dismissed, and earlier
+  calendars they read, kept for undo), and the pre-update backup of the database (which may hold
+  them). A course calendar you accepted from a syllabus reading stays, with its label saying which
+  model read it; so do your courses and your answers about sharing. A key is deleted before
+  anything else: if the keychain doesn't let PageLamp delete it, `ai remove <provider>` changes
+  nothing and says so, and `--all` removes the rest but keeps that provider and its key, and ends
+  with an error that names them, so you can run it again (as it does for a provider added while
+  it runs).
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling
@@ -164,8 +199,11 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
 
 ## AI disclosure
 
-PageLamp does not generate content itself (v0.1.0, v0.3.0-alpha.1 and the main branch). Text your
-AI app produces is AI-generated by that app. PageLamp tells your AI app to cite course sources, tutor rather than produce graded work,
+PageLamp does not generate content itself in v0.1.0 or v0.3.0-alpha.1. **(next)** It can also
+write with a model you choose (for example, reading a syllabus for the course's dates): what it
+writes is labelled AI-generated, with the provider, the model and the date, and a syllabus reading
+is a proposal you check before accepting it. Text your AI app produces is AI-generated by that
+app. PageLamp tells your AI app to cite course sources, tutor rather than produce graded work,
 and respect each course's AI policy — but you are responsible for following your course and
 university rules.
 
@@ -177,8 +215,9 @@ crash (`logs/last-crash.json`: time, version, a redacted message and the place i
 until you dismiss the crash notice in the app or a later crash replaces it. Logs record what
 PageLamp did (e.g. "synced 5 courses", request paths and status codes; from v0.3, for each sync
 it starts by itself, whether you were at the app and the kind of thing that showed it, such as
-"a key", never which one) — never tokens,
-calendar-feed links, signed download links or course text; your home folder is shown as `~`. A
+"a key", never which one) — never tokens, API keys,
+calendar-feed links, signed download links, course text or what was sent to a model; your home
+folder is shown as `~`. A
 diagnostic report (*Copy diagnostic report* in the app, or `pagelamp report`) is created only when
 you ask for it, shows you its full content first, and replaces course names with "Course 1",
 "Course 2". It contains PageLamp's version, your operating system and processor type, where your

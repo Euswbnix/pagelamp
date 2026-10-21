@@ -211,6 +211,28 @@ enum CourseCommand {
         /// The course's code, name or id.
         course: String,
     },
+    /// The course's calendar: the dates in force, proposals with their quotes, the materials
+    /// a reading uses. --scan or --read make a proposal; --accept or --dismiss decide one.
+    #[command(group = clap::ArgGroup::new("action").multiple(false).args(["scan", "read", "accept", "dismiss"]))]
+    Calendar {
+        /// The course's code, name or id.
+        course: String,
+        /// Scan the syllabus for dates (no model).
+        #[arg(long)]
+        scan: bool,
+        /// Read the syllabus with the model chosen for syllabus reading.
+        #[arg(long)]
+        read: bool,
+        /// With --read: go over the monthly budget for this run.
+        #[arg(long, requires = "read")]
+        over_budget: bool,
+        /// Accept this proposal (its number).
+        #[arg(long)]
+        accept: Option<i64>,
+        /// Dismiss this proposal (its number).
+        #[arg(long)]
+        dismiss: Option<i64>,
+    },
     /// Remove courses from PageLamp: hidden at once, their local data deleted after 7 days
     /// (or now with --now). Your own folders are never changed. --dry-run shows what goes.
     Remove {
@@ -251,12 +273,14 @@ enum CourseCommand {
         /// The removed course's id (see `course removed`).
         removed_id: String,
     },
-    /// Use one course's dates (`course term`) for other courses of its school session too.
-    /// Without courses to copy to, list the session's courses.
+    /// Use one course's first and last day of classes for other courses of its school session
+    /// too: the dates you set for it, or those of a calendar you accepted for it. Without
+    /// courses to copy to, list the session's courses.
     CopyDates {
         /// The course whose dates to copy: its code, name or id.
         from: String,
-        /// The courses that get them (codes, names or ids). Their own dates are replaced.
+        /// The courses that get them (codes, names or ids). Their own dates are replaced,
+        /// except where a calendar you accepted counts their weeks.
         to: Vec<String>,
         /// Copy to every other course of the session.
         #[arg(long, conflicts_with = "to")]
@@ -678,6 +702,23 @@ async fn run(cli: Cli) -> anyhow::Result<()> {
                     until,
                     clear,
                 } => return course::keep(&app, &course, until, clear, json),
+                CourseCommand::Calendar {
+                    course,
+                    scan,
+                    read,
+                    over_budget,
+                    accept,
+                    dismiss,
+                } => {
+                    let action = match (scan, read, accept, dismiss) {
+                        (true, ..) => course::CalendarAction::Scan,
+                        (_, true, ..) => course::CalendarAction::Read { over_budget },
+                        (_, _, Some(id), _) => course::CalendarAction::Accept(id),
+                        (_, _, _, Some(id)) => course::CalendarAction::Dismiss(id),
+                        _ => course::CalendarAction::Show,
+                    };
+                    return course::calendar(&app, &course, action, json).await;
+                }
                 CourseCommand::CopyDates {
                     from,
                     to,

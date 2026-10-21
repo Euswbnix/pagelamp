@@ -772,17 +772,20 @@ pub fn assemble(input: &AssembleInput<'_>) -> Result<Assembled, BadOutput> {
     }
 
     // Today, if accepted.
-    let state = phase_on(
-        &term,
-        Confidence::High,
+    let ProposalOutcome {
+        resulting_week_today,
+        resulting_phase,
+        changes,
+    } = outcome_of(
+        &calendar,
+        &CurrentCalendar {
+            calendar: input.current,
+            week: input.current_week,
+            phase: input.current_phase,
+        },
         input.today,
-        input.full_year || calendar.segments.len() == 2,
-        false,
-        None,
+        input.full_year,
     );
-    let resulting_week_today = state.week;
-    let resulting_phase = state.phase;
-    let changes = changes(input, &calendar, resulting_week_today, resulting_phase);
 
     let dropped: Vec<DropCount> = dropped
         .into_iter()
@@ -900,10 +903,11 @@ fn own_option(date: NaiveDate) -> AlternativeDate {
 /// The resolution a calendar gives (for phases and weeks).
 pub fn resolution_of(calendar: &CourseCalendar) -> TermResolution {
     TermResolution {
+        // Week 1, where the calendar numbers its first week otherwise ("Week 0").
         week_one_monday: calendar
             .segments
             .first()
-            .map(|s| week_one_monday(s.first_class)),
+            .map(|s| crate::term::same_session::week_one_of(s.first_class, s.first_week_number)),
         teaching: calendar.segments.clone(),
         breaks: calendar.breaks.clone(),
         exams_end: calendar.exam_period.map(|p| p.end),
@@ -913,14 +917,53 @@ pub fn resolution_of(calendar: &CourseCalendar) -> TermResolution {
     }
 }
 
+/// The calendar in force and what the course shows today under it.
+#[derive(Clone, Copy, Debug)]
+pub struct CurrentCalendar<'a> {
+    pub calendar: Option<&'a CourseCalendar>,
+    pub week: Option<u32>,
+    pub phase: CoursePhase,
+}
+
+/// What accepting a proposal would mean today.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProposalOutcome {
+    pub resulting_week_today: Option<u32>,
+    pub resulting_phase: CoursePhase,
+    pub changes: Vec<CalendarChange>,
+}
+
+/// §7.6: today's week and phase under `calendar`, and what changes compared with `current`.
+/// Recomputed whenever a proposal is shown, so it follows a calendar accepted meanwhile.
+pub fn outcome_of(
+    calendar: &CourseCalendar,
+    current: &CurrentCalendar<'_>,
+    today: NaiveDate,
+    full_year: bool,
+) -> ProposalOutcome {
+    let state = phase_on(
+        &resolution_of(calendar),
+        Confidence::High,
+        today,
+        full_year || calendar.segments.len() == 2,
+        false,
+        None,
+    );
+    ProposalOutcome {
+        resulting_week_today: state.week,
+        resulting_phase: state.phase,
+        changes: changes(current, calendar, state.week, state.phase),
+    }
+}
+
 fn changes(
-    input: &AssembleInput<'_>,
+    input: &CurrentCalendar<'_>,
     calendar: &CourseCalendar,
     week: Option<u32>,
     phase: CoursePhase,
 ) -> Vec<CalendarChange> {
     let mut out = Vec::new();
-    match input.current {
+    match input.calendar {
         None => out.push(CalendarChange::new(ChangeCode::NewCalendar)),
         Some(current) => {
             let first = |c: &CourseCalendar| c.segments.first().map(|s| s.first_class);
@@ -979,17 +1022,17 @@ fn changes(
             }
         }
     }
-    if week != input.current_week {
+    if week != input.week {
         out.push(
             CalendarChange::new(ChangeCode::WeekTodayChanges)
-                .opt("from", input.current_week)
+                .opt("from", input.week)
                 .opt("to", week),
         );
     }
-    if phase != input.current_phase {
+    if phase != input.phase {
         out.push(
             CalendarChange::new(ChangeCode::PhaseChanges)
-                .with("from_phase", input.current_phase.as_str())
+                .with("from_phase", input.phase.as_str())
                 .with("to_phase", phase.as_str()),
         );
     }
@@ -1290,6 +1333,25 @@ mod tests {
         let a = assemble(&input(&v, date(2026, 9, 28))).unwrap();
         assert!(a.calendar.weeks.is_empty());
         assert!(a.low_quality && !a.passing);
+    }
+
+    /// A table from "Week 0" puts week 1 a week after the first class: notes that number week
+    /// 1 from that week agree with it (no conflict).
+    #[test]
+    fn notes_that_number_week_one_agree_with_a_week_zero_table() {
+        let weeks = vec![
+            row(0, date(2026, 9, 8), WeekKind::Teaching),
+            row(1, date(2026, 9, 15), WeekKind::Teaching),
+        ];
+        let v = validated(fall(), weeks);
+        let mut i = input(&v, date(2026, 9, 28));
+        i.checks = CrossChecks {
+            fit: Some((date(2026, 9, 14), 3)),
+            ..CrossChecks::default()
+        };
+        let a = assemble(&i).unwrap();
+        assert_eq!(a.calendar.segments[0].first_week_number, 0);
+        assert!(!a.disagrees_with_notes, "{:?}", a.conflicts);
     }
 
     #[test]

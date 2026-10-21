@@ -219,8 +219,9 @@ impl ProviderProfile {
         }
     }
 
-    /// Whether requests stay on this computer (a loopback base URL). Ollama cloud models are
-    /// checked per model (`remote_host`, `-cloud`) when listing models.
+    /// Whether requests reach a server on this computer (a loopback base URL). That server may
+    /// still run a model in the cloud: Ollama's cloud models are marked per model
+    /// (`remote_host`, or a cloud tag: `is_cloud_model_id`) when listing models.
     pub fn on_device(&self) -> bool {
         self.base_url.as_ref().is_some_and(is_loopback)
     }
@@ -374,6 +375,12 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         }
     }
     true
+}
+
+/// Ollama's cloud models by their tag (`…-cloud`, `…:cloud`): the local daemon passes requests
+/// for them on to its cloud service.
+pub fn is_cloud_model_id(id: &str) -> bool {
+    id.ends_with("-cloud") || id.ends_with(":cloud")
 }
 
 #[cfg(test)]

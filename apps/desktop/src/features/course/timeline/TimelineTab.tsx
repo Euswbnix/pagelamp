@@ -27,7 +27,9 @@ export function TimelineTab({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const startRef = useRef<HTMLInputElement>(null);
   // Dates kept from version 0.1 the student never confirmed (also a last day of classes alone).
-  const unconfirmed = !timeline.term.student_dates_confirmed;
+  // Not on a course with a calendar of its own: those dates don't count its weeks, and the form
+  // there is read-only.
+  const unconfirmed = !timeline.term.student_dates_confirmed && !timeline.term.own_calendar;
 
   return (
     <div className="max-w-2xl space-y-8">

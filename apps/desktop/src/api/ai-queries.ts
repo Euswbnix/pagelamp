@@ -4,6 +4,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSharingReminders } from "@/stores/sharingReminders";
 import type { CodexSource } from "./ai";
 import {
   type AiFeature,
@@ -182,6 +183,16 @@ export function useAcknowledgeAiDisclosure() {
   });
 }
 
+export function useAcknowledgeModelDisclosure() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({
+    mutationFn: (v: { backend: BackendRef; runsHere: boolean; version: number }) =>
+      api.acknowledgeModelDisclosure(v.backend, v.runsHere, v.version),
+    onSuccess: invalidate,
+  });
+}
+
 export function useAcknowledgeUnpricedModel() {
   const api = useApi();
   const invalidate = useInvalidateAi();
@@ -208,7 +219,11 @@ export function useSetCourseMaterialSharing() {
   return useMutation({
     mutationFn: (v: { courseId: string; answer: MaterialSharing }) =>
       api.setCourseMaterialSharing(v.courseId, v.answer),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    onSuccess: (_, v) => {
+      // Answered, wherever in the app: the course's pending question (b) reminder is done.
+      useSharingReminders.getState().settle(v.courseId);
+      return client.invalidateQueries({ queryKey: queryKeys.all });
+    },
   });
 }
 
@@ -217,7 +232,8 @@ export function useRemoveAllAiData() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => api.removeAllAiData(),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    // Also when it fails: a key the keychain kept leaves its provider, the rest is gone.
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 

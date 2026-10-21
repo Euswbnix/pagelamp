@@ -49,6 +49,7 @@ export function calendarAsTerm(calendar: CourseCalendar): TermResolution {
     student_start: null,
     student_end: null,
     student_dates_confirmed: true,
+    own_calendar: false,
   };
 }
 

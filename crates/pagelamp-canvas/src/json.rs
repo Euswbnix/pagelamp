@@ -241,6 +241,11 @@ pub(crate) struct File {
 pub(crate) struct Page {
     #[serde(default, deserialize_with = "lenient")]
     pub page_id: Option<CanvasId>,
+    /// The page is the course's front page (S4; also what says which listed page the Home
+    /// is). Whether the pages list carries it is unverified; when it doesn't, the signal is
+    /// simply absent.
+    #[serde(default, deserialize_with = "lenient")]
+    pub front_page: Option<bool>,
     /// The page's slug (used to fetch it).
     #[serde(default, deserialize_with = "lenient")]
     pub url: Option<String>,
@@ -256,9 +261,6 @@ pub(crate) struct Page {
     pub body: Option<String>,
     #[serde(default, deserialize_with = "lenient")]
     pub locked_for_user: Option<bool>,
-    /// The page is the course's front page.
-    #[serde(default, deserialize_with = "lenient")]
-    pub front_page: Option<bool>,
 }
 
 /// `GET /courses/:id/assignments` — deliberately WITHOUT `description`: assignment

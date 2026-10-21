@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { CourseDatesInput } from "@/api/types";
+import { calendarToInput } from "@/lib/calendarInput";
 import { createMockApi } from "./index";
 
 const FITTED = "canvas:canvas.demo.test/course/332";
@@ -31,7 +33,36 @@ describe("mock: the other courses of a session", () => {
       session: null,
       campus: null,
       courses: [],
+      copy_refused: false,
     });
+  });
+
+  it("says when the course's calendar can't be copied, like the facade", async () => {
+    const api = mock();
+    const refused = async () => (await api.sessionCourses(FITTED)).copy_refused;
+    expect(await refused()).toBe(false);
+    await ownCalendar(api, FITTED);
+    expect(await refused()).toBe(false);
+    await api.setCourseDates(FITTED, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      exams_end: "2026-12-22",
+      breaks: [
+        {
+          kind: "reading_week",
+          label: "Reading week",
+          start: "2026-11-09",
+          end: "2026-11-13",
+          numbered: false,
+        },
+      ],
+    });
+    expect(await refused()).toBe(true);
+    // And for a course of no session too.
+    const plain = createMockApi({ latencyMs: 0 });
+    const folder = "folder:demo-courses/course/DEMO101";
+    await plain.setCourseDates(folder, { first_class: "2026-09-08", breaks: [] });
+    expect((await plain.sessionCourses(folder)).copy_refused).toBe(true);
   });
 
   it("copies a course's own dates to the courses chosen, and skips what it can't", async () => {
@@ -147,6 +178,208 @@ describe("mock: the other courses of a session", () => {
       student_end: "2026-12-11",
       student_dates_confirmed: false,
     });
+  });
+
+  /** A calendar of its own for `courseId`, saved with the dates form v2 (exams after classes). */
+  const ownCalendar = (api: ReturnType<typeof mock>, courseId: string) =>
+    api.setCourseDates(courseId, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      exams_end: "2026-12-22",
+      breaks: [],
+    });
+
+  it("lists a course with a calendar of its own as such, and leaves it alone, like the facade", async () => {
+    const api = mock();
+    await ownCalendar(api, UNLABELLED);
+    const listed = (await api.sessionCourses(FITTED)).courses;
+    // Its term dates are only the calendar's span as mirrored there: they end with the exams.
+    expect(listed.find((c) => c.course_id === UNLABELLED)).toMatchObject({
+      own_calendar: true,
+      own_dates: true,
+      student_start: "2026-09-08",
+      student_end: "2026-12-22",
+    });
+    expect(listed.find((c) => c.course_id === LEGACY)?.own_calendar).toBe(false);
+    await api.setCourseTerm(FITTED, "2026-09-15", null);
+    const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED, LEGACY]);
+    expect(report.applied).toEqual([LEGACY]);
+    expect(report.skipped).toEqual([{ course_id: UNLABELLED, reason: "own_calendar" }]);
+    expect(report.replaced.map((r) => r.course_id)).toEqual([LEGACY]);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start).toBe("2026-09-08");
+    // Cleared with the dates form, it has no calendar of its own any more.
+    await api.setCourseDates(UNLABELLED, null);
+    const again = (await api.sessionCourses(FITTED)).courses;
+    expect(again.find((c) => c.course_id === UNLABELLED)?.own_calendar).toBe(false);
+  });
+
+  it("says in the timeline whether a course has a calendar of its own, with no session too", async () => {
+    const api = mock();
+    expect((await api.courseOverview(FITTED)).timeline.term.own_calendar).toBe(false);
+    await ownCalendar(api, FITTED);
+    expect((await api.courseOverview(FITTED)).timeline.term.own_calendar).toBe(true);
+    const plain = createMockApi({ latencyMs: 0 });
+    const folder = "folder:demo-courses/course/DEMO101";
+    await plain.setCourseDates(folder, {
+      first_class: "2026-09-08",
+      last_class: "2026-12-04",
+      breaks: [],
+    });
+    expect(await plain.sessionCourses(folder)).toMatchObject({ session: null, courses: [] });
+    expect((await plain.courseOverview(folder)).timeline.term.own_calendar).toBe(true);
+  });
+
+  it("copies a calendar's own days of classes, not the end of its exams", async () => {
+    const api = mock();
+    await ownCalendar(api, FITTED);
+    expect((await api.applyCourseDatesTo(FITTED, [UNLABELLED])).applied).toEqual([UNLABELLED]);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term).toMatchObject({
+      student_start: "2026-09-08",
+      student_end: "2026-12-04",
+    });
+  });
+
+  it("refuses a copy from a calendar two dates can't carry, like the facade", async () => {
+    const api = mock();
+    const term = async () => (await api.courseOverview(LEGACY)).timeline.term;
+    const before = await term();
+    const days = { first_class: "2026-09-08", last_class: "2026-12-04", exams_end: "2026-12-22" };
+    const reading = { kind: "reading_week", label: "Reading week" } as const;
+    const refused: CourseDatesInput[] = [
+      // Two parts (a full-year calendar).
+      {
+        ...days,
+        exams_end: "2027-04-30",
+        second_segment: {
+          first_class: "2027-01-06",
+          last_class: "2027-04-02",
+          restart_numbering: false,
+        },
+        breaks: [],
+      },
+      // A break its weeks skip.
+      {
+        ...days,
+        breaks: [{ ...reading, start: "2026-11-09", end: "2026-11-13", numbered: false }],
+      },
+      // No last day of classes.
+      { first_class: "2026-09-08", breaks: [] },
+    ];
+    for (const calendar of refused) {
+      await api.setCourseDates(FITTED, calendar);
+      await expect(api.applyCourseDatesTo(FITTED, [LEGACY])).rejects.toMatchObject({
+        kind: "invalid",
+        message: expect.stringContaining("Two dates can't carry this course's calendar"),
+      });
+      expect(await term()).toEqual(before);
+    }
+    // A numbered break, or a holiday shorter than a week's three weekdays, changes no week.
+    const carried: CourseDatesInput[] = [
+      { ...days, breaks: [{ ...reading, start: "2026-11-09", end: "2026-11-13", numbered: true }] },
+      {
+        ...days,
+        breaks: [
+          {
+            kind: "holiday",
+            label: "Thanksgiving",
+            start: "2026-10-12",
+            end: "2026-10-13",
+            numbered: false,
+          },
+        ],
+      },
+    ];
+    for (const calendar of carried) {
+      await api.setCourseDates(FITTED, calendar);
+      expect((await api.applyCourseDatesTo(FITTED, [LEGACY])).applied).toEqual([LEGACY]);
+    }
+  });
+
+  it("leaves alone in an Undo a course with a calendar of its own since, like the facade", async () => {
+    const api = mock();
+    await api.setCourseTerm(FITTED, "2026-09-08", "2026-12-04");
+    const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    expect(report.applied).toEqual([UNLABELLED]);
+    // The course gets a calendar of its own before the Undo.
+    await ownCalendar(api, UNLABELLED);
+    const before = (await api.courseOverview(UNLABELLED)).timeline;
+    await api.restoreCourseDates(report.replaced);
+    const after = (await api.courseOverview(UNLABELLED)).timeline;
+    expect(after.term).toEqual(before.term);
+    expect(after.term).toMatchObject({ own_calendar: true, student_start: "2026-09-08" });
+    expect(after.evidence_items).toEqual(before.evidence_items);
+    // Applying again isn't told of an earlier copy: none came back.
+    const listed = (await api.sessionCourses(FITTED)).courses;
+    expect(listed.find((c) => c.course_id === UNLABELLED)?.own_calendar).toBe(true);
+  });
+
+  it("ends a course's copied mark when its dates are cleared with the dates form", async () => {
+    const api = mock();
+    await api.setCourseTerm(FITTED, "2026-09-08", null);
+    await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    await api.setCourseDates(UNLABELLED, null);
+    // Copied again: nothing to say it had come from FITTED before.
+    const report = await api.applyCourseDatesTo(FITTED, [UNLABELLED]);
+    expect(report.applied).toEqual([UNLABELLED]);
+    expect(report.replaced[0]?.copied_from ?? null).toBeNull();
+  });
+
+  it("counts an accepted calendar as the course's own, and copies from its days of classes", async () => {
+    const api = createMockApi({ latencyMs: 0, scenario: "proposals" });
+    // DEM205 starts with an accepted calendar (gone stale): its own, like the facade says.
+    expect((await api.courseCalendar(LEGACY)).status).toBe("accepted_stale");
+    expect((await api.courseOverview(LEGACY)).timeline.term.own_calendar).toBe(true);
+    const pending = (await api.courseCalendar(FITTED)).proposals[0];
+    if (!pending) throw new Error("the scenario has a proposal for DEM332");
+    // Its calendar has a reading week its weeks skip: a copy from it is refused.
+    const stale = (await api.courseOverview(LEGACY)).timeline.term;
+    expect(stale.breaks.some((b) => !b.numbered)).toBe(true);
+    await expect(api.applyCourseDatesTo(LEGACY, [UNLABELLED])).rejects.toMatchObject({
+      kind: "invalid",
+    });
+    expect((await api.courseOverview(UNLABELLED)).timeline.term.student_start ?? null).toBeNull();
+    // Accepted without such a break: a copy from it takes its first and last day of classes.
+    const edits = { ...calendarToInput(pending.calendar), breaks: [] };
+    await api.acceptCalendarProposal(pending.id, edits);
+    const listed = (await api.sessionCourses(UNLABELLED)).courses;
+    expect(listed.find((c) => c.course_id === FITTED)?.own_calendar).toBe(true);
+    expect(listed.find((c) => c.course_id === LEGACY)?.own_calendar).toBe(true);
+    await api.setCourseTerm(UNLABELLED, "2026-09-15", null);
+    expect((await api.applyCourseDatesTo(UNLABELLED, [FITTED, LEGACY])).skipped).toEqual([
+      { course_id: FITTED, reason: "own_calendar" },
+      { course_id: LEGACY, reason: "own_calendar" },
+    ]);
+    const segments = pending.calendar.segments;
+    expect(segments[0]?.first_class).not.toBe("2026-09-15");
+    expect((await api.applyCourseDatesTo(FITTED, [UNLABELLED])).applied).toEqual([UNLABELLED]);
+    expect((await api.courseOverview(UNLABELLED)).timeline.term).toMatchObject({
+      student_start: segments[0]?.first_class,
+      student_end: segments.at(-1)?.last_class ?? null,
+    });
+  });
+
+  it("keeps a course's own calendar when its term dates are saved, like the facade", async () => {
+    const api = mock();
+    await ownCalendar(api, FITTED);
+    await api.setCourseTerm(FITTED, "2026-09-15", null);
+    const term = (await api.courseOverview(FITTED)).timeline.term;
+    expect(term).toMatchObject({ student_start: "2026-09-15", student_end: null });
+    expect(term.teaching[0]).toMatchObject({ first_class: "2026-09-08", last_class: "2026-12-04" });
+    expect((await api.courseOverview(FITTED)).timeline.term.own_calendar).toBe(true);
+    // A course with a calendar and no term dates of its own: own_calendar, not own_dates.
+    await api.setCourseTerm(FITTED, null, null);
+    const listed = (await api.sessionCourses(UNLABELLED)).courses.find(
+      (c) => c.course_id === FITTED,
+    );
+    expect(listed).toMatchObject({ own_calendar: true, own_dates: false });
+  });
+
+  it("counts a calendar the scenario starts with as the course's own", async () => {
+    const api = createMockApi({ latencyMs: 0, scenario: "phases" });
+    const course = (await api.listCourses()).find((c) => c.course.code === "PHS180Y");
+    if (!course) throw new Error("the phases scenario has PHS180Y");
+    expect(course.timeline.calendar).toBe("accepted");
+    expect((await api.courseOverview(course.course.id)).timeline.term.own_calendar).toBe(true);
   });
 
   it("puts every course back exactly, unconfirmed dates from version 0.1 included", async () => {

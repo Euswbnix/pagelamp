@@ -5,7 +5,7 @@ import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import { MOCK_APP_VERSION, MOCK_UPDATE_VERSION } from "@/api/mock/fixtures";
 import { queryKeys } from "@/api/queries";
-import type { WhatsNewTopic } from "@/api/types";
+import type { ActivityItem, WhatsNewTopic } from "@/api/types";
 import enCourse from "@/i18n/locales/en/course.json";
 import enUpdates from "@/i18n/locales/en/updates.json";
 import zhCourse from "@/i18n/locales/zh-CN/course.json";
@@ -130,8 +130,8 @@ describe("What's new (upgraders)", () => {
     renderRoute("/courses", { scenario: "upgrader" });
     const sheet = await screen.findByRole("dialog", { name: "What's new in PageLamp" });
     const rows = within(sheet).getAllByRole("listitem");
-    expect(rows).toHaveLength(5);
-    // After the rows that each ask for a decision; the row of the next version comes last.
+    expect(rows).toHaveLength(6);
+    // After the rows that each ask for a decision; the rows of the later versions come last.
     const row = rows[3] as HTMLElement;
     expect(row).toHaveTextContent("PageLamp reads more of each Canvas course");
     expect(row).toHaveTextContent("also reads a course's Home page");
@@ -336,6 +336,34 @@ describe("installing an update", () => {
     expect(install).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["generation", "Available when the AI finishes reading a syllabus or writing a study plan"],
+    ["codex_install", "Available when the Codex download finishes"],
+  ] as const)("waits while a %s runs, and says so", async (kind, hint) => {
+    const api = mockApi({ scenario: "update-available" });
+    let items: ActivityItem[] = [
+      { kind, source_id: null, generation_id: null, started_at: "2026-09-28T10:00:00Z" },
+    ];
+    api.activity = async () => ({ items, other_process_syncing: false });
+    const install = vi.spyOn(api, "installUpdate");
+    const { user, queryClient } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+
+    const button = within(dialog).getByRole("button", { name: "Install and restart" });
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    expect(button).toHaveAccessibleDescription(hint);
+    expect(within(dialog).queryByRole("button", { name: "Stop the sync" })).not.toBeInTheDocument();
+    await user.click(button);
+    expect(install).not.toHaveBeenCalled();
+
+    // It ends (a reading refreshes every query when it does).
+    items = [];
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+  });
+
   /** An install the app holds back after the download: a sync started meanwhile. */
   function heldOnce(api: ReturnType<typeof mockApi>) {
     return vi.spyOn(api, "installUpdate").mockImplementationOnce(async (onEvent) => {
@@ -363,6 +391,42 @@ describe("installing an update", () => {
     expect(button).toHaveAccessibleDescription(held);
 
     act(() => useSyncStore.setState({ running: false }));
+    expect(await within(dialog).findByText("Restarting PageLamp…")).toBeInTheDocument();
+    expect(install).toHaveBeenCalledTimes(2);
+  });
+
+  it("says a held install waits for the AI, and goes on when the reading ends", async () => {
+    const api = mockApi({ scenario: "update-available" });
+    let items: ActivityItem[] = [];
+    api.activity = async () => ({ items, other_process_syncing: false });
+    const install = vi.spyOn(api, "installUpdate").mockImplementationOnce(async () => {
+      // A syllabus reading started during the download.
+      items = [
+        {
+          kind: "generation",
+          source_id: null,
+          generation_id: "g",
+          started_at: "2026-09-28T10:00:00Z",
+        },
+      ];
+      throw new ApiError("busy", "The AI is still working. Install the update when it finishes.");
+    });
+    const { user, queryClient } = renderRoute("/courses", { api });
+    const notice = await screen.findByRole("region", { name: /is available\./ });
+    await user.click(within(notice).getByRole("button", { name: "Install…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Install and restart" }));
+
+    const held =
+      "PageLamp will install the update when the AI finishes reading a syllabus or writing a study plan.";
+    expect(await within(dialog).findByText(held)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Install and restart" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    items = [];
+    await act(() => queryClient.invalidateQueries());
     expect(await within(dialog).findByText("Restarting PageLamp…")).toBeInTheDocument();
     expect(install).toHaveBeenCalledTimes(2);
   });
