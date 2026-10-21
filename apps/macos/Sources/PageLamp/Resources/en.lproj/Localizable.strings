@@ -2001,6 +2001,7 @@
 "weeklyNote.running.withModel" = "Writing with %1$@ · %2$@";
 "weeklyNote.running.writingNow" = "Writing your note";
 "weeklyNote.serverDidntAnswer" = "%1$@ on this computer didn't answer. Is it running?";
+"weeklyNote.settings.costCloudViaLocal" = "With %1$@ · %2$@, which may run in the cloud (no cost estimate).";
 "weeklyNote.settings.costKey" = "With %1$@ · %2$@: %3$@ each Monday, counted toward your monthly budget.";
 "weeklyNote.settings.costLocal" = "With %1$@ · %2$@, on this computer.";
 "weeklyNote.settings.costUnpriced" = "With %1$@ · %2$@, counted toward your monthly budget (no price for this model).";

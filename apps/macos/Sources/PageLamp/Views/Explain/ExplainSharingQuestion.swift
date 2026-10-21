@@ -1,7 +1,7 @@
-// The one-time question after a course's first cloud run with its materials (design D37, the
-// Tauri app's MaterialSharingReminder): may this course's materials be shared with AI services?
-// Not an error: an info callout with the three answers and Dismiss. An answer is saved, read out,
-// and the course is read again (it changes what may be sent).
+// The one-time question after a course's first cloud run with its materials, however it ended
+// (design D37, the Tauri app's MaterialSharingReminder): may this course's materials be shared
+// with AI services? Not an error: an info callout with the three answers and Dismiss. An answer
+// is saved, read out, and the course is read again (it changes what may be sent).
 
 import SwiftUI
 import PageLampKit
@@ -9,7 +9,8 @@ import PageLampModel
 
 struct ExplainSharingQuestion: View {
     let explain: ExplainModel
-    let explanation: WeeklyExplanation
+    /// Where the course's text went (the run's service).
+    let service: String
     let summary: CourseSummary
 
     @Environment(AppModel.self) private var model
@@ -23,7 +24,7 @@ struct ExplainSharingQuestion: View {
             title: l10n("ai.sharing.reminder.title"),
             message: l10n("ai.sharing.reminder.body", [
                 "course": summary.course.code ?? summary.course.name,
-                "service": explanation.meta.backendLabel,
+                "service": service,
             ])
         ) {
             VStack(alignment: .leading, spacing: PLSpace.s2) {
@@ -55,7 +56,7 @@ struct ExplainSharingQuestion: View {
                 .foregroundStyle(.tint)
                 .padding(.vertical, 2)
         } else {
-            Button(l10n("ai.sharing.reminder.dismiss")) { explain.dismissSharingQuestion(explanation) }
+            Button(l10n("ai.sharing.reminder.dismiss")) { explain.dismissSharingQuestion() }
                 .buttonStyle(.borderless)
         }
     }
@@ -63,7 +64,7 @@ struct ExplainSharingQuestion: View {
     private func answer(_ answer: MaterialSharing, _ key: String) -> some View {
         Button(l10n(key)) {
             Task {
-                if await explain.answerSharing(answer, for: explanation) {
+                if await explain.answerSharing(answer) {
                     AccessibilityNotification.Announcement(l10n("ai.sharing.saved")).post()
                     await model.refresh()
                 } else if let failure = explain.sharingFailure {

@@ -114,6 +114,26 @@ private struct FailingNotes: ForwardingService {
     }
 }
 
+/// The note's model doesn't answer: `error` before the run started (Ollama asked for its
+/// list), or once it started (`afterStart`).
+private struct SilentServer: ForwardingService {
+    let base: any PageLampService
+    let error: ModelErrorKind
+    var afterStart = false
+
+    func writeWeeklyNote(
+        generationId: String, options: WeeklyNoteOptions, observer: any GenObserver
+    ) async throws(PageLampFailure) -> WeeklyNote {
+        if afterStart {
+            observer.onEvent(event: .started(
+                generationId: generationId, backendLabel: "Ollama", model: "qwen3.5:9b", onDevice: true
+            ))
+        }
+        observer.onEvent(event: .finished(ok: false))
+        throw PageLampFailure(kind: .model, message: "Ollama didn't answer.", modelError: error)
+    }
+}
+
 /// Monday 2026-09-28 at `hour` (Toronto).
 private func monday(_ hour: Int = 10) -> Date {
     TestClock.at(3, hour)
@@ -210,6 +230,51 @@ struct WeeklyNoteModelTests {
         #expect(note.history.map { $0.meta.generationId } == [second.meta.generationId, first.meta.generationId])
         note.show(first)
         #expect(note.shown?.meta.generationId == first.meta.generationId)
+    }
+
+    @Test("a server here that didn't answer is named: not reachable, or too slow before the run started")
+    func silentServer() async throws {
+        let words = NoteText(l10n: en, calendar: TestClock.calendar)
+        let named = "Ollama on this computer didn't answer. Is it running?"
+        let cases: [(ModelErrorKind, Bool, Bool)] = [
+            (.network, false, true), (.timeout, false, true), (.network, true, true),
+            // Slow once the run started: running, only slow.
+            (.timeout, true, false),
+        ]
+        for (error, afterStart, isNamed) in cases {
+            let time = TestTime()
+            let note = noteModel(SilentServer(base: mock(.aiLocal, time: time), error: error, afterStart: afterStart), time: time)
+            await note.load()
+            await note.estimate.settle()
+            await note.write(uiLanguage: "en")
+            guard case .failed(let failure) = note.run.phase else {
+                Issue.record("expected the run to fail")
+                continue
+            }
+            #expect((note.silentServer == "Ollama") == isNamed, "\(error) after start: \(afterStart)")
+            #expect((words.failure(failure, server: note.silentServer) == named) == isNamed)
+        }
+        // A provider off this computer is never named.
+        let time = TestTime()
+        let key = noteModel(SilentServer(base: mock(.aiKey, time: time), error: .network), time: time)
+        await key.load()
+        await key.estimate.settle()
+        await key.write(uiLanguage: "en")
+        #expect(key.silentServer == nil)
+    }
+
+    @Test("Monday's note names a server here that didn't answer, in its one line")
+    func silentServerOnMonday() async throws {
+        let time = TestTime(monday())
+        let base = mock(.aiLocal, time: time)
+        _ = try await base.setPrepareWeeklyNoteOnMonday(on: true)
+        let note = noteModel(SilentServer(base: base, error: .timeout), time: time)
+        await note.check()
+        #expect(await eventually { note.automaticProblem != nil })
+        let problem = try #require(note.automaticProblem)
+        #expect(note.silentServer == "Ollama")
+        let words = NoteText(l10n: en, calendar: TestClock.calendar)
+        #expect(words.failure(problem, server: note.silentServer) == "Ollama on this computer didn't answer. Is it running?")
     }
 
     @Test("the week's key: the same a minute later, new when a deadline comes within 7 days or the day changes")
@@ -724,12 +789,16 @@ struct WeeklyNoteSettingsTests {
     @Test("the cost: on this computer by the model's facts (a cloud model through Ollama isn't), else priced or not")
     func cost() async throws {
         let (local, _) = await loaded(.aiLocal)
-        #expect(local.noteCost?.onDevice == true)
+        #expect(local.noteCost?.onDevice == true && local.noteCost?.throughLocal == false)
         await local.setModel(.weeklyNote, backend: .provider(providerId: "ollama"), model: "gpt-oss:120b-cloud")
         #expect(local.noteCost?.model == "gpt-oss:120b-cloud" && local.noteCost?.onDevice == false)
+        // Through the server here, in the cloud: said so, with no price.
+        #expect(local.noteCost?.throughLocal == true)
+        #expect(local.noteCost.flatMap(NoteText(l10n: en, calendar: TestClock.calendar).mondayCost)
+            == "With Ollama · gpt-oss:120b-cloud, which may run in the cloud (no cost estimate).")
         let (key, _) = await loaded(.aiKey)
         let priced = try #require(key.noteCost)
-        #expect(!priced.onDevice && priced.priceKnown && priced.upper == 900)
+        #expect(!priced.onDevice && !priced.throughLocal && priced.priceKnown && priced.upper == 900)
         await key.setModel(.weeklyNote, backend: .provider(providerId: "openai"), model: "gpt-6-preview-0929")
         #expect(key.noteCost?.priceKnown == false)
         let words = NoteText(l10n: en, calendar: TestClock.calendar)

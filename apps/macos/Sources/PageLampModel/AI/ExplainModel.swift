@@ -47,12 +47,15 @@ public final class ExplainModel {
     public private(set) var deleted: Set<String> = []
     public private(set) var deleting = false
     public private(set) var deleteFailure: PageLampFailure?
-    /// The explanation whose sharing question the student closed (not kept).
-    public private(set) var reminderClosed: String?
+    /// The explanation whose run said the sharing question (it shows with that one; any other
+    /// run's, under the run's outcome).
+    public private(set) var remindedBy: String?
     public private(set) var savingSharing = false
     public private(set) var sharingFailure: PageLampFailure?
 
     @ObservationIgnored private let service: any PageLampService
+    /// The app's question (b) reminders, by course (they outlast this model).
+    @ObservationIgnored private let reminders: SharingReminders
     @ObservationIgnored private var savedLoads = 0
     /// The include each run here sent, by its explanation (Write Again sends it again; Include It
     /// adds to it). Saved explanations from before don't say: none.
@@ -60,14 +63,17 @@ public final class ExplainModel {
     /// The week the section shows (`load(week:)`): a list read for another week is dropped.
     @ObservationIgnored private var shownWeek: UInt32??
 
+    /// - Parameter reminders: the app's question (b) reminders (tests pass their own, or none).
     public init(
         courseId: String,
         service: any PageLampService,
+        reminders: SharingReminders = SharingReminders(),
         debounce: Duration = .milliseconds(300),
         newId: @escaping @Sendable () -> String = randomGenerationId
     ) {
         self.courseId = courseId
         self.service = service
+        self.reminders = reminders
         run = GenerationRun(service: service, newId: newId)
         estimate = CostEstimateModel(service: service, debounce: debounce)
         includeEstimate = CostEstimateModel(service: service, debounce: debounce)
@@ -227,11 +233,21 @@ public final class ExplainModel {
         for line in [estimate, includeEstimate, againEstimate] {
             line.overrideBudget = false
         }
-        await run.run { service, id, observer async throws(PageLampFailure) in
+        // The one-time question (b) reminder comes however the run ends (the facade claims it once
+        // the text went out, a failed or stopped run too): it goes to the app's reminders.
+        let reminders = self.reminders
+        await run.run({ service, id, observer async throws(PageLampFailure) in
             try await service.explainWeek(course: courseId, week: week, generationId: id, options: options, observer: observer)
-        }
+        }, onNotice: { code, progress in
+            guard code == .materialSharingReminder else { return }
+            reminders.add(courseId, service: progress.backend ?? "")
+        })
         if case .finished(let fresh) = run.phase {
             sentIncludes[fresh.meta.generationId] = include
+            if fresh.sharingReminder {
+                reminders.add(courseId, service: fresh.meta.backendLabel)
+                remindedBy = fresh.meta.generationId
+            }
         }
         // Usage, the budget and the saved list changed, whatever the end (a stopped run is billed).
         await refresh(week: week)
@@ -289,19 +305,33 @@ public final class ExplainModel {
 
     // MARK: - Sharing the course's materials (question (b))
 
-    /// Whether `explanation` asks the one-time question (the first cloud run of a course whose
-    /// answer is missing or "not sure"), until the student closes it.
-    public func asksAboutSharing(_ explanation: WeeklyExplanation) -> Bool {
-        explanation.sharingReminder && reminderClosed != explanation.meta.generationId
+    /// The course's one-time question (b) reminder still to answer (the first cloud run of a
+    /// course whose answer is missing or "not sure", however it ended), whichever run said it.
+    public var sharingQuestion: SharingReminders.Pending? {
+        reminders.pending[courseId]
     }
 
-    public func dismissSharingQuestion(_ explanation: WeeklyExplanation) {
-        reminderClosed = explanation.meta.generationId
+    /// Whether the question shows with `explanation`: the one whose run said it.
+    public func asksWithResult(_ explanation: WeeklyExplanation) -> Bool {
+        sharingQuestion != nil && remindedBy == explanation.meta.generationId
+    }
+
+    public func dismissSharingQuestion() {
+        reminders.settle(courseId)
+    }
+
+    /// The course read again with question (b) answered (in another app, or the CLI): the
+    /// reminder is done. "Not sure" leaves it, as the Tauri app does.
+    public func settleIfAnswered(_ summary: CourseSummary) {
+        let answer = summary.course.materialSharing
+        if answer == .allowed || answer == .notAllowed {
+            reminders.settle(courseId)
+        }
     }
 
     /// Saves the student's answer; the question closes. The caller reads the course again (its
     /// answer changes what may be sent).
-    public func answerSharing(_ answer: MaterialSharing, for explanation: WeeklyExplanation) async -> Bool {
+    public func answerSharing(_ answer: MaterialSharing) async -> Bool {
         guard !savingSharing else { return false }
         savingSharing = true
         sharingFailure = nil
@@ -312,7 +342,7 @@ public final class ExplainModel {
             sharingFailure = error
             return false
         }
-        reminderClosed = explanation.meta.generationId
+        reminders.settle(courseId)
         // What may be sent changed: every line is priced again (Include It and Write Again too).
         await estimate.refresh()
         await includeEstimate.refresh()

@@ -200,18 +200,16 @@ extension MockService {
         observer.onEvent(event: .started(
             generationId: generationId, backendLabel: run.backendLabel, model: run.model, onDevice: run.onDevice
         ))
+        // From here the text went out (or was on its way): question (b) is claimed however the
+        // run ends, before it ends, like the facade.
+        let sent = SentRun(courseId: id, onDevice: run.onDevice, answer: course.course.materialSharing)
         observer.onEvent(event: .stage(stage: .waitingForModel))
-        try await explanationStep(generationId, 1, observer)
+        try await explanationStep(generationId, 1, observer, sent: sent)
         observer.onEvent(event: .usage(usage: usage))
         observer.onEvent(event: .stage(stage: .validating))
-        try await explanationStep(generationId, 2, observer)
+        try await explanationStep(generationId, 2, observer, sent: sent)
+        let reminder = claimSharingReminder(sent, observer)
         observer.onEvent(event: .finished(ok: true))
-
-        // Question (b) once per course: a cloud model, and the student hasn't said yes or no.
-        let sharing = db.features.sharing[id] ?? course.course.materialSharing
-        let reminder = !run.onDevice && (sharing == .unanswered || sharing == .notSure)
-            && !db.features.runs.sharingReminded.contains(id)
-        if reminder { db.features.runs.sharingReminded.insert(id) }
 
         let explanation = WeeklyExplanation(
             meta: GenerationMeta(
@@ -252,15 +250,37 @@ extension MockService {
         return explanation
     }
 
-    /// A run's step, then Stop: a run asked to stop ends here, cancelled.
+    /// What a run that started sent: enough to claim its question (b) when it ends.
+    private struct SentRun {
+        let courseId: String
+        let onDevice: Bool
+        /// The course's answer as the run started (one given meanwhile is in `db`).
+        let answer: MaterialSharing
+    }
+
+    /// A run's step, then Stop: a run asked to stop ends here, cancelled (one that `sent` claims
+    /// its question (b) first).
     private func explanationStep(
-        _ generationId: String, _ step: UInt32, _ observer: any GenObserver
+        _ generationId: String, _ step: UInt32, _ observer: any GenObserver, sent: SentRun? = nil
     ) async throws(PageLampFailure) {
         await generationStep(generationId, step)
         if db.features.runs.cancelled.contains(generationId) {
+            if let sent { _ = claimSharingReminder(sent, observer) }
             observer.onEvent(event: .finished(ok: false))
             throw PageLampFailure(kind: .cancelled, message: "The explanation was stopped.")
         }
+    }
+
+    /// Question (b) once per course, as the facade claims it: a cloud model, and the student
+    /// hasn't said yes or no by the time the run ends (the answer stored then). Said as the
+    /// run's notice; whether it was.
+    private func claimSharingReminder(_ sent: SentRun, _ observer: any GenObserver) -> Bool {
+        let sharing = db.features.sharing[sent.courseId] ?? sent.answer
+        guard !sent.onDevice, sharing == .unanswered || sharing == .notSure,
+              !db.features.runs.sharingReminded.contains(sent.courseId) else { return false }
+        db.features.runs.sharingReminded.insert(sent.courseId)
+        observer.onEvent(event: .notice(code: .materialSharingReminder))
+        return true
     }
 
     /// The "model's" citation of the `number`th material read.

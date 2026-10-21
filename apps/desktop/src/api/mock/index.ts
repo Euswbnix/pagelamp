@@ -564,7 +564,14 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
             model_error: "rate_limited",
           })
         : null;
-    return { backend_label: backend.label, model: choice.model, on_device: onDevice, failure };
+    const priced = backend.kind === "api_key" && estimate.price_known;
+    return {
+      backend_label: backend.label,
+      model: choice.model,
+      on_device: onDevice,
+      priced,
+      failure,
+    };
   }
 
   // Reminders, their settings, the tray and the login item (reminders.ts).

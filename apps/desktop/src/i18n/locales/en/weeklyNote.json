@@ -50,6 +50,7 @@
     "prepare": "Prepare my weekly note when I open PageLamp on Monday",
     "costKey": "With {{backend}} · {{model}}: {{cost}} each Monday, counted toward your monthly budget.",
     "costLocal": "With {{backend}} · {{model}}, on this computer.",
+    "costCloudViaLocal": "With {{backend}} · {{model}}, which may run in the cloud (no cost estimate).",
     "costUnpriced": "With {{backend}} · {{model}}, counted toward your monthly budget (no price for this model).",
     "costWeekEmpty": "With {{backend}} · {{model}}, counted toward your monthly budget (what it costs depends on the week).",
     "paused": "Paused: the weekly note's model is no longer an API key or a model on this computer.",

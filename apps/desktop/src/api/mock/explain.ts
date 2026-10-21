@@ -275,7 +275,7 @@ export function createExplainMock(deps: {
         estimated: false,
         prompt_version: 1,
         usage,
-        est_cost_micro_usd: run.on_device ? null : 3_100,
+        est_cost_micro_usd: run.on_device ? 0 : run.priced ? 3_100 : null,
         context: summary,
       },
       course_id: c.course.id,
@@ -358,6 +358,8 @@ export function createExplainMock(deps: {
     // "Remove all AI data": the kept explanations go, and the output language is the default
     // again (an AI setting, as in the facade). How many explanations went.
     forget: () => {
+      // Runs going on stop and keep nothing, as the facade's cancel_all.
+      for (const id of running) cancelled.add(id);
       let removed = 0;
       for (const list of saved.values()) removed += list.length;
       saved.clear();

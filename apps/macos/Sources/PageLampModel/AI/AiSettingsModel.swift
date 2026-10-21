@@ -151,9 +151,13 @@ public final class AiSettingsModel {
         public var upper: UInt64?
         /// This week has nothing to write about: the line says so instead of an amount.
         public var weekEmpty: Bool
+        /// A server on this computer that runs this model in the cloud (an Ollama cloud model,
+        /// any model of a custom server): no price, and not on this computer.
+        public var throughLocal: Bool
 
         public init(
-            backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?, weekEmpty: Bool = false
+            backend: String, model: String, onDevice: Bool, priceKnown: Bool, upper: UInt64?, weekEmpty: Bool = false,
+            throughLocal: Bool = false
         ) {
             self.backend = backend
             self.model = model
@@ -161,6 +165,7 @@ public final class AiSettingsModel {
             self.priceKnown = priceKnown
             self.upper = upper
             self.weekEmpty = weekEmpty
+            self.throughLocal = throughLocal
         }
     }
 
@@ -172,10 +177,11 @@ public final class AiSettingsModel {
             return nil
         }
         let facts = chosenModel(for: .weeklyNote)
+        let onDevice = facts?.onDevice ?? (backend.kind == .local)
         return NoteCost(
-            backend: backend.label, model: choice.model, onDevice: facts?.onDevice ?? (backend.kind == .local),
+            backend: backend.label, model: choice.model, onDevice: onDevice,
             priceKnown: noteEstimate?.priceKnown ?? facts?.priceKnown ?? true, upper: noteEstimate?.microUsdUpper,
-            weekEmpty: noteWeekEmpty
+            weekEmpty: noteWeekEmpty, throughLocal: backend.kind == .local && !onDevice
         )
     }
 

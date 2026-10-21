@@ -78,15 +78,23 @@ public struct NoteText: Sendable {
         )
     }
 
+    /// Why a run failed: a model server on this computer that didn't answer is named
+    /// (`WeeklyNoteModel.silentServer`), since starting it is the fix.
+    public func failure(_ failure: PageLampFailure, server: String?) -> String {
+        server.map { l10n("weeklyNote.serverDidntAnswer", ["name": $0]) } ?? l10n.aiError(failure)
+    }
+
     // MARK: Settings
 
     /// The Monday opt-in's cost line: "With Ollama · qwen3.5:9b, on this computer." (a model on
-    /// this computer, as its facts say), "…, counted toward your monthly budget (no price for this
-    /// model)." without a price, "… (what it costs depends on the week)." in a week with nothing
-    /// to write about, else "…: ≈ $0.01 at most each Monday, …"; nil without an amount.
+    /// this computer, as its facts say), "…, which may run in the cloud (no cost estimate)." for a
+    /// server here that runs it elsewhere, "…, counted toward your monthly budget (no price for
+    /// this model)." without a price, "… (what it costs depends on the week)." in a week with
+    /// nothing to write about, else "…: ≈ $0.01 at most each Monday, …"; nil without an amount.
     public func mondayCost(_ cost: AiSettingsModel.NoteCost) -> String? {
         let names = ["backend": cost.backend, "model": cost.model]
         if cost.onDevice { return l10n("weeklyNote.settings.costLocal", names) }
+        if cost.throughLocal { return l10n("weeklyNote.settings.costCloudViaLocal", names) }
         if !cost.priceKnown { return l10n("weeklyNote.settings.costUnpriced", names) }
         if cost.weekEmpty { return l10n("weeklyNote.settings.costWeekEmpty", names) }
         guard let upper = cost.upper else { return nil }

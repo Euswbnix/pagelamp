@@ -38,6 +38,23 @@ private struct CountingCancels: ForwardingService {
     }
 }
 
+/// A provider that fails the request once the run has started (the text went out): the facade
+/// has claimed question (b) and says so before the run ends.
+private struct FailsAfterStart: ForwardingService {
+    let base: any PageLampService
+
+    func explainWeek(
+        course: String, week: UInt32?, generationId: String, options: ExplainOptions, observer: any GenObserver
+    ) async throws(PageLampFailure) -> WeeklyExplanation {
+        observer.onEvent(event: .started(
+            generationId: generationId, backendLabel: "Demo Cloud", model: "demo-model", onDevice: false
+        ))
+        observer.onEvent(event: .notice(code: .materialSharingReminder))
+        observer.onEvent(event: .finished(ok: false))
+        throw PageLampFailure(kind: .model, message: "The provider is limiting requests.", modelError: .rateLimited)
+    }
+}
+
 /// ICU's narrow and no-break spaces ("10:05\u{202F}AM") as plain spaces.
 private func plain(_ value: String) -> String {
     value.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
@@ -177,8 +194,10 @@ struct ExplainModelTests {
         try #require(try await service.listCourses().first { $0.course.code == code })
     }
 
-    func model(_ service: any PageLampService, _ summary: CourseSummary) async -> (ExplainModel, UInt32?) {
-        let explain = ExplainModel(courseId: summary.course.id, service: service, debounce: .zero)
+    func model(
+        _ service: any PageLampService, _ summary: CourseSummary, reminders: SharingReminders = SharingReminders()
+    ) async -> (ExplainModel, UInt32?) {
+        let explain = ExplainModel(courseId: summary.course.id, service: service, reminders: reminders, debounce: .zero)
         let week = explain.week(summary.timeline)
         await explain.load(week: week)
         await explain.estimate.settle()
@@ -256,26 +275,91 @@ struct ExplainModelTests {
         let (explain, week) = await model(service, summary)
         await explain.generate(week: week, uiLanguage: "en")
         let shown = try #require(explain.shown(week: week))
-        #expect(shown.sharingReminder && explain.asksAboutSharing(shown))
-        #expect(await explain.answerSharing(.allowed, for: shown))
-        #expect(!explain.asksAboutSharing(shown))
+        // With the explanation whose run said it.
+        #expect(shown.sharingReminder && explain.asksWithResult(shown))
+        #expect(explain.sharingQuestion?.service == shown.meta.backendLabel)
+        #expect(await explain.answerSharing(.allowed))
+        #expect(explain.sharingQuestion == nil && !explain.asksWithResult(shown))
         #expect(try await course(service, "DEMO101").course.materialSharing == .allowed)
         // Dismissing closes it too, without an answer.
-        let other = ExplainModel(courseId: summary.course.id, service: service, debounce: .zero)
-        other.dismissSharingQuestion(shown)
-        #expect(!other.asksAboutSharing(shown))
+        let reminders = SharingReminders()
+        reminders.add(summary.course.id, service: "OpenAI")
+        let other = ExplainModel(courseId: summary.course.id, service: service, reminders: reminders, debounce: .zero)
+        other.dismissSharingQuestion()
+        #expect(other.sharingQuestion == nil && reminders.pending.isEmpty)
+    }
+
+    @Test("a run stopped after it started asks too, and the question outlasts the section")
+    func sharingAfterStop() async throws {
+        let reminders = SharingReminders()
+        let (explain, base, gate, _, summary, run) = try await heldRun(.aiKey, reminders: reminders)
+        // Started: the text is on its way. Then Stop.
+        await gate.advance()
+        _ = await gate.held()
+        #expect(await eventually { explain.runOnDevice == false })
+        await explain.stop()
+        await gate.open()
+        await run.value
+        guard case .stopped = explain.run.phase else {
+            Issue.record("expected the run to stop")
+            return
+        }
+        let question = try #require(explain.sharingQuestion)
+        #expect(question.service == "OpenAI")
+        // No explanation of its own: it shows under the run's outcome.
+        if let shown = explain.shown(week: explain.week(summary.timeline)) {
+            #expect(!explain.asksWithResult(shown))
+        }
+        // The course left and opened again: still asked, until closed there.
+        explain.leave()
+        let again = ExplainModel(courseId: summary.course.id, service: base, reminders: reminders, debounce: .zero)
+        #expect(again.sharingQuestion == question)
+        again.dismissSharingQuestion()
+        #expect(explain.sharingQuestion == nil)
+    }
+
+    @Test("a run that fails after it started asks too, with the service it went to")
+    func sharingAfterFailure() async throws {
+        let reminders = SharingReminders()
+        let service = FailsAfterStart(base: mock(.aiKey))
+        let summary = try await course(service, "DEMO101")
+        let (explain, week) = await model(service, summary, reminders: reminders)
+        await explain.generate(week: week, uiLanguage: "en")
+        guard case .failed(let failure) = explain.run.phase else {
+            Issue.record("expected the run to fail")
+            return
+        }
+        #expect(failure.modelError == .rateLimited)
+        #expect(explain.sharingQuestion?.service == "Demo Cloud")
+    }
+
+    @Test("an answer given elsewhere closes the question; \"not sure\" leaves it")
+    func sharingAnsweredElsewhere() async throws {
+        let service = mock(.aiKey)
+        let reminders = SharingReminders()
+        let summary = try await course(service, "DEMO101")
+        reminders.add(summary.course.id, service: "OpenAI")
+        let explain = ExplainModel(courseId: summary.course.id, service: service, reminders: reminders, debounce: .zero)
+        explain.settleIfAnswered(summary)
+        #expect(explain.sharingQuestion != nil)
+        try await service.setCourseMaterialSharing(course: summary.course.id, answer: .notSure)
+        explain.settleIfAnswered(try await course(service, "DEMO101"))
+        #expect(explain.sharingQuestion != nil)
+        try await service.setCourseMaterialSharing(course: summary.course.id, answer: .notAllowed)
+        explain.settleIfAnswered(try await course(service, "DEMO101"))
+        #expect(explain.sharingQuestion == nil)
     }
 
     /// A run of DEMO101's week held at its first step (before `started`), counting cancels.
     private func heldRun(
-        _ scenario: MockScenario
+        _ scenario: MockScenario, reminders: SharingReminders = SharingReminders()
     ) async throws -> (ExplainModel, MockService, SyncStepGate, Cancels, CourseSummary, Task<Void, Never>) {
         let gate = SyncStepGate()
         let cancels = Cancels()
         let base = mock(scenario, gate: gate)
         let service = CountingCancels(base: base, cancels: cancels)
         let summary = try await course(service, "DEMO101")
-        let (explain, week) = await model(service, summary)
+        let (explain, week) = await model(service, summary, reminders: reminders)
         let run = Task { await explain.generate(week: week, uiLanguage: "en") }
         _ = await gate.held()
         #expect(await eventually { explain.run.isRunning })

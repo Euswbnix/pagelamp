@@ -643,6 +643,76 @@ describe("Settings → Weekly note", () => {
     );
   });
 
+  it("says a model Ollama runs here is on this computer, and one it runs in the cloud isn't", async () => {
+    const api = mockApi({ scenario: "ai-local" });
+    const first = renderRoute("/settings", { api });
+    await waitFor(async () =>
+      expect(await prepareSwitch()).toHaveAccessibleDescription(
+        "With Ollama · qwen3.5:9b, on this computer.",
+      ),
+    );
+    first.unmount();
+    await api.setFeatureModel("weekly_note", {
+      backend: { kind: "provider", provider_id: "ollama" },
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const second = renderRoute("/settings", { api });
+    await waitFor(async () =>
+      expect(await prepareSwitch()).toHaveAccessibleDescription(
+        "With Ollama · gpt-oss:120b-cloud, which may run in the cloud (no cost estimate).",
+      ),
+    );
+    second.unmount();
+    // Without Ollama's list (it doesn't list the model), the estimate decides: not free here.
+    vi.spyOn(api, "listModels").mockResolvedValue([]);
+    renderRoute("/settings", { api });
+    await waitFor(async () =>
+      expect(await prepareSwitch()).toHaveAccessibleDescription(
+        "With Ollama · gpt-oss:120b-cloud, which may run in the cloud (no cost estimate).",
+      ),
+    );
+  });
+
+  it("says a model here is on this computer in a week with nothing to write about", async () => {
+    const api = mockApi({ scenario: "all-past" });
+    const added = await api.addModelProvider("ollama", null, null);
+    await api.setFeatureModel("weekly_note", {
+      backend: { kind: "provider", provider_id: added.provider_id },
+      model: "qwen3.5:9b",
+      effort: "lowest",
+    });
+    // Ollama may list it with ":latest": the same model.
+    const list = api.listModels;
+    vi.spyOn(api, "listModels").mockImplementation(async (backend) =>
+      (await list(backend)).map((m) => ({ ...m, id: `${m.id}:latest` })),
+    );
+    renderRoute("/settings", { api });
+    await waitFor(async () =>
+      expect(await prepareSwitch()).toHaveAccessibleDescription(
+        "With Ollama · qwen3.5:9b, on this computer.",
+      ),
+    );
+  });
+
+  it("never says a custom server here runs its model on this computer", async () => {
+    const api = mockApi({ scenario: "ai-local" });
+    const added = await api.addModelProvider("custom", "http://127.0.0.1:8080/v1", null);
+    await api.setFeatureModel("weekly_note", {
+      backend: { kind: "provider", provider_id: added.provider_id },
+      model: "demo-model-large",
+      effort: "lowest",
+    });
+    renderRoute("/settings", { api });
+    const toggle = await prepareSwitch();
+    await waitFor(() =>
+      expect(toggle).toHaveAccessibleDescription(
+        /, which may run in the cloud \(no cost estimate\)\.$/,
+      ),
+    );
+    expect(toggle).not.toHaveAccessibleDescription(/on this computer/);
+  });
+
   it("isn't offered with the ChatGPT plan", async () => {
     const api = mockApi({ scenario: "codex-plus" });
     const settings = vi.spyOn(api, "weeklyNoteSettings");

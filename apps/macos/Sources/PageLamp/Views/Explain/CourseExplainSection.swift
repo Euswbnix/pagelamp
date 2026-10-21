@@ -63,7 +63,13 @@ private struct ExplainContent: View {
                         generate(week)
                     }
                     outcome
-                    if let shown = explain.shown(week: week) {
+                    // The course's question (b), whichever run said it: with the explanation whose
+                    // run said it, else here (a run that failed or was stopped says it too).
+                    let shown = explain.shown(week: week)
+                    if let question = explain.sharingQuestion, !(shown.map(explain.asksWithResult) ?? false) {
+                        ExplainSharingQuestion(explain: explain, service: question.service, summary: summary)
+                    }
+                    if let shown {
                         result(shown, week: week)
                             .id(Self.resultAnchor)
                     }
@@ -88,6 +94,10 @@ private struct ExplainContent: View {
             }
         }
         .task(id: week) { await explain.load(week: week) }
+        // Question (b) answered elsewhere (another app, the CLI): the reminder is done.
+        .onChange(of: summary.course.materialSharing, initial: true) {
+            explain.settleIfAnswered(summary)
+        }
         // Include It and Write Again are priced for the explanation on screen.
         .onChange(of: "\(explain.shown(week: week)?.meta.generationId ?? "")|\(week.map(String.init) ?? "")", initial: true) {
             explain.prepare(for: explain.shown(week: week), week: week)
@@ -268,8 +278,8 @@ private struct ExplainContent: View {
                     .foregroundStyle(PLColor.danger)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if explain.asksAboutSharing(shown) {
-                ExplainSharingQuestion(explain: explain, explanation: shown, summary: summary)
+            if let question = explain.sharingQuestion, explain.asksWithResult(shown) {
+                ExplainSharingQuestion(explain: explain, service: question.service, summary: summary)
             }
         }
         .accessibilityElement(children: .contain)

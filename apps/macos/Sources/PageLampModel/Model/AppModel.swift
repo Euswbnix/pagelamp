@@ -158,6 +158,9 @@ public final class AppModel {
     /// Bumped whenever `service` is replaced (Debug ▸ Data Source, the live facade opening):
     /// screens holding their own model of the service rebuild on it.
     public private(set) var serviceGeneration = 0
+    /// The question (b) reminders runs said, by course, until answered or dismissed (they outlast
+    /// the section whose run said them).
+    public let sharingReminders = SharingReminders()
 
     // MARK: Shell data (spec §2.8)
 

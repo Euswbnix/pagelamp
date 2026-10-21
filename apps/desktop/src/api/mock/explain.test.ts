@@ -152,6 +152,28 @@ describe("mock weekly explanations: the question (b) reminder, as a reading's", 
   });
 });
 
+describe("mock weekly explanations: priced as the facade bills them", () => {
+  it("is free here, has no price in the cloud through a server here, is priced with a key", async () => {
+    const api = createMockApi(fast);
+    const cost = async (id: string) =>
+      (await api.explainWeek(COURSE, 4, id, {}, () => {})).meta.est_cost_micro_usd;
+    expect(await cost("key")).toBe(3_100);
+    const added = await api.addModelProvider("ollama", null, null);
+    const ollama = { kind: "provider", provider_id: added.provider_id } as const;
+    for (const here of [true, false]) {
+      const [facts] = await api.modelDisclosure(ollama, here);
+      await api.acknowledgeModelDisclosure(ollama, here, facts.version);
+    }
+    const use = (model: string) =>
+      api.setFeatureModel("weekly_explanation", { backend: ollama, model, effort: "lowest" });
+    await use("qwen3.5:9b");
+    expect(await cost("here")).toBe(0);
+    await use("gpt-oss:120b-cloud");
+    await api.acknowledgeUnpricedModel(ollama, "gpt-oss:120b-cloud");
+    expect(await cost("cloud")).toBeNull();
+  });
+});
+
 describe("the mock's left-out list, in the facade's order", () => {
   const material = (id: string, title: string, text: "ok" | "not_downloaded") =>
     ({ id, title, text_status: text }) as MaterialView;

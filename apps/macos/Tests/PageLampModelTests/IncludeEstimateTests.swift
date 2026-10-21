@@ -195,7 +195,7 @@ struct IncludeEstimateModelTests {
         explain.prepare(for: first, week: 4)
         await explain.includeEstimate.settle()
         #expect(explain.includeEstimate.canGenerate)
-        #expect(await explain.answerSharing(.notAllowed, for: first))
+        #expect(await explain.answerSharing(.notAllowed))
         #expect(explain.includeEstimate.block == .materialSharingNotAllowed && !explain.includeEstimate.canGenerate)
     }
 

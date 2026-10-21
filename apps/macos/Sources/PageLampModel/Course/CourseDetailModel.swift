@@ -141,7 +141,7 @@ public final class CourseDetailModel {
     public func explainModel(using model: AppModel) -> ExplainModel {
         if let explain, explainService == model.serviceGeneration { return explain }
         explain?.leave()
-        let fresh = ExplainModel(courseId: courseId, service: model.service)
+        let fresh = ExplainModel(courseId: courseId, service: model.service, reminders: model.sharingReminders)
         explain = fresh
         explainService = model.serviceGeneration
         return fresh

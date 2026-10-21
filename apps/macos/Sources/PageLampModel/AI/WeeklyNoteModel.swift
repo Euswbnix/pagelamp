@@ -56,6 +56,10 @@ public final class WeeklyNoteModel {
     public private(set) var automatic = false
     /// Why Monday's run didn't write a note (one line on the card), until a click or a note.
     public private(set) var automaticProblem: PageLampFailure?
+    /// The model server on this computer the last run went to (its name), when it didn't
+    /// answer: not reachable, or too slow to say where its model runs before the run started.
+    /// Read as the run starts (the note's model may change meanwhile); its failure names it.
+    public private(set) var silentServer: String?
     /// The note picked in the history; nil = the run's new one, else the newest.
     public private(set) var shownId: String?
     /// Deleted here, or gone from a later read: never shown again.
@@ -199,8 +203,13 @@ public final class WeeklyNoteModel {
         deleteFailure = nil
         shownId = nil
         estimate.overrideBudget = false
+        silentServer = nil
+        async let routed = Self.serverHere(service)
         await run.run { service, id, observer async throws(PageLampFailure) in
             try await service.writeWeeklyNote(generationId: id, options: options, observer: observer)
+        }
+        if case .failed(let failure) = run.phase {
+            nameSilentServer(failure, await routed, generation)
         }
         await ended(generation)
     }
@@ -215,6 +224,9 @@ public final class WeeklyNoteModel {
         automatic = true
         // A tick left from an earlier visit never rides on a later click.
         estimate.overrideBudget = false
+        silentServer = nil
+        async let routed = Self.serverHere(service)
+        var problem: PageLampFailure?
         await run.run(
             { service, id, observer async throws(PageLampFailure) in
                 try await service.writeWeeklyNote(generationId: id, options: options, observer: observer)
@@ -222,11 +234,38 @@ public final class WeeklyNoteModel {
             onFailure: { [weak self] failure in
                 // A run of the data source before says nothing about this one.
                 let quiet = failure.kind == .invalid || failure.blocked == .nothingToWrite
-                if let self, self.generation == generation, !quiet { self.automaticProblem = failure }
+                if let self, self.generation == generation, !quiet {
+                    self.automaticProblem = failure
+                    problem = failure
+                }
                 return .idle
             }
         )
+        if let problem {
+            nameSilentServer(problem, await routed, generation)
+        }
         await ended(generation)
+    }
+
+    /// The model server on this computer the weekly note goes to now (its name); nil for any
+    /// other, or when the AI status can't be read.
+    private nonisolated static func serverHere(_ service: any PageLampService) async -> String? {
+        guard let status = try? await service.aiStatus(),
+              let choice = status.features.first(where: { $0.feature == .weeklyNote })?.choice,
+              let backend = status.backends.first(where: { AiCodes.key($0.backend) == AiCodes.key(choice.backend) }),
+              backend.kind == .local
+        else { return nil }
+        return backend.label
+    }
+
+    /// After a failed run: the server here it went to, when that didn't answer (`silentServer`).
+    /// One that was slow once the run started is said as slow.
+    private func nameSilentServer(_ failure: PageLampFailure, _ server: String?, _ generation: Int) {
+        guard generation == self.generation, failure.kind == .model, let server else { return }
+        let started = run.lastProgress?.backend != nil
+        if failure.modelError == .network || (failure.modelError == .timeout && !started) {
+            silentServer = server
+        }
     }
 
     /// After any end: a note clears Monday's line; the list and "≈ $x" are read again (a stopped

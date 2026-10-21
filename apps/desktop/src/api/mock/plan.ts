@@ -160,7 +160,7 @@ export function createPlanMock(deps: {
         estimated: false,
         prompt_version: 1,
         usage,
-        est_cost_micro_usd: run.on_device ? null : 4_200,
+        est_cost_micro_usd: run.on_device ? 0 : run.priced ? 4_200 : null,
         context: {
           courses: courses.map((c) => {
             const state = aiMaterialsState(c.course);
@@ -236,6 +236,8 @@ export function createPlanMock(deps: {
     // "Remove all AI data", as the facade's store does it: the drafts go, accepted ones too; the
     // plan in use stays, with its label, no longer linked to its draft. How many drafts went.
     forget: () => {
+      // Runs going on stop and keep nothing, as the facade's cancel_all.
+      for (const id of running) cancelled.add(id);
       const removed = drafts.size;
       drafts.clear();
       accepted.clear();

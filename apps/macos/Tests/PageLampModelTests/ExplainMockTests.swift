@@ -33,15 +33,17 @@ private func names(_ events: [GenEvent]) -> [String] {
         case .started(let id, let backend, let model, _): "started \(id) \(backend) \(model)"
         case .usage: "usage"
         case .finished(let ok): "finished \(ok)"
+        case .notice(let code): code == .materialSharingReminder ? "reminder" : "notice"
         default: "other"
         }
     }
 }
 
-/// A whole run of "ex-1" on DEMO101's week 4 with the aiKey scenario's model.
+/// A whole run of "ex-1" on DEMO101's week 4 with the aiKey scenario's model (its first: question
+/// (b) is claimed before it ends).
 private let wholeRun = [
     "building_context", "context 2 12800", "started ex-1 OpenAI gpt-5.4-mini", "waiting_for_model", "usage",
-    "validating", "finished true",
+    "validating", "reminder", "finished true",
 ]
 
 /// An explanation of DEMO101's week (4 unless given).
@@ -261,6 +263,20 @@ struct ExplainMockTests {
         }
     }
 
+    @Test("the reminder follows the answer stored when the run ends: one given meanwhile counts")
+    func sharingReminderAtTheEnd() async throws {
+        let gate = SyncStepGate()
+        let service = mock(.aiKey, gate: gate)
+        let run = Task { try await explain(service, "ex-1") }
+        await gate.advance(until: SyncStepPosition(sourceId: "ex-1", step: 1))
+        try await service.setCourseMaterialSharing(course: "DEMO101", answer: .allowed)
+        await gate.open()
+        #expect(try await !run.value.sharingReminder)
+        // Nothing was claimed: "not sure" later, and the next run says it.
+        try await service.setCourseMaterialSharing(course: "DEMO101", answer: .notSure)
+        #expect(try await explain(service, "ex-2").sharingReminder)
+    }
+
     @Test("the reminder about sharing: once per course, for a cloud model and no answer or 'not sure'")
     func sharingReminder() async throws {
         let key = mock(.aiKey)
@@ -400,13 +416,16 @@ struct ExplainMockTests {
         } catch {
             #expect((error as? PageLampFailure)?.kind == .cancelled)
         }
-        // The events up to the step it was held at, then the end.
+        // The events up to the step it was held at, then the end: once it started (the text went
+        // out), question (b) is claimed before it, as the facade does.
         let reached = [1, 4, 6][Int(step)]
         let seen = await events(stream)
-        #expect(names(seen) == Array(wholeRun.prefix(reached)) + ["finished false"])
+        #expect(names(seen) == Array(wholeRun.prefix(reached)) + (step > 0 ? ["reminder"] : []) + ["finished false"])
         #expect(try await saved(service, week: nil).isEmpty)
-        // No longer running: the same id goes again (the gate is open now).
-        #expect(try await explain(service, "ex-1").meta.generationId == "ex-1")
+        // No longer running: the same id goes again (the gate is open now), and says the
+        // reminder only if the stopped run hadn't started.
+        let again = try await explain(service, "ex-1")
+        #expect(again.meta.generationId == "ex-1" && again.sharingReminder == (step == 0))
     }
 
     @Test("one run per id: the same id while it runs is busy, with no events")

@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { backendKey } from "@/api/ai";
-import { useAiStatus, useCostEstimate } from "@/api/ai-queries";
+import { useAiStatus, useCostEstimate, useModels } from "@/api/ai-queries";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { estimateAmount } from "@/features/ai/lib/money";
@@ -49,7 +49,12 @@ export function WeeklyNoteSettingsSection() {
   );
 }
 
-/** The note's model, and what each Monday's note costs (or that it runs on this computer). */
+/**
+ * The note's model, and what each Monday's note costs, or that it runs on this computer: where
+ * the model runs, not the server's kind. A server here may run a model in the cloud (an Ollama
+ * cloud model, any model of a custom server), so its models say so by their own facts, else by
+ * the estimate's "free".
+ */
 function CostLine() {
   const { t, i18n } = useTranslation("weeklyNote");
   const { t: tai } = useTranslation("ai");
@@ -59,14 +64,21 @@ function CostLine() {
   const backend = choice
     ? status.data?.backends.find((b) => backendKey(b.backend) === backendKey(choice.backend))
     : undefined;
+  const local = backend?.kind === "local";
+  const models = useModels(local && choice ? choice.backend : null);
   if (!choice || !backend) return null;
   const names = { backend: backend.label, model: choice.model };
-  if (backend.kind === "local") return t("settings.costLocal", names);
+  const upper = estimate.data?.micro_usd_upper ?? null;
+  if (local) {
+    const listed = models.data?.find((m) => sameModel(m.id, choice.model));
+    const here = listed ? listed.on_device : upper === 0;
+    if (here) return t("settings.costLocal", names);
+    return listed || estimate.data ? t("settings.costCloudViaLocal", names) : null;
+  }
   // A week with nothing to write about has no estimate: no amount, and no "no price" either.
   if (estimate.data?.would_block === "nothing_to_write") {
     return t("settings.costWeekEmpty", names);
   }
-  const upper = estimate.data?.micro_usd_upper ?? null;
   if (upper === null) {
     return estimate.data ? t("settings.costUnpriced", names) : null;
   }
@@ -76,4 +88,10 @@ function CostLine() {
       ? tai("estimate.lessThan", { amount: shown.amount })
       : tai("estimate.upTo", { amount: shown.amount });
   return t("settings.costKey", { ...names, cost });
+}
+
+/** Ollama's "name" and "name:latest" are one model. */
+function sameModel(listed: string, chosen: string): boolean {
+  const base = (id: string) => id.replace(/:latest$/, "");
+  return base(listed) === base(chosen);
 }

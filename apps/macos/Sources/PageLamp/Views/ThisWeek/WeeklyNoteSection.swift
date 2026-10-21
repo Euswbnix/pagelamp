@@ -52,7 +52,7 @@ struct WeeklyNoteSection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let problem = note.automaticProblem, !note.run.isRunning {
-                    Text(l10n("weeklyNote.automaticProblem", ["reason": l10n.aiError(problem)]))
+                    Text(l10n("weeklyNote.automaticProblem", ["reason": text.failure(problem, server: note.silentServer)]))
                         .font(PLType.callout.font)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -168,7 +168,7 @@ struct WeeklyNoteSection: View {
             Text(l10n("weeklyNote.result.stopped"))
                 .accessibilityFocused($focus, equals: .outcome)
         case .failed(let failure):
-            FailureBlock(title: l10n("weeklyNote.result.failed"), reason: l10n.aiError(failure))
+            FailureBlock(title: l10n("weeklyNote.result.failed"), reason: text.failure(failure, server: note.silentServer))
                 .accessibilityFocused($focus, equals: .outcome)
         default:
             EmptyView()
@@ -251,7 +251,8 @@ struct WeeklyNoteSection: View {
         case .running(let progress): text.stage(progress.stage)
         case .finished: l10n("weeklyNote.result.done")
         case .stopped: l10n("weeklyNote.result.stopped")
-        case .failed(let failure): l10n.sentences(l10n("weeklyNote.result.failed"), l10n.aiError(failure))
+        case .failed(let failure):
+            l10n.sentences(l10n("weeklyNote.result.failed"), text.failure(failure, server: note.silentServer))
         case .idle: nil
         }
     }

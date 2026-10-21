@@ -170,7 +170,7 @@ export function createWeeklyNoteMock(deps: {
         estimated: false,
         prompt_version: 1,
         usage,
-        est_cost_micro_usd: run.on_device ? null : 600,
+        est_cost_micro_usd: run.on_device ? 0 : run.priced ? 600 : null,
         context: summary,
       },
       text:
@@ -209,6 +209,8 @@ export function createWeeklyNoteMock(deps: {
     // "Remove all AI data": the kept notes go, and so do the Monday setting and its last try
     // (AI settings, as in the facade). How many notes went.
     forget: () => {
+      // Runs going on stop and keep nothing, as the facade's cancel_all.
+      for (const id of running) cancelled.add(id);
       const removed = notes.length;
       notes = [];
       prepareOnMonday = false;

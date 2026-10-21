@@ -49,6 +49,11 @@ export interface MockAiRun {
   backend_label: string;
   model: string;
   on_device: boolean;
+  /**
+   * Billed by its price: a provider off this computer whose model has one. A run here is free,
+   * and a cloud run through a server here has no price (the facade's billing).
+   */
+  priced: boolean;
   /** The provider fails the request once the run started (e.g. the "ai-errors" endpoint). */
   failure: ApiError | null;
 }
@@ -518,7 +523,9 @@ export function createProposalsMock(deps: {
     await deps.step();
     // Stopped before anything was sent: nothing to remind of.
     if (stopped()) throw stop();
-    onEvent({ type: "started", generation_id: generationId, ...run });
+    // Who it runs on, nothing else of the gate's answer.
+    const { backend_label, model, on_device } = run;
+    onEvent({ type: "started", generation_id: generationId, backend_label, model, on_device });
     // Once it started: the course's first cloud run with question (b) unanswered or "not sure"
     // (D37 option 2), by the answer stored when the run ends (one given meanwhile counts),
     // claimed then and said before it ends, however it ends (like the facade).

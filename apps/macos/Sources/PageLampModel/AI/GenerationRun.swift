@@ -42,6 +42,8 @@ public final class GenerationRun<Output: Sendable> {
     public private(set) var phase: Phase = .idle
     /// The run in flight, if any.
     public private(set) var generationId: String?
+    /// What the last run had said when it ended (nil until one ended): e.g. whether it started.
+    public private(set) var lastProgress: Progress?
 
     @ObservationIgnored private let service: any PageLampService
     @ObservationIgnored private let newId: @Sendable () -> String
@@ -55,9 +57,16 @@ public final class GenerationRun<Output: Sendable> {
     public var isRunning: Bool { generationId != nil }
 
     /// Runs `call` unless a run is in flight; returns once it has ended.
-    /// - Parameter onFailure: where a failure (not a Stop) leaves the run, instead of `.failed`
-    ///   (Monday's weekly note ends quietly); nil: `.failed`.
-    public func run(_ call: Call, onFailure: ((PageLampFailure) -> Phase)? = nil) async {
+    /// - Parameters:
+    ///   - onFailure: where a failure (not a Stop) leaves the run, instead of `.failed`
+    ///     (Monday's weekly note ends quietly); nil: `.failed`.
+    ///   - onNotice: the run's notices as they come, with what it has said so far: one may outlast
+    ///     the run's end (the question (b) reminder comes however the run ends).
+    public func run(
+        _ call: Call,
+        onFailure: ((PageLampFailure) -> Phase)? = nil,
+        onNotice: (@MainActor (GenNoticeCode, Progress) -> Void)? = nil
+    ) async {
         guard generationId == nil else { return }
         let id = newId()
         generationId = id
@@ -65,7 +74,7 @@ public final class GenerationRun<Output: Sendable> {
         let progress = GenEventStream()
         let events = Task { @MainActor [weak self] in
             for await event in progress.events {
-                self?.apply(event, to: id)
+                self?.apply(event, to: id, onNotice: onNotice)
             }
         }
         let result: Result<Output, PageLampFailure>
@@ -77,6 +86,7 @@ public final class GenerationRun<Output: Sendable> {
         }
         progress.finish()
         await events.value
+        if case .running(let said) = phase { lastProgress = said }
         generationId = nil
         switch result {
         case .success(let output): phase = .finished(output)
@@ -113,7 +123,7 @@ public final class GenerationRun<Output: Sendable> {
         phase = .idle
     }
 
-    private func apply(_ event: GenEvent, to id: String) {
+    private func apply(_ event: GenEvent, to id: String, onNotice: (@MainActor (GenNoticeCode, Progress) -> Void)?) {
         guard generationId == id, case .running(var progress) = phase else { return }
         switch event {
         case .started(_, let backendLabel, let model, let onDevice):
@@ -124,8 +134,11 @@ public final class GenerationRun<Output: Sendable> {
             progress.stage = stage
         case .context(let summary, _):
             progress.materialsIncluded = summary.materialsIncluded
-        case .textDelta, .notice, .usage, .finished:
-            // Not shown: never text as it arrives; notices come from the result.
+        case .notice(let code):
+            onNotice?(code, progress)
+            return
+        case .textDelta, .usage, .finished:
+            // Not shown: never text as it arrives.
             return
         }
         phase = .running(progress)
