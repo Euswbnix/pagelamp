@@ -546,7 +546,10 @@ fn provenance(origin: CalendarOrigin, label: Option<&AiLabel>) -> String {
         (CalendarOrigin::Scan, None) => "from the syllabus scan".to_string(),
         (CalendarOrigin::User, None) => "your dates".to_string(),
         (CalendarOrigin::Legacy, None) => "set in PageLamp 0.1, check them".to_string(),
-        (other, None) => other.as_str().to_string(),
+        // A calendar restored with its course keeps its origin but not the model's label.
+        (CalendarOrigin::Ai, None) => "read by AI".to_string(),
+        (CalendarOrigin::AiApp, None) => "proposed by your AI app".to_string(),
+        (CalendarOrigin::Restored, None) => "restored with the course".to_string(),
     }
 }
 
@@ -848,4 +851,26 @@ pub async fn purge(
         println!("The pre-update backup couldn't be deleted; it is still in the data folder.");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use pagelamp_core::term::CalendarOrigin;
+
+    use super::provenance;
+
+    /// A calendar restored with its course keeps its origin but not the model's label: it
+    /// still says where it came from, in words.
+    #[test]
+    fn a_calendar_without_its_label_still_says_where_it_came_from() {
+        assert_eq!(provenance(CalendarOrigin::Ai, None), "read by AI");
+        assert_eq!(
+            provenance(CalendarOrigin::AiApp, None),
+            "proposed by your AI app"
+        );
+        assert_eq!(
+            provenance(CalendarOrigin::Restored, None),
+            "restored with the course"
+        );
+    }
 }

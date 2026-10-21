@@ -99,6 +99,9 @@ export function createTauriApi(): PageLampApi {
     clearKeepCourseCurrent: (courseId) => call("clear_keep_course_current", { course: courseId }),
     confirmCourseDates: (courseId) => call("confirm_course_dates", { course: courseId }),
     setCourseDates: (courseId, dates) => call("set_course_dates", { course: courseId, dates }),
+    sessionCourses: (courseId) => call("session_courses", { course: courseId }),
+    applyCourseDatesTo: (from, to) => call("apply_course_dates_to", { from, to }),
+    restoreCourseDates: (replaced) => call("restore_course_dates", { replaced }),
 
     lifecycleSummary: () => call("lifecycle_summary"),
     snoozeLifecycleBanner: () => call("snooze_lifecycle_banner"),

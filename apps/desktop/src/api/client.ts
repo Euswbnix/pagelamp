@@ -24,6 +24,7 @@ import type {
 import type {
   Activity,
   AiPolicy,
+  ApplyDatesReport,
   AppStatus,
   AutoSyncTrigger,
   CalendarBatchEvent,
@@ -46,8 +47,10 @@ import type {
   RemovalReport,
   RemovedCourse,
   RemoveOptions,
+  ReplacedDates,
   RestoreOutcome,
   SearchHit,
+  SessionCourses,
   SnoozeKind,
   SourceRecord,
   SourceSyncResult,
@@ -209,6 +212,18 @@ export interface PageLampApi {
    * Returns the course's calendar view as it is now.
    */
   setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<CourseCalendarView>;
+  /**
+   * The other courses of `courseId`'s session, for "also use these dates in" in the dates form.
+   * Empty when the course has no session (not a school the facade knows sessions for).
+   */
+  sessionCourses(courseId: string): Promise<SessionCourses>;
+  /**
+   * Copies `from`'s own dates (the student's) to each of `to`, where they become that course's
+   * own dates. One transaction; what can't be applied is listed in `skipped`.
+   */
+  applyCourseDatesTo(from: string, to: string[]): Promise<ApplyDatesReport>;
+  /** Undo for `applyCourseDatesTo`: puts each course back exactly as it was. One transaction. */
+  restoreCourseDates(replaced: ReplacedDates[]): Promise<void>;
 
   // ----- course lifecycle and removal (calendar design §8) ---------------------------------
   /** Every course's lifecycle, which ones are suggested for removal, and the banner state. */
