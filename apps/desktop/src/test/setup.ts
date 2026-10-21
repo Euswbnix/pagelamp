@@ -5,6 +5,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { useNoteRunStore } from "@/features/weekly-note/useWeeklyNote";
 import i18n, { initI18n } from "@/i18n";
 import { useCodexStore } from "@/stores/codex";
+import { useSharingReminders } from "@/stores/sharingReminders";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/updates";
@@ -58,4 +59,5 @@ afterEach(() => {
   useUpdateStore.getState().reset();
   useCodexStore.setState({ install: { phase: "idle" } });
   useNoteRunStore.setState({ run: { phase: "idle" }, automaticProblem: null });
+  useSharingReminders.getState().reset();
 });

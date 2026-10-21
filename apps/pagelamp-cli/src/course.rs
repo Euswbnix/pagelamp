@@ -4,10 +4,10 @@
 //! grouping comes from the facade; this module only renders.
 
 use chrono::NaiveDate;
-use pagelamp_app::ai::GenEvent;
+use pagelamp_app::ai::{GenEvent, GenNoticeCode};
 use pagelamp_app::{
-    App, ApplySkipReason, CourseCalendarView, PurgeTargets, ReadCalendarOptions, RemovalPreview,
-    RemoveOptions, RestoreFailure, TombstoneState,
+    App, CourseCalendarView, PurgeTargets, ReadCalendarOptions, RemovalPreview, RemoveOptions,
+    RestoreFailure, TombstoneState,
 };
 use pagelamp_core::ai::AiFeature;
 use pagelamp_core::calendar::CourseCalendar;
@@ -389,18 +389,38 @@ pub async fn calendar(
             let options = ReadCalendarOptions {
                 override_budget: over_budget,
             };
-            let proposal = app
-                .read_course_calendar(course, &generation_id, options, |event| {
-                    if let GenEvent::Started {
+            let reminded = std::sync::atomic::AtomicBool::new(false);
+            let read = app
+                .read_course_calendar(course, &generation_id, options, |event| match event {
+                    GenEvent::Started {
                         backend_label,
                         model,
                         ..
-                    } = event
-                    {
-                        eprintln!("Reading with {backend_label} · {model}…");
-                    }
+                    } => eprintln!("Reading with {backend_label} · {model}…"),
+                    GenEvent::Notice {
+                        code: GenNoticeCode::MaterialSharingReminder,
+                    } => reminded.store(true, std::sync::atomic::Ordering::Relaxed),
+                    _ => {}
                 })
-                .await?;
+                .await;
+            // A reading that failed after sending still reminds, before its error.
+            let proposal = match read {
+                Ok(proposal) => proposal,
+                Err(err) => {
+                    if reminded.load(std::sync::atomic::Ordering::Relaxed) {
+                        eprintln!("{}", crate::text::sharing_reminder_after_failure_note());
+                    }
+                    // A run that didn't start: why, with the command that changes it.
+                    if let Some(reason) = err.blocked {
+                        anyhow::bail!(
+                            "blocked: {} — {}",
+                            reason.as_str(),
+                            crate::text::block_reason(reason)
+                        );
+                    }
+                    return Err(err.into());
+                }
+            };
             if !json {
                 println!("Proposal #{} read by AI.", proposal.id);
                 if proposal.sharing_reminder {
@@ -529,7 +549,10 @@ fn provenance(origin: CalendarOrigin, label: Option<&AiLabel>) -> String {
         (CalendarOrigin::Scan, None) => "from the syllabus scan".to_string(),
         (CalendarOrigin::User, None) => "your dates".to_string(),
         (CalendarOrigin::Legacy, None) => "set in PageLamp 0.1, check them".to_string(),
-        (other, None) => other.as_str().to_string(),
+        // A calendar restored with its course keeps its origin but not the model's label.
+        (CalendarOrigin::Ai, None) => "read by AI".to_string(),
+        (CalendarOrigin::AiApp, None) => "proposed by your AI app".to_string(),
+        (CalendarOrigin::Restored, None) => "restored with the course".to_string(),
     }
 }
 
@@ -608,6 +631,10 @@ pub fn copy_dates(
         println!("Courses of session {code} besides {from_name}:");
         for course in &session.courses {
             let own = match (course.student_start, course.student_end) {
+                _ if course.own_calendar => {
+                    " — counts its weeks from a calendar of its own, which a copy leaves alone"
+                        .to_string()
+                }
                 (None, None) => String::new(),
                 (start, end) => format!(
                     " — has its own dates ({} → {}), which would be replaced",
@@ -621,7 +648,15 @@ pub fn copy_dates(
                 if course.hidden { " (hidden)" } else { "" }
             );
         }
-        println!("Name the courses to copy to, or use --same-session for all of them.");
+        if session.copy_refused {
+            println!(
+                "Two dates can't carry {from_name}'s calendar (it has two parts, a first week \
+                 other than week 1, no last day of classes, or a break that skips a week): set \
+                 these courses' dates on their own."
+            );
+        } else {
+            println!("Name the courses to copy to, or use --same-session for all of them.");
+        }
         return Ok(());
     }
     let to = if same_session {
@@ -663,17 +698,10 @@ pub fn copy_dates(
         }
     }
     for skipped in &report.skipped {
-        let why = match skipped.reason {
-            ApplySkipReason::NotSameSession => "not a course of the same session",
-            ApplySkipReason::FromCourse => "it is the course to copy from",
-            ApplySkipReason::NoDates => "the course to copy from has no dates you set",
-            ApplySkipReason::DatesNotConfirmed => {
-                "the dates of the course to copy from were set in PageLamp 0.1 and never \
-                 confirmed: save them with `pagelamp course term` first"
-            }
-            ApplySkipReason::UnknownCourse => "no such course",
-        };
-        println!("  Skipped {}: {why}", label(&skipped.course_id));
+        println!(
+            "{}",
+            crate::text::copy_skipped(skipped.reason, &label(&skipped.course_id))
+        );
     }
     Ok(())
 }
@@ -944,5 +972,27 @@ fn purge_question(targets: &PurgeTargets, permanent: bool) -> String {
         format!("Delete the data of {n} removed course(s) now? This can't be undone.")
     } else {
         format!("Move the downloaded files of {n} removed course(s) to the Trash?")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pagelamp_core::term::CalendarOrigin;
+
+    use super::provenance;
+
+    /// A calendar restored with its course keeps its origin but not the model's label: it
+    /// still says where it came from, in words.
+    #[test]
+    fn a_calendar_without_its_label_still_says_where_it_came_from() {
+        assert_eq!(provenance(CalendarOrigin::Ai, None), "read by AI");
+        assert_eq!(
+            provenance(CalendarOrigin::AiApp, None),
+            "proposed by your AI app"
+        );
+        assert_eq!(
+            provenance(CalendarOrigin::Restored, None),
+            "restored with the course"
+        );
     }
 }

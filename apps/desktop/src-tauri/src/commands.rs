@@ -13,9 +13,9 @@ use chrono::NaiveDate;
 use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
-    EstimateRequest, ExplainOptions, GenEvent, GeneratedStudyPlan, LocalServer, LoginEvent,
-    ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, PlanLimits, ProbeReport,
-    ProviderPreset, RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary,
+    DisclosureFacts, EstimateRequest, ExplainOptions, GenEvent, GeneratedStudyPlan, LocalServer,
+    LoginEvent, ModelChoice, ModelInfo, ModelProviderRecord, OutputLanguage, PlanLimits,
+    ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent, StudyPlanRequest, UsageSummary,
     WeeklyExplanation, WeeklyNote, WeeklyNoteOptions, WeeklyNoteSettings,
 };
 use pagelamp_app::diagnostics::{self, CrashReport, DoctorReport};
@@ -23,6 +23,7 @@ use pagelamp_app::{
     Activity, AppError, AppStatus, McpClientConfig, SourceSyncResult, SyncEvent, SyncRequest,
     SyncSummary,
 };
+use pagelamp_app::{ApplyDatesReport, ReplacedDates, SessionCourses};
 use pagelamp_app::{
     CalendarBatchEvent, CalendarRunOutcome, CourseCalendarView, CourseDatesInput, LifecycleSummary,
     ReadCalendarOptions, SyllabusOffer,
@@ -349,6 +350,40 @@ pub async fn set_course_dates(
 ) -> CmdResult<CourseCalendarView> {
     backend
         .blocking(move |app| app.set_course_dates(&course, dates))
+        .await
+}
+
+/// The other courses of `course`'s session ("also use these dates in", in the dates form).
+#[tauri::command]
+pub async fn session_courses(
+    backend: State<'_, Backend>,
+    course: String,
+) -> CmdResult<SessionCourses> {
+    backend
+        .blocking(move |app| app.session_courses(&course))
+        .await
+}
+
+/// Copies `from`'s own dates to each course of `to` (one transaction).
+#[tauri::command]
+pub async fn apply_course_dates_to(
+    backend: State<'_, Backend>,
+    from: String,
+    to: Vec<String>,
+) -> CmdResult<ApplyDatesReport> {
+    backend
+        .blocking(move |app| app.apply_course_dates_to(&from, to))
+        .await
+}
+
+/// Undo for `apply_course_dates_to`: puts each course back exactly as it was.
+#[tauri::command]
+pub async fn restore_course_dates(
+    backend: State<'_, Backend>,
+    replaced: Vec<ReplacedDates>,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.restore_course_dates(replaced))
         .await
 }
 
@@ -849,6 +884,42 @@ pub async fn acknowledge_ai_disclosure(
 ) -> CmdResult<()> {
     backend
         .blocking(move |app| app.acknowledge_ai_disclosure(&model_backend, version))
+        .await
+}
+
+/// Whether `choice`'s model runs on this computer, decided as a run decides it (with `ask`, a
+/// model server here is asked for its list).
+#[tauri::command]
+pub async fn model_runs_here(
+    backend: State<'_, Backend>,
+    choice: ModelChoice,
+    ask: bool,
+) -> CmdResult<bool> {
+    backend
+        .spawn(move |app| async move { app.model_runs_here(&choice, ask).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn model_disclosure(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    runs_here: bool,
+) -> CmdResult<(DisclosureFacts, bool)> {
+    backend
+        .blocking(move |app| app.model_disclosure(&model_backend, runs_here))
+        .await
+}
+
+#[tauri::command]
+pub async fn acknowledge_model_disclosure(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    runs_here: bool,
+    version: u32,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.acknowledge_model_disclosure(&model_backend, runs_here, version))
         .await
 }
 

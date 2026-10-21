@@ -135,7 +135,6 @@
       "course_hidden": "这门课已隐藏，所以 AI 不会读取它的教学大纲。",
       "no_readable_materials": "还没有可读取的课程大纲或课程安排。请下载大纲文件，或在下面勾选一份资料。",
       "material_sharing_not_allowed": "你说过这门课不允许把资料分享给云端 AI。本机上的模型、扫描和日期表单仍然可用。",
-      "disclosure_not_acknowledged": "请先在“设置 → AI 模型”中确认 AI 读取会发送什么、发给谁。",
       "no_model_chosen": "请在“设置 → AI 模型”中设置用于读取教学大纲的 AI。"
     }
   },

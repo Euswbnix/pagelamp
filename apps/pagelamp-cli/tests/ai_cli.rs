@@ -127,7 +127,14 @@ fn local_model_server() -> String {
             }
             let mut body = vec![0; length];
             let _ = reader.read_exact(&mut body);
-            let (content_type, reply) = if request_line.starts_with("GET /v1/models") {
+            let (content_type, reply) = if request_line.starts_with("GET /v1/api/tags") {
+                // As Ollama lists them: one model here, one it runs in the cloud.
+                (
+                    "application/json",
+                    r#"{"models":[{"name":"local-model"},{"name":"big-model","remote_host":"https://ollama.com:443"}]}"#
+                        .to_string(),
+                )
+            } else if request_line.starts_with("GET /v1/models") {
                 (
                     "application/json",
                     r#"{"object":"list","data":[{"id":"local-model","object":"model"}]}"#
@@ -667,4 +674,236 @@ fn no_course_to_plan_for_is_said_before_the_plan_runs() {
         );
         assert!(stdout(&output).is_empty(), "{args:?}: no estimate line");
     }
+}
+
+/// Choosing a model that Ollama on this computer runs in the cloud says so before anything is
+/// saved: not "nothing leaves it", and its price is unknown, so that is asked about too. A model
+/// Ollama runs here keeps the on-this-computer line.
+#[test]
+fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    synced_demo_course(&home, &temp.path().join("Courses"));
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model"],
+    ));
+    assert!(!shown.contains("nothing leaves it"), "{shown}");
+    assert!(
+        shown.contains("PageLamp can't confirm that this model does"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains(
+            "The materials of courses you answered not-allowed for are never sent to it."
+        ),
+        "{shown}"
+    );
+    assert!(shown.contains("price"), "{shown}");
+    // Without asking the server, an Ollama model can't be confirmed either.
+    let unchecked = failed(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--no-check",
+        ],
+    ));
+    assert!(
+        unchecked.contains("PageLamp can't confirm that this model does"),
+        "{unchecked}"
+    );
+    // Unchecked, PageLamp doesn't know where it runs: the promise holds for the cloud case.
+    assert!(
+        unchecked.contains(
+            "If it runs this model in the cloud, the materials of courses you answered \
+             not-allowed for are never sent to it."
+        ),
+        "{unchecked}"
+    );
+
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    ));
+    assert!(
+        shown.contains("runs on this computer: nothing leaves it"),
+        "{shown}"
+    );
+
+    // Accepting the local model's note doesn't cover a model the server runs in the cloud.
+    ok(&pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--yes",
+        ],
+    ));
+    let next = failed(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model"],
+    ));
+    assert!(
+        next.contains("PageLamp can't confirm that this model does"),
+        "{next}"
+    );
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model", "--yes"],
+    ));
+    // Each note is asked about once: both are accepted now.
+    let again = pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    );
+    ok(&again);
+    assert!(
+        !stderr(&again).contains("nothing leaves it"),
+        "{}",
+        stderr(&again)
+    );
+}
+
+/// A syllabus reading that sent a course's materials to a model in the cloud and then failed
+/// still gives the one-time sharing reminder, before its error.
+#[test]
+fn a_failed_cloud_reading_reminds_before_its_error() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let root = temp.path().join("Courses");
+    let syllabus = root.join("DEMO101 Intro to Demo Studies/Syllabus.md");
+    std::fs::create_dir_all(syllabus.parent().unwrap()).unwrap();
+    std::fs::write(
+        &syllabus,
+        "# Syllabus\n\nClasses begin September 8, 2026. The last day of classes is December \
+         8, 2026.\n",
+    )
+    .unwrap();
+    synced_demo_course(&home, &root);
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "big-model", "--yes"],
+    ));
+    // The stand-in answers a chat in a format Ollama doesn't use: the reading fails.
+    let read = pagelamp(&home, &["course", "calendar", "DEMO101", "--read"]);
+    let message = failed(&read);
+    let reminder = message
+        .find("went to a cloud AI service, or was on its way")
+        .unwrap_or_else(|| panic!("{message}"));
+    let error = message
+        .find("error: ")
+        .unwrap_or_else(|| panic!("{message}"));
+    assert!(reminder < error, "{message}");
+}
+
+/// A custom server on this computer: added without a key, its models count as in the cloud,
+/// so `ai use … --yes` accepts the cloud note, and `ai status` then says it is ready.
+#[test]
+fn a_custom_server_here_is_ready_once_its_note_is_accepted() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "custom", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    let line = |status: &str| {
+        status
+            .lines()
+            .find(|line| line.trim_start().starts_with(id.as_str()))
+            .unwrap_or_else(|| panic!("{status}"))
+            .to_string()
+    };
+    assert!(line(&ok(&pagelamp(&home, &["ai"]))).contains("not accepted yet"));
+    let shown = failed(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "local-model"],
+    ));
+    assert!(
+        shown.contains("can't confirm that this model does"),
+        "{shown}"
+    );
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "course-calendar", &id, "local-model", "--yes"],
+    ));
+    let ready = line(&ok(&pagelamp(&home, &["ai"])));
+    assert!(ready.contains("ready"), "{ready}");
+}
+
+/// Unchecked, an Ollama model may turn out to run here or in the cloud: `ai use --no-check`
+/// shows both notes and accepts both, so a reading passes wherever the daemon then puts it.
+#[test]
+fn an_unchecked_ollama_model_gets_both_notes() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    let chosen = pagelamp(
+        &home,
+        &[
+            "ai",
+            "use",
+            "weekly-explanation",
+            &id,
+            "local-model",
+            "--no-check",
+            "--yes",
+        ],
+    );
+    ok(&chosen);
+    let shown = stderr(&chosen);
+    assert!(
+        shown.contains("Both notes below are accepted now"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("runs on this computer: nothing leaves it"),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("can't confirm that this model does"),
+        "{shown}"
+    );
+    let status = ok(&pagelamp(&home, &["ai"]));
+    assert!(
+        status.contains("accepted for models on this computer and in the cloud"),
+        "{status}"
+    );
+    // Checked now, the model runs here: nothing more to accept.
+    let checked = pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "local-model"],
+    );
+    ok(&checked);
+    assert!(
+        !stderr(&checked).contains("What PageLamp sends"),
+        "{}",
+        stderr(&checked)
+    );
 }

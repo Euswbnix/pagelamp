@@ -187,6 +187,16 @@ export function useAcknowledgeAiDisclosure() {
   });
 }
 
+export function useAcknowledgeModelDisclosure() {
+  const api = useApi();
+  const invalidate = useInvalidateAi();
+  return useMutation({
+    mutationFn: (v: { backend: BackendRef; runsHere: boolean; version: number }) =>
+      api.acknowledgeModelDisclosure(v.backend, v.runsHere, v.version),
+    onSuccess: invalidate,
+  });
+}
+
 export function useAcknowledgeUnpricedModel() {
   const api = useApi();
   const invalidate = useInvalidateAi();
@@ -222,7 +232,8 @@ export function useRemoveAllAiData() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => api.removeAllAiData(),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    // Also when it fails: a key the keychain kept leaves its provider, the rest is gone.
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 

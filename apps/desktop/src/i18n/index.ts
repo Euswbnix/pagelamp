@@ -50,6 +50,8 @@ export function initI18n(locale: Locale | null = null) {
         // ("{{when}}", "$t(…)") is never acted on — see safeValues.ts.
         escapeValue: true,
         escape: neutralize,
+        // The escape hook sees each value itself, so a slot marker is told from text.
+        useRawValueToEscape: true,
         skipOnVariables: true,
         defaultVariables: { product: brand.productName },
       },

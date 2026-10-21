@@ -5,6 +5,7 @@ import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
 import type { CalendarProposal } from "@/api/types";
+import { useSharingReminders } from "@/stores/sharingReminders";
 
 export type ReadingState =
   | { phase: "idle" }
@@ -17,14 +18,7 @@ export type ReadingState =
       stage: GenStage | null;
       stopping: boolean;
     }
-  | {
-      phase: "done";
-      proposal: CalendarProposal;
-      /** Where the text went, for the question (b) reminder. */
-      backend: string;
-      /** The course's first cloud run: show the one-time reminder (D37 option 2). */
-      reminder: boolean;
-    }
+  | { phase: "done"; proposal: CalendarProposal }
   | { phase: "stopped" }
   | { phase: "failed"; error: unknown };
 
@@ -36,6 +30,11 @@ export function useCalendarReading(courseId: string) {
   const api = useApi();
   const client = useQueryClient();
   const [state, setState] = useState<ReadingState>({ phase: "idle" });
+  // The one-time question (b) reminder (D37 option 2) a run said, however it ended: kept apart
+  // from the run (a new run doesn't drop it) and from this screen (it is said only once).
+  const reminder = useSharingReminders((s) => s.pending[courseId] ?? null);
+  const addReminder = useSharingReminders((s) => s.add);
+  const settleReminder = useSharingReminders((s) => s.settle);
   const runId = useRef<string | null>(null);
 
   const start = useCallback(
@@ -44,7 +43,7 @@ export function useCalendarReading(courseId: string) {
       const id = crypto.randomUUID();
       runId.current = id;
       let backend: string | null = null;
-      let reminder = false;
+      let reminded = false;
       setState({
         phase: "running",
         backend: null,
@@ -71,17 +70,19 @@ export function useCalendarReading(courseId: string) {
               const { stage } = event;
               setState((s) => (s.phase === "running" ? { ...s, stage } : s));
             } else if (event.type === "notice" && event.code === "material_sharing_reminder") {
-              reminder = true;
+              reminded = true;
             }
           },
         );
-        setState({
-          phase: "done",
-          proposal,
-          backend: backend ?? proposal.ai_label?.backend_label ?? "",
-          reminder: reminder || proposal.sharing_reminder,
-        });
+        if (reminded || proposal.sharing_reminder) {
+          const service = backend ?? proposal.ai_label?.backend_label ?? "";
+          addReminder(courseId, { service, batch: false });
+        }
+        setState({ phase: "done", proposal });
       } catch (error) {
+        // The facade claims the reminder once the text went out, also on a run that then fails
+        // or is stopped (the notice comes before it ends): it is shown then too.
+        if (reminded) addReminder(courseId, { service: backend ?? "", batch: false });
         setState(
           toApiError(error).kind === "cancelled"
             ? { phase: "stopped" }
@@ -92,7 +93,7 @@ export function useCalendarReading(courseId: string) {
         await client.invalidateQueries({ queryKey: queryKeys.all });
       }
     },
-    [api, client, courseId],
+    [api, client, courseId, addReminder],
   );
 
   const stop = useCallback(async () => {
@@ -102,10 +103,8 @@ export function useCalendarReading(courseId: string) {
     await api.cancelGeneration(id);
   }, [api]);
 
-  /** Close the result (after the reminder was answered or dismissed). */
-  const settle = useCallback(() => {
-    setState((s) => (s.phase === "done" ? { ...s, reminder: false } : s));
-  }, []);
+  /** Close the reminder (answered or dismissed). */
+  const settle = useCallback(() => settleReminder(courseId), [settleReminder, courseId]);
 
-  return { state, start, stop, settle };
+  return { state, reminder, start, stop, settle };
 }

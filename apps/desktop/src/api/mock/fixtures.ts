@@ -69,13 +69,15 @@ export type MockScenario =
   | "worker-blocked"
   // AI setup (M1): an API key at 40% of the budget / Ollama on this computer / a model with no
   // price / 99% of the budget / a disclosure that changed since it was acknowledged / a custom
-  // endpoint whose model list and test fail. The demo has no model set up.
+  // endpoint whose model list and test fail / an API key the keychain won't let PageLamp delete
+  // (with a second key it does). The demo has no model set up.
   | "ai-key"
   | "ai-local"
   | "ai-unpriced"
   | "ai-budget"
   | "ai-disclosure-changed"
   | "ai-errors"
+  | "ai-keychain-locked"
   // The ChatGPT plan through Codex (M2), offered only in these scenarios (every build leaves it
   // off until OpenAI confirms in writing): not installed yet / installed and signed out / Plus (12
   // of 40 runs this week) / an Edu workspace / signed in with an API key / an installed Codex
@@ -129,6 +131,7 @@ export const MOCK_SCENARIOS: readonly MockScenario[] = [
   "ai-budget",
   "ai-disclosure-changed",
   "ai-errors",
+  "ai-keychain-locked",
   "codex-not-installed",
   "codex-signed-out",
   "codex-plus",

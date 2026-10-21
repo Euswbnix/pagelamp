@@ -83,6 +83,15 @@ pub struct AiBackendStatus {
     pub disclosure: DisclosureFacts,
     /// The disclosure version the student acknowledged, if any.
     pub disclosure_acknowledged: Option<u32>,
+    /// For a server on this computer that may run a model in the cloud (any but LM Studio;
+    /// every model of a server other than Ollama): the note for such a model, acknowledged
+    /// apart (`acknowledge_model_disclosure(backend, false, …)`); `disclosure` is then the one
+    /// for the models it runs here. `state` counts the note each routed model needs, or either
+    /// note when none is routed to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_disclosure: Option<DisclosureFacts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_disclosure_acknowledged: Option<u32>,
 }
 
 /// Everything the AI settings page shows (no network call).

@@ -1,11 +1,12 @@
+import { SlotMarker } from "@/i18n/safeValues";
 import { RelativeTime } from "./RelativeTime";
 
 /** Pass this as `when` to t(); <SentenceWithTime> swaps it for a <RelativeTime>. */
-export const WHEN = "\u0000";
+export const WHEN = new SlotMarker("\u0000");
 /** The same for a second time in the sentence (`iso2`). */
-export const WHEN_2 = "\u0001";
+export const WHEN_2 = new SlotMarker("\u0001");
 
-const TIMES = new RegExp(`([${WHEN}${WHEN_2}])`);
+const TIMES = new RegExp(`([${WHEN.char}${WHEN_2.char}])`);
 
 /**
  * Renders a translated sentence containing {{when}} with a semantic <time> element in its
@@ -30,10 +31,10 @@ export function SentenceWithTime({
   return (
     <>
       {parts.map((part, index) =>
-        part === WHEN ? (
+        part === WHEN.char ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one sentence never reorder.
           <RelativeTime key={index} iso={iso} />
-        ) : part === WHEN_2 && iso2 ? (
+        ) : part === WHEN_2.char && iso2 ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one sentence never reorder.
           <RelativeTime key={index} iso={iso2} />
         ) : (

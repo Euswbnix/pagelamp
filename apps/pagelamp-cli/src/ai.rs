@@ -28,6 +28,7 @@ pub enum AiCommand {
         /// The kind of provider, e.g. openai, anthropic, ollama (see `ai presets`).
         preset: String,
         /// The provider's address: required for `custom`; for a local server on another port.
+        /// A `custom` server on this computer may take no key: press Enter at the prompt.
         #[arg(long)]
         base_url: Option<String>,
     },
@@ -41,7 +42,8 @@ pub enum AiCommand {
         /// The provider's id, as shown by `ai status`.
         #[arg(required_unless_present = "all", conflicts_with = "all")]
         provider: Option<String>,
-        /// Remove all AI data: providers, keys, choices, acknowledgements, usage and the
+        /// Remove all AI data: providers, keys, choices, acknowledgements, usage, what the AI
+        /// features wrote (a calendar you accepted stays, with its AI label) and the
         /// pre-update database backup.
         #[arg(long)]
         all: bool,
@@ -196,7 +198,10 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
             for preset in &presets {
                 let how = match (preset.local, preset.needs_key) {
                     (true, _) => "on this computer, no key",
-                    (false, true) if preset.default_base_url.is_none() => "key and --base-url",
+                    // A custom server on this computer may take no key.
+                    (false, true) if preset.default_base_url.is_none() => {
+                        "--base-url; a key unless it is on this computer"
+                    }
                     (false, true) => "key",
                     (false, false) => "no key",
                 };
@@ -210,8 +215,13 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                 .iter()
                 .find(|p| p.id == preset)
                 .map(|p| p.needs_key);
+            let prompt = if preset == "custom" {
+                "API key (press Enter if a server on this computer takes none): "
+            } else {
+                "API key: "
+            };
             let key = match needs_key {
-                Some(true) => Some(read_secret("API key: ")?),
+                Some(true) => Some(read_secret(prompt)?),
                 // Unknown presets fail in the facade, before anything is read or sent.
                 _ => None,
             };
@@ -242,27 +252,40 @@ pub async fn run(app: &App, command: AiCommand, json: bool) -> anyhow::Result<()
                 confirm(text::REMOVE_ALL_AI_DATA, yes)?;
                 let report = app.remove_all_ai_data()?;
                 if json {
-                    return print_json(&report);
+                    print_json(&report)?;
+                } else {
+                    println!(
+                        "Removed {} provider(s), {} usage record(s) and {} generated text(s){}.",
+                        report.providers_removed,
+                        report.usage_rows_removed,
+                        report.generations_removed,
+                        if report.backup_removed {
+                            ", and the pre-update database backup"
+                        } else {
+                            ""
+                        }
+                    );
                 }
-                println!(
-                    "Removed {} provider(s), {} usage record(s) and {} generated text(s){}.",
-                    report.providers_removed,
-                    report.usage_rows_removed,
-                    report.generations_removed,
-                    if report.backup_removed {
-                        ", and the pre-update database backup"
-                    } else {
-                        ""
-                    }
-                );
                 return Ok(());
             }
             let provider = provider.unwrap_or_default();
+            // Whether it had a key to delete (a custom server here may have none); unknown when
+            // the status can't be read.
+            let had_key = app.ai_status().ok().is_none_or(|status| {
+                status
+                    .providers
+                    .iter()
+                    .any(|p| p.provider_id == provider && p.key_last4.is_some())
+            });
             app.remove_model_provider(&provider)?;
             if json {
                 return print_json(&serde_json::json!({ "removed": provider }));
             }
-            println!("Removed {provider} and its key.");
+            if had_key {
+                println!("Removed {provider} and its key.");
+            } else {
+                println!("Removed {provider}.");
+            }
             Ok(())
         }
         AiCommand::Models { provider } => {
@@ -705,6 +728,23 @@ fn status(app: &App, json: bool) -> anyhow::Result<()> {
         );
         if let Some(backend) = status.backends.iter().find(|b| b.backend == id) {
             facts.push(state_text(backend));
+            // Ollama has a note for the models it runs here and one for those it runs in the
+            // cloud: say which were accepted.
+            if record.preset == "ollama" && backend.cloud_disclosure.is_some() {
+                let here = backend.disclosure_acknowledged == Some(backend.disclosure.version);
+                let cloud = backend.cloud_disclosure.as_ref().is_some_and(|facts| {
+                    backend.cloud_disclosure_acknowledged == Some(facts.version)
+                });
+                let accepted = match (here, cloud) {
+                    (true, true) => Some("for models on this computer and in the cloud"),
+                    (true, false) => Some("for models on this computer"),
+                    (false, true) => Some("for models in the cloud"),
+                    (false, false) => None,
+                };
+                if let Some(accepted) = accepted {
+                    facts.push(format!("accepted {accepted}"));
+                }
+            }
         }
         println!("  {}  {}", record.provider_id, facts.join(" · "));
     }
@@ -780,21 +820,48 @@ async fn use_model(
         };
         Some(info.price_known || (info.on_device && !info.runs_in_cloud))
     };
-    let disclose = backend.disclosure_acknowledged != Some(backend.disclosure.version);
-    // The ChatGPT plan has no price to accept (a weekly run cap instead).
-    let unpriced = !on_device && price_known != Some(true) && choice.backend != BackendRef::Codex;
-    if disclose {
-        eprintln!("{}\n", text::disclosure(&backend.disclosure));
+    // Where the model runs, as a run decides it: a server here may run it in the cloud, and
+    // such a model has a disclosure of its own, asked for even after the server's was read.
+    let here = app.model_runs_here(&choice, !no_check).await?;
+    // Unchecked, an Ollama model may turn out to run here or in the cloud at a reading: both
+    // notes are read and accepted now.
+    let unplaced = no_check
+        && on_device
+        && status
+            .providers
+            .iter()
+            .any(|p| backend_name(&choice.backend) == p.provider_id && p.preset == "ollama");
+    let places = if unplaced {
+        vec![true, false]
+    } else {
+        vec![here]
+    };
+    let mut notes = Vec::new();
+    for runs_here in places {
+        let (facts, acknowledged) = app.model_disclosure(&choice.backend, runs_here)?;
+        if !acknowledged {
+            notes.push((runs_here, facts));
+        }
+    }
+    // The ChatGPT plan has no price to accept (a weekly run cap instead). A model that a server
+    // here runs in the cloud has no price PageLamp knows.
+    let unpriced =
+        !here && (on_device || price_known != Some(true)) && choice.backend != BackendRef::Codex;
+    if notes.len() > 1 {
+        eprintln!("{}\n", text::either_place(&name));
+    }
+    for (_, facts) in &notes {
+        eprintln!("{}\n", text::disclosure(facts, !no_check));
     }
     if unpriced {
         eprintln!("{}\n", text::unpriced_model(price_known.is_none()));
     }
-    if disclose || unpriced {
+    if !notes.is_empty() || unpriced {
         confirm("Continue?", yes)?;
     }
     app.set_feature_model(feature, Some(choice.clone()))?;
-    if disclose {
-        app.acknowledge_ai_disclosure(&choice.backend, backend.disclosure.version)?;
+    for (runs_here, facts) in &notes {
+        app.acknowledge_model_disclosure(&choice.backend, *runs_here, facts.version)?;
     }
     if unpriced {
         app.acknowledge_unpriced_model(&choice.backend, &choice.model)?;

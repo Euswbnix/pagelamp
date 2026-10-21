@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, SubsecRound, TimeZone, Utc};
 use pagelamp_app::ai::{
-    BackendRef, EstimateRequest, GenEvent, GenStage, ModelChoice, WeeklyNoteOptions,
+    BackendRef, CostBasis, EstimateRequest, GenEvent, GenStage, ModelChoice, WeeklyNoteOptions,
 };
 use pagelamp_app::{App, AppErrorKind, BreakInput, CourseDatesInput};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
@@ -19,7 +19,7 @@ use pagelamp_core::model::*;
 use pagelamp_core::secrets::{MemorySecrets, SecretBackend};
 use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
 use serde_json::json;
-use wiremock::matchers::method;
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SOURCE: &str = "canvas:lms.example.edu";
@@ -212,7 +212,34 @@ fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
 
 /// A model on this computer (an Ollama mock, mode D), chosen for weekly notes and disclosed.
 async fn with_local_model(app: &App) -> MockServer {
+    with_local_model_listing(app, tags(json!([{ "name": "local-model" }]))).await
+}
+
+/// The requests to the model itself, not for its list.
+async fn chat_requests(server: &MockServer) -> Vec<wiremock::Request> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() != "/api/tags")
+        .collect()
+}
+
+/// Ollama's model list (`/api/tags`), as its daemon gives it.
+fn tags(models: serde_json::Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({ "models": models }))
+}
+
+/// `with_local_model`, its daemon answering the model list with `list`: a run asks for it to
+/// learn where the model runs.
+async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServer {
     let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(list)
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -309,8 +336,20 @@ fn click() -> WeeklyNoteOptions {
     }
 }
 
+/// The body of the `n`th request to the model (the model list a run asks for first left out).
 async fn sent(server: &MockServer, n: usize) -> String {
-    String::from_utf8(server.received_requests().await.unwrap()[n].body.clone()).unwrap()
+    let requests = chat_requests(server).await;
+    String::from_utf8(requests[n].body.clone()).unwrap()
+}
+
+/// The mock daemon emptied, still listing its model (a run asks for the list first).
+async fn reset_listing(server: &MockServer) {
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(tags(json!([{ "name": "local-model" }])))
+        .mount(server)
+        .await;
 }
 
 /// Policy golden: the prompt holds every visible, active course's structure (titles, weeks,
@@ -633,7 +672,7 @@ async fn failed_runs_never_push_kept_notes_out() {
             .await
             .unwrap();
     }
-    server.reset().await;
+    reset_listing(&server).await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(500))
         .mount(&server)
@@ -820,9 +859,9 @@ async fn an_automatic_note_is_tried_once_a_monday_whatever_the_outcome() {
         .await
         .unwrap_err();
     assert_eq!(again.kind, AppErrorKind::Invalid);
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    assert_eq!(chat_requests(&server).await.len(), 1);
     // A click still works that Monday.
-    server.reset().await;
+    reset_listing(&server).await;
     Mock::given(method("POST"))
         .respond_with(answer(&a_note()))
         .mount(&server)
@@ -979,4 +1018,70 @@ async fn monday_is_the_student_s_monday_across_the_end_of_dst() {
         .unwrap();
     assert!(note.automatic);
     assert_eq!(note.week_of, NaiveDate::from_ymd_opt(2026, 11, 2).unwrap());
+}
+
+/// Accept the note of the cloud models of Ollama here (a model it runs in the cloud needs its
+/// own, apart from the server's).
+fn acknowledge_cloud_note(app: &App, backend: &BackendRef) {
+    let (facts, acknowledged) = app.model_disclosure(backend, false).unwrap();
+    assert!(!acknowledged && !facts.on_device);
+    app.acknowledge_model_disclosure(backend, false, facts.version)
+        .unwrap();
+}
+
+/// A note sends no material text, but where its model runs is still the run's own answer: a
+/// model Ollama here runs in the cloud needs its note and its unknown price accepted first,
+/// and the note and the usage line say it ran in the cloud.
+#[tokio::test]
+async fn a_note_by_a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_cloud() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    let err = app
+        .write_weekly_note("n1", click(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
+    acknowledge_cloud_note(&app, &backend);
+    let err = app
+        .write_weekly_note("n2", click(), |_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&events);
+    let on_event = move |event: GenEvent| sink.lock().unwrap().push(event);
+    let note = app
+        .write_weekly_note("n3", click(), on_event)
+        .await
+        .unwrap();
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Started {
+            on_device: false,
+            ..
+        }
+    )));
+    assert!(!note.meta.on_device);
+    assert_eq!(note.meta.est_cost_micro_usd, None);
+    assert!(!app.weekly_notes().unwrap()[0].meta.on_device);
+    let usage = app.usage_summary(None).unwrap();
+    assert!(
+        usage
+            .rows
+            .iter()
+            .all(|r| r.cost_basis == CostBasis::Unpriced),
+        "{usage:?}"
+    );
 }

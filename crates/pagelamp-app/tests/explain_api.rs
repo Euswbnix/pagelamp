@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, ExplainOptions, GenEvent, GenStage, ModelChoice, OutputLanguage,
+    BackendRef, CostBasis, ExplainOptions, GenEvent, GenStage, ModelChoice, OutputLanguage,
 };
 use pagelamp_app::{App, AppErrorKind};
 use pagelamp_core::ai::{
@@ -21,7 +21,7 @@ use pagelamp_core::secrets::{MemorySecrets, SecretBackend};
 use pagelamp_core::store::{GenerationStatus, Store};
 use pagelamp_core::views::{self, AsOf};
 use serde_json::json;
-use wiremock::matchers::method;
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SOURCE: &str = "canvas:lms.example.edu";
@@ -201,7 +201,23 @@ fn app_with_courses(dir: &std::path::Path) -> (App, Arc<MemorySecrets>) {
 
 /// A model on this computer (an Ollama mock), chosen for explanations and disclosed.
 async fn with_local_model(app: &App) -> MockServer {
+    with_local_model_listing(app, tags(json!([{ "name": "local-model" }]))).await
+}
+
+/// Ollama's model list (`/api/tags`), as its daemon gives it.
+fn tags(models: serde_json::Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({ "models": models }))
+}
+
+/// `with_local_model`, its daemon answering the model list with `list`: a run asks for it to
+/// learn where the model runs.
+async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServer {
     let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(list)
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -283,8 +299,21 @@ fn collect() -> (Arc<Mutex<Vec<GenEvent>>>, impl Fn(GenEvent) + Send + Sync) {
     (events, move |event| sink.lock().unwrap().push(event))
 }
 
+/// The body of the `n`th request to the model (the model list a run asks for first left out).
 async fn sent(server: &MockServer, n: usize) -> String {
-    String::from_utf8(server.received_requests().await.unwrap()[n].body.clone()).unwrap()
+    let requests = chat_requests(server).await;
+    String::from_utf8(requests[n].body.clone()).unwrap()
+}
+
+/// The requests to the model itself, not for its list.
+async fn chat_requests(server: &MockServer) -> Vec<wiremock::Request> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() != "/api/tags")
+        .collect()
 }
 
 #[tokio::test]
@@ -490,7 +519,7 @@ async fn turning_a_course_s_ai_off_elsewhere_stops_its_explanation() {
         })
     };
     let deadline = Instant::now() + Duration::from_secs(10);
-    while server.received_requests().await.unwrap().is_empty() {
+    while chat_requests(&server).await.is_empty() {
         assert!(Instant::now() < deadline, "the run never reached the model");
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
@@ -817,4 +846,145 @@ async fn a_failed_read_of_the_output_language_sends_nothing() {
     )
     .unwrap();
     assert_eq!(app.ai_output_language().unwrap(), OutputLanguage::Ui);
+}
+
+/// Accept the note of the cloud models of Ollama here (a model it runs in the cloud needs its
+/// own, apart from the server's).
+fn acknowledge_cloud_note(app: &App, backend: &BackendRef) {
+    let (facts, acknowledged) = app.model_disclosure(backend, false).unwrap();
+    assert!(!acknowledged && !facts.on_device);
+    app.acknowledge_model_disclosure(backend, false, facts.version)
+        .unwrap();
+}
+
+/// Where the model runs is the run's own answer: a model that Ollama here lists as running in
+/// the cloud never gets a not-allowed course's materials (nothing is sent to it), whatever an
+/// estimate would have guessed; the same course is explained once Ollama runs it here.
+#[tokio::test]
+async fn a_cloud_model_through_a_local_server_never_gets_a_not_allowed_course() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    // DEMO505 is answered "not allowed".
+    let (events, on_event) = collect();
+    let err = app
+        .explain_week(
+            "DEMO505",
+            Some(3),
+            "cloud-505",
+            ExplainOptions::default(),
+            on_event,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::MaterialSharingNotAllowed));
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().any(|r| r.url.path() == "/api/tags"),
+        "Ollama was asked"
+    );
+    assert!(chat_requests(&server).await.is_empty(), "nothing sent");
+    assert!(
+        !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, GenEvent::Started { .. })),
+        "no run started"
+    );
+    // Listed as running here: explained, on this computer, with no reminder.
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(tags(json!([{ "name": "local-model" }])))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    let local = app
+        .explain_week(
+            "DEMO505",
+            Some(3),
+            "local-505",
+            ExplainOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    assert!(local.meta.on_device && !local.sharing_reminder);
+}
+
+/// A model that Ollama here runs in the cloud is the cloud for everything a run decides: its
+/// own note, its unknown price, the label, the usage line and the one-time reminder.
+#[tokio::test]
+async fn a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_cloud() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&explanation()))
+        .mount(&server)
+        .await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    let explain = |id: &'static str| {
+        app.explain_week("DEMO101", Some(3), id, ExplainOptions::default(), |_| {})
+    };
+    let err = explain("e1").await.unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
+    acknowledge_cloud_note(&app, &backend);
+    let err = explain("e2").await.unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    assert!(
+        chat_requests(&server).await.is_empty(),
+        "nothing sent before both"
+    );
+    let (events, on_event) = collect();
+    let explanation = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "e3",
+            ExplainOptions::default(),
+            on_event,
+        )
+        .await
+        .unwrap();
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Started {
+            on_device: false,
+            ..
+        }
+    )));
+    assert!(!explanation.meta.on_device);
+    assert_eq!(explanation.meta.est_cost_micro_usd, None);
+    assert!(explanation.sharing_reminder, "the course's first cloud run");
+    let usage = app.usage_summary(None).unwrap();
+    assert!(
+        usage
+            .rows
+            .iter()
+            .any(|r| r.cost_basis == CostBasis::Unpriced),
+        "{usage:?}"
+    );
+    let again = app
+        .explain_week("DEMO101", Some(3), "e4", ExplainOptions::default(), |_| {})
+        .await
+        .unwrap();
+    assert!(!again.sharing_reminder, "once a course");
 }

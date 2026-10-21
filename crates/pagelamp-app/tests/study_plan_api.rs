@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, EstimateRequest, GenEvent, ModelChoice, PlanWarningCode, StudyPlanRequest,
+    BackendRef, CostBasis, EstimateRequest, GenEvent, ModelChoice, PlanWarningCode,
+    StudyPlanRequest,
 };
 use pagelamp_app::{ActivityKind, App, AppErrorKind, DayOfWeek};
 use pagelamp_core::ai::{AiFeature, BlockReason, Effort, ModelErrorKind, ProviderRow};
@@ -16,7 +17,7 @@ use pagelamp_core::model::*;
 use pagelamp_core::secrets::MemorySecrets;
 use pagelamp_core::store::{GenerationStatus, Store};
 use serde_json::json;
-use wiremock::matchers::method;
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SOURCE: &str = "canvas:lms.example.edu";
@@ -133,7 +134,34 @@ fn app_with_courses(dir: &std::path::Path) -> App {
 
 /// A model on this computer (an Ollama mock), chosen for study plans and disclosed.
 async fn with_local_model(app: &App) -> MockServer {
+    with_local_model_listing(app, tags(json!([{ "name": "local-model" }]))).await
+}
+
+/// The requests to the model itself, not for its list.
+async fn chat_requests(server: &MockServer) -> Vec<wiremock::Request> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.url.path() != "/api/tags")
+        .collect()
+}
+
+/// Ollama's model list (`/api/tags`), as its daemon gives it.
+fn tags(models: serde_json::Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({ "models": models }))
+}
+
+/// `with_local_model`, its daemon answering the model list with `list`: a run asks for it to
+/// learn where the model runs.
+async fn with_local_model_listing(app: &App, list: ResponseTemplate) -> MockServer {
     let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(list)
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -302,8 +330,7 @@ async fn a_draft_is_scheduled_filtered_accepted_and_ticked() {
 
     // Policy golden: what was sent is structure only, hidden and ended courses left out, and
     // the student's note travels as data.
-    let sent =
-        String::from_utf8(server.received_requests().await.unwrap()[0].body.clone()).unwrap();
+    let sent = String::from_utf8(chat_requests(&server).await[0].body.clone()).unwrap();
     assert!(!sent.contains("Stomata"), "no material text in a plan run");
     for code in ["DEMO101", "DEMO202", "DEMO303"] {
         assert!(sent.contains(code), "{code} is planned (structure only)");
@@ -579,7 +606,7 @@ async fn a_running_plan_is_listed_and_can_be_stopped() {
         })
     };
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while server.received_requests().await.unwrap().is_empty() {
+    while chat_requests(&server).await.is_empty() {
         assert!(
             std::time::Instant::now() < deadline,
             "the run never started"
@@ -608,5 +635,66 @@ async fn a_running_plan_is_listed_and_can_be_stopped() {
             .unwrap()
             .status,
         GenerationStatus::Cancelled
+    );
+}
+
+/// Accept the note of the cloud models of Ollama here (a model it runs in the cloud needs its
+/// own, apart from the server's).
+fn acknowledge_cloud_note(app: &App, backend: &BackendRef) {
+    let (facts, acknowledged) = app.model_disclosure(backend, false).unwrap();
+    assert!(!acknowledged && !facts.on_device);
+    app.acknowledge_model_disclosure(backend, false, facts.version)
+        .unwrap();
+}
+
+/// A plan sends no material text, but where its model runs is still the run's own answer: a
+/// model Ollama here runs in the cloud needs its note and its unknown price accepted first,
+/// and the draft, the accepted plan's label and the usage line say it ran in the cloud.
+#[tokio::test]
+async fn a_plan_by_a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_cloud() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(&app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&tasks()))
+        .mount(&server)
+        .await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    let plan = |id: &'static str| app.generate_study_plan(StudyPlanRequest::default(), id, |_| {});
+    let err = plan("p1").await.unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::DisclosureNotAcknowledged));
+    acknowledge_cloud_note(&app, &backend);
+    let err = plan("p2").await.unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::PriceUnknownNotAcknowledged));
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    let (events, on_event) = collect();
+    let draft = app
+        .generate_study_plan(StudyPlanRequest::default(), "p3", on_event)
+        .await
+        .unwrap();
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Started {
+            on_device: false,
+            ..
+        }
+    )));
+    assert!(!draft.meta.on_device);
+    assert_eq!(draft.meta.est_cost_micro_usd, None);
+    assert_eq!(chat_requests(&server).await.len(), 1);
+    let label = app.accept_study_plan("p3").unwrap().ai_label.unwrap();
+    assert!(!label.on_device);
+    let usage = app.usage_summary(None).unwrap();
+    assert!(
+        usage
+            .rows
+            .iter()
+            .all(|r| r.cost_basis == CostBasis::Unpriced),
+        "{usage:?}"
     );
 }

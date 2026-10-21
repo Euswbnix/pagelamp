@@ -13,6 +13,7 @@
 //!   downloaded yet.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, MaterialSharing, ModelErrorKind};
@@ -39,7 +40,8 @@ use super::dates::CourseDatesInput;
 use crate::ai::prompts::{COURSE_CALENDAR, PROMPT_VERSION};
 use crate::ai::run::RunRequest;
 use crate::ai::{
-    GenEvent, GenNoticeCode, GenStage, backend_key, calendar_budget, feature_choice, request_shape,
+    BackendRef, GenEvent, GenNoticeCode, GenStage, backend_key, calendar_budget, feature_choice,
+    request_shape,
 };
 use crate::{App, AppError, AppErrorKind, Result, SourceSyncResult, SyncEvent};
 
@@ -218,6 +220,7 @@ impl App {
 
     /// The course dates form: `Some` puts the student's own calendar in force (the week
     /// numbering is computed here), `None` clears it and the student's term dates ("Undo").
+    /// Either way the course's dates are no longer ones copied from another course.
     pub fn set_course_dates(
         &self,
         course: &str,
@@ -229,13 +232,17 @@ impl App {
             .as_ref()
             .map(CourseDatesInput::to_calendar)
             .transpose()?;
-        store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
-        super::set_dates_confirmed(&store, &course.id, calendar.is_some())?;
+        store.in_transaction(|store| {
+            store.set_student_calendar(&course.id, calendar.as_ref(), Utc::now())?;
+            super::session::forget_copied(store, &course.id)?;
+            super::set_dates_confirmed(store, &course.id, calendar.is_some())
+        })?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }
 
     /// Accept a proposal, optionally with the student's edits and conflict choices (as the
-    /// dates form). The calendar in force becomes superseded.
+    /// dates form). The calendar in force becomes superseded, and the course's dates are no
+    /// longer ones copied from another course.
     pub fn accept_calendar_proposal(
         &self,
         proposal_id: i64,
@@ -248,8 +255,12 @@ impl App {
             .map(CourseDatesInput::to_calendar)
             .transpose()?
             .map(|calendar| (calendar, row.dates.clone()));
-        let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
-        super::set_dates_confirmed(&store, &accepted.course_id, true)?;
+        let accepted = store.in_transaction(|store| {
+            let accepted = store.accept_calendar_proposal(proposal_id, edited, Utc::now())?;
+            super::session::forget_copied(store, &accepted.course_id)?;
+            super::set_dates_confirmed(store, &accepted.course_id, true)?;
+            Ok(accepted)
+        })?;
         let course = store.resolve_course_with(&accepted.course_id, true)?;
         self.calendar_view(&store, &course, AsOf::now_local())
     }
@@ -439,7 +450,7 @@ impl App {
         });
         let at = AsOf::now_local();
         // Everything read before the model call; the store isn't held across it.
-        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+        let (course, choice) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
             // From here a change to the course's AI settings stops this reading; the gate
@@ -453,7 +464,13 @@ impl App {
             let Some(choice) = feature_choice(&store, AiFeature::CourseCalendar)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let (_, destination) = self.estimate_profile(&choice)?;
+            (course, choice)
+        };
+        // Where the model runs, decided by this run now (a model server here is asked for its
+        // list), never an estimate's answer; question (b) is checked against it below.
+        let destination = self.run_destination(&choice, &cancel).await?;
+        let (course, choice, destination, context, prompt, inputs, by_handle) = {
+            let store = self.read_store()?;
             // Before calendar_context reads question (b) (`stop_course_runs`, cloud only).
             self.run_reads_course(generation_id, &course.id, Some(destination));
             let signals = store.calendar_signals(&course.id)?;
@@ -473,6 +490,7 @@ impl App {
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
+                destination,
                 &prompt,
                 &output,
                 max_output,
@@ -494,6 +512,14 @@ impl App {
         };
         let (_, output, max_output) = request_shape(AiFeature::CourseCalendar, &context);
         let started = Utc::now();
+        // Once the run has started, the material text went out or was on its way.
+        let sent = AtomicBool::new(false);
+        let forward = |event: GenEvent| {
+            if matches!(event, GenEvent::Started { .. }) {
+                sent.store(true, Ordering::Relaxed);
+            }
+            on_event(event);
+        };
         let run = self
             .run_model(
                 RunRequest {
@@ -501,11 +527,12 @@ impl App {
                     cancel: &cancel,
                     feature: AiFeature::CourseCalendar,
                     choice: &choice,
+                    destination,
                     prompt,
                     output,
                     max_output_tokens: max_output,
                 },
-                on_event,
+                &forward,
             )
             .await;
         let generation = |status, output_json, error_kind: Option<&str>| GenerationRecord {
@@ -527,87 +554,128 @@ impl App {
             error_kind: error_kind.map(str::to_string),
             week_starts_on: None,
         };
-        let run = match run {
-            Ok(run) => run,
-            Err(err) => {
-                let (status, kind) = match err.kind {
-                    AppErrorKind::Cancelled => (GenerationStatus::Cancelled, None),
-                    _ => (
-                        GenerationStatus::Failed,
-                        err.model_error.map(|kind| kind.as_str()),
-                    ),
-                };
-                self.write_store()?
-                    .record_generation(&generation(status, None, kind))?;
-                return Err(err);
-            }
+        if run.is_ok() {
+            on_event(GenEvent::Stage {
+                stage: GenStage::Validating,
+            });
+        }
+        let provider_id = match &choice.backend {
+            BackendRef::Provider { provider_id } => Some(provider_id.as_str()),
+            _ => None,
         };
-        on_event(GenEvent::Stage {
-            stage: GenStage::Validating,
-        });
+        let sent = sent.load(Ordering::Relaxed);
+        // One store step, and only while the run's provider is still there (`ai remove`, from
+        // this or another process, discards what the run brought back): the one reminder per
+        // course whose sharing answer is open (after the first reading that sent, or tried to
+        // send, its materials to the cloud, whatever came back), the run and the proposal.
         let store = self.write_store()?;
-        let extraction: Option<CalendarExtraction> = run
-            .json
-            .clone()
-            .and_then(|json| serde_json::from_value(json).ok());
-        let current = store.accepted_calendar(&course.id)?.map(|row| row.calendar);
-        let assembled = extraction.as_ref().and_then(|extraction| {
-            inputs
-                .propose(extraction, &by_handle, current.as_ref())
-                .ok()
-        });
-        let Some(assembled) = assembled else {
+        let ending = store.in_transaction(|store| {
+            // The materials went out (or were on their way) whatever became of the provider:
+            // the reminder isn't its data. It follows the answer as it is now (the student may
+            // have answered while the model read).
+            let sharing = store
+                .get_course(&course.id)?
+                .map_or(course.material_sharing, |now| now.material_sharing);
+            let reminded = destination == Destination::Cloud
+                && sent
+                && matches!(
+                    sharing,
+                    MaterialSharing::Unanswered | MaterialSharing::NotSure
+                )
+                && store.claim_sharing_reminder(&course.id, Utc::now())?;
+            if let Some(id) = provider_id
+                && store.model_provider(id)?.is_none()
+            {
+                return Ok(Ending::Discarded { reminded });
+            }
+            let run = match &run {
+                Ok(run) => run,
+                Err(err) => {
+                    let (status, kind) = match err.kind {
+                        AppErrorKind::Cancelled => (GenerationStatus::Cancelled, None),
+                        _ => (
+                            GenerationStatus::Failed,
+                            err.model_error.map(|kind| kind.as_str()),
+                        ),
+                    };
+                    store.record_generation(&generation(status, None, kind))?;
+                    return Ok(Ending::Failed { reminded });
+                }
+            };
+            let extraction: Option<CalendarExtraction> = run
+                .json
+                .clone()
+                .and_then(|json| serde_json::from_value(json).ok());
+            let current = store.accepted_calendar(&course.id)?.map(|row| row.calendar);
+            let assembled = extraction.as_ref().and_then(|extraction| {
+                inputs
+                    .propose(extraction, &by_handle, current.as_ref())
+                    .ok()
+            });
+            let Some(assembled) = assembled else {
+                store.record_generation(&generation(
+                    GenerationStatus::Failed,
+                    None,
+                    Some(ModelErrorKind::BadOutput.as_str()),
+                ))?;
+                return Ok(Ending::BadOutput { reminded });
+            };
             store.record_generation(&generation(
-                GenerationStatus::Failed,
+                GenerationStatus::Accepted,
+                serde_json::to_string(&extraction).ok(),
                 None,
-                Some(ModelErrorKind::BadOutput.as_str()),
             ))?;
-            return Err(AppError {
+            let row = NewCalendarRow {
+                course_id: course.id.clone(),
+                origin: CalendarOrigin::Ai,
+                dates: assembled.dates.clone(),
+                checks: checks_of(&assembled, reminded),
+                calendar: assembled.calendar,
+                manifest: context.manifest().materials.clone(),
+                fingerprint: inputs.fingerprint(),
+                provenance: Some(CalendarProvenance {
+                    generation_id: Some(generation_id.to_string()),
+                    backend_label: run.backend_label.clone(),
+                    model: run.model.clone(),
+                    prompt_version: PROMPT_VERSION,
+                    on_device: run.on_device,
+                }),
+            };
+            let id = store.insert_calendar_proposal(&row, Utc::now())?;
+            Ok(Ending::Proposal { id, reminded })
+        })?;
+        if let Ending::Discarded { reminded: true }
+        | Ending::Failed { reminded: true }
+        | Ending::BadOutput { reminded: true }
+        | Ending::Proposal { reminded: true, .. } = ending
+        {
+            on_event(GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder,
+            });
+        }
+        match ending {
+            Ending::Discarded { .. } => Err(AppError::new(
+                AppErrorKind::Cancelled,
+                "AI data was removed while the syllabus was read: the model's answer wasn't \
+                 kept.",
+            )),
+            Ending::Failed { .. } => match run {
+                Err(err) => Err(err),
+                Ok(_) => unreachable!("only a failed run ends as Failed"),
+            },
+            Ending::BadOutput { .. } => Err(AppError {
                 model_error: Some(ModelErrorKind::BadOutput),
                 ..AppError::new(
                     AppErrorKind::Model,
                     "The model's answer had no dates PageLamp could check against the \
                      course's materials. Try again, or set the dates yourself.",
                 )
-            });
-        };
-        store.record_generation(&generation(
-            GenerationStatus::Accepted,
-            serde_json::to_string(&extraction).ok(),
-            None,
-        ))?;
-        let sharing_reminder = destination == Destination::Cloud
-            && matches!(
-                course.material_sharing,
-                MaterialSharing::Unanswered | MaterialSharing::NotSure
-            )
-            && store.claim_sharing_reminder(&course.id, Utc::now())?;
-        if sharing_reminder {
-            on_event(GenEvent::Notice {
-                code: GenNoticeCode::MaterialSharingReminder,
-            });
-        }
-        let row = NewCalendarRow {
-            course_id: course.id.clone(),
-            origin: CalendarOrigin::Ai,
-            dates: assembled.dates.clone(),
-            checks: checks_of(&assembled, sharing_reminder),
-            calendar: assembled.calendar,
-            manifest: context.manifest().materials.clone(),
-            fingerprint: inputs.fingerprint(),
-            provenance: Some(CalendarProvenance {
-                generation_id: Some(generation_id.to_string()),
-                backend_label: run.backend_label,
-                model: run.model,
-                prompt_version: PROMPT_VERSION,
-                on_device: run.on_device,
             }),
-        };
-        let id = store.insert_calendar_proposal(&row, Utc::now())?;
-        store
-            .calendar_row(id)?
-            .map(proposal_of)
-            .ok_or_else(|| no_proposal(id))
+            Ending::Proposal { id, .. } => store
+                .calendar_row(id)?
+                .map(proposal_of)
+                .ok_or_else(|| no_proposal(id)),
+        }
     }
 
     /// The view of one course's calendars at `at`.
@@ -681,6 +749,7 @@ impl App {
         if let Some(reason) = self.run_blocks(
             store,
             &choice,
+            destination,
             &assemble(COURSE_CALENDAR, &GatedContext::empty(), None),
             &OutputSpec::Text,
             0,
@@ -696,7 +765,7 @@ impl App {
 }
 
 /// Why a course's own state stops AI reading: hidden, or its materials not readable.
-fn course_block(course: &Course) -> Option<BlockReason> {
+pub(crate) fn course_block(course: &Course) -> Option<BlockReason> {
     if course.hidden {
         return Some(BlockReason::CourseHidden);
     }
@@ -783,6 +852,25 @@ fn pending(store: &Store, id: i64) -> Result<CalendarRow> {
 }
 
 /// The checks a proposal is stored with.
+/// How a reading's store step ended (`read_one_calendar`); `reminded`: the course's sharing
+/// reminder was claimed by it.
+enum Ending {
+    /// The run's provider was removed meanwhile: its answer wasn't kept.
+    Discarded {
+        reminded: bool,
+    },
+    Failed {
+        reminded: bool,
+    },
+    BadOutput {
+        reminded: bool,
+    },
+    Proposal {
+        id: i64,
+        reminded: bool,
+    },
+}
+
 fn checks_of(assembled: &Assembled, sharing_reminder: bool) -> CalendarChecks {
     CalendarChecks {
         conflicts: assembled.conflicts.clone(),

@@ -1,9 +1,9 @@
 import { CircleAlert, CircleCheck, CircleMinus, FileSearch } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { toast } from "sonner";
-import type { EstimateRequest } from "@/api/ai";
+import { type EstimateRequest, materialSharing } from "@/api/ai";
 import { useCostEstimate } from "@/api/ai-queries";
 import {
   useAcceptPassingProposals,
@@ -21,7 +21,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { GenerateButton } from "@/features/ai/GenerateButton";
+import { GenerateButton, GenerateSteps } from "@/features/ai/GenerateButton";
+import { MaterialSharingReminder } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { focusPageHeading } from "@/lib/focus";
 import { paths } from "@/lib/routes";
@@ -45,16 +46,28 @@ export function ReadSyllabiBatch() {
   const snooze = useSnoozeCalendarOffers();
   const errorText = useApiErrorText();
   const headingId = useId();
-  const { state } = batch;
+  const heading = useRef<HTMLHeadingElement>(null);
+  const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
+  const { state, reminders, settle } = batch;
+  // Question (b) answered meanwhile for a course (from outside, as the courses are read
+  // again): its reminder is done. A course not listed yet is still open.
+  useEffect(() => {
+    for (const r of reminders) {
+      const course = byId.get(r.courseId)?.course;
+      const answer = course ? materialSharing(course) : "unanswered";
+      if (answer === "allowed" || answer === "not_allowed") settle(r.courseId);
+    }
+  });
 
   const ids = offers.data?.map((o) => o.course_id) ?? [];
   const request: EstimateRequest | null =
     ids.length > 0 ? { feature: "course_calendar", courses: ids } : null;
   const estimate = useCostEstimate(request);
-  if (state.phase === "idle" && ids.length === 0) return null;
+  // A reminder still to answer keeps the card.
+  const quiet = state.phase === "idle" && reminders.length === 0;
+  if (quiet && ids.length === 0) return null;
   // §7.12: no model, no nagging on the home screen (each Timeline tab says how to set it up).
-  if (state.phase === "idle" && estimate.data?.would_block === "no_model_chosen") return null;
-  const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
+  if (quiet && estimate.data?.would_block === "no_model_chosen") return null;
 
   async function notNow() {
     if (snooze.isPending) return;
@@ -73,9 +86,11 @@ export function ReadSyllabiBatch() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileSearch className="size-4 text-muted-foreground" aria-hidden />
-          <h2 id={headingId}>{t("batch.title")}</h2>
+          <h2 id={headingId} ref={heading} tabIndex={-1} className="outline-none">
+            {t("batch.title")}
+          </h2>
         </CardTitle>
-        {state.phase === "idle" ? (
+        {state.phase === "idle" && ids.length > 0 ? (
           <CardDescription>{t("batch.description", { count: ids.length })}</CardDescription>
         ) : null}
         {state.phase === "idle" ? (
@@ -96,14 +111,18 @@ export function ReadSyllabiBatch() {
         ) : null}
       </CardHeader>
       <CardContent className="space-y-4">
-        {state.phase === "idle" ? (
-          <GenerateButton
-            request={request}
-            label={t("batch.read", { count: ids.length })}
-            onGenerate={({ overrideBudget }) => void batch.start(ids, overrideBudget)}
-          />
-        ) : null}
+        {/* First: while idle it is only its (out of flow) status line, so the steps' box below
+            is the last one and adds no gap under Generate. */}
         <BatchProgress state={state} byId={byId} onStop={() => void batch.stop()} />
+        <GenerateSteps fallbackFocus={() => heading.current}>
+          {state.phase === "idle" && ids.length > 0 ? (
+            <GenerateButton
+              request={request}
+              label={t("batch.read", { count: ids.length })}
+              onGenerate={({ overrideBudget }) => void batch.start(ids, overrideBudget)}
+            />
+          ) : null}
+        </GenerateSteps>
         {state.phase === "finished" ? (
           <BatchResults
             outcomes={state.outcomes}
@@ -113,6 +132,22 @@ export function ReadSyllabiBatch() {
           />
         ) : null}
         <BatchFailure state={state} />
+        {reminders.map((r) => (
+          <MaterialSharingReminder
+            key={r.courseId}
+            courseId={r.courseId}
+            courseName={courseLabel(byId, r.courseId)}
+            service={r.service}
+            onClose={() => {
+              settle(r.courseId);
+              // Not to the page: back to the card, from where the next one is a Tab away; to the
+              // page's main region when the card went with it.
+              requestAnimationFrame(() =>
+                (heading.current ?? document.getElementById("main"))?.focus(),
+              );
+            }}
+          />
+        ))}
       </CardContent>
     </Card>
   );

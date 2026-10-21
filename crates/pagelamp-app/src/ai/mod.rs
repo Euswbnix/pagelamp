@@ -35,7 +35,7 @@ pub use types::*;
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use pagelamp_core::ai::{AiFeature, MaterialSharing};
+use pagelamp_core::ai::{AiFeature, Destination, MaterialSharing};
 use pagelamp_core::ingest::sha256_hex;
 use pagelamp_llm::profile::{self, ProviderProfile, Retention, Training, Wire};
 use pagelamp_llm::{Backend, CancellationToken, HttpDriver};
@@ -152,26 +152,67 @@ impl App {
                 problems,
                 disclosure,
                 disclosure_acknowledged: acknowledged,
+                cloud_disclosure: None,
+                cloud_disclosure_acknowledged: None,
             });
         }
         for (record, provider) in self.provider_records(&store)? {
             let backend = BackendRef::Provider {
                 provider_id: record.provider_id.clone(),
             };
-            let disclosure = disclosure_for(&provider.profile);
+            let profile = &provider.profile;
+            let disclosure = disclosure_for(profile);
             let acknowledged = acks
                 .get(&settings::backend_key(&backend))
                 .map(|a| a.version);
+            // A server here may run a model in the cloud (any but LM Studio): such a model has
+            // a note of its own. Only Ollama and LM Studio say a model runs here.
+            let here_note =
+                !profile.on_device() || matches!(profile.id.as_str(), "ollama" | "lm_studio");
+            let cloud_disclosure = (profile.on_device() && profile.id != "lm_studio")
+                .then(|| cloud_via_local_disclosure(profile));
+            let cloud_acknowledged = cloud_disclosure
+                .as_ref()
+                .and_then(|_| acks.get(&settings::cloud_key(&backend)))
+                .map(|a| a.version);
+            let here_ok = here_note && acknowledged == Some(disclosure.version);
+            let cloud_ok = cloud_disclosure
+                .as_ref()
+                .is_some_and(|facts| cloud_acknowledged == Some(facts.version));
+            // Each routed model needs the note a run checks for it (`disclosure_and_key`, as
+            // `other_blocks` does), placed as an estimate places it (a run asks the server
+            // again); with none routed, either note the backend has.
+            let mut routed = false;
+            let mut notes_ok = true;
+            for choice in routing
+                .0
+                .values()
+                .filter(|choice| choice.backend == backend)
+            {
+                routed = true;
+                let runs_here = self.estimate_profile(choice)?.1 == Destination::OnDevice;
+                let (facts, key) = self.disclosure_and_key(&backend, runs_here)?;
+                notes_ok &= acks
+                    .get(&key)
+                    .is_some_and(|ack| ack.version == facts.version);
+            }
+            if !routed {
+                notes_ok = here_ok || cloud_ok;
+            }
             let mut problems = Vec::new();
             if provider.needs_key() && provider.key.is_none() {
                 problems.push(BackendProblem::KeyMissing);
             }
-            if acknowledged.is_some_and(|version| version != disclosure.version) {
+            if acknowledged.is_some_and(|version| version != disclosure.version)
+                || cloud_disclosure.as_ref().is_some_and(|facts| {
+                    cloud_acknowledged.is_some_and(|version| version != facts.version)
+                })
+            {
                 problems.push(BackendProblem::DisclosureChanged);
             }
             let state = if problems.contains(&BackendProblem::KeyMissing) {
                 BackendState::NeedsSetup
-            } else if acknowledged != Some(disclosure.version) {
+            } else if !notes_ok {
                 BackendState::NeedsDisclosure
             } else {
                 BackendState::Ready
@@ -188,6 +229,8 @@ impl App {
                 problems,
                 disclosure,
                 disclosure_acknowledged: acknowledged,
+                cloud_disclosure,
+                cloud_disclosure_acknowledged: cloud_acknowledged,
             });
             providers.push(record);
         }
@@ -235,26 +278,39 @@ impl App {
 
     /// The models a backend offers: its live list with PageLamp's price and capability data.
     pub async fn list_models(&self, backend: &BackendRef) -> Result<Vec<ModelInfo>> {
+        self.list_models_with(backend, &CancellationToken::new())
+            .await
+    }
+
+    /// `list_models`, stopped by `cancel`. A server on this computer says which models it runs
+    /// here only if it is LM Studio or Ollama (Ollama marks its cloud models); any other server
+    /// here can't say, so its models count as in the cloud, without a known price. Ollama's
+    /// list is kept for estimates (`settings::LISTED_MODELS`).
+    pub(crate) async fn list_models_with(
+        &self,
+        backend: &BackendRef,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ModelInfo>> {
         if *backend == BackendRef::Codex {
             self.require_chatgpt_plan()?;
             return Ok(self.codex_models());
         }
         let provider = self.provider_for(backend)?;
+        let provider_id = provider.row.id.clone();
         let profile = provider.profile.clone();
         let local = profile.on_device();
-        let models = provider
-            .backend()?
-            .list_models(&CancellationToken::new())
-            .await?;
-        Ok(models
+        let says_where = matches!(profile.id.as_str(), "ollama" | "lm_studio");
+        let models = provider.backend()?.list_models(cancel).await?;
+        let models: Vec<ModelInfo> = models
             .into_iter()
             .map(|model| {
                 let quirks = profile.model_quirks(&model.id);
+                let here = model.on_device && (!local || says_where);
                 ModelInfo {
-                    price_known: model.on_device
+                    price_known: here
                         || pagelamp_llm::catalog::lookup(&profile.id, &model.id).is_some(),
-                    runs_in_cloud: local && !model.on_device,
-                    on_device: model.on_device,
+                    runs_in_cloud: local && !here,
+                    on_device: here,
                     context_window: model.context_window,
                     reasoning_always_on: quirks.thinking_always_on,
                     label: model.display_name,
@@ -262,7 +318,39 @@ impl App {
                     id: model.id,
                 }
             })
-            .collect())
+            .collect();
+        if local && profile.id == "ollama" {
+            // For estimates only: a run asks the daemon itself, so a failed write changes
+            // nothing but the next estimate.
+            if let Err(err) = self.keep_listed_models(&provider_id, backend, &models) {
+                tracing::warn!(target: "pagelamp::ai", "keeping the model list failed: {:?}", err.kind);
+            }
+        }
+        Ok(models)
+    }
+
+    /// Keep Ollama's list for estimates (`ai.listed_models`), in one transaction and only while
+    /// the provider is still there: a list that arrives after `ai remove` isn't written back.
+    fn keep_listed_models(
+        &self,
+        provider_id: &str,
+        backend: &BackendRef,
+        models: &[ModelInfo],
+    ) -> Result<()> {
+        let store = self.write_store()?;
+        store.in_transaction(|store| {
+            if store.model_provider(provider_id)?.is_none() {
+                return Ok(());
+            }
+            let mut listed: settings::ListedModels =
+                store.setting(settings::LISTED_MODELS)?.unwrap_or_default();
+            listed.insert(
+                settings::backend_key(backend),
+                models.iter().map(|m| (m.id.clone(), m.on_device)).collect(),
+            );
+            store.set_setting(settings::LISTED_MODELS, &listed)
+        })?;
+        Ok(())
     }
 
     /// "Test": a tiny request with no course data. A model that answers badly or refuses the
@@ -428,21 +516,65 @@ impl App {
     pub fn remove_all_ai_data(&self) -> Result<RemoveAiDataReport> {
         // Codex first: its sign-in ends before its folder goes (Busy if Codex is running).
         self.forget_codex()?;
+        // This process's runs stop; a run elsewhere keeps nothing once its provider is gone.
+        self.state.runs.cancel_all();
         let store = self.write_store()?;
-        let keyed: Vec<String> = store
-            .model_providers()?
-            .into_iter()
-            .filter(providers::uses_key)
-            .map(|p| p.id)
-            .collect();
-        let removed = store.remove_all_ai_data()?;
-        for id in &keyed {
-            self.secrets.delete(&providers::key_account(id))?;
+        // Keys first: a provider whose key can't be deleted stays, with its key, and the
+        // removal ends as an error that names it (after removing everything else).
+        let keyless = settings::keyless(&store)?;
+        let mut handled = Vec::new();
+        let mut handled_rows = Vec::new();
+        let mut keys_left = Vec::new();
+        let mut key_error = None;
+        for row in store.model_providers()? {
+            let row_keyless = keyless.contains(&row.id);
+            match providers::forget_key(&*self.secrets, &row, row_keyless) {
+                Ok(()) => {
+                    handled.push(row.id.clone());
+                    handled_rows.push((row, row_keyless));
+                }
+                Err(err) => {
+                    tracing::warn!(target: "pagelamp::ai", "{}", err.message);
+                    keys_left.push(row.id);
+                    key_error.get_or_insert(err);
+                }
+            }
         }
-        for key in settings::ALL_KEYS {
-            store.remove_setting(key)?;
-        }
+        // Only the providers whose keys are gone: one added meanwhile (another process) stays,
+        // with its key, and is named below.
+        let removed = store.remove_all_ai_data(&handled)?;
+        let added_meanwhile = store.in_transaction(|store| {
+            let left: Vec<String> = store
+                .model_providers()?
+                .into_iter()
+                .map(|row| row.id)
+                .collect();
+            // A keyless provider that stays stays keyless: its keychain entry is never read.
+            let still_keyless: std::collections::BTreeSet<String> = settings::keyless(store)?
+                .into_iter()
+                .filter(|id| left.contains(id))
+                .collect();
+            for key in settings::ALL_KEYS {
+                if key == settings::KEYLESS && !still_keyless.is_empty() {
+                    store.set_setting(key, &still_keyless)?;
+                } else {
+                    store.remove_setting(key)?;
+                }
+            }
+            Ok(left
+                .into_iter()
+                .filter(|id| !keys_left.contains(id))
+                .collect::<Vec<String>>())
+        })?;
         drop(store);
+        // Once more, now that the rows are gone: a key an update stored meanwhile goes too.
+        let keys_orphaned: Vec<(String, &'static str)> = handled_rows
+            .iter()
+            .filter_map(|(row, row_keyless)| {
+                providers::forget_key_after(&*self.secrets, row, *row_keyless)
+                    .map(|left| (row.id.clone(), left.where_))
+            })
+            .collect();
         let backup_removed = pagelamp_core::store::database_backup(&self.db_path()).is_some();
         if backup_removed {
             pagelamp_core::store::delete_database_backups(&self.db_path()).map_err(|err| {
@@ -452,12 +584,89 @@ impl App {
                 )
             })?;
         }
-        Ok(RemoveAiDataReport {
+        let report = RemoveAiDataReport {
             providers_removed: removed.providers,
             generations_removed: removed.generations,
             usage_rows_removed: removed.usage_rows,
             backup_removed,
-        })
+        };
+        if key_error.is_none() && added_meanwhile.is_empty() && keys_orphaned.is_empty() {
+            return Ok(report);
+        }
+        let mut message = format!(
+            "Removed {} provider(s), {} usage record(s) and {} generated text(s){}",
+            report.providers_removed,
+            report.usage_rows_removed,
+            report.generations_removed,
+            if report.backup_removed {
+                ", and the pre-update database backup"
+            } else {
+                ""
+            },
+        );
+        if !keys_left.is_empty() {
+            let entries: Vec<String> = keys_left.iter().map(|id| format!("`llm:{id}`")).collect();
+            message.push_str(&format!(
+                ", but the keychain didn't let PageLamp delete the API key of {}: it is still \
+                 there ({}), and so is that provider",
+                keys_left.join(", "),
+                entries.join(", ")
+            ));
+        }
+        if !added_meanwhile.is_empty() {
+            message.push_str(&format!(
+                "{} {} was added while this ran and stays, with its key",
+                if keys_left.is_empty() {
+                    ", but"
+                } else {
+                    "; and"
+                },
+                added_meanwhile.join(", ")
+            ));
+        }
+        for (id, where_) in &keys_orphaned {
+            message.push_str(&format!(
+                "{} an API key stored for {id} while this ran couldn't be deleted from the \
+                 keychain: it {where_} under `llm:{id}`, so delete it there",
+                if keys_left.is_empty() && added_meanwhile.is_empty() {
+                    ", but"
+                } else {
+                    "; and"
+                },
+            ));
+        }
+        message.push_str(if !keys_left.is_empty() {
+            ". Run this again when the keychain can be reached."
+        } else if !added_meanwhile.is_empty() {
+            ". Run this again to remove it."
+        } else {
+            "."
+        });
+        let mut err = key_error.unwrap_or_else(|| {
+            let kind = if keys_orphaned.is_empty() {
+                AppErrorKind::Busy
+            } else {
+                AppErrorKind::Internal
+            };
+            AppError::new(kind, String::new())
+        });
+        err.message = message;
+        Err(err)
+    }
+
+    /// At a sync's start: usage lines older than the ledger's 13 months, and calendar
+    /// proposals dismissed more than 30 days ago with the runs that wrote them, for a student
+    /// who no longer uses the AI features. Problems are logged; they never stop the sync.
+    pub(crate) fn prune_ai_records_at_sync_start(&self) {
+        let now = chrono::Utc::now();
+        let result = self.write_store().and_then(|store| -> Result<()> {
+            store.prune_ai_usage(pagelamp_core::store::usage_cutoff(now))?;
+            store.prune_dismissed_calendars(now)?;
+            Ok(())
+        });
+        if let Err(err) = result {
+            tracing::warn!(target: "pagelamp::ai", "pruning AI records failed: {:?}", err.kind);
+        }
     }
 }
 
@@ -503,16 +712,23 @@ pub(crate) fn doctor_checks(
     let rows = store
         .and_then(|store| store.model_providers().ok())
         .unwrap_or_default();
+    let keyless = store
+        .and_then(|store| settings::keyless(store).ok())
+        .unwrap_or_default();
     let providers = rows
         .iter()
         .map(|row| {
             let profile = providers::profile_from_row(row).ok();
             let on_device = profile.as_ref().is_some_and(ProviderProfile::on_device);
+            // A server here that may go without a key has none missing; one added without a
+            // key uses none, and its keychain entry isn't read.
+            let key_optional = profile.as_ref().is_some_and(providers::key_optional);
             AiProviderCheck {
                 preset: row.preset.clone(),
                 on_device,
-                key_present: providers::uses_key(row)
-                    .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_)))),
+                key_present: (providers::uses_key(row) && !keyless.contains(&row.id))
+                    .then(|| matches!(secrets.get(&providers::key_account(&row.id)), Ok(Some(_))))
+                    .filter(|present| *present || !key_optional),
                 reachable: profile
                     .and_then(|profile| profile.base_url)
                     .filter(|_| on_device)
@@ -573,6 +789,72 @@ fn accepts_connections(url: &url::Url) -> bool {
 }
 
 impl App {
+    /// The disclosure to read before using a model of `backend`, and whether its current
+    /// version is acknowledged. `runs_here`: the model runs on this computer, as a run decides
+    /// it (`model_runs_here`). A model that a server on this computer may run in the cloud has a
+    /// disclosure of its own, acknowledged apart from the server's ("nothing leaves it").
+    pub fn model_disclosure(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+    ) -> Result<(DisclosureFacts, bool)> {
+        let (facts, key) = self.disclosure_and_key(backend, runs_here)?;
+        let acknowledged = settings::disclosures(&self.read_store()?)?
+            .get(&key)
+            .is_some_and(|ack| ack.version == facts.version);
+        Ok((facts, acknowledged))
+    }
+
+    /// The student read `model_disclosure(backend, runs_here)`; `version` must be the one shown.
+    pub fn acknowledge_model_disclosure(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+        version: u32,
+    ) -> Result<()> {
+        let (facts, key) = self.disclosure_and_key(backend, runs_here)?;
+        if *backend == BackendRef::Codex {
+            self.require_chatgpt_plan()?;
+        }
+        if version != facts.version {
+            return Err(AppError::new(
+                AppErrorKind::Invalid,
+                "What this service does with your data changed; please read it again.",
+            ));
+        }
+        let store = self.write_store()?;
+        let mut acks = settings::disclosures(&store)?;
+        acks.insert(
+            key,
+            settings::Acknowledgement {
+                version,
+                at: chrono::Utc::now(),
+            },
+        );
+        store.set_setting(settings::DISCLOSURES, &acks)?;
+        Ok(())
+    }
+
+    /// The disclosure for a model of `backend` and the key its acknowledgement is kept under.
+    pub(crate) fn disclosure_and_key(
+        &self,
+        backend: &BackendRef,
+        runs_here: bool,
+    ) -> Result<(DisclosureFacts, String)> {
+        if *backend == BackendRef::Codex {
+            return Ok((self.disclosure(backend)?, settings::backend_key(backend)));
+        }
+        let profile = self.provider_profile(backend)?;
+        Ok(if profile.on_device() && !runs_here {
+            (
+                cloud_via_local_disclosure(&profile),
+                settings::cloud_key(backend),
+            )
+        } else {
+            (disclosure_for(&profile), settings::backend_key(backend))
+        })
+    }
+
     /// The disclosure facts of any backend (Codex: with the plan type as far as known).
     pub(crate) fn disclosure(&self, backend: &BackendRef) -> Result<DisclosureFacts> {
         match backend {
@@ -625,6 +907,17 @@ pub(crate) fn disclosure_for(provider: &ProviderProfile) -> DisclosureFacts {
         on_device,
         location: policy.location.clone(),
     };
+    with_version(facts)
+}
+
+/// The disclosure for a model that a server on this computer may run in the cloud: PageLamp can't
+/// confirm where it runs, what is kept or whether it is trained on, and doesn't know its price.
+pub(crate) fn cloud_via_local_disclosure(provider: &ProviderProfile) -> DisclosureFacts {
+    let mut facts = disclosure_for(provider);
+    facts.training = TrainingFact::Unknown;
+    facts.retention = RetentionFact::ProviderTerms;
+    facts.cost = CostKind::CloudViaLocal;
+    facts.on_device = false;
     with_version(facts)
 }
 

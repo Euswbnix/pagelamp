@@ -600,3 +600,324 @@ fn saving_a_course_s_own_dates_ends_their_copied_from_line() {
         .unwrap();
     assert!(!copied_line(&app));
 }
+
+/// The dates form's calendar of course 1, with an exam period: what `user_term_*` mirror ends
+/// with the exams.
+fn dates_form(first: &str, last: &str, exams_end: Option<&str>) -> pagelamp_app::CourseDatesInput {
+    pagelamp_app::CourseDatesInput {
+        first_class: Some(date(first)),
+        last_class: Some(date(last)),
+        exams_end: exams_end.map(date),
+        breaks: vec![],
+        second_segment: None,
+    }
+}
+
+/// A copy from a course with a calendar in force gives the others its first and last day of
+/// classes (not the end of its exams). A course with a calendar of its own is skipped: its
+/// calendar counts its weeks whatever its term dates say, so nothing is copied there and it
+/// doesn't say its dates were copied.
+#[test]
+fn copies_read_a_calendar_in_force_and_leave_a_course_s_own_calendar_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_dates(
+        &session_id("1"),
+        Some(dates_form("2026-09-08", "2026-12-08", Some("2026-12-22"))),
+    )
+    .unwrap();
+    app.set_course_dates(
+        &session_id("5"),
+        Some(dates_form("2026-09-15", "2026-12-11", None)),
+    )
+    .unwrap();
+
+    let listed = app.session_courses(&session_id("1")).unwrap();
+    // The course copied from has a calendar of its own: a copy takes that calendar's days.
+    assert!(
+        app.course_timeline(&session_id("1"))
+            .unwrap()
+            .term
+            .own_calendar
+    );
+    assert!(
+        !app.course_timeline(&session_id("2"))
+            .unwrap()
+            .term
+            .own_calendar
+    );
+    let own: Vec<(&str, bool)> = listed
+        .courses
+        .iter()
+        .map(|c| (c.course_id.as_str(), c.own_calendar))
+        .collect();
+    assert!(own.contains(&(session_id("5").as_str(), true)), "{own:?}");
+    assert!(own.contains(&(session_id("2").as_str(), false)), "{own:?}");
+
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2"), session_id("5")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+    assert_eq!(
+        report.skipped,
+        vec![SkippedCourse {
+            course_id: session_id("5"),
+            reason: ApplySkipReason::OwnCalendar,
+        }]
+    );
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert_eq!(
+        (two.term.student_start, two.term.student_end),
+        (Some(date("2026-09-08")), Some(date("2026-12-08")))
+    );
+    assert_eq!(
+        copied(&app),
+        BTreeMap::from([(session_id("2"), session_id("1"))])
+    );
+    let five = app.course_timeline(&session_id("5")).unwrap();
+    assert_eq!(five.term.teaching[0].first_class, date("2026-09-15"));
+    assert!(
+        five.evidence_items
+            .iter()
+            .all(|item| item.code != "dates_copied_from")
+    );
+}
+
+/// A course that has a calendar of its own since a copy keeps it through an undo, as a copy
+/// leaves it alone: its term dates mirror that calendar.
+#[test]
+fn an_undo_leaves_alone_a_course_with_a_calendar_of_its_own_since() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    app.set_course_term(
+        &session_id("1"),
+        Some(date("2026-09-08")),
+        Some(date("2026-12-08")),
+    )
+    .unwrap();
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    app.set_course_dates(
+        &session_id("2"),
+        Some(dates_form("2026-09-15", "2026-12-11", Some("2026-12-20"))),
+    )
+    .unwrap();
+    app.restore_course_dates(report.replaced).unwrap();
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert!(two.term.own_calendar);
+    assert_eq!(
+        (two.term.student_start, two.term.student_end),
+        (Some(date("2026-09-15")), Some(date("2026-12-20")))
+    );
+    assert_eq!(two.term.teaching[0].first_class, date("2026-09-15"));
+}
+
+/// Two dates can't carry a calendar with two parts, a break that skips a week, no last day of
+/// classes, or a first week other than week 1: a copy from one is refused, nothing changes,
+/// and the session's list says so beforehand.
+#[test]
+fn a_calendar_two_dates_can_t_carry_isn_t_copied() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    let reading_week = |numbered| pagelamp_app::BreakInput {
+        kind: BreakKind::ReadingWeek,
+        start: date("2026-10-26"),
+        end: date("2026-10-30"),
+        numbered,
+        label: None,
+    };
+    let two_parts = pagelamp_app::CourseDatesInput {
+        second_segment: Some(pagelamp_app::SegmentInput {
+            first_class: date("2027-01-05"),
+            last_class: Some(date("2027-04-06")),
+            restart_numbering: false,
+        }),
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    let skipped_break = pagelamp_app::CourseDatesInput {
+        breaks: vec![reading_week(false)],
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    // A schedule from "Week 0", as a scan or a reading can propose it.
+    let mut week_zero =
+        pagelamp_core::calendar::calendar_from_dates(&pagelamp_core::calendar::DatesDraft {
+            first_class: date("2026-09-08"),
+            last_class: Some(date("2026-12-08")),
+            exams_end: None,
+            breaks: vec![],
+            second_segment: None,
+        })
+        .unwrap();
+    week_zero.segments[0].first_week_number = 0;
+    let refused = |app: &App| app.session_courses(&session_id("1")).unwrap().copy_refused;
+    // No last day of classes: the target would take its end and breaks from the school.
+    let open_ended = pagelamp_app::CourseDatesInput {
+        last_class: None,
+        ..dates_form("2026-09-08", "2026-12-08", None)
+    };
+    for form in [Some(two_parts), Some(skipped_break), Some(open_ended), None] {
+        match form {
+            Some(form) => {
+                app.set_course_dates(&session_id("1"), Some(form)).unwrap();
+            }
+            None => {
+                Store::open(&app.db_path())
+                    .unwrap()
+                    .set_student_calendar(&session_id("1"), Some(&week_zero), chrono::Utc::now())
+                    .unwrap();
+            }
+        }
+        assert!(refused(&app));
+        let err = app
+            .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Invalid);
+        assert!(
+            err.message.contains("a first week other than week 1"),
+            "{}",
+            err.message
+        );
+        let two = app.course_timeline(&session_id("2")).unwrap();
+        assert_eq!((two.term.student_start, two.term.student_end), (None, None));
+        assert!(copied(&app).is_empty());
+    }
+    // A one-day holiday the weeks don't count skips no week: it is copied.
+    app.set_course_dates(
+        &session_id("1"),
+        Some(pagelamp_app::CourseDatesInput {
+            breaks: vec![pagelamp_app::BreakInput {
+                kind: BreakKind::Holiday,
+                start: date("2026-10-12"),
+                end: date("2026-10-12"),
+                numbered: false,
+                label: None,
+            }],
+            ..dates_form("2026-09-08", "2026-12-08", None)
+        }),
+    )
+    .unwrap();
+    assert!(!refused(&app));
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+    app.restore_course_dates(report.replaced).unwrap();
+    // A break the weeks count keeps the weeks the same: it is copied, though on the target
+    // that week isn't shown as a break.
+    app.set_course_dates(
+        &session_id("1"),
+        Some(pagelamp_app::CourseDatesInput {
+            breaks: vec![reading_week(true)],
+            ..dates_form("2026-09-08", "2026-12-08", None)
+        }),
+    )
+    .unwrap();
+    assert!(!refused(&app));
+    let report = app
+        .apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(report.applied, vec![session_id("2")]);
+}
+
+/// Undoing a copy puts back the course's earlier "copied from" only while that course is still
+/// there: a course gone meanwhile isn't written back into the record.
+#[test]
+fn an_undo_doesn_t_bring_back_a_copied_from_course_that_is_gone() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    for external in ["1", "5"] {
+        app.set_course_term(
+            &session_id(external),
+            Some(date("2026-09-08")),
+            Some(date("2026-12-08")),
+        )
+        .unwrap();
+    }
+    app.apply_course_dates_to(&session_id("1"), vec![session_id("2")])
+        .unwrap();
+    let second = app
+        .apply_course_dates_to(&session_id("5"), vec![session_id("2")])
+        .unwrap();
+    assert_eq!(
+        second.replaced[0].copied_from.as_deref(),
+        Some(session_id("1").as_str())
+    );
+    // Course 1 goes (its source no longer lists it) before the undo.
+    let keep: Vec<String> = ["2", "3", "4", "5"].into_iter().map(session_id).collect();
+    Store::open(&app.db_path())
+        .unwrap()
+        .prune_courses(SESSION_HOST, &keep)
+        .unwrap();
+    app.restore_course_dates(second.replaced).unwrap();
+    assert!(!copied(&app).contains_key(&session_id("2")));
+}
+
+/// A course with 0.1 dates the student never checked is restored as it was (its migrated
+/// `legacy` calendar stays one): after remove, purge and restore it still lends nothing, it
+/// has no calendar of its own, and its dates can't be copied before they are confirmed.
+#[test]
+fn a_restored_unchecked_0_1_course_lends_and_copies_nothing() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_session(temp.path());
+    let one = session_id("1");
+    let store = Store::open(&app.db_path()).unwrap();
+    // What the v4 data step leaves for 0.1 dates: the dates, unconfirmed, and a `legacy` row.
+    store
+        .set_course_term(&one, Some(date("2026-09-08")), Some(date("2026-12-08")))
+        .unwrap();
+    let calendar =
+        pagelamp_core::calendar::legacy_calendar(date("2026-09-08"), Some(date("2026-12-08")));
+    store
+        .conn()
+        .execute(
+            "INSERT INTO course_calendars
+                 (course_id, origin, state, calendar_json, evidence_json, checks_json,
+                  manifest_json, fingerprint, created_at, decided_at)
+             VALUES (?1, 'legacy', 'accepted', ?2, '[]', '{}', '[]', 'legacy',
+                     '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z')",
+            [one.clone(), serde_json::to_string(&calendar).unwrap()],
+        )
+        .unwrap();
+    let now = chrono::Utc::now();
+    store
+        .remove_course(&one, RemovalReason::Other, false, false, now)
+        .unwrap();
+    store.purge_course(&one, now, false).unwrap();
+    // The sync a restore runs brings the course row back, then its settings.
+    store
+        .upsert_course(&CourseUpsert {
+            id: one.clone(),
+            source_id: SESSION_HOST.into(),
+            external_id: "1".into(),
+            code: Some("DEM240H7 F LEC0101 20269".into()),
+            name: "Demo course 1".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store.apply_restored_settings(&one, now).unwrap();
+    drop(store);
+
+    let restored = app.course_timeline(&one).unwrap();
+    assert!(!restored.term.own_calendar);
+    assert!(!restored.term.student_dates_confirmed);
+    let two = app.course_timeline(&session_id("2")).unwrap();
+    assert_ne!(two.term.anchor, TermAnchorSource::SameSession);
+    let report = app
+        .apply_course_dates_to(&one, vec![session_id("2")])
+        .unwrap();
+    assert_eq!(
+        report.skipped,
+        vec![SkippedCourse {
+            course_id: session_id("2"),
+            reason: ApplySkipReason::DatesNotConfirmed,
+        }]
+    );
+    assert!(report.applied.is_empty());
+}

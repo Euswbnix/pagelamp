@@ -242,6 +242,20 @@ fn last_teaching_week_before(
     None
 }
 
+/// Whether `b` makes some week a break week: it covers at least `BREAK_WEEKDAYS` weekdays of
+/// one Monday-to-Friday week. Only such a break, unnumbered, skips a week number; a shorter
+/// one changes neither the weeks nor the phase.
+pub fn skips_a_week(b: &CalendarBreak) -> bool {
+    let mut monday = monday_of(b.span.start);
+    while monday <= b.span.end {
+        if break_of_week(std::slice::from_ref(b), monday).is_some() {
+            return true;
+        }
+        monday = add_days(monday, 7);
+    }
+    false
+}
+
 /// The break that makes the week starting `monday` a break week, if any.
 fn break_of_week(breaks: &[CalendarBreak], monday: NaiveDate) -> Option<&CalendarBreak> {
     breaks.iter().find(|b| {
@@ -371,6 +385,22 @@ mod tests {
             (state.phase, state.confidence),
             (CoursePhase::Teaching, Confidence::Low)
         );
+    }
+
+    /// A break skips a week only with 3 weekdays in one Monday-to-Friday week: not a single
+    /// Monday, and not 4 weekdays split 2 + 2 across two weeks (Thursday to Tuesday).
+    #[test]
+    fn a_break_skips_a_week_only_with_three_weekdays_in_one() {
+        let span = |start, end| CalendarBreak {
+            kind: BreakKind::Holiday,
+            span: DateSpan { start, end },
+            numbered: false,
+            label: String::new(),
+        };
+        assert!(!skips_a_week(&span(date(2026, 10, 12), date(2026, 10, 12))));
+        assert!(!skips_a_week(&span(date(2026, 10, 15), date(2026, 10, 20))));
+        assert!(skips_a_week(&span(date(2026, 10, 26), date(2026, 10, 28))));
+        assert!(skips_a_week(&span(date(2026, 10, 24), date(2026, 11, 1))));
     }
 
     #[test]

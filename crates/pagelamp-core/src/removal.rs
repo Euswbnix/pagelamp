@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::ai::MaterialSharing;
 use crate::calendar::CourseCalendar;
 use crate::model::{AiPolicy, Timestamp};
+use crate::term::CalendarOrigin;
 
 /// Days between stage 1 and the purge.
 pub const PURGE_AFTER_DAYS: i64 = 7;
@@ -93,9 +94,17 @@ pub struct CourseSettings {
     pub hidden: bool,
     pub user_term_start: Option<NaiveDate>,
     pub user_term_end: Option<NaiveDate>,
+    /// Those dates were confirmed (`CONFIRMED_DATES_KEY`, which a purge clears for the
+    /// course): a restore confirms them again, so they don't come back as unchecked 0.1 dates.
+    pub dates_confirmed: bool,
     pub keep_current_until: Option<NaiveDate>,
     /// The calendar in force, without labels or topics (material text).
     pub calendar: Option<CourseCalendar>,
+    /// Where that calendar came from and its fingerprint, so a restore brings back the same
+    /// kind of calendar: a 0.1 calendar the student never checked stays one (`legacy`). A
+    /// record written before these were kept has `None`: it comes back as `restored`.
+    pub calendar_origin: Option<CalendarOrigin>,
+    pub calendar_fingerprint: Option<String>,
     /// Canvas listed the course as restricted by date when it was removed: a sync can't bring
     /// it back (a restore says so).
     pub access_restricted: bool,

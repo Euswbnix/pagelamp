@@ -35,6 +35,134 @@
 			<string>kept up to %1$ld days</string>
 		</dict>
 	</dict>
+	<key>calendar.sameSession.saved</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Saved, and used in %1$ld other course</string>
+			<key>other</key>
+			<string>Saved, and used in %1$ld other courses</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.dates_not_confirmed</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: the dates here aren't confirmed yet. Save them, then try again.</string>
+			<key>other</key>
+			<string>Not used in %1$@: the dates here aren't confirmed yet. Save them, then try again.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.from_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it's the course these dates are from.</string>
+			<key>other</key>
+			<string>Not used in %1$@: it's the course these dates are from.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.no_dates</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: there were no dates of yours here to give.</string>
+			<key>other</key>
+			<string>Not used in %1$@: there were no dates of yours here to give.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.not_same_session</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it isn't a course of this term any more.</string>
+			<key>other</key>
+			<string>Not used in %1$@: they aren't courses of this term any more.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.own_calendar</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%3$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it counts its weeks from a calendar of its own. Change that calendar with the %2$@ command.</string>
+			<key>other</key>
+			<string>Not used in %1$@: they count their weeks from calendars of their own. Change those calendars with the %2$@ command.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.skipped.unknown_course</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%2$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Not used in %1$@: it isn't among your courses any more.</string>
+			<key>other</key>
+			<string>Not used in %1$@: they aren't among your courses any more.</string>
+		</dict>
+	</dict>
+	<key>calendar.sameSession.undone</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@count@</string>
+		<key>count</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%1$ld other course is back as it was</string>
+			<key>other</key>
+			<string>The %1$ld other courses are back as they were</string>
+		</dict>
+	</dict>
 	<key>common.aiMaterials.readable</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

@@ -1272,4 +1272,53 @@ fn one_course_s_dates_serve_and_copy_to_the_others_of_its_session() {
         message.contains("has no session code at the end of its code or name"),
         "{message}"
     );
+
+    // A calendar that two dates can't carry (from "Week 0"): the listing says why instead of
+    // asking for courses, and a copy is refused.
+    let store =
+        pagelamp_core::store::Store::open(&pagelamp_core::paths::db_path_in(&home)).unwrap();
+    let from = store
+        .resolve_course_with("DEM240H7 F LEC0101 20289", true)
+        .unwrap();
+    let mut calendar =
+        pagelamp_core::calendar::calendar_from_dates(&pagelamp_core::calendar::DatesDraft {
+            first_class: chrono::NaiveDate::from_ymd_opt(2028, 9, 5).unwrap(),
+            last_class: chrono::NaiveDate::from_ymd_opt(2028, 12, 5),
+            exams_end: None,
+            breaks: vec![],
+            second_segment: None,
+        })
+        .unwrap();
+    calendar.segments[0].first_week_number = 0;
+    store
+        .set_student_calendar(&from.id, Some(&calendar), chrono::Utc::now())
+        .unwrap();
+    drop(store);
+    let refused = ok(&pagelamp(
+        &home,
+        &["course", "copy-dates", "DEM240H7 F LEC0101 20289"],
+    ));
+    assert!(
+        refused.contains("Two dates can't carry DEM240H7 F LEC0101 20289"),
+        "{refused}"
+    );
+    assert!(
+        !refused.contains("Name the courses to copy to"),
+        "{refused}"
+    );
+    let copy = pagelamp(
+        &home,
+        &[
+            "course",
+            "copy-dates",
+            "DEM240H7 F LEC0101 20289",
+            "DEM332H7 F LEC0102 20289",
+        ],
+    );
+    assert!(!copy.status.success());
+    assert!(
+        String::from_utf8_lossy(&copy.stderr).contains("Two dates can't carry this course's"),
+        "{}",
+        String::from_utf8_lossy(&copy.stderr)
+    );
 }

@@ -26,6 +26,7 @@ export const queryKeys = {
   sources: () => [...queryKeys.all, "sources"] as const,
   courses: () => [...queryKeys.all, "courses"] as const,
   course: (courseId: string) => [...queryKeys.all, "course", courseId] as const,
+  sessionCourses: (courseId: string) => [...queryKeys.all, "session-courses", courseId] as const,
   week: (courseId: string, week: number | null) =>
     [...queryKeys.all, "course", courseId, "week", week] as const,
   deadlines: (courseId: string | null, daysAhead: number, daysBack: number) =>
@@ -324,6 +325,25 @@ export function useSetCoursePolicy() {
   return useMutation({
     mutationFn: (v: { courseId: string; policy: AiPolicy; note: string | null }) =>
       api.setCoursePolicy(v.courseId, v.policy, v.note),
+    onSuccess: invalidate,
+  });
+}
+
+/** The other courses of this course's session, for "also use these dates in". */
+export function useSessionCourses(courseId: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.sessionCourses(courseId),
+    queryFn: () => api.sessionCourses(courseId),
+  });
+}
+
+/** "Also use these dates in": copies a course's own dates to the courses chosen. */
+export function useApplyCourseDatesTo() {
+  const api = useApi();
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (v: { from: string; to: string[] }) => api.applyCourseDatesTo(v.from, v.to),
     onSuccess: invalidate,
   });
 }

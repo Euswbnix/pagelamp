@@ -101,6 +101,9 @@ export function createTauriApi(): PageLampApi {
     clearKeepCourseCurrent: (courseId) => call("clear_keep_course_current", { course: courseId }),
     confirmCourseDates: (courseId) => call("confirm_course_dates", { course: courseId }),
     setCourseDates: (courseId, dates) => call("set_course_dates", { course: courseId, dates }),
+    sessionCourses: (courseId) => call("session_courses", { course: courseId }),
+    applyCourseDatesTo: (from, to) => call("apply_course_dates_to", { from, to }),
+    restoreCourseDates: (replaced) => call("restore_course_dates", { replaced }),
 
     lifecycleSummary: () => call("lifecycle_summary"),
     snoozeLifecycleBanner: () => call("snooze_lifecycle_banner"),
@@ -195,6 +198,11 @@ export function createTauriApi(): PageLampApi {
     setFeatureModel: (feature, choice) => call("set_feature_model", { feature, choice }),
     acknowledgeAiDisclosure: (backend, version) =>
       call("acknowledge_ai_disclosure", { modelBackend: backend, version }),
+    modelRunsHere: (choice, ask) => call("model_runs_here", { choice, ask }),
+    modelDisclosure: (backend, runsHere) =>
+      call("model_disclosure", { modelBackend: backend, runsHere }),
+    acknowledgeModelDisclosure: (backend, runsHere, version) =>
+      call("acknowledge_model_disclosure", { modelBackend: backend, runsHere, version }),
     acknowledgeUnpricedModel: (backend, model) =>
       call("acknowledge_unpriced_model", { modelBackend: backend, model }),
     setMonthlyBudget: (microUsd) => call("set_monthly_budget", { microUsd }),

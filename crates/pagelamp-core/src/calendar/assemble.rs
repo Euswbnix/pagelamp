@@ -903,10 +903,11 @@ fn own_option(date: NaiveDate) -> AlternativeDate {
 /// The resolution a calendar gives (for phases and weeks).
 pub fn resolution_of(calendar: &CourseCalendar) -> TermResolution {
     TermResolution {
+        // Week 1, where the calendar numbers its first week otherwise ("Week 0").
         week_one_monday: calendar
             .segments
             .first()
-            .map(|s| week_one_monday(s.first_class)),
+            .map(|s| crate::term::same_session::week_one_of(s.first_class, s.first_week_number)),
         teaching: calendar.segments.clone(),
         breaks: calendar.breaks.clone(),
         exams_end: calendar.exam_period.map(|p| p.end),
@@ -1332,6 +1333,25 @@ mod tests {
         let a = assemble(&input(&v, date(2026, 9, 28))).unwrap();
         assert!(a.calendar.weeks.is_empty());
         assert!(a.low_quality && !a.passing);
+    }
+
+    /// A table from "Week 0" puts week 1 a week after the first class: notes that number week
+    /// 1 from that week agree with it (no conflict).
+    #[test]
+    fn notes_that_number_week_one_agree_with_a_week_zero_table() {
+        let weeks = vec![
+            row(0, date(2026, 9, 8), WeekKind::Teaching),
+            row(1, date(2026, 9, 15), WeekKind::Teaching),
+        ];
+        let v = validated(fall(), weeks);
+        let mut i = input(&v, date(2026, 9, 28));
+        i.checks = CrossChecks {
+            fit: Some((date(2026, 9, 14), 3)),
+            ..CrossChecks::default()
+        };
+        let a = assemble(&i).unwrap();
+        assert_eq!(a.calendar.segments[0].first_week_number, 0);
+        assert!(!a.disagrees_with_notes, "{:?}", a.conflicts);
     }
 
     #[test]

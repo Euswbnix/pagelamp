@@ -8,10 +8,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SettingsSection } from "@/features/settings/SettingsSection";
 import { settingsSections } from "@/lib/routes";
 import { ApiKeyDialog, type ApiKeyDialogMode } from "./ApiKeyDialog";
-import { BackendRow } from "./BackendRow";
+import { type BackendNote, BackendRow, hasOwnNote } from "./BackendRow";
 import { BudgetField } from "./BudgetField";
 import { ChatGptCard } from "./codex/ChatGptCard";
-import { DisclosureDialog } from "./DisclosureDialog";
+import { DisclosureDialog, ModelDisclosureDialog, noteChanged } from "./DisclosureDialog";
 import { FeatureModels } from "./FeatureModels";
 import { LocalServers } from "./LocalServers";
 import { RemoveAllAiData } from "./RemoveAllAiData";
@@ -32,6 +32,8 @@ export function AiModelsSection() {
   const [disclosureFor, setDisclosureFor] = useState<{
     backend: BackendRef;
     added: boolean;
+    /** null: the note that applies (its cloud models' for a custom server here). */
+    note: BackendNote | null;
   } | null>(null);
   const container = useRef<HTMLDivElement>(null);
 
@@ -43,8 +45,8 @@ export function AiModelsSection() {
   const disclosed = disclosureFor
     ? backends.find((b) => backendKey(b.backend) === backendKey(disclosureFor.backend))
     : undefined;
-  const showDisclosure = (backend: BackendRef, added = false) =>
-    setDisclosureFor({ backend, added });
+  const showDisclosure = (backend: BackendRef, added = false, note: BackendNote | null = null) =>
+    setDisclosureFor({ backend, added, note });
   const showAdded = (providerId: string) =>
     showDisclosure({ kind: "provider", provider_id: providerId }, true);
   /** The row (or card) of a backend, e.g. to put focus on one just added. */
@@ -61,12 +63,19 @@ export function AiModelsSection() {
     >
       {status.isPending ? (
         <Skeleton className="h-24 w-full" />
-      ) : status.isError ? (
+      ) : status.data === undefined ? (
         <p role="alert" className="text-sm text-destructive">
           {t("settings.loadFailed")} {errorText(status.error)}
         </p>
       ) : (
+        // Read before: what was read stays (and an open dialog with it, e.g. Remove all's
+        // error), and a failed reading again is said above it.
         <div ref={container} className="space-y-5">
+          {status.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {t("settings.loadFailed")} {errorText(status.error)}
+            </p>
+          ) : null}
           {/* Only where this build offers the ChatGPT plan (OpenAI's written confirmation). */}
           {offered ? (
             <ChatGptCard
@@ -88,7 +97,7 @@ export function AiModelsSection() {
                   key={backendKey(backend.backend)}
                   status={backend}
                   provider={providerOf(status.data, backend)}
-                  onShowDisclosure={() => showDisclosure(backend.backend)}
+                  onShowDisclosure={(note) => showDisclosure(backend.backend, false, note)}
                   onReplaceKey={(provider) => setKeyDialog({ kind: "replace", provider })}
                 />
               ))}
@@ -117,14 +126,36 @@ export function AiModelsSection() {
         onAdded={(record) => showAdded(record.provider_id)}
       />
       {disclosed ? (
-        <DisclosureDialog
-          status={disclosed}
-          open
-          onOpenChange={(open) => {
-            if (!open) setDisclosureFor(null);
-          }}
-          returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
-        />
+        (disclosureFor?.note ??
+          (hasOwnNote(status.data ? providerOf(status.data, disclosed) : null)
+            ? "own"
+            : "cloud")) === "cloud" && disclosed.cloud_disclosure ? (
+          <ModelDisclosureDialog
+            backend={disclosed.backend}
+            runsHere={false}
+            disclosure={[
+              disclosed.cloud_disclosure,
+              disclosed.cloud_disclosure_acknowledged === disclosed.cloud_disclosure.version,
+            ]}
+            name={disclosed.label}
+            kind={disclosed.kind}
+            changed={noteChanged(disclosed, disclosed.cloud_disclosure)}
+            open
+            onOpenChange={(open) => {
+              if (!open) setDisclosureFor(null);
+            }}
+            returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
+          />
+        ) : (
+          <DisclosureDialog
+            status={disclosed}
+            open
+            onOpenChange={(open) => {
+              if (!open) setDisclosureFor(null);
+            }}
+            returnFocus={disclosureFor?.added ? () => rowOf(disclosed.backend) : undefined}
+          />
+        )
       ) : null}
     </SettingsSection>
   );

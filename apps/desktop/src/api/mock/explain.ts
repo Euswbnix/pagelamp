@@ -221,10 +221,17 @@ export function createExplainMock(deps: {
       materials_trimmed: 0,
     };
     onEvent({ type: "context", summary, input_tokens: 6_400 * read.length });
-    onEvent({ type: "started", generation_id: generationId, ...run });
+    // Who it runs on, nothing else of the gate's answer.
+    const { backend_label, model, on_device } = run;
+    onEvent({ type: "started", generation_id: generationId, backend_label, model, on_device });
     onEvent({ type: "stage", stage: "waiting_for_model" });
     await deps.step();
     stop();
+    // The provider fails the request once it started (the "ai-errors" endpoint).
+    if (run.failure) {
+      onEvent({ type: "finished", ok: false });
+      throw run.failure;
+    }
     const usage = {
       input_tokens: 6_400 * read.length,
       cached_input_tokens: 0,
