@@ -157,17 +157,92 @@ describe("mock syllabus reading: the question (b) reminder", () => {
     expect(kinds(again)).not.toContain("material_sharing_reminder");
   });
 
-  it("says nothing of a reading stopped before it started, and claims nothing", async () => {
+  it("still reminds of a cloud reading stopped at its first stage: it starts at once", async () => {
     const api = createMockApi({ ...fast, syncStepMs: 20 });
     const events: GenEvent[] = [];
     const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
     await api.cancelGeneration("gen-1");
     await expect(run).rejects.toMatchObject({ kind: "cancelled" });
+    expect(kinds(events).slice(0, 2)).toEqual(["stage", "started"]);
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+    // Claimed: the next reading doesn't say it again.
+    const again: GenEvent[] = [];
+    await api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
+    expect(kinds(again)).not.toContain("material_sharing_reminder");
+  });
+
+  it("says nothing of a reading stopped while Ollama is asked, before it started", async () => {
+    // Ollama on this computer, with a cloud model for reading calendars.
+    const api = createMockApi({ ...fast, syncStepMs: 20, scenario: "ai-local" });
+    const ollama = { kind: "provider", provider_id: "ollama" } as const;
+    await api.setFeatureModel("course_calendar", {
+      backend: ollama,
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const [note] = await api.modelDisclosure(ollama, false);
+    await api.acknowledgeModelDisclosure(ollama, false, note.version);
+    await api.acknowledgeUnpricedModel(ollama, "gpt-oss:120b-cloud");
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(DEMO101, "gen-1", options, (e) => events.push(e));
+    await api.cancelGeneration("gen-1");
+    await expect(run).rejects.toMatchObject({ kind: "cancelled" });
     expect(kinds(events)).toEqual(["stage", "finished"]);
     // Nothing was sent: the next reading still reminds.
     const again: GenEvent[] = [];
-    await api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
+    await api.readCourseCalendar(DEMO101, "gen-2", options, (e) => again.push(e));
     expect(kinds(again)).toContain("material_sharing_reminder");
+  });
+
+  it("stops a reading on remove-all, reminds, and keeps nothing of it", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await once(events, "started");
+    await api.removeAllAiData();
+    await expect(run).rejects.toMatchObject({
+      kind: "cancelled",
+      message: "AI data was removed while the syllabus was read: the model's answer wasn't kept.",
+    });
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+    // Stopped, not read to its end.
+    expect(kinds(events)).not.toContain("usage");
+    expect((await api.courseCalendar(UNLABELLED)).proposals.map((p) => p.origin)).toEqual(["scan"]);
+  });
+
+  it("keeps nothing of a reading whose provider was removed meanwhile", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await once(events, "started");
+    // Removing one provider stops nothing (like the facade); its reading keeps nothing at its end.
+    await api.removeModelProvider("openai");
+    await expect(run).rejects.toMatchObject({
+      kind: "cancelled",
+      message: expect.stringContaining("the model's answer wasn't kept"),
+    });
+    expect(kinds(events)).toContain("material_sharing_reminder");
+    expect((await api.courseCalendar(UNLABELLED)).proposals.map((p) => p.origin)).toEqual(["scan"]);
+  });
+
+  it("stops a course's cloud reading when it is answered not allowed", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await once(events, "started");
+    await api.setCourseMaterialSharing(UNLABELLED, "not_allowed");
+    await expect(run).rejects.toMatchObject({ kind: "cancelled" });
+    // Answered: nothing to remind of.
+    expect(kinds(events)).not.toContain("material_sharing_reminder");
+  });
+
+  it("lets a reading on this computer go on when its course is answered not allowed", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20, scenario: "ai-local" });
+    const events: GenEvent[] = [];
+    const run = api.readCourseCalendar(DEMO101, "gen-1", options, (e) => events.push(e));
+    await once(events, "started");
+    await api.setCourseMaterialSharing(DEMO101, "not_allowed");
+    expect((await run).origin).toBe("ai");
   });
 
   it("says nothing of a reading on this computer, and ends a blocked one too", async () => {
@@ -246,19 +321,21 @@ describe("mock syllabus reading: the question (b) reminder", () => {
 
   it("follows the answer stored when the reading ends, like the facade", async () => {
     const api = createMockApi({ ...fast, syncStepMs: 20 });
-    // Answered "allowed" while the reading runs: nothing to remind of.
+    // Answered "allowed" after it started, before it ends: nothing to remind of.
     const events: GenEvent[] = [];
     const run = api.readCourseCalendar(UNLABELLED, "gen-1", options, (e) => events.push(e));
+    await once(events, "started");
     await api.setCourseMaterialSharing(UNLABELLED, "allowed");
     const proposal = await run;
     expect(kinds(events)).not.toContain("material_sharing_reminder");
     expect(proposal.sharing_reminder).toBe(false);
-    // Back to "not sure" while another runs: reminded then, once.
+    // "Allowed" when another starts, "not sure" before it ends: reminded then, once.
     const again: GenEvent[] = [];
     const second = api.readCourseCalendar(UNLABELLED, "gen-2", options, (e) => again.push(e));
+    await once(again, "started");
     await api.setCourseMaterialSharing(UNLABELLED, "not_sure");
     expect((await second).sharing_reminder).toBe(true);
-    expect(kinds(again)).toContain("material_sharing_reminder");
+    expect(kinds(again).filter((k) => k === "material_sharing_reminder")).toHaveLength(1);
   });
 
   it("says it in a batch inside the course's own events", async () => {

@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, CircleMinus, FileSearch } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { type EstimateRequest, materialSharing } from "@/api/ai";
@@ -17,6 +17,7 @@ import { useApiErrorText } from "@/lib/useApiErrorText";
 import { translateWithText } from "../timeline/evidence";
 import { useBlockText } from "./blockText";
 import { type BatchState, useCalendarBatch } from "./useCalendarBatch";
+import { useCloseAnsweredReminders } from "./useCalendarReading";
 
 /**
  * "Read syllabi for N courses" on the Courses page (calendar design §7.3): the courses the facade
@@ -33,15 +34,10 @@ export function ReadSyllabiBatch() {
   const heading = useRef<HTMLHeadingElement>(null);
   const byId = new Map((courses.data ?? []).map((c) => [c.course.id, c]));
   const { state, reminders, settle } = batch;
-  // Question (b) answered meanwhile for a course (from outside, as the courses are read
-  // again): its reminder is done. A course not listed yet is still open.
-  useEffect(() => {
-    for (const r of reminders) {
-      const course = byId.get(r.courseId)?.course;
-      const answer = course ? materialSharing(course) : "unanswered";
-      if (answer === "allowed" || answer === "not_allowed") settle(r.courseId);
-    }
-  });
+  // Question (b) answered outside the app meanwhile for a course: its reminder is done.
+  useCloseAnsweredReminders(
+    new Map((courses.data ?? []).map((c) => [c.course.id, materialSharing(c.course)])),
+  );
 
   const ids = offers.data?.map((o) => o.course_id) ?? [];
   const request: EstimateRequest | null =

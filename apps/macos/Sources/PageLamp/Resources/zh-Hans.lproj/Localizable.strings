@@ -281,6 +281,8 @@
 "ai.policy.training.unknown" = "是否用于训练未知：请查看服务商条款";
 "ai.removeAll.body" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 的 AI 功能写出的内容。你从课程大纲读出并接受的课程日历会保留，并带着 AI 标签。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
 "ai.removeAll.bodyCodex" = "这会从钥匙串中删除你的 API 密钥，并删除模型选择、使用记录、AI 设置，以及 PageLamp 的 AI 功能写出的内容，还会让 PageLamp 的 Codex 退出 ChatGPT 登录。你从课程大纲读出并接受的课程日历会保留，并带着 AI 标签。你的课程、课程规则，以及你对“能否分享资料”的回答都会保留。";
+"ai.removeAll.busy" = "运行期间新加入了一个模型服务商，所以它还在；其余数据已删除。请再运行一次，把它也删除。";
+"ai.removeAll.busyCodex" = "Codex 正在运行，或运行期间新加入了模型服务商：没有全部删除。请等 Codex 停下后再运行一次。";
 "ai.removeAll.button" = "删除所有 AI 数据";
 "ai.removeAll.confirm" = "全部删除";
 "ai.removeAll.done" = "已删除所有 AI 数据";

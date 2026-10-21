@@ -281,6 +281,8 @@
 "ai.policy.training.unknown" = "training unknown: check the provider's terms";
 "ai.removeAll.body" = "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what PageLamp's AI features wrote. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.";
 "ai.removeAll.bodyCodex" = "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what PageLamp's AI features wrote, and signs PageLamp's Codex out of ChatGPT. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.";
+"ai.removeAll.busy" = "A model provider was added while this ran, so it stays; the rest was removed. Run it again to remove it too.";
+"ai.removeAll.busyCodex" = "Codex is running, or a model provider was added while this ran: not everything was removed. Run it again once Codex has stopped.";
 "ai.removeAll.button" = "Remove all AI data";
 "ai.removeAll.confirm" = "Remove all";
 "ai.removeAll.done" = "All AI data removed";

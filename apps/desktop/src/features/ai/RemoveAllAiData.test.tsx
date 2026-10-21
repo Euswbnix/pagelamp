@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { aiKeys } from "@/api/ai-queries";
+import { ApiError } from "@/api/errors";
 import { createMockApi } from "@/api/mock";
 import type { MockScenario } from "@/api/mock/fixtures";
 import { renderRoute } from "@/test/render";
@@ -13,7 +14,7 @@ async function openDialog(scenario: MockScenario) {
   await waitFor(() => expect(queryClient.getQueryData(aiKeys.codex())).toBeDefined());
   await user.click(button);
   const dialog = await screen.findByRole("alertdialog", { name: "Remove all AI data?" });
-  return { dialog, user };
+  return { dialog, user, api };
 }
 
 describe("Remove all AI data", () => {
@@ -80,5 +81,21 @@ describe("Remove all AI data", () => {
     expect(await screen.findByText(/^Couldn't load the AI settings\./)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: /^Technical details/ })).toBeInTheDocument();
     expect(screen.getByRole("alertdialog", { name: "Remove all AI data?" })).toBe(dialog);
+  });
+
+  it("says a provider added meanwhile stays, not that a sync runs, when it ends busy", async () => {
+    const { dialog, user, api } = await openDialog("ai-key");
+    vi.spyOn(api, "removeAllAiData").mockRejectedValue(
+      new ApiError(
+        "busy",
+        "Removed 1 provider(s), 0 usage record(s) and 0 generated text(s), but openai was added while this ran and stays, with its key. Run this again to remove it.",
+      ),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Remove all" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "A model provider was added while this ran, so it stays; the rest was removed. Run it again to remove it too.",
+    );
+    expect(within(dialog).queryByText(/sync is already running/)).toBeNull();
+    expect(screen.queryByText("All AI data removed")).toBeNull();
   });
 });

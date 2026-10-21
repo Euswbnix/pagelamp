@@ -510,8 +510,24 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
               model_error: "rate_limited",
             })
           : null;
-      return { backend_label: backend.label, model: choice.model, on_device: onDevice, failure };
+      // Asked of a server on this computer: Ollama (the facade asks its list where a model runs).
+      const ref = choice.backend;
+      const provider =
+        ref.kind === "provider"
+          ? status.providers.find((p) => p.provider_id === ref.provider_id)
+          : undefined;
+      const asksServer = provider?.preset === "ollama" && provider.on_device;
+      return {
+        backend_label: backend.label,
+        model: choice.model,
+        on_device: onDevice,
+        failure,
+        backend: choice.backend,
+        asksServer,
+      };
     },
+    backendExists: async (backend) =>
+      (await ai.aiStatus()).backends.some((b) => sameBackend(b.backend, backend)),
     applyCalendar: (c, input, origin, aiLabel) => {
       // Accepted: the course's own calendar, and its dates no longer the copied ones.
       ownCalendars.add(c.course.id);
@@ -774,6 +790,8 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     courses: () => db.courses,
     findCourse,
     forgetAiRecords: () => courseProposals.forgetAi(),
+    cancelReadings: () => courseProposals.cancelAll(),
+    stopCourseReadings: (courseId) => courseProposals.stopCourse(courseId),
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */

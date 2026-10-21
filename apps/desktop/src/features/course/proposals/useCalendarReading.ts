@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef, useState } from "react";
-import type { GenStage } from "@/api/ai";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { GenStage, MaterialSharing } from "@/api/ai";
 import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys } from "@/api/queries";
@@ -21,6 +21,26 @@ export type ReadingState =
   | { phase: "done"; proposal: CalendarProposal }
   | { phase: "stopped" }
   | { phase: "failed"; error: unknown };
+
+/**
+ * Closes a pending question (b) reminder once its course has been answered outside the app
+ * (the CLI): a decided answer, or one other than it was first shown with. (An answer in the
+ * app closes it as it is saved.) A course not read yet is left as it is.
+ */
+export function useCloseAnsweredReminders(answers: Map<string, MaterialSharing>) {
+  const pending = useSharingReminders((s) => s.pending);
+  const see = useSharingReminders((s) => s.see);
+  const settle = useSharingReminders((s) => s.settle);
+  useEffect(() => {
+    for (const [courseId, reminder] of Object.entries(pending)) {
+      const answer = answers.get(courseId);
+      if (answer === undefined) continue;
+      if (answer === "allowed" || answer === "not_allowed") settle(courseId);
+      else if (reminder.seen === undefined) see(courseId, answer);
+      else if (reminder.seen !== answer) settle(courseId);
+    }
+  });
+}
 
 /**
  * One "Read the syllabus with AI" run (calendar design §7.3): its GenEvents as state, Stop

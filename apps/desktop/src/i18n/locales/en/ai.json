@@ -235,7 +235,9 @@
     "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
     "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote, and signs {{product}}'s Codex out of ChatGPT. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
     "confirm": "Remove all",
-    "done": "All AI data removed"
+    "done": "All AI data removed",
+    "busy": "A model provider was added while this ran, so it stays; the rest was removed. Run it again to remove it too.",
+    "busyCodex": "Codex is running, or a model provider was added while this ran: not everything was removed. Run it again once Codex has stopped."
   },
   "usage": {
     "title": "AI usage",

@@ -1,5 +1,5 @@
 import { ScanSearch } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { type EstimateRequest, materialSharing } from "@/api/ai";
@@ -17,7 +17,11 @@ import { paths } from "@/lib/routes";
 import { useApiErrorText } from "@/lib/useApiErrorText";
 import { translateWithText } from "../timeline/evidence";
 import { COURSE_BLOCKS, useBlockText } from "./blockText";
-import { type ReadingState, useCalendarReading } from "./useCalendarReading";
+import {
+  type ReadingState,
+  useCalendarReading,
+  useCloseAnsweredReminders,
+} from "./useCalendarReading";
 
 /** The "Read with AI" heading: where the stale banner's "Read the syllabus again" goes. */
 export const READ_SYLLABUS_HEADING = "read-syllabus-heading";
@@ -43,11 +47,8 @@ export function ReadSyllabus({ course }: { course: Course }) {
   // §7.12: without a model the button says so and leads to Settings, nothing more.
   const noModel = estimate.data?.would_block === "no_model_chosen";
   const { state, reminder, settle } = reading;
-  // Question (b) answered meanwhile (in the Policy tab, or elsewhere): the reminder is done.
-  const sharing = materialSharing(course);
-  useEffect(() => {
-    if (reminder && (sharing === "allowed" || sharing === "not_allowed")) settle();
-  }, [reminder, sharing, settle]);
+  // Question (b) answered outside the app meanwhile: the reminder is done.
+  useCloseAnsweredReminders(new Map([[course.id, materialSharing(course)]]));
 
   return (
     <div className="space-y-6">
