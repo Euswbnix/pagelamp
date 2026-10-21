@@ -25,7 +25,7 @@ use pagelamp_core::ai_gate::{
 use pagelamp_core::model::AiPolicy;
 use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
 use pagelamp_core::term::phase::week_starts_on;
-use pagelamp_core::views::{self, AsOf};
+use pagelamp_core::views::{self, AsOf, SessionLends};
 use pagelamp_llm::OutputSpec;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -169,10 +169,12 @@ impl App {
         let course = store.resolve_course_with(course, true)?;
         let at = AsOf::now_local();
         // One snapshot: the calendar in force now (a week it moved makes an explanation stale)
-        // and each week's materials, read once per week however many explanations it has.
+        // and each week's materials, read once per week however many explanations it has; what
+        // the course's session lends is read once for all of them.
         store
             .in_read_transaction(|store| {
-                let term = views::course_timeline(store, &course, at)?.term;
+                let lends = SessionLends::of_session(store, &course, at, true)?;
+                let term = views::course_timeline_with(store, &course, at, &lends)?.term;
                 let mut listings: HashMap<Option<u32>, Vec<String>> = HashMap::new();
                 let mut out = Vec::new();
                 for record in store.generations_of(
@@ -214,12 +216,13 @@ impl App {
                                 let listed = match listings.entry(record.week) {
                                     Entry::Occupied(listed) => listed.into_mut(),
                                     Entry::Vacant(slot) => slot.insert(
-                                        views::week_materials(
+                                        views::week_materials_with(
                                             store,
                                             &course.id,
                                             record.week,
                                             true,
                                             at,
+                                            Some(&lends),
                                         )?
                                         .materials
                                         .into_iter()

@@ -1095,6 +1095,76 @@ fn the_courses_of_one_session_count_the_same_week() {
     assert_eq!(week_of(&store, "2"), None);
 }
 
+/// A reader of one course's timeline and several of its weeks reads what the course's session
+/// lends once (`SessionLends::of_session`), and sees what the one-off views show: for a course
+/// that borrows its weeks, one alone on its campus and one whose code names no session.
+#[test]
+fn what_a_session_lends_read_once_shows_what_the_one_off_views_show() {
+    use pagelamp_core::views::SessionLends;
+
+    let store = session_store();
+    confirm_dates(&store, "1");
+    session_course(&store, SOURCE, "9", "DEMO909");
+    // Course 2's only material has no week of its own: its week comes from the borrowed dates.
+    store
+        .upsert_material(&MaterialUpsert {
+            id: "session-material".into(),
+            course_id: session_id("2"),
+            module_id: None,
+            kind: MaterialKind::Page,
+            title: "Week 6 notes".into(),
+            url: None,
+            local_path: None,
+            mime: None,
+            published_at: Some(ts("2026-10-13T12:00:00Z")),
+            week_hint: None,
+        })
+        .unwrap();
+    let at = session_at();
+    // Views compared as JSON (they don't implement `PartialEq`).
+    fn value(view: &impl serde::Serialize) -> serde_json::Value {
+        serde_json::to_value(view).unwrap()
+    }
+    for id in [
+        session_id("2"),
+        session_id("4"),
+        format!("{SOURCE}/course/9"),
+    ] {
+        let course = store.get_course(&id).unwrap().unwrap();
+        let lends = SessionLends::of_session(&store, &course, at, true).unwrap();
+        assert_eq!(
+            value(&views::course_timeline_with(&store, &course, at, &lends).unwrap()),
+            value(&views::course_timeline(&store, &course, at).unwrap()),
+            "{id}"
+        );
+        for week in [None, Some(5), Some(6)] {
+            assert_eq!(
+                value(
+                    &views::week_materials_with(&store, &id, week, true, at, Some(&lends)).unwrap()
+                ),
+                value(&views::week_materials(&store, &id, week, true, at).unwrap()),
+                "{id} {week:?}"
+            );
+        }
+    }
+    let two = store.get_course(&session_id("2")).unwrap().unwrap();
+    let lends = SessionLends::of_session(&store, &two, at, true).unwrap();
+    let timeline = views::course_timeline_with(&store, &two, at, &lends).unwrap();
+    assert_eq!(
+        (timeline.term.anchor, timeline.current_week),
+        (TermAnchorSource::SameSession, Some(6))
+    );
+    let week =
+        views::week_materials_with(&store, &two.id, Some(6), true, at, Some(&lends)).unwrap();
+    assert_eq!(
+        week.materials
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect::<Vec<_>>(),
+        ["session-material"]
+    );
+}
+
 /// A hidden course still lends; a reader that never shows hidden courses (the MCP server) gets
 /// its dates without its name, in the list and in a single course's view alike.
 #[test]

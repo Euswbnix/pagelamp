@@ -537,6 +537,21 @@ pub fn course_timeline(store: &Store, course: &Course, at: AsOf) -> Result<Cours
     Ok(data.state(course, at, lend.as_ref(), true).1)
 }
 
+/// `course_timeline`, with what the course's session lends read once by the caller
+/// (`SessionLends::of_session`, hidden lenders shown), for a reader that also lists some of the
+/// course's weeks (`week_materials_with`).
+pub fn course_timeline_with(
+    store: &Store,
+    course: &Course,
+    at: AsOf,
+    lends: &SessionLends,
+) -> Result<CourseTimeline> {
+    let data = CourseData::load(store, course)?;
+    Ok(data
+        .state(course, at, lends.for_course(course).as_ref(), true)
+        .1)
+}
+
 /// "What's going on in this course right now". `course` is resolved with
 /// `Store::resolve_course_with(course, include_hidden)`: the desktop app passes `true` (a
 /// hidden course's page still works), the MCP server `false`.
@@ -629,8 +644,9 @@ pub fn week_materials(
 }
 
 /// `week_materials`, with what the sessions lend worked out once by the caller (a loop over
-/// many courses), or `None` to work it out for this course's session alone.
-pub(crate) fn week_materials_with(
+/// many courses or many weeks of one, `SessionLends::of_session`), or `None` to work it out for
+/// this course's session alone.
+pub fn week_materials_with(
     store: &Store,
     course: &str,
     week: Option<u32>,
@@ -1231,7 +1247,7 @@ fn donor_of(
 
 /// What the courses of each session lend, worked out once per call: every course whose session
 /// key it shares with another course, and what it can lend from its own evidence.
-pub(crate) struct SessionLends {
+pub struct SessionLends {
     /// Course id → its key and what it can lend.
     courses: HashMap<String, (SessionKey, Option<Donor>)>,
     /// Key → its course ids, in the store's order.
@@ -1330,6 +1346,22 @@ impl SessionLends {
             lends.add(&course.id, key, donor);
         }
         Ok(lends)
+    }
+
+    /// What the courses of `course`'s session lend, read from the store once for a reader of
+    /// that course alone (empty when its code names no session). `show_hidden`: whether the
+    /// reader may see a hidden lender's name.
+    pub fn of_session(
+        store: &Store,
+        course: &Course,
+        at: AsOf,
+        show_hidden: bool,
+    ) -> Result<SessionLends> {
+        let term_data = store.course_term_data(&course.id)?.unwrap_or_default();
+        match session_key(course, &term_data) {
+            Some(key) => SessionLends::load(store, at, show_hidden, Some(&key)),
+            None => Ok(SessionLends::new(show_hidden)),
+        }
     }
 
     /// What the other courses of `course`'s session lend it.
