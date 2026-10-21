@@ -22,7 +22,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, UsageRecord};
 use pagelamp_core::ai_gate::RenderedPrompt;
-use pagelamp_core::store::usage_cutoff;
+use pagelamp_core::store::{GenerationRecord, Store, usage_cutoff};
 use pagelamp_llm::estimate::{cjk_tenths, count_tokens_upper, usage_cost};
 use pagelamp_llm::request::Notice;
 use pagelamp_llm::{CancellationToken, GenerateRequest, LlmError, OutputSpec, StreamEvent, Usage};
@@ -439,6 +439,38 @@ impl App {
             estimated: usage.estimated,
         })
     }
+
+    /// Record a run's ending, unless its provider went while it ran (`ai remove`, from this or
+    /// another process, discards what the run brought back): whether it was kept.
+    pub(crate) fn record_kept(
+        &self,
+        backend: &BackendRef,
+        record: &GenerationRecord,
+    ) -> Result<bool> {
+        Ok(self.write_store()?.in_transaction(|store| {
+            if provider_gone(store, backend)? {
+                return Ok(false);
+            }
+            store.record_generation(record)?;
+            Ok(true)
+        })?)
+    }
+}
+
+/// Whether `backend`'s provider is gone, as a run's last store step finds it.
+pub(crate) fn provider_gone(store: &Store, backend: &BackendRef) -> pagelamp_core::Result<bool> {
+    Ok(match backend {
+        BackendRef::Provider { provider_id } => store.model_provider(provider_id)?.is_none(),
+        _ => false,
+    })
+}
+
+/// How a run whose provider went while it ran ends: `while_` says what it was doing.
+pub(crate) fn not_kept(while_: &str) -> AppError {
+    AppError::new(
+        AppErrorKind::Cancelled,
+        format!("AI data was removed while {while_}: the model's answer wasn't kept."),
+    )
 }
 
 /// A generation id as a Codex run folder name: letters, digits, `-` and `_` only.

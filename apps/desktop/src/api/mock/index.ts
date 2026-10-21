@@ -899,7 +899,11 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     findCourse,
     noteHasNothingToWrite,
     planCourses,
-    forgetAiRecords: () => courseProposals.forgetAi(),
+    forgetAiRecords: () =>
+      courseProposals.forgetAi() +
+      explanations.forget() +
+      weeklyNotes.forget() +
+      studyPlans.forget(),
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */

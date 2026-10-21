@@ -19,7 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { GenerateButton } from "@/features/ai/GenerateButton";
+import { GenerateButton, GenerateSteps } from "@/features/ai/GenerateButton";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { Section } from "@/features/courses/parts/Section";
 import { AI_SETUP_ENABLED } from "@/lib/features";
@@ -134,15 +134,19 @@ function NoteCard() {
         ) : null}
 
         <div ref={controlsRef} tabIndex={-1} className="space-y-2 outline-none">
-          {run.phase === "running" ? (
-            <NoteProgress run={run} onStop={() => void stop()} />
-          ) : (
-            <GenerateButton
-              request={{ feature: "weekly_note" }}
-              label={shown ? t("writeAgain") : t("write")}
-              onGenerate={({ overrideBudget }) => write(overrideBudget)}
-            />
-          )}
+          {/* The steps before Generate outlive a swap of it: Monday's run can start while a
+              note is being read. */}
+          <GenerateSteps fallbackFocus={() => controlsRef.current}>
+            {run.phase === "running" ? (
+              <NoteProgress run={run} onStop={() => void stop()} />
+            ) : (
+              <GenerateButton
+                request={{ feature: "weekly_note" }}
+                label={shown ? t("writeAgain") : t("write")}
+                onGenerate={({ overrideBudget }) => write(overrideBudget)}
+              />
+            )}
+          </GenerateSteps>
           <NoteOutcome run={run} />
         </div>
 

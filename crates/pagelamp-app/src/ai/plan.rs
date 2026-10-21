@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 use super::estimate::DEFAULT_PLAN_DAYS;
 use super::prompts::PROMPT_VERSION;
-use super::run::RunRequest;
+use super::run::{RunRequest, not_kept};
 use super::settings::backend_key;
 use super::{GenEvent, GenStage, GenerationMeta, feature_choice, request_shape_with_note};
 use crate::{App, AppError, AppErrorKind, Result};
@@ -44,6 +44,8 @@ pub const MIN_HOURS_PER_WEEK: u32 = 1;
 pub const MAX_HOURS_PER_WEEK: u32 = 80;
 /// The shortest plan a request may ask for, in days.
 pub const MIN_HORIZON_DAYS: u32 = 1;
+/// What a run was doing when its provider went (`not_kept`).
+const WRITING: &str = "the study plan was written";
 
 /// What a study plan request may ask for: the limits `generate_study_plan` enforces, for the
 /// shells' fields.
@@ -310,8 +312,9 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                self.write_store()?
-                    .record_generation(&record(status, None, kind))?;
+                if !self.record_kept(&choice.backend, &record(status, None, kind))? {
+                    return Err(not_kept(WRITING));
+                }
                 return Err(err);
             }
         };
@@ -324,11 +327,10 @@ impl App {
             .and_then(|json| serde_json::from_value::<PlanTasks>(json).ok())
         else {
             let bad = pagelamp_core::ai::ModelErrorKind::BadOutput;
-            self.write_store()?.record_generation(&record(
-                GenerationStatus::Failed,
-                None,
-                Some(bad.as_str()),
-            ))?;
+            let failed = record(GenerationStatus::Failed, None, Some(bad.as_str()));
+            if !self.record_kept(&choice.backend, &failed)? {
+                return Err(not_kept(WRITING));
+            }
             return Err(AppError {
                 model_error: Some(bad),
                 ..AppError::new(
@@ -392,11 +394,14 @@ impl App {
             unscheduled: scheduled.unscheduled,
             warnings,
         };
-        self.write_store()?.record_generation(&record(
+        let draft = record(
             GenerationStatus::Draft,
             serde_json::to_string(&generated).ok(),
             None,
-        ))?;
+        );
+        if !self.record_kept(&choice.backend, &draft)? {
+            return Err(not_kept(WRITING));
+        }
         Ok(generated)
     }
 }

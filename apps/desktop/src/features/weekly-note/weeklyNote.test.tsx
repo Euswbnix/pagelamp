@@ -198,6 +198,33 @@ describe("Courses → Weekly note", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps a note being read open when Monday's run takes Generate's place", async () => {
+    const api = mockApi({ scenario: "ai-disclosure-changed", now: () => TUESDAY });
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await within(await card()).findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Anthropic" });
+    // The app starts Monday's note meanwhile: its progress replaces Generate.
+    act(() =>
+      useNoteRunStore.getState().setRun({
+        phase: "running",
+        id: "monday",
+        automatic: true,
+        backend: null,
+        model: null,
+        stage: null,
+        stopping: false,
+      }),
+    );
+    const region = screen.getByRole("region", { name: "Weekly note", hidden: true });
+    expect(within(region).queryByRole("button", { name: "Read it now", hidden: true })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Before PageLamp uses Anthropic" })).toBe(sheet);
+    // Read and accepted: with Generate gone, focus goes back to the card's controls.
+    for (const box of within(sheet).getAllByRole("checkbox")) await user.click(box);
+    await user.click(within(sheet).getByRole("button", { name: "Turn on Anthropic" }));
+    const stop = await screen.findByRole("button", { name: "Stop" });
+    await waitFor(() => expect(stop.closest('[tabindex="-1"]')).toHaveFocus());
+  });
+
   it("says a server here's other failures as they are", async () => {
     const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
     vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(

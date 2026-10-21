@@ -566,6 +566,8 @@ describe("Read syllabi for N courses", () => {
     read = true;
     await user.click(button);
     await user.click(await within(region).findByRole("button", { name: "Done" }));
+    // Nothing to snooze on a card its reminders alone keep.
+    expect(within(region).queryByRole("button", { name: /^Not now/ })).toBeNull();
     for (const reminder of within(region).getAllByRole("region", { name: REMINDER })) {
       await user.click(within(reminder).getByRole("button", { name: /^Dismiss / }));
     }
@@ -573,6 +575,35 @@ describe("Read syllabi for N courses", () => {
       expect(screen.queryByRole("region", { name: "Read syllabi with AI" })).toBeNull(),
     );
     await waitFor(() => expect(screen.getByRole("main")).toHaveFocus());
+  });
+
+  it("keeps the card for its reminders after Not now, and focus on it", async () => {
+    const api = mockApi();
+    const offered = await api.syllabusReadingOffers();
+    let snoozed = false;
+    vi.spyOn(api, "syllabusReadingOffers").mockImplementation(async () => (snoozed ? [] : offered));
+    const snooze = api.snoozeCalendarOffers;
+    vi.spyOn(api, "snoozeCalendarOffers").mockImplementation(async () => {
+      snoozed = true;
+      return snooze();
+    });
+    const { user } = renderRoute("/courses", { api });
+    const region = await screen.findByRole("region", { name: "Read syllabi with AI" });
+    const button = await within(region).findByRole("button", { name: /^Read syllabi for/ });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
+    await user.click(button);
+    await user.click(await within(region).findByRole("button", { name: "Done" }));
+    expect(within(region).getAllByRole("region", { name: REMINDER }).length).toBeGreaterThan(0);
+    await user.click(
+      within(region).getByRole("button", { name: "Not now: reading syllabi with AI" }),
+    );
+    // The offers go; the reminders keep the card, and focus stays on it.
+    await waitFor(() =>
+      expect(within(region).queryByRole("button", { name: /^Not now/ })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(within(region).getByRole("heading", { name: "Read syllabi with AI" })).toHaveFocus(),
+    );
   });
 
   it("asks question (b) for a course whose text went out before the batch failed", async () => {

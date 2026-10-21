@@ -137,6 +137,41 @@ describe("Course → Explain", () => {
     );
   });
 
+  it("keeps a note being read open when a sync moves the week and Generate with it", async () => {
+    const api = mockApi();
+    // A provider whose note isn't read yet: it is the first step before Generate.
+    await api.addModelProvider("anthropic", null, "sk-ant-demo-0000Hq8e");
+    await api.setFeatureModel("weekly_explanation", {
+      backend: { kind: "provider", provider_id: "anthropic" },
+      model: "claude-haiku-4-5",
+      effort: "lowest",
+    });
+    let moved = false;
+    const overview = api.courseOverview;
+    vi.spyOn(api, "courseOverview").mockImplementation(async (id) => {
+      const real = await overview(id);
+      return moved ? { ...real, timeline: { ...real.timeline, default_week: 5 } } : real;
+    });
+    const { user, queryClient } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await screen.findByRole("button", { name: "Read it now" }));
+    const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Anthropic" });
+    // A sync moves the course to week 5: Generate is another one, for that week.
+    moved = true;
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Explain week 5", hidden: true }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("dialog", { name: "Before PageLamp uses Anthropic" })).toBe(sheet);
+    // Read and accepted: focus moves on to the Generate there is now.
+    for (const box of within(sheet).getAllByRole("checkbox")) await user.click(box);
+    await user.click(within(sheet).getByRole("button", { name: "Turn on Anthropic" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Explain week 5" })).toHaveFocus(),
+    );
+  });
+
   it("says why a course's weeks can't be explained, and leads to its AI policy", async () => {
     const { user } = renderRoute(`${paths.course(WITHHELD)}?tab=explain`, { scenario: "demo" });
     expect(

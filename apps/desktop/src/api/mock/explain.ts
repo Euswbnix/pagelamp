@@ -164,7 +164,7 @@ export function createExplainMock(deps: {
     overrideBudget: boolean,
   ) => Promise<MockAiRun>;
   findCourse: (courseId: string) => MockCourse;
-}): ExplainApi & { cancel: (generationId: string) => void } {
+}): ExplainApi & { cancel: (generationId: string) => void; forget: () => number } {
   const { now, respond, reminded } = deps;
   const saved = new Map<string, WeeklyExplanation[]>();
   const cancelled = new Set<string>();
@@ -354,6 +354,15 @@ export function createExplainMock(deps: {
       }),
     cancel: (generationId) => {
       if (running.has(generationId)) cancelled.add(generationId);
+    },
+    // "Remove all AI data": the kept explanations go, and the output language is the default
+    // again (an AI setting, as in the facade). How many explanations went.
+    forget: () => {
+      let removed = 0;
+      for (const list of saved.values()) removed += list.length;
+      saved.clear();
+      language = "ui";
+      return removed;
     },
   };
 }

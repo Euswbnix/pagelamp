@@ -1241,3 +1241,62 @@ async fn an_answer_given_while_the_model_writes_is_the_one_that_counts() {
         }
     )));
 }
+
+/// A run whose provider is removed while the model writes keeps nothing it brought back,
+/// however it ends (as a syllabus reading does), but its reminder still counts: the course's
+/// materials went out.
+#[tokio::test]
+async fn an_explanation_whose_provider_went_keeps_nothing_but_reminds() {
+    let unusable = json!({
+        "sections": [{"heading": "Made up", "paragraphs": [
+            {"text": "Invented.", "citations": ["c8", "c9"]}
+        ]}],
+        "check_questions": []
+    });
+    for (n, ending) in [
+        answer(&explanation()),
+        ResponseTemplate::new(401),
+        answer(&unusable),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _) = app_with_courses(temp.path());
+        let server = with_cloud_model(&app, ending.set_delay(Duration::from_millis(1000))).await;
+        let (events, on_event) = collect();
+        let id = format!("explain-gone-{n}");
+        let task = {
+            let app = app.clone();
+            let id = id.clone();
+            tokio::spawn(async move {
+                app.explain_week("DEMO101", Some(3), &id, ExplainOptions::default(), on_event)
+                    .await
+            })
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while chat_requests(&server).await.is_empty() {
+            assert!(Instant::now() < deadline, "the run never reached the model");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        app.remove_model_provider("ollama").unwrap();
+        let err = tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Cancelled, "{n}: {err:?}");
+        assert!(err.message.contains("wasn't kept"), "{}", err.message);
+        assert!(reminded(&events), "{n}");
+        assert!(
+            app.saved_explanations("DEMO101", Some(3))
+                .unwrap()
+                .is_empty()
+        );
+        let row = Store::open(&app.db_path())
+            .unwrap()
+            .generation(&id)
+            .unwrap();
+        assert!(row.is_none(), "{n}: {row:?}");
+    }
+}

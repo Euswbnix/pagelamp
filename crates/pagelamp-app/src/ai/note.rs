@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 
 use super::estimate::NOTE_MAX_OUTPUT;
 use super::prompts::{PROMPT_VERSION, WEEKLY_NOTE};
-use super::run::RunRequest;
+use super::run::{RunRequest, not_kept};
 use super::settings::{NOTE_ON_MONDAY, NOTE_TRIED_ON, backend_key};
 use super::{BackendRef, GenEvent, GenStage, GenerationMeta, ModelChoice, feature_choice};
 use crate::{App, AppError, AppErrorKind, Result};
@@ -46,6 +46,8 @@ use crate::{App, AppError, AppErrorKind, Result};
 pub const MAX_FOCUS_ITEMS: usize = 3;
 /// The longest note kept (characters); a longer one is cut at a sentence end when it can be.
 const MAX_NOTE_CHARS: usize = 1_200;
+/// What a run was doing when its provider went (`not_kept`).
+const WRITING: &str = "the weekly note was written";
 
 /// Options of one weekly note run.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -398,8 +400,9 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                self.write_store()?
-                    .record_generation(&record(status, None, kind))?;
+                if !self.record_kept(&choice.backend, &record(status, None, kind))? {
+                    return Err(not_kept(WRITING));
+                }
                 return Err(err);
             }
         };
@@ -413,11 +416,10 @@ impl App {
             .and_then(|answer| checked_answer(answer, &context));
         let Some((text, focus, graded_work_left_out)) = checked else {
             let bad = ModelErrorKind::BadOutput;
-            self.write_store()?.record_generation(&record(
-                GenerationStatus::Failed,
-                None,
-                Some(bad.as_str()),
-            ))?;
+            let failed = record(GenerationStatus::Failed, None, Some(bad.as_str()));
+            if !self.record_kept(&choice.backend, &failed)? {
+                return Err(not_kept(WRITING));
+            }
             return Err(AppError {
                 model_error: Some(bad),
                 ..AppError::new(
@@ -446,11 +448,14 @@ impl App {
             automatic: options.automatic,
             graded_work_left_out,
         };
-        self.write_store()?.record_generation(&record(
+        let kept = record(
             GenerationStatus::Accepted,
             serde_json::to_string(&note).ok(),
             None,
-        ))?;
+        );
+        if !self.record_kept(&choice.backend, &kept)? {
+            return Err(not_kept(WRITING));
+        }
         Ok(note)
     }
 }

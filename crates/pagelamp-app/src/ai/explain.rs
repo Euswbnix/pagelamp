@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use super::estimate::{EXPLANATION_MAX_OUTPUT, explanation_budget};
 use super::prompts::{PROMPT_VERSION, WEEKLY_EXPLANATION};
-use super::run::RunRequest;
+use super::run::{RunRequest, not_kept, provider_gone};
 use super::settings::{OUTPUT_LANGUAGE, backend_key};
 use super::{GenEvent, GenNoticeCode, GenStage, GenerationMeta, feature_choice};
 use crate::course::calendar::course_block;
@@ -40,6 +40,8 @@ use crate::{App, AppError, AppErrorKind, Result};
 
 /// The most check questions kept.
 const MAX_CHECK_QUESTIONS: usize = 3;
+/// What a run was doing when its provider went (`not_kept`).
+const EXPLAINING: &str = "the week was explained";
 
 /// The language explanations are written in (Settings → AI → Output language).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -385,8 +387,9 @@ impl App {
             .await;
         // D37 option 2 and D49, as a syllabus reading does: the course's first cloud run that
         // sent (or was sending) its material text reminds once, however it ends, by the answer
-        // stored then (the student may have answered while the model wrote); claimed with the
-        // run's own row.
+        // stored then (the student may have answered while the model wrote), claimed in the
+        // run's last store step. Also when its provider went meanwhile (the reminder isn't the
+        // provider's data); the run then keeps nothing else.
         let claim = |store: &Store| -> pagelamp_core::Result<bool> {
             let sharing = store
                 .get_course(&course.id)?
@@ -432,13 +435,16 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                let reminded = self.write_store()?.in_transaction(|store| {
+                let (reminded, kept) = self.write_store()?.in_transaction(|store| {
                     let reminded = claim(store)?;
+                    if provider_gone(store, &choice.backend)? {
+                        return Ok((reminded, false));
+                    }
                     store.record_generation(&record(status, None, kind))?;
-                    Ok(reminded)
+                    Ok((reminded, true))
                 })?;
                 remind(reminded);
-                return Err(err);
+                return Err(if kept { err } else { not_kept(EXPLAINING) });
             }
         };
         on_event(GenEvent::Stage {
@@ -451,16 +457,22 @@ impl App {
             .and_then(|answer| ground(answer, &context));
         let Some((sections, check_questions, dropped_citations)) = grounded else {
             let bad = ModelErrorKind::BadOutput;
-            let reminded = self.write_store()?.in_transaction(|store| {
+            let (reminded, kept) = self.write_store()?.in_transaction(|store| {
                 let reminded = claim(store)?;
+                if provider_gone(store, &choice.backend)? {
+                    return Ok((reminded, false));
+                }
                 store.record_generation(&record(
                     GenerationStatus::Failed,
                     None,
                     Some(bad.as_str()),
                 ))?;
-                Ok(reminded)
+                Ok((reminded, true))
             })?;
             remind(reminded);
+            if !kept {
+                return Err(not_kept(EXPLAINING));
+            }
             return Err(AppError {
                 model_error: Some(bad),
                 ..AppError::new(
@@ -469,8 +481,11 @@ impl App {
                 )
             });
         };
-        let explanation = self.write_store()?.in_transaction(|store| {
+        let (reminded, explanation) = self.write_store()?.in_transaction(|store| {
             let sharing_reminder = claim(store)?;
+            if provider_gone(store, &choice.backend)? {
+                return Ok((sharing_reminder, None));
+            }
             let explanation = WeeklyExplanation {
                 meta: GenerationMeta {
                     generation_id: generation_id.to_string(),
@@ -500,10 +515,10 @@ impl App {
                 serde_json::to_string(&explanation).ok(),
                 None,
             ))?;
-            Ok(explanation)
+            Ok((sharing_reminder, Some(explanation)))
         })?;
-        remind(explanation.sharing_reminder);
-        Ok(explanation)
+        remind(reminded);
+        explanation.ok_or_else(|| not_kept(EXPLAINING))
     }
 }
 

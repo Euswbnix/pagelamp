@@ -59,7 +59,7 @@ export function createPlanMock(deps: {
   gate: (courses: string[], horizonDays: number, overrideBudget: boolean) => Promise<MockAiRun>;
   /** The courses the plan covers (`planCourses` in the mock's index). */
   planCourses: (wanted: readonly string[]) => MockCourse[];
-}): PlanApi & { cancel: (generationId: string) => void } {
+}): PlanApi & { cancel: (generationId: string) => void; forget: () => number } {
   const { db, now, respond } = deps;
   const drafts = new Map<string, GeneratedStudyPlan>();
   const accepted = new Set<string>();
@@ -232,6 +232,15 @@ export function createPlanMock(deps: {
       }),
     cancel: (generationId) => {
       if (running.has(generationId)) cancelled.add(generationId);
+    },
+    // "Remove all AI data", as the facade's store does it: the drafts go, accepted ones too; the
+    // plan in use stays, with its label, no longer linked to its draft. How many drafts went.
+    forget: () => {
+      const removed = drafts.size;
+      drafts.clear();
+      accepted.clear();
+      if (db.studyPlan) db.studyPlan.generation_id = null;
+      return removed;
     },
   };
 }

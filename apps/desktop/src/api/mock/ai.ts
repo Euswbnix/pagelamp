@@ -93,7 +93,8 @@ export interface MockAiContext {
   planCourses: (wanted: readonly string[]) => MockCourse[];
   /**
    * "Remove all AI data"'s part outside AI setup: the AI calendars not accepted and the
-   * reminders' claims go (the proposals mock). Returns how many calendars went.
+   * reminders' claims (the proposals mock), the explanations, the weekly notes and the plan
+   * drafts go. Returns how many of those went.
    */
   forgetAiRecords: () => number;
 }

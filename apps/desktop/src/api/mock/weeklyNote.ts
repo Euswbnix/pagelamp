@@ -55,7 +55,11 @@ export function createWeeklyNoteMock(deps: {
   gate: (overrideBudget: boolean) => Promise<MockAiRun>;
   /** Who runs the note's model now (null: no model chosen). */
   noteBackend: () => Promise<BackendKind | null>;
-}): WeeklyNoteApi & { cancel: (generationId: string) => void; prepareNow: () => Promise<boolean> } {
+}): WeeklyNoteApi & {
+  cancel: (generationId: string) => void;
+  prepareNow: () => Promise<boolean>;
+  forget: () => number;
+} {
   const { now, respond } = deps;
   let notes: WeeklyNote[] = [];
   let prepareOnMonday = deps.scenario === "weekly-note-monday";
@@ -201,6 +205,15 @@ export function createWeeklyNoteMock(deps: {
         running.delete(generationId);
         cancelled.delete(generationId);
       }
+    },
+    // "Remove all AI data": the kept notes go, and so do the Monday setting and its last try
+    // (AI settings, as in the facade). How many notes went.
+    forget: () => {
+      const removed = notes.length;
+      notes = [];
+      prepareOnMonday = false;
+      triedOn = null;
+      return removed;
     },
     weeklyNotes: () => respond(() => notes),
     deleteWeeklyNote: (generationId) =>

@@ -1085,3 +1085,50 @@ async fn a_note_by_a_cloud_model_through_a_local_server_is_labelled_and_billed_a
         "{usage:?}"
     );
 }
+
+/// A run whose provider is removed while the model writes keeps nothing it brought back,
+/// however it ends (as a syllabus reading does): no note, no row.
+#[tokio::test]
+async fn a_note_whose_provider_went_keeps_nothing() {
+    for (n, ending) in [
+        answer(&a_note()),
+        ResponseTemplate::new(401),
+        answer(&json!({"note": " ", "focus": []})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _) = app_with_courses(temp.path());
+        let server = with_local_model(&app).await;
+        Mock::given(method("POST"))
+            .respond_with(ending.set_delay(std::time::Duration::from_millis(1000)))
+            .mount(&server)
+            .await;
+        let id = format!("note-gone-{n}");
+        let task = {
+            let app = app.clone();
+            let id = id.clone();
+            tokio::spawn(async move { app.write_weekly_note(&id, click(), |_| {}).await })
+        };
+        let deadline = Instant::now() + std::time::Duration::from_secs(10);
+        while chat_requests(&server).await.is_empty() {
+            assert!(Instant::now() < deadline, "the run never reached the model");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        app.remove_model_provider("ollama").unwrap();
+        let err = tokio::time::timeout(std::time::Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Cancelled, "{n}: {err:?}");
+        assert!(err.message.contains("wasn't kept"), "{}", err.message);
+        assert!(app.weekly_notes().unwrap().is_empty(), "{n}");
+        let row = Store::open(&app.db_path())
+            .unwrap()
+            .generation(&id)
+            .unwrap();
+        assert!(row.is_none(), "{n}: {row:?}");
+    }
+}

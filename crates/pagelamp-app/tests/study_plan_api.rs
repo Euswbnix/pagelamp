@@ -698,3 +698,55 @@ async fn a_plan_by_a_cloud_model_through_a_local_server_is_labelled_and_billed_a
         "{usage:?}"
     );
 }
+
+/// A run whose provider is removed while the model writes keeps nothing it brought back,
+/// however it ends (as a syllabus reading does): no draft, no row.
+#[tokio::test]
+async fn a_plan_whose_provider_went_keeps_nothing() {
+    for (n, ending) in [
+        answer(&tasks()),
+        ResponseTemplate::new(401),
+        answer(&json!({"plan": "read everything"})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let temp = tempfile::tempdir().unwrap();
+        let app = app_with_courses(temp.path());
+        let server = with_local_model(&app).await;
+        Mock::given(method("POST"))
+            .respond_with(ending.set_delay(Duration::from_millis(1000)))
+            .mount(&server)
+            .await;
+        let id = format!("plan-gone-{n}");
+        let task = {
+            let app = app.clone();
+            let id = id.clone();
+            tokio::spawn(async move {
+                app.generate_study_plan(StudyPlanRequest::default(), &id, |_| {})
+                    .await
+            })
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while chat_requests(&server).await.is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the run never started"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        app.remove_model_provider("ollama").unwrap();
+        let err = tokio::time::timeout(Duration::from_secs(10), task)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(err.kind, AppErrorKind::Cancelled, "{n}: {err:?}");
+        assert!(err.message.contains("wasn't kept"), "{}", err.message);
+        let row = Store::open(&app.db_path())
+            .unwrap()
+            .generation(&id)
+            .unwrap();
+        assert!(row.is_none(), "{n}: {row:?}");
+    }
+}

@@ -74,8 +74,10 @@ export function ReadSyllabiBatch() {
     try {
       await snooze.mutateAsync();
       toast.success(t("batch.snoozed"));
-      // The card (and the focused button) goes away; continue from the page heading.
-      focusPageHeading();
+      // The button goes, and the card with it unless reminders keep it: continue from the card's
+      // heading then, else from the page heading.
+      if (reminders.length > 0) heading.current?.focus();
+      else focusPageHeading();
     } catch (error) {
       toast.error(errorText(error));
     }
@@ -93,7 +95,8 @@ export function ReadSyllabiBatch() {
         {state.phase === "idle" && ids.length > 0 ? (
           <CardDescription>{t("batch.description", { count: ids.length })}</CardDescription>
         ) : null}
-        {state.phase === "idle" ? (
+        {/* Nothing to snooze on a card that only its reminders keep. */}
+        {state.phase === "idle" && ids.length > 0 ? (
           <CardAction>
             <Button
               type="button"

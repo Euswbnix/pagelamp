@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GenerateButton } from "@/features/ai/GenerateButton";
+import { GenerateButton, GenerateSteps } from "@/features/ai/GenerateButton";
 import { MaterialSharingReminder } from "@/features/ai/MaterialSharingNotices";
 import { useAiErrorText } from "@/features/ai/useAiErrorText";
 import { formatDateTime } from "@/lib/format";
@@ -209,16 +209,21 @@ export function ExplainTab({
         ) : weeks.isPending || weeks.isError ? null : (
           <p className="text-sm text-muted-foreground">{t("weeksUnknown")}</p>
         )}
-        {state.phase === "running" ? (
-          <ExplainProgress state={state} onStop={() => void run.stop()} />
-        ) : (
-          <GenerateButton
-            key={keyOf(request)}
-            request={request}
-            label={week === null ? t("generateRecent") : t("generate", { week })}
-            onGenerate={({ overrideBudget }) => start([], overrideBudget)}
-          />
-        )}
+        {/* The steps before Generate outlive a new Generate for another request (a sync moved
+            the week) and its swap for the progress. One host for this slot only: a step settled
+            here moves on to this Generate, not to Regenerate or Include below. */}
+        <GenerateSteps fallbackFocus={() => titleRef.current}>
+          {state.phase === "running" ? (
+            <ExplainProgress state={state} onStop={() => void run.stop()} />
+          ) : (
+            <GenerateButton
+              key={keyOf(request)}
+              request={request}
+              label={week === null ? t("generateRecent") : t("generate", { week })}
+              onGenerate={({ overrideBudget }) => start([], overrideBudget)}
+            />
+          )}
+        </GenerateSteps>
         <ExplainOutcome state={state} />
         {withResult ? null : sharingReminder}
       </div>
