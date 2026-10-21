@@ -59,7 +59,6 @@ export function mondayOf(iso: string): string {
   return addDays(iso, -back);
 }
 
-/** The day teaching starts: the date itself, or the next Monday for a Saturday or Sunday. */
 /**
  * Whether a break skips a week, like the facade's phase::skips_a_week: it covers at least 3
  * weekdays of some Monday-to-Friday week (a shorter one changes neither the weeks nor the
@@ -77,6 +76,7 @@ export function skipsAWeek(span: { start: string; end: string }): boolean {
   return false;
 }
 
+/** The day teaching starts: the date itself, or the next Monday for a Saturday or Sunday. */
 export function teachingStart(iso: string): string {
   const day = parseIso(iso).getDay(); // Sunday = 0, Saturday = 6
   return day === 6 ? addDays(iso, 2) : day === 0 ? addDays(iso, 1) : iso;

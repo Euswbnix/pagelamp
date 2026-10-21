@@ -8,6 +8,8 @@
 "ai.addKey.description" = "使用你自己从 AI 服务商获得的密钥。PageLamp 会把它保存在系统钥匙串中，界面上只显示最后 4 个字符。";
 "ai.addKey.key" = "API 密钥";
 "ai.addKey.keyHint" = "保存之前，PageLamp 会向服务商发一个免费请求来验证它。";
+"ai.addKey.keyOptional" = "API 密钥（可选）";
+"ai.addKey.keyOptionalHint" = "这台电脑上的服务器可能不需要密钥。如果它要求提供，请填在这里。";
 "ai.addKey.provider" = "服务商";
 "ai.addKey.submit" = "验证并添加";
 "ai.addKey.title" = "添加 API 密钥";
@@ -15,6 +17,8 @@
 "ai.aiLabel.prefix" = "AI 生成";
 "ai.aiLabel.tokens" = "%1$@ 个 token";
 "ai.aiLabel.tokensApprox" = "≈ %1$@ 个 token";
+"ai.backend.addKey" = "添加密钥";
+"ai.backend.cloudShared" = "它的云端模型会收到什么";
 "ai.backend.keyEnds" = "密钥末尾为 %1$@";
 "ai.backend.kind.api_key" = "API 密钥";
 "ai.backend.kind.claude_code" = "Claude 订阅";
@@ -36,6 +40,7 @@
 "ai.backend.state.ready" = "可以使用";
 "ai.backend.state.unavailable" = "不可用";
 "ai.backend.turnOn" = "查看并启用";
+"ai.backend.turnOnCloud" = "允许它的云端模型";
 "ai.backend.whatsShared" = "会发送哪些内容";
 "ai.blocked.backend_disabled_in_this_build" = "这个版本的 PageLamp 不提供这个服务。";
 "ai.blocked.budget_reached" = "这次运行会超出本月预算。";
@@ -136,7 +141,11 @@
 "ai.codex.system.useManaged" = "使用 PageLamp 自己的 Codex";
 "ai.codex.title" = "使用我的 ChatGPT 订阅（运行 OpenAI Codex）";
 "ai.disclosure.accept" = "启用 %1$@";
+"ai.disclosure.acceptCloud" = "允许通过 %1$@ 使用云端模型";
+"ai.disclosure.acceptModel" = "使用 %1$@";
 "ai.disclosure.accepted" = "已启用 %1$@";
+"ai.disclosure.acceptedCloud" = "已允许通过 %1$@ 使用云端模型";
+"ai.disclosure.acceptedModel" = "现在可以使用 %1$@";
 "ai.disclosure.admin.heading" = "还有谁能看到";
 "ai.disclosure.admin.unknown" = "如果你的 ChatGPT 账户属于 Edu 或工作区，它的管理员可能看得到 PageLamp 通过它发送的内容，包括课程资料中的文字。";
 "ai.disclosure.admin.yes" = "你的账户属于学校或工作区：它的管理员能看到 PageLamp 通过它发送的内容，包括课程资料中的文字。";
@@ -148,7 +157,8 @@
 "ai.disclosure.close" = "关闭";
 "ai.disclosure.confirmFirst" = "先勾选上面的确认项，才能启用。";
 "ai.disclosure.cost.api_billing" = "每次运行的费用都计入你的 API 账户。PageLamp 会在每次运行前显示预估费用，并遵守你设定的每月预算。";
-"ai.disclosure.cost.cloud_via_local" = "这个模型通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
+"ai.disclosure.cost.cloudModels" = "模型可能通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
+"ai.disclosure.cost.cloud_via_local" = "这个模型可能通过 %1$@ 在云端运行，而不是在这台电脑上。适用 %1$@ 的条款和限额。";
 "ai.disclosure.cost.free_on_device" = "在这台电脑上运行是免费的，但会占用它的内存和电量。";
 "ai.disclosure.cost.heading" = "费用";
 "ai.disclosure.cost.plan_credits" = "每次运行都计入你 ChatGPT 订阅的用量限额；超出订阅额度后，运行可能会消耗你的 ChatGPT 额度点数。";
@@ -166,6 +176,8 @@
 "ai.disclosure.retention.on_device" = "不会有任何内容保存到这台电脑以外的地方。";
 "ai.disclosure.retention.provider_terms" = "%1$@ 保存发送内容的时长取决于它的条款。";
 "ai.disclosure.sent.cloud" = "这些内容会发给 %1$@，按 %1$@ 的条款处理。";
+"ai.disclosure.sent.cloudModels" = "%1$@ 在这台电脑上运行，但 PageLamp 无法确认它的每个模型都在这里运行：%1$@ 可能把 PageLamp 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。";
+"ai.disclosure.sent.cloudViaLocal" = "%1$@ 在这台电脑上运行，但 PageLamp 无法确认这个模型也在这里运行：%1$@ 可能把 PageLamp 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。";
 "ai.disclosure.sent.codex" = "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 %1$@，按 %1$@ 的条款和你的 ChatGPT 设置处理。";
 "ai.disclosure.sent.heading" = "发送什么，发给谁";
 "ai.disclosure.sent.material_text" = "课程资料（课件、笔记）中的文字，用于讲解和课程日历，而且只来自规则允许的课程。";
@@ -173,13 +185,15 @@
 "ai.disclosure.sent.structure" = "课程结构：标题、日期、截止时间和周次。";
 "ai.disclosure.sent.terms" = "查看 %1$@ 的条款";
 "ai.disclosure.title" = "PageLamp 使用 %1$@ 之前";
+"ai.disclosure.titleCloud" = "PageLamp 通过 %1$@ 使用云端模型之前";
 "ai.disclosure.training.heading" = "训练与保存";
 "ai.disclosure.training.may_train" = "%1$@ 可能会用发送的内容来训练模型，取决于你的账户设置。";
 "ai.disclosure.training.may_train_free_tier" = "在 %1$@ 的免费档中，发送的内容可能被用于改进它的产品，也可能有人工审阅。使用已开通付费的密钥可以避免这一点。";
 "ai.disclosure.training.no_training" = "%1$@ 不会用 PageLamp 发送的内容来训练模型。";
 "ai.disclosure.training.turnOff" = "如何关闭训练";
 "ai.disclosure.training.unknown" = "PageLamp 不清楚这个服务是否会用发送的内容做训练。继续之前请先查看它的条款。";
-"ai.estimate.cloudNoPrice" = "在云端运行，无法预估费用";
+"ai.estimate.checkingWhere" = "正在确认这个模型在哪里运行…";
+"ai.estimate.cloudNoPrice" = "可能在云端运行，无法预估费用";
 "ai.estimate.details" = "最多输入 %1$@ 个 token，输出 %2$@ 个";
 "ai.estimate.free" = "免费，在这台电脑上运行";
 "ai.estimate.generate" = "生成";
@@ -188,14 +202,15 @@
 "ai.estimate.noPrice" = "这个模型没有价格";
 "ai.estimate.overBudget" = "这次运行会超出本月预算。";
 "ai.estimate.overrideBudget" = "这次允许超出预算";
+"ai.estimate.readDisclosure" = "现在查看";
 "ai.estimate.upTo" = "≈ 最多 %1$@";
 "ai.estimate.useUnpriced" = "仍然使用";
 "ai.estimate.useUnpricedHint" = "对这个模型不执行预算，但它的运行仍会按 token 计数。";
-"ai.features.badge.cloud" = "在云端运行";
+"ai.features.badge.cloud" = "可能在云端运行";
 "ai.features.badge.noPrice" = "无价格";
 "ai.features.badge.onDevice" = "在这台电脑上";
 "ai.features.badge.suggested" = "推荐";
-"ai.features.cloudNote" = "%1$@ 在云端运行，而不是在这台电脑上。";
+"ai.features.cloudNote" = "%1$@ 可能在云端运行，而不是在这台电脑上。";
 "ai.features.effort" = "%1$@的思考强度";
 "ai.features.effortName.high" = "高";
 "ai.features.effortName.low" = "低";
@@ -250,7 +265,7 @@
 "ai.policy.age" = "%1$@ 岁以上";
 "ai.policy.ageGuardian" = "%1$@ 岁以上，需监护人同意";
 "ai.policy.cost.api_billing" = "费用计入你的 API 账户";
-"ai.policy.cost.cloud_via_local" = "在云端运行";
+"ai.policy.cost.cloud_via_local" = "可能在云端运行";
 "ai.policy.cost.free_on_device" = "免费";
 "ai.policy.cost.plan_credits" = "使用你的 ChatGPT 订阅（超出额度后消耗点数）";
 "ai.policy.cost.self_hosted" = "费用由运行该服务器的一方决定";
@@ -271,6 +286,8 @@
 "ai.removeAll.done" = "已删除所有 AI 数据";
 "ai.removeAll.hint" = "删除你的密钥、模型选择、使用记录，以及 PageLamp 的 AI 功能写出的内容（你接受过的课程日历会保留，并带着 AI 标签）。";
 "ai.removeAll.title" = "删除所有 AI 数据？";
+"ai.replaceKey.addTitle" = "为 %1$@ 添加密钥";
+"ai.replaceKey.added" = "密钥已添加";
 "ai.replaceKey.done" = "密钥已更换";
 "ai.replaceKey.submit" = "验证并更换";
 "ai.replaceKey.title" = "更换 %1$@ 的密钥";
@@ -294,6 +311,7 @@
 "ai.sharing.optionHint.not_sure" = "PageLamp 仍会发送资料文字，每个结果都会注明发给了谁。";
 "ai.sharing.question" = "这门课的资料（课件、笔记）可以分享给 AI 服务吗？";
 "ai.sharing.reminder.answer" = "这门课的资料可以分享吗？";
+"ai.sharing.reminder.answerCourse" = "%1$@ 的资料可以分享吗？";
 "ai.sharing.reminder.body" = "PageLamp 已把 %1$@ 资料中的文字发送给 %2$@。如果你不确定是否允许，请查看课程大纲或询问任课老师。";
 "ai.sharing.reminder.dismiss" = "知道了";
 "ai.sharing.reminder.title" = "请确认任课老师是否允许把课程资料分享给 AI 服务";
@@ -1322,7 +1340,6 @@
 "proposals.sources.blocked.course_ai_turned_off" = "这门课的资料已关闭 AI 访问，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。";
 "proposals.sources.blocked.course_hidden" = "这门课已隐藏，所以 AI 不会读取它的教学大纲。";
 "proposals.sources.blocked.course_policy_prohibited" = "这门课标记为“禁止 AI”，所以 AI 不会读取它的教学大纲。扫描和日期表单仍然可用。";
-"proposals.sources.blocked.disclosure_not_acknowledged" = "请先在“设置 → AI 模型”中确认 AI 读取会发送什么、发给谁。";
 "proposals.sources.blocked.material_sharing_not_allowed" = "你说过这门课不允许把资料分享给云端 AI。本机上的模型、扫描和日期表单仍然可用。";
 "proposals.sources.blocked.no_model_chosen" = "请在“设置 → AI 模型”中设置用于读取教学大纲的 AI。";
 "proposals.sources.blocked.no_readable_materials" = "还没有可读取的课程大纲或课程安排。请下载大纲文件，或在下面勾选一份资料。";

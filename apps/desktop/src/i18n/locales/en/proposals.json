@@ -135,7 +135,6 @@
       "course_hidden": "This course is hidden, so AI doesn't read its syllabus.",
       "no_readable_materials": "There's no readable outline or schedule yet. Download the outline file, or tick a material below.",
       "material_sharing_not_allowed": "You said this course doesn't allow sharing its materials with a cloud AI. A model on this computer, the scan and the dates form still work.",
-      "disclosure_not_acknowledged": "Confirm what AI reading sends and to whom in Settings → AI models first.",
       "no_model_chosen": "Set up AI to read syllabi in Settings → AI models."
     }
   },

@@ -200,11 +200,147 @@ describe("mock AI setup", () => {
     expect((await api.usageSummary(null)).rows).toEqual([]);
   });
 
+  it("keeps a provider whose key the keychain won't delete, like the facade", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-keychain-locked" });
+    const before = await api.aiStatus();
+    // One removal: nothing changes.
+    await expect(api.removeModelProvider("openai")).rejects.toMatchObject({
+      kind: "internal",
+      message: expect.stringContaining("under `llm:openai`. Nothing was removed"),
+    });
+    expect(await api.aiStatus()).toEqual(before);
+    // Remove all: the rest goes, that provider and its key stay, and it says so.
+    await expect(api.removeAllAiData()).rejects.toMatchObject({
+      kind: "internal",
+      message:
+        "Removed 1 provider(s), 0 usage record(s) and 0 generated text(s), but the keychain didn't let PageLamp delete the API key of openai: it is still there (`llm:openai`), and so is that provider. Run this again when the keychain can be reached.",
+    });
+    const after = await api.aiStatus();
+    expect(after.providers.map((p) => p.provider_id)).toEqual(["openai"]);
+    expect(after.features.map((f) => f.choice)).toEqual([null, null, null, null]);
+    // Its settings went too: its note is to be read again.
+    expect(after.backends[0]).toMatchObject({
+      state: "needs_disclosure",
+      disclosure_acknowledged: null,
+    });
+  });
+
   it("removing a provider clears the features that used it", async () => {
     const api = createMockApi({ ...fast, scenario: "ai-key" });
     await api.removeModelProvider("openai");
     const status = await api.aiStatus();
     expect(status.backends).toEqual([]);
     expect(status.features.every((f) => f.choice === null)).toBe(true);
+  });
+});
+
+describe("mock: a server on this computer that may run a model in the cloud", () => {
+  const OLLAMA = { kind: "provider", provider_id: "ollama" } as const;
+
+  it("adds a custom server here without a key, and asks one of a custom server elsewhere", async () => {
+    const api = createMockApi(fast);
+    await expect(
+      api.addModelProvider("custom", "https://llm.example.edu/v1", null),
+    ).rejects.toMatchObject({
+      kind: "invalid",
+    });
+    const here = await api.addModelProvider("custom", "http://localhost:8080/v1", null);
+    const status = (await api.aiStatus()).backends.find((b) => b.label === here.label);
+    expect(status?.problems).not.toContain("key_missing");
+    // Its own note keeps what it's sent here; its models may run anywhere.
+    expect(status?.disclosure).toMatchObject({ on_device: true, cost: "free_on_device" });
+    expect(status?.cloud_disclosure).toMatchObject({ on_device: false, cost: "cloud_via_local" });
+    const backend = { kind: "provider", provider_id: here.provider_id } as const;
+    for (const m of await api.listModels(backend)) {
+      expect(m).toMatchObject({ on_device: false, runs_in_cloud: true, price_known: false });
+    }
+    // A new key is a key, and one may be given later.
+    await expect(api.updateModelProviderKey(here.provider_id, " ")).rejects.toMatchObject({
+      kind: "invalid",
+    });
+    expect(await api.updateModelProviderKey(here.provider_id, "demo-key-0000Ab12")).toMatchObject({
+      key_last4: "Ab12",
+    });
+  });
+
+  it("gives no key to a server that takes none, here or elsewhere", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-local" });
+    await expect(api.updateModelProviderKey("ollama", "demo-key-0000Ab12")).rejects.toMatchObject({
+      kind: "invalid",
+      message: "Ollama doesn't use a key.",
+    });
+  });
+
+  it("lists the models of a local app on another computer as running there, priced", async () => {
+    const api = createMockApi(fast);
+    const remote = await api.addModelProvider("ollama", "https://gpu.example.edu:11434", null);
+    expect(remote.on_device).toBe(false);
+    const models = await api.listModels({ kind: "provider", provider_id: remote.provider_id });
+    expect(models.length).toBeGreaterThan(0);
+    for (const m of models) expect(m).toMatchObject({ on_device: false, runs_in_cloud: false });
+  });
+
+  it("makes a provider off this computer ready once its note is read, also when routed", async () => {
+    const api = createMockApi(fast);
+    await api.addModelProvider("openai", null, "sk-demo-secret-value-9f3A");
+    await api.setFeatureModel("weekly_explanation", {
+      backend: openai,
+      model: "gpt-6-luna",
+      effort: "lowest",
+    });
+    const [facts] = await api.modelDisclosure(openai, false);
+    await api.acknowledgeModelDisclosure(openai, false, facts.version);
+    const status = (await api.aiStatus()).backends.find((b) => b.label === "OpenAI");
+    expect(status).toMatchObject({ state: "ready", cloud_disclosure: null });
+  });
+
+  it("answers where a model runs as the facade does, asked or not", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-local" });
+    const local = { backend: OLLAMA, model: "qwen3.5:9b", effort: "lowest" } as const;
+    const cloud = { ...local, model: "gpt-oss:120b-cloud" } as const;
+    expect(await api.modelRunsHere(local, true)).toBe(true);
+    expect(await api.modelRunsHere(cloud, true)).toBe(false);
+    // Not asked, an Ollama model is unknown.
+    expect(await api.modelRunsHere(local, false)).toBe(false);
+  });
+
+  it("keeps the server's note and the cloud note apart, each under its own key", async () => {
+    const api = createMockApi({ ...fast, scenario: "ai-local" });
+    await api.setFeatureModel("weekly_explanation", {
+      backend: OLLAMA,
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const ollama = () => api.aiStatus().then((s) => s.backends.find((b) => b.label === "Ollama"));
+    // Its own note was read; a routed cloud model's note wasn't.
+    expect(await ollama()).toMatchObject({ state: "needs_disclosure" });
+    const [facts, read] = await api.modelDisclosure(OLLAMA, false);
+    expect(read).toBe(false);
+    expect((await ollama())?.disclosure.cost).toBe("free_on_device");
+    await api.acknowledgeModelDisclosure(OLLAMA, false, facts.version);
+    expect(await ollama()).toMatchObject({
+      state: "ready",
+      cloud_disclosure_acknowledged: facts.version,
+    });
+    expect(
+      (
+        await api.estimateGeneration({
+          feature: "weekly_explanation",
+          course: "folder:demo-courses/course/DEMO101",
+        })
+      ).would_block,
+    ).toBe("price_unknown_not_acknowledged");
+  });
+
+  it("clears a note's block by its version alone, like the facade (the ChatGPT plan too)", async () => {
+    const api = createMockApi({ ...fast, scenario: "codex-free" });
+    expect((await api.estimateGeneration({ feature: "weekly_note" })).would_block).toBe(
+      "disclosure_not_acknowledged",
+    );
+    const [facts] = await api.modelDisclosure({ kind: "codex" }, false);
+    await api.acknowledgeModelDisclosure({ kind: "codex" }, false, facts.version);
+    expect((await api.estimateGeneration({ feature: "weekly_note" })).would_block).not.toBe(
+      "disclosure_not_acknowledged",
+    );
   });
 });

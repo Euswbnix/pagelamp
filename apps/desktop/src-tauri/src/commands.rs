@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use pagelamp_app::LocalFileUse;
 use pagelamp_app::ai::{
     AiStatus, BackendRef, CodexLoginMethod, CodexSource, CodexStatus, CostEstimate,
-    EstimateRequest, GenEvent, LocalServer, LoginEvent, ModelChoice, ModelInfo,
+    DisclosureFacts, EstimateRequest, GenEvent, LocalServer, LoginEvent, ModelChoice, ModelInfo,
     ModelProviderRecord, ProbeReport, ProviderPreset, RemoveAiDataReport, RuntimeEvent,
     UsageSummary,
 };
@@ -720,6 +720,42 @@ pub async fn acknowledge_ai_disclosure(
 ) -> CmdResult<()> {
     backend
         .blocking(move |app| app.acknowledge_ai_disclosure(&model_backend, version))
+        .await
+}
+
+/// Whether `choice`'s model runs on this computer, decided as a run decides it (with `ask`, a
+/// model server here is asked for its list).
+#[tauri::command]
+pub async fn model_runs_here(
+    backend: State<'_, Backend>,
+    choice: ModelChoice,
+    ask: bool,
+) -> CmdResult<bool> {
+    backend
+        .spawn(move |app| async move { app.model_runs_here(&choice, ask).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn model_disclosure(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    runs_here: bool,
+) -> CmdResult<(DisclosureFacts, bool)> {
+    backend
+        .blocking(move |app| app.model_disclosure(&model_backend, runs_here))
+        .await
+}
+
+#[tauri::command]
+pub async fn acknowledge_model_disclosure(
+    backend: State<'_, Backend>,
+    model_backend: BackendRef,
+    runs_here: bool,
+    version: u32,
+) -> CmdResult<()> {
+    backend
+        .blocking(move |app| app.acknowledge_model_disclosure(&model_backend, runs_here, version))
         .await
 }
 

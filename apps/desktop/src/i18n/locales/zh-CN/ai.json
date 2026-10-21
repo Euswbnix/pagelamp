@@ -47,10 +47,13 @@
     "turnOn": "查看并启用",
     "whatsShared": "会发送哪些内容",
     "replaceKey": "更换密钥",
+    "addKey": "添加密钥",
     "remove": "移除",
     "removeTitle": "移除 {{name}}？",
     "removeBody": "{{product}} 会从钥匙串中删除这个密钥，所有功能都不再使用 {{name}}。使用记录会保留。",
-    "removed": "已移除 {{name}}"
+    "removed": "已移除 {{name}}",
+    "turnOnCloud": "允许它的云端模型",
+    "cloudShared": "它的云端模型会收到什么"
   },
   "policy": {
     "label": "数据政策",
@@ -75,12 +78,13 @@
       "api_billing": "费用计入你的 API 账户",
       "plan_credits": "使用你的 ChatGPT 订阅（超出额度后消耗点数）",
       "free_on_device": "免费",
-      "cloud_via_local": "在云端运行",
+      "cloud_via_local": "可能在云端运行",
       "self_hosted": "费用由运行该服务器的一方决定"
     }
   },
   "disclosure": {
     "title": "{{product}} 使用 {{name}} 之前",
+    "titleCloud": "{{product}} 通过 {{name}} 使用云端模型之前",
     "intro": "下面是 {{product}} 使用这个服务时会发生的事。其中任何一项有变化，{{product}} 都会再问你一次。",
     "changed": "自你上次查看以来，这里的内容有了变化。",
     "gai": {
@@ -94,7 +98,9 @@
       "cloud": "这些内容会发给 {{name}}，按 {{name}} 的条款处理。",
       "onDevice": "这些内容会发给这台电脑上的 {{name}}，不会离开这台电脑。",
       "terms": "查看 {{name}} 的条款",
-      "codex": "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 {{name}}，按 {{name}} 的条款和你的 ChatGPT 设置处理。"
+      "codex": "这些内容会通过 Codex（用你的 ChatGPT 账户登录）发给 {{name}}，按 {{name}} 的条款和你的 ChatGPT 设置处理。",
+      "cloudViaLocal": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认这个模型也在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。",
+      "cloudModels": "{{name}} 在这台电脑上运行，但 {{product}} 无法确认它的每个模型都在这里运行：{{name}} 可能把 {{product}} 发给它的内容转给云端服务（Ollama 的云端模型就是这样）。你回答“不可以”的课程，其资料永远不会发给它。"
     },
     "training": {
       "heading": "训练与保存",
@@ -121,7 +127,8 @@
       "api_billing": "每次运行的费用都计入你的 API 账户。{{product}} 会在每次运行前显示预估费用，并遵守你设定的每月预算。",
       "plan_credits": "每次运行都计入你 ChatGPT 订阅的用量限额；超出订阅额度后，运行可能会消耗你的 ChatGPT 额度点数。",
       "free_on_device": "在这台电脑上运行是免费的，但会占用它的内存和电量。",
-      "cloud_via_local": "这个模型通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。",
+      "cloud_via_local": "这个模型可能通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。",
+      "cloudModels": "模型可能通过 {{name}} 在云端运行，而不是在这台电脑上。适用 {{name}} 的条款和限额。",
       "self_hosted": "如有费用，由运行这台服务器的一方决定。"
     },
     "age": {
@@ -145,7 +152,11 @@
     "confirmFirst": "先勾选上面的确认项，才能启用。",
     "later": "以后再说",
     "close": "关闭",
-    "accepted": "已启用 {{name}}"
+    "accepted": "已启用 {{name}}",
+    "acceptModel": "使用 {{model}}",
+    "acceptedModel": "现在可以使用 {{model}}",
+    "acceptCloud": "允许通过 {{name}} 使用云端模型",
+    "acceptedCloud": "已允许通过 {{name}} 使用云端模型"
   },
   "addKey": {
     "title": "添加 API 密钥",
@@ -155,6 +166,8 @@
     "baseUrlHint": "接口的基础地址，例如 https://llm.example.edu/v1",
     "key": "API 密钥",
     "keyHint": "保存之前，{{product}} 会向服务商发一个免费请求来验证它。",
+    "keyOptional": "API 密钥（可选）",
+    "keyOptionalHint": "这台电脑上的服务器可能不需要密钥。如果它要求提供，请填在这里。",
     "submit": "验证并添加",
     "checking": "正在验证…",
     "added": "已添加 {{name}}",
@@ -163,8 +176,10 @@
   },
   "replaceKey": {
     "title": "更换 {{name}} 的密钥",
+    "addTitle": "为 {{name}} 添加密钥",
     "submit": "验证并更换",
-    "done": "密钥已更换"
+    "done": "密钥已更换",
+    "added": "密钥已添加"
   },
   "features": {
     "title": "各项功能用哪个模型",
@@ -186,13 +201,13 @@
     },
     "badge": {
       "onDevice": "在这台电脑上",
-      "cloud": "在云端运行",
+      "cloud": "可能在云端运行",
       "noPrice": "无价格",
       "suggested": "推荐"
     },
     "noPriceNote": "{{product}} 没有 {{model}} 的价格，所以无法对它执行预算。第一次使用它之前会请你确认。",
     "thinkingNote": "{{model}} 每次回答前都会先思考，费用会更高。",
-    "cloudNote": "{{model}} 在云端运行，而不是在这台电脑上。",
+    "cloudNote": "{{model}} 可能在云端运行，而不是在这台电脑上。",
     "turnOnFirst": "先在上面启用一个模型，才能在这里选择。",
     "test": "测试",
     "testing": "正在测试…",
@@ -250,13 +265,15 @@
     "lessThan": "≈ 不到 {{amount}}",
     "free": "免费，在这台电脑上运行",
     "noPrice": "这个模型没有价格",
-    "cloudNoPrice": "在云端运行，无法预估费用",
+    "cloudNoPrice": "可能在云端运行，无法预估费用",
     "details": "最多输入 {{input}} 个 token，输出 {{output}} 个",
     "useUnpriced": "仍然使用",
     "useUnpricedHint": "对这个模型不执行预算，但它的运行仍会按 token 计数。",
     "overBudget": "这次运行会超出本月预算。",
     "overrideBudget": "这次允许超出预算",
-    "generate": "生成"
+    "generate": "生成",
+    "readDisclosure": "现在查看",
+    "checkingWhere": "正在确认这个模型在哪里运行…"
   },
   "blocked": {
     "course_policy_prohibited": "这门课的规则是“禁止使用 AI”，所以 {{product}} 不会发送它的任何内容。",
@@ -313,6 +330,7 @@
       "title": "请确认任课老师是否允许把课程资料分享给 AI 服务",
       "body": "{{product}} 已把 {{course}} 资料中的文字发送给 {{service}}。如果你不确定是否允许，请查看课程大纲或询问任课老师。",
       "answer": "这门课的资料可以分享吗？",
+      "answerCourse": "{{course}} 的资料可以分享吗？",
       "dismiss": "知道了"
     },
     "notAllowed": {

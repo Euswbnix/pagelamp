@@ -7,8 +7,8 @@
 // Scenarios: demo (default) · empty · expired · error · busy · crashed · auto-sync-due ·
 // light-synced · canvas-old · canvas-hidden-lists; updates (M0.4):
 // update-available · upgrader · upgrader-from-01 · updated · deb; worker-blocked (M0.5); AI setup
-// (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors; the
-// ChatGPT plan (M2), offered only in these: codex-not-installed · codex-signed-out · codex-plus ·
+// (M1): ai-key · ai-local · ai-unpriced · ai-budget · ai-disclosure-changed · ai-errors ·
+// ai-keychain-locked; the ChatGPT plan (M2), offered only in these: codex-not-installed · codex-signed-out · codex-plus ·
 // codex-edu · codex-api-key · codex-outdated-pin · codex-outdated-app · codex-free · codex-cap
 // (elsewhere the plan isn't offered, as in every build until OpenAI confirms in writing);
 // course weeks and lifecycle (M0.10): uoft-fall · phases · all-past (see courseScenarios.ts).
@@ -484,14 +484,6 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     step: () => sleep(syncStep),
     // The AI mock's estimate is the gate, as in the facade (created below; called later).
     aiGate: async (courseId, overrideBudget) => {
-      const estimate = await ai.estimateGeneration({
-        feature: "course_calendar",
-        courses: [courseId],
-      });
-      const block = estimate.would_block ?? null;
-      if (block && !(block === "budget_reached" && overrideBudget)) {
-        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
-      }
       const status = await ai.aiStatus();
       const choice = status.features.find((f) => f.feature === "course_calendar")?.choice;
       const backend = choice
@@ -500,11 +492,25 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       if (!choice || !backend) {
         throw new ApiError("blocked", "No model chosen.", { blocked: "no_model_chosen" });
       }
-      return {
-        backend_label: backend.label,
-        model: choice.model,
-        on_device: backend.kind === "local",
-      };
+      // Where the run goes, decided first (a server that can't be asked fails the run here),
+      // as the facade's reading does; then its blocks.
+      const onDevice = await ai.modelRunsHere(choice, true);
+      const estimate = await ai.estimateGeneration({
+        feature: "course_calendar",
+        courses: [courseId],
+      });
+      const block = estimate.would_block ?? null;
+      if (block && !(block === "budget_reached" && overrideBudget)) {
+        throw new ApiError("blocked", "The AI gate stopped this run.", { blocked: block });
+      }
+      // The "ai-errors" endpoint fails every request it gets, a reading's too.
+      const failure =
+        scenario === "ai-errors"
+          ? new ApiError("model", "The provider is limiting requests.", {
+              model_error: "rate_limited",
+            })
+          : null;
+      return { backend_label: backend.label, model: choice.model, on_device: onDevice, failure };
     },
     applyCalendar: (c, input, origin, aiLabel) => {
       // Accepted: the course's own calendar, and its dates no longer the copied ones.
@@ -767,6 +773,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     stepMs: syncStep,
     courses: () => db.courses,
     findCourse,
+    forgetAiRecords: () => courseProposals.forgetAi(),
   });
 
   /** A material with a local file on this computer (and, to open it, a document type). */
@@ -1375,8 +1382,10 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
       c.course.term_end =
         dates.exams_end ?? segment?.last_class ?? dates.last_class ?? c.synced.termEnd;
       c.course.term_source = "user";
-      c.timeline = next.timeline;
-      c.lifecycle = next.lifecycle;
+      // What saving dates doesn't change, like the facade (and applyCalendar): the notes' week
+      // comes from the materials, the last activity from the course's activity.
+      c.timeline = { ...next.timeline, notes_week: c.timeline.notes_week };
+      c.lifecycle = { ...next.lifecycle, last_activity: c.lifecycle.last_activity };
       return courseProposals.api.courseCalendar(courseId);
     },
 

@@ -3,7 +3,8 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { type AiBackendStatus, backendKey, type ModelProviderRecord } from "@/api/ai";
-import { useRemoveModelProvider } from "@/api/ai-queries";
+import { useModelProviderPresets, useRemoveModelProvider } from "@/api/ai-queries";
+import { toApiError } from "@/api/errors";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TechnicalDetails } from "@/features/sources/TechnicalDetails";
+import { firstKey } from "./ApiKeyDialog";
 import { DataPolicyLine } from "./DataPolicyLine";
 import { useAiErrorText } from "./useAiErrorText";
 
@@ -32,11 +35,21 @@ export function BackendRow({
   status: AiBackendStatus;
   /** The record behind an API-key or local backend (ai_status lists them apart). */
   provider: ModelProviderRecord | null;
-  onShowDisclosure: () => void;
+  /** Open a note: the backend's own, or (a server here) the one of its cloud models. */
+  onShowDisclosure: (note: BackendNote) => void;
   onReplaceKey: (provider: ModelProviderRecord) => void;
 }) {
   const { t } = useTranslation("ai");
   const headingId = useId();
+  const presets = useModelProviderPresets();
+  // By the server's kind, wherever it is: a key for a service that takes one (a custom server
+  // here, added without one, may get one later); none for Ollama or LM Studio, even remote.
+  const takesKey = !!provider && !!presets.data?.find((p) => p.id === provider.preset)?.needs_key;
+  const own = hasOwnNote(provider);
+  const cloud = status.cloud_disclosure ?? null;
+  const ownRead = status.disclosure_acknowledged === status.disclosure.version;
+  const cloudRead = !!cloud && status.cloud_disclosure_acknowledged === cloud.version;
+  const needs = status.state === "needs_disclosure";
   const StateIcon =
     status.state === "ready"
       ? CircleCheck
@@ -65,7 +78,10 @@ export function BackendRow({
           {t("backend.keyEnds", { last4: provider.key_last4 })}
         </p>
       ) : null}
-      <DataPolicyLine facts={status.disclosure} name={status.label} />
+      <DataPolicyLine
+        facts={own ? status.disclosure : (cloud ?? status.disclosure)}
+        name={status.label}
+      />
       {status.problems.length > 0 ? (
         <ul className="space-y-1 text-sm">
           {status.problems.map((problem) => (
@@ -74,22 +90,29 @@ export function BackendRow({
         </ul>
       ) : null}
       <div className="flex flex-wrap gap-2 pt-1">
-        {status.state === "needs_disclosure" ? (
-          <Button type="button" size="sm" onClick={onShowDisclosure} aria-describedby={headingId}>
-            {t("backend.turnOn")}
-          </Button>
-        ) : (
+        {own ? (
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            onClick={onShowDisclosure}
+            variant={needs && !ownRead ? "default" : "outline"}
+            onClick={() => onShowDisclosure("own")}
             aria-describedby={headingId}
           >
-            {t("backend.whatsShared")}
+            {needs && !ownRead ? t("backend.turnOn") : t("backend.whatsShared")}
           </Button>
-        )}
-        {provider && status.kind === "api_key" ? (
+        ) : null}
+        {cloud ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={needs && !cloudRead ? "default" : "outline"}
+            onClick={() => onShowDisclosure("cloud")}
+            aria-describedby={headingId}
+          >
+            {needs && !cloudRead ? t("backend.turnOnCloud") : t("backend.cloudShared")}
+          </Button>
+        ) : null}
+        {provider && takesKey ? (
           <Button
             type="button"
             size="sm"
@@ -97,13 +120,26 @@ export function BackendRow({
             onClick={() => onReplaceKey(provider)}
             aria-describedby={headingId}
           >
-            {t("backend.replaceKey")}
+            {firstKey(provider) ? t("backend.addKey") : t("backend.replaceKey")}
           </Button>
         ) : null}
         {provider ? <RemoveBackendButton provider={provider} describedBy={headingId} /> : null}
       </div>
     </li>
   );
+}
+
+/** Which of a backend's notes: its own, or the one of a model its server here runs in the cloud. */
+export type BackendNote = "own" | "cloud";
+
+/**
+ * Whether the backend's own note can apply: always off this computer and for the ChatGPT plan;
+ * on it, only for a server that says where a model runs (Ollama, LM Studio). A custom server
+ * here only ever needs the note of its cloud models (as the facade decides it).
+ */
+export function hasOwnNote(provider: ModelProviderRecord | null): boolean {
+  if (!provider?.on_device) return true;
+  return provider.preset === "ollama" || provider.preset === "lm_studio";
 }
 
 function RemoveBackendButton({
@@ -136,7 +172,11 @@ function RemoveBackendButton({
         type="button"
         size="sm"
         variant="ghost"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // A new try: an earlier one's error isn't this one's.
+          remove.reset();
+          setOpen(true);
+        }}
         aria-describedby={describedBy}
       >
         {t("backend.remove")}
@@ -147,9 +187,13 @@ function RemoveBackendButton({
           <AlertDialogDescription>{t("backend.removeBody", { name })}</AlertDialogDescription>
         </AlertDialogHeader>
         {remove.error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {errorText(remove.error)}
-          </p>
+          <div className="space-y-1">
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(remove.error)}
+            </p>
+            {/* Why, as the app said (e.g. a key the keychain kept: nothing was removed). */}
+            <TechnicalDetails lines={[toApiError(remove.error).message]} subject={name} />
+          </div>
         ) : null}
         <AlertDialogFooter>
           <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>

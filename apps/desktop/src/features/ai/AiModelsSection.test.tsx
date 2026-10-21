@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMockApi } from "@/api/mock";
 import { useSyncStore } from "@/stores/sync";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/updates";
@@ -156,6 +157,116 @@ describe("Settings → AI models", () => {
     ).toBeInTheDocument();
   });
 
+  it("adds a custom server on this computer without a key, and asks one of any other", async () => {
+    const { user, api } = renderRoute("/settings");
+    const add = vi.spyOn(api, "addModelProvider");
+    const section = await aiSection();
+    await user.click(await within(section).findByRole("button", { name: "Add an API key" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add an API key" });
+    await user.click(within(dialog).getByRole("combobox", { name: "Provider" }));
+    await user.click(await screen.findByRole("option", { name: "Custom (OpenAI-compatible)" }));
+    const address = within(dialog).getByLabelText("Address");
+    // Elsewhere, the key is needed.
+    await user.type(address, "https://llm.example.edu/v1");
+    await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
+    expect(within(dialog).getByLabelText("API key")).toHaveAttribute("aria-invalid", "true");
+    expect(add).not.toHaveBeenCalled();
+    // On this computer, it may be left out.
+    await user.clear(address);
+    await user.type(address, "http://localhost:8080/v1");
+    const key = within(dialog).getByLabelText("API key (optional)");
+    expect(key).toHaveAccessibleDescription(/may not need a key/);
+    // The key flagged as missing before isn't a mistake any more.
+    expect(key).not.toHaveAttribute("aria-invalid");
+    expect(within(dialog).queryByText("Please check what you entered.")).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Check and add" }));
+    expect(add).toHaveBeenCalledWith("custom", "http://localhost:8080/v1", null);
+    // Its models may run anywhere: the note to read is the one of its cloud models.
+    const sheet = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses cloud models through localhost:8080",
+    });
+    expect(
+      within(sheet).getByText(
+        /^localhost:8080 runs on this computer, but PageLamp can't confirm that each of its models does/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(sheet).getByText(/^A model may run in the cloud through .+, not on this computer/),
+    ).toBeInTheDocument();
+    await user.click(
+      within(sheet).getByRole("button", { name: "Allow cloud models through localhost:8080" }),
+    );
+    // Set up without a key, and nothing says one is missing.
+    const row = (await within(section).findByRole("heading", { name: "localhost:8080" })).closest(
+      "li",
+    );
+    if (!row) throw new Error("no row");
+    expect(within(row).queryByText(/key is missing/)).toBeNull();
+    expect(within(row).getByText("Ready")).toBeInTheDocument();
+    // Only the note of its cloud models: nothing says what it gets stays here.
+    expect(
+      within(row).getByRole("button", { name: "What its cloud models get" }),
+    ).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "What's shared" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Review and turn on" })).toBeNull();
+    expect(within(row).queryByText(/Stays on this computer|doesn't leave/)).toBeNull();
+    expect(within(row).getByText(/may run in the cloud/)).toBeInTheDocument();
+    // A key can still be given later.
+    await user.click(within(row).getByRole("button", { name: "Add a key" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Add a key for localhost:8080" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a server's note of its cloud models apart from its own, and turns them on", async () => {
+    // Ollama's own note is read; one feature now uses a model it runs in the cloud.
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-local" });
+    await mock.setFeatureModel("weekly_explanation", {
+      backend: { kind: "provider", provider_id: "ollama" },
+      model: "gpt-oss:120b-cloud",
+      effort: "lowest",
+    });
+    const { user, api } = renderRoute("/settings", { api: mock });
+    const read = vi.spyOn(api, "acknowledgeModelDisclosure");
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    // The model picked may run in the cloud: said so, never as a fact.
+    expect(
+      await within(section).findByText(
+        "gpt-oss:120b-cloud may run in the cloud, not on this computer.",
+      ),
+    ).toBeInTheDocument();
+    // Its own note stays as read; the cloud models' one is asked for, as the step to take.
+    expect(within(row).getByRole("button", { name: "What's shared" })).toHaveAttribute(
+      "data-variant",
+      "outline",
+    );
+    const allow = within(row).getByRole("button", { name: "Allow its cloud models" });
+    expect(allow).toHaveAttribute("data-variant", "default");
+    // A server that takes no key gets no key button.
+    expect(within(row).queryByRole("button", { name: /key/ })).toBeNull();
+    await user.click(allow);
+    const sheet = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses cloud models through Ollama",
+    });
+    expect(
+      within(sheet).getByText(/^A model may run in the cloud through Ollama/),
+    ).toBeInTheDocument();
+    expect(within(sheet).queryByText(/this model/)).toBeNull();
+    await user.click(
+      within(sheet).getByRole("button", { name: "Allow cloud models through Ollama" }),
+    );
+    expect(read).toHaveBeenCalledWith(
+      { kind: "provider", provider_id: "ollama" },
+      false,
+      expect.any(Number),
+    );
+    expect(
+      await within(row).findByRole("button", { name: "What its cloud models get" }),
+    ).toBeInTheDocument();
+  });
+
   it("adds a running Ollama in one click; nothing leaves this computer", async () => {
     const { user } = renderRoute("/settings");
     const section = await aiSection();
@@ -179,6 +290,90 @@ describe("Settings → AI models", () => {
     await user.click(within(section).getByRole("button", { name: "Review and turn on" }));
     const sheet = await screen.findByRole("dialog", { name: "Before PageLamp uses Anthropic" });
     expect(within(sheet).getByText("This changed since you last read it.")).toBeInTheDocument();
+  });
+
+  it("says which note changed: the one of a server's cloud models apart from its own", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-local" });
+    const status = mock.aiStatus;
+    // Its cloud models' note was accepted in an older version; its own is current.
+    vi.spyOn(mock, "aiStatus").mockImplementation(async () => {
+      const s = await status();
+      return {
+        ...s,
+        backends: s.backends.map((b) =>
+          b.label === "Ollama" && b.cloud_disclosure
+            ? { ...b, cloud_disclosure_acknowledged: b.cloud_disclosure.version - 1 }
+            : b,
+        ),
+      };
+    });
+    const { user } = renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    await user.click(within(row).getByRole("button", { name: "What's shared" }));
+    const own = await screen.findByRole("dialog", { name: "Before PageLamp uses Ollama" });
+    expect(within(own).queryByText("This changed since you last read it.")).toBeNull();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(within(row).getByRole("button", { name: /cloud models/ }));
+    const cloud = await screen.findByRole("dialog", {
+      name: "Before PageLamp uses cloud models through Ollama",
+    });
+    expect(within(cloud).getByText("This changed since you last read it.")).toBeInTheDocument();
+  });
+
+  it("offers to replace a key missing from the keychain, not to add a first one", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0, scenario: "ai-key" });
+    const status = mock.aiStatus;
+    vi.spyOn(mock, "aiStatus").mockImplementation(async () => {
+      const s = await status();
+      return {
+        ...s,
+        providers: s.providers.map((p) => ({ ...p, key_last4: null })),
+        backends: s.backends.map((b) => ({ ...b, problems: ["key_missing" as const] })),
+      };
+    });
+    const { user } = renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "OpenAI" })).closest("li");
+    if (!row) throw new Error("no OpenAI row");
+    await user.click(await within(row).findByRole("button", { name: "Replace key" }));
+    expect(within(row).queryByRole("button", { name: "Add a key" })).toBeNull();
+    expect(
+      await screen.findByRole("dialog", { name: "Replace the key for OpenAI" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says why a provider stays when the keychain keeps its key", async () => {
+    const { user } = renderRoute("/settings", { scenario: "ai-keychain-locked" });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "OpenAI" })).closest("li");
+    if (!row) throw new Error("no OpenAI row");
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Remove OpenAI?" });
+    await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+    expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Technical details for OpenAI" }));
+    expect(within(dialog).getByText(/Nothing was removed/)).toBeInTheDocument();
+    expect(screen.queryByText("OpenAI removed")).toBeNull();
+    // A new try starts without the earlier error.
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(within(row).getByRole("button", { name: "Remove" }));
+    const again = await screen.findByRole("alertdialog", { name: "Remove OpenAI?" });
+    expect(within(again).queryByRole("alert")).toBeNull();
+  });
+
+  it("offers no key for Ollama on another computer", async () => {
+    const mock = createMockApi({ latencyMs: 0, syncStepMs: 0 });
+    await mock.addModelProvider("ollama", "https://gpu.example.edu:11434", null);
+    renderRoute("/settings", { api: mock });
+    const section = await aiSection();
+    const row = (await within(section).findByRole("heading", { name: "Ollama" })).closest("li");
+    if (!row) throw new Error("no Ollama row");
+    // Its row lists its actions (Remove at least) once the presets are in.
+    await within(row).findByRole("button", { name: "Remove" });
+    await waitFor(() => expect(within(row).queryByRole("button", { name: /key/ })).toBeNull());
   });
 
   it("chooses and tests a model per feature", async () => {
