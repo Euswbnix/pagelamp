@@ -22,6 +22,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, UsageRecord};
 use pagelamp_core::ai_gate::RenderedPrompt;
+use pagelamp_core::store::usage_cutoff;
 use pagelamp_llm::estimate::{cjk_tenths, count_tokens_upper, usage_cost};
 use pagelamp_llm::request::Notice;
 use pagelamp_llm::{CancellationToken, GenerateRequest, LlmError, OutputSpec, StreamEvent, Usage};
@@ -94,6 +95,12 @@ impl Runs {
         }
     }
 
+    /// Stop every run of this process ("Remove all AI data"); returns how many.
+    pub(crate) fn cancel_all(&self) -> usize {
+        let running = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        running.values().inspect(|run| run.cancel.cancel()).count()
+    }
+
     /// Run `id` reads `course_id`'s materials (for `destination`, when known).
     pub(crate) fn reads_course(&self, id: &str, course_id: &str, destination: Option<Destination>) {
         let mut running = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -145,6 +152,10 @@ pub(crate) struct RunRequest<'a> {
     pub cancel: &'a CancellationToken,
     pub feature: AiFeature,
     pub choice: &'a ModelChoice,
+    /// Where the model runs, as the run decided it before building its context
+    /// (`App::run_destination`): the run's "on this computer" label and its billing follow it,
+    /// never the provider's address alone.
+    pub destination: Destination,
     pub prompt: RenderedPrompt,
     pub output: OutputSpec,
     pub max_output_tokens: u32,
@@ -180,6 +191,9 @@ pub(crate) enum Billing<'a> {
     Priced(&'a pagelamp_llm::ProviderProfile),
     /// A model on this computer.
     OnDevice,
+    /// A model that a server on this computer runs in the cloud: the price list doesn't know it
+    /// (it would count the server as free).
+    Unpriced,
     /// A run of the ChatGPT plan (its weekly cap counts it).
     Plan,
 }
@@ -261,7 +275,7 @@ impl App {
         let provider = self.provider_for(&request.choice.backend)?;
         let backend_label = provider.row.label.clone();
         let profile = provider.profile.clone();
-        let on_device = profile.on_device();
+        let on_device = request.destination == Destination::OnDevice;
         let backend = provider.backend()?;
         let model = request.choice.model.clone();
         on_event(GenEvent::Started {
@@ -309,6 +323,8 @@ impl App {
             .await;
         let billing = if on_device {
             Billing::OnDevice
+        } else if profile.on_device() {
+            Billing::Unpriced
         } else {
             Billing::Priced(&profile)
         };
@@ -362,7 +378,8 @@ impl App {
         }
     }
 
-    /// Write a run's `ai_usage` row and return its counts and cost.
+    /// Write a run's `ai_usage` row and return its counts and cost. A run of a provider removed
+    /// meanwhile (`ai remove`, from this or another process) writes nothing.
     pub(crate) fn record_run_usage(
         &self,
         backend: &str,
@@ -378,10 +395,13 @@ impl App {
                 None => (None, "unpriced"),
             },
             Billing::OnDevice => (Some(0), "free_on_device"),
+            Billing::Unpriced => (None, "unpriced"),
             Billing::Plan => (None, "plan"),
         };
-        self.write_store()?.record_ai_usage(&UsageRecord {
-            at: Utc::now(),
+        let store = self.write_store()?;
+        let now = Utc::now();
+        let record = UsageRecord {
+            at: now,
             backend: backend.to_string(),
             model: model.to_string(),
             feature,
@@ -394,7 +414,20 @@ impl App {
             cost_basis: cost_basis.to_string(),
             estimated: usage.estimated,
             outcome: outcome.to_string(),
+        };
+        store.in_transaction(|store| {
+            if let Some(provider_id) = backend.strip_prefix("provider:")
+                && store.model_provider(provider_id)?.is_none()
+            {
+                return Ok(());
+            }
+            store.record_ai_usage(&record)
         })?;
+        // The ledger's 13 months: older lines go with each new one (and at each sync). Never
+        // an error for a run that ended.
+        if let Err(err) = store.prune_ai_usage(usage_cutoff(now)) {
+            tracing::warn!(target: "pagelamp::ai", "pruning the usage ledger failed: {err}");
+        }
         Ok(RunCost {
             usage: TokenUsage {
                 input_tokens: usage.input_uncached + usage.cache_read + usage.cache_write,

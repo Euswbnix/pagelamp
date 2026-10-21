@@ -56,7 +56,6 @@ export function ExplainTab({
   const run = useExplanation(course.id);
   const remove = useDeleteExplanation(course.id);
   const [shownId, setShownId] = useState<string | null>(null);
-  const [reminderClosed, setReminderClosed] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   /** Runs started: each one's estimates start again (going over the budget is per run). */
   const [runs, setRuns] = useState(0);
@@ -66,7 +65,12 @@ export function ExplainTab({
   /** After the shown explanation changes or goes: its region, else the tab's heading. */
   const focusResult = () =>
     requestAnimationFrame(() => (resultRef.current ?? titleRef.current)?.focus());
-  const { state, stop, sentInclude } = run;
+  const { state, stop, sentInclude, reminder, remindedBy, settle } = run;
+  // Question (b) answered meanwhile (in the Policy tab, or elsewhere): the reminder is done.
+  const sharing = materialSharing(course);
+  useEffect(() => {
+    if (reminder && (sharing === "allowed" || sharing === "not_allowed")) settle();
+  }, [reminder, sharing, settle]);
   // A run's explanation replaces its progress (and Stop): the focus goes to the result.
   useEffect(() => {
     if (state.phase === "done") resultRef.current?.focus();
@@ -111,6 +115,24 @@ export function ExplainTab({
     (fresh && fresh.week === week ? fresh : null) ??
     list[0] ??
     null;
+  // The course's question (b) reminder, whichever run said it: with the explanation whose run
+  // said it while that is shown, else under the run's outcome (a run that failed or was stopped
+  // after it sent, or a reading, says it too). Closing it goes back to where it was.
+  const withResult =
+    !!fresh &&
+    shown?.meta.generation_id === fresh.meta.generation_id &&
+    remindedBy === fresh.meta.generation_id;
+  const sharingReminder = reminder ? (
+    <MaterialSharingReminder
+      courseId={course.id}
+      courseName={course.code ?? course.name}
+      service={reminder.service}
+      onClose={() => {
+        settle();
+        requestAnimationFrame(() => (withResult ? resultRef.current : titleRef.current)?.focus());
+      }}
+    />
+  ) : null;
   const weekOptions = weeks.data?.available_weeks ?? (week ? [week] : []);
   // No week (weeks unknown, before or after the teaching weeks): the facade explains the
   // materials of the last 14 days.
@@ -198,6 +220,7 @@ export function ExplainTab({
           />
         )}
         <ExplainOutcome state={state} />
+        {withResult ? null : sharingReminder}
       </div>
 
       {shown ? (
@@ -257,14 +280,7 @@ export function ExplainTab({
               />
             }
           />
-          {shown.sharing_reminder && reminderClosed !== shown.meta.generation_id ? (
-            <MaterialSharingReminder
-              courseId={course.id}
-              courseName={course.code ?? course.name}
-              service={shown.meta.backend_label}
-              onClose={() => setReminderClosed(shown.meta.generation_id)}
-            />
-          ) : null}
+          {withResult ? sharingReminder : null}
         </section>
       ) : null}
 

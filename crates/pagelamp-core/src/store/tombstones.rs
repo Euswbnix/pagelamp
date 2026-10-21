@@ -12,11 +12,12 @@
 //!   then clears `files_pending`.
 //! - The tombstone matches `(source_id, external_id)`; a sync skips `pending` and `purged` ones.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use chrono::Duration;
 use rusqlite::{Row, params};
 
+use super::migrate_v4::MIGRATED_FINGERPRINT;
 use super::{Store, TextValue, expect_changed, get_opt_value, get_value, opt_date_text, ts_text};
 use crate::Result;
 use crate::calendar::CourseCalendar;
@@ -24,6 +25,7 @@ use crate::model::Timestamp;
 use crate::removal::{
     CourseSettings, PURGE_AFTER_DAYS, RemovalReason, Tombstone, TombstoneState, dates_only,
 };
+use crate::term::{CONFIRMED_DATES_KEY, CalendarOrigin};
 
 impl TextValue for RemovalReason {
     fn parse_text(text: &str) -> Option<Self> {
@@ -132,6 +134,7 @@ impl Store {
             .get_course(course_id)?
             .ok_or_else(|| crate::Error::NotFound(format!("course '{course_id}'")))?;
         let data = self.course_term_data(course_id)?.unwrap_or_default();
+        let accepted = self.accepted_calendar_snapshot(course_id)?;
         Ok(CourseSettings {
             ai_policy: Some(course.ai_policy),
             ai_policy_note: course.ai_policy_note,
@@ -140,8 +143,15 @@ impl Store {
             hidden: course.hidden,
             user_term_start: data.user_term_start,
             user_term_end: data.user_term_end,
+            dates_confirmed: self
+                .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
+                .is_some_and(|ids| ids.contains(course_id)),
             keep_current_until: data.keep_current_until,
-            calendar: self.accepted_calendar_json(course_id)?.map(dates_only),
+            calendar: accepted
+                .as_ref()
+                .map(|(calendar, ..)| dates_only(calendar.clone())),
+            calendar_origin: accepted.as_ref().and_then(|(_, origin, _)| *origin),
+            calendar_fingerprint: accepted.map(|(.., fingerprint)| fingerprint),
             access_restricted: data.lms.access_restricted == Some(true),
         })
     }
@@ -156,15 +166,22 @@ impl Store {
         Ok(u32::try_from(n).unwrap_or(u32::MAX))
     }
 
-    /// The accepted calendar's `calendar_json`, if the course has one.
-    fn accepted_calendar_json(&self, course_id: &str) -> Result<Option<CourseCalendar>> {
-        let text: Option<String> = self.query_opt(
-            "SELECT calendar_json FROM course_calendars
+    /// The accepted calendar, with its origin and its fingerprint (a restore puts them back).
+    fn accepted_calendar_snapshot(
+        &self,
+        course_id: &str,
+    ) -> Result<Option<(CourseCalendar, Option<CalendarOrigin>, String)>> {
+        let row: Option<(String, String, String)> = self.query_opt(
+            "SELECT calendar_json, origin, fingerprint FROM course_calendars
              WHERE course_id = ?1 AND state = 'accepted'",
             [course_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        Ok(text.and_then(|text| serde_json::from_str(&text).ok()))
+        Ok(row.and_then(|(json, origin, fingerprint)| {
+            let calendar = serde_json::from_str(&json).ok()?;
+            let origin = serde_json::from_value(serde_json::Value::String(origin)).ok();
+            Some((calendar, origin, fingerprint))
+        }))
     }
 
     /// Every tombstone, newest removal first.
@@ -246,6 +263,8 @@ impl Store {
             // What the last sync noted about the course (titles and addresses of what it
             // read and didn't) is kept in the settings table: it goes with the course.
             crate::coverage::remove(self, course_id)?;
+            // So do its entries in the dates records (confirmed, copied from or to it).
+            crate::term::forget_dates_records(self, |id| id == course_id)?;
             // The delete triggers only add FTS5 delete keys; merge the segments so the old
             // terms go.
             self.conn
@@ -299,8 +318,9 @@ impl Store {
     }
 
     /// A restored course gets the student's settings back: AI policy and note, access, the
-    /// materials question, hidden, term dates, "I'm still taking this", and the calendar as a
-    /// `restored` calendar in force. Then the tombstone goes.
+    /// materials question, hidden, term dates (confirmed again if they were), "I'm still taking
+    /// this", and its calendar in force as it was, with its origin and fingerprint (a record
+    /// that kept neither brings it back as `restored`). Then the tombstone goes.
     pub fn apply_restored_settings(&self, course_id: &str, now: Timestamp) -> Result<()> {
         self.atomic(|| {
             let tombstone = self.require_tombstone(course_id)?;
@@ -326,15 +346,39 @@ impl Store {
                     opt_date_text(s.keep_current_until)
                 ],
             )?;
+            if s.dates_confirmed && (s.user_term_start.is_some() || s.user_term_end.is_some()) {
+                let mut confirmed = self
+                    .setting_or_absent::<BTreeSet<String>>(CONFIRMED_DATES_KEY)?
+                    .unwrap_or_default();
+                if confirmed.insert(course_id.to_string()) {
+                    self.set_setting(CONFIRMED_DATES_KEY, &confirmed)?;
+                }
+            }
             if let Some(calendar) = &s.calendar {
+                // As it was: a 0.1 calendar the student never checked stays `legacy`. Only a
+                // calendar the record holds in full keeps its fingerprint (the v4 data step's
+                // `legacy`, and the student's own). One a reader proposed comes back without
+                // its labels and evidence, so it is `restored`: the same materials may then be
+                // proposed again in full.
+                let origin = s.calendar_origin.unwrap_or(CalendarOrigin::Restored);
+                let fingerprint = match s.calendar_fingerprint.as_deref() {
+                    Some(kept)
+                        if kept == MIGRATED_FINGERPRINT || origin == CalendarOrigin::User =>
+                    {
+                        kept
+                    }
+                    _ => "restored",
+                };
                 self.conn.execute(
                     "INSERT INTO course_calendars
                          (course_id, origin, state, calendar_json, evidence_json, checks_json,
                           manifest_json, fingerprint, created_at, decided_at)
-                     VALUES (?1, 'restored', 'accepted', ?2, '[]', '{}', '[]', 'restored', ?3, ?3)",
+                     VALUES (?1, ?2, 'accepted', ?3, '[]', '{}', '[]', ?4, ?5, ?5)",
                     params![
                         course_id,
+                        origin.as_str(),
                         serde_json::to_string(calendar).expect("calendars serialise"),
+                        fingerprint,
                         ts_text(now)
                     ],
                 )?;

@@ -90,11 +90,17 @@ export function createPlanMock(deps: {
         throw new ApiError("cancelled", "The plan was stopped.");
       }
     };
-    onEvent({ type: "started", generation_id: generationId, ...run });
+    // Who it runs on, nothing else of the gate's answer.
+    const { backend_label, model, on_device } = run;
+    onEvent({ type: "started", generation_id: generationId, backend_label, model, on_device });
     for (const stage of ["building_context", "waiting_for_model", "scheduling"] as const) {
       onEvent({ type: "stage", stage });
       await deps.step();
       stop();
+      if (stage === "waiting_for_model" && run.failure) {
+        onEvent({ type: "finished", ok: false });
+        throw run.failure;
+      }
     }
     const usage = { input_tokens: 9_800, cached_input_tokens: 0, output_tokens: 1_600 };
     onEvent({ type: "usage", usage });

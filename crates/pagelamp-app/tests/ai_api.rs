@@ -211,7 +211,7 @@ async fn bad_addresses_coding_plans_and_rejected_keys_are_refused_and_nothing_is
         .unwrap_err();
     assert_eq!(plan_key.blocked, Some(BlockReason::CodingPlanKey));
     let no_key = app
-        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .add_model_provider("custom", Some("https://llm.example.edu/v1"), None)
         .await
         .unwrap_err();
     assert_eq!(no_key.kind, AppErrorKind::Invalid);
@@ -271,6 +271,19 @@ async fn status_asks_for_the_disclosure_then_is_ready() {
         app.ai_status().unwrap().backends[0].state,
         BackendState::Ready
     );
+    // A model routed to it needs the same note: still ready.
+    app.set_feature_model(
+        AiFeature::WeeklyExplanation,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "gpt-6-luna".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let routed = app.ai_status().unwrap();
+    assert_eq!(routed.backends[0].state, BackendState::Ready);
+    assert_eq!(routed.backends[0].cloud_disclosure, None);
 
     // A missing key is a setup problem.
     secrets.delete("llm:openai").unwrap();
@@ -546,6 +559,15 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
     let temp = tempfile::tempdir().unwrap();
     let (app, _) = app_in(temp.path());
     seed_course(&app);
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"models": [
+            {"name": "local-model"},
+            {"name": "big-model", "remote_host": "https://ollama.com:443"},
+        ]})))
+        .mount(&server)
+        .await;
     Store::open(&app.db_path())
         .unwrap()
         .insert_model_provider(&ProviderRow {
@@ -553,7 +575,7 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
             preset: "ollama".into(),
             label: "Ollama".into(),
             wire: "ollama_native".into(),
-            base_url: "http://127.0.0.1:11434".into(),
+            base_url: server.uri(),
             created_at: Utc::now().trunc_subsecs(0),
             last_probe_json: None,
         })
@@ -575,16 +597,126 @@ async fn a_model_on_this_computer_still_gets_a_not_allowed_course_and_costs_noth
     app.set_course_material_sharing("DEMO101", MaterialSharing::NotAllowed)
         .unwrap();
     app.set_monthly_budget(Some(0)).unwrap();
-    let estimate = app
-        .estimate_generation(&EstimateRequest::WeeklyExplanation {
+    let estimate = || {
+        app.estimate_generation(&EstimateRequest::WeeklyExplanation {
             course: "DEMO101".into(),
             week: Some(3),
             include: Vec::new(),
         })
+        .unwrap()
+    };
+    // Until Ollama has listed its models, nothing says this one runs here: its price is unknown.
+    let unlisted = estimate();
+    assert_eq!(unlisted.would_block, None, "{unlisted:?}");
+    assert_eq!(unlisted.micro_usd_upper, None);
+    app.list_models(&backend).await.unwrap();
+    let listed = estimate();
+    assert_eq!(listed.would_block, None, "{listed:?}");
+    assert_eq!(listed.micro_usd_upper, Some(0));
+    assert!(listed.input_tokens > 0);
+    // A model it listed as one it runs in the cloud, though its name has no cloud tag.
+    app.set_feature_model(
+        AiFeature::WeeklyExplanation,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "big-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let remote = estimate();
+    assert_eq!(
+        remote.would_block,
+        Some(BlockReason::MaterialSharingNotAllowed)
+    );
+    assert_eq!(remote.micro_usd_upper, None);
+}
+
+/// A `custom` server on this computer may take no key (many local servers don't): nothing goes
+/// to the keychain, no key counts as missing, and its models count as in the cloud.
+#[tokio::test]
+async fn a_custom_server_here_may_take_no_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some("  "))
+        .await
         .unwrap();
-    assert_eq!(estimate.would_block, None, "{estimate:?}");
-    assert_eq!(estimate.micro_usd_upper, Some(0));
-    assert!(estimate.input_tokens > 0);
+    assert_eq!(record.key_last4, None);
+    assert_eq!(
+        secrets.get(&format!("llm:{}", record.provider_id)).unwrap(),
+        None
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization"))
+    );
+    let backend = BackendRef::Provider {
+        provider_id: record.provider_id.clone(),
+    };
+    let status = app.ai_status().unwrap();
+    let row = status
+        .backends
+        .iter()
+        .find(|b| b.backend == backend)
+        .unwrap();
+    assert_eq!(row.state, BackendState::NeedsDisclosure);
+    assert!(!row.problems.contains(&BackendProblem::KeyMissing));
+    let doctor = app.doctor().unwrap();
+    assert_eq!(doctor.ai.providers[0].key_present, None);
+    let models = app.list_models(&backend).await.unwrap();
+    assert!(models[0].runs_in_cloud && !models[0].price_known);
+    // Its models count as in the cloud, so its note is the cloud one: accepted, it is ready
+    // (what `ai use … --yes` does).
+    app.set_feature_model(
+        AiFeature::CourseCalendar,
+        Some(ModelChoice {
+            backend: backend.clone(),
+            model: "local-model".into(),
+            effort: Effort::Lowest,
+        }),
+    )
+    .unwrap();
+    let state = |app: &App| {
+        app.ai_status()
+            .unwrap()
+            .backends
+            .into_iter()
+            .find(|b| b.backend == backend)
+            .unwrap()
+    };
+    let row = state(&app);
+    assert_eq!(row.state, BackendState::NeedsDisclosure);
+    let cloud = row
+        .cloud_disclosure
+        .expect("a server here has a cloud note");
+    assert!(!cloud.on_device);
+    let (facts, acknowledged) = app.model_disclosure(&backend, false).unwrap();
+    assert_eq!((facts.version, acknowledged), (cloud.version, false));
+    app.acknowledge_model_disclosure(&backend, false, facts.version)
+        .unwrap();
+    let row = state(&app);
+    assert_eq!(row.state, BackendState::Ready);
+    assert_eq!(row.cloud_disclosure_acknowledged, Some(cloud.version));
+    assert_eq!(row.disclosure_acknowledged, None);
+    // A key can still be added later.
+    let keyed = app
+        .update_model_provider_key(&record.provider_id, KEY)
+        .await
+        .unwrap();
+    assert_eq!(keyed.key_last4.as_deref(), Some("7731"));
+    assert_eq!(
+        app.doctor().unwrap().ai.providers[0].key_present,
+        Some(true)
+    );
 }
 
 #[tokio::test]
@@ -619,7 +751,8 @@ async fn models_and_a_test_come_from_the_provider() {
     };
     let models = app.list_models(&backend).await.unwrap();
     assert_eq!(models[0].id, "local-model");
-    assert!(models[0].on_device && models[0].price_known);
+    // A server here other than Ollama or LM Studio can't say where it runs a model.
+    assert!(!models[0].on_device && models[0].runs_in_cloud && !models[0].price_known);
 
     let good = app.test_model(&backend, "local-model").await.unwrap();
     assert!(good.ok, "{good:?}");
@@ -819,9 +952,10 @@ async fn local_work_and_keyless_providers_never_touch_the_keychain() {
         1,
         "only openai's key was read"
     );
-    // Removing everything deletes only the keys that exist.
+    // Removing everything deletes only the keys that exist: openai's, before its row goes
+    // and once more after (a key an update stored meanwhile goes too).
     app.remove_all_ai_data().unwrap();
-    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
 
 #[tokio::test]
@@ -1049,4 +1183,678 @@ async fn a_local_server_names_its_preset_and_the_provider_already_added_for_it()
             (LocalServerKind::LmStudio, "lm_studio", None)
         ]
     );
+}
+
+/// A keychain that can't be reached (no Secret Service, no default keychain).
+struct NoKeychain;
+
+impl SecretBackend for NoKeychain {
+    fn get(&self, _: &str) -> pagelamp_core::Result<Option<String>> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+    fn set(&self, _: &str, _: &str) -> pagelamp_core::Result<()> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+    fn delete(&self, _: &str) -> pagelamp_core::Result<()> {
+        Err(pagelamp_core::Error::Secret("no keychain".into()))
+    }
+}
+
+/// Without a keychain, a custom server here works without a key and can be removed; a
+/// provider that needs a key still stops at the keychain.
+#[tokio::test]
+async fn a_keyless_server_here_needs_no_keychain() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(NoKeychain)).unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: record.provider_id.clone(),
+    };
+    assert_eq!(app.ai_status().unwrap().backends.len(), 1);
+    assert_eq!(
+        app.list_models(&backend).await.unwrap()[0].id,
+        "local-model"
+    );
+    app.remove_model_provider(&record.provider_id).unwrap();
+    assert!(app.ai_status().unwrap().providers.is_empty());
+
+    Store::open(&app.db_path())
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "openai".into(),
+            preset: "openai".into(),
+            label: "OpenAI".into(),
+            wire: "openai_responses".into(),
+            base_url: "https://api.openai.com/v1".into(),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    assert!(app.ai_status().is_err());
+    // Its key can't be deleted: nothing is removed, so it can be tried again.
+    let err = app.remove_model_provider("openai").unwrap_err();
+    assert!(err.message.contains("llm:openai"), "{}", err.message);
+    assert!(
+        Store::open(&app.db_path())
+            .unwrap()
+            .model_provider("openai")
+            .unwrap()
+            .is_some()
+    );
+}
+
+/// A keychain that keeps keys but won't delete them (locked, or access refused).
+#[derive(Default)]
+struct StuckKeychain(MemorySecrets);
+
+impl SecretBackend for StuckKeychain {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.0.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.0.set(id, secret)
+    }
+    fn delete(&self, _: &str) -> pagelamp_core::Result<()> {
+        Err(pagelamp_core::Error::Secret("access refused".into()))
+    }
+}
+
+/// A key the keychain won't delete is never left behind: removing its provider changes
+/// nothing and says the key is still there; removing all AI data keeps that provider and its
+/// key, names it, and takes the rest.
+#[tokio::test]
+async fn a_key_the_keychain_wont_delete_keeps_its_provider() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = mock_server().await;
+    // A custom server here, added with a key: that key must go with it too.
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    let account = format!("llm:{}", record.provider_id);
+    let err = app.remove_model_provider(&record.provider_id).unwrap_err();
+    assert!(err.message.contains(&account), "{}", err.message);
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    assert_eq!(keychain.get(&account).unwrap().as_deref(), Some(KEY));
+
+    // A second provider, keyless: removing all takes it and leaves the stuck one, named.
+    let keyless = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&keyless)
+        .await;
+    app.add_model_provider("custom", Some(&format!("{}/v1", keyless.uri())), None)
+        .await
+        .unwrap();
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(
+        err.message.contains("Removed 1 provider(s)"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains(&format!("`{account}`")),
+        "{}",
+        err.message
+    );
+    let left: Vec<String> = app
+        .ai_status()
+        .unwrap()
+        .providers
+        .into_iter()
+        .map(|p| p.provider_id)
+        .collect();
+    assert_eq!(left, vec![record.provider_id.clone()]);
+    assert_eq!(keychain.get(&account).unwrap().as_deref(), Some(KEY));
+}
+
+/// A provider added without a key never uses a key that an earlier provider at the same
+/// address left in the keychain, and adding it clears that entry.
+#[tokio::test]
+async fn an_old_key_at_the_same_address_doesn_t_come_back() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let url = format!("{}/v1", server.uri());
+    let first = app
+        .add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap();
+    // The row goes, the key stays (as a removal that failed halfway once could leave it).
+    Store::open(&app.db_path())
+        .unwrap()
+        .delete_model_provider(&first.provider_id)
+        .unwrap();
+    let account = format!("llm:{}", first.provider_id);
+    assert!(secrets.get(&account).unwrap().is_some());
+    let again = app
+        .add_model_provider("custom", Some(&url), None)
+        .await
+        .unwrap();
+    assert_eq!(again.provider_id, first.provider_id);
+    assert_eq!(again.key_last4, None);
+    assert_eq!(secrets.get(&account).unwrap(), None);
+    // Even if the entry were back, it isn't read: the list goes without a key.
+    secrets.set(&account, KEY).unwrap();
+    let backend = BackendRef::Provider {
+        provider_id: again.provider_id.clone(),
+    };
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    app.list_models(&backend).await.unwrap();
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|r| !r.headers.contains_key("authorization"))
+    );
+    assert_eq!(app.ai_status().unwrap().providers[0].key_last4, None);
+    // A key set later is used, and removing the provider deletes it.
+    app.update_model_provider_key(&again.provider_id, KEY)
+        .await
+        .unwrap();
+    assert_eq!(
+        app.ai_status().unwrap().providers[0].key_last4.as_deref(),
+        Some("7731")
+    );
+    app.remove_model_provider(&again.provider_id).unwrap();
+    assert_eq!(secrets.get(&account).unwrap(), None);
+}
+
+/// The keychain entry of a custom server here added without a key, as the keychain holds it.
+async fn keyless_with_an_entry(app: &App, keychain: &StuckKeychain) -> (String, String) {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    let account = format!("llm:{}", record.provider_id);
+    // An entry that got there anyway (another tool, an old version): it is never read.
+    keychain.0.set(&account, KEY).unwrap();
+    (record.provider_id, account)
+}
+
+/// A provider added without a key is still looked for in the keychain when it goes: an entry
+/// the keychain holds and won't delete stops the removal (single and all), as for any other.
+#[tokio::test]
+async fn removing_a_keyless_provider_still_clears_its_keychain_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (id, account) = keyless_with_an_entry(&app, &keychain).await;
+    let err = app.remove_model_provider(&id).unwrap_err();
+    assert!(err.message.contains(&account), "{}", err.message);
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(err.message.contains(&account), "{}", err.message);
+    // Kept, it stays keyless: the entry it never used still isn't read.
+    let kept = app.ai_status().unwrap().providers;
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].key_last4, None);
+    // Once the entry is gone, it goes.
+    keychain.0.delete(&account).unwrap();
+    app.remove_model_provider(&id).unwrap();
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// Adding a server here without a key where the keychain provably holds an earlier key for
+/// that address, and won't delete it, adds nothing and says so.
+#[tokio::test]
+async fn an_earlier_key_the_keychain_wont_delete_stops_a_keyless_add() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = mock_server().await;
+    let url = format!("{}/v1", server.uri());
+    let first = app
+        .add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap();
+    Store::open(&app.db_path())
+        .unwrap()
+        .delete_model_provider(&first.provider_id)
+        .unwrap();
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let err = app
+        .add_model_provider("custom", Some(&url), None)
+        .await
+        .unwrap_err();
+    assert!(
+        err.message.contains(&format!("llm:{}", first.provider_id)),
+        "{}",
+        err.message
+    );
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// Setting a key on a keyless provider: if the keychain doesn't take it, the provider stays
+/// keyless (it still works and goes without a keychain); adding a provider with a key at an
+/// address once keyless leaves no stale keyless mark.
+#[tokio::test]
+async fn the_keyless_mark_follows_the_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(NoKeychain)).unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), None)
+        .await
+        .unwrap();
+    assert!(
+        app.update_model_provider_key(&record.provider_id, KEY)
+            .await
+            .is_err()
+    );
+    assert_eq!(app.ai_status().unwrap().providers.len(), 1);
+    app.remove_model_provider(&record.provider_id).unwrap();
+
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_in(temp.path());
+    let keyed = mock_server().await;
+    let url = format!("{}/v1", keyed.uri());
+    let id = app
+        .add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap()
+        .provider_id;
+    // A stale mark for this id (a removal that stopped halfway once could leave one).
+    let store = Store::open(&app.db_path()).unwrap();
+    store.delete_model_provider(&id).unwrap();
+    store
+        .set_setting(
+            "ai.keyless_providers",
+            &std::collections::BTreeSet::from([id.clone()]),
+        )
+        .unwrap();
+    app.add_model_provider("custom", Some(&url), Some(KEY))
+        .await
+        .unwrap();
+    let marks: std::collections::BTreeSet<String> = store
+        .setting("ai.keyless_providers")
+        .unwrap()
+        .unwrap_or_default();
+    assert!(!marks.contains(&id), "{marks:?}");
+    assert_eq!(
+        app.ai_status().unwrap().providers[0].key_last4.as_deref(),
+        Some("7731")
+    );
+}
+
+/// The doctor doesn't read the keychain for a provider added without a key: no key is used,
+/// whatever an entry there holds.
+#[tokio::test]
+async fn the_doctor_reads_no_key_of_a_keyless_provider() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(StuckKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    keyless_with_an_entry(&app, &keychain).await;
+    assert_eq!(app.doctor().unwrap().ai.providers[0].key_present, None);
+}
+
+/// A keychain that, on its first delete, lets another process add a provider with its key (as
+/// `ai add` running next to "remove all" would).
+#[derive(Default)]
+struct AddsDuringRemoval {
+    keys: MemorySecrets,
+    db: std::sync::Mutex<Option<std::path::PathBuf>>,
+    added: std::sync::atomic::AtomicBool,
+}
+
+impl SecretBackend for AddsDuringRemoval {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.keys.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.keys.set(id, secret)
+    }
+    fn delete(&self, id: &str) -> pagelamp_core::Result<()> {
+        if !self.added.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let db = self.db.lock().unwrap().clone().unwrap();
+            self.keys.set("llm:anthropic", KEY)?;
+            Store::open(&db)
+                .unwrap()
+                .insert_model_provider(&ProviderRow {
+                    id: "anthropic".into(),
+                    preset: "anthropic".into(),
+                    label: "Anthropic".into(),
+                    wire: "anthropic_messages".into(),
+                    base_url: "https://api.anthropic.com".into(),
+                    created_at: Utc::now().trunc_subsecs(0),
+                    last_probe_json: None,
+                })?;
+        }
+        self.keys.delete(id)
+    }
+}
+
+/// A provider added while "remove all" runs isn't removed without its key: it stays, key and
+/// all, and the removal says so.
+#[tokio::test]
+async fn a_provider_added_during_remove_all_stays_with_its_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(AddsDuringRemoval::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    *keychain.db.lock().unwrap() = Some(app.db_path());
+    add_cloud_openai(&app, &keychain.keys);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(
+        err.message.contains("Removed 1 provider(s)"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains("anthropic was added while this ran"),
+        "{}",
+        err.message
+    );
+    let left: Vec<String> = app
+        .ai_status()
+        .unwrap()
+        .providers
+        .into_iter()
+        .map(|p| p.provider_id)
+        .collect();
+    assert_eq!(left, vec!["anthropic".to_string()]);
+    assert_eq!(
+        keychain.keys.get("llm:anthropic").unwrap().as_deref(),
+        Some(KEY)
+    );
+    assert_eq!(keychain.keys.get("llm:openai").unwrap(), None);
+}
+
+/// A provider removed while its new key is being checked takes that key with it: the update
+/// fails and no key is left behind.
+#[tokio::test]
+async fn a_key_set_while_its_provider_goes_doesn_t_stay() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = mock_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(models_body())
+                .set_delay(std::time::Duration::from_millis(1500)),
+        )
+        .mount(&server)
+        .await;
+    let update = {
+        let (app, id) = (app.clone(), record.provider_id.clone());
+        tokio::spawn(async move {
+            app.update_model_provider_key(&id, "sk-demo-new-key-0042")
+                .await
+        })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider(&record.provider_id).unwrap();
+    let err = update.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::NotFound);
+    assert_eq!(
+        secrets.get(&format!("llm:{}", record.provider_id)).unwrap(),
+        None
+    );
+}
+
+type DeleteHook = Box<dyn FnOnce(&str) + Send>;
+type SetHook = Box<dyn FnOnce() + Send>;
+
+/// A keychain that stages races: after its `n`-th delete it runs a hook (given the account it
+/// deleted first), after a set another, and from `stuck` on it refuses deletes.
+#[derive(Default)]
+struct RaceKeychain {
+    keys: MemorySecrets,
+    deletes: std::sync::Mutex<Vec<String>>,
+    on_delete: std::sync::Mutex<Option<(usize, DeleteHook)>>,
+    on_set: std::sync::Mutex<Option<SetHook>>,
+    stuck: std::sync::atomic::AtomicBool,
+}
+
+impl SecretBackend for RaceKeychain {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.keys.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.keys.set(id, secret)?;
+        let hook = self.on_set.lock().unwrap().take();
+        if let Some(hook) = hook {
+            hook();
+        }
+        Ok(())
+    }
+    fn delete(&self, id: &str) -> pagelamp_core::Result<()> {
+        if self.stuck.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(pagelamp_core::Error::Secret("access refused".into()));
+        }
+        self.keys.delete(id)?;
+        let first = {
+            let mut deletes = self.deletes.lock().unwrap();
+            deletes.push(id.to_string());
+            let due = self
+                .on_delete
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(n, _)| *n == deletes.len());
+            due.then(|| deletes[0].clone())
+        };
+        if let Some(first) = first {
+            let (_, hook) = self.on_delete.lock().unwrap().take().unwrap();
+            hook(&first);
+        }
+        Ok(())
+    }
+}
+
+/// A custom server on this computer that lists one model and takes any key.
+async fn any_key_server() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    server
+}
+
+const NEW_KEY: &str = "sk-demo-new-key-0042";
+
+/// An update-key that lands while "remove all" deletes keys (after the provider's key went,
+/// before its row does) succeeds, and still leaves no key behind: the removal deletes each
+/// removed provider's key once more after the rows are gone.
+#[test]
+fn a_key_set_during_remove_all_doesn_t_stay() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (_one, _two, ids) = runtime.block_on(async {
+        let (one, two) = (any_key_server().await, any_key_server().await);
+        let mut ids = Vec::new();
+        for server in [&one, &two] {
+            let record = app
+                .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+                .await
+                .unwrap();
+            ids.push(record.provider_id);
+        }
+        (one, two, ids)
+    });
+    let (updater, handle) = (app.clone(), runtime.handle().clone());
+    *keychain.on_delete.lock().unwrap() = Some((
+        2,
+        Box::new(move |first: &str| {
+            let id = first.trim_start_matches("llm:").to_string();
+            handle
+                .block_on(updater.update_model_provider_key(&id, NEW_KEY))
+                .unwrap();
+        }),
+    ));
+    app.remove_all_ai_data().unwrap();
+    for id in &ids {
+        assert_eq!(keychain.keys.get(&format!("llm:{id}")).unwrap(), None);
+    }
+}
+
+/// The same for one provider's removal: an update-key between its key's delete and its row's
+/// leaves no key.
+#[test]
+fn a_key_set_during_a_removal_doesn_t_stay() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (_server, id) = runtime.block_on(async {
+        let server = any_key_server().await;
+        let record = app
+            .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+            .await
+            .unwrap();
+        (server, record.provider_id)
+    });
+    let (updater, handle) = (app.clone(), runtime.handle().clone());
+    *keychain.on_delete.lock().unwrap() = Some((
+        1,
+        Box::new(move |first: &str| {
+            let id = first.trim_start_matches("llm:").to_string();
+            handle
+                .block_on(updater.update_model_provider_key(&id, NEW_KEY))
+                .unwrap();
+        }),
+    ));
+    app.remove_model_provider(&id).unwrap();
+    assert_eq!(keychain.keys.get(&format!("llm:{id}")).unwrap(), None);
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// A store that fails after the new key is stored: the update says the key is stored and in
+/// use, not just that it failed.
+#[tokio::test]
+async fn a_failed_update_says_the_new_key_is_in_use() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = any_key_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    let db = app.db_path();
+    *keychain.on_set.lock().unwrap() = Some(Box::new(move || {
+        Store::open(&db)
+            .unwrap()
+            .conn()
+            .execute_batch("ALTER TABLE model_providers RENAME TO model_providers_away;")
+            .unwrap();
+    }));
+    let err = app
+        .update_model_provider_key(&record.provider_id, NEW_KEY)
+        .await
+        .unwrap_err();
+    assert!(
+        err.message.contains(&format!(
+            "stored in the keychain under `llm:{}` and replaces the old one",
+            record.provider_id
+        )),
+        "{}",
+        err.message
+    );
+    assert_eq!(
+        keychain
+            .keys
+            .get(&format!("llm:{}", record.provider_id))
+            .unwrap()
+            .as_deref(),
+        Some(NEW_KEY)
+    );
+}
+
+/// A provider removed while its new key is checked, and a keychain that then won't delete
+/// that key: the update says so and where the key is, without "try again".
+#[tokio::test]
+async fn a_new_key_that_outlives_its_provider_is_named() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = any_key_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(models_body())
+                .set_delay(std::time::Duration::from_millis(1500)),
+        )
+        .mount(&server)
+        .await;
+    let stuck = keychain.clone();
+    *keychain.on_set.lock().unwrap() = Some(Box::new(move || {
+        stuck.stuck.store(true, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let update = {
+        let (app, id) = (app.clone(), record.provider_id.clone());
+        tokio::spawn(async move { app.update_model_provider_key(&id, NEW_KEY).await })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider(&record.provider_id).unwrap();
+    let err = update.await.unwrap().unwrap_err();
+    assert!(
+        err.message
+            .contains("was removed while the new key was being checked"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message
+            .contains(&format!("is still under `llm:{}`", record.provider_id)),
+        "{}",
+        err.message
+    );
+    assert!(!err.message.contains("try again"), "{}", err.message);
 }

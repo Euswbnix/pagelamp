@@ -47,10 +47,13 @@
     "turnOn": "Review and turn on",
     "whatsShared": "What's shared",
     "replaceKey": "Replace key",
+    "addKey": "Add a key",
     "remove": "Remove",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "{{product}} deletes the key from your keychain and stops using {{name}} for every feature. Your usage history stays.",
-    "removed": "{{name}} removed"
+    "removed": "{{name}} removed",
+    "turnOnCloud": "Allow its cloud models",
+    "cloudShared": "What its cloud models get"
   },
   "policy": {
     "label": "Data policy",
@@ -75,12 +78,13 @@
       "api_billing": "billed to your API account",
       "plan_credits": "uses your ChatGPT plan (credits past its limit)",
       "free_on_device": "free",
-      "cloud_via_local": "runs in the cloud",
+      "cloud_via_local": "may run in the cloud",
       "self_hosted": "cost set by whoever runs the server"
     }
   },
   "disclosure": {
     "title": "Before {{product}} uses {{name}}",
+    "titleCloud": "Before {{product}} uses cloud models through {{name}}",
     "intro": "This is what happens when {{product}} uses this service. If any of it changes, {{product}} asks you again.",
     "changed": "This changed since you last read it.",
     "gai": {
@@ -94,7 +98,9 @@
       "cloud": "It goes to {{name}} and is handled under {{name}}'s terms.",
       "onDevice": "It goes to {{name}} on this computer and doesn't leave it.",
       "terms": "Read {{name}}'s terms",
-      "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings."
+      "codex": "It goes to {{name}} through Codex, signed in with your ChatGPT account, and is handled under {{name}}'s terms and your ChatGPT settings.",
+      "cloudViaLocal": "{{name}} runs on this computer, but {{product}} can't confirm that this model does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it.",
+      "cloudModels": "{{name}} runs on this computer, but {{product}} can't confirm that each of its models does: {{name}} may pass what {{product}} sends it on to a cloud service (Ollama does this for its cloud models). The materials of courses you answered “No, it's not allowed” for are never sent to it."
     },
     "training": {
       "heading": "Training and storage",
@@ -121,7 +127,8 @@
       "api_billing": "Each run is billed to your API account. {{product}} shows an estimate before each run and keeps to a monthly budget you set.",
       "plan_credits": "Runs count toward your ChatGPT plan's usage limits. Past your plan limit, runs may use your ChatGPT credits.",
       "free_on_device": "Runs on this computer are free. They use its memory and battery.",
-      "cloud_via_local": "This model runs in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
+      "cloud_via_local": "This model may run in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
+      "cloudModels": "A model may run in the cloud through {{name}}, not on this computer. {{name}}'s terms and limits apply.",
       "self_hosted": "Costs, if any, are set by whoever runs this server."
     },
     "age": {
@@ -145,7 +152,11 @@
     "confirmFirst": "Tick the confirmation above to turn it on.",
     "later": "Not now",
     "close": "Close",
-    "accepted": "{{name}} is turned on"
+    "accepted": "{{name}} is turned on",
+    "acceptModel": "Use {{model}}",
+    "acceptedModel": "You can use {{model}} now",
+    "acceptCloud": "Allow cloud models through {{name}}",
+    "acceptedCloud": "Cloud models through {{name}} are allowed"
   },
   "addKey": {
     "title": "Add an API key",
@@ -155,6 +166,8 @@
     "baseUrlHint": "The endpoint's base address, like https://llm.example.edu/v1",
     "key": "API key",
     "keyHint": "{{product}} checks it with a free call to the provider before saving it.",
+    "keyOptional": "API key (optional)",
+    "keyOptionalHint": "A server on this computer may not need a key. If it asks for one, enter it here.",
     "submit": "Check and add",
     "checking": "Checking…",
     "added": "{{name}} added",
@@ -163,8 +176,10 @@
   },
   "replaceKey": {
     "title": "Replace the key for {{name}}",
+    "addTitle": "Add a key for {{name}}",
     "submit": "Check and replace",
-    "done": "Key replaced"
+    "done": "Key replaced",
+    "added": "Key added"
   },
   "features": {
     "title": "Which model does what",
@@ -186,13 +201,13 @@
     },
     "badge": {
       "onDevice": "on this computer",
-      "cloud": "runs in the cloud",
+      "cloud": "may run in the cloud",
       "noPrice": "no price",
       "suggested": "suggested"
     },
     "noPriceNote": "{{product}} has no price for {{model}}, so your budget can't be enforced for it. You'll be asked to confirm before its first run.",
     "thinkingNote": "{{model}} always thinks before it answers, which costs more.",
-    "cloudNote": "{{model}} runs in the cloud, not on this computer.",
+    "cloudNote": "{{model}} may run in the cloud, not on this computer.",
     "turnOnFirst": "Turn on a model above to choose it here.",
     "test": "Test",
     "testing": "Testing…",
@@ -215,10 +230,10 @@
   },
   "removeAll": {
     "button": "Remove all AI data",
-    "hint": "Deletes your keys, model choices, usage history and everything {{product}} wrote with AI.",
+    "hint": "Deletes your keys, model choices, usage history and what {{product}}'s AI features wrote (a calendar you accepted stays, with its AI label).",
     "title": "Remove all AI data?",
-    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI. Your courses, their rules and your answers about sharing materials stay.",
-    "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and everything {{product}} wrote with AI, and signs {{product}}'s Codex out of ChatGPT. Your courses, their rules and your answers about sharing materials stay.",
+    "body": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
+    "bodyCodex": "This deletes your API keys from the keychain, your model choices, the usage history, the AI settings, and what {{product}}'s AI features wrote, and signs {{product}}'s Codex out of ChatGPT. A course calendar you accepted from a syllabus reading stays, with its AI label. Your courses, their rules and your answers about sharing materials stay.",
     "confirm": "Remove all",
     "done": "All AI data removed"
   },
@@ -250,13 +265,15 @@
     "lessThan": "≈ less than {{amount}}",
     "free": "Free, on this computer",
     "noPrice": "No price for this model",
-    "cloudNoPrice": "Runs in the cloud; no cost estimate",
+    "cloudNoPrice": "May run in the cloud; no cost estimate",
     "details": "Up to {{input}} tokens in and {{output}} out",
     "useUnpriced": "Use it anyway",
     "useUnpricedHint": "Your budget isn't enforced for this model. Its runs are still counted in tokens.",
     "overBudget": "This would go over this month's budget.",
     "overrideBudget": "Go over the budget this time",
-    "generate": "Generate"
+    "generate": "Generate",
+    "readDisclosure": "Read it now",
+    "checkingWhere": "Checking where this model runs…"
   },
   "blocked": {
     "course_policy_prohibited": "This course's rules say no AI, so {{product}} won't send anything from it.",
@@ -315,6 +332,7 @@
       "title": "Check whether your instructor allows sharing course materials with AI services",
       "body": "{{product}} sent text from {{course}}'s materials to {{service}}. If you're not sure it's allowed, check the syllabus or ask your instructor.",
       "answer": "Is sharing this course's materials allowed?",
+      "answerCourse": "Is sharing {{course}}'s materials allowed?",
       "dismiss": "Dismiss"
     },
     "notAllowed": {

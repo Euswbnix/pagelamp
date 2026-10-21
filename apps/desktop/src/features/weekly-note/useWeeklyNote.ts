@@ -1,8 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import type { GenStage } from "@/api/ai";
+import { backendKey, type GenStage } from "@/api/ai";
+import { aiKeys } from "@/api/ai-queries";
+import type { PageLampApi } from "@/api/client";
 import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import { queryKeys, useStartupTasks } from "@/api/queries";
@@ -29,14 +31,25 @@ export type NoteRunState =
     }
   | { phase: "done"; note: WeeklyNote; automatic: boolean }
   | { phase: "stopped"; automatic: boolean }
-  | { phase: "failed"; error: unknown };
+  | ({ phase: "failed" } & NoteProblem);
+
+/** Why a run failed or was blocked. */
+export interface NoteProblem {
+  error: unknown;
+  /**
+   * The model server on this computer the run went to (its name), when it didn't answer: not
+   * reachable, or too slow to say where its model runs before the run started. Asked as the run
+   * started, so a change of the note's model meanwhile or later doesn't change what is said.
+   */
+  server: string | null;
+}
 
 interface NoteRunStore {
   run: NoteRunState;
   /** Monday's note wasn't prepared (blocked or failed): the card says why, until the next run. */
-  automaticProblem: unknown;
+  automaticProblem: NoteProblem | null;
   setRun: (run: NoteRunState | ((run: NoteRunState) => NoteRunState)) => void;
-  setAutomaticProblem: (error: unknown) => void;
+  setAutomaticProblem: (problem: NoteProblem | null) => void;
 }
 
 /**
@@ -78,12 +91,16 @@ export function useWeeklyNoteRun() {
         stopping: false,
       });
       if (!automatic) store.setAutomaticProblem(null);
+      // The note's model server on this computer, if any, read as the facade reads the routing
+      // when the run starts.
+      const routed = noteServerHere(api, client);
+      let started = false;
       // Only while this run is still the app's run: a run that ended or was replaced (the store
       // reset between tests, say) changes nothing when its events or its end arrive late.
       const isCurrent = (r: NoteRunState) => r.phase === "running" && r.id === id;
       const update = (change: (r: Extract<NoteRunState, { phase: "running" }>) => NoteRunState) =>
         store.setRun((r) => (r.phase === "running" && r.id === id ? change(r) : r));
-      const end = (next: NoteRunState, problem?: unknown) => {
+      const end = (next: NoteRunState, problem?: NoteProblem | null) => {
         if (!isCurrent(useNoteRunStore.getState().run)) return;
         store.setRun(next);
         if (problem !== undefined) store.setAutomaticProblem(problem);
@@ -99,6 +116,7 @@ export function useWeeklyNoteRun() {
           },
           (event) => {
             if (event.type === "started") {
+              started = true;
               const { backend_label, model } = event;
               update((r) => ({ ...r, backend: backend_label, model }));
             } else if (event.type === "stage") {
@@ -109,7 +127,13 @@ export function useWeeklyNoteRun() {
         );
         end({ phase: "done", note, automatic }, null);
       } catch (error) {
-        const { kind, blocked } = toApiError(error);
+        const { kind, blocked, model_error } = toApiError(error);
+        // Not reachable, or too slow to say where its model runs (before the run started): the
+        // server is named. One that was slow to answer once the run started is said as such.
+        const silent =
+          kind === "model" &&
+          (model_error === "network" || (model_error === "timeout" && !started));
+        const server = silent ? await routed : null;
         if (kind === "cancelled") {
           end({ phase: "stopped", automatic });
         } else if (automatic) {
@@ -117,9 +141,9 @@ export function useWeeklyNoteRun() {
           // week emptied as the run started; the card's Write already says so), is nothing to
           // say; anything else leaves one line on the card.
           const quiet = kind === "invalid" || blocked === "nothing_to_write";
-          end({ phase: "idle" }, quiet ? undefined : error);
+          end({ phase: "idle" }, quiet ? undefined : { error, server });
         } else {
-          end({ phase: "failed", error });
+          end({ phase: "failed", error, server });
         }
       } finally {
         await client.invalidateQueries({ queryKey: weeklyNoteKeys.notes() });
@@ -142,6 +166,24 @@ export function useWeeklyNoteRun() {
   }, [api]);
 
   return { run, start, stop };
+}
+
+/** The model server on this computer the weekly note goes to (its name); null for any other. */
+async function noteServerHere(api: PageLampApi, client: QueryClient): Promise<string | null> {
+  try {
+    const status = await client.fetchQuery({
+      queryKey: aiKeys.status(),
+      queryFn: () => api.aiStatus(),
+    });
+    const choice = status.features.find((f) => f.feature === "weekly_note")?.choice;
+    if (!choice) return null;
+    const backend = status.backends.find(
+      (b) => backendKey(b.backend) === backendKey(choice.backend),
+    );
+    return backend?.kind === "local" ? backend.label : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

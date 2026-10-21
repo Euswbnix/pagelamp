@@ -467,6 +467,8 @@ pub struct TermResolution {
     pub student_end: Option<IsoDate>,
     #[uniffi(default = true)]
     pub student_dates_confirmed: bool,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -503,6 +505,7 @@ pub enum EvidenceCode {
     DatesAgree,
     SameSessionDisagrees,
     SameSessionSplit,
+    SameSessionUnlent,
     DatesMayBeWrong,
     SessionWindow,
     InstitutionCalendarMissing,
@@ -1622,6 +1625,10 @@ pub struct AiBackendStatus {
     pub problems: Vec<BackendProblem>,
     pub disclosure: DisclosureFacts,
     pub disclosure_acknowledged: Option<u32>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure: Option<DisclosureFacts>,
+    #[uniffi(default = None)]
+    pub cloud_disclosure_acknowledged: Option<u32>,
 }
 
 #[uniffi::remote(Record)]
@@ -2248,6 +2255,8 @@ pub struct SessionCourses {
     pub session: Option<String>,
     pub campus: Option<u8>,
     pub courses: Vec<SessionCourse>,
+    #[uniffi(default = false)]
+    pub copy_refused: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -2259,6 +2268,8 @@ pub struct SessionCourse {
     pub own_dates: bool,
     pub student_start: Option<IsoDate>,
     pub student_end: Option<IsoDate>,
+    #[uniffi(default = false)]
+    pub own_calendar: bool,
     pub week_one_monday: Option<IsoDate>,
     pub anchor: TermAnchorSource,
 }
@@ -2269,6 +2280,7 @@ pub enum ApplySkipReason {
     FromCourse,
     NoDates,
     DatesNotConfirmed,
+    OwnCalendar,
     UnknownCourse,
 }
 

@@ -94,6 +94,34 @@ fn add_course(store: &Store, code: &str, canary: &str) -> String {
 }
 
 /// DEMO101 readable, DEMO202 turned off, DEMO303 prohibited, DEMO404 hidden.
+/// A plan carries a course's structure only; it says what the course's settings let AI read,
+/// and a course answered "not allowed" isn't said to be readable.
+#[test]
+fn a_plan_says_a_not_allowed_course_keeps_its_materials_here() {
+    let store = demo_store();
+    let structure = |store: &Store| {
+        let context = plan_context(store, &PlanScope::default(), at()).unwrap();
+        assemble("Plan.", &context, None).user_text().to_string()
+    };
+    let readable = structure(&store);
+    assert!(
+        readable.contains("AI may read its materials: yes"),
+        "{readable}"
+    );
+    store
+        .set_course_material_sharing(
+            &format!("{SOURCE}/course/DEMO101"),
+            MaterialSharing::NotAllowed,
+        )
+        .unwrap();
+    let text = structure(&store);
+    assert!(
+        text.contains("AI may read its materials: on this computer only"),
+        "{text}"
+    );
+    assert!(!text.contains("readablecanary"), "structure only");
+}
+
 fn demo_store() -> Store {
     let store = Store::open_in_memory().unwrap();
     store

@@ -13,6 +13,7 @@ import type {
   LoginEvent,
   MaterialSharing,
   ModelChoice,
+  ModelDisclosure,
   ModelInfo,
   ModelProviderRecord,
   ProbeReport,
@@ -33,6 +34,7 @@ import type {
 import type {
   Activity,
   AiPolicy,
+  ApplyDatesReport,
   AppStatus,
   AutoSyncTrigger,
   CalendarBatchEvent,
@@ -55,8 +57,10 @@ import type {
   RemovalReport,
   RemovedCourse,
   RemoveOptions,
+  ReplacedDates,
   RestoreOutcome,
   SearchHit,
+  SessionCourses,
   SnoozeKind,
   SourceRecord,
   SourceSyncResult,
@@ -219,6 +223,18 @@ export interface PageLampApi {
    * Returns the course's calendar view as it is now.
    */
   setCourseDates(courseId: string, dates: CourseDatesInput | null): Promise<CourseCalendarView>;
+  /**
+   * The other courses of `courseId`'s session, for "also use these dates in" in the dates form.
+   * Empty when the course has no session (not a school the facade knows sessions for).
+   */
+  sessionCourses(courseId: string): Promise<SessionCourses>;
+  /**
+   * Copies `from`'s own dates (the student's) to each of `to`, where they become that course's
+   * own dates. One transaction; what can't be applied is listed in `skipped`.
+   */
+  applyCourseDatesTo(from: string, to: string[]): Promise<ApplyDatesReport>;
+  /** Undo for `applyCourseDatesTo`: puts each course back exactly as it was. One transaction. */
+  restoreCourseDates(replaced: ReplacedDates[]): Promise<void>;
 
   // ----- course lifecycle and removal (calendar design §8) ---------------------------------
   /** Every course's lifecycle, which ones are suggested for removal, and the banner state. */
@@ -376,6 +392,23 @@ export interface PageLampApi {
   setFeatureModel(feature: AiFeature, choice: ModelChoice | null): Promise<void>;
   /** The student read the disclosure sheet for this backend; `version` is the facts' hash. */
   acknowledgeAiDisclosure(backend: BackendRef, version: number): Promise<void>;
+  /**
+   * Whether `choice`'s model runs on this computer, decided as a run decides it. With `ask`, a
+   * model server here is asked for its list (Ollama), and it fails when it can't be reached.
+   */
+  modelRunsHere(choice: ModelChoice, ask: boolean): Promise<boolean>;
+  /**
+   * The note to read before using a model of `backend` where it runs (`runsHere`, from
+   * modelRunsHere): a model that a server on this computer may run in the cloud has a note of
+   * its own, acknowledged apart from the server's.
+   */
+  modelDisclosure(backend: BackendRef, runsHere: boolean): Promise<ModelDisclosure>;
+  /** The student read modelDisclosure(backend, runsHere); `version` is the one shown. */
+  acknowledgeModelDisclosure(
+    backend: BackendRef,
+    runsHere: boolean,
+    version: number,
+  ): Promise<void>;
   /** "The budget is not enforced for this model" (no price in the catalog). */
   acknowledgeUnpricedModel(backend: BackendRef, model: string): Promise<void>;
   /** The soft monthly cap for API keys, in micro-USD; null = no cap. */

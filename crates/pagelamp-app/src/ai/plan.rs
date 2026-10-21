@@ -214,13 +214,13 @@ impl App {
         });
         let at = AsOf::now_local();
         let started = Utc::now().trunc_subsecs(0);
-        // Everything read before the model call; the store isn't held across it.
+        // The gate first, so a plan with nothing to plan for asks no model server anything; the
+        // store isn't held across the model calls.
         let (choice, context, prompt, output, max_output) = {
             let store = self.read_store()?;
             let Some(choice) = feature_choice(&store, AiFeature::StudyPlan)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let (profile, _) = self.estimate_profile(&choice)?;
             let scope = PlanScope {
                 courses: request.courses.clone(),
                 horizon_days: horizon,
@@ -233,9 +233,17 @@ impl App {
             let note = request.note.as_deref().and_then(StudentNote::new);
             let (prompt, output, max_output) =
                 request_shape_with_note(AiFeature::StudyPlan, &context, note.as_ref());
+            (choice, context, prompt, output, max_output)
+        };
+        // Where the model runs, decided by this run now (a model server here is asked for its
+        // list): its note, its price and its label follow it. A plan sends no material text.
+        let destination = self.run_destination(&choice, &cancel).await?;
+        {
+            let store = self.read_store()?;
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
+                destination,
                 &prompt,
                 &output,
                 max_output,
@@ -243,6 +251,7 @@ impl App {
             )? {
                 return Err(blocked(reason));
             }
+            let (profile, _) = self.estimate_profile(&choice)?;
             let estimate = pagelamp_llm::estimate::estimate(
                 &profile,
                 &choice.model,
@@ -255,8 +264,7 @@ impl App {
                 summary: context.summary().clone(),
                 input_tokens: Some(estimate.input_tokens),
             });
-            (choice, context, prompt, output, max_output)
-        };
+        }
         let run = self
             .run_model(
                 RunRequest {
@@ -264,6 +272,7 @@ impl App {
                     cancel: &cancel,
                     feature: AiFeature::StudyPlan,
                     choice: &choice,
+                    destination,
                     prompt,
                     output,
                     max_output_tokens: max_output,

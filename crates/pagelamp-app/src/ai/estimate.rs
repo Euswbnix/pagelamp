@@ -3,7 +3,7 @@
 //! nothing to write about), the disclosure, an unpriced model, and the monthly budget. Local
 //! and cheap: DB reads only, no network call.
 
-use pagelamp_core::ai::{AiFeature, BlockReason, Destination};
+use pagelamp_core::ai::{AiFeature, BlockReason, Destination, ModelErrorKind};
 use pagelamp_core::ai_gate::{
     AnswerLanguage, ContextBudget, GateError, GatedContext, PlanScope, RenderedPrompt, StudentNote,
     assemble_in, calendar_context, week_context_including,
@@ -117,21 +117,24 @@ impl App {
                 would_block: self.codex_blocks(&store)?,
             });
         }
+        let (upper, price_known) =
+            priced(&estimate, &profile, destination, self.unvouched(&choice)?);
         let would_block = self.other_blocks(
             &store,
             &choice.backend,
             &choice.model,
             &profile,
-            estimate.micro_usd_upper,
-            estimate.price_known,
+            destination,
+            upper,
+            price_known,
         )?;
         Ok(CostEstimate {
-            micro_usd_upper: estimate.micro_usd_upper,
+            micro_usd_upper: upper,
             input_tokens: estimate.input_tokens,
             max_output_tokens: estimate.max_output_tokens,
             reasoning_allowance: estimate.reasoning_allowance,
             repair_possible: estimate.repair_possible,
-            price_known: estimate.price_known,
+            price_known,
             would_block,
         })
     }
@@ -196,6 +199,8 @@ impl App {
             ));
         };
         let codex = choice.backend == BackendRef::Codex;
+        let (upper, price_known) =
+            priced(&estimate, &profile, destination, self.unvouched(&choice)?);
         let would_block = if codex {
             self.codex_blocks(&store)?
         } else {
@@ -204,21 +209,18 @@ impl App {
                 &choice.backend,
                 &choice.model,
                 &profile,
-                estimate.micro_usd_upper,
-                estimate.price_known,
+                destination,
+                upper,
+                price_known,
             )?
         };
         Ok(CostEstimate {
-            micro_usd_upper: if codex {
-                None
-            } else {
-                estimate.micro_usd_upper
-            },
+            micro_usd_upper: if codex { None } else { upper },
             input_tokens: estimate.input_tokens,
             max_output_tokens: estimate.max_output_tokens,
             reasoning_allowance: estimate.reasoning_allowance,
             repair_possible: estimate.repair_possible,
-            price_known: !codex && estimate.price_known,
+            price_known: !codex && price_known,
             would_block,
         })
     }
@@ -237,21 +239,113 @@ impl App {
             return Ok((profile, Destination::Cloud));
         }
         let profile = self.provider_profile(&choice.backend)?;
-        let destination = if profile.on_device() {
-            Destination::OnDevice
-        } else {
-            Destination::Cloud
+        let destination = match self.listed_runs_here(choice, &profile)? {
+            Some(true) => Destination::OnDevice,
+            Some(false) => Destination::Cloud,
+            None => estimate_destination(&profile, &choice.model),
         };
         Ok((profile, destination))
     }
 
+    /// What the last model list of Ollama on this computer said about `choice`'s model: it
+    /// runs here (`true`), or in the cloud or not at all (`false`); `None` without a list.
+    fn listed_runs_here(
+        &self,
+        choice: &ModelChoice,
+        profile: &ProviderProfile,
+    ) -> Result<Option<bool>> {
+        if profile.id != "ollama" || !profile.on_device() {
+            return Ok(None);
+        }
+        let listed = settings::listed_models(&self.read_store()?)?;
+        Ok(listed.get(&backend_key(&choice.backend)).map(|models| {
+            models
+                .iter()
+                .any(|(id, here)| *here && same_ollama_model(id, &choice.model))
+        }))
+    }
+
+    /// An Ollama model on this computer that no model list has vouched for yet: its price is
+    /// unknown (it may be one of Ollama's cloud models), so no estimate says it is free.
+    pub(crate) fn unvouched(&self, choice: &ModelChoice) -> Result<bool> {
+        if choice.backend == BackendRef::Codex {
+            return Ok(false);
+        }
+        let profile = self.provider_profile(&choice.backend)?;
+        Ok(profile.id == "ollama"
+            && profile.on_device()
+            && self.listed_runs_here(choice, &profile)?.is_none())
+    }
+
+    /// Whether `choice`'s model runs on this computer, decided as a run decides it (a model
+    /// server here is asked for its list). With `ask = false` nothing is asked: then only a
+    /// server that runs every model here can confirm it (LM Studio); an Ollama model is unknown.
+    pub async fn model_runs_here(&self, choice: &ModelChoice, ask: bool) -> Result<bool> {
+        if ask {
+            let cancel = pagelamp_llm::CancellationToken::new();
+            return Ok(self.run_destination(choice, &cancel).await? == Destination::OnDevice);
+        }
+        let (profile, destination) = self.estimate_profile(choice)?;
+        Ok(destination == Destination::OnDevice && profile.id != "ollama")
+    }
+
+    /// Where a run's model runs, decided by the run itself right before it builds its context
+    /// (never an estimate's answer carried over). It fails closed: the ChatGPT plan, a provider
+    /// off this computer, a server here that can't say (any but LM Studio and Ollama), and an
+    /// Ollama model its daemon doesn't list as local (a cloud model, a model it doesn't list at
+    /// all, or an answer that isn't a usable list) all count as the cloud. A daemon that
+    /// doesn't answer (not running, too slow), or a cancel, is that error: nothing is sent.
+    pub(crate) async fn run_destination(
+        &self,
+        choice: &ModelChoice,
+        cancel: &pagelamp_llm::CancellationToken,
+    ) -> Result<Destination> {
+        if choice.backend == BackendRef::Codex {
+            return Ok(Destination::Cloud);
+        }
+        let profile = self.provider_profile(&choice.backend)?;
+        if !profile.on_device() {
+            return Ok(Destination::Cloud);
+        }
+        Ok(match profile.id.as_str() {
+            "lm_studio" => Destination::OnDevice,
+            // The list comes from the daemon on this computer: nothing leaves it.
+            "ollama" => match self.list_models_with(&choice.backend, cancel).await {
+                Ok(models)
+                    if models
+                        .iter()
+                        .any(|m| m.on_device && same_ollama_model(&m.id, &choice.model)) =>
+                {
+                    Destination::OnDevice
+                }
+                // Not running, not answering in time, or stopped: say so (nothing is sent).
+                Err(err)
+                    if err.kind == AppErrorKind::Cancelled
+                        || matches!(
+                            err.model_error,
+                            Some(ModelErrorKind::Network | ModelErrorKind::Timeout)
+                        ) =>
+                {
+                    return Err(err);
+                }
+                // Answered, but not for this model as one it runs here (remote, unlisted, a
+                // list it can't give): the cloud.
+                _ => Destination::Cloud,
+            },
+            _ => Destination::Cloud,
+        })
+    }
+
     /// What stops a run of `choice` with this prompt besides the gate: the disclosure, then the
     /// ChatGPT plan's weekly cap, or an unpriced model and the monthly budget (which the
-    /// student may go past for this run with `override_budget`).
+    /// student may go past for this run with `override_budget`). `destination`: where the
+    /// model runs (a run's own `run_destination`; else the estimate's).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn run_blocks(
         &self,
         store: &Store,
         choice: &ModelChoice,
+        destination: Destination,
         prompt: &RenderedPrompt,
         output: &OutputSpec,
         max_output: u32,
@@ -269,13 +363,16 @@ impl App {
             choice.effort,
             max_output,
         );
+        let (upper, price_known) =
+            priced(&estimate, &profile, destination, self.unvouched(choice)?);
         let block = self.other_blocks(
             store,
             &choice.backend,
             &choice.model,
             &profile,
-            estimate.micro_usd_upper,
-            estimate.price_known,
+            destination,
+            upper,
+            price_known,
         )?;
         Ok(block.filter(|reason| !(override_budget && *reason == BlockReason::BudgetReached)))
     }
@@ -299,25 +396,36 @@ impl App {
         Ok(None)
     }
 
-    /// The disclosure, an unpriced model and the budget, in that order.
+    /// The disclosure, an unpriced model and the budget, in that order. A model that runs on
+    /// this computer (`destination`) is free: no price, no budget.
+    #[allow(clippy::too_many_arguments)]
     fn other_blocks(
         &self,
         store: &Store,
         backend: &super::BackendRef,
         model: &str,
         profile: &ProviderProfile,
+        destination: Destination,
         upper: Option<u64>,
         price_known: bool,
     ) -> Result<Option<BlockReason>> {
         let key = backend_key(backend);
-        let facts = super::disclosure_for(profile);
+        // A model a server here may run in the cloud has a disclosure of its own.
+        let (facts, ack_key) = if destination == Destination::Cloud && profile.on_device() {
+            (
+                super::cloud_via_local_disclosure(profile),
+                settings::cloud_key(backend),
+            )
+        } else {
+            (super::disclosure_for(profile), key.clone())
+        };
         let acknowledged = settings::disclosures(store)?
-            .get(&key)
+            .get(&ack_key)
             .is_some_and(|ack| ack.version == facts.version);
         if !acknowledged {
             return Ok(Some(BlockReason::DisclosureNotAcknowledged));
         }
-        if profile.on_device() {
+        if destination == Destination::OnDevice {
             return Ok(None); // free: no price, no budget
         }
         if !price_known
@@ -351,6 +459,44 @@ pub(crate) fn explanation_budget(destination: Destination) -> ContextBudget {
             Destination::OnDevice => EXPLANATION_LOCAL_CONTEXT_CHARS,
         },
     }
+}
+
+/// Where a model runs, as far as PageLamp can tell without asking anything (estimates, and why
+/// a run can't start): a provider off this computer is the cloud; on this computer LM Studio
+/// runs its models here, Ollama does unless the model is one of its cloud models by its tag
+/// (`is_cloud_model_id`), and any other server can't say, so it counts as the cloud. A run
+/// decides again before it sends anything (`run_destination`).
+pub(crate) fn estimate_destination(profile: &ProviderProfile, model: &str) -> Destination {
+    if !profile.on_device() {
+        return Destination::Cloud;
+    }
+    match profile.id.as_str() {
+        "lm_studio" => Destination::OnDevice,
+        "ollama" if !pagelamp_llm::profile::is_cloud_model_id(model) => Destination::OnDevice,
+        _ => Destination::Cloud,
+    }
+}
+
+/// The price list's estimate for a model at `destination`. It counts every server on this
+/// computer as free, but a model such a server runs in the cloud has no known price, nor has an
+/// Ollama model no model list has vouched for (`App::unvouched`).
+fn priced(
+    estimate: &pagelamp_llm::estimate::Estimate,
+    profile: &ProviderProfile,
+    destination: Destination,
+    unvouched: bool,
+) -> (Option<u64>, bool) {
+    if profile.on_device() && (destination == Destination::Cloud || unvouched) {
+        (None, false)
+    } else {
+        (estimate.micro_usd_upper, estimate.price_known)
+    }
+}
+
+/// Ollama names a model's default tag `latest`: `llama3.2` and `llama3.2:latest` are one model.
+fn same_ollama_model(listed: &str, chosen: &str) -> bool {
+    let base = |id: &str| id.strip_suffix(":latest").unwrap_or(id).to_string();
+    base(listed) == base(chosen)
 }
 
 /// How much course text a syllabus reading may carry: ≈ 60k characters in the cloud, ≈ 24k on
@@ -461,6 +607,54 @@ mod tests {
     use super::super::explain::{answer_language, explanation_output};
     use super::super::note::{note_language, note_output};
     use super::*;
+
+    fn here(preset: &str) -> ProviderProfile {
+        pagelamp_llm::profile::preset(preset)
+            .unwrap()
+            .with_base_url("http://127.0.0.1:11434".parse().unwrap())
+    }
+
+    /// Ollama names a model's default tag `latest`; any other tag, or another case, is another
+    /// model.
+    #[test]
+    fn only_the_latest_tag_names_the_same_ollama_model() {
+        assert!(same_ollama_model("llama3.2:latest", "llama3.2"));
+        assert!(same_ollama_model("llama3.2", "llama3.2:latest"));
+        assert!(same_ollama_model("llama3.2", "llama3.2"));
+        assert!(!same_ollama_model("llama3.2:1b", "llama3.2"));
+        assert!(!same_ollama_model("llama3.2", "llama3.2:1b"));
+        assert!(!same_ollama_model("Llama3.2", "llama3.2"));
+    }
+
+    /// Without asking anything, Ollama's cloud models by their tag, and any server here that
+    /// can't say where its models run, count as the cloud; LM Studio's models run here.
+    #[test]
+    fn the_estimate_s_rule_for_where_a_model_runs() {
+        assert_eq!(
+            estimate_destination(&here("ollama"), "llama3.2"),
+            Destination::OnDevice
+        );
+        for cloud in [
+            "gpt-oss:120b-cloud",
+            "qwen3-coder:480b-cloud",
+            "kimi-k2:cloud",
+        ] {
+            assert_eq!(
+                estimate_destination(&here("ollama"), cloud),
+                Destination::Cloud
+            );
+        }
+        assert_eq!(
+            estimate_destination(&here("lm_studio"), "any-model"),
+            Destination::OnDevice
+        );
+        assert_eq!(
+            estimate_destination(&here("custom"), "any-model"),
+            Destination::Cloud
+        );
+        let openai = pagelamp_llm::profile::preset("openai").unwrap();
+        assert_eq!(estimate_destination(openai, "gpt-5"), Destination::Cloud);
+    }
 
     /// For every output-language setting and UI language, the estimate's prompt costs at least
     /// what the run's does, on a model whose structured answers may need a second, repaired

@@ -12,7 +12,9 @@
 //! - `saved_explanations`: the kept explanations (5 per course and week), each marked `stale`
 //!   when its materials changed or new ones appeared that week.
 
-use std::collections::HashSet;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{SubsecRound, Utc};
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, MaterialSharing, ModelErrorKind};
@@ -21,7 +23,7 @@ use pagelamp_core::ai_gate::{
     assemble_in, week_changed, week_context_including,
 };
 use pagelamp_core::model::AiPolicy;
-use pagelamp_core::store::{GenerationRecord, GenerationStatus};
+use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
 use pagelamp_core::term::phase::week_starts_on;
 use pagelamp_core::views::{self, AsOf};
 use pagelamp_llm::OutputSpec;
@@ -33,6 +35,7 @@ use super::prompts::{PROMPT_VERSION, WEEKLY_EXPLANATION};
 use super::run::RunRequest;
 use super::settings::{OUTPUT_LANGUAGE, backend_key};
 use super::{GenEvent, GenNoticeCode, GenStage, GenerationMeta, feature_choice};
+use crate::course::calendar::course_block;
 use crate::{App, AppError, AppErrorKind, Result};
 
 /// The most check questions kept.
@@ -165,59 +168,74 @@ impl App {
         let store = self.read_store()?;
         let course = store.resolve_course_with(course, true)?;
         let at = AsOf::now_local();
-        // The calendar in force now: a week it moved makes an explanation stale.
-        let term = views::course_timeline(&store, &course, at)?.term;
-        let mut out = Vec::new();
-        for record in store.generations_of(
-            AiFeature::WeeklyExplanation,
-            &course.id,
-            week,
-            GenerationStatus::Accepted,
-        )? {
-            let Some(mut explanation) = record
-                .output_json
-                .as_deref()
-                .and_then(|json| serde_json::from_str::<WeeklyExplanation>(json).ok())
-            else {
-                continue;
-            };
-            let summary: Option<Summary> = record
-                .summary_json
-                .as_deref()
-                .and_then(|json| serde_json::from_str(json).ok());
-            let moved = record.week_starts_on.is_some()
-                && record.week.and_then(|week| week_starts_on(&term, week))
-                    != record.week_starts_on;
-            explanation.stale = moved
-                || match summary {
-                    Some(summary) => {
-                        let considered: Vec<String> = summary
-                            .manifest
-                            .materials
-                            .iter()
-                            .map(|entry| entry.material_id.clone())
-                            .chain(
-                                summary
-                                    .context
-                                    .left_out
+        // One snapshot: the calendar in force now (a week it moved makes an explanation stale)
+        // and each week's materials, read once per week however many explanations it has.
+        store
+            .in_read_transaction(|store| {
+                let term = views::course_timeline(store, &course, at)?.term;
+                let mut listings: HashMap<Option<u32>, Vec<String>> = HashMap::new();
+                let mut out = Vec::new();
+                for record in store.generations_of(
+                    AiFeature::WeeklyExplanation,
+                    &course.id,
+                    week,
+                    GenerationStatus::Accepted,
+                )? {
+                    let Some(mut explanation) = record
+                        .output_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str::<WeeklyExplanation>(json).ok())
+                    else {
+                        continue;
+                    };
+                    let summary: Option<Summary> = record
+                        .summary_json
+                        .as_deref()
+                        .and_then(|json| serde_json::from_str(json).ok());
+                    let moved = record.week_starts_on.is_some()
+                        && record.week.and_then(|week| week_starts_on(&term, week))
+                            != record.week_starts_on;
+                    explanation.stale = moved
+                        || match summary {
+                            Some(summary) => {
+                                let considered: Vec<String> = summary
+                                    .manifest
+                                    .materials
                                     .iter()
-                                    .map(|m| m.material_id.clone()),
-                            )
-                            .collect();
-                        week_changed(
-                            &store,
-                            &course.id,
-                            record.week,
-                            &summary.manifest,
-                            &considered,
-                            at,
-                        )?
-                    }
-                    None => true,
-                };
-            out.push(explanation);
-        }
-        Ok(out)
+                                    .map(|entry| entry.material_id.clone())
+                                    .chain(
+                                        summary
+                                            .context
+                                            .left_out
+                                            .iter()
+                                            .map(|m| m.material_id.clone()),
+                                    )
+                                    .collect();
+                                let listed = match listings.entry(record.week) {
+                                    Entry::Occupied(listed) => listed.into_mut(),
+                                    Entry::Vacant(slot) => slot.insert(
+                                        views::week_materials(
+                                            store,
+                                            &course.id,
+                                            record.week,
+                                            true,
+                                            at,
+                                        )?
+                                        .materials
+                                        .into_iter()
+                                        .map(|material| material.id)
+                                        .collect(),
+                                    ),
+                                };
+                                week_changed(store, &summary.manifest, &considered, listed)?
+                            }
+                            None => true,
+                        };
+                    out.push(explanation);
+                }
+                Ok(out)
+            })
+            .map_err(Into::into)
     }
 
     /// Delete one kept explanation (the history's "Delete"): its row, with the stored answer.
@@ -266,17 +284,38 @@ impl App {
         });
         let at = AsOf::now_local();
         let started = Utc::now().trunc_subsecs(0);
-        // Everything read before the model call; the store isn't held across it.
-        let (course, week, week_starts, choice, destination, context, prompt, output) = {
+        // Read before asking where the model runs: the course and its own state, the model, and
+        // the answer's language (a broken setting fails before a model server is asked). The
+        // store isn't held across the model calls.
+        let (course, choice, setting) = {
             let store = self.read_store()?;
             let course = store.resolve_course_with(course, true)?;
+            // From here a change to the course's AI settings stops this run; the gate reads them
+            // again after that, so no change slips between the two.
+            self.run_reads_course(generation_id, &course.id, None);
+            let course = store.resolve_course_with(&course.id, true)?;
             let Some(choice) = feature_choice(&store, AiFeature::WeeklyExplanation)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let (profile, destination) = self.estimate_profile(&choice)?;
-            // From here a change to the course's AI settings stops this run
-            // (`stop_course_runs`); week_context_including reads them after that.
+            // The course's own state before a model server is asked.
+            if let Some(reason) = course_block(&course) {
+                return Err(blocked(reason));
+            }
+            let setting: OutputLanguage = store
+                .setting_or_absent(OUTPUT_LANGUAGE)?
+                .unwrap_or_default();
+            (course, choice, setting)
+        };
+        // Where the model runs, decided by this run now (a model server here is asked for its
+        // list), never an estimate's answer: question (b), the text it may carry and the
+        // reminder follow it.
+        let destination = self.run_destination(&choice, &cancel).await?;
+        let (course, week, week_starts, context, prompt, output) = {
+            let store = self.read_store()?;
+            // Before week_context_including reads question (b) (`stop_course_runs`, cloud only).
             self.run_reads_course(generation_id, &course.id, Some(destination));
+            let course = store.resolve_course_with(&course.id, true)?;
+            let (profile, _) = self.estimate_profile(&choice)?;
             let context = match week_context_including(
                 &store,
                 &course.id,
@@ -293,15 +332,13 @@ impl App {
             let week = views::week_materials(&store, &course.id, week, true, at)?.week;
             let term = views::course_timeline(&store, &course, at)?.term;
             let week_starts = week.and_then(|week| week_starts_on(&term, week));
-            let setting: OutputLanguage = store
-                .setting_or_absent(OUTPUT_LANGUAGE)?
-                .unwrap_or_default();
             let language = answer_language(setting, options.ui_language.as_deref());
             let prompt = assemble_in(WEEKLY_EXPLANATION, &context, None, Some(language));
             let output = explanation_output();
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
+                destination,
                 &prompt,
                 &output,
                 EXPLANATION_MAX_OUTPUT,
@@ -321,16 +358,15 @@ impl App {
                 summary: context.summary().clone(),
                 input_tokens: Some(estimate.input_tokens),
             });
-            (
-                course,
-                week,
-                week_starts,
-                choice,
-                destination,
-                context,
-                prompt,
-                output,
-            )
+            (course, week, week_starts, context, prompt, output)
+        };
+        // Once the run has started, the material text went out or was on its way.
+        let sent = AtomicBool::new(false);
+        let forward = |event: GenEvent| {
+            if matches!(event, GenEvent::Started { .. }) {
+                sent.store(true, Ordering::Relaxed);
+            }
+            on_event(event);
         };
         let run = self
             .run_model(
@@ -339,13 +375,33 @@ impl App {
                     cancel: &cancel,
                     feature: AiFeature::WeeklyExplanation,
                     choice: &choice,
+                    destination,
                     prompt,
                     output,
                     max_output_tokens: EXPLANATION_MAX_OUTPUT,
                 },
-                on_event,
+                &forward,
             )
             .await;
+        // D37 option 2 and D49, as a syllabus reading does: the course's first cloud run that
+        // sent (or was sending) its material text reminds once, however it ends, by the answer
+        // stored then (the student may have answered while the model wrote); claimed with the
+        // run's own row.
+        let claim = |store: &Store| -> pagelamp_core::Result<bool> {
+            let sharing = store
+                .get_course(&course.id)?
+                .map_or(course.material_sharing, |now| now.material_sharing);
+            Ok(sent.load(Ordering::Relaxed)
+                && reminds_about_sharing(destination, sharing)
+                && store.claim_sharing_reminder(&course.id, Utc::now())?)
+        };
+        let remind = |reminded: bool| {
+            if reminded {
+                on_event(GenEvent::Notice {
+                    code: GenNoticeCode::MaterialSharingReminder,
+                });
+            }
+        };
         let summary = serde_json::to_string(&Summary {
             context: context.summary().clone(),
             manifest: context.manifest().clone(),
@@ -376,8 +432,12 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                self.write_store()?
-                    .record_generation(&record(status, None, kind))?;
+                let reminded = self.write_store()?.in_transaction(|store| {
+                    let reminded = claim(store)?;
+                    store.record_generation(&record(status, None, kind))?;
+                    Ok(reminded)
+                })?;
+                remind(reminded);
                 return Err(err);
             }
         };
@@ -391,11 +451,16 @@ impl App {
             .and_then(|answer| ground(answer, &context));
         let Some((sections, check_questions, dropped_citations)) = grounded else {
             let bad = ModelErrorKind::BadOutput;
-            self.write_store()?.record_generation(&record(
-                GenerationStatus::Failed,
-                None,
-                Some(bad.as_str()),
-            ))?;
+            let reminded = self.write_store()?.in_transaction(|store| {
+                let reminded = claim(store)?;
+                store.record_generation(&record(
+                    GenerationStatus::Failed,
+                    None,
+                    Some(bad.as_str()),
+                ))?;
+                Ok(reminded)
+            })?;
+            remind(reminded);
             return Err(AppError {
                 model_error: Some(bad),
                 ..AppError::new(
@@ -404,44 +469,40 @@ impl App {
                 )
             });
         };
-        let store = self.write_store()?;
-        // D37 option 2 and D49: the course's first cloud run with material text reminds once.
-        let sharing_reminder = reminds_about_sharing(destination, course.material_sharing)
-            && store.claim_sharing_reminder(&course.id, Utc::now())?;
-        if sharing_reminder {
-            on_event(GenEvent::Notice {
-                code: GenNoticeCode::MaterialSharingReminder,
-            });
-        }
-        let explanation = WeeklyExplanation {
-            meta: GenerationMeta {
-                generation_id: generation_id.to_string(),
-                feature: AiFeature::WeeklyExplanation,
-                backend_label: run.backend_label,
-                model: run.model,
-                on_device: run.on_device,
-                created_at: started,
-                usage: run.cost.usage,
-                est_cost_micro_usd: run.cost.micro_usd,
-                estimated: run.cost.estimated,
-                context: context.summary().clone(),
-                prompt_version: PROMPT_VERSION,
-            },
-            course_id: course.id.clone(),
-            week,
-            sections,
-            check_questions,
-            left_out: context.summary().left_out.clone(),
-            stale: false,
-            sharing_reminder,
-            dropped_citations,
-            cite_ai_use: course.ai_policy == AiPolicy::AllowedWithCitation,
-        };
-        store.record_generation(&record(
-            GenerationStatus::Accepted,
-            serde_json::to_string(&explanation).ok(),
-            None,
-        ))?;
+        let explanation = self.write_store()?.in_transaction(|store| {
+            let sharing_reminder = claim(store)?;
+            let explanation = WeeklyExplanation {
+                meta: GenerationMeta {
+                    generation_id: generation_id.to_string(),
+                    feature: AiFeature::WeeklyExplanation,
+                    backend_label: run.backend_label,
+                    model: run.model,
+                    on_device: run.on_device,
+                    created_at: started,
+                    usage: run.cost.usage,
+                    est_cost_micro_usd: run.cost.micro_usd,
+                    estimated: run.cost.estimated,
+                    context: context.summary().clone(),
+                    prompt_version: PROMPT_VERSION,
+                },
+                course_id: course.id.clone(),
+                week,
+                sections,
+                check_questions,
+                left_out: context.summary().left_out.clone(),
+                stale: false,
+                sharing_reminder,
+                dropped_citations,
+                cite_ai_use: course.ai_policy == AiPolicy::AllowedWithCitation,
+            };
+            store.record_generation(&record(
+                GenerationStatus::Accepted,
+                serde_json::to_string(&explanation).ok(),
+                None,
+            ))?;
+            Ok(explanation)
+        })?;
+        remind(explanation.sharing_reminder);
         Ok(explanation)
     }
 }

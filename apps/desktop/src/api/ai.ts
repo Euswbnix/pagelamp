@@ -9,6 +9,7 @@ import type {
   BackendRef,
   BlockReason,
   Course,
+  DisclosureFacts,
   Effort,
   MaterialSharing,
   ModelErrorKind,
@@ -71,6 +72,12 @@ export type {
   UsageRow,
   UsageSummary,
 } from "./generated";
+
+/**
+ * A model's note where it runs (`modelDisclosure`), and whether its version is acknowledged: the
+ * facade's pair, as it comes.
+ */
+export type ModelDisclosure = [facts: DisclosureFacts, acknowledged: boolean];
 
 // ----- lists in display order (typed against the generated unions) ------------------------------
 

@@ -20,7 +20,7 @@ use super::{
     Block, CitationTarget, ContextCourse, ContextManifest, GatedContext, LeftOutMaterial,
     LeftOutReason, ManifestEntry,
 };
-use crate::ai::{BlockReason, Destination};
+use crate::ai::{BlockReason, Destination, MaterialSharing};
 use crate::calendar::candidates::{
     CandidateLeftOut, CandidateSignals, candidates_in, extra_chunks, select_chunks,
 };
@@ -344,30 +344,24 @@ pub fn week_context_including(
     result.map_err(GateError::Blocked)
 }
 
-/// Whether an explanation of a course week is out of date at `at` (design §5.2): a material it
-/// was written from changed (`content_hash`) or is gone, or the week now lists a material it
-/// didn't consider (`considered`: the ids it included or left out).
+/// Whether an explanation of a course week is out of date (design §5.2): a material it was
+/// written from changed (`content_hash`) or is gone, or the week now lists (`listed`: the ids of
+/// its materials now, `views::week_materials`) a material it didn't consider (`considered`: the
+/// ids it included or left out). The caller reads `listed` once per week, in the same read
+/// transaction.
 pub fn week_changed(
     store: &Store,
-    course_id: &str,
-    week: Option<u32>,
     manifest: &ContextManifest,
     considered: &[String],
-    at: AsOf,
+    listed: &[String],
 ) -> crate::Result<bool> {
-    store.in_read_transaction(|store| {
-        for entry in &manifest.materials {
-            let now = store.get_material(&entry.material_id)?;
-            if now.is_none_or(|material| material.content_hash != entry.content_hash) {
-                return Ok(true);
-            }
+    for entry in &manifest.materials {
+        let now = store.get_material(&entry.material_id)?;
+        if now.is_none_or(|material| material.content_hash != entry.content_hash) {
+            return Ok(true);
         }
-        let listed = views::week_materials(store, course_id, week, true, at)?;
-        Ok(listed
-            .materials
-            .iter()
-            .any(|material| !considered.contains(&material.id)))
-    })
+    }
+    Ok(listed.iter().any(|id| !considered.contains(id)))
 }
 
 impl GatedContext {
@@ -412,14 +406,19 @@ fn course_structure(
         state,
         text_included: false,
     });
+    // What the course's settings let AI read, never sent here (structure only): a course
+    // answered "not allowed" for question (b) keeps its materials on this computer.
     let mut text = format!(
-        "Course: {} [course_id: {}]\nMaterial text shared with AI: {}\n",
+        "Course: {} [course_id: {}]\nAI may read its materials: {}\n",
         course.display_name(),
         course.id,
-        match state {
-            AiMaterialsState::Readable => "yes",
-            AiMaterialsState::TurnedOff => "no (turned off by the student)",
-            AiMaterialsState::WithheldByPolicy => "no (the course does not allow AI use)",
+        match (state, course.material_sharing) {
+            (AiMaterialsState::Readable, MaterialSharing::NotAllowed) => {
+                "on this computer only (the student said they may not be shared with an AI service)"
+            }
+            (AiMaterialsState::Readable, _) => "yes",
+            (AiMaterialsState::TurnedOff, _) => "no (turned off by the student)",
+            (AiMaterialsState::WithheldByPolicy, _) => "no (the course does not allow AI use)",
         }
     );
     let this_week = views::week_materials_with(store, &course.id, None, true, at, Some(lends))?;

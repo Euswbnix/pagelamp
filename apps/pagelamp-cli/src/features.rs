@@ -3,12 +3,13 @@
 //! digest (cron-friendly). Every policy is the facade's; this only prints.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
 use clap::ValueEnum;
 use pagelamp_app::ai::{
-    BackendRef, ExplainOptions, GenEvent, GeneratedStudyPlan, PlanWarningCode, StudyPlanRequest,
-    WeeklyExplanation, WeeklyNote, WeeklyNoteOptions,
+    BackendRef, ExplainOptions, GenEvent, GenNoticeCode, GeneratedStudyPlan, PlanWarningCode,
+    StudyPlanRequest, WeeklyExplanation, WeeklyNote, WeeklyNoteOptions,
 };
 use pagelamp_app::{App, DayOfWeek, Reminder, ReminderKind};
 use pagelamp_core::ai::AiFeature;
@@ -296,10 +297,28 @@ pub async fn explain(app: &App, args: ExplainArgs, json: bool) -> anyhow::Result
         ui_language: Some("en".to_string()),
         override_budget: args.over_budget,
     };
-    let explanation = app
-        .explain_week(&args.course, args.week, &id, options, progress)
-        .await
-        .map_err(said)?;
+    let reminded = AtomicBool::new(false);
+    let explained = app
+        .explain_week(&args.course, args.week, &id, options, |event| match event {
+            GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder,
+            } => reminded.store(true, Ordering::Relaxed),
+            other => progress(other),
+        })
+        .await;
+    // An explanation that failed after sending still reminds, before its error.
+    let explanation = match explained {
+        Ok(explanation) => explanation,
+        Err(err) => {
+            if reminded.load(Ordering::Relaxed) {
+                eprintln!(
+                    "{}",
+                    crate::text::sharing_reminder_after_failed_explanation_note()
+                );
+            }
+            return Err(said(err));
+        }
+    };
     if json {
         return print_json(&explanation);
     }

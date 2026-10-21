@@ -727,7 +727,7 @@ struct PlanTextTests {
         #expect(en.estimateLine(estimate(0), backendKind: .local)?.text == "Free, on this computer")
         #expect(en.estimateLine(estimate(69_750), backendKind: .apiKey)?.spoken == "Estimated cost: ≈ $0.07 at most")
         #expect(en.estimateLine(estimate(nil), backendKind: .apiKey)?.text == "No price for this model")
-        #expect(en.estimateLine(estimate(nil), backendKind: .local)?.text == "Runs in the cloud; no cost estimate")
+        #expect(en.estimateLine(estimate(nil), backendKind: .local)?.text == "May run in the cloud; no cost estimate")
         #expect(en.estimateLine(estimate(nil), backendKind: .codex)?.text == "Uses your ChatGPT plan")
         #expect(en.estimateLine(estimate(nil), backendKind: nil) == nil)
         #expect(en.estimateDetails(estimate(3_800)) == "Up to 45K tokens in and 2.5K out")

@@ -18,6 +18,7 @@
   "deleted": "Note deleted.",
   "deleteFailed": "The note couldn't be deleted.",
   "automaticProblem": "Monday's note wasn't prepared: {{reason}}",
+  "serverDidntAnswer": "{{name}} on this computer didn't answer. Is it running?",
   "history": {
     "title": "Earlier notes",
     "show": "Show",

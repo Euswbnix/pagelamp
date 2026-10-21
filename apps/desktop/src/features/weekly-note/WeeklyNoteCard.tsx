@@ -27,6 +27,7 @@ import { formatDateTime, formatIsoDate } from "@/lib/format";
 import { paths } from "@/lib/routes";
 import { useFocusOnMount } from "@/lib/useFocusOnMount";
 import {
+  type NoteProblem,
   type NoteRunState,
   useDeleteWeeklyNote,
   useNoteRunStore,
@@ -60,7 +61,7 @@ function NoteCard() {
   const { run, start, stop } = useWeeklyNoteRun();
   const automaticProblem = useNoteRunStore((s) => s.automaticProblem);
   const remove = useDeleteWeeklyNote();
-  const errorText = useAiErrorText();
+  const errorText = useNoteErrorText();
   const [shownId, setShownId] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(new Set());
   const resultRef = useRef<HTMLElement>(null);
@@ -366,7 +367,7 @@ function NoteProgress({
 /** The live region: stages and how a run ended (never text); a click's failure is an alert. */
 function NoteOutcome({ run }: { run: NoteRunState }) {
   const { t } = useTranslation("weeklyNote");
-  const errorText = useAiErrorText();
+  const errorText = useNoteErrorText();
   const statusRef = useRef<HTMLParagraphElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
   const stoppedByClick = run.phase === "stopped" && !run.automatic;
@@ -398,9 +399,20 @@ function NoteOutcome({ run }: { run: NoteRunState }) {
       {run.phase === "failed" ? (
         <div ref={alertRef} tabIndex={-1} role="alert" className="text-sm outline-none">
           <p className="font-medium">{t("result.failed")}</p>
-          <p className="text-muted-foreground">{errorText(run.error)}</p>
+          <p className="text-muted-foreground">{errorText(run)}</p>
         </div>
       ) : null}
     </>
   );
+}
+
+/**
+ * Why a note run failed, by code: a model server on this computer that didn't answer is named
+ * (`NoteProblem.server`), since starting it is the fix.
+ */
+function useNoteErrorText() {
+  const { t } = useTranslation("weeklyNote");
+  const errorText = useAiErrorText();
+  return ({ error, server }: NoteProblem): string =>
+    server ? t("serverDidntAnswer", { name: server }) : errorText(error);
 }

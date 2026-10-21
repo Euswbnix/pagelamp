@@ -91,6 +91,7 @@ impl App {
         let _lock = self.acquire_sync_lock()?;
         // S8: due purges first (and files a failed Trash move left).
         self.purge_due_at_sync_start();
+        self.prune_ai_records_at_sync_start();
         let _activity = self.begin_activity(ActivityKind::Sync, None);
         let cancel = self.begin_cancellable();
         let started_at = Utc::now();
@@ -139,6 +140,7 @@ impl App {
         let _lock = self.acquire_sync_lock()?;
         // S8: due purges first (and files a failed Trash move left).
         self.purge_due_at_sync_start();
+        self.prune_ai_records_at_sync_start();
         let _activity = self.begin_activity(ActivityKind::Sync, Some(source_id));
         let cancel = self.begin_cancellable();
         let source = self.source(source_id)?;
