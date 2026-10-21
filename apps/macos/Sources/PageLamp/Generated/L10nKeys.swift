@@ -295,6 +295,8 @@ nonisolated enum L10nKeys {
         "ai.policy.training.unknown",
         "ai.removeAll.body",
         "ai.removeAll.bodyCodex",
+        "ai.removeAll.busy",
+        "ai.removeAll.busyCodex",
         "ai.removeAll.button",
         "ai.removeAll.confirm",
         "ai.removeAll.done",

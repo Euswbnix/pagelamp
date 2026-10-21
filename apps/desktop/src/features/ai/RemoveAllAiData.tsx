@@ -66,7 +66,13 @@ export function RemoveAllAiData() {
           {remove.error ? (
             <div className="space-y-1">
               <p role="alert" className="text-sm text-destructive">
-                {errorText(remove.error)}
+                {/* Busy here is something still in use (a provider added meanwhile, Codex
+                    running), not a sync: said as such. */}
+                {toApiError(remove.error).kind === "busy"
+                  ? signedInToChatGpt
+                    ? t("removeAll.busyCodex")
+                    : t("removeAll.busy")
+                  : errorText(remove.error)}
               </p>
               {/* What was removed and what stayed (a key the keychain kept), as the app said. */}
               <TechnicalDetails

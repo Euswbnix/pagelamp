@@ -91,6 +91,10 @@ export interface MockAiContext {
    * reminders' claims go (the proposals mock). Returns how many calendars went.
    */
   forgetAiRecords: () => number;
+  /** This app's AI readings stop (remove-all, the facade's cancel_all). */
+  cancelReadings: () => void;
+  /** A course's readings that send to the cloud stop (answered "not allowed"). */
+  stopCourseReadings: (courseId: string) => void;
 }
 
 /** D18: US$5 soft cap, warn at 80%. */
@@ -493,6 +497,8 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     setCourseMaterialSharing: async (courseId, answer) => {
       await ctx.delay();
       (ctx.findCourse(courseId).course as CourseWithSharing).material_sharing = answer;
+      // Like the facade: "not allowed" stops the course's readings that send to the cloud.
+      if (answer === "not_allowed") ctx.stopCourseReadings(courseId);
     },
 
     aiStatus: async (): Promise<AiStatus> => {
@@ -799,8 +805,10 @@ export function createMockAi(ctx: MockAiContext): AiApi {
     removeAllAiData: async () => {
       await ctx.delay(300);
       // Like the facade: Codex's sign-in ends first; then the keys, and a provider whose key
-      // the keychain keeps stays (with its key); everything else goes, then it says so.
+      // the keychain keeps stays (with its key); everything else goes, then it says so. This
+      // app's readings stop first.
       codex.forget();
+      ctx.cancelReadings();
       const kept = providers.filter((p) => p.key_last4 && lockedKeys.has(p.provider_id));
       const generations = ctx.forgetAiRecords();
       acknowledged.clear();

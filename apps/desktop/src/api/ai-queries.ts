@@ -4,6 +4,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSharingReminders } from "@/stores/sharingReminders";
 import type { CodexSource } from "./ai";
 import {
   type AiFeature,
@@ -218,7 +219,11 @@ export function useSetCourseMaterialSharing() {
   return useMutation({
     mutationFn: (v: { courseId: string; answer: MaterialSharing }) =>
       api.setCourseMaterialSharing(v.courseId, v.answer),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    onSuccess: (_, v) => {
+      // Answered, wherever in the app: the course's pending question (b) reminder is done.
+      useSharingReminders.getState().settle(v.courseId);
+      return client.invalidateQueries({ queryKey: queryKeys.all });
+    },
   });
 }
 

@@ -224,6 +224,36 @@ describe("Read the syllabus with AI", () => {
     expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull();
   });
 
+  it('closes question (b) once it is answered in the Policy tab, "not sure" too', async () => {
+    const api = mockApi();
+    endingWith(api, badOutput);
+    const { user, section } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("region", { name: REMINDER })).toBeInTheDocument();
+    // Closed as the answer is saved, not when the course is read again (here it never is).
+    vi.spyOn(api, "courseOverview").mockImplementation(() => new Promise(() => {}));
+    await user.click(screen.getByRole("tab", { name: "AI policy" }));
+    await user.click(await screen.findByRole("radio", { name: /^Not sure/ }));
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    await waitFor(() =>
+      expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
+    );
+  });
+
+  it("closes question (b) once it is answered otherwise outside the app", async () => {
+    const api = mockApi();
+    endingWith(api, badOutput);
+    const { user, section, queryClient } = await openReading(UNLABELLED, api);
+    await user.click(within(section).getByRole("button", { name: "Read the syllabus with AI" }));
+    expect(await within(section).findByRole("region", { name: REMINDER })).toBeInTheDocument();
+    // "Not sure" given with the CLI: not the answer the reminder was shown with.
+    await api.setCourseMaterialSharing(UNLABELLED, "not_sure");
+    await act(() => queryClient.invalidateQueries());
+    await waitFor(() =>
+      expect(within(section).queryByRole("region", { name: REMINDER })).toBeNull(),
+    );
+  });
+
   it("keeps question (b) through another reading until it is answered", async () => {
     const api = mockApi();
     // Said once (the facade claims it): the first run says it, the next one doesn't.
