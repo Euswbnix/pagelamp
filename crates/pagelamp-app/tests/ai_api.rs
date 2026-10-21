@@ -793,9 +793,10 @@ async fn local_work_and_keyless_providers_never_touch_the_keychain() {
         1,
         "only openai's key was read"
     );
-    // Removing everything deletes only the keys that exist.
+    // Removing everything deletes only the keys that exist: openai's, before its row goes
+    // and once more after (a key an update stored meanwhile goes too).
     app.remove_all_ai_data().unwrap();
-    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+    assert_eq!(tripwire.0.load(std::sync::atomic::Ordering::SeqCst), 3);
 }
 
 #[tokio::test]
@@ -1294,4 +1295,338 @@ async fn the_doctor_reads_no_key_of_a_keyless_provider() {
     let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
     keyless_with_an_entry(&app, &keychain).await;
     assert_eq!(app.doctor().unwrap().ai.providers[0].key_present, None);
+}
+
+/// A keychain that, on its first delete, lets another process add a provider with its key (as
+/// `ai add` running next to "remove all" would).
+#[derive(Default)]
+struct AddsDuringRemoval {
+    keys: MemorySecrets,
+    db: std::sync::Mutex<Option<std::path::PathBuf>>,
+    added: std::sync::atomic::AtomicBool,
+}
+
+impl SecretBackend for AddsDuringRemoval {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.keys.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.keys.set(id, secret)
+    }
+    fn delete(&self, id: &str) -> pagelamp_core::Result<()> {
+        if !self.added.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            let db = self.db.lock().unwrap().clone().unwrap();
+            self.keys.set("llm:anthropic", KEY)?;
+            Store::open(&db)
+                .unwrap()
+                .insert_model_provider(&ProviderRow {
+                    id: "anthropic".into(),
+                    preset: "anthropic".into(),
+                    label: "Anthropic".into(),
+                    wire: "anthropic_messages".into(),
+                    base_url: "https://api.anthropic.com".into(),
+                    created_at: Utc::now().trunc_subsecs(0),
+                    last_probe_json: None,
+                })?;
+        }
+        self.keys.delete(id)
+    }
+}
+
+/// A provider added while "remove all" runs isn't removed without its key: it stays, key and
+/// all, and the removal says so.
+#[tokio::test]
+async fn a_provider_added_during_remove_all_stays_with_its_key() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(AddsDuringRemoval::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    *keychain.db.lock().unwrap() = Some(app.db_path());
+    add_cloud_openai(&app, &keychain.keys);
+    let err = app.remove_all_ai_data().unwrap_err();
+    assert!(
+        err.message.contains("Removed 1 provider(s)"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message.contains("anthropic was added while this ran"),
+        "{}",
+        err.message
+    );
+    let left: Vec<String> = app
+        .ai_status()
+        .unwrap()
+        .providers
+        .into_iter()
+        .map(|p| p.provider_id)
+        .collect();
+    assert_eq!(left, vec!["anthropic".to_string()]);
+    assert_eq!(
+        keychain.keys.get("llm:anthropic").unwrap().as_deref(),
+        Some(KEY)
+    );
+    assert_eq!(keychain.keys.get("llm:openai").unwrap(), None);
+}
+
+/// A provider removed while its new key is being checked takes that key with it: the update
+/// fails and no key is left behind.
+#[tokio::test]
+async fn a_key_set_while_its_provider_goes_doesn_t_stay() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_in(temp.path());
+    let server = mock_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(models_body())
+                .set_delay(std::time::Duration::from_millis(1500)),
+        )
+        .mount(&server)
+        .await;
+    let update = {
+        let (app, id) = (app.clone(), record.provider_id.clone());
+        tokio::spawn(async move {
+            app.update_model_provider_key(&id, "sk-demo-new-key-0042")
+                .await
+        })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider(&record.provider_id).unwrap();
+    let err = update.await.unwrap().unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::NotFound);
+    assert_eq!(
+        secrets.get(&format!("llm:{}", record.provider_id)).unwrap(),
+        None
+    );
+}
+
+type DeleteHook = Box<dyn FnOnce(&str) + Send>;
+type SetHook = Box<dyn FnOnce() + Send>;
+
+/// A keychain that stages races: after its `n`-th delete it runs a hook (given the account it
+/// deleted first), after a set another, and from `stuck` on it refuses deletes.
+#[derive(Default)]
+struct RaceKeychain {
+    keys: MemorySecrets,
+    deletes: std::sync::Mutex<Vec<String>>,
+    on_delete: std::sync::Mutex<Option<(usize, DeleteHook)>>,
+    on_set: std::sync::Mutex<Option<SetHook>>,
+    stuck: std::sync::atomic::AtomicBool,
+}
+
+impl SecretBackend for RaceKeychain {
+    fn get(&self, id: &str) -> pagelamp_core::Result<Option<String>> {
+        self.keys.get(id)
+    }
+    fn set(&self, id: &str, secret: &str) -> pagelamp_core::Result<()> {
+        self.keys.set(id, secret)?;
+        let hook = self.on_set.lock().unwrap().take();
+        if let Some(hook) = hook {
+            hook();
+        }
+        Ok(())
+    }
+    fn delete(&self, id: &str) -> pagelamp_core::Result<()> {
+        if self.stuck.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err(pagelamp_core::Error::Secret("access refused".into()));
+        }
+        self.keys.delete(id)?;
+        let first = {
+            let mut deletes = self.deletes.lock().unwrap();
+            deletes.push(id.to_string());
+            let due = self
+                .on_delete
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|(n, _)| *n == deletes.len());
+            due.then(|| deletes[0].clone())
+        };
+        if let Some(first) = first {
+            let (_, hook) = self.on_delete.lock().unwrap().take().unwrap();
+            hook(&first);
+        }
+        Ok(())
+    }
+}
+
+/// A custom server on this computer that lists one model and takes any key.
+async fn any_key_server() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(models_body()))
+        .mount(&server)
+        .await;
+    server
+}
+
+const NEW_KEY: &str = "sk-demo-new-key-0042";
+
+/// An update-key that lands while "remove all" deletes keys (after the provider's key went,
+/// before its row does) succeeds, and still leaves no key behind: the removal deletes each
+/// removed provider's key once more after the rows are gone.
+#[test]
+fn a_key_set_during_remove_all_doesn_t_stay() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (_one, _two, ids) = runtime.block_on(async {
+        let (one, two) = (any_key_server().await, any_key_server().await);
+        let mut ids = Vec::new();
+        for server in [&one, &two] {
+            let record = app
+                .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+                .await
+                .unwrap();
+            ids.push(record.provider_id);
+        }
+        (one, two, ids)
+    });
+    let (updater, handle) = (app.clone(), runtime.handle().clone());
+    *keychain.on_delete.lock().unwrap() = Some((
+        2,
+        Box::new(move |first: &str| {
+            let id = first.trim_start_matches("llm:").to_string();
+            handle
+                .block_on(updater.update_model_provider_key(&id, NEW_KEY))
+                .unwrap();
+        }),
+    ));
+    app.remove_all_ai_data().unwrap();
+    for id in &ids {
+        assert_eq!(keychain.keys.get(&format!("llm:{id}")).unwrap(), None);
+    }
+}
+
+/// The same for one provider's removal: an update-key between its key's delete and its row's
+/// leaves no key.
+#[test]
+fn a_key_set_during_a_removal_doesn_t_stay() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let (_server, id) = runtime.block_on(async {
+        let server = any_key_server().await;
+        let record = app
+            .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+            .await
+            .unwrap();
+        (server, record.provider_id)
+    });
+    let (updater, handle) = (app.clone(), runtime.handle().clone());
+    *keychain.on_delete.lock().unwrap() = Some((
+        1,
+        Box::new(move |first: &str| {
+            let id = first.trim_start_matches("llm:").to_string();
+            handle
+                .block_on(updater.update_model_provider_key(&id, NEW_KEY))
+                .unwrap();
+        }),
+    ));
+    app.remove_model_provider(&id).unwrap();
+    assert_eq!(keychain.keys.get(&format!("llm:{id}")).unwrap(), None);
+    assert!(app.ai_status().unwrap().providers.is_empty());
+}
+
+/// A store that fails after the new key is stored: the update says the key is stored and in
+/// use, not just that it failed.
+#[tokio::test]
+async fn a_failed_update_says_the_new_key_is_in_use() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = any_key_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    let db = app.db_path();
+    *keychain.on_set.lock().unwrap() = Some(Box::new(move || {
+        Store::open(&db)
+            .unwrap()
+            .conn()
+            .execute_batch("ALTER TABLE model_providers RENAME TO model_providers_away;")
+            .unwrap();
+    }));
+    let err = app
+        .update_model_provider_key(&record.provider_id, NEW_KEY)
+        .await
+        .unwrap_err();
+    assert!(
+        err.message.contains(&format!(
+            "stored in the keychain under `llm:{}` and replaces the old one",
+            record.provider_id
+        )),
+        "{}",
+        err.message
+    );
+    assert_eq!(
+        keychain
+            .keys
+            .get(&format!("llm:{}", record.provider_id))
+            .unwrap()
+            .as_deref(),
+        Some(NEW_KEY)
+    );
+}
+
+/// A provider removed while its new key is checked, and a keychain that then won't delete
+/// that key: the update says so and where the key is, without "try again".
+#[tokio::test]
+async fn a_new_key_that_outlives_its_provider_is_named() {
+    let temp = tempfile::tempdir().unwrap();
+    let keychain = Arc::new(RaceKeychain::default());
+    let app = App::open_at_with_secrets(temp.path().join("data"), keychain.clone()).unwrap();
+    let server = any_key_server().await;
+    let record = app
+        .add_model_provider("custom", Some(&format!("{}/v1", server.uri())), Some(KEY))
+        .await
+        .unwrap();
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(models_body())
+                .set_delay(std::time::Duration::from_millis(1500)),
+        )
+        .mount(&server)
+        .await;
+    let stuck = keychain.clone();
+    *keychain.on_set.lock().unwrap() = Some(Box::new(move || {
+        stuck.stuck.store(true, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let update = {
+        let (app, id) = (app.clone(), record.provider_id.clone());
+        tokio::spawn(async move { app.update_model_provider_key(&id, NEW_KEY).await })
+    };
+    while server.received_requests().await.unwrap().is_empty() {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    app.remove_model_provider(&record.provider_id).unwrap();
+    let err = update.await.unwrap().unwrap_err();
+    assert!(
+        err.message
+            .contains("was removed while the new key was being checked"),
+        "{}",
+        err.message
+    );
+    assert!(
+        err.message
+            .contains(&format!("is still under `llm:{}`", record.provider_id)),
+        "{}",
+        err.message
+    );
+    assert!(!err.message.contains("try again"), "{}", err.message);
 }

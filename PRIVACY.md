@@ -79,10 +79,10 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   - With a model on this computer (for example Ollama or LM Studio), it stays on your computer —
     unless you set the model's address to another computer, which then receives it, or the model
     server (such as Ollama) runs that model in the cloud (`pagelamp ai models` marks it "cloud")
-    and passes it on there. A course you answered `not-allowed` for never goes to such a model.
-    Before each reading, PageLamp asks Ollama for its list of models: a model it marks as in the
-    cloud or doesn't list, or an answer that isn't a usable list, counts as in the cloud. If
-    Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent.
+    and passes it on there. The materials of a course you answered `not-allowed` for never go to
+    such a model. Before each reading, PageLamp asks Ollama for its list of models: a model it
+    marks as in the cloud or doesn't list, or an answer that isn't a usable list, counts as in the
+    cloud. If Ollama doesn't answer (not running, too slow), the reading stops and nothing is sent.
     PageLamp trusts that the LM Studio preset's address is LM Studio on this computer, which runs
     its models here. Any other server on this computer (`custom`) can't tell PageLamp where it
     runs a model, so its models count as in the cloud.
@@ -182,7 +182,8 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   model read it; so do your courses and your answers about sharing. A key is deleted before
   anything else: if the keychain doesn't let PageLamp delete it, `ai remove <provider>` changes
   nothing and says so, and `--all` removes the rest but keeps that provider and its key, and ends
-  with an error that names them, so you can run it again.
+  with an error that names them, so you can run it again (as it does for a provider added while
+  it runs).
 - **Delete everything:** remove each source first (so its token or feed link is deleted from the
   keychain) and, **(next)** if you added model providers, run `pagelamp ai remove --all` (so their
   API keys are deleted from it), then quit PageLamp and delete the data folder above. Uninstalling

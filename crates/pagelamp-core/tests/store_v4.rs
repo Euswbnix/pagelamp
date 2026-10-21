@@ -322,7 +322,7 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
             )
             .unwrap();
     }
-    let removed = store.remove_all_ai_data(&[]).unwrap();
+    let removed = store.remove_all_ai_data(&["openai".to_string()]).unwrap();
     assert_eq!(
         (removed.providers, removed.generations, removed.usage_rows),
         (1, 1, 1)
