@@ -945,6 +945,72 @@ async fn a_sync_scans_changed_outlines_into_proposals_once() {
     assert_eq!(app.course_calendar("DEMO707").unwrap().proposals.len(), 1);
 }
 
+/// A calendar accepted from the scan comes back dates-only when its course is restored (the
+/// removal record keeps no labels): the scan then offers it in full again, labels and all.
+#[tokio::test]
+async fn a_restored_scan_calendar_is_offered_again_in_full() {
+    use pagelamp_app::RemoveOptions;
+
+    let temp = tempfile::tempdir().unwrap();
+    let app = App::open_at_with_secrets(temp.path().join("data"), Arc::new(MemorySecrets::new()))
+        .unwrap();
+    let root = temp.path().join("Courses");
+    let outline = root.join("DEMO707 Field Methods/Course outline.md");
+    std::fs::create_dir_all(outline.parent().unwrap()).unwrap();
+    // A reading week on the Monday-to-Friday four weeks on.
+    let monday = day(28)
+        - TimeDelta::days(i64::from(
+            chrono::Datelike::weekday(&day(28)).num_days_from_monday(),
+        ));
+    let friday = monday + TimeDelta::days(4);
+    std::fs::write(
+        &outline,
+        format!(
+            "# DEMO707 Course Outline\n\n{}\n{}\nReading week: {} to {}.\n",
+            first_class_words(),
+            last_class_words(),
+            spoken(monday),
+            spoken(friday)
+        ),
+    )
+    .unwrap();
+    let source = app.add_folder_source(&root, None, None).unwrap();
+    app.sync_source(&source.id, pagelamp_app::SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    let view = app.course_calendar("DEMO707").unwrap();
+    let proposal = &view.proposals[0];
+    assert!(
+        proposal.calendar.breaks.iter().any(|b| !b.label.is_empty()),
+        "{:?}",
+        proposal.calendar.breaks
+    );
+    app.accept_calendar_proposal(proposal.id, None).unwrap();
+
+    let report = app
+        .remove_courses(
+            vec!["DEMO707".into()],
+            RemoveOptions {
+                reason: None,
+                keep_downloaded_files: false,
+                purge_now: true,
+                delete_pre_update_backup: false,
+            },
+        )
+        .await
+        .unwrap();
+    let removed = &report.removed[0];
+    let outcome = app.restore_course(&removed.removed_id).await.unwrap();
+    assert!(outcome.restored, "{outcome:?}");
+    let view = app.course_calendar("DEMO707").unwrap();
+    let accepted = view.accepted.as_ref().unwrap();
+    assert!(accepted.calendar.breaks.iter().all(|b| b.label.is_empty()));
+    // The scan isn't "nothing new" for it: the labelled calendar is offered again.
+    let again = app.scan_course_calendar("DEMO707").unwrap();
+    let again = again.expect("the scan offers the full calendar again");
+    assert!(again.calendar.breaks.iter().any(|b| !b.label.is_empty()));
+}
+
 #[test]
 fn what_a_proposal_changes_follows_the_calendar_in_force() {
     let temp = tempfile::tempdir().unwrap();

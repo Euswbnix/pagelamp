@@ -437,6 +437,13 @@ export function createProposalsMock(deps: {
     if (legacy) {
       const outline = addMaterial(legacy, "Course outline (updated)", "syllabus", 6);
       const old = proposal(legacy, "ai", outline, { ai_label: aiLabel });
+      // Accepted before: in force on the timeline, as accepting puts it; gone stale since, so
+      // the facade trusts it at medium at most.
+      deps.applyCalendar(legacy, calendarToInput(old.calendar), "ai", aiLabel);
+      legacy.timeline = {
+        ...legacy.timeline,
+        term: { ...legacy.timeline.term, anchor_confidence: "medium" },
+      };
       stateOf(legacy.course.id).accepted = {
         id: old.id,
         origin: "ai",

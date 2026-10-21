@@ -29,9 +29,9 @@ pub(crate) const CODEX_OUTDATED: &str = "ai.codex_outdated";
 /// cloud (Ollama), by backend key: which models it runs here (`true`) and which it runs in the
 /// cloud (`false`). Estimates read it; a run asks the server again.
 pub(crate) const LISTED_MODELS: &str = "ai.listed_models";
-/// Providers added without a key (a custom server on this computer) that never got one: no
-/// key of theirs is in the keychain, so it is neither read nor deleted, and an old entry under
-/// the same id can't come back.
+/// Providers added without a key (a custom server on this computer) that never got one: their
+/// keychain entry is never read, so an old entry under the same id can't come back. A removal
+/// still deletes any entry, and accepts a keychain that can't be reached at all.
 pub(crate) const KEYLESS: &str = "ai.keyless_providers";
 
 /// Every AI settings key ("Remove all AI data" deletes them).

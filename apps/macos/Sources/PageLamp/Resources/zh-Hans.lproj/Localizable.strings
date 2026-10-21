@@ -454,6 +454,7 @@
 "calendar.form.end" = "最后一天上课（可不填）";
 "calendar.form.endHint" = "之后的三周算作考试期。";
 "calendar.form.invalid" = "这些日期有问题。请确认最后一天上课在第一天之后。";
+"calendar.form.ownCalendar" = "这些日期来自这门课自己的日历，它决定这门课的周数，不能在这里修改。请用 %1$@ 命令修改该日历。";
 "calendar.form.prefilled" = "已填入 PageLamp 目前采用的日期。";
 "calendar.form.save" = "保存日期";
 "calendar.form.saved" = "课程日期已保存";
@@ -522,6 +523,18 @@
 "calendar.reject.starts_after_end" = "结束日期早于开始日期。";
 "calendar.reject.starts_before_session_window" = "开始日期比本学期开始早了很多。";
 "calendar.reject.starts_long_before_activity" = "开始日期比课程里第一次发布内容早了四周以上。";
+"calendar.sameSession.allOwnCalendar" = "本学期的其他课都按自己的日历计算周数，这些日期只用于这门课。";
+"calendar.sameSession.failed" = "日期已保存到这门课，其他课没有改动。";
+"calendar.sameSession.hidden" = "已隐藏";
+"calendar.sameSession.hint" = "本学期的其他课。不想改动的课请取消勾选。";
+"calendar.sameSession.legend" = "这些日期也用于";
+"calendar.sameSession.listFailed" = "没能列出本学期的其他课，这些日期只用于这门课。";
+"calendar.sameSession.ownCalendar" = "按自己的日历计算周数，复制不会改动它。";
+"calendar.sameSession.ownDates" = "已有自己的日期，勾选后会被替换。";
+"calendar.sameSession.sourceCalendar" = "这门课按自己的日历计算周数，不能在这里把日期用于其他课。请用 %1$@ 命令复制。";
+"calendar.sameSession.sourceCalendarRefused" = "这门课按自己的日历计算周数，而这份日历无法只用两个日期带给其他课（它分为两部分、第一周不是第 1 周、没有最后一天上课，或有跳过一周的假期）。请分别设置其他课的日期。";
+"calendar.sameSession.undo" = "撤销";
+"calendar.sameSession.undoFailed" = "其他课没能恢复，它们仍是这门课的日期。";
 "calendar.signal.dates" = "课程日期";
 "calendar.signal.latest_material" = "最新的资料";
 "calendar.signal.module_unlock" = "最近解锁的模块";

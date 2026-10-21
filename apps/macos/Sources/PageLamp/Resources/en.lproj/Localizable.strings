@@ -454,6 +454,7 @@
 "calendar.form.end" = "Last day of classes (optional)";
 "calendar.form.endHint" = "The three weeks after it count as the exam period.";
 "calendar.form.invalid" = "These dates don't work. Check that classes end after they start.";
+"calendar.form.ownCalendar" = "These dates come from this course's own calendar, which counts its weeks: they can't be changed here. Change that calendar with the %1$@ command.";
 "calendar.form.prefilled" = "Filled in with the dates PageLamp is using now.";
 "calendar.form.save" = "Save dates";
 "calendar.form.saved" = "Course dates saved";
@@ -522,6 +523,18 @@
 "calendar.reject.starts_after_end" = "Ends before it starts.";
 "calendar.reject.starts_before_session_window" = "Starts well before this session begins.";
 "calendar.reject.starts_long_before_activity" = "Starts more than four weeks before anything was posted in the course.";
+"calendar.sameSession.allOwnCalendar" = "The other courses of this term count their weeks from calendars of their own, so these dates stay in this course.";
+"calendar.sameSession.failed" = "Your dates are saved for this course. The other courses weren't changed.";
+"calendar.sameSession.hidden" = "hidden";
+"calendar.sameSession.hint" = "Other courses of this term. Untick any you want to leave as they are.";
+"calendar.sameSession.legend" = "Also use these dates in";
+"calendar.sameSession.listFailed" = "The other courses of this term couldn't be listed, so these dates stay in this course.";
+"calendar.sameSession.ownCalendar" = "Counts its weeks from a calendar of its own: a copy leaves it alone.";
+"calendar.sameSession.ownDates" = "Has its own dates: they would be replaced.";
+"calendar.sameSession.sourceCalendar" = "This course counts its weeks from a calendar of its own, so its dates aren't given to other courses from here. Copy them with the %1$@ command.";
+"calendar.sameSession.sourceCalendarRefused" = "This course counts its weeks from a calendar of its own, which two dates can't carry to other courses (it has two parts, a first week other than week 1, no last day of classes, or a break that skips a week). Set the other courses' dates on their own.";
+"calendar.sameSession.undo" = "Undo";
+"calendar.sameSession.undoFailed" = "The other courses couldn't be put back: they keep this course's dates.";
 "calendar.signal.dates" = "the course dates";
 "calendar.signal.latest_material" = "the latest material";
 "calendar.signal.module_unlock" = "the latest unlocked module";

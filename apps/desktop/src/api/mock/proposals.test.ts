@@ -24,6 +24,28 @@ describe("mock calendar proposals", () => {
     expect(view.blocked ?? null).toBeNull();
   });
 
+  it("keeps the notes' week and the last activity when a calendar goes in force", async () => {
+    const api = createMockApi(fast);
+    // The stale calendar the scenario starts with, in force on its timeline.
+    const legacy = await api.courseOverview(LEGACY);
+    expect(legacy.timeline.term).toMatchObject({
+      own_calendar: true,
+      student_dates_confirmed: true,
+      anchor_origin: "ai",
+      anchor_confidence: "medium",
+    });
+    expect(legacy.timeline.notes_week).toBe(4);
+    expect(legacy.lifecycle.last_activity).toBeTruthy();
+    // Accepting another: what the materials and the activity say stays.
+    const before = await api.courseOverview(FITTED);
+    const [proposal] = (await api.courseCalendar(FITTED)).proposals;
+    if (!proposal) throw new Error("the scenario has a proposal for DEM332");
+    await api.acceptCalendarProposal(proposal.id, null);
+    const after = await api.courseOverview(FITTED);
+    expect(after.timeline.notes_week).toBe(before.timeline.notes_week);
+    expect(after.lifecycle.last_activity).toBe(before.lifecycle.last_activity);
+  });
+
   it("accepts with edits, which puts the calendar in force", async () => {
     const api = createMockApi(fast);
     const { proposals } = await api.courseCalendar(UNLABELLED);

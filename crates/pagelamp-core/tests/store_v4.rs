@@ -322,7 +322,7 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
             )
             .unwrap();
     }
-    let removed = store.remove_all_ai_data(&[]).unwrap();
+    let removed = store.remove_all_ai_data(&["openai".to_string()]).unwrap();
     assert_eq!(
         (removed.providers, removed.generations, removed.usage_rows),
         (1, 1, 1)
@@ -384,4 +384,195 @@ fn removing_all_ai_data_empties_the_ai_tables_and_keeps_course_data() {
         "course data stays"
     );
     assert_eq!(store.remove_all_ai_data(&[]).unwrap().providers, 0);
+}
+
+/// A restored course gets its calendar back as it was: the 0.1 calendar the student never
+/// checked stays `legacy` (unconfirmed, and still the migrated row), the confirmed one stays
+/// `user` and confirmed.
+#[test]
+fn a_restored_course_keeps_its_calendar_s_origin() {
+    use std::collections::BTreeSet;
+
+    use pagelamp_core::removal::RemovalReason;
+
+    let (_dir, path) = temp_db();
+    version_3_db(&path);
+    let store = Store::open(&path).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap();
+    for id in ["folder:demo/course/CONFIRMED", "folder:demo/course/LEGACY"] {
+        store
+            .remove_course(id, RemovalReason::Other, false, false, now)
+            .unwrap();
+        store.purge_course(id, now, false).unwrap();
+        // The sync a restore runs brings the course row back, then its settings.
+        store
+            .upsert_course(&CourseUpsert {
+                id: id.into(),
+                source_id: "folder:demo".into(),
+                external_id: id.into(),
+                code: Some(id.into()),
+                name: "Demo".into(),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+                lms: Default::default(),
+            })
+            .unwrap();
+        store.apply_restored_settings(id, now).unwrap();
+    }
+    let rows: Vec<(String, String, String)> = {
+        let mut statement = store
+            .conn()
+            .prepare(
+                "SELECT course_id, origin, fingerprint FROM course_calendars
+                 WHERE state = 'accepted' ORDER BY course_id",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    };
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "folder:demo/course/CONFIRMED".to_string(),
+                "user".to_string(),
+                "legacy".to_string()
+            ),
+            (
+                "folder:demo/course/LEGACY".to_string(),
+                "legacy".to_string(),
+                "legacy".to_string()
+            ),
+        ]
+    );
+    let confirmed: BTreeSet<String> = store
+        .setting(COURSE_DATES_CONFIRMED)
+        .unwrap()
+        .unwrap_or_default();
+    assert_eq!(
+        confirmed,
+        BTreeSet::from(["folder:demo/course/CONFIRMED".to_string()])
+    );
+}
+
+/// A removal record written before the calendar's origin and fingerprint were kept brings the
+/// calendar back as `restored`.
+#[test]
+fn an_older_removal_record_restores_the_calendar_as_restored() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let (_dir, path) = temp_db();
+    version_3_db(&path);
+    let store = Store::open(&path).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap();
+    let id = "folder:demo/course/CONFIRMED";
+    store
+        .remove_course(id, RemovalReason::Other, false, false, now)
+        .unwrap();
+    store.purge_course(id, now, false).unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE course_tombstones
+             SET settings_json = json_remove(settings_json, '$.calendar_origin',
+                                             '$.calendar_fingerprint')
+             WHERE course_id = ?1",
+            [id],
+        )
+        .unwrap();
+    store
+        .upsert_course(&CourseUpsert {
+            id: id.into(),
+            source_id: "folder:demo".into(),
+            external_id: id.into(),
+            code: Some(id.into()),
+            name: "Demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    store.apply_restored_settings(id, now).unwrap();
+    let row: (String, String) = store
+        .conn()
+        .query_row(
+            "SELECT origin, fingerprint FROM course_calendars
+             WHERE course_id = ?1 AND state = 'accepted'",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("restored".to_string(), "restored".to_string()));
+}
+
+/// A calendar the scan or a model proposed comes back dates-only (the record keeps no labels
+/// or evidence): it keeps its origin but not its reader's fingerprint, so the same materials
+/// can be proposed again in full. The student's own and a 0.1 calendar keep theirs (above).
+#[test]
+fn a_restored_read_calendar_gives_up_its_fingerprint() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let (_dir, path) = temp_db();
+    version_3_db(&path);
+    let store = Store::open(&path).unwrap();
+    let now = Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap();
+    // The migrated rows, made into what the scan and an AI reading leave.
+    for (id, origin) in [
+        ("folder:demo/course/CONFIRMED", "scan"),
+        ("folder:demo/course/LEGACY", "ai"),
+    ] {
+        store
+            .conn()
+            .execute(
+                "UPDATE course_calendars SET origin = ?2, fingerprint = 'candidates-hash'
+                 WHERE course_id = ?1 AND state = 'accepted'",
+                [id, origin],
+            )
+            .unwrap();
+        store
+            .remove_course(id, RemovalReason::Other, false, false, now)
+            .unwrap();
+        store.purge_course(id, now, false).unwrap();
+        store
+            .upsert_course(&CourseUpsert {
+                id: id.into(),
+                source_id: "folder:demo".into(),
+                external_id: id.into(),
+                code: Some(id.into()),
+                name: "Demo".into(),
+                term_start: None,
+                term_end: None,
+                url: None,
+                syllabus_text: None,
+                lms: Default::default(),
+            })
+            .unwrap();
+        store.apply_restored_settings(id, now).unwrap();
+    }
+    let mut statement = store
+        .conn()
+        .prepare(
+            "SELECT origin, fingerprint FROM course_calendars WHERE state = 'accepted'
+             ORDER BY course_id",
+        )
+        .unwrap();
+    let rows: Vec<(String, String)> = statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("scan".to_string(), "restored".to_string()),
+            ("ai".to_string(), "restored".to_string()),
+        ]
+    );
 }

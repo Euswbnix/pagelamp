@@ -488,30 +488,59 @@ impl App {
         // Keys first: a provider whose key can't be deleted stays, with its key, and the
         // removal ends as an error that names it (after removing everything else).
         let keyless = settings::keyless(&store)?;
+        let mut handled = Vec::new();
+        let mut handled_rows = Vec::new();
         let mut keys_left = Vec::new();
         let mut key_error = None;
         for row in store.model_providers()? {
             let row_keyless = keyless.contains(&row.id);
-            if let Err(err) = providers::forget_key(&*self.secrets, &row, row_keyless) {
-                tracing::warn!(target: "pagelamp::ai", "{}", err.message);
-                keys_left.push(row.id);
-                key_error.get_or_insert(err);
+            match providers::forget_key(&*self.secrets, &row, row_keyless) {
+                Ok(()) => {
+                    handled.push(row.id.clone());
+                    handled_rows.push((row, row_keyless));
+                }
+                Err(err) => {
+                    tracing::warn!(target: "pagelamp::ai", "{}", err.message);
+                    keys_left.push(row.id);
+                    key_error.get_or_insert(err);
+                }
             }
         }
-        let removed = store.remove_all_ai_data(&keys_left)?;
-        // A keyless provider it keeps stays keyless: its keychain entry is never read.
-        let still_keyless: std::collections::BTreeSet<&String> = keys_left
-            .iter()
-            .filter(|id| keyless.contains(*id))
-            .collect();
-        for key in settings::ALL_KEYS {
-            if key == settings::KEYLESS && !still_keyless.is_empty() {
-                store.set_setting(key, &still_keyless)?;
-            } else {
-                store.remove_setting(key)?;
+        // Only the providers whose keys are gone: one added meanwhile (another process) stays,
+        // with its key, and is named below.
+        let removed = store.remove_all_ai_data(&handled)?;
+        let added_meanwhile = store.in_transaction(|store| {
+            let left: Vec<String> = store
+                .model_providers()?
+                .into_iter()
+                .map(|row| row.id)
+                .collect();
+            // A keyless provider that stays stays keyless: its keychain entry is never read.
+            let still_keyless: std::collections::BTreeSet<String> = settings::keyless(store)?
+                .into_iter()
+                .filter(|id| left.contains(id))
+                .collect();
+            for key in settings::ALL_KEYS {
+                if key == settings::KEYLESS && !still_keyless.is_empty() {
+                    store.set_setting(key, &still_keyless)?;
+                } else {
+                    store.remove_setting(key)?;
+                }
             }
-        }
+            Ok(left
+                .into_iter()
+                .filter(|id| !keys_left.contains(id))
+                .collect::<Vec<String>>())
+        })?;
         drop(store);
+        // Once more, now that the rows are gone: a key an update stored meanwhile goes too.
+        let keys_orphaned: Vec<(String, &'static str)> = handled_rows
+            .iter()
+            .filter_map(|(row, row_keyless)| {
+                providers::forget_key_after(&*self.secrets, row, *row_keyless)
+                    .map(|left| (row.id.clone(), left.where_))
+            })
+            .collect();
         let backup_removed = pagelamp_core::store::database_backup(&self.db_path()).is_some();
         if backup_removed {
             pagelamp_core::store::delete_database_backups(&self.db_path()).map_err(|err| {
@@ -527,30 +556,68 @@ impl App {
             usage_rows_removed: removed.usage_rows,
             backup_removed,
         };
-        match key_error {
-            None => Ok(report),
-            Some(mut err) => {
-                let entries: Vec<String> =
-                    keys_left.iter().map(|id| format!("`llm:{id}`")).collect();
-                err.message = format!(
-                    "Removed {} provider(s), {} usage record(s) and {} generated text(s){}, but \
-                     the keychain didn't let PageLamp delete the API key of {}: it is still \
-                     there ({}), and so is that provider. Run this again when the keychain can be \
-                     reached.",
-                    report.providers_removed,
-                    report.usage_rows_removed,
-                    report.generations_removed,
-                    if report.backup_removed {
-                        ", and the pre-update database backup"
-                    } else {
-                        ""
-                    },
-                    keys_left.join(", "),
-                    entries.join(", ")
-                );
-                Err(err)
-            }
+        if key_error.is_none() && added_meanwhile.is_empty() && keys_orphaned.is_empty() {
+            return Ok(report);
         }
+        let mut message = format!(
+            "Removed {} provider(s), {} usage record(s) and {} generated text(s){}",
+            report.providers_removed,
+            report.usage_rows_removed,
+            report.generations_removed,
+            if report.backup_removed {
+                ", and the pre-update database backup"
+            } else {
+                ""
+            },
+        );
+        if !keys_left.is_empty() {
+            let entries: Vec<String> = keys_left.iter().map(|id| format!("`llm:{id}`")).collect();
+            message.push_str(&format!(
+                ", but the keychain didn't let PageLamp delete the API key of {}: it is still \
+                 there ({}), and so is that provider",
+                keys_left.join(", "),
+                entries.join(", ")
+            ));
+        }
+        if !added_meanwhile.is_empty() {
+            message.push_str(&format!(
+                "{} {} was added while this ran and stays, with its key",
+                if keys_left.is_empty() {
+                    ", but"
+                } else {
+                    "; and"
+                },
+                added_meanwhile.join(", ")
+            ));
+        }
+        for (id, where_) in &keys_orphaned {
+            message.push_str(&format!(
+                "{} an API key stored for {id} while this ran couldn't be deleted from the \
+                 keychain: it {where_} under `llm:{id}`, so delete it there",
+                if keys_left.is_empty() && added_meanwhile.is_empty() {
+                    ", but"
+                } else {
+                    "; and"
+                },
+            ));
+        }
+        message.push_str(if !keys_left.is_empty() {
+            ". Run this again when the keychain can be reached."
+        } else if !added_meanwhile.is_empty() {
+            ". Run this again to remove it."
+        } else {
+            "."
+        });
+        let mut err = key_error.unwrap_or_else(|| {
+            let kind = if keys_orphaned.is_empty() {
+                AppErrorKind::Busy
+            } else {
+                AppErrorKind::Internal
+            };
+            AppError::new(kind, String::new())
+        });
+        err.message = message;
+        Err(err)
     }
 
     /// At a sync's start: usage lines older than the ledger's 13 months, and calendar

@@ -1119,7 +1119,8 @@ async fn a_restored_course_s_dates_come_back_confirmed() {
 }
 
 /// A folder course whose folder was renamed goes at the next sync, and its entries in the dates
-/// records go with it; the other courses' entries stay.
+/// records go with it. The source's other courses keep theirs: one still there, and one removed
+/// but not yet deleted (an undo needs its entries), as do other sources' courses.
 #[tokio::test]
 async fn a_renamed_folder_s_course_leaves_its_dates_records() {
     use std::collections::{BTreeMap, BTreeSet};
@@ -1127,14 +1128,34 @@ async fn a_renamed_folder_s_course_leaves_its_dates_records() {
     use pagelamp_core::term::{CONFIRMED_DATES_KEY, COPIED_DATES_KEY};
 
     let f = fixture().await;
+    // A third course of the folder source, removed and waiting for its purge.
+    let courses = f.temp.path().join("Courses");
+    std::fs::create_dir_all(courses.join("DEMO505 Extra")).unwrap();
+    std::fs::write(
+        courses.join("DEMO505 Extra").join("notes.txt"),
+        "Soil samples",
+    )
+    .unwrap();
+    f.app
+        .sync_source(&f.folder_source, SyncRequest::default(), |_| {})
+        .await
+        .unwrap();
+    let report = f
+        .app
+        .remove_courses(vec!["DEMO505".into()], options())
+        .await
+        .unwrap();
+    assert_eq!(report.removed[0].state, TombstoneState::Pending);
     let store = Store::open(&f.app.db_path()).unwrap();
     let old = store.resolve_course_with("DEMO101", true).unwrap().id;
+    let live = store.resolve_course_with("DEMO202", true).unwrap().id;
+    let pending = report.removed[0].course_id.clone();
     let canvas = store.resolve_course_with("DEMO303", true).unwrap().id;
     let other = "canvas:other.example.edu/course/9".to_string();
     store
         .set_setting(
             CONFIRMED_DATES_KEY,
-            &BTreeSet::from([old.clone(), canvas.clone()]),
+            &BTreeSet::from([old.clone(), live.clone(), pending.clone(), canvas.clone()]),
         )
         .unwrap();
     store
@@ -1143,11 +1164,12 @@ async fn a_renamed_folder_s_course_leaves_its_dates_records() {
             &BTreeMap::from([
                 (old.clone(), canvas.clone()),
                 (canvas.clone(), old.clone()),
+                (live.clone(), pending.clone()),
+                (pending.clone(), live.clone()),
                 (other.clone(), canvas.clone()),
             ]),
         )
         .unwrap();
-    let courses = f.temp.path().join("Courses");
     std::fs::rename(
         courses.join("DEMO101 Intro"),
         courses.join("DEMO101 Renamed"),
@@ -1158,18 +1180,23 @@ async fn a_renamed_folder_s_course_leaves_its_dates_records() {
         .await
         .unwrap();
     assert!(store.get_course(&old).unwrap().is_none());
+    assert!(store.get_course(&pending).unwrap().is_some());
     assert_eq!(
         store
             .setting::<BTreeSet<String>>(CONFIRMED_DATES_KEY)
             .unwrap()
             .unwrap_or_default(),
-        BTreeSet::from([canvas.clone()])
+        BTreeSet::from([live.clone(), pending.clone(), canvas.clone()])
     );
     assert_eq!(
         store
             .setting::<BTreeMap<String, String>>(COPIED_DATES_KEY)
             .unwrap()
             .unwrap_or_default(),
-        BTreeMap::from([(other, canvas)])
+        BTreeMap::from([
+            (live.clone(), pending.clone()),
+            (pending, live),
+            (other, canvas)
+        ])
     );
 }
