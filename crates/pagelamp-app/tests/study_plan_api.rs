@@ -638,6 +638,88 @@ async fn a_running_plan_is_listed_and_can_be_stopped() {
     );
 }
 
+/// Wait until a run has asked the mock daemon for its model list (and waits for the answer).
+async fn listing_asked(server: &MockServer) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .any(|r| r.url.path() == "/api/tags")
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the run never asked for the list"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+/// The plan's context is built again once Ollama has said where the model runs (its list can
+/// take up to its timeout): a course hidden while it lists isn't sent, and hiding the only
+/// course named blocks the run before anything is sent.
+#[tokio::test]
+async fn a_course_hidden_while_ollama_lists_its_models_is_not_sent() {
+    let temp = tempfile::tempdir().unwrap();
+    let app = app_with_courses(temp.path());
+    let slow = tags(json!([{ "name": "local-model" }])).set_delay(Duration::from_secs(2));
+    let server = with_local_model_listing(&app, slow).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(
+            &json!({"tasks": [task(None, "review", "Review this week's notes", &[], 6)]}),
+        ))
+        .mount(&server)
+        .await;
+    let start = |request: StudyPlanRequest, id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move { app.generate_study_plan(request, id, |_| {}).await })
+    };
+
+    let run = start(StudyPlanRequest::default(), "plan-hidden-meanwhile");
+    listing_asked(&server).await;
+    app.set_course_hidden("DEMO101", true).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let requests = chat_requests(&server).await;
+    assert_eq!(requests.len(), 1);
+    let body = String::from_utf8_lossy(&requests[0].body);
+    assert!(!body.contains("Demo course 101"), "{body}");
+    assert!(!body.contains(&course_id("101")), "{body}");
+    assert!(body.contains("Demo course 202"), "{body}");
+
+    server.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(tags(json!([{ "name": "local-model" }])).set_delay(Duration::from_secs(2)))
+        .mount(&server)
+        .await;
+    let only = StudyPlanRequest {
+        courses: vec!["DEMO202".into()],
+        ..StudyPlanRequest::default()
+    };
+    let run = start(only, "plan-only-hidden-meanwhile");
+    listing_asked(&server).await;
+    app.set_course_hidden("DEMO202", true).unwrap();
+    let err = tokio::time::timeout(Duration::from_secs(10), run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::NoCourseToPlan));
+    assert!(chat_requests(&server).await.is_empty());
+    assert!(
+        Store::open(&app.db_path())
+            .unwrap()
+            .generation("plan-only-hidden-meanwhile")
+            .unwrap()
+            .is_none()
+    );
+}
+
 /// Accept the note of the cloud models of Ollama here (a model it runs in the cloud needs its
 /// own, apart from the server's).
 fn acknowledge_cloud_note(app: &App, backend: &BackendRef) {

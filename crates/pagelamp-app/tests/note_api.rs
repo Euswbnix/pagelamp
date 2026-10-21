@@ -498,6 +498,86 @@ async fn an_empty_answer_is_bad_output_and_nothing_to_write_about_is_blocked() {
     assert!(server.received_requests().await.unwrap().is_empty());
 }
 
+/// Wait until a run has asked the mock daemon for its model list (and waits for the answer).
+async fn listing_asked(server: &MockServer) {
+    let deadline = Instant::now() + std::time::Duration::from_secs(10);
+    while !server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .any(|r| r.url.path() == "/api/tags")
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the run never asked for the list"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+/// A slow model list, as a busy daemon gives it.
+fn slow_tags() -> ResponseTemplate {
+    tags(json!([{ "name": "local-model" }])).set_delay(std::time::Duration::from_secs(2))
+}
+
+/// The note's context is built again once Ollama has said where the model runs (its list can
+/// take up to its timeout): a course hidden while it lists isn't sent, and hiding the only
+/// course leaves nothing to write about, before anything is sent.
+#[tokio::test]
+async fn a_course_hidden_while_ollama_lists_its_models_is_not_sent() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let server = with_local_model_listing(&app, slow_tags()).await;
+    Mock::given(method("POST"))
+        .respond_with(answer(&a_note()))
+        .mount(&server)
+        .await;
+    let start = |app: &App, id: &'static str| {
+        let app = app.clone();
+        tokio::spawn(async move { app.write_weekly_note(id, click(), |_| {}).await })
+    };
+    let wait = std::time::Duration::from_secs(10);
+
+    let run = start(&app, "note-hidden-meanwhile");
+    listing_asked(&server).await;
+    app.set_course_hidden("DEMO303", true).unwrap();
+    tokio::time::timeout(wait, run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let body = sent(&server, 0).await;
+    assert!(!body.contains("Demo course 303"), "{body}");
+    assert!(!body.contains(&course_id("303")), "{body}");
+    assert!(body.contains("Demo course 101"), "{body}");
+
+    // One active course, no deadline and no plan: hidden meanwhile, nothing to write about.
+    let other = tempfile::tempdir().unwrap();
+    let (app, _) = open(other.path());
+    add_course(
+        &Store::open(&app.db_path()).unwrap(),
+        "101",
+        day(-30),
+        day(60),
+    );
+    let server = with_local_model_listing(&app, slow_tags()).await;
+    let run = start(&app, "note-only-hidden-meanwhile");
+    listing_asked(&server).await;
+    app.set_course_hidden("DEMO101", true).unwrap();
+    let err = tokio::time::timeout(wait, run)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        (err.kind, err.blocked),
+        (AppErrorKind::Blocked, Some(BlockReason::NothingToWrite))
+    );
+    assert!(chat_requests(&server).await.is_empty());
+    assert!(app.weekly_notes().unwrap().is_empty());
+}
+
 /// A week with nothing to write about is known before the click: the estimate says so (after
 /// no model chosen, as the run checks), a click is blocked before anything is sent, and
 /// Monday's note isn't due, so that Monday's try stays for a course synced later that day.

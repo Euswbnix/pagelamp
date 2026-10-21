@@ -214,32 +214,31 @@ impl App {
         });
         let at = AsOf::now_local();
         let started = Utc::now().trunc_subsecs(0);
+        let scope = PlanScope {
+            courses: request.courses.clone(),
+            horizon_days: horizon,
+        };
         // The gate first, so a plan with nothing to plan for asks no model server anything; the
         // store isn't held across the model calls.
-        let (choice, context, prompt, output, max_output) = {
+        let choice = {
             let store = self.read_store()?;
             let Some(choice) = feature_choice(&store, AiFeature::StudyPlan)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let scope = PlanScope {
-                courses: request.courses.clone(),
-                horizon_days: horizon,
-            };
-            let context = match writable_plan_context(&store, &scope, at) {
-                Ok(context) => context,
-                Err(GateError::Blocked(reason)) => return Err(blocked(reason)),
-                Err(GateError::Store(err)) => return Err(err.into()),
-            };
-            let note = request.note.as_deref().and_then(StudentNote::new);
-            let (prompt, output, max_output) =
-                request_shape_with_note(AiFeature::StudyPlan, &context, note.as_ref());
-            (choice, context, prompt, output, max_output)
+            gated_plan_context(&store, &scope, at)?;
+            choice
         };
         // Where the model runs, decided by this run now (a model server here is asked for its
         // list): its note, its price and its label follow it. A plan sends no material text.
         let destination = self.run_destination(&choice, &cancel).await?;
-        {
+        // The context again after that wait (up to Ollama's timeout): a course hidden or removed
+        // meanwhile isn't sent.
+        let (context, prompt, output, max_output) = {
             let store = self.read_store()?;
+            let context = gated_plan_context(&store, &scope, at)?;
+            let note = request.note.as_deref().and_then(StudentNote::new);
+            let (prompt, output, max_output) =
+                request_shape_with_note(AiFeature::StudyPlan, &context, note.as_ref());
             if let Some(reason) = self.run_blocks(
                 &store,
                 &choice,
@@ -264,7 +263,8 @@ impl App {
                 summary: context.summary().clone(),
                 input_tokens: Some(estimate.input_tokens),
             });
-        }
+            (context, prompt, output, max_output)
+        };
         let run = self
             .run_model(
                 RunRequest {
@@ -446,6 +446,14 @@ pub(crate) fn writable_plan_context(
         return Err(GateError::Blocked(BlockReason::NoCourseToPlan));
     }
     Ok(context)
+}
+
+/// `writable_plan_context` for a run: a block or a store error as the run's error.
+fn gated_plan_context(store: &Store, scope: &PlanScope, at: AsOf) -> Result<GatedContext> {
+    writable_plan_context(store, scope, at).map_err(|err| match err {
+        GateError::Blocked(reason) => blocked(reason),
+        GateError::Store(err) => err.into(),
+    })
 }
 
 fn blocked(reason: BlockReason) -> AppError {

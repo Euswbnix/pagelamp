@@ -306,26 +306,25 @@ impl App {
             at.today - Duration::days(i64::from(at.today.weekday().num_days_from_monday()));
         // The gate first, so a note with nothing to write about asks no model server anything;
         // the store isn't held across the model calls.
-        let (choice, context, prompt, output) = {
+        let choice = {
             let store = self.read_store()?;
             let Some(choice) = feature_choice(&store, AiFeature::WeeklyNote)? else {
                 return Err(blocked(BlockReason::NoModelChosen));
             };
-            let context = match writable_note_context(&store, at) {
-                Ok(context) => context,
-                Err(GateError::Blocked(reason)) => return Err(blocked(reason)),
-                Err(GateError::Store(err)) => return Err(err.into()),
-            };
-            let language = note_language(options.ui_language.as_deref());
-            let prompt = assemble_in(WEEKLY_NOTE, &context, None, Some(language));
-            let output = note_output();
-            (choice, context, prompt, output)
+            gated_note_context(&store, at)?;
+            choice
         };
         // Where the model runs, decided by this run now (a model server here is asked for its
         // list): its note, its price and its label follow it. A note sends no material text.
         let destination = self.run_destination(&choice, &cancel).await?;
-        {
+        // The context again after that wait (up to Ollama's timeout): a course hidden or removed
+        // meanwhile isn't sent.
+        let (context, prompt, output) = {
             let store = self.read_store()?;
+            let context = gated_note_context(&store, at)?;
+            let language = note_language(options.ui_language.as_deref());
+            let prompt = assemble_in(WEEKLY_NOTE, &context, None, Some(language));
+            let output = note_output();
             // An automatic run never goes over the budget.
             let override_budget = options.override_budget && !options.automatic;
             if let Some(reason) = self.run_blocks(
@@ -352,7 +351,8 @@ impl App {
                 summary: context.summary().clone(),
                 input_tokens: Some(estimate.input_tokens),
             });
-        }
+            (context, prompt, output)
+        };
         let run = self
             .run_model(
                 RunRequest {
@@ -538,6 +538,14 @@ pub(crate) fn writable_note_context(
         return Err(GateError::Blocked(BlockReason::NothingToWrite));
     }
     Ok(context)
+}
+
+/// `writable_note_context` for a run: a block or a store error as the run's error.
+fn gated_note_context(store: &Store, at: AsOf) -> Result<GatedContext> {
+    writable_note_context(store, at).map_err(|err| match err {
+        GateError::Blocked(reason) => blocked(reason),
+        GateError::Store(err) => err.into(),
+    })
 }
 
 /// Whether the note has something to write about at `at` (`writable_note_context`).
