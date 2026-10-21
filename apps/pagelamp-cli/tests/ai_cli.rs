@@ -702,7 +702,7 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
     );
     assert!(
         shown.contains(
-            "The materials of courses you answered not-allowed for are never sent to it."
+            "The material text of courses you answered not-allowed for is never sent to it."
         ),
         "{shown}"
     );
@@ -726,8 +726,8 @@ fn a_cloud_model_behind_a_local_server_is_disclosed_as_such() {
     // Unchecked, PageLamp doesn't know where it runs: the promise holds for the cloud case.
     assert!(
         unchecked.contains(
-            "If it runs this model in the cloud, the materials of courses you answered \
-             not-allowed for are never sent to it."
+            "If it runs this model in the cloud, the material text of courses you answered \
+             not-allowed for is never sent to it."
         ),
         "{unchecked}"
     );
