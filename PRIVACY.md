@@ -72,10 +72,15 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
   information it needs from PageLamp on your computer and sends it to that AI provider **under your
   own account and that provider's terms**. What the provider stores or uses for training depends on
   your account settings with them — check them.
-- **(next) When you use PageLamp's own AI features** (for now reading a syllabus for the
-  course's dates, `pagelamp course calendar <course> --read`; the app's screens for it are still
-  turned off): PageLamp sends the model you chose the course information that feature needs, only
-  when you start it, and only after you have read what that model receives.
+- **(next) When you use PageLamp's own AI features** (reading a syllabus for the course's dates,
+  `pagelamp course calendar <course> --read`; *Plan your study*, `pagelamp plan`; *Explain a
+  week*, `pagelamp explain <course>`; and the *Weekly note*, `pagelamp note`; the app's screens for
+  them are still turned off): PageLamp sends the model you chose only what that feature needs, and
+  only after you have read what that model receives. Each runs only when you start it, except a
+  weekly note PageLamp prepares by itself on Mondays, and only if you turned that on with a model
+  you added yourself (see below). Plans and weekly notes send the structure of your courses, never
+  material text. Syllabus readings and explanations send material text, and a model in the cloud
+  never gets the material text of a course you answered `not-allowed` for.
   - With an API key, it goes to that provider (for example OpenAI or Anthropic) under your API
     account and that provider's terms. What the provider keeps or uses for training depends on those
     terms and your settings with them.
@@ -113,8 +118,9 @@ makes the backup copy; if that try fails, the copy is still made and keeps the o
     cloud for a course you answered `not-allowed` for. It leaves out links to other sites,
     materials without readable text, materials whose titles look like graded work (assignments,
     quizzes, exams…) unless you include them (`--include`), and whatever goes over its length
-    limit. The one-time sharing reminder above can come after an explanation PageLamp saved
-    instead, if it sent that course's materials to a model in the cloud first.
+    limit. The one-time sharing reminder above counts explanations too: it comes after whichever
+    reading or explanation first sent that course's materials to a model in the cloud, or was
+    sending them when it stopped or failed.
   - The *Weekly note* (`pagelamp note`) sends the same kind of structure, never material text,
     whatever each course's AI settings or sharing answer: your visible, active courses (with where
     each is in its term, such as a break), the calendar items (deadlines, exams, classes) in the

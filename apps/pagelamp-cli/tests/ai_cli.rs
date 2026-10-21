@@ -816,6 +816,43 @@ fn a_failed_cloud_reading_reminds_before_its_error() {
     assert!(reminder < error, "{message}");
 }
 
+/// So does an explanation: one that sent a course's materials to a model in the cloud and then
+/// failed gives the reminder before its error.
+#[test]
+fn a_failed_cloud_explanation_reminds_before_its_error() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let root = temp.path().join("Courses");
+    let notes = root.join("DEMO101 Intro to Demo Studies/Week 1 notes.md");
+    std::fs::create_dir_all(notes.parent().unwrap()).unwrap();
+    std::fs::write(
+        &notes,
+        "# Week 1\n\nDemo studies begin with the idea of a placeholder.\n",
+    )
+    .unwrap();
+    synced_demo_course(&home, &root);
+    let url = local_model_server();
+    let added = json_out(&pagelamp(
+        &home,
+        &["--json", "ai", "add", "ollama", "--base-url", &url],
+    ));
+    let id = added["provider_id"].as_str().unwrap().to_string();
+    ok(&pagelamp(
+        &home,
+        &["ai", "use", "weekly-explanation", &id, "big-model", "--yes"],
+    ));
+    // The stand-in answers a chat in a format Ollama doesn't use: the explanation fails.
+    let explain = pagelamp(&home, &["explain", "DEMO101"]);
+    let message = failed(&explain);
+    let reminder = message
+        .find("was on its way when the explanation stopped")
+        .unwrap_or_else(|| panic!("{message}"));
+    let error = message
+        .find("error: ")
+        .unwrap_or_else(|| panic!("{message}"));
+    assert!(reminder < error, "{message}");
+}
+
 /// A custom server on this computer: added without a key, its models count as in the cloud,
 /// so `ai use … --yes` accepts the cloud note, and `ai status` then says it is ready.
 #[test]

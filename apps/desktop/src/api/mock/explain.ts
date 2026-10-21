@@ -154,6 +154,8 @@ export function createExplainMock(deps: {
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   step: () => Promise<void>;
   activity: MockActivity;
+  /** Courses whose first cloud run already claimed the question (b) reminder (shared). */
+  reminded: Set<string>;
   /** `include`: the materials the run sends although they look like assessments. */
   gate: (
     courseId: string,
@@ -163,11 +165,10 @@ export function createExplainMock(deps: {
   ) => Promise<MockAiRun>;
   findCourse: (courseId: string) => MockCourse;
 }): ExplainApi & { cancel: (generationId: string) => void } {
-  const { now, respond } = deps;
+  const { now, respond, reminded } = deps;
   const saved = new Map<string, WeeklyExplanation[]>();
   const cancelled = new Set<string>();
   const running = new Set<string>();
-  const reminded = new Set<string>();
   let language: "ui" | "course" = "ui";
 
   const key = (courseId: string, week: number | null) => `${courseId}#${week ?? "recent"}`;
@@ -204,11 +205,32 @@ export function createExplainMock(deps: {
     }
     // Priced with what the run sends, as the facade's run checks its own prompt.
     const run = await deps.gate(c.course.id, week, liftedOf(read, include), overrideBudget);
-    const stop = () => {
-      if (cancelled.has(generationId)) {
-        onEvent({ type: "finished", ok: false });
-        throw new ApiError("cancelled", "The explanation was stopped.");
+    // Once it started (the text went out or was on its way): the course's first cloud run with
+    // question (b) unanswered or "not sure" (D37 option 2), by the answer stored when the run
+    // ends (one given meanwhile counts), claimed then and said before it ends, however it ends
+    // (like the facade).
+    let started = false;
+    const remind = () => {
+      const answer = materialSharing(c.course);
+      const reminder =
+        started &&
+        !run.on_device &&
+        (answer === "unanswered" || answer === "not_sure") &&
+        !reminded.has(c.course.id);
+      if (reminder) {
+        reminded.add(c.course.id);
+        onEvent({ type: "notice", code: "material_sharing_reminder" });
       }
+      return reminder;
+    };
+    function fail(error: ApiError): never {
+      remind();
+      onEvent({ type: "finished", ok: false });
+      throw error;
+    }
+    const stop = () => {
+      if (cancelled.has(generationId))
+        fail(new ApiError("cancelled", "The explanation was stopped."));
     };
 
     onEvent({ type: "stage", stage: "building_context" });
@@ -224,14 +246,12 @@ export function createExplainMock(deps: {
     // Who it runs on, nothing else of the gate's answer.
     const { backend_label, model, on_device } = run;
     onEvent({ type: "started", generation_id: generationId, backend_label, model, on_device });
+    started = true;
     onEvent({ type: "stage", stage: "waiting_for_model" });
     await deps.step();
     stop();
     // The provider fails the request once it started (the "ai-errors" endpoint).
-    if (run.failure) {
-      onEvent({ type: "finished", ok: false });
-      throw run.failure;
-    }
+    if (run.failure) fail(run.failure);
     const usage = {
       input_tokens: 6_400 * read.length,
       cached_input_tokens: 0,
@@ -241,14 +261,9 @@ export function createExplainMock(deps: {
     onEvent({ type: "stage", stage: "validating" });
     await deps.step();
     stop();
+    const reminder = remind();
     onEvent({ type: "finished", ok: true });
 
-    const answer = materialSharing(c.course);
-    const reminder =
-      !run.on_device &&
-      (answer === "unanswered" || answer === "not_sure") &&
-      !reminded.has(c.course.id);
-    if (reminder) reminded.add(c.course.id);
     const explanation: WeeklyExplanation = {
       meta: {
         backend_label: run.backend_label,

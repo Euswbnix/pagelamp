@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { GenEvent } from "../ai";
 import type { MaterialView } from "../types";
 import { createMockApi } from ".";
 import { selectMaterials } from "./explain";
@@ -11,7 +12,16 @@ describe("mock weekly explanations", () => {
     const api = createMockApi(fast);
     const types: string[] = [];
     const explanation = await api.explainWeek(COURSE, null, "ex-1", {}, (e) => types.push(e.type));
-    expect(types).toEqual(["stage", "context", "started", "stage", "usage", "stage", "finished"]);
+    expect(types).toEqual([
+      "stage",
+      "context",
+      "started",
+      "stage",
+      "usage",
+      "stage",
+      "notice",
+      "finished",
+    ]);
     expect(explanation.week).toBe(4);
     for (const section of explanation.sections) {
       for (const paragraph of section.paragraphs)
@@ -48,6 +58,97 @@ describe("mock weekly explanations", () => {
     expect(await api.aiOutputLanguage()).toBe("ui");
     await api.setAiOutputLanguage("course");
     expect(await api.aiOutputLanguage()).toBe("course");
+  });
+});
+
+describe("mock weekly explanations: the question (b) reminder, as a reading's", () => {
+  /** Each event's type, a notice by its code. */
+  const kinds = (events: GenEvent[]) => events.map((e) => (e.type === "notice" ? e.code : e.type));
+  /** Resolves once the run's events include `type`. */
+  function once(events: GenEvent[], type: GenEvent["type"]) {
+    return new Promise<void>((resolve) => {
+      const check = () => (events.some((e) => e.type === type) ? resolve() : setTimeout(check, 1));
+      check();
+    });
+  }
+
+  it("says it before a run stopped after it started ends; then claimed", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.explainWeek(COURSE, 4, "ex-1", {}, (e) => events.push(e));
+    await once(events, "started");
+    await api.cancelGeneration("ex-1");
+    await expect(run).rejects.toMatchObject({ kind: "cancelled" });
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+    expect(events.at(-1)).toEqual({ type: "finished", ok: false });
+    const again: GenEvent[] = [];
+    const next = await api.explainWeek(COURSE, 4, "ex-2", {}, (e) => again.push(e));
+    expect(kinds(again)).not.toContain("material_sharing_reminder");
+    expect(next.sharing_reminder).toBe(false);
+  });
+
+  it("says nothing of a run stopped before it started, and claims nothing", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    const events: GenEvent[] = [];
+    const run = api.explainWeek(COURSE, 4, "ex-1", {}, (e) => events.push(e));
+    await once(events, "stage");
+    await api.cancelGeneration("ex-1");
+    await expect(run).rejects.toMatchObject({ kind: "cancelled" });
+    expect(kinds(events)).not.toContain("started");
+    expect(kinds(events)).not.toContain("material_sharing_reminder");
+    expect((await api.explainWeek(COURSE, 4, "ex-2", {}, () => {})).sharing_reminder).toBe(true);
+  });
+
+  it("says it, notice first, on the success that claims it", async () => {
+    const api = createMockApi(fast);
+    const events: GenEvent[] = [];
+    await api.explainWeek(COURSE, 4, "ex-1", {}, (e) => events.push(e));
+    expect(kinds(events).slice(-2)).toEqual(["material_sharing_reminder", "finished"]);
+  });
+
+  it("follows the answer stored when the run ends", async () => {
+    const api = createMockApi({ ...fast, syncStepMs: 20 });
+    // Answered "allowed" while it runs: nothing to remind of, and nothing claimed.
+    const events: GenEvent[] = [];
+    const run = api.explainWeek(COURSE, 4, "ex-1", {}, (e) => events.push(e));
+    await once(events, "started");
+    await api.setCourseMaterialSharing(COURSE, "allowed");
+    expect((await run).sharing_reminder).toBe(false);
+    expect(kinds(events)).not.toContain("material_sharing_reminder");
+    // Back to "not sure" while another runs: reminded then.
+    const second = api.explainWeek(COURSE, 4, "ex-2", {}, () => {});
+    await api.setCourseMaterialSharing(COURSE, "not_sure");
+    expect((await second).sharing_reminder).toBe(true);
+  });
+
+  it("is one claim a course, whichever run sent the text, and all AI data forgets it", async () => {
+    const api = createMockApi(fast);
+    expect((await api.explainWeek(COURSE, 4, "ex-1", {}, () => {})).sharing_reminder).toBe(true);
+    // The course's syllabus reading after it: already said.
+    const reading: GenEvent[] = [];
+    const proposal = await api.readCourseCalendar(
+      COURSE,
+      "gen-1",
+      { override_budget: false },
+      (e) => reading.push(e),
+    );
+    expect(proposal.sharing_reminder).toBe(false);
+    expect(kinds(reading)).not.toContain("material_sharing_reminder");
+    // Forgotten with all AI data: the next cloud run asks again.
+    await api.removeAllAiData();
+    await api.addModelProvider("openai", null, "sk-demo-000000000000007Qx2");
+    const [facts] = await api.modelDisclosure({ kind: "provider", provider_id: "openai" }, false);
+    await api.acknowledgeModelDisclosure(
+      { kind: "provider", provider_id: "openai" },
+      false,
+      facts.version,
+    );
+    await api.setFeatureModel("weekly_explanation", {
+      backend: { kind: "provider", provider_id: "openai" },
+      model: "gpt-6-luna",
+      effort: "lowest",
+    });
+    expect((await api.explainWeek(COURSE, 4, "ex-2", {}, () => {})).sharing_reminder).toBe(true);
   });
 });
 

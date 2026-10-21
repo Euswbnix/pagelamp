@@ -2000,6 +2000,7 @@
 "weeklyNote.running.stopping" = "正在停止…";
 "weeklyNote.running.withModel" = "正在用 %1$@ · %2$@ 写";
 "weeklyNote.running.writingNow" = "正在写你的笔记";
+"weeklyNote.serverDidntAnswer" = "这台电脑上的 %1$@ 没有回应。它在运行吗？";
 "weeklyNote.settings.costKey" = "使用 %1$@ · %2$@：每周一 %3$@，计入你的每月预算。";
 "weeklyNote.settings.costLocal" = "使用 %1$@ · %2$@，在这台电脑上运行。";
 "weeklyNote.settings.costUnpriced" = "使用 %1$@ · %2$@，计入你的每月预算（这个模型没有价格信息）。";

@@ -18,6 +18,7 @@
   "deleted": "笔记已删除。",
   "deleteFailed": "无法删除这份笔记。",
   "automaticProblem": "周一的笔记没能准备好：{{reason}}",
+  "serverDidntAnswer": "这台电脑上的 {{name}} 没有回应。它在运行吗？",
   "history": {
     "title": "之前的笔记",
     "show": "查看",

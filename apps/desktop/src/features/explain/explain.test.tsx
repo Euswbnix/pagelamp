@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createMockApi } from "@/api/mock";
 import i18n from "@/i18n";
 import { paths } from "@/lib/routes";
+import { useSharingReminders } from "@/stores/sharingReminders";
 import { useUiStore } from "@/stores/ui";
 import { renderRoute } from "@/test/render";
 
@@ -42,8 +43,11 @@ describe("Course → Explain", () => {
     expect(
       within(article).getByRole("heading", { name: "Check your understanding" }),
     ).toBeInTheDocument();
-    // The course's first cloud run: the question (b) reminder.
-    expect(screen.getByText(/Check whether your instructor allows sharing/)).toBeInTheDocument();
+    // The course's first cloud run: the question (b) reminder (the hidden Timeline tab's reading
+    // section shows it too).
+    expect(
+      screen.getByRole("region", { name: /^Check whether your instructor/ }),
+    ).toBeInTheDocument();
   });
 
   it("opens a citation's file on this computer", async () => {
@@ -80,6 +84,57 @@ describe("Course → Explain", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByText("Stopped. Nothing was saved.")).toBeInTheDocument();
     expect(await api.savedExplanations(READABLE, 4)).toEqual([]);
+  });
+
+  it("shows the reminder with the run's explanation until closed, then not again", async () => {
+    const api = mockApi();
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    const result = await screen.findByRole("region", { name: "Explanation of week 4" });
+    const reminder = within(result).getByRole("region", { name: /^Check whether your instructor/ });
+    await user.click(within(reminder).getByRole("button", { name: /^Dismiss/ }));
+    expect(screen.queryByText(/Check whether your instructor allows sharing/)).toBeNull();
+    // Not to the page: back to the explanation.
+    await waitFor(() => expect(result).toHaveFocus());
+    // Said once a course: the next run doesn't say it again.
+    await user.click(await explainButton());
+    expect(await screen.findByText("The explanation is ready.")).toBeInTheDocument();
+    expect(screen.queryByText(/Check whether your instructor allows sharing/)).toBeNull();
+  });
+
+  it("keeps a reminder another run said out of an explanation that didn't say it", async () => {
+    const api = mockApi();
+    // A syllabus reading said it (and claimed it): the explanation after it doesn't say it.
+    await api.readCourseCalendar(READABLE, "reading", { override_budget: false }, () => {});
+    useSharingReminders.getState().add(READABLE, { service: "OpenAI", batch: false });
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    const result = await screen.findByRole("region", { name: "Explanation of week 4" });
+    expect(
+      within(result).queryByRole("region", { name: /^Check whether your instructor/ }),
+    ).toBeNull();
+    // Still the course's, under the run's outcome; closing it goes back to the heading.
+    const reminder = screen.getByRole("region", { name: /^Check whether your instructor/ });
+    await user.click(within(reminder).getByRole("button", { name: /^Dismiss/ }));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Explain a week" })).toHaveFocus(),
+    );
+  });
+
+  it("keeps the reminder a run stopped after it sent said; closing it goes back to the heading", async () => {
+    const api = mockApi({ syncStepMs: 200 });
+    const { user } = renderRoute(`${paths.course(READABLE)}?tab=explain`, { api });
+    await user.click(await explainButton());
+    // Started: the text is on its way.
+    await screen.findByText(/^Writing with /, undefined, { timeout: 5000 });
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    expect(await screen.findByText("Stopped. Nothing was saved.")).toBeInTheDocument();
+    const reminder = screen.getByRole("region", { name: /^Check whether your instructor/ });
+    await user.click(within(reminder).getByRole("button", { name: /^Dismiss/ }));
+    expect(screen.queryByText(/Check whether your instructor allows sharing/)).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Explain a week" })).toHaveFocus(),
+    );
   });
 
   it("says why a course's weeks can't be explained, and leads to its AI policy", async () => {

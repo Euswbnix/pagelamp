@@ -5,6 +5,7 @@ import { useApi } from "@/api/context";
 import { toApiError } from "@/api/errors";
 import type { OutputLanguage, WeeklyExplanation } from "@/api/explain";
 import { queryKeys } from "@/api/queries";
+import { useSharingReminders } from "@/stores/sharingReminders";
 
 export const explainKeys = {
   saved: (courseId: string, week: number | null) =>
@@ -33,7 +34,9 @@ export type ExplainRunState =
  * One "Explain week N" run (design §5.2, §7): its GenEvents as state (no text arrives before
  * the end), Stop (cancel_generation), and the saved list refreshed after every run. It also
  * remembers what each of its runs included (`sentInclude`): Regenerate sends that again and
- * Include adds to it. Explanations saved before don't say, so they count as none.
+ * Include adds to it. Explanations saved before don't say, so they count as none. The one-time
+ * question (b) reminder a run said goes to the course's reminders, however the run ended: the
+ * facade says it only once, and it stays until answered or dismissed.
  */
 export function useExplanation(courseId: string) {
   const api = useApi();
@@ -41,6 +44,11 @@ export function useExplanation(courseId: string) {
   const [state, setState] = useState<ExplainRunState>({ phase: "idle" });
   const [sent, setSent] = useState<ReadonlyMap<string, string[]>>(new Map());
   const runId = useRef<string | null>(null);
+  const reminder = useSharingReminders((s) => s.pending[courseId] ?? null);
+  /** The explanation whose run said the reminder (none when another run said it). */
+  const [remindedBy, setRemindedBy] = useState<string | null>(null);
+  const addReminder = useSharingReminders((s) => s.add);
+  const settleReminder = useSharingReminders((s) => s.settle);
 
   // Leaving the page stops the run: nothing keeps writing (or costing) out of sight.
   useEffect(
@@ -59,6 +67,8 @@ export function useExplanation(courseId: string) {
       if (runId.current) return;
       const id = crypto.randomUUID();
       runId.current = id;
+      let backend: string | null = null;
+      let reminded = false;
       setState({
         phase: "running",
         backend: null,
@@ -80,6 +90,7 @@ export function useExplanation(courseId: string) {
           },
           (event) => {
             if (event.type === "started") {
+              backend = event.backend_label;
               const { backend_label, model, on_device } = event;
               setState((s) =>
                 s.phase === "running"
@@ -92,12 +103,22 @@ export function useExplanation(courseId: string) {
             } else if (event.type === "context") {
               const materials = event.summary.materials_included;
               setState((s) => (s.phase === "running" ? { ...s, materials } : s));
+            } else if (event.type === "notice" && event.code === "material_sharing_reminder") {
+              reminded = true;
             }
           },
         );
+        if (reminded || explanation.sharing_reminder) {
+          const service = backend ?? explanation.meta.backend_label;
+          addReminder(courseId, { service, batch: false });
+          setRemindedBy(explanation.meta.generation_id);
+        }
         setSent((before) => new Map(before).set(explanation.meta.generation_id, options.include));
         setState({ phase: "done", explanation });
       } catch (error) {
+        // Claimed once the text went out, also by a run that then fails or is stopped (the
+        // notice comes before it ends): said then too.
+        if (reminded) addReminder(courseId, { service: backend ?? "", batch: false });
         setState(
           toApiError(error).kind === "cancelled"
             ? { phase: "stopped" }
@@ -108,7 +129,7 @@ export function useExplanation(courseId: string) {
         await client.invalidateQueries({ queryKey: queryKeys.all });
       }
     },
-    [api, client, courseId],
+    [api, client, courseId, addReminder],
   );
 
   const stop = useCallback(async () => {
@@ -122,7 +143,10 @@ export function useExplanation(courseId: string) {
   /** What the run that wrote `generationId` included (none for one it didn't write). */
   const sentInclude = useCallback((generationId: string) => sent.get(generationId) ?? [], [sent]);
 
-  return { state, start, stop, sentInclude };
+  /** Close the course's reminder (answered or dismissed), here and wherever it shows. */
+  const settle = useCallback(() => settleReminder(courseId), [settleReminder, courseId]);
+
+  return { state, start, stop, sentInclude, reminder, remindedBy, settle };
 }
 
 /**

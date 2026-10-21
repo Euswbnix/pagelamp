@@ -587,12 +587,17 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     planCourses,
   });
 
+  // Courses whose question (b) reminder (D37, D49) a run already claimed: one claim a course,
+  // whichever run sent its text (a reading or an explanation), as the facade's store keeps it.
+  const reminded = new Set<string>();
+
   // Weekly explanations (explain.ts).
   const explanations = createExplainMock({
     now,
     respond,
     step: () => sleep(syncStep),
     activity,
+    reminded,
     gate: (courseId, week, include, overrideBudget) =>
       aiGate({ feature: "weekly_explanation", course: courseId, week, include }, overrideBudget),
     findCourse,
@@ -624,6 +629,7 @@ export function createMockApi(options: MockOptions = {}): PageLampApi {
     scenario,
     now,
     activity,
+    reminded,
     respond,
     findCourse,
     step: () => sleep(syncStep),

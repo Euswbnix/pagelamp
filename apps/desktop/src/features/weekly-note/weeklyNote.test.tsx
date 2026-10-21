@@ -108,6 +108,122 @@ describe("Courses → Weekly note", () => {
     expect(screen.getByText("Your weekly note is ready.")).toHaveAttribute("role", "status");
   });
 
+  it("says Ollama here didn't answer when it isn't running", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
+    // The run asks Ollama where its model runs first, and Ollama doesn't answer.
+    vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("model", "Couldn't reach Ollama.", { model_error: "network" }),
+    );
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    expect(
+      await within(await card()).findByText(
+        "Ollama on this computer didn't answer. Is it running?",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says a failure as of the run, whatever the note's model is changed to after it", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
+    vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("model", "Couldn't reach Ollama.", { model_error: "network" }),
+    );
+    const { user, queryClient } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    const said = "Ollama on this computer didn't answer. Is it running?";
+    expect(await within(await card()).findByText(said)).toBeInTheDocument();
+    // The note's model moves to a provider in the cloud (in Settings): the failure stays Ollama's.
+    await api.addModelProvider("openai", null, "sk-demo-000000000000007Qx2");
+    const [facts] = await api.modelDisclosure({ kind: "provider", provider_id: "openai" }, false);
+    await api.acknowledgeModelDisclosure(
+      { kind: "provider", provider_id: "openai" },
+      false,
+      facts.version,
+    );
+    await api.setFeatureModel("weekly_note", {
+      backend: { kind: "provider", provider_id: "openai" },
+      model: "gpt-6-luna",
+      effort: "lowest",
+    });
+    await act(() => queryClient.invalidateQueries());
+    expect(within(await card()).getByText(said)).toBeInTheDocument();
+  });
+
+  it("names the server the run went to, though the note's model changed while it ran", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
+    let fail: (error: unknown) => void = () => {};
+    const write = vi
+      .spyOn(api, "writeWeeklyNote")
+      .mockImplementation(() => new Promise((_, reject) => (fail = reject)));
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    await waitFor(() => expect(write).toHaveBeenCalled());
+    // Moved to a provider in the cloud (in Settings) while Ollama is asked.
+    await api.addModelProvider("openai", null, "sk-demo-000000000000007Qx2");
+    const [facts] = await api.modelDisclosure({ kind: "provider", provider_id: "openai" }, false);
+    await api.acknowledgeModelDisclosure(
+      { kind: "provider", provider_id: "openai" },
+      false,
+      facts.version,
+    );
+    await api.setFeatureModel("weekly_note", {
+      backend: { kind: "provider", provider_id: "openai" },
+      model: "gpt-6-luna",
+      effort: "lowest",
+    });
+    act(() => fail(new ApiError("model", "Couldn't reach Ollama.", { model_error: "network" })));
+    expect(
+      await within(await card()).findByText(
+        "Ollama on this computer didn't answer. Is it running?",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("says a server here that was slow once the run started as slow, not as not running", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
+    vi.spyOn(api, "writeWeeklyNote").mockImplementation(async (id, _options, onEvent) => {
+      onEvent({
+        type: "started",
+        generation_id: id,
+        backend_label: "Ollama",
+        model: "qwen3.5:9b",
+        on_device: true,
+      });
+      throw new ApiError("model", "The model took too long.", { model_error: "timeout" });
+    });
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    expect(
+      await within(await card()).findByText("The model took too long to answer."),
+    ).toBeInTheDocument();
+  });
+
+  it("says a server here's other failures as they are", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => TUESDAY });
+    vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("model", "The answer had the wrong shape.", { model_error: "bad_output" }),
+    );
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    expect(
+      await within(await card()).findByText("The model's answer didn't have the expected shape."),
+    ).toBeInTheDocument();
+  });
+
+  it("says a provider off this computer couldn't be reached as any run's failure", async () => {
+    const api = mockApi({ now: () => TUESDAY });
+    vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("model", "Couldn't reach the provider.", { model_error: "network" }),
+    );
+    const { user } = renderRoute("/courses", { api });
+    await user.click(await writeButton());
+    expect(
+      await within(await card()).findByText(
+        "Couldn't reach the provider. Check your connection and the address.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("keeps a run going when the student leaves the page; only Stop stops it", async () => {
     const api = mockApi({ syncStepMs: 150, now: () => TUESDAY });
     const cancel = vi.spyOn(api, "cancelGeneration");
@@ -291,6 +407,20 @@ describe("Monday's note (the opt-in)", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
     // The normal button is there below it.
     expect(await writeButton()).toBeInTheDocument();
+  });
+
+  it("names Ollama here when Monday's note failed because it didn't answer", async () => {
+    const api = mockApi({ scenario: "ai-local", now: () => MONDAY });
+    await api.setPrepareWeeklyNoteOnMonday(true);
+    vi.spyOn(api, "writeWeeklyNote").mockRejectedValue(
+      new ApiError("model", "Ollama took too long to list its models.", { model_error: "timeout" }),
+    );
+    renderRoute("/courses", { api });
+    expect(
+      await screen.findByText(
+        "Monday's note wasn't prepared: Ollama on this computer didn't answer. Is it running?",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("stays silent when the week had nothing to write about as it started", async () => {

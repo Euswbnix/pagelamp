@@ -14,6 +14,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{SubsecRound, Utc};
 use pagelamp_core::ai::{AiFeature, BlockReason, Destination, MaterialSharing, ModelErrorKind};
@@ -22,7 +23,7 @@ use pagelamp_core::ai_gate::{
     assemble_in, week_changed, week_context_including,
 };
 use pagelamp_core::model::AiPolicy;
-use pagelamp_core::store::{GenerationRecord, GenerationStatus};
+use pagelamp_core::store::{GenerationRecord, GenerationStatus, Store};
 use pagelamp_core::term::phase::week_starts_on;
 use pagelamp_core::views::{self, AsOf};
 use pagelamp_llm::OutputSpec;
@@ -359,6 +360,14 @@ impl App {
             });
             (course, week, week_starts, context, prompt, output)
         };
+        // Once the run has started, the material text went out or was on its way.
+        let sent = AtomicBool::new(false);
+        let forward = |event: GenEvent| {
+            if matches!(event, GenEvent::Started { .. }) {
+                sent.store(true, Ordering::Relaxed);
+            }
+            on_event(event);
+        };
         let run = self
             .run_model(
                 RunRequest {
@@ -371,9 +380,28 @@ impl App {
                     output,
                     max_output_tokens: EXPLANATION_MAX_OUTPUT,
                 },
-                on_event,
+                &forward,
             )
             .await;
+        // D37 option 2 and D49, as a syllabus reading does: the course's first cloud run that
+        // sent (or was sending) its material text reminds once, however it ends, by the answer
+        // stored then (the student may have answered while the model wrote); claimed with the
+        // run's own row.
+        let claim = |store: &Store| -> pagelamp_core::Result<bool> {
+            let sharing = store
+                .get_course(&course.id)?
+                .map_or(course.material_sharing, |now| now.material_sharing);
+            Ok(sent.load(Ordering::Relaxed)
+                && reminds_about_sharing(destination, sharing)
+                && store.claim_sharing_reminder(&course.id, Utc::now())?)
+        };
+        let remind = |reminded: bool| {
+            if reminded {
+                on_event(GenEvent::Notice {
+                    code: GenNoticeCode::MaterialSharingReminder,
+                });
+            }
+        };
         let summary = serde_json::to_string(&Summary {
             context: context.summary().clone(),
             manifest: context.manifest().clone(),
@@ -404,8 +432,12 @@ impl App {
                         err.model_error.map(|kind| kind.as_str()),
                     ),
                 };
-                self.write_store()?
-                    .record_generation(&record(status, None, kind))?;
+                let reminded = self.write_store()?.in_transaction(|store| {
+                    let reminded = claim(store)?;
+                    store.record_generation(&record(status, None, kind))?;
+                    Ok(reminded)
+                })?;
+                remind(reminded);
                 return Err(err);
             }
         };
@@ -419,11 +451,16 @@ impl App {
             .and_then(|answer| ground(answer, &context));
         let Some((sections, check_questions, dropped_citations)) = grounded else {
             let bad = ModelErrorKind::BadOutput;
-            self.write_store()?.record_generation(&record(
-                GenerationStatus::Failed,
-                None,
-                Some(bad.as_str()),
-            ))?;
+            let reminded = self.write_store()?.in_transaction(|store| {
+                let reminded = claim(store)?;
+                store.record_generation(&record(
+                    GenerationStatus::Failed,
+                    None,
+                    Some(bad.as_str()),
+                ))?;
+                Ok(reminded)
+            })?;
+            remind(reminded);
             return Err(AppError {
                 model_error: Some(bad),
                 ..AppError::new(
@@ -432,48 +469,40 @@ impl App {
                 )
             });
         };
-        let store = self.write_store()?;
-        // D37 option 2 and D49: the course's first cloud run with material text reminds once,
-        // by the answer stored now (the student may have answered while the model wrote).
-        let sharing = store
-            .get_course(&course.id)?
-            .map_or(course.material_sharing, |now| now.material_sharing);
-        let sharing_reminder = reminds_about_sharing(destination, sharing)
-            && store.claim_sharing_reminder(&course.id, Utc::now())?;
-        if sharing_reminder {
-            on_event(GenEvent::Notice {
-                code: GenNoticeCode::MaterialSharingReminder,
-            });
-        }
-        let explanation = WeeklyExplanation {
-            meta: GenerationMeta {
-                generation_id: generation_id.to_string(),
-                feature: AiFeature::WeeklyExplanation,
-                backend_label: run.backend_label,
-                model: run.model,
-                on_device: run.on_device,
-                created_at: started,
-                usage: run.cost.usage,
-                est_cost_micro_usd: run.cost.micro_usd,
-                estimated: run.cost.estimated,
-                context: context.summary().clone(),
-                prompt_version: PROMPT_VERSION,
-            },
-            course_id: course.id.clone(),
-            week,
-            sections,
-            check_questions,
-            left_out: context.summary().left_out.clone(),
-            stale: false,
-            sharing_reminder,
-            dropped_citations,
-            cite_ai_use: course.ai_policy == AiPolicy::AllowedWithCitation,
-        };
-        store.record_generation(&record(
-            GenerationStatus::Accepted,
-            serde_json::to_string(&explanation).ok(),
-            None,
-        ))?;
+        let explanation = self.write_store()?.in_transaction(|store| {
+            let sharing_reminder = claim(store)?;
+            let explanation = WeeklyExplanation {
+                meta: GenerationMeta {
+                    generation_id: generation_id.to_string(),
+                    feature: AiFeature::WeeklyExplanation,
+                    backend_label: run.backend_label,
+                    model: run.model,
+                    on_device: run.on_device,
+                    created_at: started,
+                    usage: run.cost.usage,
+                    est_cost_micro_usd: run.cost.micro_usd,
+                    estimated: run.cost.estimated,
+                    context: context.summary().clone(),
+                    prompt_version: PROMPT_VERSION,
+                },
+                course_id: course.id.clone(),
+                week,
+                sections,
+                check_questions,
+                left_out: context.summary().left_out.clone(),
+                stale: false,
+                sharing_reminder,
+                dropped_citations,
+                cite_ai_use: course.ai_policy == AiPolicy::AllowedWithCitation,
+            };
+            store.record_generation(&record(
+                GenerationStatus::Accepted,
+                serde_json::to_string(&explanation).ok(),
+                None,
+            ))?;
+            Ok(explanation)
+        })?;
+        remind(explanation.sharing_reminder);
         Ok(explanation)
     }
 }

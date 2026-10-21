@@ -72,6 +72,8 @@ export function createProposalsMock(deps: {
   now: () => Date;
   /** Readings are listed as generations while they run (a batch as one). */
   activity: MockActivity;
+  /** Courses whose first cloud run already claimed the question (b) reminder (D37, D49). */
+  reminded: Set<string>;
   respond: <T>(value: T | (() => T), extraLatency?: number) => Promise<T>;
   findCourse: (courseId: string) => MockCourse;
   /** One step of a run (the mock's sync step; 0 in tests). */
@@ -89,13 +91,11 @@ export function createProposalsMock(deps: {
     aiLabel: AiLabel | null,
   ) => void;
 }) {
-  const { db, now, respond, findCourse } = deps;
+  const { db, now, respond, findCourse, reminded } = deps;
   const states = new Map<string, CourseState>();
   let nextId = 1;
   /** Generation and batch ids the student stopped (cancel_generation). */
   const cancelled = new Set<string>();
-  /** Courses whose first cloud run already showed the question (b) reminder (D37, D49). */
-  const reminded = new Set<string>();
 
   function stateOf(courseId: string): CourseState {
     let state = states.get(courseId);

@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use chrono::{Datelike, Local, NaiveDate, SubsecRound, TimeDelta, Utc};
 use pagelamp_app::ai::{
-    BackendRef, CostBasis, ExplainOptions, GenEvent, GenStage, ModelChoice, OutputLanguage,
+    BackendRef, CostBasis, ExplainOptions, GenEvent, GenNoticeCode, GenStage, ModelChoice,
+    OutputLanguage,
 };
 use pagelamp_app::{App, AppErrorKind};
 use pagelamp_core::ai::{
@@ -987,4 +988,256 @@ async fn a_cloud_model_through_a_local_server_is_labelled_and_billed_as_the_clou
         .await
         .unwrap();
     assert!(!again.sharing_reminder, "once a course");
+}
+
+/// The cloud explanation `with_cloud_model` sets up: Ollama here runs `local-model` in the cloud,
+/// its note and unknown price accepted; the daemon answers the model with `chat`.
+async fn with_cloud_model(app: &App, chat: ResponseTemplate) -> MockServer {
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    let server = with_local_model_listing(app, cloud).await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(chat)
+        .mount(&server)
+        .await;
+    let backend = BackendRef::Provider {
+        provider_id: "ollama".into(),
+    };
+    acknowledge_cloud_note(app, &backend);
+    app.acknowledge_unpriced_model(&backend, "local-model")
+        .unwrap();
+    server
+}
+
+/// A run that ends before it started (here a coding-plan key, refused before anything is sent)
+/// claims no reminder: the next cloud run that sends the course's materials says it.
+#[tokio::test]
+async fn a_run_that_never_started_claims_no_reminder() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, secrets) = app_with_courses(temp.path());
+    let server = MockServer::start().await;
+    Store::open(&app.db_path())
+        .unwrap()
+        .insert_model_provider(&ProviderRow {
+            id: "openai".into(),
+            preset: "openai".into(),
+            label: "OpenAI".into(),
+            wire: "openai_responses".into(),
+            base_url: format!("{}/v1", server.uri()),
+            created_at: Utc::now().trunc_subsecs(0),
+            last_probe_json: None,
+        })
+        .unwrap();
+    secrets
+        .set("llm:openai", "sk-sp-demo-not-a-real-key")
+        .unwrap();
+    let openai = BackendRef::Provider {
+        provider_id: "openai".into(),
+    };
+    choose(&app, openai.clone());
+    acknowledge_cloud_note(&app, &openai);
+    app.acknowledge_unpriced_model(&openai, "local-model")
+        .unwrap();
+    let (events, on_event) = collect();
+    let err = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "refused",
+            ExplainOptions::default(),
+            on_event,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.blocked, Some(BlockReason::CodingPlanKey), "{err:?}");
+    {
+        let events = events.lock().unwrap();
+        assert!(!events.iter().any(|e| matches!(e, GenEvent::Started { .. })));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder
+            }
+        )));
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+    // Nothing was claimed: the next cloud run that sends reminds.
+    let _cloud = with_cloud_model(&app, answer(&explanation())).await;
+    let explanation = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "sent",
+            ExplainOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    assert!(explanation.sharing_reminder);
+}
+
+/// Whether the course's reminder was said: the run's notice.
+fn reminded(events: &Mutex<Vec<GenEvent>>) -> bool {
+    events.lock().unwrap().iter().any(|e| {
+        matches!(
+            e,
+            GenEvent::Notice {
+                code: GenNoticeCode::MaterialSharingReminder
+            }
+        )
+    })
+}
+
+/// After a run that claimed the reminder: the next cloud explanation of the course doesn't say
+/// it again.
+async fn next_explanation_is_not_reminded(app: &App, server: &MockServer) {
+    server.reset().await;
+    let cloud = tags(json!([{ "name": "local-model", "remote_host": "https://ollama.com:443" }]));
+    Mock::given(method("GET"))
+        .and(path("/api/tags"))
+        .respond_with(cloud)
+        .mount(server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/chat"))
+        .respond_with(answer(&explanation()))
+        .mount(server)
+        .await;
+    let next = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "next",
+            ExplainOptions::default(),
+            |_| {},
+        )
+        .await
+        .unwrap();
+    assert!(!next.sharing_reminder, "claimed by the run before");
+}
+
+/// As after a syllabus reading: a cloud explanation that sent the course's materials reminds
+/// once even when the provider then refuses it or its answer can't be used; the next one
+/// doesn't.
+#[tokio::test]
+async fn a_cloud_explanation_that_fails_still_reminds_once() {
+    let unusable = json!({
+        "sections": [{"heading": "Made up", "paragraphs": [
+            {"text": "Invented.", "citations": ["c8", "c9"]}
+        ]}],
+        "check_questions": []
+    });
+    for (failure, kind) in [
+        (ResponseTemplate::new(401), ModelErrorKind::AuthRejected),
+        (answer(&unusable), ModelErrorKind::BadOutput),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let (app, _) = app_with_courses(temp.path());
+        let server = with_cloud_model(&app, failure).await;
+        let (events, on_event) = collect();
+        let err = app
+            .explain_week(
+                "DEMO101",
+                Some(3),
+                "fails",
+                ExplainOptions::default(),
+                on_event,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.model_error, Some(kind), "{err:?}");
+        assert!(reminded(&events), "{kind:?}");
+        next_explanation_is_not_reminded(&app, &server).await;
+    }
+}
+
+/// So does one stopped while the model writes.
+#[tokio::test]
+async fn a_cloud_explanation_stopped_after_it_sent_still_reminds_once() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let slow = answer(&explanation()).set_delay(Duration::from_secs(30));
+    let server = with_cloud_model(&app, slow).await;
+    let (events, on_event) = collect();
+    let task = {
+        let app = app.clone();
+        tokio::spawn(async move {
+            app.explain_week(
+                "DEMO101",
+                Some(3),
+                "stopped",
+                ExplainOptions::default(),
+                on_event,
+            )
+            .await
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while chat_requests(&server).await.is_empty() {
+        assert!(Instant::now() < deadline, "the run never reached the model");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    app.cancel_generation("stopped").unwrap();
+    let err = tokio::time::timeout(Duration::from_secs(10), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind, AppErrorKind::Cancelled);
+    assert!(reminded(&events));
+    next_explanation_is_not_reminded(&app, &server).await;
+}
+
+/// An answer given while the model writes counts: "allowed" then, no reminder; the course is
+/// still to be reminded at its next cloud run with the question open again.
+#[tokio::test]
+async fn an_answer_given_while_the_model_writes_is_the_one_that_counts() {
+    let temp = tempfile::tempdir().unwrap();
+    let (app, _) = app_with_courses(temp.path());
+    let slow = answer(&explanation()).set_delay(Duration::from_millis(400));
+    let server = with_cloud_model(&app, slow).await;
+    let app = Arc::new(app);
+    let task = {
+        let app = Arc::clone(&app);
+        tokio::spawn(async move {
+            app.explain_week(
+                "DEMO101",
+                Some(3),
+                "answered",
+                ExplainOptions::default(),
+                |_| {},
+            )
+            .await
+        })
+    };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while chat_requests(&server).await.is_empty() {
+        assert!(Instant::now() < deadline, "the run never reached the model");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    app.set_course_material_sharing("DEMO101", MaterialSharing::Allowed)
+        .unwrap();
+    let first = task.await.unwrap().unwrap();
+    assert!(!first.sharing_reminder);
+    app.set_course_material_sharing("DEMO101", MaterialSharing::NotSure)
+        .unwrap();
+    let (events, on_event) = collect();
+    let again = app
+        .explain_week(
+            "DEMO101",
+            Some(3),
+            "again",
+            ExplainOptions::default(),
+            on_event,
+        )
+        .await
+        .unwrap();
+    assert!(again.sharing_reminder, "never claimed before");
+    // Said as the run's notice too, as on a run that fails.
+    assert!(events.lock().unwrap().iter().any(|e| matches!(
+        e,
+        GenEvent::Notice {
+            code: GenNoticeCode::MaterialSharingReminder
+        }
+    )));
 }
