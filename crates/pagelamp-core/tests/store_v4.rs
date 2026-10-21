@@ -191,6 +191,74 @@ fn the_material_sharing_answer_survives_sync() {
     );
 }
 
+fn add_course(store: &Store, source_id: &str, code: &str) -> String {
+    let id = format!("{source_id}/course/{code}");
+    store
+        .upsert_course(&CourseUpsert {
+            id: id.clone(),
+            source_id: source_id.into(),
+            external_id: code.into(),
+            code: Some(code.into()),
+            name: "Demo".into(),
+            term_start: None,
+            term_end: None,
+            url: None,
+            syllabus_text: None,
+            lms: Default::default(),
+        })
+        .unwrap();
+    id
+}
+
+#[test]
+fn a_course_s_sharing_reminder_record_goes_with_the_course() {
+    use pagelamp_core::removal::RemovalReason;
+
+    let store = demo_store();
+    store
+        .upsert_source(&SourceRecord {
+            id: "folder:other".into(),
+            kind: SourceKind::Folder,
+            label: "Other".into(),
+            config: serde_json::json!({ "path": "/demo/other" }),
+            last_synced_at: None,
+            last_error: None,
+            last_error_kind: None,
+        })
+        .unwrap();
+    let removed = "folder:demo/course/DEMO101".to_string();
+    let dropped = add_course(&store, "folder:demo", "DEMO202");
+    let kept = add_course(&store, "folder:demo", "DEMO303");
+    let other = add_course(&store, "folder:other", "DEMO404");
+    let now = Utc.with_ymd_and_hms(2026, 10, 21, 12, 0, 0).unwrap();
+    for id in [&removed, &dropped, &kept, &other] {
+        assert!(store.claim_sharing_reminder(id, now).unwrap());
+    }
+    // A claim that finds the record says false; one that doesn't records it again.
+    let shown = |id: &str| !store.claim_sharing_reminder(id, now).unwrap();
+
+    // A removal that can still be undone keeps it; deleting the course's data deletes it.
+    store
+        .remove_course(&removed, RemovalReason::Other, false, false, now)
+        .unwrap();
+    assert!(shown(&removed));
+    store.purge_course(&removed, now, false).unwrap();
+    assert!(!shown(&removed));
+    assert!(shown(&dropped) && shown(&kept) && shown(&other));
+
+    // A course gone from its folder.
+    store
+        .prune_courses("folder:demo", std::slice::from_ref(&kept))
+        .unwrap();
+    assert!(!shown(&dropped));
+    assert!(shown(&kept) && shown(&other));
+
+    // A removed source.
+    store.remove_source("folder:other").unwrap();
+    assert!(!shown(&other));
+    assert!(shown(&kept));
+}
+
 fn provider(id: &str) -> ProviderRow {
     ProviderRow {
         id: id.into(),

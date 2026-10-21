@@ -743,13 +743,17 @@ impl Store {
         )
     }
 
-    /// Deletes the source and (via cascade) its courses, materials, chunks, events.
-    /// Errors: `NotFound` if there is no such source.
+    /// Deletes the source and (via cascade) its courses, materials, chunks, events, with the
+    /// records that its courses' sharing reminders were shown. Errors: `NotFound` if there is
+    /// no such source.
     pub fn remove_source(&self, id: &str) -> Result<()> {
-        let deleted = self
-            .conn
-            .execute("DELETE FROM sources WHERE id = ?1", [id])?;
-        expect_changed(deleted, "source", id)
+        self.atomic(|| {
+            let deleted = self
+                .conn
+                .execute("DELETE FROM sources WHERE id = ?1", [id])?;
+            expect_changed(deleted, "source", id)?;
+            self.forget_gone_sharing_reminders()
+        })
     }
 
     /// Record a sync attempt: `error = None` → success (sets last_synced_at, clears last_error
@@ -1015,8 +1019,9 @@ impl Store {
         Ok(())
     }
     /// Delete courses of `source_id` whose id is not in `keep` (course dropped/ended), with
-    /// their entries in the dates records (`term::forget_dates_records`). Returns the number of
-    /// deleted courses (their modules/materials/chunks cascade).
+    /// their entries in the dates records (`term::forget_dates_records`) and the records that
+    /// their sharing reminders were shown. Returns the number of deleted courses (their
+    /// modules/materials/chunks cascade).
     pub fn prune_courses(&self, source_id: &str, keep: &[String]) -> Result<usize> {
         // `keep` is bound as ONE JSON array and expanded by `json_each` — no SQL is built
         // from ids, and any number of ids fits in a single parameter.
@@ -1031,6 +1036,7 @@ impl Store {
             crate::term::forget_dates_records(self, |id| {
                 id.starts_with(&prefix) && !keep.iter().any(|k| k == id)
             })?;
+            self.forget_gone_sharing_reminders()?;
             Ok(deleted)
         })
     }
