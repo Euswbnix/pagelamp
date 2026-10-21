@@ -25,6 +25,7 @@ who build PageLamp never receive your data.
 | **(next)** API keys for model providers | your operating system's keychain, like your Canvas token — never in the database, logs or AI output | to reach the provider on your behalf |
 | **(next)** What PageLamp's AI features wrote for you, with its label (provider, model, date) and which materials were sent (their ids, never their text) | the same database; only the latest few of each kind are kept, and a calendar proposal you dismissed for 30 days (it goes at the next calendar proposal, dismissal or sync after that) | so you can read it again and see where it came from |
 | **(next)** One line per AI run: when, provider, model, feature, tokens and estimated cost | the same database, deleted once 13 months old (at the next AI run or sync) | to show your usage (`pagelamp ai usage`) and keep runs within your budget |
+| **(next)** For each course, whether PageLamp showed the one-time reminder about sharing its materials with AI services, and when | the same database, until the course's data is deleted (after you remove the course, when it's gone from its course folder, or with its source) or you run `pagelamp ai remove --all` | so the reminder is shown only once |
 
 PageLamp does **not** store assignment instructions or submissions — only assignment titles, due
 dates and links; **(v0.3)** an assignment or a quiz can also appear, by title and link, in the

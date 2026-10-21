@@ -111,6 +111,19 @@ impl Store {
         Ok(inserted == 1)
     }
 
+    /// Delete the question (b) reminder records of courses that are no longer in the database
+    /// (deleted after a removal, gone from their folder, or removed with their source): each
+    /// record goes with its course. Run in the transaction that deletes the courses.
+    pub(crate) fn forget_gone_sharing_reminders(&self) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM reminders_shown
+             WHERE substr(id, 1, length(?1)) = ?1
+               AND substr(id, length(?1) + 1) NOT IN (SELECT id FROM courses)",
+            [SHARING_REMINDER_PREFIX],
+        )?;
+        Ok(())
+    }
+
     // ----- usage ledger ------------------------------------------------------------------------
 
     pub fn record_ai_usage(&self, record: &UsageRecord) -> Result<()> {
@@ -203,9 +216,13 @@ impl Store {
     }
 }
 
+/// How the `reminders_shown` id of a course's question (b) reminder starts; the course id
+/// follows.
+const SHARING_REMINDER_PREFIX: &str = "material_sharing:";
+
 /// The `reminders_shown` id of a course's question (b) reminder.
 fn sharing_reminder_id(course_id: &str) -> String {
-    format!("material_sharing:{course_id}")
+    format!("{SHARING_REMINDER_PREFIX}{course_id}")
 }
 
 fn saturate(n: u64) -> i64 {
